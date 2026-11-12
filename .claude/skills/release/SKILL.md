@@ -7,7 +7,7 @@ description: >
   release. Use whenever the user says "release", "cut a beta", "ship version", "tag a release",
   "promote the beta", "backport", or gives a version number ("/release 0.83.0", "/release
   0.83.0-beta.2"). Not for the blog post, newsletter or X posts (the announce skill in
-  TableProApp/web), and not for the iOS app.
+  TableProApp/web), and not for the iOS app. The Windows app releases from `windows/RELEASING.md`.
 ---
 
 # Release
@@ -26,13 +26,13 @@ gh issue list --label regression --state open
 gh release view vX.Y.0-beta.N --json publishedAt -q .publishedAt
 scripts/ci/detect-changed-paths.sh --base vX.Y.0-beta.N --head origin/release/X.Y shipped
 gh run list --workflow ci.yml --branch main --event push --limit 5
-gh run list --workflow release-build.yml --branch main --limit 3
+gh run list --workflow nightly.yml --branch main --limit 3
 gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'
 ```
 
 - The detector prints `true` when shipped source landed after the newest beta: promote only after beta.N+1.
 - `git grep -c '^## \[X.Y.Z\]' origin/main -- apple/CHANGELOG.md` finds the last stable's heading. Without it, the forward-port goes first.
-- A red Release Build is no gate, but the tag's `app` or `plugins` job likely fails the same way.
+- A red Release Build job in the nightly is no gate, but the tag's `app` or `plugins` job likely fails the same way.
 
 ## 2. Decide what ships
 
@@ -58,8 +58,9 @@ For a stable or patch, name the fix and the reason, and ask. Only a security fix
 
 ## 6. Follow RELEASING
 
-Run `apple/RELEASING.md`: Cutting a beta, or Cutting a stable or patch, then Forward-port. On a failure, When a run fails or Withdrawing a release.
+Run `apple/RELEASING.md`: Cutting a beta, or Cutting a stable or patch with its Forward-port. On a failure, When a run fails or Withdrawing a release.
 
-- Watch the tag's run: `gh run list --workflow release.yml --limit 3`, then `gh run watch <id> --exit-status`.
+- `apple/scripts/release/tag.sh <tag> <commit>` tags and watches the tag's run. Hold merges and pull request pushes around it as Tagging says, since release jobs get no runner priority.
+- The forward-port goes once the tag's App and Plugins jobs start, not after publishing, so the next beta.1 need not wait for the stable (Forward-port).
 - Then check the source: `gh api -H 'Accept: application/vnd.github.raw' 'repos/TableProApp/TablePro/contents/appcast.xml?ref=gh-pages' | grep -c '<sparkle:shortVersionString>X.Y.Z<'` prints 1; `gh release view vX.Y.Z --json assets -q '.assets | length'` is 4 plus `python3 apple/scripts/release/registry.py targets | wc -l`.
 - After an X.Y.0, the `announce` skill in TableProApp/web is next.

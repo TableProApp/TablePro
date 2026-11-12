@@ -76,4 +76,13 @@ public struct PluginRowWriteRefusal: Error, LocalizedError, Sendable, Equatable 
     }
 
     public var errorDescription: String? { reason }
+
+    // For a driver whose engine has no column defaults: the first change that leaves a cell to one.
+    public static func columnDefaultsUnsupported(in changes: [PluginRowChange]) -> PluginRowWriteRefusal? {
+        guard let change = changes.first(where: { !($0.defaultColumns ?? []).isEmpty }) else { return nil }
+        return PluginRowWriteRefusal(
+            rowIndex: change.rowIndex,
+            reason: String(localized: "This database has no column defaults, so a cell cannot be left to one. Enter a value.")
+        )
+    }
 }

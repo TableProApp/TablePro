@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 tablepro-core.workspace = true
+tablepro-foreign-import.workspace = true
 tablepro-storage.workspace = true
 async-trait.workspace = true
 gio.workspace = true
@@ -14,12 +15,13 @@ glib.workspace = true
 oo7.workspace = true
 secrecy.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["io-util", "net", "sync", "time"] }
 uuid.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "test-util"] }
 
 [lints]
 workspace = true

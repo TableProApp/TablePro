@@ -46,9 +46,6 @@ struct ImportDialog: View {
     @State private var importResult: PluginImportResult?
     @State private var importError: (any Error)?
 
-    /// The window this dialog is hosted in, used for presenting its alerts and panels.
-    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
-    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
     @State private var hostWindow: NSWindow?
 
     @State private var hasPreviewError = false
@@ -121,16 +118,14 @@ struct ImportDialog: View {
         }
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
-                ImportProgressView(service: service) {
-                    service.cancelImport()
-                }
-                .interactiveDismissDisabled()
+                ImportProgressView(service: service)
             }
         }
         .onChange(of: showSuccessDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
+                runResult: importService?.stopResult,
                 window: hostWindow,
                 sourceFileName: fileURL?.lastPathComponent ?? "",
                 targetTable: nil
@@ -142,7 +137,7 @@ struct ImportDialog: View {
         }
         .onChange(of: showErrorDialog) { isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
+            TransferResultAlert.presentImportFailure(error: importError, result: importService?.stopResult, window: hostWindow) {
                 showErrorDialog = false
             }
         }
@@ -150,9 +145,6 @@ struct ImportDialog: View {
 
     // MARK: - Plugin Helpers
 
-    /// This dialog runs a file of statements. A format that needs a target table is routed to
-    /// `RowImportSheet` instead, so offering one here only ever produced "No target table
-    /// configured for row import" once the user pressed Import.
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
         return pluginManager.allImportPlugins()
@@ -353,9 +345,6 @@ struct ImportDialog: View {
         settingsSnapshot = nil
     }
 
-    /// This dialog runs a file of statements, so Change File… offers the statement formats and no
-    /// others. It goes through `ImportFilePanel` for the validation `allowedContentTypes` cannot
-    /// give: a file it dims can still be double-clicked through (#3047).
     @MainActor
     private func selectFile() async {
         guard let window = hostWindow else {
@@ -466,7 +455,6 @@ struct ImportDialog: View {
         }
     }
 
-    /// What the import itself splits with, so the count and the detected encoding match the run.
     @MainActor
     private var sessionGrammar: SQLLexicalGrammar {
         SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
@@ -507,9 +495,6 @@ struct ImportDialog: View {
 
         importTask = Task {
             do {
-                /// The scope the driver is already on, not the connection's saved default: a tab may
-                /// have moved it, and on an engine that reconnects to change database, pinning
-                /// somewhere else would refuse the import outright.
                 guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
                     throw DatabaseError.notConnected
                 }
@@ -533,13 +518,11 @@ struct ImportDialog: View {
                 await MainActor.run {
                     showProgressDialog = false
                     TransferResultAlert.presentImportCancelled(
-                        executedStatements: service.state.processedStatements,
-                        transaction: service.state.transactionOutcome,
+                        result: service.stopResult,
                         window: hostWindow
                     ) {}
                 }
             } catch let refusal as ExecutionGateError {
-                /// Nothing ran, so the catalog has nothing to catch up on, and a Cancel needs no reply.
                 await MainActor.run {
                     showProgressDialog = false
                     guard case .denied = refusal else { return }
@@ -554,8 +537,6 @@ struct ImportDialog: View {
                     showErrorDialog = true
                 }
             }
-            /// A SQL file can create, alter or drop anything, and one that failed or was cancelled
-            /// part way has already run every statement before that point.
             CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
         }
     }

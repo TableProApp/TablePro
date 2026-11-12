@@ -26,9 +26,22 @@ pub struct PgTlsEngine {
     fixture: PostgresFixture,
     ca: PathBuf,
     unrelated_ca: PathBuf,
+    server_certificate: PathBuf,
 }
 
 impl PgTlsEngine {
+    fn from_fixture(fixture: PostgresFixture) -> Self {
+        let ca = fixture.pki().path(PkiFile::Ca);
+        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
+        let server_certificate = fixture.pki().path(PkiFile::ServerCertificate);
+        Self {
+            fixture,
+            ca,
+            unrelated_ca,
+            server_certificate,
+        }
+    }
+
     fn options(&self, credentials: Credentials, tls: TlsConfig) -> ConnectOptions {
         let liveness = test_liveness();
         options_over(
@@ -49,16 +62,17 @@ impl TlsConformanceEngine for PgTlsEngine {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        let fixture = PostgresFixture::start(HbaMode::ClientCertificate)
+        PostgresFixture::start(HbaMode::ClientCertificate)
             .await
-            .map_err(ConformanceFailure::setup)?;
-        let ca = fixture.pki().path(PkiFile::Ca);
-        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
-        Ok(Self {
-            fixture,
-            ca,
-            unrelated_ca,
-        })
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
+    }
+
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        PostgresFixture::start_self_signed(HbaMode::ClientCertificate)
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -71,6 +85,10 @@ impl TlsConformanceEngine for PgTlsEngine {
 
     fn unrelated_ca_file(&self) -> &Path {
         &self.unrelated_ca
+    }
+
+    fn server_certificate_file(&self) -> &Path {
+        &self.server_certificate
     }
 
     fn served_name(&self) -> &str {
@@ -143,6 +161,56 @@ async fn server_without_ssl_reports_server_refused_tls() {
         "got {:?}",
         outcome.err()
     );
+}
+
+fn prefer() -> TlsConfig {
+    TlsConfig {
+        mode: TlsMode::Prefer,
+        ..TlsConfig::disabled()
+    }
+}
+
+/// Prefer goes on in plaintext after the server answers 'N', as libpq's
+/// `prefer` does: a new connection to a local server without TLS works.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn prefer_connects_to_a_server_without_ssl() {
+    let fixture = start().await;
+    let liveness = test_liveness();
+    let options = options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        password(&fixture.password_credentials()),
+        fixture.database(),
+        prefer(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    );
+
+    let outcome = PgDriver.connect(options, CancellationToken::new()).await;
+
+    assert!(outcome.is_ok(), "got {:?}", outcome.err());
+}
+
+/// The server takes only TLS logins, and its certificate comes from a CA
+/// the system does not trust, so a login under Prefer proves it encrypted
+/// without checking the certificate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn prefer_encrypts_where_the_server_offers_tls_and_checks_no_certificate() {
+    let fixture = start_with_pki(PkiAlgorithm::RsaSha256).await;
+    let liveness = test_liveness();
+    let options = options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        password(&fixture.password_credentials()),
+        fixture.database(),
+        prefer(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    );
+
+    let outcome = PgDriver.connect(options, CancellationToken::new()).await;
+
+    assert!(outcome.is_ok(), "got {:?}", outcome.err());
 }
 
 /// pg_hba.conf turns a plaintext login away with SQLSTATE 28000, a rule

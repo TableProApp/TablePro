@@ -18,6 +18,7 @@ struct DataGridPendingChangeMarkTests {
         placeholderText: .secondaryLabelColor,
         booleanTrueText: .labelColor,
         booleanFalseText: .labelColor,
+        valueColors: DataGridValueColors(all: .labelColor),
         rowNumberText: .secondaryLabelColor,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,

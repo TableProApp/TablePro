@@ -7,17 +7,19 @@ struct MetricsBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label(String(localized: "Server Metrics"), systemImage: "gauge.with.dots.needle.33percent")
+                Label(String(localized: "Server Metrics"), systemImage: "speedometer")
                     .font(.headline)
                 Spacer()
                 if let error {
                     Label {
                         RevealedTextView(error)
+                            .foregroundStyle(.secondary)
                     } icon: {
-                        Image(systemName: "exclamationmark.triangle")
+                        Image(systemName: NoticeSeverity.error.symbolName)
+                            .foregroundStyle(NoticeSeverity.error.tint)
+                            .accessibilityHidden(true)
                     }
                     .font(.caption)
-                    .foregroundStyle(.red)
                 }
             }
             .padding(.horizontal, 12)
@@ -41,30 +43,29 @@ struct MetricsBarView: View {
     }
 
     private func metricCard(_ metric: DashboardMetric) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: metric.icon)
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(metric.label)
-                    .font(.caption)
+        GroupBox {
+            HStack(spacing: 8) {
+                Image(systemName: metric.icon)
                     .foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(metric.value)
-                        .font(.system(.body, design: .monospaced))
-                        .fontWeight(.medium)
-                        .monospacedDigit()
-                    if !metric.unit.isEmpty {
-                        Text(metric.unit)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(metric.label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(metric.value)
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.medium)
+                            .monospacedDigit()
+                        if !metric.unit.isEmpty {
+                            Text(metric.unit)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
     }
 }

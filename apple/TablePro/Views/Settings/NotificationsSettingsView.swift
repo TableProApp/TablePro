@@ -10,7 +10,7 @@ import UserNotifications
 struct NotificationsSettingsView: View {
     @Binding var settings: NotificationSettings
 
-    @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    @StateObject private var permission = NotificationPermissionMonitor()
 
     var body: some View {
         Form {
@@ -32,12 +32,10 @@ struct NotificationsSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if authorizationStatus == .denied {
+            if permission.status == .denied {
                 Section {
                     HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("Notifications are turned off for TablePro in System Settings.")
+                        NoticeLabel(String(localized: "Notifications are turned off for TablePro in System Settings."))
                         Spacer()
                         Button("Open System Settings", action: Self.openSystemSettings)
                     }
@@ -46,7 +44,7 @@ struct NotificationsSettingsView: View {
         }
         .formStyle(.grouped)
         .task {
-            authorizationStatus = await NotificationAuthorization.shared.refresh()
+            await permission.refresh()
         }
     }
 

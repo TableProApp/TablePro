@@ -1,0 +1,19 @@
+{
+	"folders": {
+		"Shared": {
+			"description": "Shared Servers"
+		}
+	},
+	"connections": {
+		"linux-native": {
+			"provider": "mysql",
+			"name": "Linux native",
+			"configuration": {
+				"host": "native.example.com",
+				"port": "3306",
+				"database": "app",
+				"user": "root"
+			}
+		}
+	}
+}

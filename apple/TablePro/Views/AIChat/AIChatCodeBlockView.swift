@@ -22,7 +22,6 @@ struct AIChatCodeBlockView: View, Equatable {
             && lhs.isSettled == rhs.isSettled
     }
 
-    @State private var isCopied: Bool = false
     @State private var highlighted: (key: String, text: AttributedString)?
     @Environment(\.commandActions) private var actions
 
@@ -42,29 +41,17 @@ struct AIChatCodeBlockView: View, Equatable {
             if let resolvedLanguage {
                 Text(resolvedLanguage.uppercased())
                     .font(.caption2)
-                    .fontWeight(.medium)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(nsColor: .separatorColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
             Spacer(minLength: 0)
 
             Button {
                 ClipboardService.shared.writeText(code)
-                isCopied = true
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(1.5))
-                    isCopied = false
-                }
+                AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
             } label: {
-                Label(
-                    isCopied ? String(localized: "Copied") : String(localized: "Copy"),
-                    systemImage: isCopied ? "checkmark" : "doc.on.doc"
-                )
+                Label(String(localized: "Copy"), systemImage: "doc.on.doc")
                 .font(.caption2)
                 .lineLimit(1)
             }

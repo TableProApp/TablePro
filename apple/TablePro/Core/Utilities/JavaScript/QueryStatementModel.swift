@@ -189,11 +189,11 @@ enum QueryStatementScanner {
         }
     }
 
-    private static func located(_ command: RedisCommandSplitter.Command) -> SQLStatementScanner.LocatedStatement {
+    fileprivate static func located(_ command: RedisCommandSplitter.Command) -> SQLStatementScanner.LocatedStatement {
         SQLStatementScanner.LocatedStatement(wholeText: command.text, offset: command.range.location)
     }
 
-    private static func located(
+    fileprivate static func located(
         _ statement: JavaScriptStatementScanner.Statement
     ) -> SQLStatementScanner.LocatedStatement {
         SQLStatementScanner.LocatedStatement(
@@ -201,5 +201,53 @@ enum QueryStatementScanner {
             offset: statement.range.location,
             hasContent: statement.hasContent
         )
+    }
+}
+
+// A JavaScript or Redis document's statements, read once per text, so a caret move finds its statement by search and
+// answers what `QueryStatementScanner.locatedStatementAtCursor` would. A SQL document uses `SQLStatementCursorIndex`.
+struct QueryStatementCaretTable {
+    private let model: QueryStatementModel
+    private let statements: [SQLStatementScanner.LocatedStatement]
+    // The last caret offset each statement owns, in document order.
+    private let reaches: [Int]
+
+    init?(text: String, model: QueryStatementModel) {
+        self.model = model
+        switch model {
+        case .sql:
+            return nil
+        case .javascript:
+            let found = JavaScriptStatementScanner.executableStatements(in: text)
+            statements = found.map(QueryStatementScanner.located)
+            reaches = found.map { NSMaxRange($0.range) }
+        case .redis:
+            let found = RedisCommandSplitter.commandsWithCaretReach(in: text)
+            statements = found.map { QueryStatementScanner.located($0.command) }
+            reaches = found.map { $0.reach }
+        }
+    }
+
+    func statement(atCursor cursor: Int) -> SQLStatementScanner.LocatedStatement {
+        var low = 0
+        var high = reaches.count
+        while low < high {
+            let middle = (low + high) / 2
+            if reaches[middle] < cursor {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        let nothing = SQLStatementScanner.LocatedStatement(sql: "", offset: 0, hasContent: false)
+        switch model {
+        case .redis:
+            return low < statements.count ? statements[low] : nothing
+        case .javascript, .sql:
+            // Off every statement, the caret takes the one before it, or the first.
+            guard !statements.isEmpty else { return nothing }
+            if low < statements.count, statements[low].offset <= cursor { return statements[low] }
+            return statements[max(0, low - 1)]
+        }
     }
 }

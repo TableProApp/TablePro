@@ -174,6 +174,28 @@ extension QueryExecutionCoordinator {
         return definitionChanged ? [] : previous
     }
 
+    private func storeKeys(_ keys: [String], viewRowEditing: PluginViewRowEditing?, sameRelation: Bool, at index: Int) {
+        parent.tabManager.mutate(at: index) { tab in
+            tab.tableContext.primaryKeyColumns = keys
+            // Cached and inline metadata carry no answer, so the last one stands unless the relation changed.
+            let kept = sameRelation ? tab.tableContext.viewRowEditing : nil
+            tab.tableContext.adoptViewAnswer(viewRowEditing ?? kept, tabType: tab.tabType)
+        }
+    }
+
+    // Read before and inside `applyPhase1Result`, so rows built off the main actor install as built. A Reveal stays only on its table.
+    func phase1RowShape(tabId: UUID, tableName: String?, columns: [String], columnTypes: [ColumnType]) -> TableRows.RowShape {
+        let tab = parent.tabManager.tabs.first { $0.id == tabId }
+        let keepsReveal = tab?.revealsMaskedValues == true && tab?.tableContext.tableName == tableName
+        let policy = keepsReveal ? MaskingPolicy.none : parent.maskingPolicy
+        return TableRows.RowShape(
+            columns: columns,
+            masks: policy.columnMasks(table: tableName, columns: columns, columnTypes: columnTypes),
+            exportPolicy: policy,
+            exportTable: tableName
+        )
+    }
+
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -198,8 +220,11 @@ extension QueryExecutionCoordinator {
         source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        columnOrigins: [PluginColumnOrigin?]? = nil,
+        prepared: TableRows.PreparedRows? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -220,7 +245,8 @@ extension QueryExecutionCoordinator {
                 connection: conn,
                 queryParameterValues: queryParameterValues,
                 anchor: anchor,
-                timing: timing
+                timing: timing,
+                serverOutput: serverOutput
             )
             return
         }
@@ -238,11 +264,18 @@ extension QueryExecutionCoordinator {
         if parent.tabManager.tabs[idx].revealsMaskedValues, parent.tabManager.tabs[idx].tableContext.tableName != tableName {
             parent.tabManager.mutate(at: idx) { $0.revealsMaskedValues = false }
         }
-        let masks = parent.columnMasks(forTabId: tabId, table: tableName, columns: columns, columnTypes: columnTypes)
+        let shape = phase1RowShape(tabId: tabId, tableName: tableName, columns: columns, columnTypes: columnTypes)
+        let builtRows = prepared.flatMap { $0.fits(shape) ? $0 : nil } ?? TableRows.prepare(
+            rows,
+            rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
+            absentCells: absentCells,
+            unloadedCells: unloadedCells,
+            shape: shape
+        )
 
         let newTableRows = TableRows.from(
-            queryRows: rows,
-            columns: columns,
+            prepared: builtRows,
             columnTypes: columnTypes,
             columnDefaults: resolved.columnDefaults,
             columnForeignKeys: resolved.columnForeignKeys,
@@ -255,10 +288,7 @@ extension QueryExecutionCoordinator {
             rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched,
-            rowLocators: rowLocators,
-            absentCells: absentCells,
-            unloadedCells: unloadedCells,
-            masks: masks
+            columnOrigins: columnOrigins
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
@@ -329,12 +359,7 @@ extension QueryExecutionCoordinator {
             definitionChanged: definitionChanged
         )
 
-        parent.tabManager.mutate(at: idx) { tab in
-            tab.tableContext.primaryKeyColumns = resolvedPKs
-            // Cached and inline metadata carry no answer, so the last one stands unless the relation changed.
-            let kept = tableName == previousTableName ? tab.tableContext.viewRowEditing : nil
-            tab.tableContext.adoptViewAnswer(metadata?.viewRowEditing ?? kept, tabType: tab.tabType)
-        }
+        storeKeys(resolvedPKs, viewRowEditing: metadata?.viewRowEditing, sameRelation: tableName == previousTableName, at: idx)
         captureOrigin(
             tabIndex: idx,
             tabId: tabId,
@@ -354,7 +379,9 @@ extension QueryExecutionCoordinator {
                 rowMatchPolicy: resolved.rowMatchPolicy,
                 columnTypeNames: newTableRows.columnTypeNames
             )
+            parent.changeManagerMatchesSelectedResult()
         }
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
 
         recordHistory(
             QueryHistoryRecordRequest(
@@ -386,7 +413,8 @@ extension QueryExecutionCoordinator {
         connection conn: DatabaseConnection,
         queryParameterValues: [QueryParameter]?,
         anchor: StatementAnchor? = nil,
-        timing: PluginQueryTiming? = nil
+        timing: PluginQueryTiming? = nil,
+        serverOutput: PluginServerOutput
     ) {
         let databaseName = historyDatabaseName(tabId: tabId)
         let schemaName = historySchemaName(tabId: tabId)
@@ -421,7 +449,8 @@ extension QueryExecutionCoordinator {
                     sql: sql,
                     executionTime: executionTime,
                     anchor: anchor,
-                    planContext: captured.context
+                    planContext: captured.context,
+                    serverOutput: serverOutput
                 )]
             )
             if tab.display.isResultsCollapsed {
@@ -429,6 +458,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
         parent.toolbarState.isResultsCollapsed = false
 
         recordHistory(
@@ -703,8 +733,9 @@ extension QueryExecutionCoordinator {
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
                 let queryColumns = parent.queryColumns(for: tab)
-                let filters = filtered ? tab.filterState.appliedFilters : []
-                let logicMode = tab.filterState.filterLogicMode
+                let rerun = tab.filterState.rerunFilters
+                let filters = filtered ? rerun.filters : []
+                let logicMode = rerun.logicMode
                 let sql = parent.queryBuilder.buildFilteredCountQuery(
                     tableName: tableName,
                     schemaName: tab.tableContext.schemaName,
@@ -807,16 +838,17 @@ extension QueryExecutionCoordinator {
         if let browseSearch {
             return countsAutomatically ? .browseSearch(browseSearch, tableSizeLimit: threshold) : .skip
         }
+        let rerun = filterState.rerunFilters
         guard countsAutomatically else {
-            return filterState.hasAppliedFilters ? .clear : .skip
+            return rerun.filters.isEmpty ? .skip : .clear
         }
         if isNonSQL {
-            return filterState.hasAppliedFilters
-                ? .filteredNonSQL(filters: filterState.appliedFilters, logicMode: filterState.filterLogicMode)
-                : .approximate
+            return rerun.filters.isEmpty
+                ? .approximate
+                : .filteredNonSQL(filters: rerun.filters, logicMode: rerun.logicMode)
         }
         let exceedsThreshold = (approximateRowCount ?? 0) >= threshold
-        if filterState.hasAppliedFilters {
+        if !rerun.filters.isEmpty {
             return exceedsThreshold ? .clear : .exactCount(filtered: true)
         }
         return exceedsThreshold ? .skip : .exactCount(filtered: false)

@@ -71,7 +71,8 @@ extension DatabaseManager {
         }
 
         let sshConfig = connection.resolvedSSHConfig
-        guard sshConfig.enabled else { return connection }
+        // The stored flag alone is not enough: a driver that dials no forwarded port goes around the tunnel.
+        guard enabledKinds.first == .ssh, sshConfig.enabled else { return connection }
 
         let storedSshPassword: String?
         let keyPassphrase: String?

@@ -60,7 +60,6 @@ mod foreign_key_draft;
 mod foreign_key_handlers;
 mod foreign_key_object;
 mod foreign_keys_input;
-mod form_dialog;
 mod imp;
 mod index_dialog;
 mod index_draft;
@@ -297,9 +296,10 @@ impl StructureTab {
         imp.dispatching.set(false);
     }
 
-    /// Stop the read the tab has running and stop following reconnects
-    /// now, rather than at dispose, which waits for the last reference
-    /// to the widget.
+    pub fn request_refresh(&self) {
+        self.send(SaveInput::RequestRefresh);
+    }
+
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();
@@ -374,6 +374,22 @@ impl StructureTab {
             false,
             glib::closure_local!(move |tab: &Self, loading: bool| f(tab, loading)),
         )
+    }
+
+    pub(crate) fn dock_actions(&self, details: &gtk::Box, secondary: &gtk::Box, primary: &gtk::Box) {
+        let imp = self.imp();
+        imp.action_bar.set_visible(false);
+        for (control, target) in [
+            (imp.pending_label.get().upcast::<gtk::Widget>(), details),
+            (imp.drop_button.get().upcast(), details),
+            (imp.stop_button.get().upcast(), secondary),
+            (imp.discard_button.get().upcast(), secondary),
+            (imp.saving_spinner.get().upcast(), primary),
+            (imp.save_button.get().upcast(), primary),
+        ] {
+            imp.action_bar.remove(&control);
+            target.append(&control);
+        }
     }
 
     /// A read of the table's definition is running.
@@ -625,13 +641,7 @@ fn replace_items<T: IsA<glib::Object>>(store: &gio::ListStore, items: impl IntoI
     store.splice(0, store.n_items(), &items);
 }
 
+// SQL in structure forms and write reviews follows the surrounding desktop controls.
 fn apply_sql_scheme(buffer: &sourceview5::Buffer) {
-    let scheme_name = if adw::StyleManager::default().is_dark() {
-        "Adwaita-dark"
-    } else {
-        "Adwaita"
-    };
-    if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
-        buffer.set_style_scheme(Some(&scheme));
-    }
+    buffer.set_style_scheme(crate::ui::style_scheme_resolver::scheme("").as_ref());
 }

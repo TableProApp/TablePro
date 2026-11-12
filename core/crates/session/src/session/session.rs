@@ -5,6 +5,7 @@ use std::time::Duration;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
+use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::{
     CallOptions, ColumnInfo, DriverError, EditorSession, EditorSessionOptions, SafeModeLevel, TableRef,
     UnsupportedFeature, WorkspaceSettings,
@@ -15,6 +16,7 @@ use tokio_util::sync::{CancellationToken, DropGuard};
 use tokio_util::task::AbortOnDropHandle;
 use uuid::Uuid;
 
+use super::byte_limited_editor::ByteLimitedEditor;
 use super::{ObjectListSnapshot, SchemaCatalog, SessionDeps};
 use crate::connect::{ConnectError, ConnectRequest, ConnectionMetadata, PendingSession, RequestTarget};
 use crate::health::{
@@ -35,6 +37,8 @@ pub struct Session {
     metadata: ConnectionMetadata,
     workspace_settings: WorkspaceSettings,
     safe_mode: Mutex<SafeModeLevel>,
+    // The engine's own, from the connection the session opened on, for SQL read while no connection is current.
+    grammar: SqlGrammar,
     reachability: Arc<Mutex<ReachabilityTarget>>,
     last_rejection: Arc<Mutex<Option<Arc<ConnectError>>>>,
     trusted_host_key: Arc<Mutex<Option<ReviewedHostKey>>>,
@@ -81,6 +85,7 @@ impl Session {
             &parts.request,
             &parts.established,
         )));
+        let grammar = parts.established.connection.dialect().grammar();
         let link = Arc::new(ConnectionLink::new(parts.established));
         let last_rejection = Arc::new(Mutex::new(None));
         let trusted_host_key = Arc::new(Mutex::new(None));
@@ -128,6 +133,7 @@ impl Session {
             metadata: parts.request.metadata,
             workspace_settings: parts.request.workspace_settings,
             safe_mode: Mutex::new(parts.request.safe_mode),
+            grammar,
             reachability,
             last_rejection,
             trusted_host_key,
@@ -200,6 +206,11 @@ impl Session {
         self.link.lease().map(|lease| lease.dialect())
     }
 
+    // Also while the link is down, since an editor tab's own connection can still be up and run what it is sent.
+    pub fn grammar(&self) -> SqlGrammar {
+        self.current_dialect().map_or(self.grammar, |dialect| dialect.grammar())
+    }
+
     /// Which connection is current. A request issued under an older one
     /// may have failed because that connection went away.
     pub fn link_generation(&self) -> LinkGeneration {
@@ -223,6 +234,11 @@ impl Session {
 
     pub async fn schemas(&self) -> Result<Arc<[SchemaInfo]>, Arc<OperationError>> {
         self.catalog.schemas().await
+    }
+
+    /// Read the schemas again, after one was created or dropped.
+    pub async fn refresh_schemas(&self) -> Result<Arc<[SchemaInfo]>, Arc<OperationError>> {
+        self.catalog.refresh_schemas().await
     }
 
     pub async fn objects(&self, scope: ObjectScope) -> Result<Arc<[ObjectInfo]>, Arc<OperationError>> {
@@ -370,6 +386,7 @@ impl Session {
                     lease
                         .open_editor_session(options, call.cancel().clone())
                         .await
+                        .map(ByteLimitedEditor::wrap)
                         .map_err(OperationError::from)
                 }
             })
@@ -416,9 +433,14 @@ impl std::fmt::Debug for Session {
 mod tests {
     use std::sync::Weak;
 
-    use tablepro_core::{DriverError, LivenessPolicy};
+    use tablepro_core::column::{ColumnType, ResultColumn};
+    use tablepro_core::value::Value;
+    use tablepro_core::{
+        ByteLimit, DriverError, LivenessPolicy, ResultEvent, ResultSink, RunEnd, RunOptions, SinkFlow, Truncation,
+        UserSql,
+    };
     use tablepro_test_support::{
-        CallCounters, CloseBehaviour, ConnectionScript, FakeConnection, FakeEditorSession, FakeReply, Replies,
+        CallCounters, CloseBehaviour, ConnectionScript, FakeConnection, FakeEditorSession, FakeReply, FakeRun, Replies,
     };
 
     use super::*;
@@ -619,5 +641,64 @@ mod tests {
 
         assert_eq!(opened.id(), editor.id());
         assert_eq!(CallCounters::get(&connection.counters().open_editor_session), 1);
+    }
+
+    #[derive(Clone, Default)]
+    struct Seen(Arc<Mutex<Vec<ResultEvent>>>);
+
+    #[async_trait::async_trait]
+    impl ResultSink for Seen {
+        async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
+            self.0.lock().unwrap().push(event);
+            SinkFlow::Continue
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_opened_editor_session_keeps_the_runs_byte_limit() {
+        let wide = |mark: &str| vec![Value::Text(mark.repeat(1_000))];
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("blob", ColumnType::untyped_text(""))].into();
+        let mut runs = Replies::default();
+        runs.always(FakeRun::completed(vec![
+            ResultEvent::ResultSetStarted { columns },
+            ResultEvent::Rows(vec![wide("a"), wide("b"), wide("c")]),
+            ResultEvent::ResultSetFinished {
+                retained: 3,
+                total_rows: Some(3),
+                truncation: Truncation::Complete,
+            },
+        ]));
+        let editor: Arc<dyn EditorSession> = Arc::new(FakeEditorSession::new(runs));
+        let mut script = ConnectionScript::default();
+        script.open_editor_session.once(FakeReply::ok(editor));
+        let (session, _) = start(script);
+        let opened = session
+            .open_editor_session(EditorSessionOptions::default(), &CancellationToken::new())
+            .await
+            .unwrap();
+        let seen = Seen::default();
+        let limit = ByteLimit::new(1_500).unwrap();
+
+        let summary = opened
+            .run(
+                UserSql::new("SELECT blob"),
+                RunOptions::new(CancellationToken::new()).with_byte_limit(limit),
+                Box::new(seen.clone()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(summary.end, RunEnd::Completed);
+        let events = seen.0.lock().unwrap().clone();
+        assert_eq!(events[1], ResultEvent::Rows(vec![wide("a"), wide("b")]));
+        assert_eq!(events[2], ResultEvent::ByteLimitReached { retained: 2 });
+        assert_eq!(
+            events[3],
+            ResultEvent::ResultSetFinished {
+                retained: 2,
+                total_rows: Some(3),
+                truncation: Truncation::ByteLimit,
+            }
+        );
     }
 }

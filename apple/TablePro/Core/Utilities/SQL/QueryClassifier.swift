@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProFirebaseCore
 import TableProPluginKit
 import TableProQdrantCore
 import TableProRedisCore
@@ -101,16 +102,21 @@ enum QueryClassifier {
         isMultiStatement(sql, databaseType: databaseType, readings: databaseType.lexicalReadings)
     }
 
-    /// Whether `sql` runs more than one statement: it holds several, a `GO n` line runs its one statement n times, or it
-    /// ends inside a block it opened, which an engine that reads the opener as a name runs as several statements. A
-    /// caller that sends one statement once cannot honour the count, and dropping it runs the statement once.
+    /// Whether `sql` runs more than one statement: it holds several, a `GO n` line runs its one statement n times, it
+    /// ends inside a block it opened, which an engine that reads the opener as a name runs as several statements, or a
+    /// T-SQL block in it holds several. A caller that sends one statement once cannot honour the count, and dropping it
+    /// runs the statement once.
     static func isMultiStatement(_ sql: String, databaseType: DatabaseType, readings: SQLLexicalReadings) -> Bool {
         let model = QueryStatementModel.forDatabaseType(databaseType)
         guard let lexings = readings.lexings(of: sql) else { return true }
         return lexings.contains { lexing in
             let batches = QueryBatchPlanner.batches(in: lexing.text, model: model, grammar: lexing.grammar)
-            return batches.flatMap(\.statements).count > 1 || batches.contains { $0.repeatCount > 1 }
+            let statements = batches.flatMap(\.statements)
+            return statements.count > 1 || batches.contains { $0.repeatCount > 1 }
                 || SQLStatementScanner.endsInsideOpenBlock(lexing.text, grammar: lexing.grammar)
+                || statements.contains { statement in
+                    SQLUnterminatedStatements.blockHoldsSeveralStatements(statement.sql, grammar: lexing.grammar)
+                }
         }
     }
 
@@ -208,7 +214,7 @@ private extension QueryClassifier {
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
     }
 
-    /// `DB <index> <command>` and `OUTSIDEBLOCK <command>` run the command they wrap, so that
+    /// `DB <index> <command>`, `OUTSIDEBLOCK <command>` and `MUSTAPPLY <command>` run the command they wrap, so that
     /// command decides the tier: read as the bare prefix, `DB 0 FLUSHDB` would pass as an ordinary
     /// write. A prefix with nothing after it is left whole, which classifies as a write. The words are
     /// read the way the driver reads them, so a quoted `"FLUSHALL"` is the command it runs.
@@ -217,7 +223,7 @@ private extension QueryClassifier {
         while let first = rest.first?.uppercased() {
             if first == "DB", rest.count > 2 {
                 rest = rest.dropFirst(2)
-            } else if first == "OUTSIDEBLOCK", rest.count > 1 {
+            } else if first == "OUTSIDEBLOCK" || first == "MUSTAPPLY", rest.count > 1 {
                 rest = rest.dropFirst()
             } else {
                 break
@@ -451,42 +457,30 @@ private extension QueryClassifier {
         return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: kind.touchesServerFiles)
     }
 
-    /// A grid page is a tagged spec and anything else a request line read the way the driver reads
-    /// it. A write that leaves a node holding nothing deletes it, so it ranks with DELETE.
-    static func firebaseClassification(_ trimmed: String, databaseType: DatabaseType) -> QueryClassification {
-        if trimmed.hasPrefix("FIREBASE_BROWSE:") {
+    /// A grid page is a tagged spec, which only reads. Anything else is read with the driver's own parser, so the path
+    /// tiered is the path the driver writes. A write that leaves a node holding nothing deletes it, so it ranks with DELETE.
+    static func firebaseClassification(_ statement: String, databaseType: DatabaseType) -> QueryClassification {
+        let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.unicodeScalars.starts(with: FirebaseStatement.browseTag.unicodeScalars) {
             return .safe
         }
         let destructive = QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
-        let request = firebaseRequestLine(trimmed)
-        switch request.verb {
-        case "GET", "QUERY":
+        let write = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        // The driver refuses any other text, and an unknown request is a write all the same.
+        guard case .request(let request)? = try? FirebaseStatement.parse(trimmed) else { return write }
+        let body = request.body ?? ""
+        switch request.method {
+        case .get, .query:
             return .safe
-        case "DELETE":
+        case .delete:
             return destructive
-        case "PUT" where request.isRoot || firebaseHoldsNothing(request.body):
+        case .put where request.path.isEmpty || firebaseHoldsNothing(body):
             return destructive
-        case "PATCH" where databaseType == .firebaseRealtimeDatabase && firebaseRemovesChild(request.body):
+        case .patch where databaseType == .firebaseRealtimeDatabase && firebaseRemovesChild(body):
             return destructive
-        default:
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        case .put, .patch, .post:
+            return write
         }
-    }
-
-    /// The body is the rest of the first line and every line after it, as the driver takes it.
-    static func firebaseRequestLine(_ trimmed: String) -> (verb: String, isRoot: Bool, body: String) {
-        let lines = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let header = lines.first.map(String.init) ?? ""
-        let parts = header.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace).map(String.init)
-        let target = parts.count > 1 ? String(parts[1].prefix { $0 != "?" }) : ""
-        let path = target.removingPercentEncoding ?? target
-        let inline = parts.count > 2 ? parts[2] : ""
-        let following = lines.count > 1 ? String(lines[1]) : ""
-        return (
-            parts.first?.uppercased() ?? "",
-            path.split(separator: "/").isEmpty,
-            [inline, following].joined(separator: "\n")
-        )
     }
 
     static func firebaseHoldsNothing(_ body: String) -> Bool {
@@ -504,12 +498,22 @@ private extension QueryClassifier {
         return try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
     }
 
+    // Read as the Realtime Database stores JSON: a non-null `.value` is the node's value, `.sv` is one the server fills
+    // in, and any other key starting with `.` is metadata, so `{".priority": 1}` stores nothing.
     private static func firebaseHoldsNothing(json: Any) -> Bool {
         switch json {
         case is NSNull:
             return true
         case let members as [String: Any]:
-            return members.values.allSatisfy { firebaseHoldsNothing(json: $0) }
+            if let value = members[".value"], !(value is NSNull) {
+                return firebaseHoldsNothing(json: value)
+            }
+            if members[".sv"] != nil {
+                return false
+            }
+            return members.allSatisfy { key, value in
+                key.unicodeScalars.first == "." || firebaseHoldsNothing(json: value)
+            }
         case let items as [Any]:
             return items.allSatisfy { firebaseHoldsNothing(json: $0) }
         default:

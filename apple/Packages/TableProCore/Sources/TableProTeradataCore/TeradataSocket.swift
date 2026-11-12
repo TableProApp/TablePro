@@ -8,6 +8,8 @@ public enum TeradataWireError: Error, CustomStringConvertible, LocalizedError {
     case server(code: Int, message: String)
     case unsupported(String)
     case cancelled
+    // Stop aborted the request, and the server rolled back the transaction it ran in.
+    case rolledBackByStop
 
     public var description: String {
         switch self {
@@ -17,6 +19,7 @@ public enum TeradataWireError: Error, CustomStringConvertible, LocalizedError {
         case .server(let code, let message): return "\(message) (\(code))"
         case .unsupported(let what): return "unsupported: \(what)"
         case .cancelled: return "cancelled"
+        case .rolledBackByStop: return "stopped, and the server rolled back the transaction (\(TeradataConnection.userAbortCode))"
         }
     }
 

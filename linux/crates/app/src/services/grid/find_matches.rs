@@ -1,5 +1,6 @@
 use super::display_text::whole_text;
 use super::{GridColumn, RowSnapshot};
+use tablepro_linux_platform::settings::DateFormat;
 
 const CANCEL_CHECK_ROWS: usize = 256;
 
@@ -18,6 +19,7 @@ pub fn find_matches(
     rows: &[RowSnapshot],
     columns: &[GridColumn],
     order: &[usize],
+    date_format: DateFormat,
     cancelled: &dyn Fn() -> bool,
 ) -> Vec<FindMatch> {
     if query.is_empty() {
@@ -36,7 +38,7 @@ pub fn find_matches(
             if value.is_null() {
                 continue;
             }
-            let text = whole_text(value, &column.column_type, &mut scratch);
+            let text = whole_text(value, &column.column_type, date_format, &mut scratch);
             if text.to_lowercase().contains(&needle) {
                 matches.push(FindMatch {
                     row: row_index,
@@ -56,9 +58,20 @@ mod tests {
     use tablepro_core::Value;
     use tablepro_core::column::ColumnKind;
 
-    use super::{FindMatch, find_matches};
+    use super::FindMatch;
     use crate::services::grid::test_columns::result_only;
     use crate::services::grid::{GridColumn, RowSnapshot};
+    use tablepro_linux_platform::settings::DateFormat;
+
+    fn find_matches(
+        query: &str,
+        rows: &[RowSnapshot],
+        columns: &[GridColumn],
+        order: &[usize],
+        cancelled: &dyn Fn() -> bool,
+    ) -> Vec<FindMatch> {
+        super::find_matches(query, rows, columns, order, DateFormat::Iso, cancelled)
+    }
 
     fn columns(count: usize) -> Vec<GridColumn> {
         (0..count)
@@ -158,5 +171,19 @@ mod tests {
         assert_eq!(found.len(), 256, "rows past the cancel were searched");
         assert_eq!(checks.get(), 2);
         assert_eq!(find_matches("hit", &rows, &columns(1), &[0], &|| true), Vec::new());
+    }
+    #[test]
+    fn date_matches_use_the_explicit_format_without_changing_null_rules() {
+        use tablepro_core::value::Temporal;
+        let day = chrono::NaiveDate::from_ymd_opt(2024, 12, 31).expect("a date");
+        let rows = [row(&[Value::Date(Temporal::Finite(day))]), row(&[Value::Null])];
+        let column = result_only("day", ColumnKind::Date);
+        let columns = [column];
+        assert_eq!(
+            super::find_matches("31/12/2024", &rows, &columns, &[0], DateFormat::EuShort, &|| false),
+            vec![at(0, 0)]
+        );
+        assert!(super::find_matches("31/12/2024", &rows, &columns, &[0], DateFormat::Iso, &|| false).is_empty());
+        assert!(super::find_matches("NULL", &rows, &columns, &[0], DateFormat::EuShort, &|| false).is_empty());
     }
 }

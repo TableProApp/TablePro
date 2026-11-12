@@ -27,7 +27,21 @@ struct SyncCategoryRefetchTests {
         #expect(!content.contains(SyncRecordType.settings.rawValue))
         #expect(!content.contains(SyncCoordinator.themeContentKind))
         #expect(!content.contains(SyncCoordinator.formatterContentKind))
+        #expect(!content.contains(SyncCoordinator.valueColorsContentKind))
         #expect(content.contains(SyncRecordType.connection.rawValue))
+    }
+
+    @Test("A Mac upgraded from a build that skipped value colors records fetches the zone once")
+    func upgradeRefetchesSkippedValueColorsRecords() throws {
+        let pool = EphemeralDefaultsPool()
+        let metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
+        var older = SyncCoordinator.readableContent
+        older.remove(SyncCoordinator.valueColorsContentKind)
+        _ = metadata.adoptReadableRecordTypes(older)
+
+        #expect(SyncCoordinator.readableContent(for: .default).contains(SyncCoordinator.valueColorsContentKind))
+        #expect(metadata.adoptReadableRecordTypes(SyncCoordinator.readableContent))
+        #expect(!metadata.adoptReadableRecordTypes(SyncCoordinator.readableContent))
     }
 
     @Test("Turning Saved Queries on fetches the zone once and brings back a query saved elsewhere while it was off")
@@ -54,6 +68,91 @@ struct SyncCategoryRefetchTests {
         #expect(await coordinator.runSyncCycle() == nil)
         let pulls = await server.pulls
         #expect(pulls == [.full, .full, .delta])
+    }
+
+    @Test("A saved query deleted elsewhere while Saved Queries was off is removed when the category turns back on")
+    func deletionMadeWhileACategoryWasOffIsApplied() async throws {
+        let deleted = SQLFavorite(name: "Revenue", query: "SELECT 1")
+        let kept = SQLFavorite(name: "Churn", query: "SELECT 2")
+        let zoneID = SyncTestEnvironment.zoneID
+        let deletedRecord = SyncRecordMapper.toCKRecord(sqlFavorite: deleted, in: zoneID)
+        let server = ZoneServer(
+            zoneID: zoneID,
+            records: [deletedRecord, SyncRecordMapper.toCKRecord(sqlFavorite: kept, in: zoneID)],
+            token: try Self.makeChangeToken()
+        )
+        _ = environment.metadata.adoptReadableRecordTypes(
+            SyncCoordinator.readableContent(for: saveSync(savedQueries: true))
+        )
+        let coordinator = makeCoordinator(server: server)
+
+        #expect(await coordinator.runSyncCycle() == nil)
+        #expect(await environment.favorites.fetchFavorite(id: deleted.id) != nil)
+
+        saveSync(savedQueries: false)
+        await server.delete(deletedRecord.recordID)
+        #expect(await coordinator.runSyncCycle() == nil)
+        #expect(await environment.favorites.fetchFavorite(id: deleted.id) != nil)
+
+        saveSync(savedQueries: true)
+        #expect(await coordinator.runSyncCycle() == nil)
+
+        #expect(await environment.favorites.fetchFavorite(id: deleted.id) == nil)
+        #expect(await environment.favorites.fetchFavorite(id: kept.id)?.name == "Churn")
+        #expect(environment.metadata.deferredDeletions.isEmpty)
+    }
+
+    @Test("A saved query edited here after it was deleted elsewhere is kept when the category turns back on")
+    func editedRecordSurvivesALateDeletion() async throws {
+        let favorite = SQLFavorite(name: "Revenue", query: "SELECT 1")
+        let record = SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: SyncTestEnvironment.zoneID)
+        let coordinator = environment.makeCoordinator(transport: ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID))
+        let on = Self.syncSettings(savedQueries: true)
+        let deletion = PullResult(changedRecords: [], deletedRecordIDs: [record.recordID], newToken: nil)
+
+        #expect(await coordinator.applyPullResult(pull([record]), settings: on))
+        #expect(await coordinator.applyPullResult(deletion, settings: Self.syncSettings(savedQueries: false)))
+        environment.tracker.markDirty(.favorite, id: favorite.id.uuidString)
+        #expect(await coordinator.applyPullResult(pull([]), settings: on))
+
+        #expect(await environment.favorites.fetchFavorite(id: favorite.id) != nil)
+        #expect(environment.metadata.deferredDeletions.isEmpty)
+    }
+
+    @Test("A saved query saved again on the server after its deletion is kept")
+    func recordSavedAgainSurvivesALateDeletion() async throws {
+        let favorite = SQLFavorite(name: "Revenue", query: "SELECT 1")
+        let record = SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: SyncTestEnvironment.zoneID)
+        let coordinator = environment.makeCoordinator(transport: ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID))
+        let on = Self.syncSettings(savedQueries: true)
+        let deletion = PullResult(changedRecords: [], deletedRecordIDs: [record.recordID], newToken: nil)
+
+        #expect(await coordinator.applyPullResult(pull([record]), settings: on))
+        #expect(await coordinator.applyPullResult(deletion, settings: Self.syncSettings(savedQueries: false)))
+        #expect(await coordinator.applyPullResult(pull([record]), settings: on))
+        #expect(await coordinator.applyPullResult(pull([]), settings: on))
+
+        #expect(await environment.favorites.fetchFavorite(id: favorite.id) != nil)
+    }
+
+    @Test("A credential profile deleted elsewhere while its category was off is never deleted late")
+    func profileIsNeverDeletedLate() async throws {
+        let recordID = SyncRecordMapper.recordID(type: .credentialProfile, id: UUID().uuidString, in: SyncTestEnvironment.zoneID)
+        let coordinator = environment.makeCoordinator(transport: ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID))
+        var off = SyncSettings.default
+        off.syncCredentialProfiles = false
+        let deletion = PullResult(changedRecords: [], deletedRecordIDs: [recordID], newToken: nil)
+
+        #expect(await coordinator.applyPullResult(deletion, settings: off))
+        #expect(environment.metadata.deferredDeletions == [recordID.recordName])
+
+        let due = coordinator.deferredDeletions(dueIn: pull([]), settings: .default, zoneID: SyncTestEnvironment.zoneID)
+        #expect(due.due.isEmpty)
+        #expect(due.settled == [recordID.recordName])
+    }
+
+    private func pull(_ records: [CKRecord]) -> PullResult {
+        PullResult(changedRecords: records, deletedRecordIDs: [], newToken: nil)
     }
 
     @Test("Saved Queries off keeps the change token at launch and at the next launch")
@@ -151,7 +250,8 @@ private actor ZoneServer: SyncTransport {
     }
 
     let currentZoneID: CKRecordZone.ID
-    private let zoneRecords: [CKRecord]
+    private var zoneRecords: [CKRecord]
+    private var undeliveredDeletions: [CKRecord.ID] = []
     private let token: CKServerChangeToken
     private var firstDelta: [CKRecord]
     private let duringPull: @Sendable () -> Void
@@ -169,6 +269,11 @@ private actor ZoneServer: SyncTransport {
         self.token = token
         self.firstDelta = firstDelta
         self.duringPull = duringPull
+    }
+
+    func delete(_ recordID: CKRecord.ID) {
+        zoneRecords.removeAll { $0.recordID == recordID }
+        undeliveredDeletions.append(recordID)
     }
 
     func accountStatus() async throws -> CKAccountStatus {
@@ -200,10 +305,14 @@ private actor ZoneServer: SyncTransport {
         pulls.append(token == nil ? .full : .delta)
         duringPull()
         guard token != nil else {
+            undeliveredDeletions = []
             return PullResult(changedRecords: zoneRecords, deletedRecordIDs: [], newToken: self.token)
         }
-        defer { firstDelta = [] }
-        return PullResult(changedRecords: firstDelta, deletedRecordIDs: [], newToken: self.token)
+        defer {
+            firstDelta = []
+            undeliveredDeletions = []
+        }
+        return PullResult(changedRecords: firstDelta, deletedRecordIDs: undeliveredDeletions, newToken: self.token)
     }
 }
 

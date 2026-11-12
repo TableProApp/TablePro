@@ -6,9 +6,13 @@
 # and COPR hands the body over as ./hook_payload.
 #
 # COPR runs its own copy of this file. After a change, a maintainer runs:
-#   copr-cli edit-package-custom <owner>/tablepro --name tablepro \
+#   copr-cli edit-package-custom <owner>/tablepro --name tablepro --timeout 36000 \
 #       --script linux/build-aux/rpm/copr-sources.sh \
 #       --script-builddeps 'curl rpmdevtools'
+# Every chroot builds without %check, which the release dry run already
+# runs with this spec on the same Fedora versions and architectures. A
+# chroot that Fedora branching adds needs it too:
+#   copr-cli edit-chroot <owner>/tablepro/<chroot> --rpmbuild-without check
 set -eu
 
 tag="$(cat hook_payload)"

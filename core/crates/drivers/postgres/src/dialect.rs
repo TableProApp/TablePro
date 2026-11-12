@@ -9,6 +9,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError,
     Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -18,6 +19,8 @@ use tablepro_core::sql_syntax::{
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
+
+use crate::dump::PgDump;
 
 /// The type a bit string is cast to. A cast to the column's own `bit`
 /// would silently truncate to one bit, while `varbit` keeps every bit and
@@ -183,6 +186,10 @@ impl SqlDialect for PgDialect {
         Some(self)
     }
 
+    fn dump(&self) -> Option<&dyn DumpDialect> {
+        Some(&PgDump)
+    }
+
     /// A column without a binary decoder is read as the server's text,
     /// and money as the numeric it is, so no row ever carries a type the
     /// driver would have to look up by name.
@@ -251,7 +258,7 @@ fn row_id_binding(part: EngineRowIdPart, value: &Value) -> Result<Binding, BindE
     Ok(match (part, value) {
         // The page reads tableoid as an integer, and a ctid window may
         // hand one back as text, so both forms bind.
-        (EngineRowIdPart::PostgresTableOid, Value::Int(_) | Value::UInt(_)) => {
+        (EngineRowIdPart::PostgresTableOid, Value::Int32(_) | Value::Int(_) | Value::UInt(_)) => {
             Binding::cast(ParamType::Int64, named("oid"))
         }
         (EngineRowIdPart::PostgresTableOid, _) => Binding::server_text(named("oid")),
@@ -341,6 +348,7 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
     Ok(match value {
         Value::Null => "NULL".to_owned(),
         Value::Bool(flag) => flag.to_string(),
+        Value::Int32(int) => int.to_string(),
         Value::Int(int) => int.to_string(),
         Value::UInt(int) => int.to_string(),
         Value::WideInt(int) => int.to_string(),
@@ -417,7 +425,7 @@ fn array_element(text: &str) -> String {
 
 /// A string literal that reads the same whatever
 /// `standard_conforming_strings` is.
-fn quoted(text: &str) -> String {
+pub(crate) fn quoted(text: &str) -> String {
     escape_literal(text).trim_start().to_owned()
 }
 
@@ -755,6 +763,8 @@ mod tests {
             "ALTER SYSTEM SET primary_conninfo = 'password=x'",
             "SELECT 1; CREATE USER u PASSWORD 'p'",
             "DO $$ BEGIN CREATE ROLE app LOGIN PASSWORD 'p'; END $$",
+            "DO $$ BEGIN EXECUTE 'CREATE ROLE app LOGIN PASSWORD ''p'''; END $$",
+            "DO $$ BEGIN EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', 'app', 'p'); END $$",
             "DO 'BEGIN CREATE ROLE r PASSWORD ''p''; END'",
             "CREATE FUNCTION f() RETURNS text AS 'SELECT dblink_connect(''password=x'')' LANGUAGE sql",
             "SELECT pgp_sym_encrypt('data', 'passphrase')",

@@ -9,6 +9,9 @@
       <object class="TableProGeneralPage" id="general_page"/>
     </child>
     <child>
+      <object class="TableProGridPage" id="grid_page"/>
+    </child>
+    <child>
       <object class="TableProEditorPage" id="editor_page"/>
     </child>
     <child>
@@ -16,6 +19,9 @@
     </child>
     <child>
       <object class="TableProMcpPage" id="mcp_page"/>
+    </child>
+    <child>
+      <object class="TableProAccountPage" id="account_page"/>
     </child>
   </template>
 </interface>

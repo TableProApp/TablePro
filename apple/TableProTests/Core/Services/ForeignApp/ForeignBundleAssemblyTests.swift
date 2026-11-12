@@ -78,6 +78,19 @@ struct ForeignBundleAssemblyTests {
         #expect(result.bundle.connections.map { $0.ref } == ["abc", "row-1", "abc-2", "row-3", "row-1-4"])
     }
 
+    @Test("A record's notes stay under its own ref, a repeated source id included, and are never a field")
+    func connectionNotes() throws {
+        var first = record("A", sourceId: "abc")
+        first.notes = ["First note"]
+        var repeated = record("C", sourceId: "abc")
+        repeated.notes = ["Second note"]
+
+        let result = try collect([first, record("B", sourceId: "plain"), repeated])
+
+        #expect(result.connectionNotes == ["abc": ["First note"], "abc-2": ["Second note"]])
+        #expect(result.connections.allSatisfy { $0.additionalFields == nil })
+    }
+
     @Test("Credentials are keyed by the connection's ref and empty ones are dropped")
     func credentialsFollowRefs() throws {
         let result = try collect([

@@ -4,6 +4,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm, LiteralError,
     Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -33,6 +34,11 @@ impl SqliteDialect {
 }
 
 impl SqlDialect for SqliteDialect {
+    /// main's objects are listed with no schema.
+    fn unqualified_default_schema(&self) -> bool {
+        true
+    }
+
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             exact_row_counts: true,
@@ -83,6 +89,7 @@ impl SqlDialect for SqliteDialect {
         match value {
             Value::Null => Ok("NULL".to_owned()),
             Value::Bool(flag) => Ok(if *flag { "1" } else { "0" }.to_owned()),
+            Value::Int32(integer) => Ok(integer.to_string()),
             Value::Int(integer) => Ok(integer.to_string()),
             Value::UInt(integer) => Ok(integer.to_string()),
             Value::WideInt(integer) => Ok(integer.to_string()),
@@ -188,6 +195,10 @@ impl SqlDialect for SqliteDialect {
     fn ddl(&self) -> Option<&dyn DdlDialect> {
         Some(self)
     }
+
+    fn dump(&self) -> Option<&dyn DumpDialect> {
+        Some(self)
+    }
 }
 
 /// SQLite ends SQL text at the first NUL, wherever it stands, so a NUL
@@ -234,7 +245,7 @@ fn value_param(value: Value) -> Result<(Value, ParamType), BindError> {
     let param_type = match &value {
         Value::Null | Value::Text(_) => ParamType::Text,
         Value::Bool(_) => ParamType::Bool,
-        Value::Int(_) | Value::UInt(_) => ParamType::Int64,
+        Value::Int32(_) | Value::Int(_) | Value::UInt(_) => ParamType::Int64,
         Value::WideInt(_) | Value::Decimal(_) => ParamType::Decimal,
         Value::Float32(_) | Value::Float64(_) => ParamType::Float64,
         Value::Bytes(_) => ParamType::Bytes,

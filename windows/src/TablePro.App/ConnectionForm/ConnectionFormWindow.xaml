@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="TablePro.App.ConnectionForm.ConnectionFormWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TablePro.App.ConnectionForm"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+
+    <Grid x:Name="Root">
+        <Grid.Resources>
+            <Style x:Key="FormSuccessTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+            </Style>
+            <Style x:Key="FormErrorTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            </Style>
+            <Style x:Key="FormNeutralTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <CollectionViewSource x:Name="EngineSource" IsSourceGrouped="True" ItemsPath="Items" />
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Escape" Invoked="OnEscape" />
+        </Grid.KeyboardAccelerators>
+
+        <TitleBar x:Name="FormTitleBar" BackRequested="OnBack" AutomationProperties.AutomationId="FormTitleBar">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="ms-appx:///Assets/AppIcon.png" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <Grid x:Name="ChooserPage" Grid.Row="1" Padding="24,8,24,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <AutoSuggestBox
+                    x:Uid="EngineSearch"
+                    x:Name="EngineSearch"
+                    AutomationProperties.AutomationId="EngineSearch"
+                    QueryIcon="Find"
+                    TextChanged="OnEngineSearchChanged" />
+                <Button x:Uid="FromUrlButton" x:Name="FromUrlButton" Grid.Column="1" AutomationProperties.AutomationId="FromUrlButton">
+                    <Button.Flyout>
+                        <Flyout x:Name="UrlFlyout" Placement="BottomEdgeAlignedRight" Opened="OnUrlFlyoutOpened">
+                            <StackPanel Width="440" Spacing="12">
+                                <TextBox x:Uid="UrlBox" x:Name="UrlBox" AutomationProperties.AutomationId="UrlBox" KeyDown="OnUrlKeyDown" />
+                                <Button x:Uid="UrlContinueButton" x:Name="UrlContinueButton" HorizontalAlignment="Right" Click="OnUrlContinue" Style="{StaticResource AccentButtonStyle}" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+            <GridView
+                x:Name="EngineGrid"
+                x:Uid="EngineGrid"
+                Grid.Row="1"
+                Margin="0,12,0,0"
+                AutomationProperties.AutomationId="EngineGrid"
+                IsItemClickEnabled="True"
+                ItemClick="OnEngineClick"
+                ItemsSource="{x:Bind EngineSource.View, Mode=OneWay}"
+                SelectionMode="None">
+                <GridView.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate x:DataType="local:EngineGroup">
+                                <TextBlock AutomationProperties.HeadingLevel="Level2" Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind Title}" />
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </GridView.GroupStyle>
+                <GridView.ItemTemplate>
+                    <DataTemplate x:DataType="local:EngineChoice">
+                        <Grid Width="220" Height="64" Padding="12,8" ColumnSpacing="12" AutomationProperties.Name="{x:Bind AccessibleName}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                                <ContentPresenter Content="{x:Bind Icon}" />
+                            </Viewbox>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind Detail}" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+            </GridView>
+        </Grid>
+
+        <ScrollViewer x:Name="DetailsPage" Grid.Row="1" Visibility="Collapsed" AutomationProperties.AutomationId="DetailsPage">
+            <StackPanel MaxWidth="760" Margin="24,8,24,24" Spacing="12">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Viewbox Width="24" Height="24">
+                        <ContentPresenter x:Name="EngineIcon" />
+                    </Viewbox>
+                    <TextBlock x:Name="EngineText" Grid.Column="1" VerticalAlignment="Center" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <HyperlinkButton x:Uid="ChangeEngineButton" x:Name="ChangeEngineButton" Grid.Column="2" Click="OnChangeEngine" />
+                </Grid>
+
+                <TextBox x:Uid="NameBox" x:Name="NameBox" AutomationProperties.AutomationId="NameBox" />
+
+                <StackPanel x:Name="NetworkFields" Spacing="12">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="128" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Uid="HostBox" x:Name="HostBox" VerticalAlignment="Top" AutomationProperties.AutomationId="HostBox" />
+                        <TextBox x:Uid="PortBox" x:Name="PortBox" Grid.Column="1" VerticalAlignment="Top" AutomationProperties.AutomationId="PortBox" InputScope="Number" TextChanged="OnPortChanged" />
+                    </Grid>
+                    <ComboBox x:Name="AuthBox" x:Uid="AuthBox" HorizontalAlignment="Stretch" AutomationProperties.AutomationId="AuthBox" SelectionChanged="OnAuthChanged">
+                        <ComboBoxItem x:Uid="AuthPassword" Tag="Password" />
+                        <ComboBoxItem x:Uid="AuthIntegrated" Tag="Integrated" />
+                    </ComboBox>
+                    <TextBox x:Uid="UserBox" x:Name="UserBox" AutomationProperties.AutomationId="UserBox" />
+                    <PasswordBox x:Uid="PasswordInput" x:Name="PasswordInput" AutomationProperties.AutomationId="PasswordInput" />
+                    <TextBox x:Uid="DatabaseBox" x:Name="DatabaseBox" AutomationProperties.AutomationId="DatabaseBox" />
+                </StackPanel>
+
+                <Grid x:Name="FileFields" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Uid="FileBox" x:Name="FileBox" AutomationProperties.AutomationId="FileBox" />
+                    <Button x:Uid="BrowseButton" x:Name="BrowseFileButton" Grid.Column="1" Margin="0,28,0,0" VerticalAlignment="Top" Click="OnBrowseFile" />
+                    <Button x:Uid="NewFileButton" x:Name="NewFileButton" Grid.Column="2" Margin="0,28,0,0" VerticalAlignment="Top" Click="OnNewFile" />
+                </Grid>
+
+                <StackPanel x:Name="Sections" Spacing="{StaticResource SettingsCardSpacing}">
+                    <toolkit:SettingsExpander x:Uid="SshExpander" x:Name="SshExpander" AutomationProperties.AutomationId="SshExpander">
+                        <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="Permissions" /></toolkit:SettingsExpander.HeaderIcon>
+                        <ToggleSwitch x:Uid="SshSwitch" x:Name="SshSwitch" AutomationProperties.AutomationId="SshSwitch" Toggled="OnSshToggled" />
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard x:Uid="SshHostCard">
+                                <TextBox x:Name="SshHostBox" AutomationProperties.AutomationId="SshHostBox" x:Uid="SshHostBox" MinWidth="240" />
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="SshPortCard">
+                                <TextBox x:Name="SshPortBox" AutomationProperties.AutomationId="SshPortBox" x:Uid="SshPortBox" MinWidth="120" InputScope="Number" />
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="SshUserCard">
+                                <TextBox x:Name="SshUserBox" AutomationProperties.AutomationId="SshUserBox" x:Uid="SshUserBox" MinWidth="240" />
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="SshAuthCard">
+                                <ComboBox x:Name="SshAuthBox" AutomationProperties.AutomationId="SshAuthBox" x:Uid="SshAuthBox" MinWidth="240" SelectionChanged="OnSshAuthChanged">
+                                    <ComboBoxItem x:Uid="SshAuthAgent" Tag="Agent" />
+                                    <ComboBoxItem x:Uid="SshAuthKey" Tag="PrivateKey" />
+                                    <ComboBoxItem x:Uid="SshAuthPassword" Tag="Password" />
+                                    <ComboBoxItem x:Uid="SshAuthKeyboard" Tag="KeyboardInteractive" />
+                                </ComboBox>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="SshKeyCard" x:Name="SshKeyCard">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBox x:Name="SshKeyBox" AutomationProperties.AutomationId="SshKeyBox" x:Uid="SshKeyBox" MinWidth="240" />
+                                    <Button x:Uid="BrowseButton" Click="OnBrowseKey" />
+                                </StackPanel>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="SshPasswordCard" x:Name="SshPasswordCard">
+                                <PasswordBox x:Name="SshPasswordInput" AutomationProperties.AutomationId="SshPasswordInput" x:Uid="SshPasswordInput" MinWidth="240" />
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
+                    </toolkit:SettingsExpander>
+
+                    <toolkit:SettingsExpander x:Uid="TlsExpander" x:Name="TlsExpander" AutomationProperties.AutomationId="TlsExpander">
+                        <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="ProtectedDocument" /></toolkit:SettingsExpander.HeaderIcon>
+                        <ComboBox x:Name="TlsModeBox" x:Uid="TlsModeBox" MinWidth="240" MaxWidth="400" AutomationProperties.AutomationId="TlsModeBox" SelectionChanged="OnTlsChanged" />
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard x:Uid="CaFileCard" x:Name="CaFileCard">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBox x:Name="CaFileBox" x:Uid="CaFileBox" AutomationProperties.AutomationId="CaFileBox" MinWidth="240" />
+                                    <Button x:Uid="BrowseButton" Tag="CaFileBox" Click="OnBrowseCertificate" />
+                                </StackPanel>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="ServerNameCard" x:Name="ServerNameCard">
+                                <TextBox x:Name="ServerNameBox" x:Uid="ServerNameBox" MinWidth="240" AutomationProperties.AutomationId="ServerNameBox" />
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="ClientCertificateCard" x:Name="ClientCertificateCard">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBox x:Name="ClientCertificateBox" x:Uid="ClientCertificateBox" AutomationProperties.AutomationId="ClientCertificateBox" MinWidth="240" />
+                                    <Button x:Uid="BrowseButton" Tag="ClientCertificateBox" Click="OnBrowseCertificate" />
+                                </StackPanel>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="ClientKeyCard" x:Name="ClientKeyCard">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBox x:Name="ClientKeyBox" x:Uid="ClientKeyBox" MinWidth="240" />
+                                    <Button x:Uid="BrowseButton" Tag="ClientKeyBox" Click="OnBrowseCertificate" />
+                                </StackPanel>
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
+                    </toolkit:SettingsExpander>
+
+                    <toolkit:SettingsExpander x:Uid="OptionsExpander" x:Name="OptionsExpander" AutomationProperties.AutomationId="OptionsExpander">
+                        <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="Setting" /></toolkit:SettingsExpander.HeaderIcon>
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard x:Uid="SafeModeCard">
+                                <ComboBox x:Name="SafeModeBox" x:Uid="SafeModeBox" MinWidth="240" SelectionChanged="OnSummaryChanged">
+                                    <ComboBoxItem x:Uid="SafeModeOff" Tag="Off" />
+                                    <ComboBoxItem x:Uid="SafeModeConfirm" Tag="ConfirmWrites" />
+                                    <ComboBoxItem x:Uid="SafeModeReadOnly" Tag="ReadOnly" />
+                                </ComboBox>
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="ConnectionTimeoutCard">
+                                <TextBox x:Name="TimeoutBox" x:Uid="ConnectionTimeoutBox" MinWidth="120" InputScope="Number" />
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
+                    </toolkit:SettingsExpander>
+
+                    <toolkit:SettingsExpander x:Uid="AppearanceExpander" x:Name="AppearanceExpander" AutomationProperties.AutomationId="AppearanceExpander">
+                        <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="FontColor" /></toolkit:SettingsExpander.HeaderIcon>
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard x:Uid="ColorCard">
+                                <ComboBox x:Name="ColorBox" x:Uid="ColorBox" MinWidth="240" AutomationProperties.AutomationId="ColorBox" SelectionChanged="OnSummaryChanged" />
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="GroupCard">
+                                <ComboBox x:Name="GroupBox" x:Uid="GroupBox" MinWidth="240" SelectionChanged="OnSummaryChanged" />
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
+                    </toolkit:SettingsExpander>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid
+            x:Name="Footer"
+            Grid.Row="2"
+            Padding="24,16"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0"
+            ColumnSpacing="8"
+            Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button x:Uid="TestButton" x:Name="TestButton" AutomationProperties.AutomationId="TestButton" Click="OnTest" />
+            <ProgressRing x:Name="TestRing" Grid.Column="1" Width="16" Height="16" IsActive="False" />
+            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <TextBlock
+                    x:Name="StatusText"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="FormStatus"
+                    AutomationProperties.LiveSetting="Assertive"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+                <HyperlinkButton x:Name="TlsRemedyButton" AutomationProperties.AutomationId="TlsRemedyButton" Visibility="Collapsed" Click="OnTlsRemedy" />
+            </StackPanel>
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+                <Button x:Uid="ConnectButton" x:Name="ConnectButton" AutomationProperties.AutomationId="ConnectButton" Click="OnConnect" />
+                <Button x:Uid="SaveButton" x:Name="SaveButton" AutomationProperties.AutomationId="SaveButton" Click="OnSave" />
+                <Button x:Uid="CancelButton" x:Name="CancelButton" AutomationProperties.AutomationId="CancelButton" Click="OnCancel" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

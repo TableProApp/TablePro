@@ -9,7 +9,7 @@ The default port is 9042. With TLS on, use the port the server encrypts: 9042 wh
 scylla dials a TCP address itself and takes no stream, while an SSH forward is a Unix socket. So each scylla session dials a loopback relay of its own ([ADR 0023](../decisions/0023-loopback-relay-for-cql.md)):
 
 - The relay listens on `127.0.0.1` on a port the kernel picks, for as long as the session lives.
-- It serves a connection only after `/proc/net/tcp` shows the connecting socket belongs to this user, and carries it over a stream from `Transport::open`. Every byte to the server goes through the transport, direct, SSH or the tests' `FaultTransport`.
+- It serves a connection only after `/proc/net/tcp` shows the connecting socket belongs to this user, or on Windows after `GetExtendedTcpTable` names this process as its owner, and carries it over a stream from `Transport::open`. Every byte to the server goes through the transport, direct, SSH or the tests' `FaultTransport`.
 - A stream the transport fails to open closes the connection, and the connect reports the transport's own error.
 
 The session stays on the node behind the transport, as cqlsh does with its host:
@@ -24,8 +24,10 @@ The session names itself to the server as TablePro with the app's version. The u
 
 ## TLS
 
+- A new connection starts on `Disable`, as cqlsh does ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
 - `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)) and checks the certificate against `NetworkTarget::tls_server_name()`. scylla hands rustls the relay's address, so the driver's verifier checks the configured name instead (`tablepro_net::tls::FixedNameVerifier`). `Require` encrypts without checking the certificate.
 - A client certificate is sent when one is set. Both servers ask every client for one or none (`require_client_auth`), and still log the role in by its password.
+- With TLS off, a connect the node drops is checked with a TLS handshake of its own, which sends no credential, and is reported as `TlsFailure::ServerRequiresTls` when the node completes it.
 
 ## Read-only
 

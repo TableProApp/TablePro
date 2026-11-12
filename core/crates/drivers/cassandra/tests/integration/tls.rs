@@ -23,10 +23,24 @@ pub struct CqlTlsEngine<S: Server, const IDENTITY: bool> {
     fixture: CassandraFixture,
     ca: PathBuf,
     unrelated_ca: PathBuf,
+    server_certificate: PathBuf,
     server: PhantomData<S>,
 }
 
 impl<S: Server, const IDENTITY: bool> CqlTlsEngine<S, IDENTITY> {
+    fn from_fixture(fixture: CassandraFixture) -> Self {
+        let ca = fixture.pki().path(PkiFile::Ca);
+        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
+        let server_certificate = fixture.pki().path(PkiFile::ServerCertificate);
+        Self {
+            fixture,
+            ca,
+            unrelated_ca,
+            server_certificate,
+            server: PhantomData,
+        }
+    }
+
     fn options(&self, credentials: Credentials, tls: TlsConfig) -> ConnectOptions {
         let liveness = test_liveness();
         options_over(
@@ -50,17 +64,19 @@ impl<S: Server, const IDENTITY: bool> TlsConformanceEngine for CqlTlsEngine<S, I
             true => CassandraTls::ClientCertificate,
             false => CassandraTls::Required,
         };
-        let fixture = CassandraFixture::start_with(S::FLAVOUR, tls, None)
+        CassandraFixture::start_with(S::FLAVOUR, tls, None)
             .await
-            .map_err(ConformanceFailure::setup)?;
-        let ca = fixture.pki().path(PkiFile::Ca);
-        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
-        Ok(Self {
-            fixture,
-            ca,
-            unrelated_ca,
-            server: PhantomData,
-        })
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
+    }
+
+    // The self-signed case presents no client certificate, so even the
+    // identity engine's node asks for none.
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        CassandraFixture::start_self_signed(S::FLAVOUR, CassandraTls::Required)
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -75,14 +91,19 @@ impl<S: Server, const IDENTITY: bool> TlsConformanceEngine for CqlTlsEngine<S, I
         &self.unrelated_ca
     }
 
+    fn server_certificate_file(&self) -> &Path {
+        &self.server_certificate
+    }
+
     fn served_name(&self) -> &str {
         TestPki::SERVER_NAMES[1]
     }
 
     /// A plaintext STARTUP fails the node's handshake, which closes the
-    /// connection without a CQL answer.
+    /// connection without a CQL answer, then completes the driver's own
+    /// TLS handshake.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 }
 

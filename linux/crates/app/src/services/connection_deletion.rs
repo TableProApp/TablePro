@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use super::deletion_error::DeletionError;
 use super::deletion_report::{DeletionReport, PurgeFailure};
-use crate::persistence::{ColumnWidthStore, FilterSettingsStore};
-use crate::workspace::WorkspaceStore;
+use crate::persistence::{ColumnLayoutStore, FilterSettingsStore, HighlightRulesStore};
+use crate::workspace::{WorkspaceSaveError, WorkspaceStore};
 
 /// What the user chose in the delete dialog.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -25,12 +25,13 @@ pub struct DeletionOptions {
 /// entry with no secrets only asks for them again. What is kept for the
 /// connection goes last, once nothing can reach it.
 ///
-/// GTK-thread only, like the width, filter and workspace stores.
+/// GTK-thread only, like the layout, filter and workspace stores.
 pub struct ConnectionDeletion {
     pub secrets: Arc<dyn SecretVault>,
     pub connections: Arc<dyn ConnectionWrites>,
-    pub column_widths: ColumnWidthStore,
+    pub column_layouts: ColumnLayoutStore,
     pub filters: FilterSettingsStore,
+    pub highlight_rules: HighlightRulesStore,
     pub workspaces: WorkspaceStore,
     /// `None` when the history database did not open.
     pub history: Option<QueryHistory>,
@@ -52,12 +53,44 @@ impl ConnectionDeletion {
 
     async fn purge(&self, id: Uuid, options: DeletionOptions) -> DeletionReport {
         let mut report = DeletionReport::default();
-        self.column_widths.forget_connection(id);
+        self.column_layouts.forget_connection(id);
         self.filters.forget_connection(id);
+        self.highlight_rules.forget_connection(id);
         // Awaited inside the delete's hold, so a quit right after it
         // cannot leave them on disk.
-        self.column_widths.flush().await;
-        self.filters.flush().await;
+        for result in [
+            self.column_layouts.flush().await,
+            self.filters.flush().await,
+            self.highlight_rules.flush().await,
+        ] {
+            if let Err(error) = result {
+                report.purge_failures.push(PurgeFailure::Settings(error));
+            }
+        }
+        // Copies kept before an upgrade hold the connection's tables and filter values, and are not
+        // worth keeping without them.
+        let files = [
+            self.column_layouts.path().to_owned(),
+            self.filters.path().to_owned(),
+            self.highlight_rules.path().to_owned(),
+        ];
+        let copies = self
+            .spawner
+            .spawn_blocking_task(move || {
+                files
+                    .iter()
+                    .try_for_each(|file| tablepro_storage::upgrade_copies::remove_all_blocking(file).map(drop))
+            })
+            .await;
+        if let Some(error) = match copies {
+            Ok(Ok(())) => None,
+            Ok(Err(error)) => Some(error.to_string()),
+            Err(failure) => Some(failure.to_string()),
+        } {
+            report
+                .purge_failures
+                .push(PurgeFailure::Workspace(WorkspaceSaveError::Purge(error)));
+        }
         if let Err(error) = self.workspaces.purge(&SessionKey::Saved(id)).await {
             report.purge_failures.push(PurgeFailure::Workspace(error));
         }
@@ -122,6 +155,7 @@ mod tests {
     use tablepro_test_support::{Call, FakeSecretVault};
 
     use super::*;
+    use crate::services::grid::ColumnLayout;
     use crate::test_support::paused_tasks;
     use crate::workspace::{TabRecord, WorkspaceFileName, WorkspaceRecord};
 
@@ -156,8 +190,9 @@ mod tests {
         paths: StoragePaths,
         store: ConnectionStore,
         vault: Arc<FakeSecretVault>,
-        widths: ColumnWidthStore,
+        layouts: ColumnLayoutStore,
         filters: FilterSettingsStore,
+        highlight_rules: HighlightRulesStore,
         workspaces: WorkspaceStore,
         drafts: DraftStore,
         history: QueryHistory,
@@ -192,6 +227,10 @@ mod tests {
         }
     }
 
+    fn named_width() -> ColumnLayout {
+        ColumnLayout::default().with_width("name", 120)
+    }
+
     fn filter() -> FilterSet {
         FilterSet {
             combinator: Combinator::And,
@@ -224,8 +263,9 @@ mod tests {
         let tasks = paused_tasks();
         let store = ConnectionStore::new(&paths);
         let vault = Arc::new(FakeSecretVault::new());
-        let widths = ColumnWidthStore::load(paths.column_widths_file(), &tasks);
+        let layouts = ColumnLayoutStore::load(paths.column_layouts_file(), &tasks);
         let filters = FilterSettingsStore::load(paths.filter_settings_file(), &tasks);
+        let highlight_rules = HighlightRulesStore::load(paths.highlight_rules_file(), &tasks);
         let drafts = DraftStore::new(paths.drafts_dir());
         let workspaces = WorkspaceStore::start(paths.workspaces_dir(), drafts.clone(), &tasks);
         let history = QueryHistory::open(&paths).await.expect("the history");
@@ -241,8 +281,14 @@ mod tests {
                 )
                 .await
                 .expect("the password");
-            widths.record(connection_id, Some("public"), "users", "name", 120);
+            layouts.save(connection_id, Some("public"), "users", &named_width());
             filters.set_filters(connection_id, Some("public"), "users", filter());
+            highlight_rules.set_rules(
+                connection_id,
+                Some("public"),
+                "users",
+                vec![crate::services::grid::HighlightRule::new("name")],
+            );
             let key = SessionKey::Saved(connection_id);
             let draft = DraftId::new();
             drafts
@@ -282,8 +328,9 @@ mod tests {
             paths,
             store,
             vault,
-            widths,
+            layouts,
             filters,
+            highlight_rules,
             workspaces,
             drafts,
             history,
@@ -303,8 +350,9 @@ mod tests {
                     log: self.log.clone(),
                     tabs: self.tabs(self.id),
                 }),
-                column_widths: self.widths.clone(),
+                column_layouts: self.layouts.clone(),
                 filters: self.filters.clone(),
+                highlight_rules: self.highlight_rules.clone(),
                 workspaces: self.workspaces.clone(),
                 history: Some(self.history.clone()),
                 spawner: paused_tasks(),
@@ -353,7 +401,7 @@ mod tests {
         /// Everything stored for `id` other than its entry and secrets
         /// is still there.
         async fn kept_everything_for(&self, id: Uuid) {
-            assert!(self.widths.width(id, Some("public"), "users", "name").is_some());
+            assert_eq!(self.layouts.layout(id, Some("public"), "users"), named_width());
             assert_eq!(self.filters.filters(id, Some("public"), "users"), filter());
             assert!(self.tabs(id).exists(), "the saved tabs went");
             assert!(self.drafts_of(id).exists(), "the drafts went");
@@ -457,7 +505,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn success_forgets_widths_filters_workspace_and_drafts() {
+    async fn success_forgets_layouts_filters_workspace_and_drafts() {
         let fixture = fixture().await;
 
         let report = fixture
@@ -469,14 +517,16 @@ mod tests {
         assert!(report.is_complete(), "{report:?}");
         assert!(!fixture.listed(fixture.id));
         assert!(!fixture.has_password(fixture.id));
-        assert!(
-            fixture
-                .widths
-                .width(fixture.id, Some("public"), "users", "name")
-                .is_none()
+        assert_eq!(
+            fixture.layouts.layout(fixture.id, Some("public"), "users"),
+            ColumnLayout::default()
         );
         assert!(fixture.filters.filters(fixture.id, Some("public"), "users").is_empty());
-        for file in [fixture.paths.column_widths_file(), fixture.paths.filter_settings_file()] {
+        for file in [
+            fixture.paths.column_layouts_file(),
+            fixture.paths.filter_settings_file(),
+            fixture.paths.highlight_rules_file(),
+        ] {
             let on_disk = std::fs::read_to_string(&file).expect("the file");
             assert!(
                 !on_disk.contains(&fixture.id.to_string()),
@@ -497,6 +547,28 @@ mod tests {
         assert!(fixture.listed(fixture.other));
         assert!(fixture.has_password(fixture.other));
         fixture.kept_everything_for(fixture.other).await;
+    }
+
+    #[tokio::test]
+    async fn a_failed_table_state_purge_is_reported() {
+        let fixture = fixture().await;
+        fixture.highlight_rules.flush().await.expect("initial write");
+        let path = fixture.paths.highlight_rules_file();
+        std::fs::remove_file(&path).expect("remove saved file");
+        std::fs::create_dir(&path).expect("block replacement");
+        let report = fixture
+            .deletion()
+            .run(fixture.id, DeletionOptions::default())
+            .await
+            .expect("deleted entry");
+        assert!(!fixture.listed(fixture.id));
+        assert!(
+            report
+                .purge_failures
+                .iter()
+                .any(|failure| matches!(failure, PurgeFailure::Settings(_)))
+        );
+        assert!(report.summary("Prod").expect("purge notice").contains("settings"));
     }
 
     #[tokio::test]
@@ -590,11 +662,9 @@ mod tests {
                 .any(|failure| matches!(failure, PurgeFailure::History(_))),
             "{report:?}"
         );
-        assert!(
-            fixture
-                .widths
-                .width(fixture.id, Some("public"), "users", "name")
-                .is_none()
+        assert_eq!(
+            fixture.layouts.layout(fixture.id, Some("public"), "users"),
+            ColumnLayout::default()
         );
         assert!(
             !fixture.tabs(fixture.id).exists(),

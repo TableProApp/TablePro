@@ -160,6 +160,11 @@ fn the_cell_menu_shows_the_cell_keys() {
     );
     assert_eq!(accel_of(&menu, "grid.edit"), Some(Some("F2".to_owned())));
     assert_eq!(accel_of(&menu, "grid.set-empty"), Some(None));
+    assert_eq!(
+        accel_of(&menu, "grid.export"),
+        Some(Some("<Primary><Shift>e".to_owned())),
+        "Export does not show the window's Export Results key"
+    );
 }
 
 #[gtk4::test]
@@ -199,6 +204,28 @@ fn shift_f10_opens_menu_anchored_to_focused_cell() {
         Some(CellInput::Value(Value::Null)),
         "the menu acts on another cell"
     );
+}
+
+#[gtk4::test]
+fn the_keyboard_menu_of_a_cell_wider_than_the_grid_opens_beside_its_part_in_view() {
+    let grid = two_text_rows();
+    let wide = grid.grid.width() * 3;
+    grid.grid
+        .data_view_column(1)
+        .expect("the name column")
+        .set_fixed_width(wide);
+    let cell = grid.focus(1, 1);
+    wait_until(WAIT, || cell.width() > grid.grid.width()).expect("the cell is wider than the grid");
+
+    assert!(press(&grid, gdk::Key::F10, gdk::ModifierType::SHIFT_MASK));
+
+    let (pointed, rect) = shown_menu(&grid).pointing_to();
+    assert!(pointed);
+    assert!(
+        rect.x() >= 0 && rect.x() + rect.width() <= grid.grid.width(),
+        "the menu points past the grid at {rect:?}"
+    );
+    close_menus(&grid);
 }
 
 #[gtk4::test]

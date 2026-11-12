@@ -10,12 +10,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use duckdb::arrow::array::{Array, StructArray};
-use tablepro_core::column::ResultColumn;
+use tablepro_core::column::{ColumnOrigin, ResultColumn};
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptDiagnostic, ScriptPlan, ScriptToken, ScriptTokenKind};
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, RowLimit, Truncation, UnsupportedFeature};
+use tablepro_core::{DriverError, QueryResult, ResultEvent, RowBatch, RowLimit, Truncation, UnsupportedFeature};
 use tokio::sync::mpsc;
 
 use crate::decode::value_at;
@@ -23,11 +23,7 @@ use crate::duck_type::DuckType;
 use crate::encode::bind_all;
 use crate::errors::map_error;
 use crate::instance::{Link, attach_unless_open};
-
-/// How many rows travel in one `Rows` event: enough that a large read
-/// is not one await per row, few enough that the first rows show at
-/// once.
-const ROWS_PER_EVENT: usize = 256;
+use crate::result_origin::{TracedTable, traced_table};
 
 /// What a run of statements did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -40,10 +36,10 @@ pub(crate) struct StreamOutcome {
     pub halted: bool,
 }
 
-/// The columns a statement returns, by name and by DuckDB type.
 struct Shape {
     names: Vec<String>,
     types: Vec<DuckType>,
+    origins: Vec<Option<ColumnOrigin>>,
 }
 
 impl Shape {
@@ -53,27 +49,35 @@ impl Shape {
         let types = (0..names.len())
             .map(|index| DuckType::from_logical(&statement.column_logical_type(index)))
             .collect();
-        Self { names, types }
+        Self {
+            names,
+            types,
+            origins: Vec::new(),
+        }
     }
 
     fn columns(&self) -> Arc<[ResultColumn]> {
         self.names
             .iter()
             .zip(&self.types)
-            .map(|(name, duck)| ResultColumn::new(name.clone(), duck.column_type()))
+            .enumerate()
+            .map(|(index, (name, duck))| {
+                ResultColumn::new(name.clone(), duck.column_type())
+                    .with_origin(self.origins.get(index).cloned().flatten())
+            })
             .collect()
     }
 
     fn rows(&self, chunk: &StructArray, from: usize, to: usize) -> Vec<Vec<Value>> {
-        (from..to)
-            .map(|row| {
-                chunk
-                    .columns()
-                    .iter()
-                    .zip(&self.types)
-                    .map(|(column, duck)| value_at(column.as_ref(), duck, row))
-                    .collect()
-            })
+        (from..to).map(|row| self.row(chunk, row)).collect()
+    }
+
+    fn row(&self, chunk: &StructArray, row: usize) -> Vec<Value> {
+        chunk
+            .columns()
+            .iter()
+            .zip(&self.types)
+            .map(|(column, duck)| value_at(column.as_ref(), duck, row))
             .collect()
     }
 }
@@ -163,21 +167,33 @@ impl Events {
     }
 }
 
-/// Run SQL the user wrote, one statement after another, until one
-/// fails, the reader goes or `halt` is raised. Each statement goes to
-/// DuckDB alone, so each result set streams by itself.
+// Each statement goes to DuckDB alone, so each result set streams by itself. `traced` is the file's catalogue when the
+// session is outside a transaction: a lookup inside one could fail and abort it.
 pub(crate) fn run_script(
     link: &Link,
     sql: &str,
     limit: Option<RowLimit>,
     events: &mut Events,
     halt: &dyn Fn() -> bool,
+    mut traced: Option<&str>,
 ) -> Result<StreamOutcome, DriverError> {
     let mut outcome = StreamOutcome::default();
     for statement in split_statements(sql) {
         if halt() {
             outcome.halted = true;
             break;
+        }
+        // Only a SELECT can read one table row for row, and parsing every statement of a long script would slow it.
+        let source = traced
+            .filter(|_| main_verb(statement).as_deref() == Some("SELECT"))
+            .and_then(|catalog| traced_table(link, catalog, statement));
+        // A stop during the lookup interrupted the lookup, and DuckDB clears an interrupt as a statement starts.
+        if traced.is_some() && halt() {
+            outcome.halted = true;
+            break;
+        }
+        if traced.is_some() && controls_transaction(statement) {
+            traced = None;
         }
         match attach_literal(statement) {
             Some(literal) => {
@@ -195,14 +211,14 @@ pub(crate) fn run_script(
                     if halt() {
                         return Ok(false);
                     }
-                    run_statement(link, statement, &[], limit, events, &mut outcome).map(|()| true)
+                    run_statement(link, statement, &[], limit, None, events, &mut outcome).map(|()| true)
                 })?;
                 if !ran {
                     outcome.halted = true;
                     break;
                 }
             }
-            None => run_statement(link, statement, &[], limit, events, &mut outcome)?,
+            None => run_statement(link, statement, &[], limit, source.as_ref(), events, &mut outcome)?,
         }
         if outcome.consumer_gone {
             break;
@@ -214,7 +230,15 @@ pub(crate) fn run_script(
 /// Run a read the app built, every row of it.
 pub(crate) fn run_bound(link: &Link, statement: &Statement, events: &mut Events) -> Result<StreamOutcome, DriverError> {
     let mut outcome = StreamOutcome::default();
-    run_statement(link, statement.sql(), statement.params(), None, events, &mut outcome)?;
+    run_statement(
+        link,
+        statement.sql(),
+        statement.params(),
+        None,
+        None,
+        events,
+        &mut outcome,
+    )?;
     Ok(outcome)
 }
 
@@ -223,10 +247,14 @@ fn run_statement(
     sql: &str,
     params: &[BoundParam],
     limit: Option<RowLimit>,
+    source: Option<&TracedTable>,
     events: &mut Events,
     outcome: &mut StreamOutcome,
 ) -> Result<(), DriverError> {
-    let (running, shape) = start(link, sql, params)?;
+    let (running, mut shape) = start(link, sql, params)?;
+    if let Some(source) = source {
+        shape.origins = source.origins(&shape.names);
+    }
     match command_result(sql, &shape) {
         Some(Command::ChangedRows) => {
             let changed = match next_chunk(&running)? {
@@ -311,26 +339,30 @@ fn stream_rows(
     let keep = limit.map_or(u64::MAX, RowLimit::get);
     let mut retained = 0u64;
     let mut truncation = Truncation::Complete;
+    let mut batch = RowBatch::new();
     'chunks: while let Some(chunk) = next_chunk(running)? {
-        let mut from = 0;
-        while from < chunk.len() {
+        for row in 0..chunk.len() {
             if retained >= keep {
                 truncation = Truncation::ReadPastLimit;
                 break 'chunks;
             }
-            let room = usize::try_from(keep - retained).unwrap_or(usize::MAX);
-            let to = chunk.len().min(from + ROWS_PER_EVENT).min(from.saturating_add(room));
-            let rows = shape.rows(&chunk, from, to);
-            retained += rows.len() as u64;
-            outcome.rows += rows.len() as u64;
-            if !events.send(ResultEvent::Rows(rows)) {
+            retained += 1;
+            outcome.rows += 1;
+            if batch.push(shape.row(&chunk, row)) && !events.send(ResultEvent::Rows(batch.take())) {
                 outcome.consumer_gone = true;
                 return Ok(());
             }
-            from = to;
+        }
+        // A chunk's rows show without waiting for the next chunk.
+        if !batch.is_empty() && !events.send(ResultEvent::Rows(batch.take())) {
+            outcome.consumer_gone = true;
+            return Ok(());
         }
     }
     let mut closing = Vec::new();
+    if !batch.is_empty() {
+        closing.push(ResultEvent::Rows(batch.take()));
+    }
     if truncation == Truncation::ReadPastLimit {
         closing.push(ResultEvent::RowLimitReached { retained });
     }
@@ -872,6 +904,7 @@ mod tests {
                 width: tablepro_core::column::IntegerWidth::W64,
                 signed: true,
             }],
+            origins: Vec::new(),
         };
 
         assert_eq!(command_result("EXECUTE q", &count), None);

@@ -37,6 +37,23 @@ extension DatabaseAccessBridge {
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?
     ) async throws -> ScriptOutcome {
+        let reach = DriverReach()
+        do {
+            return try await runApprovedScript(
+                operation, maxRows: maxRows, timeoutSeconds: timeoutSeconds, cancellation: cancellation, reach: reach
+            )
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    private func runApprovedScript(
+        _ operation: ApprovedOperation,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        cancellation: (any StatementCancellationSignal)?,
+        reach: DriverReach
+    ) async throws -> ScriptOutcome {
         guard operation.unit == .script else {
             let outcome = try await runStatement(
                 operation,
@@ -63,12 +80,13 @@ extension DatabaseAccessBridge {
             rowCap: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            context: operation.context
+            context: operation.context,
+            reach: reach
         )
         let policy = await maskingPolicy(for: scope.connectionId)
         return ScriptOutcome(
-            resultSets: outcome.resultSets.map { $0.masked(by: policy) },
-            primary: outcome.primary.masked(by: policy),
+            resultSets: outcome.resultSets.map { $0.maskedForExternalCaller(by: policy) },
+            primary: outcome.primary.maskedForExternalCaller(by: policy),
             executionTimeMs: outcome.executionTimeMs
         )
     }
@@ -83,7 +101,8 @@ extension DatabaseAccessBridge {
         rowCap: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
-        context: PluginStatementContext
+        context: PluginStatementContext,
+        reach: DriverReach
     ) async throws -> ScriptOutcome {
         let classification = QueryClassifier.classify(text, databaseType: databaseType)
         let connectionId = scope.connectionId
@@ -111,11 +130,20 @@ extension DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: { CatalogChangeService.post(statementsRan) }
             ) { driver in
-                try await ScriptBatchRun.run(
-                    batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context
-                )
+                reach.mark()
+                do {
+                    let answered = try await ScriptBatchRun.run(
+                        batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context
+                    )
+                    await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                    return answered
+                } catch {
+                    await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                    throw error
+                }
             }
         } catch {
             if classification.tier != .safe {
@@ -128,6 +156,11 @@ extension DatabaseAccessBridge {
         CatalogChangeService.post(statementsRan)
         Self.postSucceededBatches(of: batches, progress: progress, scope: scope, databaseType: databaseType)
         return run.outcome(executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+    }
+
+    // The batch a script stopped at ran too, and can have created a temporary table before its error.
+    private static func ranStatements(of batches: [ExecutableBatch], _ progress: ScriptBatchProgress) -> [String] {
+        batches.prefix(progress.completedBatchCount + 1).flatMap { $0.statements.map(\.sql) }
     }
 
     private static func postSucceededBatches(
@@ -274,6 +307,7 @@ struct ScriptBatchRun: Sendable {
             error: nil
         )
         primary.isTruncated = first?.isTruncated ?? false
+        primary.columnOrigins = first?.columnOrigins
         let notes = [
             first?.statusMessage,
             BatchRunNotice.text(

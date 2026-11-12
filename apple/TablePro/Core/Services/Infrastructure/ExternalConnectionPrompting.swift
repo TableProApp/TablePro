@@ -92,9 +92,10 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
     }
 
     private static func details(for connection: DatabaseConnection) -> [String] {
+        let server = connection.serverEndpoint
         var details: [String] = [
             connection.localSocketFile.map { String(format: String(localized: "Socket: %@"), $0) }
-                ?? String(format: String(localized: "Host: %@"), "\(connection.host):\(connection.port)")
+                ?? String(format: String(localized: "Host: %@"), "\(server.host):\(server.port)")
         ]
         if !connection.username.isEmpty {
             details.append(String(format: String(localized: "User: %@"), connection.username))

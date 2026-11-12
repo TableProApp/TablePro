@@ -24,7 +24,7 @@ internal enum ContainerChangeRerunPolicy {
 
 struct MainEditorContentView: View {
     @ObservedObject private var schemaService = SchemaService.shared
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     // Must clear the nested editor/results split's required minimums, or dragging the drawer asks AppKit for an unreachable height.
     static let tabContentMinimumHeight = CollapsibleSplitController.combinedMinimumThickness
@@ -55,7 +55,6 @@ struct MainEditorContentView: View {
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
-    @State private var tableHealthViewModels: [UUID: TableHealthViewModel] = [:]
     @State private var tableListingModels = TableListingModelStore()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
@@ -155,7 +154,6 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
-            tableHealthViewModels = tableHealthViewModels.filter { openTabIds.contains($0.key) }
             tableListingModels.retainTabs(openTabIds)
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
@@ -309,7 +307,7 @@ struct MainEditorContentView: View {
                 QueryInsightsView(viewModel: vm, coordinator: coordinator)
                     .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
                         guard requestedTabId == tab.id,
-                              LicenseManager.shared.isFeatureAvailable(.queryInsights) else { return }
+                              featureAccess.isAvailable(.queryInsights) else { return }
                         Task { await vm.reload() }
                     }
             } else {
@@ -331,41 +329,20 @@ struct MainEditorContentView: View {
 
     private func tableHealthContent(tab: QueryTab) -> some View {
         Group {
-            if let vm = tableHealthViewModels[tab.id] {
-                TableHealthView(viewModel: vm, databaseType: connection.type, actions: tableHealthActions)
-                    .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
-                        guard requestedTabId == tab.id else { return }
-                        Task { await vm.refresh() }
-                    }
+            if let model = coordinator.tableHealthModels[tab.id] {
+                TableHealthView(
+                    viewModel: model,
+                    databaseName: tab.tableContext.databaseName,
+                    databaseType: connection.type,
+                    actions: coordinator.tableHealthActions(for: model)
+                )
             } else {
                 ProgressView(String(localized: "Loading table health…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onAppear {
-                        guard tableHealthViewModels[tab.id] == nil else { return }
-                        tableHealthViewModels[tab.id] = TableHealthViewModel(
-                            connectionId: connection.id,
-                            provider: TableHealthProviderFactory.provider(for: connection.type)
-                        )
-                    }
+                    .onAppear { coordinator.tableHealthModel(for: tab.id) }
             }
         }
         .id(tab.id)
-    }
-
-    private var tableHealthActions: TableHealthActions {
-        TableHealthActions(
-            openTable: { finding, database in
-                coordinator.openTableTab(finding.table, schema: finding.schema, database: database)
-            },
-            openFix: { finding, database in
-                coordinator.openQuery(
-                    finding.fixSQL,
-                    on: connection.id,
-                    databaseName: database,
-                    intent: .loadIntoFrontTab
-                )
-            }
-        )
     }
 
     // MARK: - Users & Roles Tab Content
@@ -723,7 +700,7 @@ struct MainEditorContentView: View {
                     tabId: tab.id,
                     resultSetId: resultSet.id,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
-                    isUnlocked: licenseManager.isFeatureAvailable(.resultCharts)
+                    isUnlocked: featureAccess.isAvailable(.resultCharts)
                 )
             }
         case .map:
@@ -757,6 +734,7 @@ struct MainEditorContentView: View {
                     selectedRowIDs: Set(model.selectedRowIDs),
                     displayIDs: model.displayedRowIDs,
                     deletedRowIDs: changeManager.deletedRowIDs,
+                    defaultedCells: changeManager.defaultedCells(in: rows),
                     valueFilter: tab.valueFilter,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
                     displayRevision: coordinator.gridDisplayRevision,
@@ -836,7 +814,7 @@ struct MainEditorContentView: View {
                     columns: rows.columns,
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,
-                    enumValuesByColumn: rows.columnEnumValues
+                    enumValuesByColumn: rows.filterPickerValues
                 )
             }
             Divider()
@@ -850,6 +828,7 @@ struct MainEditorContentView: View {
             executionTime: resultSet.executionTime,
             plan: resultSet.queryPlan,
             planContext: resultSet.explainPlanContext,
+            serverOutput: resultSet.serverOutput,
             tabState: queryPlanViewStates.tabState(forTab: tab.id),
             planState: queryPlanViewStates.planState(
                 forResultSet: resultSet.id,
@@ -1043,7 +1022,7 @@ struct MainEditorContentView: View {
                 isPinned: resultSet.isPinned,
                 isActive: resultSet.id == activeId,
                 ordinal: index + 1,
-                isComparable: coordinator.isComparable(resultSet, in: tab)
+                isComparable: coordinator.isComparable(resultSet, in: tab, activeResultSetId: activeId)
             )
         }
         return ResultSetMenuModel(
@@ -1086,12 +1065,6 @@ struct MainEditorContentView: View {
                     Text("⌘T")
                         .font(.callout.monospaced())
                         .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color(nsColor: .quaternaryLabelColor))
-                        )
                     Text(
                         "Open \(PluginManager.shared.queryLanguageName(for: connection.type)) Editor"
                     )
@@ -1113,12 +1086,6 @@ struct MainEditorContentView: View {
                         Text("⌘K")
                             .font(.callout.monospaced())
                             .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color(nsColor: .quaternaryLabelColor))
-                            )
                         Text(String(
                             format: String(localized: "Switch %@"),
                             PluginManager.shared.containerEntityName(for: connection.type)

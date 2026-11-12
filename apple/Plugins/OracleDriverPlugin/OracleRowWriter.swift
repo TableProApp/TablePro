@@ -20,16 +20,21 @@ import TableProSQLQuoting
 /// because a NULL bind into an object-type column fails with ORA-00932; and text for an NCHAR, NVARCHAR2 or NCLOB
 /// column is `UNISTR`, because a literal or bind passes through the database character set (``OracleNationalText``).
 internal struct OracleRowWriter {
-    /// What the grid stages for a column the user leaves to the server's default. It is a marker, never a value.
-    static let defaultMarker = PluginCellValue.text("__DEFAULT__")
-
     /// A keyed delete carries at most this many key values. One statement with 32,767 binds took 30 seconds on 23ai
     /// and one with 1,000 took 0.07, and a statement that outlives the query timeout closes the session.
     static let maxValuesPerDelete = 1_000
 
     static let dateMask = "YYYY-MM-DD HH24:MI:SS"
     static let timestampMask = "YYYY-MM-DD HH24:MI:SS.FF"
-    static let timestampWithTimeZoneMask = "YYYY-MM-DD HH24:MI:SS.FFTZH:TZM"
+    // A cell reads `….ffffff+02:00`, the offset straight after the fraction, or `….ffffff Europe/Paris`, a region after
+    // a blank. TZH:TZM reads the first as written and TZR the second.
+    static let timestampWithOffsetMask = "YYYY-MM-DD HH24:MI:SS.FFTZH:TZM"
+    static let timestampWithTimeZoneMask = "YYYY-MM-DD HH24:MI:SS.FF TZR"
+
+    static func timestampWithTimeZoneMask(for text: String?) -> String {
+        let zone = text?.split(separator: " ").last.flatMap(\.first)
+        return zone?.isLetter == true ? timestampWithTimeZoneMask : timestampWithOffsetMask
+    }
 
     let qualifiedTable: String
     let columns: [String]
@@ -56,7 +61,8 @@ internal struct OracleRowWriter {
                       let write = try insert(
                           values: values,
                           rowIndex: change.rowIndex,
-                          expressionColumns: change.expressionColumns ?? []
+                          expressionColumns: change.expressionColumns ?? [],
+                          defaultColumns: change.defaultColumns ?? []
                       ) else { continue }
                 try flushDeletes()
                 writes.append(write)
@@ -80,7 +86,8 @@ internal struct OracleRowWriter {
     private func insert(
         values: [PluginCellValue],
         rowIndex: Int,
-        expressionColumns: Set<Int>
+        expressionColumns: Set<Int>,
+        defaultColumns: Set<Int>
     ) throws -> PluginRowWrite? {
         guard let firstColumn = columns.first else { return nil }
         var names: [String] = []
@@ -89,7 +96,7 @@ internal struct OracleRowWriter {
         for (index, (column, value)) in zip(columns, values).enumerated()
         where !context.serverOwnedColumns.contains(column) {
             names.append(Self.quote(column))
-            if value == Self.defaultMarker {
+            if defaultColumns.contains(index) {
                 placeholders.append("DEFAULT")
             } else if let expression = Self.expression(value, isMarked: expressionColumns.contains(index)) {
                 placeholders.append(expression)
@@ -117,7 +124,7 @@ internal struct OracleRowWriter {
         var parameters: [PluginCellValue] = []
         let assignments = try change.cellChanges.map { cell -> String in
             let column = Self.quote(cell.columnName)
-            guard cell.newValue != Self.defaultMarker else { return "\(column) = DEFAULT" }
+            guard !change.isColumnDefault(cell.columnIndex) else { return "\(column) = DEFAULT" }
             if let expression = Self.expression(cell.newValue, isMarked: expressionColumns.contains(cell.columnIndex)) {
                 return "\(column) = \(expression)"
             }
@@ -261,10 +268,10 @@ internal struct OracleRowWriter {
         case .text(let text):
             if let literal = kind.inlineSQL(for: text) { return literal }
             if !kind.isNumeric, let quoted = OracleBindPlaceholders.quotedLiteral(text) {
-                return kind.converting(quoted)
+                return kind.converting(quoted, text: text)
             }
             parameters.append(value)
-            return kind.converting("?")
+            return kind.converting("?", text: text)
         }
     }
 
@@ -352,14 +359,14 @@ internal enum OracleValueKind: Equatable {
     /// `TO_TIMESTAMP` rejects (ORA-01830). `TO_TIMESTAMP_TZ` takes it, and text without an offset in the session's
     /// zone, so the value round-trips through SET and a keyless match whatever the session and database zones are
     /// (measured on 23ai with the session at `+07:00` and at `America/New_York` against a `+00:00` database).
-    func converting(_ operand: String) -> String {
+    func converting(_ operand: String, text: String? = nil) -> String {
         switch self {
         case .date:
             return "TO_DATE(\(operand), '\(OracleRowWriter.dateMask)')"
         case .timestamp:
             return "TO_TIMESTAMP(\(operand), '\(OracleRowWriter.timestampMask)')"
         case .timestampWithTimeZone, .timestampWithLocalTimeZone:
-            return "TO_TIMESTAMP_TZ(\(operand), '\(OracleRowWriter.timestampWithTimeZoneMask)')"
+            return "TO_TIMESTAMP_TZ(\(operand), '\(OracleRowWriter.timestampWithTimeZoneMask(for: text))')"
         case .number, .binaryFloat, .binaryDouble, .bfile, .nationalText, .nationalLOB, .other:
             return operand
         }

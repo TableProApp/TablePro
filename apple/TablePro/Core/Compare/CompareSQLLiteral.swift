@@ -50,6 +50,9 @@ internal enum CompareSQLLiteral {
         if let columnType, ColumnTypeSQLQuoting.isNumericLiteral(text, for: columnType) {
             return text
         }
+        if isBitNumber(text, columnType: columnType, databaseType: databaseType) {
+            return text
+        }
         // ClickHouse and MySQL read a backslash as one, so a value ending in `\'` left single closed the literal early
         // (#3777). The script is also copied and saved with no mode declared, so there MySQL gets its own set; a lookup
         // that only runs takes the session's escapes, so it finds a key holding a backslash.
@@ -60,27 +63,51 @@ internal enum CompareSQLLiteral {
         return prefixed(SQLQuoting.stringLiteral(text, escapes: escapes), databaseType: databaseType)
     }
 
+    // MySQL reads a BIT back as the number it holds and takes a quoted one as its characters' bytes: '5' is 53.
+    private static func isBitNumber(_ text: String, columnType: ColumnType?, databaseType: DatabaseType) -> Bool {
+        let family = SQLTypeFamily.of(databaseType)
+        guard family.readsBitsAsDecimal, case .boolean(let rawType)? = columnType, let rawType,
+              case .bitString = SQLTypeParser.parse(rawType, family: family).kind else { return false }
+        return UInt64(text) != nil && text.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
     // `N` in front of `NULL` or a bare number is a syntax error, so the opening quote decides.
     internal static func prefixed(_ literal: String, databaseType: DatabaseType) -> String {
         guard literal.unicodeScalars.first == "'" else { return literal }
         return SQLStringLiteralPrefix.forDatabaseType(databaseType) + literal
     }
 
+    // Shared by Compare & Sync and Copy as SQL. `SQLExportBinaryLiteral` in the SQL export plugin holds the
+    // measurements behind each spelling; the plugin cannot link app code, so it keeps its own copy.
     internal static func binaryLiteral(for data: Data, databaseType: DatabaseType) -> String? {
-        let hex = data.map { String(format: "%02X", $0) }.joined()
+        let hex = data.uppercaseHex()
         switch binaryStyle(for: databaseType) {
         case .bitString:
             return "X'\(hex)'"
         case .postgresBytea:
-            return "'\\x\(hex.lowercased())'::bytea"
+            return postgresFamilyBinaryLiteral(hex: hex, databaseType: databaseType)
         case .zeroX:
             return "0x\(hex)"
         case .hexToRaw:
-            return "HEXTORAW('\(hex)')"
+            // `HEXTORAW('')` stores NULL, which a `BLOB NOT NULL` refuses.
+            return data.isEmpty ? "EMPTY_BLOB()" : "HEXTORAW('\(hex)')"
         case .unhexFunction:
             return "unhex('\(hex)')"
         case .unknown:
             return nil
+        }
+    }
+
+    // `'\x…'::bytea` follows `standard_conforming_strings`: with it off the server stores the text's bytes. KingbaseES
+    // documents `decode` only as Oracle's DECODE, so it keeps the bytea literal; Redshift has no bytea and reads VARBYTE.
+    private static func postgresFamilyBinaryLiteral(hex: String, databaseType: DatabaseType) -> String {
+        switch databaseType {
+        case .kingbasees:
+            return "'\\x\(hex)'::bytea"
+        case .redshift:
+            return "from_hex('\(hex)')"
+        default:
+            return "decode('\(hex)', 'hex')"
         }
     }
 

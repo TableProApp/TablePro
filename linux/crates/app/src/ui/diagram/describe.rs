@@ -13,7 +13,7 @@ pub(crate) fn table_description(diagram: &SchemaDiagram, table: usize) -> String
     let mut sentences = vec![ngettext_f(
         "{n} column.",
         "{n} columns.",
-        u32::try_from(count).unwrap_or(u32::MAX),
+        count,
         &[("n", &count.to_string())],
     )];
     let (references, referenced_by) = diagram.neighbours(table);

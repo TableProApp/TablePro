@@ -14,6 +14,7 @@ mod find_state;
 mod format_plan;
 mod imp;
 mod inline_suggestion;
+mod result_editing;
 mod result_item;
 mod result_widgets;
 mod results_pane;
@@ -44,7 +45,7 @@ use libadwaita::prelude::*;
 use sourceview5::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::{RowLimit, UserSql};
+use tablepro_core::{ByteLimit, RowLimit, UserSql};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -58,6 +59,7 @@ use self::results_pane::ResultPage;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, plan_batches, run_in_tab};
+pub(crate) use self::sql_file::load_text;
 pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::data_grid::{DialectSource, GridRequest};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
@@ -80,7 +82,7 @@ pub struct SqlEditorInit {
     pub settings: Rc<tablepro_linux_platform::AppSettings>,
     pub history: Option<HistoryService>,
     pub tasks: Tasks,
-    /// The window's session, which the tab opens its own connection
+    /// The session the tab belongs to, which it opens its own connection
     /// from on the first run.
     pub session: ActiveSession,
     /// Keeps the process alive while the tab's connection closes.
@@ -400,13 +402,13 @@ impl SqlEditor {
     }
 
     /// The grammar of the server the editor is pointed at, which decides
-    /// where statements begin and end. With no connection the split
-    /// still has to work, and PostgreSQL's is the strictest.
+    /// where statements begin and end, also while the window's link is
+    /// down and the tab's own connection still runs. With no session the
+    /// split still has to work, and PostgreSQL's is the strictest.
     fn grammar(&self) -> SqlGrammar {
         self.deps()
             .and_then(|deps| deps.session.get())
-            .and_then(|session| session.current_dialect())
-            .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar())
+            .map_or(SqlGrammar::PostgreSql, |session| session.grammar())
     }
 
     /// A one-line message where the run summary goes.
@@ -420,6 +422,10 @@ impl SqlEditor {
     fn execute(&self, scoped: ScopedText) {
         let imp = self.imp();
         if self.is_running() || imp.shut_down.get() || imp.confirming.get() {
+            return;
+        }
+        let retry = scoped.clone();
+        if !self.results_may_change(move |editor| editor.execute(retry.clone())) {
             return;
         }
         let Some(deps) = self.deps() else {
@@ -491,6 +497,11 @@ impl SqlEditor {
                 .iter()
                 .any(|batch| tablepro_core::sql_syntax::changes_catalog(&batch.text, grammar)),
         );
+        self.note_run_moves_database(
+            batches
+                .iter()
+                .any(|batch| tablepro_core::sql_syntax::may_change_database(&batch.text, grammar)),
+        );
         let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         let run = ScriptRun {
             batches,
@@ -501,6 +512,7 @@ impl SqlEditor {
                 .resolve(deps.settings.query_timeout()),
             row_limit: RowLimit::EDITOR_DEFAULT,
             run_row_limit: RUN_ROW_LIMIT,
+            byte_limit: ByteLimit::EDITOR_DEFAULT,
         };
         let metadata = session.metadata().clone();
         // Read again at the end from the run's own session, never the
@@ -520,6 +532,8 @@ impl SqlEditor {
             events,
         )));
 
+        self.forget_result_edits();
+        self.starts_quiet_run();
         imp.results.clear();
         imp.results.set_running(true);
         imp.results.set_summary(&crate::i18n::gettext("Running…"));
@@ -606,12 +620,22 @@ impl SqlEditor {
                 available,
             }),
         };
-        let page = result_widgets::entry_widget(usize::try_from(index).ok()?, entry, &grid_deps, actions);
+        let shown = match &entry.kind {
+            EntryKind::ResultSet(result) => self.result_grid(usize::try_from(index).ok()?, result),
+            _ => None,
+        };
+        let page = result_widgets::entry_widget(usize::try_from(index).ok()?, entry, &grid_deps, shown, actions);
         if let Some(grid) = &page.grid {
             let editor = self.downgrade();
             grid.connect_request(move |_, request| {
                 if let Some(editor) = editor.upgrade() {
                     editor.grid_request(index, request);
+                }
+            });
+            let editor = self.downgrade();
+            grid.connect_editing_changed(move |_| {
+                if let Some(editor) = editor.upgrade() {
+                    editor.refresh_result_actions();
                 }
             });
         }
@@ -642,10 +666,8 @@ impl SqlEditor {
         match request {
             GridRequest::Export(shown) => self.offer_export(index, shown),
             GridRequest::Toast(text) => self.emit_by_name::<()>("toast", &[&text]),
-            GridRequest::Sort(_)
-            | GridRequest::FollowReference(_)
-            | GridRequest::FilterByValue(_)
-            | GridRequest::PendingChanged => {}
+            GridRequest::PendingChanged => self.on_rows_pending_changed(),
+            GridRequest::Sort(_) | GridRequest::FollowReference(_) | GridRequest::FilterByValue(_) => {}
         }
     }
 
@@ -694,7 +716,10 @@ impl SqlEditor {
         if dirty_changed || open_changed {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
-        self.record_history(entry, dialect);
+        if !self.ends_quiet_run() {
+            self.record_history(entry, dialect);
+        }
+        self.decide_result_edits();
         self.show_scope();
         if imp.changes_catalog.get() {
             self.list_databases();
@@ -784,20 +809,14 @@ impl SqlEditor {
         providers.push(words.upcast());
     }
 
-    // GtkSourceView before 5.21 never frees a view that has drawn its line
-    // numbers, so the closing editor takes back the script and the session.
-    // GTK 4.24 gives the input method the view from construction until the
-    // view's own dispose, and IBus takes a reference on it, so the view is
-    // never disposed unless it drops its input method first
-    // (https://github.com/ibus/ibus/issues/2968).
+    // The view can outlive the tab, so it lets go of the script and the session here.
     fn release_view(&self) {
         let view = self.imp().source_view.get();
-        view.set_im_module(Some("gtk-im-context-none"));
         let completion = view.completion();
         for provider in self.imp().completion_providers.take() {
             completion.remove_provider(&provider);
         }
-        view.set_buffer(Some(&sourceview5::Buffer::new(None)));
+        crate::ui::text_view_teardown::release(&view);
     }
 
     fn connect_buffer(&self, buffer: &sourceview5::Buffer) {
@@ -856,6 +875,39 @@ impl SqlEditor {
         self.imp()
             .results
             .set_page_builder(move |index| weak.upgrade().and_then(|editor| editor.result_page(index)));
+    }
+
+    pub(crate) fn connect_save_rows<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure("save-rows", false, glib::closure_local!(move |editor: &Self| f(editor)))
+    }
+
+    pub(crate) fn connect_rows_dirty_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "rows-dirty-changed",
+            false,
+            glib::closure_local!(move |editor: &Self| f(editor)),
+        )
+    }
+
+    pub(crate) fn connect_stop_saving_rows<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "stop-saving-rows",
+            false,
+            glib::closure_local!(move |editor: &Self| f(editor)),
+        )
+    }
+
+    pub(crate) fn export_shown_result(&self) -> bool {
+        let results = &self.imp().results;
+        let Some(index) = results.selected() else {
+            return false;
+        };
+        // Only a result set's page has a grid.
+        let Some(grid) = results.kept_grid(index).filter(|grid| grid.row_count() > 0) else {
+            return false;
+        };
+        self.offer_export(index, grid.export_source());
+        true
     }
 
     /// Ask the window to export the result on line `index`: the rows
@@ -999,7 +1051,7 @@ fn show_cursor_position(label: &gtk4::Label, view: &EditorView) {
     let iter = buffer.iter_at_mark(&buffer.get_insert());
     let line = (iter.line() + 1).to_string();
     let column = (iter.line_offset() + 1).to_string();
-    let count = u32::try_from(view.caret_count()).unwrap_or(u32::MAX);
+    let count = view.caret_count();
     label.set_label(&if count > 1 {
         crate::i18n::ngettext_f(
             "Ln {line}, Col {column}, {count} cursor",

@@ -8,6 +8,7 @@ mod access_token;
 mod browse_request;
 mod collected_results;
 mod connection_tools;
+mod export_tools;
 mod mcp_host;
 mod mcp_server;
 mod query_tools;
@@ -19,6 +20,8 @@ mod tool_error;
 mod tool_server;
 
 pub use access_token::{AccessToken, TokenError};
+pub use collected_results::{MAX_ANSWER_BYTES, MAX_VALUE_BYTES};
+pub use export_tools::MAX_EXPORT_TABLES;
 pub use mcp_host::{McpHost, OpenOutcome, WriteApproval};
 pub use mcp_server::{MCP_PATH, McpServer, StartError};
 pub use query_tools::{DEFAULT_ROWS, DEFAULT_TIMEOUT_SECONDS, MAX_QUERY_BYTES, MAX_ROWS, MAX_TIMEOUT_SECONDS};

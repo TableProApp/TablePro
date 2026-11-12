@@ -8,6 +8,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct QueryPlanPresentationTests {
@@ -61,8 +62,47 @@ struct QueryPlanPresentationTests {
         for mode in QueryPlanViewMode.allCases {
             #expect(!mode.title.isEmpty)
         }
-        #expect(QueryPlanViewMode.allCases.count == 4)
+        #expect(QueryPlanViewMode.allCases.count == 5)
         #expect(QueryPlanViewMode.allCases.contains(.compare))
+        #expect(QueryPlanViewMode.allCases.contains(.output))
+    }
+
+    @Test("A parsed plan offers Output only when its statement printed")
+    func parsedPlanOffersOutputWithOutput() {
+        #expect(QueryPlanViewMode.available(for: .parsed, canCompare: false, hasOutput: false) == [.diagram, .tree, .raw])
+        #expect(QueryPlanViewMode.available(for: .parsed, canCompare: false, hasOutput: true)
+            == [.diagram, .tree, .raw, .output])
+        #expect(QueryPlanViewMode.available(for: .parsed, canCompare: true, hasOutput: true)
+            == [.diagram, .tree, .raw, .compare, .output])
+    }
+
+    // PostgreSQL's typed EXPLAIN ANALYZE is text, which no parser reads, and it is the one that runs the statement.
+    @Test("A plan the app could not read still offers Output beside Raw when its statement printed", arguments: [
+        QueryPlanPresentation.Kind.rawOnly, .empty
+    ])
+    func unreadPlanOffersOutputWithOutput(kind: QueryPlanPresentation.Kind) {
+        #expect(QueryPlanViewMode.available(for: kind, canCompare: true, hasOutput: false) == [.raw])
+        #expect(QueryPlanViewMode.available(for: kind, canCompare: true, hasOutput: true) == [.raw, .output])
+    }
+
+    // The mode belongs to the editor tab, so Output chosen on one plan is still chosen when the next has none.
+    @Test("A chosen mode the plan does not offer shows the plan's first mode instead")
+    func chosenModeFallsBackWhenNotOffered() {
+        #expect(QueryPlanViewMode.effective(.output, among: [.diagram, .tree, .raw]) == .diagram)
+        #expect(QueryPlanViewMode.effective(.output, among: [.raw]) == .raw)
+        #expect(QueryPlanViewMode.effective(.compare, among: [.diagram, .tree, .raw, .output]) == .diagram)
+        #expect(QueryPlanViewMode.effective(.tree, among: [.diagram, .tree, .raw]) == .tree)
+        #expect(QueryPlanViewMode.effective(.output, among: [.raw, .output]) == .output)
+    }
+
+    @Test("A plan's result set keeps what its statement printed")
+    @MainActor
+    func explainResultSetCarriesTheOutput() {
+        let printed = PluginServerOutput(lines: ["NOTICE:  step 1 done"], isTruncated: false)
+        let plan = ExplainResultSetFactory.make(
+            rawText: "Seq Scan", plan: nil, sql: "EXPLAIN ANALYZE SELECT demo()", executionTime: 0.1, serverOutput: printed
+        )
+        #expect(plan.serverOutput == printed)
     }
 
     @Test("An explain result set is recognised by its raw text, not by a parsed plan")

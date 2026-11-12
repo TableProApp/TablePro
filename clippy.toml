@@ -14,4 +14,10 @@ disallowed-types = [
 disallowed-methods = [
     { path = "serde_json::Value::as_object", reason = "key order is not preserved; keep JSON as JsonText" },
     { path = "serde_json::Value::as_object_mut", reason = "key order is not preserved; keep JSON as JsonText" },
+    # bson decodes a document by calling itself once per level, so a
+    # document the server nests deep enough overflows the reading
+    # thread's stack. A cursor's document is taken out after its depth
+    # is checked.
+    { path = "mongodb::SessionCursor::deserialize_current", reason = "decodes a document of any depth; use nested_document::current_document" },
+    { path = "mongodb::Cursor::deserialize_current", reason = "decodes a document of any depth; check it as nested_document::current_document does" },
 ]

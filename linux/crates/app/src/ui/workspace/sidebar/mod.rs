@@ -4,6 +4,7 @@
 
 mod catalog_watch;
 mod connection_tree;
+mod favorites_pane;
 mod key_listing;
 mod object_key;
 mod object_target;
@@ -17,29 +18,32 @@ mod sidebar_model;
 mod sidebar_object;
 mod sidebar_object_imp;
 mod sidebar_view;
-mod store_sync;
 #[cfg(test)]
 pub(crate) mod tests;
 mod tree_menu;
 mod tree_node;
 mod tree_row;
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use gtk4::prelude::*;
 use tablepro_core::DataModel;
+use tablepro_core::ddl;
+use tablepro_core::dialect::{DatabaseLayout, SqlDialect};
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo, TableRef};
 use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
 pub(crate) use connection_tree::{ConnectionTree, SessionRowState};
+pub(crate) use favorites_pane::{FavoriteAction, FavoritesPane};
 pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;
 pub(super) use sidebar_view::SidebarView;
+pub(super) use tree_menu::creation_menu;
 
+use super::schema_filter::SchemaFilter;
 use super::table_naming::TableNaming;
 use super::{OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender};
 use crate::runtime::DeliverInput;
@@ -88,11 +92,15 @@ fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
             schema: table.schema,
             table: table.name,
         },
+        SidebarEvent::TruncateTable(table) => WorkspaceInput::TruncateTablePrompt(table),
         SidebarEvent::DropTable(table) => WorkspaceInput::DropTablePrompt {
             schema: table.schema,
             table: table.name,
         },
         SidebarEvent::NewTable(schema) => WorkspaceInput::NewTableTab { schema },
+        SidebarEvent::NewSchema => WorkspaceInput::NewSchemaPrompt,
+        SidebarEvent::DropSchema(schema) => WorkspaceInput::DropSchemaPrompt(schema),
+        SidebarEvent::DropDatabase(database) => WorkspaceInput::DropDatabasePrompt(database),
         SidebarEvent::ShowDiagram(schema) => WorkspaceInput::ShowDiagram { schema },
         SidebarEvent::ShowDefinition(object) => WorkspaceInput::ShowDefinition(object),
     }
@@ -107,14 +115,15 @@ pub(crate) struct SidebarListing {
 }
 
 /// Read the session's schemas and index `objects` under them, or under
-/// `known` when they cannot be read. The index is built on a blocking
-/// thread: sorting a large catalog by collation keys would freeze the
-/// window.
+/// `known` when they cannot be read, offering to drop none the session
+/// keeps. The index is built on a blocking thread: sorting a large
+/// catalog by collation keys would freeze the window.
 pub(super) async fn list_catalog(
     session: Arc<Session>,
     tasks: Tasks,
     objects: Arc<[ObjectInfo]>,
     known: Arc<[SchemaInfo]>,
+    filter: SchemaFilter,
 ) -> Result<SidebarListing, TaskFailure> {
     let schemas = match session.schemas().await {
         Ok(schemas) => Some(schemas),
@@ -123,37 +132,40 @@ pub(super) async fn list_catalog(
             None
         }
     };
+    let dialect = session.current_dialect();
+    let database = session.database().map(str::to_owned);
     tasks
         .spawn_blocking_task(move || {
-            let schemas: Option<Arc<[SchemaInfo]>> = schemas.map(|schemas| shown_schemas(&schemas, &objects).into());
-            SidebarListing {
-                index: SidebarIndex::build(&objects, schemas.as_deref().unwrap_or(&known)),
-                schemas,
+            let (shown, listed) = filter.listed(&objects, schemas.as_deref().unwrap_or(&known));
+            let listed = &*listed;
+            let mut index = SidebarIndex::build(&shown, listed);
+            index.withhold_drops(|name| kept(dialect.as_deref(), database.as_deref(), name));
+            if dialect
+                .as_deref()
+                .is_some_and(|dialect| dialect.unqualified_default_schema())
+                && let Some(default) = listed.iter().find(|schema| schema.is_default)
+            {
+                index.unqualify(&default.name);
             }
+            SidebarListing { index, schemas }
         })
         .await
 }
 
-/// The schemas the sidebar shows sections for: the session's own, and
-/// any an object names that the session does not list, as a server whose
-/// databases are its schemas lists only the one it is in.
-fn shown_schemas(schemas: &[SchemaInfo], objects: &[ObjectInfo]) -> Vec<SchemaInfo> {
-    let known: BTreeSet<&str> = schemas.iter().map(|schema| schema.name.as_str()).collect();
-    let extra: BTreeSet<&str> = objects
-        .iter()
-        .filter(|object| object.kind.is_browsable() || object.kind.has_definition())
-        .filter_map(|object| object.schema.as_deref())
-        .filter(|schema| !known.contains(schema))
-        .collect();
-    schemas
-        .iter()
-        .cloned()
-        .chain(extra.into_iter().map(|name| SchemaInfo {
-            name: name.to_owned(),
-            is_default: false,
-            is_system: false,
-        }))
-        .collect()
+/// Whether the sidebar never offers to drop the schema `name`. Where the
+/// schemas are the server's databases, that is the database the session
+/// opened or one the engine keeps for itself; elsewhere a schema the
+/// engine keeps, whatever the database is called. The index already
+/// withholds the default schema. A session with no connection offers
+/// none.
+fn kept(dialect: Option<&dyn SqlDialect>, database: Option<&str>, name: &str) -> bool {
+    let Some(dialect) = dialect else {
+        return true;
+    };
+    match dialect.database_layout() {
+        DatabaseLayout::AsSchemas => database == Some(name) || ddl::protects_database(dialect, name),
+        DatabaseLayout::WithSchemas | DatabaseLayout::Single => ddl::protects_schema(dialect, name),
+    }
 }
 
 impl WorkspaceModel {
@@ -201,18 +213,20 @@ impl WorkspaceModel {
     /// Read the session's schemas, which place the sidebar's sections and
     /// decide whether tab titles name their schema, then show `objects`
     /// under them. Only the last read asked for is shown.
-    fn read_sidebar(&mut self, objects: Arc<[ObjectInfo]>) {
+    pub(super) fn read_sidebar(&mut self, objects: Arc<[ObjectInfo]>) {
         let Some(session) = self.context.active.get() else {
             return;
         };
         self.sidebar_read += 1;
         let read = self.sidebar_read;
         let input = self.input.clone();
+        self.schema_filter.remember(&objects);
         let listing = list_catalog(
             session,
             self.context.tasks.clone(),
             objects,
             self.catalog_schemas.clone(),
+            self.schema_filter.filter(),
         );
         crate::runtime::spawn_and_deliver(&self.context.tasks, listing, move |listing| {
             match listing.and_then(|listing| listing) {
@@ -232,6 +246,7 @@ impl WorkspaceModel {
             self.catalog_schemas = schemas;
         }
         self.sidebar.show(listing.index);
+        self.show_schema_filter();
         self.on_table_naming(TableNaming::of(&self.catalog_schemas));
     }
 
@@ -257,10 +272,13 @@ impl WorkspaceModel {
         self.catalog_banner.set_revealed(true);
     }
 
-    /// Read the session's tables again, and every table's columns on
-    /// their next ask: what changed the schema did not say which tables
-    /// it touched.
+    /// Read the session's schemas and tables again, and every table's
+    /// columns on their next ask: what changed the schema did not say
+    /// which tables it touched. Another tab or client may have made or
+    /// dropped a database, so the editors' database menus are read again
+    /// too.
     pub(super) fn refresh_catalog(&mut self) {
+        self.relist_editor_databases();
         if self.keys.is_some() {
             self.list_keys();
             return;
@@ -269,7 +287,27 @@ impl WorkspaceModel {
             return;
         };
         session.invalidate_columns();
-        self.on_schema_changed(None, None);
+        self.diagrams_out_of_date(None, false);
+        self.catalog_shape_changed();
+    }
+
+    /// A schema or database was made or dropped. The schemas are read
+    /// before the objects, so the list the catalog watch takes to the
+    /// sidebar is indexed under the new ones; then the default schema's
+    /// list, which the editor's completion reads, one read at a time.
+    pub(super) fn catalog_shape_changed(&self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        drop(self.context.tasks.spawn_task(async move {
+            // A failure keeps the schemas there were, under which the
+            // new objects still show.
+            if let Err(error) = session.refresh_schemas().await {
+                tracing::debug!(%error, "the schemas could not be read again");
+            }
+            let _ = session.refresh_objects(ObjectScope::AllSchemas).await;
+            let _ = session.refresh_objects(ObjectScope::DefaultSchema).await;
+        }));
     }
 
     /// A run that sent DDL, or a commit that may publish it, changes what
@@ -323,8 +361,17 @@ impl WorkspaceModel {
     /// The connection was replaced, perhaps by one to another server
     /// version, so what the sidebar offers is read again.
     pub(super) fn on_link_changed(&self) {
-        if let Some(session) = self.context.active.get() {
-            self.sidebar.set_affordances(SidebarAffordances::for_session(&session));
+        self.show_affordances();
+    }
+
+    pub(super) fn show_affordances(&self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let affordances = SidebarAffordances::for_session(&session);
+        self.sidebar.set_affordances(affordances);
+        if let Some(workspace) = self.this.upgrade() {
+            workspace.show_creation_menu(creation_menu(&self.key, affordances).upcast());
         }
     }
 }

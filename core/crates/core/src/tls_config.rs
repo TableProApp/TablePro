@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use crate::{ClientIdentity, ConfigError, ServerNameOverride, TlsCapabilities, TlsMode, TransportClass};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "StoredTlsConfig")]
 pub struct TlsConfig {
     pub mode: TlsMode,
     #[serde(default)]
@@ -39,12 +38,12 @@ impl TlsConfig {
         if !caps.modes.contains(&self.mode) {
             return Err(ConfigError::UnsupportedTlsMode);
         }
-        let encrypted = self.mode != TlsMode::Disable;
+        let encrypted = self.mode.encrypts();
         if let Some(ca_file) = &self.ca_file {
             // Require checks no certificate, so a CA file there would be
             // taken and never read, where libpq and the mysql client
             // verify against it.
-            if !(caps.ca_file && self.mode == TlsMode::VerifyFull) {
+            if !(caps.ca_file && self.mode.verifies_certificate()) {
                 return Err(ConfigError::CaFileUnsupported);
             }
             require_absolute(ca_file)?;
@@ -59,37 +58,6 @@ impl TlsConfig {
             validate_server_name(server_name, caps.server_name_override, route)?;
         }
         Ok(())
-    }
-}
-
-/// A `TlsConfig` as a saved or imported connection holds it.
-#[derive(Deserialize)]
-struct StoredTlsConfig {
-    mode: TlsMode,
-    #[serde(default)]
-    ca_file: Option<PathBuf>,
-    #[serde(default)]
-    client_identity: Option<ClientIdentity>,
-    #[serde(default)]
-    server_name: Option<String>,
-}
-
-impl From<StoredTlsConfig> for TlsConfig {
-    /// Earlier builds saved a CA file with Require and then ignored it.
-    /// The file says the server was meant to be checked, so it now is:
-    /// a server the file does not vouch for fails to connect rather than
-    /// connecting unchecked.
-    fn from(stored: StoredTlsConfig) -> Self {
-        let mode = match (stored.mode, &stored.ca_file) {
-            (TlsMode::Require, Some(_)) => TlsMode::VerifyFull,
-            (mode, _) => mode,
-        };
-        Self {
-            mode,
-            ca_file: stored.ca_file,
-            client_identity: stored.client_identity,
-            server_name: stored.server_name,
-        }
     }
 }
 
@@ -118,7 +86,9 @@ fn validate_server_name(
         return Err(ConfigError::InvalidServerName);
     }
     match (coverage, route) {
-        (ServerNameOverride::AnyRoute, _) | (ServerNameOverride::SshForwardOnly, TransportClass::SshForward) => Ok(()),
+        // A driver that names the host it dials can name another only where it dials a socket path.
+        (ServerNameOverride::AnyRoute, _)
+        | (ServerNameOverride::SshForwardOnly, TransportClass::SshForward | TransportClass::LocalSocket) => Ok(()),
         (ServerNameOverride::SshForwardOnly | ServerNameOverride::Unsupported, _) => {
             Err(ConfigError::ServerNameOverrideUnsupported { route })
         }
@@ -129,11 +99,14 @@ fn validate_server_name(
 mod tests {
     use super::*;
 
-    const ALL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull];
+    const ALL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull];
+    const MSSQL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict];
     const ROUTES: [TransportClass; 2] = [TransportClass::DirectTcp, TransportClass::SshForward];
 
     const POSTGRES: TlsCapabilities = TlsCapabilities {
         modes: ALL_MODES,
+        default_mode: TlsMode::Prefer,
+        tls_ports: &[],
         ca_file: true,
         client_identity: true,
         server_name_override: ServerNameOverride::AnyRoute,
@@ -143,11 +116,15 @@ mod tests {
         ..POSTGRES
     };
     const MSSQL: TlsCapabilities = TlsCapabilities {
+        modes: MSSQL_MODES,
+        default_mode: TlsMode::VerifyFull,
         client_identity: false,
         ..POSTGRES
     };
     const VERIFY_ONLY: TlsCapabilities = TlsCapabilities {
         modes: &[TlsMode::VerifyFull],
+        default_mode: TlsMode::VerifyFull,
+        tls_ports: &[],
         ca_file: false,
         client_identity: false,
         server_name_override: ServerNameOverride::Unsupported,
@@ -191,7 +168,7 @@ mod tests {
     #[test]
     fn every_mode_an_engine_offers_validates_on_every_route() {
         for caps in [POSTGRES, MYSQL, MSSQL] {
-            for mode in ALL_MODES {
+            for mode in caps.modes {
                 for route in ROUTES {
                     let config = TlsConfig {
                         mode: *mode,
@@ -244,6 +221,13 @@ mod tests {
                 with_server_name("db.internal"),
                 MYSQL,
                 TransportClass::SshForward,
+                Ok(()),
+            ),
+            (
+                "mysql server name over its local socket",
+                with_server_name("db.internal"),
+                MYSQL,
+                TransportClass::LocalSocket,
                 Ok(()),
             ),
             (
@@ -334,6 +318,13 @@ mod tests {
                 Err(ConfigError::RelativePath),
             ),
             (
+                "ca file with prefer, which checks no certificate",
+                with_ca_file(TlsMode::Prefer, "/etc/tls/ca.pem"),
+                POSTGRES,
+                TransportClass::DirectTcp,
+                Err(ConfigError::CaFileUnsupported),
+            ),
+            (
                 "ca file with require, which checks no certificate",
                 with_ca_file(TlsMode::Require, "/etc/tls/ca.pem"),
                 MSSQL,
@@ -347,27 +338,28 @@ mod tests {
                 TransportClass::SshForward,
                 Ok(()),
             ),
+            (
+                "ca file with strict, which checks the certificate",
+                with_ca_file(TlsMode::Strict, "/etc/tls/ca.pem"),
+                MSSQL,
+                TransportClass::DirectTcp,
+                Ok(()),
+            ),
         ]);
     }
 
     #[test]
-    fn a_stored_ca_file_with_require_is_read_as_verify_full() {
-        let stored: TlsConfig = serde_json::from_str(&format!(
-            r#"{{"mode":"require","ca_file":"{}","server_name":"db.internal"}}"#,
-            absolute("/etc/tls/ca.pem").display()
-        ))
-        .unwrap();
+    fn strict_is_refused_by_an_engine_that_does_not_offer_it() {
+        let strict = TlsConfig {
+            mode: TlsMode::Strict,
+            ..TlsConfig::disabled()
+        };
 
         assert_eq!(
-            stored,
-            TlsConfig {
-                server_name: Some("db.internal".to_owned()),
-                ..with_ca_file(TlsMode::VerifyFull, "/etc/tls/ca.pem")
-            }
+            strict.validate(&POSTGRES, TransportClass::DirectTcp),
+            Err(ConfigError::UnsupportedTlsMode)
         );
-        assert_eq!(stored.validate(&POSTGRES, TransportClass::DirectTcp), Ok(()));
-        let without_ca: TlsConfig = serde_json::from_str(r#"{"mode":"require"}"#).unwrap();
-        assert_eq!(without_ca.mode, TlsMode::Require);
+        assert_eq!(strict.validate(&MSSQL, TransportClass::SshForward), Ok(()));
     }
 
     #[test]

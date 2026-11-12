@@ -560,7 +560,10 @@ extension MainContentCoordinator {
     /// Each value comes from the live session, never from `toolbarState`: a database switch moves
     /// the session schema without touching the toolbar, so comparing against the toolbar skips
     /// the switch exactly when the session needs it.
-    func switchContainers(database: String?, schema: String?) async {
+    ///
+    /// False when a step failed or was cancelled: the session is still wherever it was.
+    @discardableResult
+    func switchContainers(database: String?, schema: String?) async -> Bool {
         let steps = ContainerSwitchPlanner.plan(
             database: database,
             schema: schema,
@@ -579,17 +582,19 @@ extension MainContentCoordinator {
                 didSwitch = true
                 /// A schema belongs to a database, so a failed database switch stops the plan
                 /// rather than applying the schema against whatever is still open.
-                guard await switchDatabase(to: name) else { return }
+                guard await switchDatabase(to: name) else { return false }
             case .schema(let name):
                 guard name != session?.browseSchema || !isSettled else { continue }
                 didSwitch = true
                 await switchSchema(to: name)
+                guard services.databaseManager.session(for: connectionId)?.browseSchema == name else { return false }
             }
         }
         /// Already there is still a request to be there: the window may be showing another entry.
         if !didSwitch {
             browseCursorCoordinator.showBrowsedContainer()
         }
+        return true
     }
 
     private var schemaEntityName: String {
@@ -672,10 +677,13 @@ extension MainContentCoordinator {
                 try await dropContainer(target)
                 services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
-                navigationLogger.error(
-                    "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
-                )
-                failures.append((target.name, error.localizedDescription))
+                let failure = GatedOperationFailure(error)
+                if failure.reportsFailure {
+                    navigationLogger.error(
+                        "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
+                    )
+                }
+                if let message = failure.message { failures.append((target.name, message)) }
             }
         }
 

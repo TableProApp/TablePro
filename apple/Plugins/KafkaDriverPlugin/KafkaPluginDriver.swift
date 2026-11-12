@@ -335,14 +335,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        buildBrowseQuery(
-            table: table,
-            schema: schema,
-            sortColumns: sortColumns,
-            columns: columns,
-            limit: limit,
-            offset: offset
-        )
+        nil
     }
 
     /// Declining every statement is what stops the grid's Save from silently doing nothing.

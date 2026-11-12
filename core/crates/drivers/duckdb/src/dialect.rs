@@ -3,6 +3,7 @@ use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
@@ -133,6 +134,7 @@ impl SqlDialect for DuckDbDialect {
         match value {
             Value::Null => Ok("NULL".to_owned()),
             Value::Bool(flag) => Ok(if *flag { "TRUE" } else { "FALSE" }.to_owned()),
+            Value::Int32(integer) => Ok(integer.to_string()),
             Value::Int(integer) => Ok(integer.to_string()),
             Value::UInt(integer) => Ok(integer.to_string()),
             Value::WideInt(integer) => Ok(integer.to_string()),
@@ -236,6 +238,10 @@ impl SqlDialect for DuckDbDialect {
         Some(self)
     }
 
+    fn dump(&self) -> Option<&dyn DumpDialect> {
+        Some(self)
+    }
+
     /// A value Arrow cannot carry whole is read as DuckDB's own text.
     fn projection(&self, column: &ColumnInfo) -> String {
         let name = self.quote_identifier(&column.name);
@@ -300,7 +306,7 @@ fn value_param(value: Value, column: &ColumnType) -> Result<(Value, ParamType), 
     let param_type = match &value {
         Value::Null | Value::Text(_) => ParamType::Text,
         Value::Bool(_) => ParamType::Bool,
-        Value::Int(_) => ParamType::Int64,
+        Value::Int32(_) | Value::Int(_) => ParamType::Int64,
         Value::UInt(_) => ParamType::UInt64,
         Value::WideInt(_) | Value::Decimal(_) => ParamType::Decimal,
         Value::Float32(_) => ParamType::Float32,

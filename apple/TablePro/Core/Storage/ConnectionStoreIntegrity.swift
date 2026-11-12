@@ -18,15 +18,26 @@ import Security
 protocol IntegrityKeySource: Sendable {
     /// The key this device signs its connection store with, or nil when no key can be obtained.
     func key() -> SymmetricKey?
+    // Whether this device ever tagged the store, kept where only TablePro can write.
+    func hasStamped(_ storeId: String) -> Bool
+    @discardableResult
+    func recordStamped(_ storeId: String) -> Bool
+}
+
+extension IntegrityKeySource {
+    func hasStamped(_ storeId: String) -> Bool { false }
+
+    @discardableResult
+    func recordStamped(_ storeId: String) -> Bool { false }
 }
 
 struct ConnectionStoreIntegrity: Sendable {
     enum Verdict: Equatable {
         /// The tag matches, so the file is the one TablePro last wrote.
         case trusted
-        /// No tag yet. An install that predates this check, or a fresh store.
+        /// No tag yet, and none was ever written. An install that predates this check, or a fresh store.
         case unstamped
-        /// A tag exists and does not match. The file changed outside TablePro.
+        /// The tag does not match, or is gone from a store this device tagged. The file changed outside TablePro.
         case modified
         /// No key, so nothing can be said either way. Treated as untrusted rather than assumed
         /// good, for the same reason an unreadable certificate authority fails a connection.
@@ -45,14 +56,27 @@ struct ConnectionStoreIntegrity: Sendable {
         fileURL.appendingPathExtension("hmac")
     }
 
+    static func storeId(for fileURL: URL) -> String {
+        SHA256.hash(data: Data(fileURL.standardizedFileURL.path.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
     func verify(_ data: Data, fileURL: URL) -> Verdict {
         guard let key = keySource.key() else { return .unavailable }
+        let storeId = Self.storeId(for: fileURL)
         guard let storedTag = try? Data(contentsOf: Self.tagURL(for: fileURL)), !storedTag.isEmpty else {
-            return .unstamped
+            // Deleting the tag must not turn an edited store back into one to adopt.
+            return keySource.hasStamped(storeId) ? .modified : .unstamped
         }
 
         let expected = Data(HMAC<SHA256>.authenticationCode(for: data, using: key))
-        return Self.constantTimeEquals(expected, storedTag) ? .trusted : .modified
+        guard Self.constantTimeEquals(expected, storedTag) else { return .modified }
+        // A tag an older build wrote has no record yet.
+        if !keySource.hasStamped(storeId) {
+            keySource.recordStamped(storeId)
+        }
+        return .trusted
     }
 
     @discardableResult
@@ -61,6 +85,9 @@ struct ConnectionStoreIntegrity: Sendable {
         let tag = Data(HMAC<SHA256>.authenticationCode(for: data, using: key))
         do {
             try tag.write(to: Self.tagURL(for: fileURL), options: .atomic)
+            if !keySource.recordStamped(Self.storeId(for: fileURL)) {
+                Self.logger.error("Could not record that the connection store is tagged")
+            }
             return true
         } catch {
             Self.logger.error("Could not write the connection store tag: \(error.localizedDescription)")
@@ -94,10 +121,12 @@ struct ConnectionStoreIntegrity: Sendable {
 struct KeychainIntegrityKeySource: IntegrityKeySource {
     private static let service = "com.TablePro"
     private static let account = "com.TablePro.connectionStoreIntegrityKey"
+    private static let stampAccountPrefix = "com.TablePro.connectionStoreStamped."
     private static let byteCount = 32
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cached: SymmetricKey?
+    nonisolated(unsafe) private static var knownStamps: Set<String> = []
 
     func key() -> SymmetricKey? {
         if let isolatedStore = Self.isolatedStore {
@@ -117,7 +146,51 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
         return created
     }
 
-    private static func baseQuery() -> [String: Any] {
+    func hasStamped(_ storeId: String) -> Bool {
+        if let isolatedStore = Self.isolatedStore {
+            return StoredIntegrityKeySource(store: isolatedStore).hasStamped(storeId)
+        }
+
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+
+        if Self.knownStamps.contains(storeId) { return true }
+        var query = Self.baseQuery(account: Self.stampAccountPrefix + storeId)
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        if status == errSecSuccess {
+            Self.knownStamps.insert(storeId)
+        }
+        // A record that cannot be read is not proof the store was never tagged.
+        return status != errSecItemNotFound
+    }
+
+    @discardableResult
+    func recordStamped(_ storeId: String) -> Bool {
+        if let isolatedStore = Self.isolatedStore {
+            return StoredIntegrityKeySource(store: isolatedStore).recordStamped(storeId)
+        }
+
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+
+        if Self.knownStamps.contains(storeId) { return true }
+        var addQuery = Self.baseQuery(account: Self.stampAccountPrefix + storeId)
+        addQuery[kSecValueData as String] = Data([1])
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        guard status == errSecSuccess || status == errSecDuplicateItem else {
+            ConnectionStoreIntegrity.logger.error(
+                "Could not record the connection store tag (OSStatus \(status))"
+            )
+            return false
+        }
+        Self.knownStamps.insert(storeId)
+        return true
+    }
+
+    private static func baseQuery(account: String = Self.account) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -172,6 +245,7 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
 /// every store it writes reads back untrusted.
 struct StoredIntegrityKeySource: IntegrityKeySource {
     private static let storageKey = "connectionStoreIntegrity"
+    private static let stampKeyPrefix = "connectionStoreStamped."
     private static let byteCount = 32
 
     private let store: any KeychainStoring
@@ -193,5 +267,14 @@ struct StoredIntegrityKeySource: IntegrityKeySource {
             return nil
         }
         return SymmetricKey(data: bytes)
+    }
+
+    func hasStamped(_ storeId: String) -> Bool {
+        store.readStringResult(forKey: Self.stampKeyPrefix + storeId) != .notFound
+    }
+
+    @discardableResult
+    func recordStamped(_ storeId: String) -> Bool {
+        store.writeString("1", forKey: Self.stampKeyPrefix + storeId)
     }
 }

@@ -9,7 +9,7 @@ import AppKit
 
 extension WelcomeViewModel {
     func publishToTeamCatalog(_ connectionsToPublish: [DatabaseConnection]) {
-        guard LicenseManager.shared.isFeatureAvailable(.teamCatalog),
+        guard FeatureAccess.shared.isAvailable(.teamCatalog),
               !connectionsToPublish.isEmpty,
               let folderURL = resolveTeamCatalogFolder() else {
             return

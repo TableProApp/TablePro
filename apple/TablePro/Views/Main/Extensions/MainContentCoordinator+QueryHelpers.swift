@@ -20,6 +20,13 @@ extension MainContentCoordinator {
         )
     }
 
+    // Stop ends the run before the driver answers, so a rollback the server did for it arrives on a settled claim. It is
+    // shown on the tab unless the tab already runs something new.
+    func reportStopRollback(_ error: Error, tabId: UUID) {
+        guard error is PluginStopRolledBackTransaction, !tabExecution.isExecuting(tabId) else { return }
+        tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = error.localizedDescription }
+    }
+
     /// A table tab's SELECT is the app's own, so it may follow a database switch it waited through
     /// onto a pooled connection. The choice belongs to the tab and never to the statement: an editor
     /// SELECT can read a temp table or sit inside the user's open transaction, and moving it to
@@ -57,6 +64,7 @@ extension MainContentCoordinator {
         serverOutput: PluginServerOutput = .none
     ) {
         guard tabExecution.settle(claim) else {
+            reportStopRollback(error, tabId: tabId)
             traceStaleResultDropped(traceToken)
             return
         }
@@ -73,6 +81,7 @@ extension MainContentCoordinator {
             reportEndedExecutions([
                 EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
             ])
+            reportStopRollback(error, tabId: tabId)
             return
         }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
@@ -133,8 +142,11 @@ extension MainContentCoordinator {
         source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        columnOrigins: [PluginColumnOrigin?]? = nil,
+        prepared: TableRows.PreparedRows? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -159,8 +171,45 @@ extension MainContentCoordinator {
             source: source,
             serverOutput: serverOutput,
             rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
             absentCells: absentCells,
-            unloadedCells: unloadedCells
+            unloadedCells: unloadedCells,
+            columnOrigins: columnOrigins,
+            prepared: prepared
+        )
+    }
+
+    func phase1RowShape(tabId: UUID, tableName: String?, columns: [String], columnTypes: [ColumnType]) -> TableRows.RowShape {
+        queryExecutionCoordinator.phase1RowShape(tabId: tabId, tableName: tableName, columns: columns, columnTypes: columnTypes)
+    }
+
+    func preparedPhase1Rows(
+        _ fetchResult: QueryFetchResult,
+        tabId: UUID,
+        tableName: String?,
+        isTableTab: Bool
+    ) async -> TableRows.PreparedRows {
+        await TableRows.preparing(
+            fetchResult.rows,
+            rowLocators: isTableTab ? fetchResult.rowLocators : nil,
+            exportDocuments: fetchResult.exportDocuments,
+            absentCells: fetchResult.absentCells,
+            unloadedCells: fetchResult.unloadedCells,
+            shape: phase1RowShape(
+                tabId: tabId, tableName: tableName, columns: fetchResult.columns, columnTypes: fetchResult.columnTypes
+            )
+        )
+    }
+
+    func extractTableName(from sql: String) -> String? {
+        tableNameReading.tableName(in: sql)
+    }
+
+    var tableNameReading: TableNameReading {
+        TableNameReading(
+            dialect: sqlDialect,
+            readings: connection.type.lexicalReadings,
+            browseSchema: services.databaseManager.session(for: connectionId)?.browseSchema
         )
     }
 

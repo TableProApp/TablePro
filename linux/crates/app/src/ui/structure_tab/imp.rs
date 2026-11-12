@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 
@@ -82,7 +82,10 @@ pub struct StructureTab {
     pub saving_spinner: TemplateChild<adw::Spinner>,
     #[template_child]
     pub stop_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub action_bar: TemplateChild<gtk::ActionBar>,
 
+    pub(super) actions: OnceCell<gtk::gio::SimpleActionGroup>,
     pub(super) model: RefCell<Option<StructureModel>>,
     pub(super) queue: RefCell<VecDeque<StructureTabInput>>,
     pub(super) dispatching: Cell<bool>,
@@ -141,6 +144,7 @@ impl ObjectImpl for StructureTab {
     /// The model holds a handler on the app-wide style manager, which
     /// would otherwise outlive the tab.
     fn dispose(&self) {
+        crate::ui::text_view_teardown::release(&self.sql_view.get());
         self.link_watch.take();
         if let Ok(mut model) = self.model.try_borrow_mut()
             && let Some(mut model) = model.take()

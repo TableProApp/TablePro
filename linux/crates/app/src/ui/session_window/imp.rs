@@ -35,6 +35,8 @@ pub(super) type FailureBeside = (ConnectSource, ConnectFailure, Vec<String>);
 #[template(resource = "/app/tablepro/TablePro/ui/session-window.ui")]
 #[properties(wrapper_type = super::SessionWindow)]
 pub struct SessionWindow {
+    pub(super) state_file_watches: RefCell<Vec<tablepro_session::runtime::WatchForwarder>>,
+    pub(super) state_file_toasts: RefCell<HashMap<super::state_file_status::StateFileKind, adw::Toast>>,
     /// The toasts of the page on screen. Each page has its own, under
     /// its header bar, so the shell's sit inside the tab overview.
     pub(super) page_toasts: RefCell<Option<adw::ToastOverlay>>,
@@ -91,8 +93,10 @@ pub struct SessionWindow {
     /// The connect dialog was asked for and opens once the SSH keys are
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
+    pub(super) link_queued: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
     pub(super) launch_notices: RefCell<Vec<Said>>,
+    pub(super) unsaved_secrets: crate::ui::UnsavedSecretToasts,
     /// Every toast shown, which the overlay does not list.
     #[cfg(test)]
     pub(super) toasts: RefCell<Vec<adw::Toast>>,
@@ -102,6 +106,9 @@ pub struct SessionWindow {
     /// The window opened for a file and has shown nothing else yet, so
     /// it closes again when another window already has that file.
     pub(super) opened_for_file: Cell<bool>,
+    // Read while no relational session was in front; the next one the
+    // window adopts opens them.
+    pub(super) waiting_scripts: RefCell<Vec<(gio::File, String)>>,
     /// Reads which filesystem a database file is on. `None` reads the
     /// real one; a test stands in for a network share.
     pub(super) classify_location: Cell<Option<LocationClassifier>>,

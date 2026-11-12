@@ -3,19 +3,24 @@ mod open_file;
 mod other_databases;
 mod sessions;
 
-use std::rc::Rc;
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::time::Duration;
 
 use gtk4::prelude::*;
 use libadwaita as adw;
-use tablepro_core::{AuthMode, DriverError, DriverRegistry, LivenessPolicy, TlsConfig};
+use secrecy::SecretString;
+use tablepro_core::credentials::{SecretError, SecretKind, SecretSave};
+use tablepro_core::{AuthMode, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy, TlsConfig};
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
 use tablepro_session::operation::DefaultDeadlines;
-use tablepro_session::runtime::CountingHold;
+use tablepro_session::runtime::{CountingHold, HoldToken, ProcessHold};
 use tablepro_session::{ConnectError, CredentialSource, SessionKey};
 use tablepro_storage::{SavedConnection, StoragePaths};
-use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeDriver, FakeReply, FakeSecretVault};
+use tablepro_test_support::{
+    Call, CallCounters, ConnectionScript, FakeConnection, FakeDriver, FakeReply, FakeSecretVault,
+};
 
 use super::*;
 use crate::application::{AppServicesParts, TableProApplication};
@@ -73,6 +78,7 @@ pub(crate) struct TestWindow {
     pub window: SessionWindow,
     pub services: Rc<AppServices>,
     pub hold: Rc<CountingHold>,
+    pub hold_tokens: Rc<RefCell<Vec<Weak<()>>>>,
     pub connector: FakeConnector,
     pub saved: SavedConnection,
     /// The keyring every saved connection reads, unless the script
@@ -81,6 +87,46 @@ pub(crate) struct TestWindow {
     runtime: Option<crate::runtime::AppRuntime>,
     _settings: MemorySettings,
     _dir: tempfile::TempDir,
+}
+
+struct TrackedHold {
+    count: Rc<CountingHold>,
+    tokens: Rc<RefCell<Vec<Weak<()>>>>,
+}
+
+impl TrackedHold {
+    fn new(count: Rc<CountingHold>) -> Self {
+        Self {
+            count,
+            tokens: Rc::default(),
+        }
+    }
+}
+
+impl ProcessHold for TrackedHold {
+    fn acquire(&self) -> HoldToken {
+        let identity = Rc::new(());
+        self.tokens.borrow_mut().push(Rc::downgrade(&identity));
+        HoldToken::new((self.count.acquire(), identity))
+    }
+}
+
+#[test]
+fn hold_identity_distinguishes_a_released_write_from_other_live_work() {
+    let count = Rc::new(CountingHold::new());
+    let hold = TrackedHold::new(count.clone());
+    let write = hold.acquire();
+    let identity = hold.tokens.borrow().last().expect("write token").clone();
+    let cleanup = hold.acquire();
+    assert!(identity.upgrade().is_some());
+    drop(write);
+    assert_eq!(count.live(), 1);
+    assert!(
+        identity.upgrade().is_none(),
+        "cleanup must not keep the write's token alive"
+    );
+    drop(cleanup);
+    assert_eq!(count.live(), 0);
 }
 
 impl TestWindow {
@@ -146,6 +192,8 @@ impl TestWindow {
         let connector = FakeConnector::new(establish).always(FakeEstablish::Connect(connection));
         let liveness = LivenessPolicy::DESKTOP;
         let hold = Rc::new(CountingHold::new());
+        let tracked_hold = TrackedHold::new(hold.clone());
+        let hold_tokens = tracked_hold.tokens.clone();
         let parts = AppServicesParts {
             drivers,
             connector: Arc::new(connector.clone()),
@@ -155,7 +203,7 @@ impl TestWindow {
             storage,
             tasks: runtime.tasks(),
         };
-        let mut services = scripted_services(parts, hold.clone(), credentials, ssh);
+        let mut services = scripted_services(parts, Rc::new(tracked_hold), credentials, ssh);
         if let Some(revealer) = revealer {
             services.file_revealer = revealer;
         }
@@ -166,6 +214,7 @@ impl TestWindow {
             window,
             services,
             hold,
+            hold_tokens,
             connector,
             saved,
             vault,
@@ -283,7 +332,7 @@ fn write_unreadable_list(list_file: &std::path::Path) {
 
 fn scripted_services(
     parts: AppServicesParts,
-    hold: Rc<CountingHold>,
+    hold: Rc<dyn ProcessHold>,
     credentials: Option<FakeCredentialSource>,
     ssh: Option<tablepro_ssh::SshServices>,
 ) -> AppServices {
@@ -416,6 +465,55 @@ fn a_connected_window_shows_the_workspace_and_claims_its_key() {
     );
 }
 
+#[gtk4::test]
+fn the_picker_left_from_a_focused_row_goes_with_its_window() {
+    let test = TestWindow::picker("PickerFreed");
+    focus_the_row(&test);
+    let (picker, welcome) = {
+        let imp = test.window.imp();
+        let welcome = imp.welcome.borrow().as_ref().expect("the connection list").downgrade();
+        (imp.picker.get().expect("the picker page").downgrade(), welcome)
+    };
+    connect_from_the_picker(&test);
+
+    drop(test);
+    drain_main_context();
+
+    assert!(welcome.upgrade().is_none(), "the connection list outlived its window");
+    assert!(picker.upgrade().is_none(), "the picker page outlived its window");
+}
+
+#[gtk4::test]
+fn the_focus_on_a_page_left_moves_into_the_next_one() {
+    let test = TestWindow::picker("FocusMovesOn");
+    focus_the_row(&test);
+
+    connect_from_the_picker(&test);
+    crate::test_support::after_next_frame(&test.window);
+
+    let shell = test.window.shell().expect("the workspace");
+    assert!(
+        crate::ui::a11y::holds_focus(&shell),
+        "the focus is {:?}",
+        GtkWindowExt::focus(&test.window).map(|widget| widget.type_().name())
+    );
+}
+
+fn focus_the_row(test: &TestWindow) {
+    let picker = test.window.imp().picker.get().cloned().expect("the picker page");
+    let row = descendants(&picker)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk4::TreeExpander>().ok())
+        .expect("the saved connection's row");
+    assert!(row.grab_focus(), "the row took no focus");
+}
+
+fn connect_from_the_picker(test: &TestWindow) {
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+}
+
 fn stored_level(test: &TestWindow) -> Option<tablepro_core::SafeModeLevel> {
     match test.services.storage.connections().snapshot().state {
         tablepro_storage::ConnectionListState::Ready(list) => list
@@ -440,7 +538,7 @@ fn ticked_level(test: &TestWindow) -> Option<String> {
 }
 
 #[gtk4::test]
-fn the_main_menu_moves_the_session_between_levels_that_write_and_saves_it() {
+fn the_safe_mode_action_moves_the_session_between_levels_that_write_and_saves_it() {
     let test = TestWindow::connected("SafeModeLive");
     assert_eq!(ticked_level(&test).as_deref(), Some("off"));
 
@@ -459,7 +557,7 @@ fn the_main_menu_moves_the_session_between_levels_that_write_and_saves_it() {
 }
 
 #[gtk4::test]
-fn read_only_from_the_main_menu_saves_it_and_connects_again_read_only() {
+fn read_only_from_the_safe_mode_action_saves_it_and_connects_again_read_only() {
     let test = TestWindow::connected("SafeModeReadOnly");
 
     pick_level(&test, "read-only");
@@ -471,6 +569,59 @@ fn read_only_from_the_main_menu_saves_it_and_connects_again_read_only() {
     assert_eq!(reopened.safe_mode, tablepro_core::SafeModeLevel::ReadOnly);
     assert_eq!(stored_level(&test), Some(tablepro_core::SafeModeLevel::ReadOnly));
     wait_until(WAIT, || ticked_level(&test).as_deref() == Some("read-only")).expect("Read-Only ticked");
+}
+
+#[gtk4::test]
+fn the_header_lock_follows_the_front_connections_level() {
+    let test = TestWindow::connected("SafeModeButton");
+    let button = test.window.shell().expect("the shell").imp().safe_mode_button.get();
+
+    crate::test_support::assert_labelled(&button).expect("the lock has an accessible name");
+    let menu = button.menu_model().expect("the level chooser");
+    assert_eq!(menu.n_items(), 3);
+    for (index, target) in ["off", "confirm-writes", "read-only"].into_iter().enumerate() {
+        let index = i32::try_from(index).expect("three levels");
+        assert_eq!(
+            menu.item_attribute_value(index, gio::MENU_ATTRIBUTE_ACTION, None)
+                .and_then(|value| value.get::<String>())
+                .as_deref(),
+            Some("win.safe-mode")
+        );
+        assert_eq!(
+            menu.item_attribute_value(index, gio::MENU_ATTRIBUTE_TARGET, None)
+                .and_then(|value| value.get::<String>())
+                .as_deref(),
+            Some(target)
+        );
+    }
+    assert!(button.is_visible());
+    assert_eq!(button.icon_name().as_deref(), Some("changes-allow-symbolic"));
+    assert_eq!(button.tooltip_text().as_deref(), Some("Safe Mode: Off"));
+
+    pick_level(&test, "confirm-writes");
+    wait_until(WAIT, || {
+        button.tooltip_text().as_deref() == Some("Safe Mode: Confirm Writes")
+    })
+    .expect("the lock to name the new level");
+    assert_eq!(button.icon_name().as_deref(), Some("changes-prevent-symbolic"));
+
+    pick_level(&test, "read-only");
+    wait_until(WAIT, || ticked_level(&test).as_deref() == Some("read-only")).expect("Read-Only after reconnect");
+    let shell = test.window.shell().expect("the reopened shell");
+    let button = shell.imp().safe_mode_button.get();
+    assert_eq!(button.tooltip_text().as_deref(), Some("Safe Mode: Read-Only"));
+    assert_eq!(button.icon_name().as_deref(), Some("changes-prevent-symbolic"));
+    crate::test_support::assert_labelled(&button).expect("the reopened lock is named");
+    shell.show_safe_mode(None);
+    assert!(!button.is_visible());
+
+    let picker = TestWindow::picker("SafeModeButtonPicker");
+    assert!(
+        picker
+            .window
+            .shell()
+            .is_none_or(|shell| !shell.imp().safe_mode_button.is_visible())
+    );
 }
 
 #[gtk4::test]
@@ -548,6 +699,82 @@ fn toast_routes_to_current_page_overlay() {
         toasts.ancestor(adw::TabOverview::static_type()).is_some(),
         "the shell's toasts sit above the tab overview"
     );
+}
+
+#[gtk4::test]
+fn passwords_the_keyring_refused_from_the_dialog_are_said_once_until_a_save_works() {
+    let test = TestWindow::picker("RefusedFromDialog");
+    test.vault.fail_store(SecretKind::DatabasePassword, SecretError::Locked);
+    let submission = remembering(
+        &test,
+        "new.db",
+        &[SecretKind::DatabasePassword, SecretKind::SshPassword],
+    );
+    let id = submission.pending_save.connection.id;
+
+    test.window
+        .send(SessionWindowInput::ConnectFromDialog(Box::new(submission)));
+    test.wait_for_page("workspace");
+    drain_main_context();
+
+    let title = "The keyring is locked, so the passwords were not saved";
+    let said: Vec<adw::Toast> = test
+        .window
+        .imp()
+        .toasts
+        .borrow()
+        .iter()
+        .filter(|toast| toast.title().as_deref() == Some(title))
+        .cloned()
+        .collect();
+    assert_eq!(said.len(), 1, "one save is one report");
+    assert_eq!(said[0].timeout(), 0, "the report leaves on its own");
+    assert_eq!(said[0].button_label().as_deref(), Some("Details"));
+    assert!(shows_text(
+        &test.window.shell().expect("the shell").toast_overlay(),
+        title
+    ));
+    let stores: Vec<Call> = test
+        .vault
+        .calls()
+        .into_iter()
+        .filter(|call| matches!(call, Call::Store(..)))
+        .collect();
+    assert_eq!(
+        stores,
+        vec![Call::Store(id, SecretKind::DatabasePassword)],
+        "the locked keyring was asked again"
+    );
+    assert_eq!(
+        test.services.sessions.window_for(&SessionKey::Saved(id)),
+        Some(test.window.id()),
+        "the connection did not open"
+    );
+
+    let dismissed = Rc::new(std::cell::Cell::new(false));
+    let seen = dismissed.clone();
+    said[0].connect_dismissed(move |_| seen.set(true));
+    test.vault.clear_failures();
+    test.window
+        .send(SessionWindowInput::ConnectFromDialog(Box::new(remembering(
+            &test,
+            "next.db",
+            &[SecretKind::DatabasePassword],
+        ))));
+    wait_until(WAIT, || dismissed.get()).expect("a password the keyring kept to take the report down");
+}
+
+/// The connect dialog's Connect on a new file entry, with Remember on for `kinds`.
+fn remembering(test: &TestWindow, file: &str, kinds: &[SecretKind]) -> ConnectSubmission {
+    let mut submission = dialog_submission(FileEndpoint::create_new(test.dir().join(file)).expect("an endpoint"));
+    for kind in kinds {
+        submission.pending_save.secrets.push(SecretSave {
+            kind: *kind,
+            secret: SecretString::from("typed"),
+            label: "label".to_owned(),
+        });
+    }
+    submission
 }
 
 #[gtk4::test]
@@ -654,7 +881,7 @@ fn a_connect_still_queued_when_its_window_shuts_down_is_closed() {
         result: Ok(Connected {
             pending,
             saved: None,
-            warnings: Vec::new(),
+            secrets: None,
             session_only: Vec::new(),
         }),
     };
@@ -1123,7 +1350,7 @@ fn f002_late_show_create_reply_after_disconnect_is_dropped() {
     // The reply comes back through the workspace's input, which the
     // teardown closes before the reply is due.
     assert_eq!(
-        input.try_deliver(WorkspaceInput::RefreshPage),
+        input.try_deliver(WorkspaceInput::RefreshPage(None)),
         Delivery::ReceiverGone,
         "the torn-down workspace still takes input"
     );

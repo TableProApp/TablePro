@@ -30,11 +30,6 @@ struct CreateDatabaseSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
 
-            if let error = errorMessage {
-                Divider()
-                errorBanner(error)
-            }
-
             Divider()
 
             buttonBar
@@ -80,6 +75,10 @@ struct CreateDatabaseSheet: View {
             case .failed(let message):
                 failureRow(message: message)
             }
+
+            if let errorMessage {
+                errorRow(errorMessage)
+            }
         }
         .formStyle(.columns)
     }
@@ -106,18 +105,18 @@ struct CreateDatabaseSheet: View {
         }
     }
 
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+    private func errorRow(_ message: String) -> some View {
+        Label {
             RevealedTextView(message)
-                .font(.callout)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.secondary)
                 .lineLimit(2)
-            Spacer()
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: NoticeSeverity.error.symbolName)
+                .foregroundStyle(NoticeSeverity.error.tint)
+                .accessibilityHidden(true)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .font(.callout)
     }
 
     private var buttonBar: some View {
@@ -177,7 +176,7 @@ struct CreateDatabaseSheet: View {
                 onCreated?(name)
                 dismiss()
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = GatedOperationFailure(error).message
                 isCreating = false
             }
         }

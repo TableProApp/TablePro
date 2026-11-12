@@ -3,11 +3,13 @@ import Foundation
 import TableProPluginKit
 
 final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {
-    static let shared = QueryHistoryManager()
+    static let shared = QueryHistoryManager(
+        storage: QueryHistoryStorage(onSetAside: { DamagedStoreNotice.queryHistorySetAside($0) })
+    )
 
-    /// Not private: the rewind snapshot API lives in its own extension file rather than growing
-    /// this one, and an extension in another file cannot reach a private stored property.
+    // Not private: QueryHistoryManager+Rewind reaches it from another file.
     internal let storage: QueryHistoryStorage
+    let rewindAvailability: RewindAvailabilityCache
     private let isCapturePaused: @Sendable () -> Bool
 
     init(
@@ -15,6 +17,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
         isCapturePaused: @escaping @Sendable () -> Bool = { QueryHistoryCaptureStore.isPaused }
     ) {
         self.storage = storage
+        self.rewindAvailability = RewindAvailabilityCache(storage: storage)
         self.isCapturePaused = isCapturePaused
     }
 

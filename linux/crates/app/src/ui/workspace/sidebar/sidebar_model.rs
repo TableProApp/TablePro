@@ -8,10 +8,10 @@ use gtk4::prelude::*;
 use tablepro_core::meta::{ObjectKind, TableRef};
 
 use super::object_target::ObjectTarget;
-use super::sidebar_index::{SidebarIndex, search_key};
+use super::sidebar_index::{ObjectGroup, SectionRun, SidebarIndex, search_key};
 use super::sidebar_list::{Entries, SidebarList};
-use super::store_sync;
 use super::tree_node::TreeNode;
+use crate::ui::store_sync;
 
 /// What the search asks of the session's list.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -26,8 +26,8 @@ pub(crate) enum Search {
 }
 
 /// The session's tables as the connection tree lists them: a schema
-/// node per section of the index, each over its tables and over the
-/// ones the search finds. A new index or search is worked out into rows
+/// node per section of the index, an empty schema's too, each over its
+/// tables and over the ones the search finds. A new index or search is worked out into rows
 /// apart from the lists. A schema's tables take their rows in place; a
 /// schema whose results change gets a new list of them, which the tree
 /// swaps in with every other schema's in one change. A list of what the
@@ -35,7 +35,7 @@ pub(crate) enum Search {
 pub(crate) struct SidebarModel {
     /// Every section's schema, in list order.
     schemas: gio::ListStore,
-    /// Holds `nothing` once a list landed with no table in it.
+    /// Holds `nothing` once a list landed with no schema to show.
     empty: gio::ListStore,
     rows: gtk::FlattenListModel,
     nothing: TreeNode,
@@ -169,23 +169,23 @@ impl SidebarModel {
         // A schema named as an engine names the objects of none is a
         // section of its own under the same title.
         let mut titled: HashSet<&str> = HashSet::new();
-        for (at, run) in index.runs().iter().enumerate() {
-            let Some(section) = index.section(run.section) else {
-                continue;
-            };
+        for (section, run) in index.listed_sections() {
             let node = titled
                 .insert(section.title.as_str())
                 .then(|| held.get(&section.title).cloned())
                 .flatten()
                 .unwrap_or_else(|| TreeNode::schema(&section.title, None));
-            node.set_schema_name(index.entry(run.start).and_then(|entry| entry.object.schema.clone()));
-            if let Some(rows) = node.rows() {
-                rows.show(&index, Entries::Run(run.start, run.end));
-            }
+            node.set_schema_name(section.schema.clone());
+            let entries = run.map_or_else(Entries::default, |(_, run)| Entries::Run(run.start, run.end));
+            show_groups(&node, &index, run.map(|(_, run)| run));
             let results = match &mut found {
                 Found::Nothing => Entries::default(),
-                Found::Everything => Entries::Run(run.start, run.end),
-                Found::Picked(picked) => Entries::Picked(picked.get_mut(at).map(std::mem::take).unwrap_or_default()),
+                Found::Everything => entries,
+                Found::Picked(picked) => Entries::Picked(
+                    run.and_then(|(at, _)| picked.get_mut(at))
+                        .map(std::mem::take)
+                        .unwrap_or_default(),
+                ),
             };
             if node.found_rows().is_none_or(|list| !list.shows(&index, &results)) {
                 let list = SidebarList::new();
@@ -219,6 +219,11 @@ impl SidebarModel {
         self.answered.get() == self.asked.get()
     }
 
+    /// Whether the list on screen offers to drop the schema `name`.
+    pub(crate) fn droppable(&self, name: &str) -> bool {
+        self.shown.borrow().droppable(name)
+    }
+
     /// The kind of `target` when it is listed at all, searched for or not.
     pub(crate) fn kind_of(&self, target: &ObjectTarget) -> Option<ObjectKind> {
         let index = self.shown.borrow();
@@ -226,30 +231,79 @@ impl SidebarModel {
         index.entry(entry).map(|entry| entry.object.kind)
     }
 
-    /// The schema whose tables hold `table`, and where among them.
-    pub(crate) fn locate(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
-        self.locate_in(table, TreeNode::rows)
+    pub(crate) fn locate(&self, table: &TableRef) -> Option<Located> {
+        let entry = self.shown.borrow().find(&ObjectTarget::Rows(table.clone()))?;
+        nodes_of(&self.schemas).into_iter().find_map(|schema| {
+            let groups = schema.groups()?;
+            if let Some(offset) = schema.rows().and_then(|rows| rows.position_of_entry(entry)) {
+                return Some(Located {
+                    offset: groups.n_items() + offset,
+                    group: None,
+                    schema,
+                });
+            }
+            nodes_of(&groups).into_iter().find_map(|group| {
+                let offset = group.rows()?.position_of_entry(entry)?;
+                Some(Located {
+                    schema: schema.clone(),
+                    group: Some(group),
+                    offset,
+                })
+            })
+        })
     }
 
     /// The schema whose found tables hold `table`, and where among them.
     pub(crate) fn locate_found(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
-        self.locate_in(table, TreeNode::found_rows)
-    }
-
-    fn locate_in(
-        &self,
-        table: &TableRef,
-        list: fn(&TreeNode) -> Option<super::sidebar_list::SidebarList>,
-    ) -> Option<(TreeNode, u32)> {
         let entry = self.shown.borrow().find(&ObjectTarget::Rows(table.clone()))?;
-        let store = &self.schemas;
-        (0..store.n_items())
-            .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
-            .find_map(|node| {
-                let offset = list(&node)?.position_of_entry(entry)?;
-                Some((node, offset))
-            })
+        nodes_of(&self.schemas).into_iter().find_map(|node| {
+            let offset = node.found_rows()?.position_of_entry(entry)?;
+            Some((node, offset))
+        })
     }
+}
+
+// `offset` is under the group when there is one, else under the schema, after its groups.
+#[derive(Debug)]
+pub(crate) struct Located {
+    pub(crate) schema: TreeNode,
+    pub(crate) group: Option<TreeNode>,
+    pub(crate) offset: u32,
+}
+
+fn nodes_of(store: &impl IsA<gio::ListModel>) -> Vec<TreeNode> {
+    (0..store.n_items())
+        .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
+        .collect()
+}
+
+// A group keeps its node across lists, so the tree keeps it open.
+fn show_groups(schema: &TreeNode, index: &Arc<SidebarIndex>, run: Option<SectionRun>) {
+    let Some(store) = schema.groups() else {
+        return;
+    };
+    let held: HashMap<ObjectGroup, TreeNode> = nodes_of(&store)
+        .into_iter()
+        .filter_map(|node| Some((node.object_group()?, node)))
+        .collect();
+    let mut own = Entries::default();
+    let mut groups = Vec::new();
+    for group_run in run.map(|run| index.group_runs(run)).unwrap_or_default() {
+        let entries = Entries::Run(group_run.start, group_run.end);
+        let Some(group) = group_run.group else {
+            own = entries;
+            continue;
+        };
+        let node = held.get(&group).cloned().unwrap_or_else(|| TreeNode::objects(group));
+        if let Some(rows) = node.rows() {
+            rows.show(index, entries);
+        }
+        groups.push(node);
+    }
+    if let Some(rows) = schema.rows() {
+        rows.show(index, own);
+    }
+    store_sync::sync(&store, &groups);
 }
 
 fn flatten(first: &gio::ListStore, then: &gio::ListStore) -> gtk::FlattenListModel {
@@ -322,9 +376,11 @@ mod tests {
         nodes(store)
             .into_iter()
             .map(|node| {
+                let groups = node.groups().map(|groups| nodes(&groups.upcast())).unwrap_or_default();
+                let lists = std::iter::once(node.rows()).chain(groups.iter().map(TreeNode::rows));
                 (
                     node.title(),
-                    node.children().map(|list| names(&list)).unwrap_or_default(),
+                    lists.flatten().flat_map(|list| names(&list.upcast())).collect(),
                 )
             })
             .collect()
@@ -484,6 +540,75 @@ mod tests {
         assert_eq!(model.kind_of(&rows("active_users")), Some(ObjectKind::View));
     }
 
+    fn under(node: &TreeNode) -> Vec<String> {
+        let Some(children) = node.children() else {
+            return Vec::new();
+        };
+        (0..children.n_items())
+            .filter_map(|at| children.item(at))
+            .filter_map(|item| match item.downcast::<TreeNode>() {
+                Ok(group) => Some(group.title()),
+                Err(item) => item.downcast::<SidebarObject>().ok().map(|object| object.name()),
+            })
+            .collect()
+    }
+
+    #[gtk4::test]
+    fn a_schema_lists_a_group_for_each_other_kind_before_its_tables() {
+        let model = SidebarModel::new();
+        let of = |kind, name: &str| ObjectInfo {
+            kind,
+            ..object("public", name)
+        };
+        let objects = [
+            of(ObjectKind::Function, "total"),
+            object("public", "users"),
+            of(ObjectKind::Sequence, "ids"),
+            of(ObjectKind::View, "active_users"),
+            object("public", "orders"),
+            of(ObjectKind::Function, "add"),
+        ];
+        replace(&model, &objects, &[]);
+
+        let schema = nodes(&model.schemas()).remove(0);
+        assert_eq!(under(&schema), ["Views", "Sequences", "Functions", "orders", "users"]);
+        let groups = nodes(&schema.groups().expect("the schema's groups").upcast());
+        assert_eq!(under(&groups[2]), ["add", "total"]);
+        assert_eq!(groups[0].object_group(), Some(ObjectGroup::Views));
+
+        replace(&model, &objects[..5], &[]);
+        let again = nodes(&model.schemas()).remove(0);
+        let kept = nodes(&again.groups().expect("the schema's groups").upcast());
+        assert_eq!(
+            kept[0], groups[0],
+            "a new list keeps the group, and the tree keeps it open"
+        );
+        assert_eq!(under(&kept[2]), ["total"]);
+
+        let view = model
+            .locate(&TableRef::new(Some("public".to_owned()), "active_users"))
+            .expect("the view");
+        assert_eq!(view.group.as_ref(), Some(&kept[0]));
+        assert_eq!(view.offset, 0);
+        let orders = model
+            .locate(&TableRef::new(Some("public".to_owned()), "orders"))
+            .expect("the table");
+        assert_eq!((orders.group, orders.offset), (None, 3), "after the three groups");
+    }
+
+    #[gtk4::test]
+    fn a_key_listing_has_no_groups() {
+        let model = SidebarModel::new();
+        let key = ObjectInfo {
+            kind: ObjectKind::Key(tablepro_core::meta::KeyKind::Hash),
+            ..object("public", "session:1")
+        };
+        let asked = model.replace(SidebarIndex::keys(&[key], "Database 0".to_owned()));
+        model.show(asked.work_out()).expect("the rows");
+
+        assert_eq!(under(&nodes(&model.schemas()).remove(0)), ["session:1"]);
+    }
+
     #[gtk4::test]
     fn a_table_is_located_in_its_schema_and_among_the_results() {
         let model = SidebarModel::new();
@@ -498,8 +623,9 @@ mod tests {
         );
         let users = TableRef::new(Some("sales".to_owned()), "users");
 
-        let (node, offset) = model.locate(&users).expect("the table in its schema");
-        assert_eq!((node.title(), offset), ("sales".to_owned(), 0));
+        let located = model.locate(&users).expect("the table in its schema");
+        assert_eq!((located.schema.title(), located.offset), ("sales".to_owned(), 0));
+        assert!(located.group.is_none());
         assert!(model.locate_found(&users).is_none(), "found with no search");
 
         search(&model, "user");
@@ -521,5 +647,70 @@ mod tests {
             found(&model),
             [("public".to_owned(), vec!["user:1".to_owned(), "user:2".to_owned()])]
         );
+    }
+
+    #[gtk4::test]
+    fn an_empty_schema_has_its_node_and_the_placeholder_waits_for_none_at_all() {
+        let model = SidebarModel::new();
+
+        replace(
+            &model,
+            &[],
+            &[schema("public", true, false), schema("pg_catalog", false, true)],
+        );
+
+        let schemas = nodes(&model.schemas());
+        assert_eq!(listed(&model.schemas()), [("public".to_owned(), Vec::new())]);
+        assert_eq!(model.rows().n_items(), 1, "a placeholder beside an empty schema");
+        assert_eq!(schemas[0].schema_name().as_deref(), Some("public"));
+        replace(&model, &[object("public", "orders")], &[schema("public", true, false)]);
+        assert_eq!(
+            nodes(&model.schemas()),
+            schemas,
+            "the schema's node went when it filled"
+        );
+        assert_eq!(
+            listed(&model.schemas()),
+            [("public".to_owned(), vec!["orders".to_owned()])]
+        );
+    }
+
+    #[gtk4::test]
+    fn what_a_search_finds_stays_under_its_schema_past_an_empty_one() {
+        let model = SidebarModel::new();
+        replace(
+            &model,
+            &[object("public", "users"), object("sales", "leads")],
+            &[
+                schema("public", true, false),
+                schema("archive", false, false),
+                schema("sales", false, false),
+            ],
+        );
+        assert_eq!(
+            nodes(&model.schemas()).iter().map(TreeNode::title).collect::<Vec<_>>(),
+            ["public", "archive", "sales"]
+        );
+
+        search(&model, "lead");
+        assert_eq!(found(&model), [("sales".to_owned(), vec!["leads".to_owned()])]);
+        search(&model, "user");
+        assert_eq!(found(&model), [("public".to_owned(), vec!["users".to_owned()])]);
+        assert!(model.droppable("archive") && model.droppable("sales"));
+        assert!(!model.droppable("public"), "the default schema");
+    }
+
+    #[gtk4::test]
+    fn a_server_search_lists_nothing_under_an_empty_schema() {
+        let model = SidebarModel::new();
+        model.hold_search(Search::Everything);
+
+        replace(
+            &model,
+            &[object("sales", "user:1")],
+            &[schema("archive", false, false), schema("sales", false, false)],
+        );
+
+        assert_eq!(found(&model), [("sales".to_owned(), vec!["user:1".to_owned()])]);
     }
 }

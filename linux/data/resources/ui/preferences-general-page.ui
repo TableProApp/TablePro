@@ -17,10 +17,19 @@
       </object>
     </child>
     <child>
-      <object class="TableProDataBrowserGroup" id="data_browser_group"/>
+      <object class="TableProHistoryGroup" id="history_group"/>
     </child>
     <child>
-      <object class="TableProHistoryGroup" id="history_group"/>
+      <object class="AdwPreferencesGroup" id="privacy_group">
+        <property name="visible">False</property>
+        <property name="title" translatable="yes">Privacy</property>
+        <child>
+          <object class="AdwSwitchRow" id="share_usage_data_row">
+            <property name="title" translatable="yes">Share Usage Data</property>
+            <property name="subtitle" translatable="yes">Help improve TablePro with app activity and system information</property>
+          </object>
+        </child>
+      </object>
     </child>
   </template>
 </interface>

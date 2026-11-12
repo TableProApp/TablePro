@@ -10,14 +10,14 @@ Install the system packages listed in [README.md](README.md#quickstart). After t
 cd linux
 meson setup _build -Dprofile=development
 meson compile -C _build        # builds tablepro and tablepro-askpass
-meson test -C _build           # unit, gtk, data and packaging suites
+meson test -C _build           # cargo, data, packaging and po suites
 meson devenv -C _build ./crates/app/tablepro   # run the app
-meson devenv -C _build cargo test --workspace --exclude tablepro   # the unit suite through cargo
+meson devenv -C _build cargo test --workspace --exclude tablepro --exclude tablepro-ffi --exclude tablepro-bindgen   # the tests that need no display
 GTK_A11Y=test GSK_RENDERER=cairo GDK_BACKEND=x11 meson devenv -C _build cargo test -p tablepro   # the app's tests
 cargo fmt --all                # format
 ```
 
-The app's tests need the variables the gtk Meson suite sets
+The app's tests need the variables the cargo Meson suite sets
 (`crates/app/meson.build`), and `meson devenv` does not export them:
 `GTK_A11Y=test` for the accessibility checks, `GSK_RENDERER=cairo` for a
 machine with no GPU, and `GDK_BACKEND=x11` for the tests that press keys
@@ -46,7 +46,7 @@ cargo fmt --all -- --check
 meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
 meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
 meson compile -C _build
-xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+(ulimit -Sn 1024 && xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs)   # the package builds' open-file limit
 dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
   && meson devenv -C _build cargo test --locked -p tablepro-linux-platform --test secret_service -- --ignored"
 build-aux/packaging/make-dist.sh _build/dist
@@ -74,7 +74,7 @@ RUST_LOG=debug meson devenv -C _build ./crates/app/tablepro
 
 ### Dependencies
 
-`data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`. The packages ship the notices as their license files: `%license` in the RPM, `debian/copyright` in the .deb, and `share/licenses` in the Flatpak. `NOTICE` gathers the crates' NOTICE files, which the Apache License 2.0 asks to ship; the .deb installs it as a doc. After a change to `Cargo.lock`, regenerate them and commit the result; the Supply chain CI job fails until they match:
+`data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`. The packages ship the notices as their license files: `%license` in the RPM and `share/licenses` in the Flatpak. `debian/copyright` describes the Debian source package instead: every crate of the vendor tarball, whatever its target or dependency kind, and the code some crates carry from other projects, which `build-aux/about/source.json` and `build-aux/about/bundled` list; a license file or archive inside a crate that neither lists fails the script below. `NOTICE` gathers the crates' NOTICE files, which the Apache License 2.0 asks to ship; the .deb installs it as a doc. After a change to `Cargo.lock`, regenerate them and commit the result; the Supply chain CI job fails until they match:
 
 ```bash
 cargo install --locked cargo-about@0.9.2 --features cli
@@ -135,7 +135,7 @@ Translations come in as pull requests against `po/<locale>.po`, one language per
 2. PR title is the conventional commit message you intend to land.
 3. The PR description follows the repository's `.github/pull_request_template.md`.
 4. Run the [fast-job commands](#fast-job-commands) locally before pushing.
-5. A change to `Cargo.lock` commits what `build-aux/update-third-party-licenses.sh` rewrites: `data/licenses`, `build-aux/debian/copyright` and the spec's `License` tag ([Dependencies](#dependencies)).
+5. A change to `Cargo.lock` commits what `build-aux/update-third-party-licenses.sh` rewrites: `data/licenses`, `build-aux/debian/copyright` and the spec's `License` tag and `bundled()` Provides ([Dependencies](#dependencies)).
 6. A new or removed file under `crates/app/src` regenerates `po/POTFILES.in` ([po/README.md](po/README.md)).
 7. A user-visible change has its [changelog](#changelog) fragment.
 8. UI changes include before and after screenshots in the PR description, light and dark when color is involved. A change to a window shown in the metainfo retakes its screenshot in `data/screenshots` ([README.md](README.md#screenshots)).

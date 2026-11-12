@@ -79,13 +79,20 @@ extension MainContentCommandActions {
 
     // A list edit, not a window close: the window hosts every connection, so closing all tabs leaves this one empty.
     private func runBatchClose(kind: BatchCloseKind) async {
-        guard let coordinator else { return }
+        guard let coordinator, !tabsToClose(kind: kind).isEmpty else { return }
+        // An open cell editor or the editor's pending text is unsaved work, so it lands before the victims are read.
+        coordinator.commitActiveGridEdit()
         let victims = tabsToClose(kind: kind)
-        guard !victims.isEmpty else { return }
-        guard case .close(let closable) = await resolveUnsavedWork(in: victims) else { return }
+        let work = runningWork(.tabs(Set(victims.map(\.id))))
+        if !hasUnsavedWork(among: victims) {
+            guard await confirmsStoppingWork(work) else { return }
+        }
+        guard case .close(let closable) = await resolveUnsavedWork(in: victims, alsoStopping: work) else { return }
         // A save can suspend long enough for a victim to be pinned.
         let unpinned = Set(coordinator.tabManager.tabs.filter { !$0.isPinned }.map(\.id))
-        coordinator.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) && unpinned.contains($0) })
+        let closing = Set(victims.map(\.id).filter { closable.contains($0) && unpinned.contains($0) })
+        stop(work.filter { $0.tabId.map(closing.contains) ?? false })
+        coordinator.closeTabsByUser(ids: victims.map(\.id).filter(closing.contains))
     }
 
     internal enum UnsavedWorkOutcome: Equatable {
@@ -95,12 +102,13 @@ extension MainContentCommandActions {
     }
 
     // One prompt for the batch: NSWindow.beginSheet queues a second sheet behind the first instead of presenting it.
-    internal func resolveUnsavedWork(in victims: [QueryTab]) async -> UnsavedWorkOutcome {
+    internal func resolveUnsavedWork(in victims: [QueryTab], alsoStopping work: [RunningWork] = []) async -> UnsavedWorkOutcome {
         let everything = Set(victims.map(\.id))
         coordinator?.commitActiveGridEdit()
         guard hasUnsavedWork(among: victims) else { return .close(everything) }
 
-        switch await confirmSaveChanges(unsavedWorkMessage(for: victims), closeAnchorWindow) {
+        let message = RunningWorkPrompt.saveMessage(unsavedWorkMessage(for: victims), action: .close, alsoStopping: work)
+        switch await confirmSaveChanges(message, closeAnchorWindow) {
         case .save:
             return .close(await saveVictims(victims))
         case .dontSave:

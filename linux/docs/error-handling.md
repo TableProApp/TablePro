@@ -8,7 +8,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 |---|---|---|
 | `tablepro-core` | `DriverError`, `ConfigError`, `TransportError`, `SshFailure`, `CertificateFileProblem`, `SecretError` | The contract every driver, transport and keyring speaks. |
 | `tablepro-net` | `tls::TlsSetupError` | Wraps a `ConfigError`, a rustls error or a PEM encoding error while a TLS config is built; drivers turn it into `DriverError`. |
-| `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr. |
+| `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr, or in the in-process transport from russh's errors and the server's disconnect ([core ADR 0009](../../core/docs/decisions/0009-in-process-ssh-on-windows.md)). |
 | `drivers/<engine>` | `DriverError` only | The client library's error never leaves the crate. |
 | `tablepro-storage` | `StorageError`, `KeyringError`, `CredentialError` | `KeyringError::Secret` wraps core's `SecretError`. |
 | `tablepro-linux-platform` | `SettingsError` | GSettings. The Secret Service's errors map to core's `SecretError`. |
@@ -24,7 +24,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Transport(TransportError)` | The route failed: name resolution, refused, unreachable, a connect or SSH timeout, or an `SshFailure`. |
 | `Auth { diagnostics }` | The server refused the credentials, with its own explanation when it gave one. |
 | `LoginRefused(ServerDiagnostics)` | The server turned the login away for a reason other than the password, such as PostgreSQL's pg_hba.conf rules. The app offers no new password for it. |
-| `IntegratedAuth(String)` | A Kerberos login failed before the server saw it. |
+| `IntegratedAuth(String)` | An integrated login failed before the server saw it: GSSAPI on Linux and macOS, SSPI on Windows. |
 | `Tls { failure, detail }` | The handshake failed; `TlsFailure` says why. |
 | `Server(ServerDiagnostics)` | The server refused the statement. |
 | `ReadOnly(ReadOnlyRefusal)` | A write on a read-only connection: `ClientGuard` (the driver refused before sending) or `ServerRejected` (the server refused). |
@@ -37,6 +37,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Busy(BusyReason)` | Something was busy: `NoFreeConnection` (the server has no room for another connection, or the pool had no free slot in time) or `FileLocked` (another connection held the database file's lock past the lock timeout). |
 | `EditorSessionBusy` | The tab's session is already running a statement. |
 | `Config(ConfigError)` | The settings cannot be used: a bad host, port, path, TLS option, auth mode or missing database name. |
+| `DatabaseNotFound { database }` | The server has no database by the name the connection opens, as after a drop. A driver maps it at login only; a statement that names a missing database stays `Server`. |
 | `Decode { column, detail }` | The driver could not read a value. A bug on our side, not the server's. The detail is for the log. |
 | `Protocol(String)` | The server or the client library said something the driver did not expect. The text is for the log. |
 | `Unsupported { feature }` | The engine has no such feature. `UnsupportedFeature` names it, and the app writes the sentence. |
@@ -54,7 +55,7 @@ Rules:
 
 | Category | Variants | What the app does |
 |---|---|---|
-| `Configuration` | `Config`, `Unsupported`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
+| `Configuration` | `Config`, `Unsupported`, `DatabaseNotFound`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
 | `Network` | `Transport` (resolution, refused, unreachable); an SSH forward that was rejected or could not open, or an SSH master that exited | Names the host and port. A session retries on a backoff. |
 | `Tls` | `Tls` | One sentence per `TlsFailure`, with a remedy button where one exists. The session stops retrying. |
 | `Authentication` | `Auth`, `LoginRefused`, `IntegratedAuth`; SSH auth and host-key failures, and a cancelled SSH prompt | Says the login or the host key was refused, with the server's reason. Never echoes what was typed. The session stops retrying. |
@@ -97,23 +98,25 @@ A driver maps the codes the app acts on to their own variants and passes everyth
 |---|---|---|
 | `Connect` | `LivenessPolicy::connect_timeout`, 10 s | No TCP connection, or the socket did not open. |
 | `Login` | `login_timeout`, 15 s | Connected, but the login or TLS handshake did not finish. |
-| `SshHandshake` | `ssh_handshake_timeout`, 20 s, paused while a prompt is open | OpenSSH did not authenticate in time. |
-| `SshChannelOpen` | `ssh_channel_open_timeout`, 10 s | `ssh -O forward` did not answer in time. |
+| `SshHandshake` | `ssh_handshake_timeout`, 20 s, paused while a prompt is open | The SSH login, every jump host included, did not finish in time. |
+| `SshChannelOpen` | `ssh_channel_open_timeout`, 10 s | `ssh -O forward`, or the in-process transport's channel open, did not answer in time. |
 | `LockWait` | `WorkspaceSettings::lock_timeout`, 10 s | Another session holds a lock this statement needs. |
 | `Statement` | The call's deadline, or the workspace statement timeout of 60 s | The statement ran too long. `server_cancelled` says whether the server confirmed the stop. |
 | `Probe` | `probe_timeout`, 5 s | The server did not answer a liveness check. |
 
 ## `TlsFailure` and its remedies
 
-Drivers classify a handshake failure with `tablepro_net::tls::classify`, which walks the error's sources to the rustls error. SQL Server reads rustls's message text instead, because tiberius keeps only the text. Where the driver can tell, a failure before the server agreed to TLS is `ServerRefusedTls`, never a certificate problem.
+Drivers classify a handshake failure with `tablepro_net::tls::classify`, which walks the error's sources to the rustls error. SQL Server reads rustls's message text instead, because tiberius keeps only the text. Where the driver can tell, a failure before the server agreed to TLS is `ServerRefusedTls`, never a certificate problem. Under Disable, an engine that decides TLS by the port checks a plain login the server dropped with a TLS handshake of its own, sent with no credential, and reports a server that completes it as `ServerRequiresTls`.
 
 | `TlsFailure` | Cause | What the app offers |
 |---|---|---|
 | `UnknownIssuer` | The certificate's issuer is not in the trust set. | **Choose CA Certificate…**, which opens the connect dialog at the CA file row. |
 | `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row, where the route shows that row; MySQL over a direct route checks the host it dials and offers only **Edit Connection…**. |
 | `Expired`, `NotYetValid`, `Revoked` | The certificate itself is bad. | Nothing: the server's certificate has to be replaced. |
-| `ServerRefusedTls` | The server does not speak TLS on this port. | The message; turn TLS off or use the TLS port. |
-| `ServerRequiresTls` | TLS was off and the server insists on it. | The message; turn TLS on. |
+| `ServerRefusedTls` | The server does not speak TLS on this port. | **Change Encryption**, which opens the connect dialog at the Encryption row: Prefer or Disable reaches a server without TLS. |
+| `ServerRequiresTls` | TLS was off and the server insists on it. | **Change Encryption**, which opens the connect dialog at the Encryption row. |
+| `ServerRefusedStrict` | SQL Server closed a strict (TDS 8.0) login before answering: it does not speak TDS 8.0 (before 2022 on Windows, before 2025 on Linux) or has no certificate for it. | **Change Encryption**; Verify full suits an older server. |
+| `ServerRequiresStrict` | SQL Server closed a TDS 7.4 login before answering, as a server that requires strict encryption does. | **Change Encryption**, to Strict. |
 | `HandshakeRejected` | The server ended the handshake, for example over the client certificate. | The server's reason. |
 | `CaFileInvalid`, `ClientIdentityInvalid` | A file the user chose cannot be used. | The message names the file. |
 | `Other` | Anything else. | The rustls message. |
@@ -136,7 +139,7 @@ The only text shown as it came is what another party wrote, inside a sentence th
 
 ## Logging
 
-Logging goes through `tracing`. `crates/app/src/logging.rs` installs a `tracing_subscriber` fmt layer that writes to **stderr**, which the GNOME session journals for both Flatpak and system installs. Panics land in the same stream, so a panic and the lines around it stay in order. There is no journald writer.
+Logging goes through `tracing`. `crates/app/src/logging.rs` installs a `tracing_subscriber` fmt layer that writes to **stderr**. Started from the desktop, a systemd user session connects stderr to the journal, for Flatpak and system installs alike; started from a terminal, it goes to the terminal. Panics land in the same stream, so a panic and the lines around it stay in order. There is no journald writer.
 
 - The filter comes from `RUST_LOG`. Without it, a development build logs at `debug` and an installed one at `info`. A `RUST_LOG` that does not parse falls back to that default and logs a warning saying so.
 - `TABLEPRO_LOG_FORMAT=json` writes one JSON object per line; `text`, the default, writes plain lines.
@@ -157,7 +160,7 @@ The libraries under the drivers log what a database was sent or answered: tokio-
 
 A panic on the GTK thread ends the process: GTK calls the app back through C, which a panic cannot unwind, so it aborts. A panic on a runtime thread is caught there (`session/src/runtime/catch_panic.rs`, and tokio's own `JoinError`) and ends one task, which the UI shows as a failure.
 
-- `crates/app/src/crash_report.rs` installs a panic hook in `run()`, right after logging. It runs the default hook first, so stderr and the journal keep the usual line.
+- `crates/app/src/crash_report.rs` installs a panic hook in `run()`, right after logging. It runs the default hook first, so stderr keeps the usual line. It handles Rust panics only: a signal such as a segmentation fault in a C library ends the process without a report here, and systemd-coredump, where the system has it, keeps that one (`coredumpctl`).
 - For a panic on the GTK thread it then appends a report to `StoragePaths::crashes_dir()` (`$XDG_STATE_HOME/<dir>/crashes`): the version, application ID, profile, debug or release build, the time, the message and place, and a backtrace captured whatever `RUST_BACKTRACE` says. The file is 0600 in a 0700 directory, written through `tablepro_storage::fs::append_private_blocking`. One file per process, named `crash-<UTC time>-<pid>.txt`; the second panic Rust raises when the first cannot unwind goes in the same file.
 - At the next launch the primary instance looks for the newest report it has not announced, off the GTK thread, and records its name in `crashes/announced`. The first window shows a toast, "TablePro quit unexpectedly last time", whose Show Report button opens the folder with the report selected. The toast moves with the window from page to page until it is dismissed or times out. Only the 20 newest reports are kept.
 - Nothing leaves the machine: the user decides whether to attach the report to an issue.

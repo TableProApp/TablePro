@@ -53,7 +53,7 @@ struct SQLBuilderSingleRowLookupTests {
     func schemaIsQualified() {
         #expect(
             lookup([("code", "abc")], schema: "sales", type: .mssql)
-                .hasPrefix("SELECT * FROM [sales].[parent] WHERE [code] = 'abc'")
+                .hasPrefix("SELECT * FROM [sales].[parent] WHERE [code] = N'abc'")
         )
     }
 
@@ -167,6 +167,59 @@ struct SQLBuilderSingleRowLookupTests {
         #expect(SQLBuilder.buildDelete(
             table: "t", schema: nil, type: .postgresql, driver: driver(), primaryKeys: [("id", "5")], columns: []
         ) == "DELETE FROM \"t\" WHERE \"id\" = '5'")
+    }
+    @Test("SQL Server inserts and row edits keep exact text keys", arguments: ["\n", "\r\n", "\r"])
+    func sqlServerWrites(_ newline: String) {
+        let value = "日本\\" + newline
+        let body = "日本\\\\" + newline + (newline == "\r" ? "" : newline)
+        let literal = "N'" + body + "'"
+        let connection = DatabaseConnection(name: "test", type: .mssql)
+        let sqlDriver = MSSQLDriver(connection: connection, password: nil)
+        #expect(sqlDriver.escapeStringLiteral(value) == body)
+        let delete = SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver,
+            primaryKeys: [("k", value)], columns: []
+        )
+        #expect(delete == "DELETE FROM [dbo].[t] WHERE [k] = " + literal)
+        let update = SQLBuilder.buildUpdate(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver,
+            changes: [("v", value)], primaryKeys: [("k", value)], columns: []
+        )
+        #expect(update == "UPDATE [dbo].[t] SET [v] = " + literal + " WHERE [k] = " + literal)
+        #expect(SQLBuilder.buildInsert(table: "t", schema: nil, type: .mssql, driver: sqlDriver,
+            columns: ["k"], values: [value]) == "INSERT INTO [t] ([k]) VALUES (" + literal + ")")
+    }
+
+    // Under a SQL collation a varchar key holds both `Wessels` and `Weßels`, which compare equal against N'…' text.
+    @Test("A SQL Server text key also matches its exact stored text")
+    func sqlServerNarrowKeyMatchesExactly() {
+        let sqlDriver = MSSQLDriver(connection: DatabaseConnection(name: "test", type: .mssql), password: nil)
+        let exact = "[k] = N'Weßels' AND CAST([k] AS NVARCHAR(MAX)) COLLATE Latin1_General_100_BIN2 = N'Weßels'"
+        let narrow = [ColumnInfo(name: "k", typeName: "varchar(20)")]
+        #expect(SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "Weßels")], columns: narrow
+        ) == "DELETE FROM [dbo].[t] WHERE " + exact)
+        #expect(SQLBuilder.buildUpdate(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver,
+            changes: [("v", "x")], primaryKeys: [("k", "Weßels")], columns: narrow
+        ) == "UPDATE [dbo].[t] SET [v] = N'x' WHERE " + exact)
+        #expect(SQLBuilder.keyPredicate([("k", "Weßels")], columns: narrow, type: .mssql, driver: sqlDriver) == exact)
+        let unicode = [ColumnInfo(name: "k", typeName: "nvarchar(20)")]
+        #expect(SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "Weßels")], columns: unicode
+        ) == "DELETE FROM [dbo].[t] WHERE " + exact)
+        let number = [ColumnInfo(name: "k", typeName: "int")]
+        #expect(SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "5")], columns: number
+        ) == "DELETE FROM [dbo].[t] WHERE [k] = 5")
+    }
+
+    // A foreign key's `abc` refers to a parent `ABC` under a case-insensitive collation.
+    @Test("A SQL Server foreign key lookup keeps the column's collation")
+    func sqlServerLookupKeepsCollation() {
+        let narrow = [ColumnInfo(name: "k", typeName: "varchar(20)")]
+        #expect(lookup([("k", "abc")], columns: narrow, type: .mssql)
+            == "SELECT * FROM [parent] WHERE [k] = N'abc' ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY")
     }
 }
 

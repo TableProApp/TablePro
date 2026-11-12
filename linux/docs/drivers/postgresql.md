@@ -1,6 +1,6 @@
 # PostgreSQL
 
-Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14, 15 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 ## Connections
 
@@ -11,14 +11,19 @@ Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-pos
 | One connection per editor tab | `EditorSession` | When the tab first runs SQL |
 | One stream per stop | The cancel request | For that request |
 
-Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route and an SSH forward behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route, an SSH forward and a local socket behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+
+## Local socket
+
+A host that is an absolute path is the folder of a server on this computer, as libpq reads one: the transport opens `<folder>/.s.PGSQL.<port>` (`NetworkOption::LocalSocket`, Unix only). Peer and trust logins work there, since the server then asks for no password. The server answers an SSLRequest on a socket with `N`, so a socket takes no TLS (`ConfigError::TlsOverLocalSocket`) and no SSH tunnel (`ConfigError::LocalSocketOverSsh`). The connect dialog starts on the first of `/run/postgresql`, `/var/run/postgresql` and `/tmp` that holds the port's socket.
 
 ## TLS
 
-- `Disable` sends no SSLRequest. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
+- A new connection starts on `Prefer`, as libpq's `sslmode=prefer` does ([core ADR 0014](../../../core/docs/decisions/0014-tls-mode-of-a-new-connection.md)).
+- `Disable` sends no SSLRequest. `Prefer` sends it, goes on in plaintext when the server answers `N`, and checks no certificate (tokio-postgres's `SslMode::Prefer`). Unlike libpq, it does not retry in plaintext after a handshake that fails. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
 - `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)), and checks the name from `NetworkTarget::tls_server_name()`.
 - A client certificate is offered when one is set, for `cert` authentication in `pg_hba.conf`.
-- A server that answers the SSLRequest with `N` is reported as `ServerRefusedTls`, never as a certificate problem: the TLS connector records whether the handshake started.
+- Under `Require` or `VerifyFull`, a server that answers the SSLRequest with `N` is reported as `ServerRefusedTls`, never as a certificate problem: the TLS connector records whether the handshake started.
 - SCRAM channel binding (`tls-server-end-point`) is preferred, never required. It is used when the server's certificate is signed with RSA (SHA-1 to SHA-512) or ECDSA with SHA-256 or SHA-384. With any other signature, such as Ed25519 or ECDSA with SHA-512, tokio-postgres-rustls has no hash to bind with, and the login goes ahead without binding.
 
 ## Workspace calls
@@ -34,7 +39,7 @@ COMMIT
 - Reads always run in a `READ ONLY` transaction, also on a read-write connection.
 - `statement_timeout` is the nearer of the call's deadline and the workspace's 60 s. `lock_timeout` is 10 s, so a blocked edit reports the lock instead of a generic timeout.
 - `SET LOCAL` ends with the transaction, so nothing is left on a server connection a pooler shares.
-- A catalog read runs under the session's own search_path, so names print as the user's session sees them, and resolves nothing through it: every function is written `pg_catalog.<name>`, and every operator compares two values of one built-in type, cast where they differ (`attrelid = $1::text::regclass::oid`), or is written `OPERATOR(pg_catalog.<op>)`. A lookalike another user creates on the path can then only tie with the built-in, and `pg_catalog`, searched first, wins the tie. `bare_calls` in `metadata/mod.rs` checks every catalog statement for an unqualified call.
+- A catalog read's transaction also runs `SELECT pg_catalog.set_config('search_path', ..., true)`, which puts `pg_catalog` ahead of the session's own search_path until the COMMIT. The default schema is captured before the path changes. A table name resolves to its OID on the session's original path in the same transaction, before metadata reads use the protected path. Empty paths remain valid. Every function is written `pg_catalog.<name>`, and every operator compares two values of one built-in type, cast where they differ (`attrelid = $1::text::regclass::oid`), or is written `OPERATOR(pg_catalog.<op>)`. A lookalike another user creates on the path can then only tie with the built-in, and `pg_catalog` wins the tie even when the session's path names it after another schema. `bare_calls` in `metadata/mod.rs` checks every catalog statement for an unqualified call. Grid reads and counts keep the session's path, as the user's own SQL does.
 - The sidebar lists functions, procedures, sequences and user triggers in their schema's section, a trigger with the table it fires on beside it. Two triggers of one name on different tables are both kept, and a partition's clone of its parent's trigger (`tgparentid` set) is left out. A definition comes from `pg_get_functiondef` (every overload), `pg_get_triggerdef` without pretty printing, which names the table with its schema, or for a sequence a `CREATE SEQUENCE` built from `pg_sequences` with every clause the statement takes: `UNLOGGED` or `TEMPORARY` from `relpersistence`, and `OWNED BY` the column a `pg_depend` row of type `a` names. An identity column's sequence (type `i`) is made with its table, so its text does not open in the editor.
 - Generated SQL runs on the unnamed statement (`query_typed_raw`, `execute_typed`) with typed parameters. Nothing is prepared under a name.
 - A connection whose flight did not end with an acknowledged COMMIT or ROLLBACK is taken out of the pool, because deadpool's recycle check (`RecyclingMethod::Verified`) passes inside a half-finished transaction.
@@ -82,6 +87,8 @@ A call that timed out or lost its connection is checked before the link is decla
 3. The transaction id, `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read before COMMIT.
 4. `COMMIT`.
 
+A database change (`WriteKind::DatabaseChanges`) runs outside any transaction, because CREATE and DROP DATABASE refuse one. It is `StatementByStatement`: each statement goes out alone as a simple query, with no parameters, row guards or `SET LOCAL` bounds, and the call's deadline and cancel still stop it.
+
 A COMMIT the server answers with an error (a deferred constraint, a serialization failure) rolled back. A COMMIT that gets no answer is `CommitOutcomeUnknown` with `CommitToken::PostgresXid`, and `resolve_commit` asks `pg_xact_status` (or `txid_status`):
 
 | Status | `CommitResolution` |
@@ -103,7 +110,7 @@ An editor tab runs SQL the way psql does:
 
 - The script is split on the client with the PostgreSQL grammar and sent one statement per message, stopping at the first failure. When a statement changes `standard_conforming_strings`, the rest of the script is split again with the new rule.
 - No session-level `SET` is ever sent. The run's deadline and the session's statement timeout are enforced with cancel requests, and nothing new goes to the server until an outstanding cancel request has finished. A statement that has not ended by the end of the cancel grace ends the session.
-- Notices (`RAISE NOTICE`, warnings) arrive as `ResultEvent::Notice`.
+- Notices (`RAISE NOTICE`, warnings) arrive as `ResultEvent::Notice` with the statement that raised them, those of the cursor's `DECLARE` and its closing `COMMIT` or `RELEASE` included. Those of the driver's own statements, such as its `BEGIN`, `ROLLBACK` and the transaction probe, are dropped. A run keeps 10,000; past that the connection drops the rest and the run sends `NoticeLimitReached` once.
 - `COPY FROM STDIN` and `COPY TO STDOUT` are refused with `Unsupported`.
 - Result columns are text: the simple protocol gives a column no type, so every value arrives as `Value::Text`. Typed columns wait on rust-postgres #1358.
 
@@ -120,7 +127,8 @@ CLOSE tablepro_cursor
 COMMIT                               -- or RELEASE SAVEPOINT tablepro_cursor_savepoint
 ```
 
-- One row past the limit tells a full result from a cut one. A cut result has `total_rows: None` and `Truncation::ServerStopped`: the statement never ran past the rows fetched, so a function it calls per row, such as `SELECT archive_order(id) FROM orders`, ran for those rows only, and the driver's `COMMIT` keeps what they did. The result says so rather than read the rest: `MOVE FORWARD ALL` would run the whole statement for every plain `SELECT` too, which is what the limit is there to avoid.
+- One row past the limit tells a full result from a cut one. A cut result has `total_rows: None` and `Truncation::ServerStopped`: the server ran the statement only as far as the fetch needed, so a function it calls per row, such as `SELECT archive_order(id) FROM orders`, ran for the rows fetched, the one past the limit included, and the driver's `COMMIT` keeps what they did. A plan that reads every row before it returns one, such as a sort on the function's result, ran the function for every row. The result says so rather than read the rest: `MOVE FORWARD ALL` would run the whole statement for every plain `SELECT` too, which is what the limit is there to avoid.
+- This is how PostgreSQL runs a statement under a row limit. A cursor is a portal ([DECLARE](https://www.postgresql.org/docs/current/sql-declare.html), Notes). An Execute with a row count runs a portal only that far and suspends it, and the Sync after it commits the implicit transaction when nothing failed ([protocol](https://www.postgresql.org/docs/current/protocol-flow.html), Extended Query). libpq offers no other stop: a cancel request ends the statement with an error and rolls its implicit transaction back, rows already shown included, and otherwise every row is read ([libpq](https://www.postgresql.org/docs/current/libpq-async.html)). The Linux result summary and the Windows status line both say the server stopped the statement, a set the byte limit also cut included.
 - Each step goes as its own message, so a trailing `--` comment in the statement cannot swallow the `FETCH`.
 - A `DECLARE` the server refuses because the statement cannot be a cursor (a data-modifying `WITH`: 0A000; `SELECT INTO`: 42601) is rolled back to the savepoint or out of the driver's transaction, and the statement runs again as a plain statement. Inside the user's transaction any other failure aborts their transaction, as it would without the limit.
 - Error positions are corrected for the `DECLARE` prefix, so they count from the start of the user's statement.

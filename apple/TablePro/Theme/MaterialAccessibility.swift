@@ -1,14 +1,13 @@
 import SwiftUI
+import TableProTheme
 
 internal enum MaterialRole {
-    case banner
     case toolbar
-    case inlineControl
     case scrim
 
     var solidFallback: Color {
         switch self {
-        case .banner, .toolbar, .inlineControl:
+        case .toolbar:
             Color(nsColor: .controlBackgroundColor)
         case .scrim:
             Color(nsColor: .windowBackgroundColor)
@@ -58,15 +57,28 @@ private struct AccessibleMaterialBackgroundShape<S: Shape>: ViewModifier {
     }
 }
 
+// The scrim covers a detail pane, so its solid stand-in is the window color that pane sits on.
 internal struct AccessibleMaterialScrim: View {
     let material: Material
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    // The environment value is get-only, so a test hands its own.
+    var reduceTransparency: Bool?
+
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
+        let reduceTransparency = reduceTransparency ?? systemReduceTransparency
         if SolidSurfacePreference.prefersSolid(reduceTransparency: reduceTransparency, contrast: contrast) {
-            Rectangle().fill(MaterialRole.scrim.solidFallback)
+            Rectangle().fill(
+                ThemeShapeStyle.style(
+                    .windowBackdrop,
+                    native: MaterialRole.scrim.solidFallback,
+                    engine: themeEngine,
+                    contrast: contrast
+                )
+            )
         } else {
             Rectangle().fill(material)
         }

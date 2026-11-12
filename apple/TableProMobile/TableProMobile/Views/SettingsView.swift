@@ -112,11 +112,11 @@ struct SettingsView: View {
                 }
             }
         } icon: {
-            Image(systemName: presentation.systemImage)
+            Image(systemName: presentation.symbolName)
                 .foregroundStyle(.orange)
         }
-        /// The iCloud Sync toggle above is already the way to turn sync off.
-        ForEach(presentation.actions.filter { $0 != .turnOffSync }) { action in
+        // The iCloud Sync toggle above is already the way to turn sync off.
+        ForEach(presentation.mobileActions.filter { $0 != .turnOffSync }) { action in
             Button(action.title) {
                 appState.performSyncAction(action)
             }
@@ -149,7 +149,7 @@ struct SettingsView: View {
         } header: {
             Text("Privacy")
         } footer: {
-            Text("One report a day: hashed device ID, versions, language, database types, first-use dates. Never hostnames, credentials, queries, or data.")
+            Text("Off until you turn it on. Sent to PostHog with a random ID: app and iOS versions, device model, screen size, language, time zone, network type, database types, connection count, and first connection and query. PostHog derives an approximate location from your IP address. Never hostnames, credentials, queries, or rows.")
         }
     }
 

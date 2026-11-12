@@ -174,6 +174,81 @@ struct StatementRunControllerTests {
         #expect(controller.highlightedStatementRange == nil)
     }
 
+    // MARK: - The band across edits
+
+    // Long enough that the band's index records boundaries, which an edit near the top has to drop.
+    private let indexedScript = String(repeating: "SELECT 1;\n", count: 1_000)
+
+    private func freshBand(in controller: TextViewController, caret: Int) -> NSRange? {
+        let statement = SQLStatementScanner.locatedStatementAtCursor(in: controller.textView.string, cursorPosition: caret)
+        guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
+        return statement.contentRange
+    }
+
+    private func band(at caret: Int, in controller: TextViewController, subject: StatementRunController) -> NSRange? {
+        controller.setCursorPositions([CursorPosition(range: NSRange(location: caret, length: 0))])
+        subject.refreshHighlight(in: controller)
+        return controller.highlightedStatementRange
+    }
+
+    @Test("An edit typed into the editor reaches a band that already read the script")
+    func typedEditReachesTheBand() throws {
+        let controller = makeController(text: indexedScript)
+        let subject = makeSubject()
+        subject.install(on: controller)
+        #expect(band(at: 9_995, in: controller, subject: subject) == NSRange(location: 9_990, length: 9))
+
+        // An open comment, because the editor pairs a typed quote, and it swallows every boundary the band had read.
+        controller.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "/*")
+        try #require(controller.textView.string.hasPrefix("/*SELECT"))
+
+        #expect(freshBand(in: controller, caret: 9_995) == nil)
+        #expect(band(at: 9_995, in: controller, subject: subject) == nil)
+    }
+
+    @Test("Text set on the text view without the editor's edit path reaches the band")
+    func textSetDirectlyReachesTheBand() {
+        let controller = makeController(text: indexedScript)
+        let subject = makeSubject()
+        subject.install(on: controller)
+        #expect(band(at: 9_995, in: controller, subject: subject) == NSRange(location: 9_990, length: 9))
+
+        controller.textView.string = "'" + indexedScript
+
+        #expect(band(at: 9_995, in: controller, subject: subject) == freshBand(in: controller, caret: 9_995))
+    }
+
+    @Test("A replaced document gets a band read from the new text")
+    func replacedDocumentReachesTheBand() {
+        let controller = makeController(text: indexedScript)
+        let subject = makeSubject()
+        subject.install(on: controller)
+        #expect(band(at: 9_995, in: controller, subject: subject) == NSRange(location: 9_990, length: 9))
+
+        controller.setText("'" + indexedScript)
+
+        #expect(band(at: 9_995, in: controller, subject: subject) == freshBand(in: controller, caret: 9_995))
+    }
+
+    // 5,000 statements: resolving from the top walks about 50,000 units per caret move.
+    @Test("Moving the caret through a long script rescans only near the caret")
+    func caretMovesRescanOnlyNearTheCaret() {
+        let controller = makeController(text: String(repeating: "SELECT 1;\n", count: 5_000))
+        let subject = makeSubject()
+        subject.install(on: controller)
+        let start = 49_995
+        _ = band(at: start, in: controller, subject: subject)
+        let warmed = subject.caretIndexUnitsScanned
+
+        let moves = 500
+        for step in 1...moves {
+            _ = band(at: start - step, in: controller, subject: subject)
+        }
+
+        #expect(controller.highlightedStatementRange == freshBand(in: controller, caret: start - moves))
+        #expect(subject.caretIndexUnitsScanned - warmed <= moves * (SQLStatementCursorIndex.defaultCheckpointSpacing + 20))
+    }
+
     // MARK: - Callback
 
     @Test("Pressing a control reports that control's own statement, not the caret's")

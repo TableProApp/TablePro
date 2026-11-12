@@ -5,12 +5,7 @@
 
 import Foundation
 
-/// The words a completion notification uses.
-///
-/// Counts pick between an explicit singular and plural key rather than using automatic grammar
-/// agreement. Measured: `String(localized:defaultValue:)` carrying `^[row](inflect: true)` returns
-/// the markup verbatim when the catalog has no entry for the key, so the body would have read
-/// "3 ^[row](inflect: true) in 1m 00s". Two keys are less elegant and actually work.
+// Explicit singular and plural keys: `^[row](inflect: true)` comes back verbatim when the catalog lacks the key.
 internal enum OperationCompletionCopy {
     internal static func title(for completion: OperationCompletion) -> String {
         completion.connectionName
@@ -43,7 +38,10 @@ internal enum OperationCompletionCopy {
 
     private static func measure(_ summary: OperationSummary, kind: TrackedOperationKind) -> String {
         if let fileURL = summary.fileURL {
-            return String(format: String(localized: "Exported to %@"), fileURL.lastPathComponent)
+            guard kind == .backup else {
+                return String(format: String(localized: "Exported to %@"), fileURL.lastPathComponent)
+            }
+            return String(format: String(localized: "Backed up to %@"), fileURL.lastPathComponent)
         }
         if let statementCount = summary.statementCount {
             let template = statementCount == 1
@@ -51,9 +49,7 @@ internal enum OperationCompletionCopy {
                 : String(localized: "Ran %@ statements")
             return String(format: template, formatted(statementCount))
         }
-        /// Rows returned is checked first, and the order is load bearing. Several drivers echo the
-        /// row count back as the affected count for a plain read (MySQL does it in two places), so
-        /// testing affected first tells someone their SELECT updated 1,204 rows.
+        // Rows returned first: several drivers echo the row count as the affected count for a plain read.
         if let rowsReturned = summary.rowsReturned, rowsReturned > 0 {
             return rowsPhrase(rowsReturned)
         }
@@ -74,8 +70,6 @@ internal enum OperationCompletionCopy {
         return String(format: template, formatted(count))
     }
 
-    /// Grouped, because a notification is read at a glance and "1,204" is legible where "1204"
-    /// has to be counted.
     private static func formatted(_ count: Int) -> String {
         count.formatted(.number.grouping(.automatic))
     }
@@ -85,6 +79,9 @@ internal enum OperationCompletionCopy {
         case .schemaChange: return String(localized: "Changes applied")
         case .rowSave: return String(localized: "Changes saved")
         case .backup: return String(localized: "Backup finished")
+        case .restore: return String(localized: "Restore finished")
+        case .compareRun: return String(localized: "Comparison finished")
+        case .compareApply: return String(localized: "Sync script applied")
         case .dataImport: return String(localized: "Import finished")
         case .dataExport: return String(localized: "Export finished")
         case .objectCopy: return String(localized: "Copy finished")
@@ -92,12 +89,7 @@ internal enum OperationCompletionCopy {
         }
     }
 
-    /// A notification body is not an error dialog. The HIG is explicit that an alert, not a
-    /// notification, carries an error message, so this announces the outcome and leaves the full
-    /// text to the inline error the tab already shows.
-    /// Flattened before it is cut. A dump tool writes its diagnosis over several lines, and a
-    /// head-truncated block of those reaches the notification as the first line and a half of raw
-    /// stderr, with the sentence that names the cause below the cut.
+    // The full error stays in the tab; a dump tool's multi-line stderr is flattened before it is cut.
     private static func truncated(_ reason: String) -> String {
         let flattened = reason
             .split(whereSeparator: \.isNewline)

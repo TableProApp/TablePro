@@ -3,25 +3,15 @@ use std::cmp::Ordering;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::Value;
-use tablepro_core::column::ColumnKind;
+use tablepro_core::value::order::{compare, sort_text, sorts_as_text, storage_class_order, storage_class_rank};
 
 use super::GridRow;
 use crate::services::grid::GridColumn;
-use crate::services::grid::value_order::{compare, sort_text, storage_class_order, storage_class_rank};
 
-/// What a header click sorts a grid's rows by.
-///
-/// Text is collated in the user's locale by `GtkStringSorter`, which
-/// builds a collation key once per row rather than once per comparison.
-/// The sorter ahead of it places each storage class by a key too, and
-/// the one after it orders numbers and blobs among themselves, so the
-/// three serve any column that can hold text, including a SQLite column
-/// whose rows choose their own storage. A custom sorter runs on every
-/// comparison that reaches it, so it comes last, where texts never do.
+// GtkStringSorter keys text once per row; a custom sorter runs per comparison, so it comes last, past the texts.
 pub fn column_sorter(column: &GridColumn) -> gtk::Sorter {
     let index = column.index;
-    let column_type = &column.column_type;
-    if column_type.dynamic_storage || holds_text(&column_type.kind) {
+    if sorts_as_text(&column.column_type) {
         let sorter = gtk::MultiSorter::new();
         sorter.append(class_sorter(index));
         sorter.append(text_sorter(index));
@@ -41,10 +31,6 @@ fn class_sorter(index: usize) -> gtk::NumericSorter {
         storage_class_rank(cells.as_deref().and_then(|cells| cells.get(index)).unwrap_or(&null))
     });
     gtk::NumericSorter::new(Some(class))
-}
-
-fn holds_text(kind: &ColumnKind) -> bool {
-    kind.is_textual() || matches!(kind, ColumnKind::Json { .. } | ColumnKind::Network(_))
 }
 
 fn text_sorter(index: usize) -> gtk::StringSorter {

@@ -14,11 +14,14 @@ impl BrowseModel {
             }
             SaveInput::SaveStarted => {
                 self.show_saving(true);
+                self.stop_total_reads();
                 // Starting the save took a failed row's mark off.
                 self.grid.redraw();
             }
             SaveInput::StopSaving => fx.output(BrowseTabOutput::StopSaveRequested),
             SaveInput::ConfirmDiscard => self.confirm_discard(),
+            SaveInput::DiscardAll | SaveInput::DiscardAndRefresh
+                if self.tracker.pending_state() == crate::workspace::PendingState::Saving => {}
             SaveInput::DiscardAll => {
                 self.discard();
                 self.fetch(BrowseRequestKind::Page, fx);
@@ -47,21 +50,30 @@ impl BrowseModel {
     fn confirm_discard(&self) {
         self.grid.commit_edit();
         let pending = self.tracker.pending_count();
-        if pending == 0 {
+        if pending == 0 && self.tracker.pending_state() == crate::workspace::PendingState::Clean {
             return;
         }
         let tab = self.this.clone();
-        confirm_discard(&self.widgets.inner_stack, pending, move || {
-            if let Some(tab) = tab.upgrade() {
-                tab.send(SaveInput::DiscardAll);
-            }
-        });
+        confirm_discard(
+            &self.widgets.inner_stack,
+            pending,
+            {
+                let tracker = self.tracker.clone();
+                move || tracker.pending_state()
+            },
+            move || {
+                if let Some(tab) = tab.upgrade() {
+                    tab.send(SaveInput::DiscardAll);
+                }
+            },
+        );
     }
 
     /// The tracker already let go of what the save wrote, and the page
     /// read next replaces every row. The rows are not drawn again before
     /// it lands: a saved draft would draw empty.
     fn save_committed(&mut self, origins: &ChangeOrigins, fx: &mut Effects) {
+        self.stop_total_reads();
         self.show_saving(false);
         self.sync_pending_chrome(self.tracker.pending_count(), fx);
         // The save says how the total moved, so nothing is counted
@@ -86,6 +98,7 @@ impl BrowseModel {
     /// cannot send two, and Stop Saving takes their place.
     fn show_saving(&self, saving: bool) {
         self.saving.set(saving);
+        self.sync_total_chrome();
         self.follow_tracker();
         self.widgets.pending_bar.show_saving(saving);
     }
@@ -100,8 +113,8 @@ impl BrowseModel {
         self.refresh_banner_visibility();
     }
 
-    /// The footer and the tab's dirty flag, which App turns into the
-    /// title bullet. App hears only real transitions.
+    /// The footer and the tab's dirty flag, which the workspace turns
+    /// into the title bullet. It hears only real transitions.
     pub(super) fn sync_pending_chrome(&self, count: usize, fx: &mut Effects) {
         self.refresh_pending_bar(count);
         self.follow_tracker();

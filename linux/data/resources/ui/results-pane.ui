@@ -81,6 +81,34 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkButton" id="highlight_button">
+                    <property name="action-name">grid.highlight-rules</property>
+                    <property name="icon-name">document-edit-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Highlight Rules</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">Highlight Rules</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="columns_button">
+                    <property name="icon-name">view-reveal-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Choose which columns the grid shows</property>
+                    <property name="action-name">grid.columns</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">Columns</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
                   <!-- The pane inserts the shown result's grid actions as
                        grid, and hides this while the result has no grid. -->
                   <object class="GtkToggleButton" id="details_toggle">
@@ -97,6 +125,9 @@
                   </object>
                 </child>
               </object>
+            </child>
+            <child type="bottom">
+              <object class="TableProPendingChangesBar" id="pending_bar"/>
             </child>
             <property name="content">
               <object class="AdwOverlaySplitView" id="split_view">

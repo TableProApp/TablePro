@@ -60,6 +60,104 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.passwordSource == .env(variable: "DB_PASS"))
     }
 
+    @Test("A tunneled DuckDB Remote row dials the forward through its own Host and Port fields")
+    func tunnelRewritesServerEndpointFields() {
+        let connection = DatabaseConnection(
+            name: "quack",
+            host: "localhost",
+            port: 9_494,
+            type: .duckdb,
+            additionalFields: [
+                "duckdbMode": "remote",
+                "duckdbHost": "quack.internal",
+                "duckdbPort": "9500",
+                "duckdbAlias": "remotedb"
+            ]
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 61_234)
+
+        #expect(tunneled.additionalFields["duckdbHost"] == "127.0.0.1")
+        #expect(tunneled.additionalFields["duckdbPort"] == "61234")
+        #expect(tunneled.additionalFields["duckdbAlias"] == "remotedb")
+        #expect(tunneled.preTunnelHost == "quack.internal")
+        #expect(tunneled.preTunnelPort == 9_500)
+        #expect(tunneled.host == "127.0.0.1")
+        #expect(tunneled.port == 61_234)
+    }
+
+    @Test("A server port the driver would refuse opens no tunnel, so nothing dials it and the driver reports it")
+    func unusableServerPortOpensNoTunnel() {
+        var ssh = SSHConfiguration()
+        ssh.enabled = true
+        ssh.host = "bastion.example.com"
+        ssh.username = "deploy"
+        for typed in ["94x4", "0", "70000", "2147483648"] {
+            let connection = DatabaseConnection(
+                name: "quack",
+                host: "localhost",
+                port: 9_494,
+                type: .duckdb,
+                sshConfig: ssh,
+                additionalFields: ["duckdbMode": "remote", "duckdbHost": "quack.internal", "duckdbPort": typed]
+            )
+
+            #expect(!connection.serverEndpointPortIsUsable, "\(typed)")
+            #expect(connection.enabledTunnelKinds.isEmpty, "\(typed) would open a tunnel")
+        }
+    }
+
+    @Test("An empty server port is the field's default, so the forward replaces it")
+    func tunnelRewritesEmptyServerPort() {
+        let connection = DatabaseConnection(
+            name: "quack",
+            host: "localhost",
+            port: 9_494,
+            type: .duckdb,
+            additionalFields: ["duckdbMode": "remote", "duckdbHost": "quack.internal", "duckdbPort": ""]
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 61_234)
+
+        #expect(connection.serverEndpointPortIsUsable)
+        #expect(tunneled.additionalFields["duckdbPort"] == "61234")
+    }
+
+    @Test("A tunneled network row keeps every plugin field it carries")
+    func tunnelLeavesNetworkFieldsAlone() {
+        let connection = DatabaseConnection(
+            name: "pg",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql,
+            additionalFields: ["duckdbHost": "stale.example"]
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 61_234)
+
+        #expect(tunneled.additionalFields["duckdbHost"] == "stale.example")
+        #expect(tunneled.preTunnelHost == "db.internal")
+    }
+
+    @Test("A DuckDB Local File row with a stored SSH tunnel connects without opening it")
+    func duckdbLocalSkipsStoredTunnel() async throws {
+        var connection = DatabaseConnection(
+            name: "file",
+            type: .duckdb,
+            additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/tmp/tablepro-tests.duckdb"]
+        )
+        connection.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion.invalid"))
+
+        let effective = try await DatabaseManager.shared.buildEffectiveConnection(
+            for: connection,
+            deadline: ConnectionDeadline(configuredSeconds: 5)
+        )
+
+        #expect(effective.host == connection.host)
+        #expect(effective.preTunnelHost == nil)
+        #expect(effective.additionalFields["duckdbFilePath"] == "/tmp/tablepro-tests.duckdb")
+    }
+
     @Test("Every tunnel rewrite preserves inherited disabled and finite timeout states")
     func tunnelPreservesTimeoutOverrides() {
         let overrides: [(connect: Int?, query: Int?)] = [

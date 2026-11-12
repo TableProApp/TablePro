@@ -6,6 +6,9 @@ updates:
       - "/.github/actions/*"
     schedule:
       interval: weekly
+    # A release gets a week before it is proposed. Security updates are not held back.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:

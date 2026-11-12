@@ -359,6 +359,30 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalent == "j")
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
+
+    @Test("Export Results… sits in File > Export on Option-Shift-Command-E")
+    func exportResultsLivesUnderExport() {
+        let file = buildMenu().items.first { $0.title == String(localized: "File") }?.submenu
+        let export = file?.items.first { $0.title == String(localized: "Export") }?.submenu
+        let item = export?.items.first { $0.identifier == MenuItemFactory.identifier(for: .exportResults) }
+
+        #expect(item?.title == String(localized: "Export Results…"))
+        #expect(item?.action == #selector(MainSplitViewController.exportQueryResults(_:)))
+        #expect(item?.keyEquivalent == "e")
+        #expect(item?.keyEquivalentModifierMask == [.command, .shift, .option])
+    }
+
+    @Test("A rebound Export Results reaches its menu item")
+    func reboundExportResultsApplies() {
+        let menu = buildMenu()
+        var keyboard = KeyboardSettings()
+        keyboard.setShortcut(.character("r", command: true, shift: true, option: true), for: .exportResults)
+        MainMenuKeyEquivalentSync.apply(keyboard: keyboard, to: menu)
+
+        let item = flatten(menu).first { $0.identifier == MenuItemFactory.identifier(for: .exportResults) }
+        #expect(item?.keyEquivalent == "r")
+        #expect(item?.keyEquivalentModifierMask == [.command, .shift, .option])
+    }
 }
 
 // Sessions and conversations had no menu-bar home, so their seven commands couldn't be searched, rebound or reached.
@@ -590,6 +614,15 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
     }
 
+    @Test("Export Results exports a Table Health tab's findings, and only while connected")
+    func exportResultsOnTableHealth() {
+        var context = MenuValidationContext()
+        context.hasTableHealthFindings = true
+        #expect(!enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
+    }
+
     @Test("Neither survives losing the connection")
     func bothStillNeedAConnection() {
         var context = MenuValidationContext()
@@ -733,9 +766,21 @@ struct MainMenuValidationTests {
         context.supportsUserManagement = true
         context.supportsContainerSwitching = true
         context.supportsTableHealth = true
+        context.hasDatabase = true
         #expect(enabled(#selector(MainSplitViewController.showServerDashboard(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.showUsersAndRoles(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.openContainerSwitcher(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
+    }
+
+    // A tab opened without one would check whatever database the sidebar browsed next.
+    @Test("Table Health stays dim while the entry on screen names no database")
+    func tableHealthNeedsADatabase() {
+        var context = capableContext()
+        context.isConnected = true
+        context.hasDatabase = false
+        #expect(!enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
+        context.hasDatabase = true
         #expect(enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
     }
 
@@ -786,6 +831,7 @@ struct MainMenuValidationTests {
         context.canInsertRows = true
         context.canDeleteRows = true
         context.supportsTableHealth = true
+        context.hasDatabase = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
         context.hasRowSelection = true

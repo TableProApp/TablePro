@@ -27,7 +27,7 @@ SELECT c.conname::text,
 FROM pg_catalog.pg_constraint c
 JOIN pg_catalog.pg_class t ON t.oid = c.confrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-WHERE c.conrelid = $1::text::regclass::oid AND c.contype = 'f'
+WHERE c.conrelid = $1::text::oid AND c.contype = 'f'
   AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint p
                    WHERE p.oid = c.conparentid AND p.conrelid = c.conrelid)
 ORDER BY c.conname";

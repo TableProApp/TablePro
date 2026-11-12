@@ -23,7 +23,11 @@ struct CSVExportOptionsView: View {
 
                 Toggle("Sanitize formula-like values", isOn: $plugin.settings.sanitizeFormulas)
                     .toggleStyle(.checkbox)
-                    .help("Prevent CSV formula injection by prefixing values starting with =, +, -, @ with a single quote")
+                    .help("""
+                        For a file opened in a spreadsheet. Values that would run as formulas, such as those starting \
+                        with =, +, - or @, get a leading single quote, which stays in the value for anything that \
+                        imports the file.
+                        """)
             }
 
             Divider()

@@ -36,18 +36,20 @@ pub struct MongoTlsEngine {
     fixture: MongoFixture,
     ca: PathBuf,
     unrelated_ca: PathBuf,
+    server_certificate: PathBuf,
 }
 
 impl MongoTlsEngine {
-    async fn start_fixture() -> Result<Self, ConformanceFailure> {
-        let fixture = MongoFixture::start_tls().await.map_err(ConformanceFailure::setup)?;
+    fn from_fixture(fixture: MongoFixture) -> Self {
         let ca = fixture.pki().path(PkiFile::Ca);
         let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
-        Ok(Self {
+        let server_certificate = fixture.pki().path(PkiFile::ServerCertificate);
+        Self {
             fixture,
             ca,
             unrelated_ca,
-        })
+            server_certificate,
+        }
     }
 
     fn options(&self, host: &str, port: u16, credentials: Credentials, tls: TlsConfig) -> ConnectOptions {
@@ -80,7 +82,17 @@ impl TlsConformanceEngine for MongoTlsEngine {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        Self::start_fixture().await
+        MongoFixture::start_tls()
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
+    }
+
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        MongoFixture::start_tls_self_signed()
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -100,14 +112,19 @@ impl TlsConformanceEngine for MongoTlsEngine {
         &self.unrelated_ca
     }
 
+    fn server_certificate_file(&self) -> &Path {
+        &self.server_certificate
+    }
+
     fn served_name(&self) -> &str {
         TestPki::SERVER_NAMES[1]
     }
 
     /// The server reads the plaintext hello as a broken handshake and
-    /// closes the connection without a reply.
+    /// closes the connection without a reply, then completes the
+    /// driver's own TLS handshake.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 
     /// The client library checks each server under its own name, so the
@@ -210,7 +227,11 @@ impl TlsConformanceEngine for MongoForwardTlsEngine {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        Ok(Self(MongoTlsEngine::start_fixture().await?))
+        MongoTlsEngine::start().await.map(Self)
+    }
+
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        MongoTlsEngine::start_self_signed().await.map(Self)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -229,12 +250,16 @@ impl TlsConformanceEngine for MongoForwardTlsEngine {
         &self.0.unrelated_ca
     }
 
+    fn server_certificate_file(&self) -> &Path {
+        &self.0.server_certificate
+    }
+
     fn served_name(&self) -> &str {
         TestPki::SERVER_NAMES[1]
     }
 
     fn plaintext_rejection_category(&self) -> ErrorCategory {
-        ErrorCategory::ConnectionLost
+        ErrorCategory::Tls
     }
 }
 

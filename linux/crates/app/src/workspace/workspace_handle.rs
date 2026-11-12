@@ -182,6 +182,33 @@ impl WorkspaceHandle {
         starts
     }
 
+    pub async fn save_rows_of(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
+        let Some(tracker) = self.0.deps.rows.get(tab) else {
+            return SaveStart::NothingToSave;
+        };
+        self.save_tracked_rows(parent, tab, &tracker).await
+    }
+
+    async fn save_tracked_rows(&self, parent: &gtk::Widget, tab: Uuid, tracker: &TabTrackerHandle) -> SaveStart {
+        if let Err(rejection) = self.check_save(tab) {
+            return SaveStart::Rejected(rejection);
+        }
+        let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+            return SaveStart::Rejected(SaveRejection::InReview);
+        };
+        if let Err(start) = self.confirm_rows(parent, tracker).await {
+            return start;
+        }
+        self.save_rows(tab, tracker)
+    }
+
+    pub async fn save_structure_of(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
+        let Some(tracker) = self.0.deps.structures.get(tab) else {
+            return SaveStart::NothingToSave;
+        };
+        self.save_tracked_structure(parent, tab, &tracker).await
+    }
+
     /// Stop the saves `scope` covers. Each settles when its driver
     /// answers the cancel, as rolled back or with an unknown outcome.
     pub fn stop_saves(&self, scope: CloseScope) {
@@ -221,7 +248,9 @@ impl WorkspaceHandle {
                     PendingState::Clean if entry.open_transaction => Some(DirtyKind::OpenTransaction),
                     PendingState::Clean => None,
                 };
-                let file = entry.unsaved_file.then_some(DirtyKind::UnsavedFile);
+                // A query tab's changed rows and its file are saved and discarded together, so they are one choice.
+                let rows = matches!(pending, Some(DirtyKind::Unsaved | DirtyKind::OutcomeUnknown(_)));
+                let file = (entry.unsaved_file && !rows).then_some(DirtyKind::UnsavedFile);
                 [pending, file].into_iter().flatten().map(move |kind| DirtyTab {
                     id: entry.id,
                     title: entry.title.clone(),
@@ -255,9 +284,23 @@ impl WorkspaceHandle {
     }
 
     fn pending_state(&self, tab: Uuid) -> PendingState {
-        if let Some(tracker) = self.0.deps.rows.get(tab) {
-            return tracker.pending_state();
+        let rows = self
+            .0
+            .deps
+            .rows
+            .get(tab)
+            .map_or(PendingState::Clean, |tracker| tracker.pending_state());
+        match (rows, self.structure_state(tab)) {
+            (PendingState::OutcomeUnknown(cause), _) | (_, PendingState::OutcomeUnknown(cause)) => {
+                PendingState::OutcomeUnknown(cause)
+            }
+            (PendingState::Saving, _) | (_, PendingState::Saving) => PendingState::Saving,
+            (PendingState::Unsaved, _) | (_, PendingState::Unsaved) => PendingState::Unsaved,
+            (PendingState::Clean, PendingState::Clean) => PendingState::Clean,
         }
+    }
+
+    fn structure_state(&self, tab: Uuid) -> PendingState {
         self.0
             .deps
             .structures
@@ -265,30 +308,57 @@ impl WorkspaceHandle {
             .map_or(PendingState::Clean, |tracker| tracker.pending_state())
     }
 
+    fn check_save(&self, tab: Uuid) -> Result<(), SaveRejection> {
+        // A schema write can change the identity and columns used by a row write.
+        if self.0.ledger.in_flight_in(CloseScope::Tab(tab)) > 0 {
+            return Err(SaveRejection::AlreadySaving);
+        }
+        if matches!(self.pending_state(tab), PendingState::OutcomeUnknown(_)) {
+            return Err(SaveRejection::OutcomeUnknown);
+        }
+        Ok(())
+    }
+
     fn emit(&self, event: WorkspaceEvent) {
         (self.0.deps.events)(event);
     }
 
     async fn save_tab(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
-        if let Some(tracker) = self.0.deps.rows.get(tab) {
-            let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
-                return SaveStart::Rejected(SaveRejection::InReview);
-            };
-            if let Err(start) = self.confirm_rows(parent, &tracker).await {
+        // An editor tab holds a row tracker beside its file; a clean one leaves the save to the file.
+        // Neither does a table tab whose only edits are its Structure view's.
+        let rows_are_all = !self.0.deps.directory.has_file(tab) && self.structure_state(tab) == PendingState::Clean;
+        let rows = self
+            .0
+            .deps
+            .rows
+            .get(tab)
+            .filter(|tracker| tracker.pending_state() != PendingState::Clean || rows_are_all);
+        if let Some(tracker) = rows {
+            let start = self.save_tracked_rows(parent, tab, &tracker).await;
+            if !matches!(
+                start,
+                SaveStart::Started(_) | SaveStart::Saved | SaveStart::NothingToSave
+            ) {
                 return start;
             }
-            return self.save_rows(tab, &tracker);
+            // A file the text has not moved from stays as it is on disk, edits made elsewhere included.
+            let unsaved = self
+                .0
+                .deps
+                .directory
+                .tabs()
+                .iter()
+                .any(|entry| entry.id == tab && entry.unsaved_file);
+            return match self.0.deps.directory.save_file(tab).filter(|_| unsaved) {
+                Some(saving) => match saving.await {
+                    Ok(()) => start,
+                    Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
+                },
+                None => start,
+            };
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
-            // A close that saves its tabs can ask again while the review is
-            // open, and the review on screen is the one to answer.
-            let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
-                return SaveStart::Rejected(SaveRejection::InReview);
-            };
-            return match self.review_structure(parent, &tracker).await {
-                Ok(reviewed) => self.save_structure(tab, &tracker, reviewed),
-                Err(start) => start,
-            };
+            return self.save_tracked_structure(parent, tab, &tracker).await;
         }
         match self.0.deps.directory.save_file(tab) {
             Some(saving) => match saving.await {
@@ -296,6 +366,26 @@ impl WorkspaceHandle {
                 Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
             },
             None => SaveStart::NothingToSave,
+        }
+    }
+
+    async fn save_tracked_structure(
+        &self,
+        parent: &gtk::Widget,
+        tab: Uuid,
+        tracker: &StructureTrackerHandle,
+    ) -> SaveStart {
+        // A close that saves its tabs can ask again while the review is
+        // open, and the review on screen is the one to answer.
+        if let Err(rejection) = self.check_save(tab) {
+            return SaveStart::Rejected(rejection);
+        }
+        let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+            return SaveStart::Rejected(SaveRejection::InReview);
+        };
+        match self.review_structure(parent, tracker).await {
+            Ok(reviewed) => self.save_structure(tab, tracker, reviewed),
+            Err(start) => start,
         }
     }
 
@@ -350,6 +440,7 @@ impl WorkspaceHandle {
         state: PendingState,
         take: impl FnOnce() -> Result<Option<T>, SaveRejection>,
     ) -> Result<(Arc<Session>, SaveTicket, T), SaveStart> {
+        self.check_save(tab).map_err(SaveStart::Rejected)?;
         let session = match self.writable_session(state) {
             Ok(Some(session)) => session,
             Ok(None) => return Err(SaveStart::NothingToSave),
@@ -369,7 +460,7 @@ impl WorkspaceHandle {
                 return Err(SaveStart::Rejected(rejection));
             }
         };
-        self.emit(WorkspaceEvent::SaveStarted { tab });
+        self.emit(WorkspaceEvent::SaveStarted { tab, kind });
         Ok((session, ticket, taken))
     }
 
@@ -557,7 +648,7 @@ impl WorkspaceHandle {
 
     /// Captured before the work starts: the connection may be gone by
     /// the time the answer comes back.
-    fn history_entry(&self, session: &Session) -> HistoryEntry {
+    pub(crate) fn history_entry(&self, session: &Session) -> HistoryEntry {
         HistoryEntry {
             history: self.0.deps.history.clone(),
             connection: Some(session.metadata().clone()),
@@ -613,7 +704,8 @@ fn same_statements(left: &[Statement], right: &[Statement]) -> bool {
         })
 }
 
-struct HistoryEntry {
+/// Where a write the app ran on the user's behalf is recorded.
+pub(crate) struct HistoryEntry {
     history: Option<HistoryService>,
     connection: Option<tablepro_session::ConnectionMetadata>,
     dialect: Option<std::sync::Arc<dyn tablepro_core::dialect::SqlDialect>>,
@@ -622,7 +714,7 @@ struct HistoryEntry {
 /// A save changes the database as surely as a statement typed into the
 /// editor, so it goes in the same history. A history that cannot be
 /// written is worth a log line, never a lost save.
-async fn record(
+pub(super) async fn record(
     entry: HistoryEntry,
     statements: Vec<String>,
     written: &Result<WriteReport, OperationError>,
@@ -645,7 +737,7 @@ async fn record(
 
 /// Ask the server what became of a commit whose acknowledgement was
 /// lost, when the engine left a way to ask.
-async fn resolve_commit(
+pub(super) async fn resolve_commit(
     session: &Session,
     written: &Result<WriteReport, OperationError>,
 ) -> Option<Result<CommitResolution, OperationError>> {
@@ -736,6 +828,158 @@ mod tests {
             }));
         script.resolve_commit.always(FakeReply::Ready(resolution));
         script
+    }
+
+    fn add_structure(workspace: &Workspace) -> StructureTrackerHandle {
+        let structure = workspace.handle.0.deps.structures.register(workspace.tab);
+        structure.set_pending(Some(crate::workspace::test_workspace::edited_table(|draft| {
+            draft.columns.push(tablepro_core::ddl::DraftColumn::new(
+                "extra",
+                tablepro_core::ddl::DraftType::Typed("TEXT".to_owned()),
+            ));
+        })));
+        structure
+    }
+
+    fn save_view(workspace: &Workspace, structure: bool) -> SaveStart {
+        let parent: gtk::Widget = gtk::Label::new(None).into();
+        let (handle, tab) = (workspace.handle.clone(), workspace.tab);
+        crate::test_support::finish_on_main(WAIT, async move {
+            if structure {
+                handle.save_structure_of(&parent, tab).await
+            } else {
+                handle.save_rows_of(&parent, tab).await
+            }
+        })
+        .expect("the selected view's save")
+    }
+
+    #[gtk4::test]
+    fn unknown_schema_outcome_precedes_unsaved_rows_in_the_close_prompt() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        let structure = add_structure(&workspace);
+        structure
+            .begin_save()
+            .expect("the schema changes")
+            .expect("a schema draft");
+        structure.settle_save(&SaveOutcome::Unknown(UnknownCause::PartiallyApplied));
+
+        assert!(matches!(
+            workspace.handle.close_step(CloseScope::Tab(workspace.tab), &HashSet::new()),
+            CloseStep::ResolveUnknownOutcome(tabs)
+                if tabs.len() == 1 && tabs[0].kind == DirtyKind::OutcomeUnknown(UnknownCause::PartiallyApplied)
+        ));
+        assert_eq!(
+            save_view(&workspace, false),
+            SaveStart::Rejected(SaveRejection::OutcomeUnknown)
+        );
+        assert_eq!(workspace.tracker.pending_count(), 1);
+        workspace.handle.discard(&[workspace.tab], true);
+        assert_eq!(workspace.tracker.pending_state(), PendingState::Clean);
+        assert_eq!(structure.pending_state(), PendingState::Clean);
+        assert!(matches!(
+            workspace.events.borrow().last(),
+            Some(WorkspaceEvent::Discarded { reload: true, .. })
+        ));
+    }
+
+    #[gtk4::test]
+    fn unknown_row_outcome_precedes_unsaved_schema_in_the_close_prompt() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        let structure = add_structure(&workspace);
+        let batch = workspace.tracker.begin_save().expect("a save").expect("row changes");
+        let _ = workspace
+            .tracker
+            .settle_save(&SaveOutcome::Unknown(UnknownCause::Interrupted), batch.snapshot);
+
+        assert!(matches!(
+            workspace.handle.close_step(CloseScope::Tab(workspace.tab), &HashSet::new()),
+            CloseStep::ResolveUnknownOutcome(tabs)
+                if tabs.len() == 1 && tabs[0].kind == DirtyKind::OutcomeUnknown(UnknownCause::Interrupted)
+        ));
+        assert_eq!(
+            save_view(&workspace, true),
+            SaveStart::Rejected(SaveRejection::OutcomeUnknown)
+        );
+        assert!(structure.has_pending());
+    }
+
+    #[gtk4::test]
+    fn a_table_saves_rows_and_schema_separately_without_overlapping_writes() {
+        for structure_first in [false, true] {
+            let mut script = ConnectionScript::default();
+            script
+                .write_batch
+                .always(FakeReply::StoppedWith(Err(DriverError::RolledBack {
+                    statement_index: 0,
+                    source: Box::new(DriverError::Cancelled),
+                })));
+            let workspace = Workspace::open(script);
+            let structure = add_structure(&workspace);
+            assert!(matches!(save_view(&workspace, structure_first), SaveStart::Started(_)));
+            wait_until(WAIT, || CallCounters::get(&workspace.counters().write_batch) == 1).expect("the write starts");
+
+            assert_eq!(
+                save_view(&workspace, !structure_first),
+                SaveStart::Rejected(SaveRejection::AlreadySaving)
+            );
+            assert_eq!(workspace.handle.ledger().in_flight(), 1);
+            assert_eq!(CallCounters::get(&workspace.counters().write_batch), 1);
+            workspace.handle.stop_saves(CloseScope::Tab(workspace.tab));
+            workspace.settle();
+            assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
+            assert_eq!(structure.pending_state(), PendingState::Unsaved);
+        }
+    }
+
+    #[gtk4::test]
+    fn closing_a_combined_tab_saves_rows_before_schema_and_discards_both() {
+        let mut script = ConnectionScript::default();
+        script
+            .write_batch
+            .always(FakeReply::ok(WriteReport::new(vec![Some(1)])));
+        let workspace = Workspace::open(script);
+        let structure = add_structure(&workspace);
+        assert!(matches!(workspace.start().as_slice(), [SaveStart::Started(_)]));
+        assert_eq!(workspace.settle().kind, WriteKind::RowChanges);
+        assert_eq!(workspace.tracker.pending_state(), PendingState::Clean);
+        assert_eq!(structure.pending_state(), PendingState::Unsaved);
+        assert!(matches!(
+            workspace
+                .handle
+                .close_step(CloseScope::Tab(workspace.tab), &HashSet::new()),
+            CloseStep::AskSaveChanges(_)
+        ));
+        assert!(matches!(workspace.start().as_slice(), [SaveStart::Started(_)]));
+        assert_eq!(workspace.settle().kind, WriteKind::SchemaChanges);
+        assert_eq!(structure.pending_state(), PendingState::Clean);
+        assert!(matches!(
+            workspace
+                .handle
+                .close_step(CloseScope::Tab(workspace.tab), &HashSet::new()),
+            CloseStep::Approve
+        ));
+
+        workspace.edit(3);
+        let structure = add_structure(&workspace);
+        workspace.handle.discard(&[workspace.tab], false);
+        assert_eq!(workspace.tracker.pending_state(), PendingState::Clean);
+        assert_eq!(structure.pending_state(), PendingState::Clean);
+    }
+
+    #[gtk4::test]
+    fn changed_rows_and_an_unsaved_file_of_one_tab_are_one_choice() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        workspace.tabs.0.borrow_mut()[0].unsaved_file = true;
+
+        let dirty = workspace.handle.dirty_tabs();
+
+        assert_eq!(dirty.len(), 1, "{dirty:?}");
+        assert_eq!(dirty[0].kind, DirtyKind::Unsaved);
+        let _ = workspace.tracker.discard();
+        let dirty = workspace.handle.dirty_tabs();
+        assert_eq!(dirty.len(), 1);
+        assert_eq!(dirty[0].kind, DirtyKind::UnsavedFile);
     }
 
     #[gtk4::test]

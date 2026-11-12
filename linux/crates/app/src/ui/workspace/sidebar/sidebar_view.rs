@@ -13,8 +13,8 @@ use super::sidebar_affordances::SidebarAffordances;
 use super::sidebar_event::SidebarEvent;
 use super::sidebar_index::SidebarIndex;
 use super::sidebar_menu::{
-    DROP_TABLE, EDIT_STRUCTURE, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE, SHOW_DEFINITION,
-    SHOW_DIAGRAM, SHOW_SCHEMA_DIAGRAM, offers,
+    DROP_DATABASE, DROP_SCHEMA, DROP_TABLE, EDIT_STRUCTURE, IMPORT_CSV, NEW_SCHEMA, NEW_TABLE, OPEN_IN_NEW_TAB,
+    SHOW_CREATE_TABLE, SHOW_DEFINITION, SHOW_DIAGRAM, SHOW_SCHEMA_DIAGRAM, TRUNCATE_TABLE, offers, schema_drop,
 };
 use super::sidebar_model::{RowsAsked, RowsWorkedOut, Search, SidebarModel};
 use super::tree_node::TreeNode;
@@ -187,13 +187,20 @@ impl SidebarView {
         (self.inner.events)(SidebarEvent::ShowDefinition(object));
     }
 
+    /// Whether the list on screen offers to drop the schema `name`: one
+    /// the session lists as the user's own, neither its default nor one
+    /// withheld.
+    pub(crate) fn droppable(&self, name: &str) -> bool {
+        self.inner.model.droppable(name)
+    }
+
     /// Whether the session lists `table`, searched for or not.
     pub(crate) fn lists(&self, table: &TableRef) -> bool {
         self.inner.model.kind_of(&ObjectTarget::Rows(table.clone())).is_some()
     }
 
     /// The schema whose tables hold `table`, and where among them.
-    pub(crate) fn locate(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
+    pub(crate) fn locate(&self, table: &TableRef) -> Option<super::sidebar_model::Located> {
         self.inner.model.locate(table)
     }
 
@@ -260,6 +267,7 @@ impl SidebarInner {
             EDIT_STRUCTURE => SidebarEvent::EditStructure(table),
             SHOW_CREATE_TABLE => SidebarEvent::ShowCreateTable(table),
             IMPORT_CSV => SidebarEvent::ImportCsv(table),
+            TRUNCATE_TABLE => SidebarEvent::TruncateTable(table),
             DROP_TABLE => SidebarEvent::DropTable(table),
             SHOW_DIAGRAM => SidebarEvent::ShowDiagram(table.schema),
             _ => return,
@@ -276,6 +284,39 @@ impl SidebarInner {
             return;
         }
         (self.events)(SidebarEvent::NewTable(schema.filter(|schema| !schema.is_empty())));
+    }
+
+    fn new_schema(&self) {
+        if self.holds.get() == Holds::Keys || !self.affordances.get().offers_new_schema() {
+            return;
+        }
+        (self.events)(SidebarEvent::NewSchema);
+    }
+
+    /// Drop the schema, or the database it is, that the target names: a
+    /// name the list no longer has, or no longer offers to drop, does
+    /// nothing, as a stale object menu does.
+    fn drop_schema(&self, action: &str, target: Option<&glib::Variant>) {
+        let Some(schema) = target
+            .and_then(|target| target.get::<String>())
+            .filter(|schema| !schema.is_empty())
+        else {
+            tracing::warn!(action, "a drop was asked for without a schema");
+            return;
+        };
+        if self.holds.get() == Holds::Keys || schema_drop(self.affordances.get()) != Some(action) {
+            tracing::warn!(action, "a drop the connection does not offer");
+            return;
+        }
+        if !self.model.droppable(&schema) {
+            tracing::warn!(action, "a drop named a schema the list no longer offers");
+            return;
+        }
+        let event = match action {
+            DROP_DATABASE => SidebarEvent::DropDatabase(schema),
+            _ => SidebarEvent::DropSchema(schema),
+        };
+        (self.events)(event);
     }
 
     fn show_schema_diagram(&self, target: Option<&glib::Variant>) {
@@ -351,6 +392,7 @@ fn install_actions(inner: &Rc<SidebarInner>) {
         EDIT_STRUCTURE,
         SHOW_CREATE_TABLE,
         IMPORT_CSV,
+        TRUNCATE_TABLE,
         DROP_TABLE,
         SHOW_DEFINITION,
     ] {
@@ -379,4 +421,22 @@ fn install_actions(inner: &Rc<SidebarInner>) {
         }
     });
     inner.actions.add_action(&diagram);
+    let new_schema = gio::SimpleAction::new(NEW_SCHEMA, None);
+    let view = Rc::downgrade(inner);
+    new_schema.connect_activate(move |_, _| {
+        if let Some(view) = view.upgrade() {
+            view.new_schema();
+        }
+    });
+    inner.actions.add_action(&new_schema);
+    for name in [DROP_SCHEMA, DROP_DATABASE] {
+        let action = gio::SimpleAction::new(name, Some(glib::VariantTy::STRING));
+        let view = Rc::downgrade(inner);
+        action.connect_activate(move |_, target| {
+            if let Some(view) = view.upgrade() {
+                view.drop_schema(name, target);
+            }
+        });
+        inner.actions.add_action(&action);
+    }
 }

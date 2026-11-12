@@ -3,6 +3,7 @@ import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
+@testable import TableProMobile
 
 final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     enum MockError: Error { case scripted }
@@ -16,6 +17,10 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedDatabases: [String] = []
     // The database the driver says it is in, which may be named differently from the one the connection stores.
     var scriptedCurrentDatabase: String?
+    // What `SELECT DATABASE()` and `current_schema()` answer; nil keeps the driver where it is.
+    var scriptedSessionDatabase: String?
+    var scriptedSessionSchema: String?
+    private(set) var sessionDatabaseReads = 0
     var scriptedSchemas: [String] = []
     var scriptedTransactionState: DriverTransactionState = .unknown
     // Answered in order, one per call, before falling back to `scriptedTransactionState`.
@@ -115,8 +120,11 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func fetchSchemas() async throws -> [String] { scriptedSchemas }
     var currentDatabase: String? { scriptedCurrentDatabase }
 
+    var refusedDatabases: Set<String> = []
+
     func switchDatabase(to name: String) async throws {
         if let switchDatabaseError { throw switchDatabaseError }
+        if refusedDatabases.contains(name) { throw MockError.scripted }
         switchedDatabases.append(name)
     }
     func switchSchema(to name: String) async throws {
@@ -177,5 +185,19 @@ final class MockSecureStore: SecureStore, @unchecked Sendable {
 
     func seed(_ key: String, _ value: String) {
         storage[key] = value
+    }
+}
+
+extension MockDatabaseDriver: SessionDatabaseReporting, SessionSchemaReporting {
+    var reportsDatabaseWithoutStatement: Bool { false }
+
+    func sessionDatabase() async throws -> String? {
+        sessionDatabaseReads += 1
+        return scriptedSessionDatabase
+    }
+
+    func settleCurrentSchema() async {
+        guard let scriptedSessionSchema else { return }
+        currentSchema = scriptedSessionSchema
     }
 }

@@ -253,8 +253,6 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// per table, which is too expensive to run ahead of the user.
     var providesBulkForeignKeyFetch: Bool { get }
 
-    /// Fetch foreign keys for a specific set of tables.
-    /// Default implementation calls fetchAllForeignKeys and filters, or falls back to per-table.
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]]
 
     /// Fetch an approximate row count using fast database-specific metadata.
@@ -816,16 +814,16 @@ extension DatabaseDriver {
         )
     }
 
-    /// Default fetchAllDatabaseMetadata: falls back to per-database calls (N+1).
-    /// Drivers should override with a single bulk query where possible.
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
         let dbNames = try await fetchDatabases()
         var results: [DatabaseMetadata] = []
         for dbName in dbNames {
+            try Task.checkCancellation()
             do {
                 let metadata = try await fetchDatabaseMetadata(dbName)
                 results.append(metadata)
             } catch {
+                try Self.rethrowIfCancelled(error)
                 results.append(DatabaseMetadata.minimal(name: dbName))
             }
         }
@@ -842,72 +840,67 @@ extension DatabaseDriver {
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()
-        var result: [String: [ForeignKeyInfo]] = [:]
-        for table in allTables {
-            do {
-                let fks = try await fetchForeignKeys(table: table.name)
-                if !fks.isEmpty { result[table.name] = fks }
-            } catch {
-                Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Failed to fetch foreign keys for \(table.name): \(error.localizedDescription)")
-            }
+        return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "foreign keys") { name in
+            let keys = try await fetchForeignKeys(table: name)
+            return keys.isEmpty ? nil : keys
         }
-        return result
     }
 
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]] {
-        // For small subsets, per-table fetch avoids scanning the entire schema
-        if tableNames.count <= 5 {
-            var result: [String: [ForeignKeyInfo]] = [:]
-            for tableName in tableNames {
-                do {
-                    let fks = try await fetchForeignKeys(table: tableName)
-                    if !fks.isEmpty { result[tableName] = fks }
-                } catch {
-                    Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                        .debug("Failed to fetch foreign keys for \(tableName): \(error.localizedDescription)")
-                }
-            }
-            return result
+        if providesBulkForeignKeyFetch, tableNames.count > 5 {
+            let all = try await fetchAllForeignKeys()
+            let nameSet = Set(tableNames)
+            return all.filter { nameSet.contains($0.key) }
         }
-        let all = try await fetchAllForeignKeys()
-        let nameSet = Set(tableNames)
-        return all.filter { nameSet.contains($0.key) }
+        // Without a bulk query the schema-wide read is a round trip per schema table; past five names an error still fails it.
+        return try await readEachTable(tableNames, skippingFailures: tableNames.count <= 5, reading: "foreign keys") { name in
+            let keys = try await fetchForeignKeys(table: name)
+            return keys.isEmpty ? nil : keys
+        }
     }
 
     func fetchIndexes(forTables tableNames: [String]) async throws -> [String: [IndexInfo]] {
-        var result: [String: [IndexInfo]] = [:]
-        for tableName in tableNames {
+        try await readEachTable(tableNames, skippingFailures: true, reading: "indexes") { name in
+            let indexes = try await fetchIndexes(table: name)
+            return indexes.isEmpty ? nil : indexes
+        }
+    }
+
+    private func readEachTable<Value>(
+        _ tableNames: [String],
+        skippingFailures: Bool,
+        reading what: String,
+        _ read: (String) async throws -> Value?
+    ) async throws -> [String: Value] {
+        var result: [String: Value] = [:]
+        for name in tableNames {
+            try Task.checkCancellation()
             do {
-                let indexes = try await fetchIndexes(table: tableName)
-                if !indexes.isEmpty { result[tableName] = indexes }
+                if let value = try await read(name) { result[name] = value }
             } catch {
+                try Self.rethrowIfCancelled(error)
+                guard skippingFailures else { throw error }
                 Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Failed to fetch indexes for \(tableName): \(error.localizedDescription)")
+                    .debug("Skipping \(what) for \(name): \(error.localizedDescription)")
             }
         }
         return result
+    }
+
+    private static func rethrowIfCancelled(_ error: any Error) throws {
+        try Task.checkCancellation()
+        if error is CancellationError { throw error }
     }
 
     func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
         []
     }
 
-    /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).
-    /// Drivers should override with a single bulk query where possible.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let allTables = try await fetchTables()
-        var result: [String: [ColumnInfo]] = [:]
-        for table in allTables {
-            do {
-                let columns = try await fetchColumns(table: table.name)
-                result[table.name] = columns
-            } catch {
-                Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Skipping columns for table '\(table.name)': \(error.localizedDescription)")
-            }
+        return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "columns") { name in
+            try await fetchColumns(table: name)
         }
-        return result
     }
 
     /// Default: no dependent types (MySQL/SQLite don't have standalone enum types)
@@ -1089,6 +1082,9 @@ enum DatabaseDriverFactory {
         // The tunnel opens from the linked SSH profile as it is now, not the row's stored copy of it.
         let tunneled = SSHProfileStorage.shared.refreshingLinkedProfile(connection)
         if let refusal = SSLModeNotSupportedError.refusal(for: tunneled, pluginType: type(of: plugin)) {
+            throw refusal
+        }
+        if let refusal = DriverSettingNotSupportedError.refusal(for: tunneled, pluginType: type(of: plugin)) {
             throw refusal
         }
 

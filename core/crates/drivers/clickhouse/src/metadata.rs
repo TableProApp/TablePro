@@ -1,12 +1,37 @@
+use tablepro_core::ddl::DatabaseChoices;
 use tablepro_core::meta::{ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, SchemaInfo};
 use tablepro_core::sql_syntax::terminated;
 use tablepro_core::{DriverError, UnsupportedFeature};
 
 use crate::call_client::CallClient;
+use crate::errors::{code, server_code};
 use crate::result_reader::{CatalogRow, read_table};
 
 /// The databases the server keeps for itself.
-const SYSTEM_DATABASES: [&str; 3] = ["system", "INFORMATION_SCHEMA", "information_schema"];
+pub(crate) const SYSTEM_DATABASES: [&str; 3] = ["system", "INFORMATION_SCHEMA", "information_schema"];
+
+/// Clusters of more than one server. A stock single server lists
+/// `default` with its one host and has no Keeper, so ON CLUSTER would
+/// fail there.
+const CLUSTERS_SQL: &str = "SELECT cluster FROM system.clusters GROUP BY cluster HAVING count() > 1 ORDER BY cluster";
+
+/// The clusters a new database or a truncate can run on. A login that
+/// may not read `system.clusters` sees none, and runs on this server.
+pub(crate) async fn fetch_database_choices(calls: &CallClient) -> Result<DatabaseChoices, DriverError> {
+    let clusters = match read_table(calls.raw(CLUSTERS_SQL)?, None).await {
+        Ok(result) => result
+            .rows
+            .iter()
+            .map(|row| CatalogRow(row).text(0))
+            .collect::<Result<Vec<_>, _>>()?,
+        Err(error) if server_code(&error) == Some(code::ACCESS_DENIED) => Vec::new(),
+        Err(error) => return Err(error),
+    };
+    Ok(DatabaseChoices {
+        clusters,
+        ..DatabaseChoices::default()
+    })
+}
 
 /// Every database, with the session's own as the default.
 pub(crate) async fn list_schemas(calls: &CallClient) -> Result<Vec<SchemaInfo>, DriverError> {

@@ -5,7 +5,9 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_session::SessionKey;
+use uuid::Uuid;
 
+use super::sidebar_index::ObjectGroup;
 use super::sidebar_list::SidebarList;
 
 /// What a row of the connection tree above the tables stands for.
@@ -19,6 +21,7 @@ pub(crate) enum NodeKind {
     Connection,
     /// One schema, or database, of an open connection.
     Schema,
+    ObjectGroup,
     /// Says an open connection lists nothing.
     Placeholder,
 }
@@ -31,11 +34,16 @@ mod imp {
     pub struct TreeNode {
         pub(super) kind: Cell<NodeKind>,
         pub(super) key: RefCell<Option<SessionKey>>,
+        pub(super) group_id: Cell<Option<Uuid>>,
         /// The schema a schema row lists. `None` for the objects an
         /// engine lists with no schema.
         pub(super) schema: RefCell<Option<String>>,
         /// What the tree lists under the row.
         pub(super) children: RefCell<Option<gio::ListModel>>,
+        // A schema's or a group's objects, which a schema lists after its groups.
+        pub(super) rows: RefCell<Option<SidebarList>>,
+        pub(super) groups: RefCell<Option<gio::ListStore>>,
+        pub(super) object_group: Cell<Option<ObjectGroup>>,
         /// A schema's tables the search finds.
         pub(super) found: RefCell<Option<gio::ListModel>>,
         #[property(get, set)]
@@ -79,11 +87,11 @@ impl TreeNode {
         node
     }
 
-    pub(crate) fn group(title: &str) -> Self {
+    pub(crate) fn group(id: Uuid, title: &str) -> Self {
         let node = Self::of(NodeKind::Group, title);
-        node.imp()
-            .children
-            .replace(Some(gio::ListStore::new::<TreeNode>().upcast()));
+        let imp = node.imp();
+        imp.group_id.set(Some(id));
+        imp.children.replace(Some(gio::ListStore::new::<TreeNode>().upcast()));
         node
     }
 
@@ -99,9 +107,34 @@ impl TreeNode {
         let node = Self::of(NodeKind::Schema, title);
         let imp = node.imp();
         imp.schema.replace(schema);
-        imp.children.replace(Some(SidebarList::new().upcast()));
+        let (groups, rows) = (gio::ListStore::new::<TreeNode>(), SidebarList::new());
+        let models = gio::ListStore::new::<gio::ListModel>();
+        models.append(&groups);
+        models.append(&rows);
+        imp.children
+            .replace(Some(gtk4::FlattenListModel::new(Some(models)).upcast()));
+        imp.groups.replace(Some(groups));
+        imp.rows.replace(Some(rows));
         imp.found.replace(Some(SidebarList::new().upcast()));
         node
+    }
+
+    pub(crate) fn objects(group: ObjectGroup) -> Self {
+        let node = Self::of(NodeKind::ObjectGroup, &group.title());
+        let imp = node.imp();
+        let rows = SidebarList::new();
+        imp.children.replace(Some(rows.clone().upcast()));
+        imp.rows.replace(Some(rows));
+        imp.object_group.set(Some(group));
+        node
+    }
+
+    pub(crate) fn object_group(&self) -> Option<ObjectGroup> {
+        self.imp().object_group.get()
+    }
+
+    pub(crate) fn groups(&self) -> Option<gio::ListStore> {
+        self.imp().groups.borrow().clone()
     }
 
     pub(crate) fn placeholder(title: &str) -> Self {
@@ -114,6 +147,10 @@ impl TreeNode {
 
     pub(crate) fn key(&self) -> Option<SessionKey> {
         self.imp().key.borrow().clone()
+    }
+
+    pub(crate) fn group_id(&self) -> Option<Uuid> {
+        self.imp().group_id.get()
     }
 
     pub(crate) fn schema_name(&self) -> Option<String> {
@@ -148,7 +185,7 @@ impl TreeNode {
 
     /// A schema's tables.
     pub(crate) fn rows(&self) -> Option<SidebarList> {
-        self.children().and_downcast::<SidebarList>()
+        self.imp().rows.borrow().clone()
     }
 
     /// The schema's tables the search finds.

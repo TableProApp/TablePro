@@ -8,6 +8,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm,
     LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -233,6 +234,10 @@ impl SqlDialect for MySqlDialect {
         Some(self)
     }
 
+    fn dump(&self) -> Option<&dyn DumpDialect> {
+        Some(self)
+    }
+
     fn insert_default_row(&self, table_sql: &str) -> Option<String> {
         Some(format!("INSERT INTO {table_sql} () VALUES ()"))
     }
@@ -357,6 +362,9 @@ fn adapt(value: Value, param_type: ParamType) -> Result<(Value, ParamType), Bind
         (Value::Int(number), ParamType::UInt64) if number >= 0 => {
             (Value::UInt(number.unsigned_abs()), ParamType::UInt64)
         }
+        (Value::Int32(number), ParamType::UInt64) if number >= 0 => {
+            (Value::UInt(u64::from(number.unsigned_abs())), ParamType::UInt64)
+        }
         (Value::Other(other), _) => (Value::Text(other.text), ParamType::Text),
         (value, param_type) => (value, param_type),
     })
@@ -369,6 +377,7 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
             true => "TRUE".to_owned(),
             false => "FALSE".to_owned(),
         },
+        Value::Int32(integer) => integer.to_string(),
         Value::Int(integer) => integer.to_string(),
         Value::UInt(integer) => integer.to_string(),
         Value::WideInt(integer) => integer.to_string(),
@@ -466,6 +475,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "DES_DECRYPT",
         "ENCODE",
         "DECODE",
+        "VALIDATE_PASSWORD_STRENGTH",
     ],
     secret_parameters: &[],
 };
@@ -816,6 +826,9 @@ mod tests {
             "SELECT AES_DECRYPT(secret, UNHEX(SHA2('passphrase', 512))) FROM t",
             "SELECT DES_ENCRYPT('text', 'key'), DES_DECRYPT(secret, 'key') FROM t",
             "SELECT ENCODE('text', 'pass'), DECODE(secret, 'pass') FROM t",
+            "SELECT VALIDATE_PASSWORD_STRENGTH('Hunter2!')",
+            "PREPARE s FROM 'CREATE USER app IDENTIFIED BY ''p'''; EXECUTE s; DEALLOCATE PREPARE s",
+            "SET @s = 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
         ] {
             assert_eq!(
                 dialect(MySqlFlavour::MySql).history_recording(sql),
@@ -823,6 +836,10 @@ mod tests {
                 "{sql}"
             );
         }
+        assert_eq!(
+            dialect(MySqlFlavour::MariaDb).history_recording("EXECUTE IMMEDIATE 'CREATE USER app IDENTIFIED BY ''p'''"),
+            HistoryRecording::Withhold(tablepro_core::sql_syntax::WithholdReason::CredentialStatement)
+        );
     }
 
     #[test]

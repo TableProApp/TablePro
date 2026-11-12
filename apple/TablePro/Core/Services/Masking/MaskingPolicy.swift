@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-/// The rules one connection masks its values by, and the only place they are matched against columns.
+// The rules one connection masks its values by, and the only place they are matched against columns.
 struct MaskingPolicy: Equatable, Sendable {
     let rules: [MaskingRule]
 
@@ -18,13 +18,16 @@ struct MaskingPolicy: Equatable, Sendable {
 
     var isEmpty: Bool { rules.isEmpty }
 
-    /// The first rule that matches wins. Without a table, as for most query results, a `table.column`
-    /// pattern matches by its column part alone, so an unknown source masks more rather than less.
+    // The first rule that matches wins. Without a table, as for most query results, a `table.column`
+    // pattern matches by its column part alone, so an unknown source masks more rather than less.
     func style(table: String?, column: String, typeName: String?) -> MaskingStyle? {
         for rule in rules where Self.matches(rule, table: table, column: column, typeName: typeName) {
             return rule.style
         }
-        return nil
+        // Only after no rule matched as written, so a later column rule keeps beating a type rule that names no width.
+        guard let typeName else { return nil }
+        let base = Self.baseTypeName(typeName)
+        return rules.first { $0.target == .type && MaskingGlob.matches($0.trimmedPattern, base) }?.style
     }
 
     func columnMasks(table: String?, columns: [String], typeNames: [String?]) -> ColumnMasks {
@@ -41,6 +44,55 @@ struct MaskingPolicy: Equatable, Sendable {
 
     func columnMasks(table: String?, columns: [String], columnTypes: [ColumnType]) -> ColumnMasks {
         columnMasks(table: table, columns: columns, typeNames: columnTypes.map(\.rawType))
+    }
+
+    // An external caller can rename a column or compute one from it, so an origin only ever adds masking. A column
+    // nobody traced is masked whole, whatever rule its name matches, since the caller chose that name. The exception
+    // is `table`: the app selected that one table's own columns by name and the driver reported nothing against it.
+    func externalColumnMasks(
+        table: String?,
+        columns: [String],
+        typeNames: [String?],
+        origins: [PluginColumnOrigin?]?
+    ) -> ColumnMasks {
+        guard !isEmpty else { return .none }
+        let provesByName = Self.provesByName(table: table, origins: origins)
+        var styles: [Int: MaskingStyle] = [:]
+        for (index, column) in columns.enumerated() {
+            let typeName = typeNames.indices.contains(index) ? typeNames[index] : nil
+            if let origin = Self.origin(at: index, in: origins) {
+                // The relation an engine names can be a view, a partition or a child of the rule's table, so a
+                // `table.column` rule also matches by its column part; naming the relation only picks the style. A
+                // name the statement chose adds its own rule, and the stricter of the two holds.
+                let relation = origin.schema.map { "\($0).\(origin.table)" } ?? origin.table
+                let read = style(table: relation, column: origin.column, typeName: typeName)
+                    ?? style(table: nil, column: origin.column, typeName: typeName)
+                let isAlias = column.caseInsensitiveCompare(origin.column) != .orderedSame
+                let named = isAlias ? style(table: nil, column: column, typeName: typeName) : nil
+                styles[index] = MaskingStyle.strictest(read, named)
+            } else if provesByName {
+                styles[index] = style(table: table, column: column, typeName: typeName)
+            } else {
+                styles[index] = .full
+            }
+        }
+        return ColumnMasks(styles: styles)
+    }
+
+    // The columns `externalColumnMasks` masks only because nothing said what they read.
+    func untracedColumns(table: String?, columns: [String], origins: [PluginColumnOrigin?]?) -> [Int] {
+        guard !isEmpty, !Self.provesByName(table: table, origins: origins) else { return [] }
+        return columns.indices.filter { Self.origin(at: $0, in: origins) == nil }
+    }
+
+    // A driver that reports origins and leaves one out withholds it on purpose, as for a statistics view.
+    private static func provesByName(table: String?, origins: [PluginColumnOrigin?]?) -> Bool {
+        table != nil && origins == nil
+    }
+
+    private static func origin(at index: Int, in origins: [PluginColumnOrigin?]?) -> PluginColumnOrigin? {
+        guard let origins, origins.indices.contains(index) else { return nil }
+        return origins[index]
     }
 
     private static func matches(_ rule: MaskingRule, table: String?, column: String, typeName: String?) -> Bool {
@@ -62,9 +114,24 @@ struct MaskingPolicy: Equatable, Sendable {
             return MaskingGlob.matches(tablePattern, String(table[table.index(after: bareStart)...]))
         }
     }
+
+    // A result names `TINYINT(1)`, `BIT(8)` or `Nullable(String)` where the rule says `tinyint`, `bit` or `string`.
+    private static func baseTypeName(_ typeName: String) -> String {
+        let unwrapped = ColumnType.unwrappedTypeName(typeName) ?? typeName
+        return unwrapped.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
+    }
 }
 
-/// `*` matches any run of characters and `?` exactly one, ignoring case.
+extension MaskingStyle {
+    // Two styles that differ each show something the other hides, except `.null`, which shows nothing at all.
+    static func strictest(_ first: MaskingStyle?, _ second: MaskingStyle?) -> MaskingStyle? {
+        guard let first else { return second }
+        guard let second, second != first else { return first }
+        return first == .null || second == .null ? .null : .full
+    }
+}
+
+// `*` matches any run of characters and `?` exactly one, ignoring case.
 enum MaskingGlob {
     static func matches(_ pattern: String, _ text: String) -> Bool {
         let pattern = Array(pattern.lowercased())
@@ -96,7 +163,7 @@ enum MaskingGlob {
     }
 }
 
-/// Which columns of one result are masked, and how. Every surface masks rows through this.
+// Which columns of one result are masked, and how. Every surface masks rows through this.
 struct ColumnMasks: Equatable, Sendable {
     let styles: [Int: MaskingStyle]
 

@@ -15,6 +15,8 @@ mod connection_writes;
 mod connector;
 mod credential_source;
 mod driver_connector;
+#[cfg(feature = "in-process-ssh")]
+mod in_process_tunnels;
 mod keyring_source;
 mod no_stored_credentials;
 #[cfg(unix)]
@@ -25,6 +27,7 @@ mod persist_pending_save;
 mod request_target;
 mod resolve_saved;
 mod ssh_tunnels;
+mod store_secrets;
 
 pub use attempt_generation::AttemptGeneration;
 pub use attempt_outcome::AttemptOutcome;

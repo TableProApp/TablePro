@@ -19,12 +19,19 @@ private struct DriverRequest: Sendable {
     let port: Int
     let password: String?
     let preTunnelHost: String?
+    let refreshPassword: (@Sendable () async throws -> String?)?
 }
 
 private final class SigningDriverFactory: DriverFactory, @unchecked Sendable {
     var mint: @Sendable (String?) async throws -> String? = { stored in stored }
+    var alias: @Sendable (DatabaseConnection) async -> DatabaseConnection = { $0 }
+    var opensCatalogs = false
     private(set) var mintRequests: [MintRequest] = []
     private(set) var driverRequests: [DriverRequest] = []
+
+    func resolvingEndpointAlias(for connection: DatabaseConnection) async throws -> DatabaseConnection {
+        await alias(connection)
+    }
 
     func resolvePassword(
         for connection: DatabaseConnection,
@@ -44,16 +51,28 @@ private final class SigningDriverFactory: DriverFactory, @unchecked Sendable {
         password: String?,
         preTunnelHost: String?
     ) throws -> any DatabaseDriver {
+        try createDriver(for: connection, password: password, preTunnelHost: preTunnelHost, refreshPassword: nil)
+    }
+
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?,
+        refreshPassword: (@Sendable () async throws -> String?)?
+    ) throws -> any DatabaseDriver {
         driverRequests.append(DriverRequest(
             host: connection.host,
             port: connection.port,
             password: password,
-            preTunnelHost: preTunnelHost
+            preTunnelHost: preTunnelHost,
+            refreshPassword: refreshPassword
         ))
         return MockDatabaseDriver()
     }
 
     func supportedTypes() -> [DatabaseType] { [mockType] }
+
+    func opensCatalogConnections(for connection: DatabaseConnection) -> Bool { opensCatalogs }
 }
 
 private final class PasswordRecordingFactory: DriverFactory, @unchecked Sendable {
@@ -71,11 +90,19 @@ private func passwordKey(for connection: DatabaseConnection) -> String {
     "com.TablePro.password.\(connection.id.uuidString)"
 }
 
-private func rdsConnection(tunneled: Bool) -> DatabaseConnection {
+private let replicaEndpoint = "replica-a.abc123.us-east-1.rds.amazonaws.com"
+
+private func pointingAtReplica(_ connection: DatabaseConnection) -> DatabaseConnection {
+    var resolved = connection
+    resolved.host = replicaEndpoint
+    return resolved
+}
+
+private func rdsConnection(tunneled: Bool, host: String = "mydb.abc123.us-east-1.rds.amazonaws.com") -> DatabaseConnection {
     DatabaseConnection(
         name: "RDS",
         type: mockType,
-        host: "mydb.abc123.us-east-1.rds.amazonaws.com",
+        host: host,
         port: 5_432,
         username: "iam_user",
         additionalFields: ["awsAuth": "accessKey"],
@@ -179,6 +206,52 @@ struct ConnectionManagerSignInTests {
         #expect(driver.preTunnelHost == connection.host)
     }
 
+    @Test("Through a tunnel, a driver signing in again later mints for the saved endpoint, not the tunnel's")
+    func tunneledRefreshMintsForTheSavedEndpoint() async throws {
+        let factory = SigningDriverFactory()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: MockSSHProvider()
+        )
+        let connection = rdsConnection(tunneled: true)
+        _ = try await manager.connect(connection)
+        let refresh = try #require(factory.driverRequests.first?.refreshPassword)
+        factory.mint = { _ in "fresh-token" }
+
+        let token = try await refresh()
+
+        let mint = try #require(factory.mintRequests.last)
+        #expect(token == "fresh-token")
+        #expect(factory.mintRequests.count == 2)
+        #expect(mint.host == connection.host)
+        #expect(mint.port == connection.port)
+    }
+
+    @Test("A catalog connection behind a tunnel mints again for the saved endpoint too")
+    func tunneledCatalogRefreshMintsForTheSavedEndpoint() async throws {
+        let factory = SigningDriverFactory()
+        factory.opensCatalogs = true
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: MockSSHProvider()
+        )
+        let connection = rdsConnection(tunneled: true)
+        _ = try await manager.connect(connection)
+        _ = try #require(await manager.catalogDriver(for: connection.id, database: ""))
+        let catalog = try #require(factory.driverRequests.last)
+        let refresh = try #require(catalog.refreshPassword)
+
+        _ = try await refresh()
+
+        let mint = try #require(factory.mintRequests.last)
+        #expect(factory.driverRequests.count == 2)
+        #expect(catalog.host == "127.0.0.1")
+        #expect(mint.host == connection.host)
+        #expect(mint.port == connection.port)
+    }
+
     @Test("Without a tunnel, the driver dials the saved host and gets no preTunnelHost")
     func directConnectHasNoPreTunnelHost() async throws {
         let factory = SigningDriverFactory()
@@ -194,5 +267,60 @@ struct ConnectionManagerSignInTests {
         let driver = try #require(factory.driverRequests.first)
         #expect(driver.host == connection.host)
         #expect(driver.preTunnelHost == nil)
+    }
+
+    @Test("The endpoint a CNAME stands for is what the connect mints for, dials and mints for again")
+    func aliasReachesMintDriverAndRefresh() async throws {
+        let factory = SigningDriverFactory()
+        factory.alias = { pointingAtReplica($0) }
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = rdsConnection(tunneled: false, host: "reader.db.example.com")
+
+        _ = try await manager.connect(connection)
+        let driver = try #require(factory.driverRequests.first)
+        let refresh = try #require(driver.refreshPassword)
+        _ = try await refresh()
+
+        #expect(factory.mintRequests.map(\.host) == [replicaEndpoint, replicaEndpoint])
+        #expect(driver.host == replicaEndpoint)
+        #expect(driver.preTunnelHost == nil)
+    }
+
+    @Test("Whatever endpoint the factory returns, a tunnel forwards to it and the driver names it behind the tunnel")
+    func aliasMovesTheTunnelDestination() async throws {
+        let factory = SigningDriverFactory()
+        factory.alias = { pointingAtReplica($0) }
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore(), sshProvider: ssh)
+        let connection = rdsConnection(tunneled: true, host: "reader.db.example.com")
+
+        _ = try await manager.connect(connection)
+
+        #expect(factory.mintRequests.first?.host == replicaEndpoint)
+        #expect(ssh.receivedDestinations == [.tcp(host: replicaEndpoint, port: 5_432)])
+        let driver = try #require(factory.driverRequests.first)
+        #expect(driver.host == "127.0.0.1")
+        #expect(driver.preTunnelHost == replicaEndpoint)
+    }
+
+    @Test("An attempt invalidated during the lookup throws CancellationError and mints nothing")
+    func attemptInvalidatedDuringTheLookupStops() async throws {
+        let gate = AsyncGate()
+        let factory = SigningDriverFactory()
+        factory.alias = { connection in
+            await gate.wait()
+            return pointingAtReplica(connection)
+        }
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = rdsConnection(tunneled: false, host: "reader.db.example.com")
+
+        let attempt = Task { try await manager.connect(connection) }
+        await gate.arrived(1)
+        manager.invalidateAttempt(for: connection.id)
+        await gate.open()
+
+        await #expect(throws: CancellationError.self) { try await attempt.value }
+        #expect(factory.mintRequests.isEmpty)
+        #expect(manager.session(for: connection.id) == nil)
     }
 }

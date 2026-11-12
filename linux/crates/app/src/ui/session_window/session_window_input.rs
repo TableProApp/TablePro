@@ -1,11 +1,14 @@
 use gtk4::glib;
 use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
+use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::SecretKind;
+use tablepro_core::ddl::DropDatabaseOptions;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionTag, ConnectionTagName, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
 use uuid::Uuid;
 
+use crate::services::library_outline::LibraryMove;
 use crate::services::saved_connection_editor::GroupChoice;
 
 use super::connect_failure_details::Remedy;
@@ -14,10 +17,13 @@ use super::resolve_file_identity::ResolvedFile;
 use super::session_window_command::SessionWindowCommand;
 use crate::services::connection_deletion::DeletionOptions;
 use crate::ui::connect_dialog::ConnectSubmission;
+use crate::ui::workspace::DatabaseDrop;
 use crate::workspace::{CloseReason, CompletedWork};
 
 #[derive(Debug)]
 pub(crate) enum SessionWindowInput {
+    StateFileStatus(super::state_file_status::StateFileKind),
+    RetryStateFile(super::state_file_status::StateFileKind),
     /// Open a saved connection, beside the sessions the window holds.
     OpenSaved(Box<SavedConnection>),
     /// Open a database file, as the file manager or the command line
@@ -25,6 +31,8 @@ pub(crate) enum SessionWindowInput {
     OpenFile(gio::File),
     /// The file resolved, off the GTK thread, to the session it opens.
     FileResolved(Box<ResolvedFile>),
+    /// A SQL script from Files or the command line, on its way to an editor tab.
+    Script(ScriptInput),
     /// Open one of the sessions the window was opened to restore.
     Restore(SessionKey),
     /// The saved connections could not be read for this restored key,
@@ -37,6 +45,8 @@ pub(crate) enum SessionWindowInput {
         saved: Option<Box<SavedConnection>>,
     },
     OpenConnectDialog,
+    /// A connection link no saved connection matches, for the connect dialog to show.
+    ConnectFromLink(Box<ConnectionUrl>),
     /// The connect dialog's Connect: connect, then save the entry.
     ConnectFromDialog(Box<ConnectSubmission>),
     DialogClosed,
@@ -74,6 +84,35 @@ pub(crate) enum SessionWindowInput {
     /// Open Database… on a connection's row: pick another of its server's
     /// databases to open beside it.
     ChooseDatabaseIn(SessionKey),
+    NewTableIn(SessionKey),
+    /// New Database… on a connection's row.
+    NewDatabaseIn(SessionKey),
+    /// New Schema… on a connection's row.
+    NewSchemaIn(SessionKey),
+    /// Drop Database… on a connection's row, which asks which one first,
+    /// or on the row of a database open beside its connection.
+    DropDatabaseIn(SessionKey),
+    /// A session is about to drop a database. The window first closes
+    /// the session it holds on that database, through that session's own
+    /// prompts, then hands the drop back to the session that asked, and
+    /// to no other (0034).
+    ReleaseDatabase {
+        target: DatabaseDrop,
+        options: DropDatabaseOptions,
+    },
+    /// The drop the window let go of a database for ran or failed, so the
+    /// database may open again.
+    DatabaseDropFinished(DatabaseDrop),
+    /// A database of the connection under the key was created or
+    /// dropped, so each of the connection's sessions lists them again.
+    DatabasesChanged(SessionKey),
+    /// Open `database` beside the connection under `key`, as a new one
+    /// shows nowhere else where the connection's catalog holds its own
+    /// database only.
+    OpenDatabaseIn {
+        key: SessionKey,
+        database: String,
+    },
     MovedTab(MovedTab),
     /// The prompts approved closing the session under the key.
     SessionTeardownApproved(SessionKey),
@@ -85,10 +124,11 @@ pub(crate) enum SessionWindowInput {
     RefreshIn(SessionKey),
     /// Another session came to the front of the shell.
     FrontChanged,
-    /// A tab of another window's session was dropped on this window's
-    /// tab bar. Weak and sendable, since the window's input also
-    /// crosses to the runtime.
-    ReturnForeignTab(glib::SendWeakRef<adw::TabPage>),
+    /// A tab landed in this window's view where it does not belong: on
+    /// its bar from another window, or back from a drop outside every
+    /// window. Weak and sendable, since the window's input also crosses
+    /// to the runtime.
+    ReturnTab(glib::SendWeakRef<adw::TabPage>),
     /// The main menu's Safe Mode level for the session that was in front
     /// when the user picked it.
     SetSafeMode {
@@ -151,6 +191,7 @@ pub(crate) enum SessionWindowInput {
     SetConnectionGroup(Uuid, GroupChoice),
     /// A tag ticked on or off in a connection row's menu.
     SetConnectionTag(Uuid, Uuid, bool),
+    Library(LibraryEdit),
     /// A new tag, put on the connection `on` when there is one.
     CreateTag {
         name: ConnectionTagName,
@@ -170,7 +211,9 @@ pub(crate) enum SessionWindowInput {
     },
     /// What importing that file would do, for the user to agree to.
     ImportPreviewed(Box<tablepro_storage::ImportPreview>),
+    ImportFromApp,
     ShowToast(String),
+    SecretSave(crate::services::secret_save_report::SecretSaveOutcome),
 }
 
 /// What an editor tab that moved to another database asks of the window
@@ -188,4 +231,39 @@ pub(crate) enum MovedTab {
     /// A tab of the session under `key` changed the catalog of
     /// `database`, which another session of its connection may hold.
     Refresh { key: SessionKey, database: String },
+}
+
+// A change to the library's groups, order or favourites.
+#[derive(Debug)]
+pub(crate) enum LibraryEdit {
+    // `with` is a connection filed in the new group in the same write.
+    CreateGroup {
+        parent: Option<Uuid>,
+        name: ConnectionGroupName,
+        with: Option<Uuid>,
+    },
+    RenameGroup(Uuid, ConnectionGroupName),
+    // The picker action asked before sending it.
+    DeleteGroup(Uuid),
+    Change(LibraryMove),
+    SetFavourite(Uuid, bool),
+}
+
+#[derive(Debug)]
+pub(crate) enum ScriptInput {
+    /// Open it in an editor tab.
+    Open(gio::File),
+    Loaded {
+        file: gio::File,
+        text: Result<String, String>,
+        /// The session in front when the read began, which takes the script if it is still open.
+        target: Option<SessionKey>,
+    },
+    /// The waiting scripts banner's Cancel.
+    DropWaiting,
+    /// Scripts another window's user chose this window's session for.
+    For {
+        key: SessionKey,
+        scripts: Vec<(gio::File, String)>,
+    },
 }

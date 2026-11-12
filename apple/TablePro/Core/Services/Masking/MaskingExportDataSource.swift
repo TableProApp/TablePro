@@ -42,6 +42,49 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
         Self.masking(base.streamRows(for: object), table: sourceTable(object.name), policy: policy)
     }
 
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        maskingDocuments(base.streamExportRows(table: table, databaseName: databaseName), table: sourceTable(table))
+    }
+
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        maskingDocuments(base.streamExportRows(for: object), table: sourceTable(object.name))
+    }
+
+    private func maskingDocuments(
+        _ stream: AsyncThrowingStream<PluginExportStreamElement, Error>,
+        table: String?
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        let policy = self.policy
+        let source = PulledMaskingSource(stream)
+        let state = MaskingStreamState()
+        // Read on demand: a task pumping into a second stream kept every row a slow writer had not taken.
+        return AsyncThrowingStream(unfolding: {
+            guard let element = try await source.next() else { return nil }
+            switch element {
+            case .header(let value):
+                state.header = value
+                return element
+            case .rows(let rows, let documents):
+                guard let header = state.header else {
+                    throw PluginExportError.exportFailed(String(localized: "Rows arrived before their columns", bundle: .main))
+                }
+                let masks = policy.columnMasks(table: table, columns: header.columns, typeNames: header.columnTypeNames)
+                if let documents, documents.count != rows.count {
+                    throw PluginExportError.exportFailed(String(localized: "Documents do not match their rows", bundle: .main))
+                }
+                let masked = documents?.enumerated().map { index, document in
+                    ExportDocumentMasking.document(
+                        document, columns: header.columns, masks: masks,
+                        policy: policy, table: table, row: rows[index]
+                    )
+                }
+                return .rows(masks.rows(rows), documents: masked)
+            @unknown default:
+                throw PluginExportError.encodingFailed
+            }
+        })
+    }
+
     private func sourceTable(_ name: String) -> String? {
         streamsTables ? name : nil
     }
@@ -55,30 +98,22 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
         table: String?,
         policy: MaskingPolicy
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                var masks: ColumnMasks?
-                do {
-                    for try await element in stream {
-                        switch element {
-                        case .header(let header):
-                            masks = policy.columnMasks(table: table, columns: header.columns, typeNames: header.columnTypeNames)
-                            continuation.yield(element)
-                        case .rows(let rows):
-                            // Without a header there are no column names to match, so no row goes out unmatched.
-                            guard let masks else {
-                                throw PluginExportError.exportFailed("Rows arrived before their columns")
-                            }
-                            continuation.yield(.rows(masks.rows(rows)))
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
+        let source = PulledMaskingSource(stream)
+        let state = MaskingStreamState()
+        return AsyncThrowingStream(unfolding: {
+            guard let element = try await source.next() else { return nil }
+            switch element {
+            case .header(let header):
+                state.masks = policy.columnMasks(table: table, columns: header.columns, typeNames: header.columnTypeNames)
+                return element
+            case .rows(let rows):
+                // Without a header there are no column names to match, so no row goes out unmatched.
+                guard let masks = state.masks else {
+                    throw PluginExportError.exportFailed(String(localized: "Rows arrived before their columns", bundle: .main))
                 }
+                return .rows(masks.rows(rows))
             }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        })
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {
@@ -164,4 +199,85 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
     func fetchObjectComment(_ object: PluginExportTable) async throws -> String? {
         try await base.fetchObjectComment(object)
     }
+}
+
+/// Document fields can outlive the sampled columns, so every stored field takes the policy too.
+enum ExportDocumentMasking {
+    static func document(
+        _ document: PluginExportDocument,
+        columns: [String],
+        masks: ColumnMasks,
+        policy: MaskingPolicy = .none,
+        table: String? = nil,
+        excluding: Set<String> = [],
+        row: [PluginCellValue]? = nil
+    ) -> PluginExportDocument {
+        var sizeBound = document.bsonSizeUpperBound
+        let fields = document.fields.map { field in
+            guard !excluding.contains(field.name) else { return field }
+            let index = columns.firstIndex(of: field.name)
+            let style = index.flatMap { masks.styles[$0] }
+                ?? policy.style(table: table, column: field.name, typeName: field.typeName)
+            guard let style else { return field }
+            let cell: PluginCellValue
+            if let index, masks.styles[index] != nil, let row, row.indices.contains(index) {
+                cell = row[index]
+            } else {
+                cell = field.cellValue
+            }
+            let masked = MaskedValue.mask(cell, style: style)
+            sizeBound = enlargedBound(sizeBound, for: masked)
+            return replacing(field, with: masked)
+        }
+        return PluginExportDocument(fields: fields, bsonSizeUpperBound: sizeBound)
+    }
+
+    private static func enlargedBound(_ bound: Int?, for value: PluginCellValue) -> Int? {
+        guard let bound else { return nil }
+        let bytes: Int
+        switch value {
+        case .null:
+            return bound
+        case .text(let text):
+            bytes = text.utf8.count
+        case .bytes:
+            bytes = MaskedValue.bullets.utf8.count
+        }
+        // Keeping the old value's size avoids depending on its BSON type when the mask changes it.
+        let (withText, textOverflow) = bound.addingReportingOverflow(bytes)
+        let (withLength, lengthOverflow) = withText.addingReportingOverflow(5)
+        return textOverflow || lengthOverflow ? nil : withLength
+    }
+
+    static func replacing(_ field: PluginExportField, with value: PluginCellValue) -> PluginExportField {
+        let json: String
+        switch value {
+        case .null:
+            json = "null"
+        case .text(let text):
+            json = PluginExportDocument.jsonString(text)
+        case .bytes:
+            // Every byte mask is text or null. A future mask must not pass original bytes through.
+            json = PluginExportDocument.jsonString(MaskedValue.bullets)
+        }
+        return PluginExportField(name: field.name, canonicalJSON: json, typeName: "VARCHAR", cellValue: value)
+    }
+}
+
+// One consumer reads a masked stream, so one call at a time reaches the iterator.
+private final class PulledMaskingSource<Element: Sendable>: @unchecked Sendable {
+    private var iterator: AsyncThrowingStream<Element, Error>.AsyncIterator
+
+    init(_ stream: AsyncThrowingStream<Element, Error>) {
+        iterator = stream.makeAsyncIterator()
+    }
+
+    func next() async throws -> Element? {
+        try await iterator.next()
+    }
+}
+
+private final class MaskingStreamState: @unchecked Sendable {
+    var header: PluginStreamHeader?
+    var masks: ColumnMasks?
 }

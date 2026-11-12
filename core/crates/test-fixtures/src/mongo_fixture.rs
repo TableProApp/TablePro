@@ -13,6 +13,9 @@ use crate::{
 const PORT: u16 = MongoFixture::PORT;
 const CERTIFICATE_PORT: u16 = MongoFixture::CERTIFICATE_PORT;
 const USER: &str = "tablepro";
+/// The user `start_on_test_records` defines in `thisDB`, a name `admin`
+/// has no user by.
+const THIS_DB_USER: &str = "tablepro_thisdb";
 const CONFIG_DIR: &str = "/etc/tablepro";
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
 /// What the start script prints once the set has a primary and the root
@@ -22,8 +25,9 @@ const READY: &str = "tablepro: ready";
 /// The container's command. It starts the member, and on a TLS fixture
 /// the certificate-only server beside it, initiates the set through the
 /// localhost exception, waits for the member to be primary, then makes
-/// the root user, which ends the exception. Done here rather than through
-/// `docker exec`, whose result a `Send` future cannot await.
+/// the root user, which ends the exception, and as root any user the
+/// fixture defines elsewhere. Done here rather than through `docker
+/// exec`, whose result a `Send` future cannot await.
 const START_SCRIPT: &str = r#"set -e
 cp /etc/tablepro/keyfile /tmp/keyfile
 chmod 400 /tmp/keyfile
@@ -36,15 +40,27 @@ if [ "$TABLEPRO_TLS" = 1 ]; then
     MEMBER_TLS="--tlsMode requireTLS $TLS --tlsAllowConnectionsWithoutCertificates"
     SHELL_TLS="--tls --tlsCAFile /etc/tablepro/ca.pem"
 fi
-mongod --replSet rs0 --bind_ip_all --port 27017 --keyFile /tmp/keyfile $MEMBER_TLS &
+TEST_COMMANDS=""
+if [ "$TABLEPRO_TEST_COMMANDS" = 1 ]; then
+    TEST_COMMANDS="--setParameter enableTestCommands=1"
+fi
+mongod --replSet "$TABLEPRO_SET" --bind_ip_all --port 27017 --keyFile /tmp/keyfile $MEMBER_TLS $TEST_COMMANDS &
 member=$!
 ask() {
     mongosh --quiet --host localhost --port 27017 $SHELL_TLS --eval "$1"
 }
+ask_as_root() {
+    mongosh --quiet --host localhost --port 27017 $SHELL_TLS -u tablepro -p "$TABLEPRO_PASSWORD" \
+        --authenticationDatabase admin --eval "$1"
+}
 until [ "$(ask 'db.runCommand({ping: 1}).ok' 2> /dev/null)" = 1 ]; do sleep 0.5; done
-ask "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok"
+ask "rs.initiate({_id: process.env.TABLEPRO_SET, members: [{_id: 0, host: process.env.TABLEPRO_MEMBER}]}).ok"
 until [ "$(ask 'db.hello().isWritablePrimary' 2> /dev/null)" = true ]; do sleep 0.5; done
 ask "db.getSiblingDB('admin').createUser({user: 'tablepro', pwd: process.env.TABLEPRO_PASSWORD, roles: ['root']}).ok"
+if [ -n "$TABLEPRO_USER_DB" ]; then
+    ask_as_root "db.getSiblingDB(process.env.TABLEPRO_USER_DB).createUser({user: process.env.TABLEPRO_USER, \
+        pwd: process.env.TABLEPRO_PASSWORD, roles: [{role: 'readWrite', db: process.env.TABLEPRO_USER_DB}]}).ok"
+fi
 echo "tablepro: ready"
 wait "$member"
 "#;
@@ -59,12 +75,64 @@ enum Listening {
     Tls,
 }
 
+/// How a fixture's server starts and what it holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Setup {
+    listening: Listening,
+    set: &'static str,
+    member: &'static str,
+    /// A host port of its own, which a member named by an address the host
+    /// reaches needs, since discovery dials that name.
+    host_port: Option<u16>,
+    test_commands: bool,
+    /// The database a second user is defined in.
+    user_database: Option<&'static str>,
+}
+
+impl Setup {
+    const fn listening(listening: Listening) -> Self {
+        Self {
+            listening,
+            set: "rs0",
+            member: "localhost:27017",
+            host_port: None,
+            test_commands: false,
+            user_database: None,
+        }
+    }
+
+    const TEST_RECORDS: Self = Self {
+        listening: Listening::Plain,
+        set: MongoFixture::TEST_RECORDS_SET,
+        member: "localhost.test.build.10gen.cc:27017",
+        host_port: Some(PORT),
+        test_commands: false,
+        user_database: Some(MongoFixture::THIS_DB),
+    };
+
+    fn env(&self) -> [(&'static str, String); 6] {
+        [
+            ("TABLEPRO_TLS", flag(self.listening == Listening::Tls)),
+            ("TABLEPRO_SET", self.set.to_owned()),
+            ("TABLEPRO_MEMBER", self.member.to_owned()),
+            ("TABLEPRO_TEST_COMMANDS", flag(self.test_commands)),
+            ("TABLEPRO_USER_DB", self.user_database.unwrap_or_default().to_owned()),
+            ("TABLEPRO_USER", THIS_DB_USER.to_owned()),
+        ]
+    }
+}
+
+fn flag(on: bool) -> String {
+    String::from(if on { "1" } else { "0" })
+}
+
 /// A one-member replica set, `rs0`, with access control on and a user,
 /// `tablepro`, who holds the root role.
 ///
 /// The member is named `localhost:27017` inside the container, which the
 /// tests never reach by that name: they connect to the one host they are
-/// given, as a direct connection does.
+/// given, as a direct connection does. `start_on_test_records` names it
+/// so the host reaches it, for discovery.
 pub struct MongoFixture {
     container: ContainerAsync<GenericImage>,
     pki: TestPki,
@@ -74,30 +142,60 @@ pub struct MongoFixture {
     certificate_port: Option<u16>,
     network_alias: Option<String>,
     version: MongoVersion,
-    listening: Listening,
+    setup: Setup,
 }
 
 impl MongoFixture {
     pub const PORT: u16 = 27017;
     pub const CERTIFICATE_PORT: u16 = 27018;
     pub const NETWORK_ROLE: &'static str = "mongodb";
+    /// The set `start_on_test_records` makes, as the records name it.
+    pub const TEST_RECORDS_SET: &'static str = "repl0";
+    /// The database `test5.test.build.10gen.cc`'s TXT record names as
+    /// `authSource`.
+    pub const THIS_DB: &'static str = "thisDB";
 
     pub async fn start() -> Result<Self, FixtureError> {
-        Self::launch(None, Listening::Plain).await
+        Self::launch(TestPki::generate()?, None, Setup::listening(Listening::Plain)).await
     }
 
     pub async fn start_in(network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(Some(network), Listening::Plain).await
+        Self::launch(TestPki::generate()?, Some(network), Setup::listening(Listening::Plain)).await
     }
 
     /// A replica set that takes only TLS, with a server beside it that
     /// takes only clients that present a certificate the CA issued.
     pub async fn start_tls() -> Result<Self, FixtureError> {
-        Self::launch(None, Listening::Tls).await
+        Self::launch(TestPki::generate()?, None, Setup::listening(Listening::Tls)).await
     }
 
-    async fn launch(network: Option<&TestNetwork>, listening: Listening) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
+    /// `start_tls` with a self-signed server certificate, which a client
+    /// accepts only by trusting that certificate itself.
+    pub async fn start_tls_self_signed() -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate_self_signed()?, None, Setup::listening(Listening::Tls)).await
+    }
+
+    /// `start` with the server's test commands on, `configureFailPoint`
+    /// among them, which only a start can turn on.
+    pub async fn start_with_test_commands() -> Result<Self, FixtureError> {
+        let setup = Setup {
+            test_commands: true,
+            ..Setup::listening(Listening::Plain)
+        };
+        Self::launch(TestPki::generate()?, None, setup).await
+    }
+
+    /// The set the MongoDB specification's DNS records under
+    /// `test.build.10gen.cc` name: `repl0`, whose one member is
+    /// `localhost.test.build.10gen.cc:27017`, a public name for 127.0.0.1,
+    /// on host port 27017, with a user defined in `thisDB`. It needs
+    /// public DNS on the host and in the container, and the host port
+    /// free, so one runs at a time.
+    pub async fn start_on_test_records() -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate()?, None, Setup::TEST_RECORDS).await
+    }
+
+    async fn launch(pki: TestPki, network: Option<&TestNetwork>, setup: Setup) -> Result<Self, FixtureError> {
         let password = FixtureCredentials::generate_password();
         let version = MongoVersion::selected()?;
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
@@ -112,11 +210,16 @@ impl MongoFixture {
                 .with_entrypoint("sh")
                 .with_cmd([format!("{CONFIG_DIR}/start.sh")])
                 .with_env_var("TABLEPRO_PASSWORD", &password)
-                .with_env_var("TABLEPRO_TLS", if listening == Listening::Tls { "1" } else { "0" })
                 // The image hands rseq to TCMalloc for its per-CPU caches, and with
                 // those on MongoDB 8.0 exits on kernels 6.19 to 7.0.13 (SERVER-121912).
                 .with_env_var("GLIBC_TUNABLES", "glibc.pthread.rseq=1")
                 .with_startup_timeout(READY_TIMEOUT);
+            for (name, value) in setup.env() {
+                request = request.with_env_var(name, value);
+            }
+            if let Some(host_port) = setup.host_port {
+                request = request.with_mapped_port(host_port, PORT.tcp());
+            }
             if let (Some(network), Some(alias)) = (network, &network_alias) {
                 request = request.with_network(network.name()).with_container_name(alias);
             }
@@ -125,7 +228,7 @@ impl MongoFixture {
         .await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(PORT).await?;
-        let certificate_port = match listening {
+        let certificate_port = match setup.listening {
             Listening::Plain => None,
             Listening::Tls => Some(container.get_host_port_ipv4(CERTIFICATE_PORT).await?),
         };
@@ -138,7 +241,7 @@ impl MongoFixture {
             certificate_port,
             network_alias,
             version,
-            listening,
+            setup,
         })
     }
 
@@ -194,6 +297,14 @@ impl MongoFixture {
         FixtureCredentials::new(USER, &self.password)
     }
 
+    /// The user defined in `thisDB` with `readWrite` there, on a fixture
+    /// from `start_on_test_records`.
+    pub fn this_db_credentials(&self) -> Option<FixtureCredentials> {
+        self.setup
+            .user_database
+            .map(|_| FixtureCredentials::new(THIS_DB_USER, &self.password))
+    }
+
     pub fn container(&self) -> &ContainerAsync<GenericImage> {
         &self.container
     }
@@ -207,7 +318,7 @@ impl MongoFixture {
     pub async fn shell(&self, script: &str) -> Result<ExecOutput, FixtureError> {
         let mut command = vec!["mongosh", "--quiet", "--host", "localhost", "--port", "27017"];
         let ca = format!("{CONFIG_DIR}/ca.pem");
-        if self.listening == Listening::Tls {
+        if self.setup.listening == Listening::Tls {
             command.extend(["--tls", "--tlsCAFile", &ca]);
         }
         command.extend([
@@ -244,6 +355,24 @@ mod tests {
     }
 
     #[test]
+    fn the_test_records_set_is_named_as_the_records_name_it() {
+        let env = Setup::TEST_RECORDS.env();
+        let value = |name: &str| {
+            env.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.as_str())
+        };
+
+        assert_eq!(value("TABLEPRO_SET"), Some(MongoFixture::TEST_RECORDS_SET));
+        assert_eq!(value("TABLEPRO_MEMBER"), Some("localhost.test.build.10gen.cc:27017"));
+        assert_eq!(value("TABLEPRO_USER_DB"), Some(MongoFixture::THIS_DB));
+        assert_eq!(Setup::TEST_RECORDS.host_port, Some(MongoFixture::PORT));
+        let plain = Setup::listening(Listening::Plain).env();
+        assert!(plain.contains(&("TABLEPRO_SET", "rs0".to_owned())), "{plain:?}");
+        assert!(plain.contains(&("TABLEPRO_USER_DB", String::new())), "{plain:?}");
+    }
+
+    #[test]
     fn the_start_script_makes_the_user_only_once_the_set_has_a_primary() {
         let primary = START_SCRIPT.find("isWritablePrimary").unwrap();
         let user = START_SCRIPT.find("createUser").unwrap();
@@ -251,5 +380,10 @@ mod tests {
 
         assert!(primary < user && user < ready, "{START_SCRIPT}");
         assert!(START_SCRIPT.contains("--port 27018") && START_SCRIPT.contains("--fork"));
+        let second = START_SCRIPT.rfind("createUser").unwrap();
+        assert!(
+            user < second && second < ready,
+            "the second user is made once root exists"
+        );
     }
 }

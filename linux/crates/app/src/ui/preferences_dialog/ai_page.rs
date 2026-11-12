@@ -12,7 +12,8 @@ use secrecy::SecretString;
 use tablepro_core::AiProvider;
 use tablepro_linux_platform::settings::keys;
 
-use crate::services::ai_service::AiService;
+use crate::services::ai_service::{AiService, AiSetupError};
+use crate::services::secret_save_report::SecretSaveReport;
 
 /// The provider row's entries, `None` first: the assistant starts off.
 const PROVIDERS: [Option<AiProvider>; 4] = [
@@ -70,6 +71,7 @@ mod imp {
         /// The keyring read or write in flight, and the model listing.
         pub key_work: RefCell<Option<glib::JoinHandle<()>>>,
         pub models_work: RefCell<Option<glib::JoinHandle<()>>>,
+        pub(super) unsaved_key: crate::ui::UnsavedSecretToasts,
     }
 
     #[glib::object_subclass]
@@ -348,12 +350,13 @@ impl AiPage {
             };
             if page.imp().key_read.get() != write || page.provider() != Some(provider) {
                 if let Err(error) = saved {
-                    page.toast(&super::super::assistant::setup_error_text(&error));
+                    page.toast_save_failure(error, removing);
                 }
                 return;
             }
             match saved {
                 Ok(()) => {
+                    page.imp().unsaved_key.dismiss();
                     page.imp().key_row.set_text("");
                     page.show_key_state(!removing);
                     page.toast(&if removing {
@@ -362,10 +365,20 @@ impl AiPage {
                         crate::i18n::gettext("API key saved in the keyring.")
                     });
                 }
-                Err(error) => page.toast(&super::super::assistant::setup_error_text(&error)),
+                Err(error) => page.toast_save_failure(error, removing),
             }
         });
         self.imp().key_work.replace(Some(work));
+    }
+
+    fn toast_save_failure(&self, error: AiSetupError, removing: bool) {
+        match error {
+            AiSetupError::Keyring(error) if !removing => {
+                let toast = self.imp().unsaved_key.replace(SecretSaveReport::api_key(error), self);
+                self.emit_by_name::<()>("toast", &[&toast]);
+            }
+            error => self.toast(&super::super::assistant::setup_error_text(&error)),
+        }
     }
 
     fn list_models(&self) {
@@ -390,7 +403,7 @@ impl AiPage {
         }
     }
 
-    fn show_models(&self, listed: Result<Vec<String>, crate::services::ai_service::AiSetupError>) {
+    fn show_models(&self, listed: Result<Vec<String>, AiSetupError>) {
         let imp = self.imp();
         let models = match listed {
             Ok(models) if !models.is_empty() => models,
@@ -555,5 +568,32 @@ mod tests {
         crate::test_support::wait_until(std::time::Duration::from_secs(10), || !imp.key_state.is_visible())
             .expect("the key removed");
         assert!(keys.0.lock().unwrap().is_empty());
+    }
+
+    #[gtk4::test]
+    fn a_key_the_keyring_refused_is_said_until_dismissed() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        crate::register_test_resources();
+        let page = AiPage::default();
+        page.bind(AiService::new(settings.get().clone(), runtime.tasks(), None));
+        let toasts = std::rc::Rc::new(RefCell::new(Vec::<adw::Toast>::new()));
+        let said = toasts.clone();
+        page.connect_toast(move |_, toast| said.borrow_mut().push(toast.clone()));
+        let imp = page.imp();
+        imp.provider_row.set_selected(2);
+
+        imp.key_row.set_text("sk-openai");
+        imp.key_row.emit_by_name::<()>("apply", &[]);
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || !toasts.borrow().is_empty())
+            .expect("the refusal said");
+
+        let toast = toasts.borrow()[0].clone();
+        assert_eq!(
+            toast.title().as_deref(),
+            Some("No keyring is available, so the API key was not saved")
+        );
+        assert_eq!(toast.timeout(), 0);
+        assert!(!imp.key_state.is_visible());
     }
 }

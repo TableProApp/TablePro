@@ -1,6 +1,7 @@
 //! SQL Server against a real server. Every test that needs one starts
 //! its own container and is ignored without Docker; SQL Server publishes
-//! no arm64 image, so these run in CI.
+//! no arm64 image, so these run in CI. `windows_server` signs in through
+//! SSPI to a server installed on the Windows runner instead.
 
 #![expect(
     clippy::expect_used,
@@ -8,17 +9,22 @@
 )]
 
 mod cancellation;
+mod catalog_operations;
 mod conformance_engine;
 mod csv_import;
 mod ddl;
 mod decode;
+mod dump;
 mod filter;
 mod identity_insert;
 mod metadata;
 mod read_only;
 mod round_trip;
 mod sessions;
+mod strict;
 mod support;
 mod tls;
 mod value_corpus;
+#[cfg(windows)]
+mod windows_server;
 mod write_batch;

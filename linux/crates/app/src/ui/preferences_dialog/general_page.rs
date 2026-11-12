@@ -9,7 +9,6 @@ use tablepro_linux_platform::AppSettings;
 use tablepro_linux_platform::settings::keys;
 use tablepro_session::runtime::Tasks;
 
-use super::data_browser_group::DataBrowserGroup;
 use super::history_group::HistoryGroup;
 use crate::ui::file_reveal::FileRevealer;
 
@@ -24,9 +23,11 @@ mod imp {
         #[template_child]
         pub restore_session_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
-        pub data_browser_group: TemplateChild<DataBrowserGroup>,
-        #[template_child]
         pub history_group: TemplateChild<HistoryGroup>,
+        #[template_child]
+        pub privacy_group: TemplateChild<adw::PreferencesGroup>,
+        #[template_child]
+        pub share_usage_data_row: TemplateChild<adw::SwitchRow>,
     }
 
     #[glib::object_subclass]
@@ -36,7 +37,6 @@ mod imp {
         type ParentType = adw::PreferencesPage;
 
         fn class_init(klass: &mut Self::Class) {
-            DataBrowserGroup::ensure_type();
             HistoryGroup::ensure_type();
             klass.bind_template();
         }
@@ -52,7 +52,6 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// The General page: startup, the data browser and the query history.
     pub struct GeneralPage(ObjectSubclass<imp::GeneralPage>)
         @extends adw::PreferencesPage, gtk4::Widget,
         @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
@@ -65,6 +64,7 @@ impl Default for GeneralPage {
 }
 
 impl GeneralPage {
+    // A build without the analytics secret sends nothing, so it shows no switch that would stop it.
     pub(super) fn bind(
         &self,
         settings: &Rc<AppSettings>,
@@ -72,13 +72,18 @@ impl GeneralPage {
         history: crate::services::history_service::HistoryService,
         tasks: &Tasks,
         revealer: Rc<dyn FileRevealer>,
+        can_share_usage_data: bool,
     ) {
         let imp = self.imp();
         settings
             .gio()
             .bind(keys::RESTORE_SESSION, &imp.restore_session_row.get(), "active")
             .build();
-        imp.data_browser_group.bind(settings);
+        imp.privacy_group.set_visible(can_share_usage_data);
+        settings
+            .gio()
+            .bind(keys::SHARE_USAGE_DATA, &imp.share_usage_data_row.get(), "active")
+            .build();
         imp.history_group.bind(settings, storage, history, tasks, revealer);
     }
 
@@ -102,6 +107,16 @@ mod tests {
         root: &tempfile::TempDir,
         tasks: &Tasks,
     ) -> GeneralPage {
+        page_with_usage_data(settings, storage, root, tasks, false)
+    }
+
+    fn page_with_usage_data(
+        settings: &MemorySettings,
+        storage: &crate::storage::SharedStorage,
+        root: &tempfile::TempDir,
+        tasks: &Tasks,
+        can_share_usage_data: bool,
+    ) -> GeneralPage {
         crate::register_test_resources();
         let page = GeneralPage::default();
         page.bind(
@@ -110,20 +125,57 @@ mod tests {
             super::super::test_history(root, tasks),
             tasks,
             Rc::new(RecordingRevealer::succeeding()),
+            can_share_usage_data,
         );
         page
     }
 
-    /// The page's groups, in the order it shows them.
     fn groups(page: &GeneralPage) -> Vec<adw::PreferencesGroup> {
         crate::test_support::descendants(page)
             .into_iter()
             .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+            .filter(WidgetExt::is_visible)
             .collect()
     }
 
     #[gtk4::test]
-    fn general_page_contains_the_data_browser_and_history_groups() {
+    fn usage_data_is_on_by_default_and_the_switch_turns_it_off() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let page = page_with_usage_data(&settings, &storage, &root, &runtime.tasks(), true);
+        let row = page.imp().share_usage_data_row.get();
+        let titles: Vec<String> = groups(&page).iter().map(|group| group.title().to_string()).collect();
+
+        let by_default = (row.is_active(), settings.get().share_usage_data());
+        row.set_active(false);
+
+        assert_eq!(titles.last().map(String::as_str), Some("Privacy"));
+        assert_eq!(by_default, (true, true));
+        assert!(!settings.get().share_usage_data());
+        assert_eq!(row.title(), "Share Usage Data");
+        assert_eq!(
+            row.subtitle().as_deref(),
+            Some("Help improve TablePro with app activity and system information")
+        );
+    }
+
+    #[gtk4::test]
+    fn a_build_without_the_secret_shows_no_privacy_switch() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+
+        let page = bound_page(&settings, &storage, &root, &runtime.tasks());
+
+        let titles: Vec<String> = groups(&page).iter().map(|group| group.title().to_string()).collect();
+        assert_eq!(titles, ["Startup", "Query History"]);
+    }
+
+    #[gtk4::test]
+    fn general_page_contains_startup_and_history_groups() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
@@ -134,9 +186,8 @@ mod tests {
         let titles: Vec<String> = groups.iter().map(|group| group.title().to_string()).collect();
 
         assert_eq!(page.title(), "General");
-        assert_eq!(titles, ["Startup", "Data Browser", "Query History"]);
-        assert!(groups[1].is::<DataBrowserGroup>());
-        assert!(groups[2].is::<HistoryGroup>());
+        assert_eq!(titles, ["Startup", "Query History"]);
+        assert!(groups[1].is::<HistoryGroup>());
     }
 
     #[gtk4::test]
@@ -157,7 +208,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn the_page_binds_both_of_its_groups() {
+    fn the_page_binds_its_history_group() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
@@ -165,10 +216,8 @@ mod tests {
         let page = bound_page(&settings, &storage, &root, &runtime.tasks());
         let imp = page.imp();
 
-        imp.data_browser_group.imp().confirm_row.set_active(false);
         imp.history_group.imp().save_history_row.set_active(false);
 
-        assert!(!settings.get().confirm_bulk_delete());
         assert!(!settings.get().save_query_history());
     }
 }

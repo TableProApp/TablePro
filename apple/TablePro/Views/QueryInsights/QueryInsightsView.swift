@@ -5,17 +5,11 @@ struct QueryInsightsView: View {
     @ObservedObject var viewModel: QueryInsightsViewModel
     @ObservedObject var coordinator: MainContentCoordinator
 
-    /// `requiresPro` only disables the content and lays a scrim over it, so on its own it decides
-    /// what the screen looks like and nothing about what the screen does. Activation is gated on
-    /// the same answer, or an unlicensed Mac computes every aggregate, subscribes to history for
-    /// the session, and leaves the numbers sitting in the view hierarchy for anything that reads it.
-    /// `isFeatureAvailable` reads `status` and `currentTier`, so the licence manager is
-    /// observed here rather than reached through `.shared`: a mid-session activation has to
-    /// repaint this screen.
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    // `requiresPro` only draws the scrim; activation needs the same answer, and observed, so a sign-in repaints.
+    @ObservedObject private var featureAccess = FeatureAccess.shared
 
     private var isUnlocked: Bool {
-        licenseManager.isFeatureAvailable(.queryInsights)
+        featureAccess.isAvailable(.queryInsights)
     }
 
     var body: some View {
@@ -80,14 +74,21 @@ struct QueryInsightsView: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 QueryInsightsSummaryBar(totals: viewModel.snapshot.totals)
 
-                QueryInsightsActivityChart(
-                    buckets: viewModel.snapshot.activity,
-                    granularity: viewModel.snapshot.granularity
-                )
+                QueryInsightsSection(
+                    title: String(localized: "Activity"),
+                    systemImage: "chart.bar.xaxis",
+                    isEmpty: viewModel.snapshot.activity.isEmpty,
+                    emptyMessage: String(localized: "No queries in this range.")
+                ) {
+                    QueryInsightsActivityChart(
+                        buckets: viewModel.snapshot.activity,
+                        granularity: viewModel.snapshot.granularity
+                    )
+                }
 
                 QueryInsightsSection(
                     title: String(localized: "Most Run"),
-                    systemImage: "arrow.trianglehead.2.clockwise",
+                    systemImage: "arrow.triangle.2.circlepath",
                     isEmpty: viewModel.snapshot.mostRun.isEmpty,
                     emptyMessage: String(localized: "No queries in this range.")
                 ) {

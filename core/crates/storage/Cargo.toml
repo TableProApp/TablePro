@@ -12,11 +12,13 @@ secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+unicode-normalization.workspace = true
 tokio = { workspace = true, features = ["fs"] }
 uuid.workspace = true
 sqlx = { workspace = true, features = ["migrate", "macros"] }
 chrono.workspace = true
 tempfile.workspace = true
+tracing.workspace = true
 
 # Linux links the distribution's SQLite, so its security fixes arrive
 # through the distribution; the other targets build the copy sqlx ships.
@@ -25,6 +27,9 @@ sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 sqlx = { workspace = true, features = ["sqlite"] }
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true

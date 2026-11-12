@@ -12,7 +12,10 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var checkRows: [Int] = []
     var onFetchTables: (@Sendable () async -> Void)?
     var currentDb = ""
+    var declaredCapabilities: PluginCapabilities = []
     private(set) var databasesAtExecute: [String] = []
+
+    var capabilities: PluginCapabilities { declaredCapabilities }
 
     private(set) var boundedQueries: [(query: String, rowCap: Int)] = []
     private(set) var plainQueries: [String] = []
@@ -25,6 +28,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var rowLookups: [(query: String, parameters: [PluginCellValue])] = []
     private(set) var checks: [(query: String, parameters: [PluginCellValue])] = []
     private(set) var contexts: [PluginStatementContext] = []
+    private(set) var writeContexts: [PluginRowWriteContext] = []
 
     func connect() async throws {}
 
@@ -145,6 +149,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         insertedRowIndices: Set<Int>,
         context: PluginRowWriteContext
     ) throws -> [PluginRowWrite]? {
+        writeContexts.append(context)
         let statements = generateStatements(
             table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
             insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices

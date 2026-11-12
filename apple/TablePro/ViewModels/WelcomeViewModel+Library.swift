@@ -282,6 +282,21 @@ extension WelcomeViewModel {
         loadConnections()
     }
 
+    // Leaving sync takes the secrets off iCloud Keychain on every device, so it asks first.
+    func requestExcludeFromSync(_ ids: [UUID]) {
+        let targets = ids.compactMap { connectionsById[$0] }.filter(\.participatesInSync)
+        guard !targets.isEmpty else { return }
+        connectionsToExcludeFromSync = targets
+        showExcludeFromSyncConfirmation = true
+    }
+
+    func confirmExcludeFromSync() {
+        let ids = connectionsToExcludeFromSync.map(\.id)
+        connectionsToExcludeFromSync = []
+        guard !ids.isEmpty else { return }
+        setIncludedInSync(ids, included: false)
+    }
+
     func duplicateConnection(_ id: UUID) {
         guard let connection = connectionsById[id] else { return }
         guard let duplicate = storage.duplicateConnection(connection) else {
@@ -408,8 +423,9 @@ extension WelcomeViewModel {
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
             isSyncEnabled: services.appSettings.sync.enabled,
-            canPublishToTeamCatalog: services.licenseManager.isFeatureAvailable(.teamCatalog),
-            canPublishToTeamLibrary: services.licenseManager.isFeatureAvailable(.teamLibrary)
+            canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
+            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrarySync.shared.writableTeams : [],
+            hasTeamLibraryConflicts: !TeamLibrarySync.shared.conflicts.isEmpty
         )
     }
 
@@ -450,14 +466,20 @@ extension WelcomeViewModel {
             exportConnections(ids.compactMap { connectionsById[$0] })
         case .publishToTeamCatalog(let ids):
             publishToTeamCatalog(ids.compactMap { connectionsById[$0] })
-        case .publishToTeamLibrary(let ids):
-            publishConnectionsToTeamLibrary(ids.compactMap { connectionsById[$0] })
+        case .publishToTeamLibrary(let ids, let teamID):
+            publishConnectionsToTeamLibrary(ids.compactMap { connectionsById[$0] }, teamID: teamID)
+        case .resolveTeamLibraryConflicts:
+            presentTeamLibraryConflicts()
         case .moveToGroup(let ids, let groupId):
             moveConnections(ids, toGroup: groupId, before: nil, undoManager: undoManager)
         case .moveToNewGroup(let ids):
             requestNewGroup(parentId: nil, movingConnectionIds: ids)
         case .setIncludedInSync(let ids, let included):
-            setIncludedInSync(ids, included: included)
+            if included {
+                setIncludedInSync(ids, included: true)
+            } else {
+                requestExcludeFromSync(ids)
+            }
         case .deleteConnections(let ids):
             requestDeleteConnections(ids)
         case .removeFromRecent(let ids):

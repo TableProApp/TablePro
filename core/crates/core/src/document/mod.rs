@@ -5,6 +5,7 @@
 //! `SqlGrammar::Mongo`. Each builder writes one mongosh call, and every
 //! value the user gave is bound as `$n`, never written into the text.
 
+mod document_catalog;
 mod document_filter;
 mod document_read;
 mod document_write;
@@ -15,10 +16,12 @@ mod shell_params;
 mod tests;
 mod value_order;
 
+pub(crate) use document_catalog::{create_database, delete_all_documents, drop_database};
+pub use document_filter::filter_operators;
 pub(crate) use document_filter::{filter_document, typed_document};
 pub(crate) use document_read::{count, export, page};
 pub(crate) use document_write::{delete, insert, insert_many, key_probe, update};
-pub(crate) use json_cells::json_cells;
+pub(crate) use json_cells::{json_cells, json_number};
 pub use shell_literal::shell_literal;
 pub(crate) use shell_literal::{insert_document, insert_start};
 pub(crate) use shell_params::ShellParams;
@@ -26,6 +29,9 @@ pub use shell_params::bind_param;
 
 use crate::dialect::SqlDialect;
 use crate::sql_syntax::SqlGrammar;
+
+/// The type of a JSON column of numbers of more than one BSON type.
+pub const NUMBER_TYPE: &str = "number";
 
 /// Whether the dialect's statements are shell calls rather than SQL.
 pub(crate) fn speaks_shell(dialect: &dyn SqlDialect) -> bool {

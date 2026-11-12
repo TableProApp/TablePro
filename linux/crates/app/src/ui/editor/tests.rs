@@ -885,7 +885,7 @@ fn truncated_result_reveals_banner_and_complete_result_hides_it() {
     assert!(capped.is_revealed(), "the capped result has no banner");
     assert_eq!(
         capped.title(),
-        "Stopped after the first 3 rows: the statement did not run past them"
+        "Showing the first 3 rows: the server stopped the statement at the row limit, before its end"
     );
     assert_eq!(capped.button_label().as_deref(), Some("Export All…"));
     assert!(!complete.is_revealed(), "a complete result shows a banner");
@@ -927,6 +927,51 @@ fn export_all_uses_originating_statement_of_second_result() {
     assert_eq!(shown.row_count(), Some(3));
     assert!(offer.session.is_some(), "Export All has no session to read through");
     assert_eq!(offer.origin.preselected(), crate::ui::export::ScopeSource::Query);
+}
+
+#[gtk4::test]
+fn export_shown_result_offers_the_result_on_show() {
+    let mut runs = Replies::default();
+    runs.when_sql_contains("second", result_set(2, Some(2), Truncation::Complete));
+    runs.always(result_set(3, Some(3), Truncation::Complete));
+    let harness = editor_with(runs, "SELECT n FROM first;\nSELECT n FROM second;");
+    let offers = SignalLog::connect(&harness.editor, "export-results", |values| {
+        values[1]
+            .get::<glib::BoxedAnyObject>()
+            .expect("an offer")
+            .borrow::<ExportOffer>()
+            .clone()
+    });
+    run_and_wait(&harness);
+    harness.editor.imp().results.select(1);
+
+    assert!(harness.editor.export_shown_result());
+
+    let offers = offers.take();
+    let [offer] = offers.as_slice() else {
+        panic!("one offer, not {}", offers.len());
+    };
+    let ExportOrigin::Editor {
+        shown,
+        query: ExportQuery::Editor { sql },
+        ..
+    } = &offer.origin
+    else {
+        panic!("not an editor result: {:?}", offer.origin);
+    };
+    assert_eq!(sql.as_str(), "SELECT n FROM second");
+    assert_eq!(shown.row_count(), Some(2));
+}
+
+#[gtk4::test]
+fn export_shown_result_offers_nothing_without_rows() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let offers = SignalLog::connect(&harness.editor, "export-results", |_| ());
+
+    assert!(!harness.editor.export_shown_result(), "an editor that never ran");
+    run_and_wait(&harness);
+    assert!(!harness.editor.export_shown_result(), "a command offered rows");
+    assert_eq!(offers.count(), 0);
 }
 
 #[gtk4::test]
@@ -980,6 +1025,28 @@ fn unconnected_editor(settings: &MemorySettings, tasks: Tasks) -> SqlEditor {
 fn scheme_id(view: &sourceview5::View) -> Option<String> {
     let buffer = view.buffer().downcast::<sourceview5::Buffer>().ok()?;
     buffer.style_scheme().map(|scheme| scheme.id().to_string())
+}
+
+#[gtk4::test]
+fn style_scheme_choices_stay_exact_across_desktop_changes() {
+    adw::init().expect("libadwaita");
+    let runtime = crate::test_support::test_runtime();
+    let settings = MemorySettings::new();
+    let editor = unconnected_editor(&settings, runtime.tasks());
+    let view = editor.imp().source_view.get();
+    let style = adw::StyleManager::default();
+    for id in ["Adwaita", "Adwaita-dark", "classic", "cobalt"] {
+        settings.get().set_style_scheme(id).expect("a scheme");
+        for appearance in [adw::ColorScheme::ForceLight, adw::ColorScheme::ForceDark] {
+            style.set_color_scheme(appearance);
+            assert_eq!(scheme_id(view.upcast_ref()).as_deref(), Some(id));
+        }
+    }
+    settings.get().set_style_scheme("").expect("automatic");
+    assert_eq!(scheme_id(view.upcast_ref()).as_deref(), Some("Adwaita-dark"));
+    style.set_color_scheme(adw::ColorScheme::ForceLight);
+    assert_eq!(scheme_id(view.upcast_ref()).as_deref(), Some("Adwaita"));
+    style.set_color_scheme(adw::ColorScheme::Default);
 }
 
 #[gtk4::test]
@@ -3044,4 +3111,340 @@ fn completion_reads_only_the_session_of_the_tabs_database() {
 
     pick_database(&harness, "shop");
     assert_eq!(followed_catalog(&harness), None, "the last database's catalog stayed");
+}
+
+#[gtk4::test]
+fn a_catalog_reply_keeps_the_database_choice_that_requested_it() {
+    let harness = databases_editor(answering(), false);
+    let catalog = session_in("", harness.runtime.tasks());
+    pick_database(&harness, "analytics");
+    harness
+        .editor
+        .follow_catalog_for(Some("analytics"), Some(catalog.clone()));
+    assert!(
+        harness
+            .editor
+            .catalog_session()
+            .is_some_and(|held| Arc::ptr_eq(&held, &catalog))
+    );
+
+    pick_database(&harness, "shop");
+    harness.editor.follow_catalog_for(Some("analytics"), Some(catalog));
+    assert!(
+        harness.editor.catalog_session().is_none(),
+        "a late lookup restored the old catalog"
+    );
+}
+
+mod result_edits {
+    use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnOrigin};
+    use tablepro_core::edit::CellInput;
+    use tablepro_core::meta::TableRef;
+
+    use super::*;
+    use crate::services::change_tracker::RowKey;
+    use crate::services::change_tracker_registry::ChangeTrackerRegistry;
+    use crate::services::grid::ResultRefusal;
+    use crate::services::tab_tracker_handle::TabTrackerHandle;
+    use crate::services::tracker_edit::TrackerEdit;
+
+    fn table() -> TableRef {
+        TableRef::new(Some("public".to_owned()), "t")
+    }
+
+    fn traced(name: &str, column: &str) -> ResultColumn {
+        ResultColumn::new(name, ColumnType::untyped_text("text")).with_origin(Some(ColumnOrigin::new(table(), column)))
+    }
+
+    fn catalog_column(name: &str, primary_key: bool) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_owned(),
+            column_type: ColumnType::untyped_text("text"),
+            nullable: !primary_key,
+            primary_key,
+            is_auto_increment: false,
+            is_generated: false,
+            partition_scoped: false,
+            default: ColumnDefault::None,
+            comment: None,
+        }
+    }
+
+    fn rows_of(columns: Vec<ResultColumn>, transaction: TransactionState) -> Replies<FakeRun> {
+        let width = columns.len();
+        let rows = (1..=2)
+            .map(|id| {
+                (0..width)
+                    .map(|column| match column {
+                        0 => Value::Int(id),
+                        _ => Value::Text(format!("v{id}")),
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut run = FakeRun::completed(vec![
+            ResultEvent::ResultSetStarted {
+                columns: columns.into(),
+            },
+            ResultEvent::Rows(rows),
+            ResultEvent::ResultSetFinished {
+                retained: 2,
+                total_rows: Some(2),
+                truncation: Truncation::Complete,
+            },
+        ]);
+        run.transaction_state = transaction;
+        let mut runs = Replies::default();
+        runs.always(run);
+        runs
+    }
+
+    fn editing(runs: Replies<FakeRun>, text: &str) -> (Harness, TabTrackerHandle) {
+        crate::register_test_resources();
+        let runtime = crate::test_support::test_runtime();
+        let fake = Arc::new(FakeEditorSession::new(runs));
+        let mut script = ConnectionScript::default();
+        script.fetch_columns.always(FakeReply::ok(vec![
+            catalog_column("id", true),
+            catalog_column("a", false),
+        ]));
+        let active = ActiveSession::new();
+        active.replace(session_on(fake.clone(), runtime.tasks(), script));
+        let settings = MemorySettings::new();
+        let editor = SqlEditor::new(SqlEditorInit {
+            initial_query: Some(text.to_owned()),
+            settings: settings.get().clone(),
+            history: None,
+            tasks: runtime.tasks(),
+            session: active.clone(),
+            hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+            close_timeout: Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
+        });
+        let tracker = ChangeTrackerRegistry::default().register(uuid::Uuid::new_v4());
+        editor.attach_row_tracker(tracker.clone());
+        let harness = Harness {
+            editor,
+            fake,
+            history: None,
+            active,
+            settings,
+            runtime,
+        };
+        (harness, tracker)
+    }
+
+    fn settled(harness: &Harness) -> Option<ResultRefusal> {
+        let mut state = None;
+        wait_until(WAIT, || {
+            state = harness.editor.result_refusal(0);
+            state.is_some_and(|refusal| refusal != Some(ResultRefusal::Checking))
+        })
+        .expect("the result to settle");
+        state.flatten()
+    }
+
+    fn change_a(tracker: &TabTrackerHandle) {
+        let _ = tracker.apply(TrackerEdit::Cell {
+            row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
+            col: 1,
+            original: Value::Text("v1".to_owned()),
+            value: CellInput::Value(Value::Text("changed".to_owned())),
+        });
+    }
+
+    #[gtk4::test]
+    fn a_result_read_from_one_table_with_its_key_edits_and_saves_through_the_window() {
+        let (harness, tracker) = editing(
+            rows_of(vec![traced("id", "id"), traced("x", "a")], TransactionState::Idle),
+            "SELECT id, a AS x FROM t",
+        );
+        let _window = shown(&harness);
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), None);
+        let grid = shown_grid(&harness);
+        assert!(grid.config().is_some_and(|config| config.tracker.is_some()));
+        change_a(&tracker);
+        let saves = SignalLog::connect(&harness.editor, "save-rows", |_| ());
+        harness.editor.save_rows();
+
+        assert_eq!(saves.count(), 1, "Save did not reach the window");
+        let (target, _) = tracker.preview_save().expect("a plan").expect("changes");
+        assert_eq!(target.table, table());
+        let names: Vec<&str> = target.columns.iter().map(|column| column.name.as_str()).collect();
+        assert_eq!(names, ["id", "a"], "the renamed column writes its own column");
+    }
+
+    #[gtk4::test]
+    fn header_save_action_commits_result_inline_edits_and_follows_save_state() {
+        let (harness, tracker) = editing(
+            rows_of(vec![traced("id", "id"), traced("x", "a")], TransactionState::Idle),
+            "SELECT id, a AS x FROM t",
+        );
+        let _window = shown(&harness);
+        run_and_wait(&harness);
+        assert_eq!(settled(&harness), None);
+        let grid = shown_grid(&harness);
+        let action = harness.editor.save_changes_action().expect("the data save action");
+        assert!(!action.is_enabled(), "clean rows have nothing to save");
+        let mut cell = None;
+        wait_until(WAIT, || {
+            cell = grid.focus_cell(0, 1);
+            cell.is_some()
+        })
+        .expect("the cell");
+        let cell = cell.expect("the cell");
+        assert!(grid.edit().edit_cell(&cell));
+        grid.edit().open_text().expect("inline field").set_text("changed");
+        assert_eq!(tracker.pending_count(), 0);
+        assert!(action.is_enabled(), "the first inline edit enables Save Changes");
+        let saves = SignalLog::connect(&harness.editor, "save-rows", |_| ());
+
+        action.activate(None);
+
+        assert_eq!(tracker.pending_count(), 1);
+        assert_eq!(saves.count(), 1);
+        assert!(!cell.is_editing());
+        harness.editor.rows_save_started();
+        assert!(!action.is_enabled());
+        harness.editor.rows_save_failed(None);
+        assert!(action.is_enabled());
+        let _ = tracker.discard();
+        harness.editor.rows_discarded(false);
+        assert!(!action.is_enabled());
+    }
+
+    #[gtk4::test]
+    fn a_join_stays_read_only_and_says_why() {
+        let (harness, _) = editing(
+            rows_of(vec![traced("id", "id"), traced("a", "a")], TransactionState::Idle),
+            "SELECT t.id, u.a FROM t JOIN u ON u.id = t.id",
+        );
+        let _window = shown(&harness);
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::MoreThanOneTable));
+        let grid = shown_grid(&harness);
+        assert_eq!(
+            grid.config().and_then(|config| config.result_lock),
+            Some(ResultRefusal::MoreThanOneTable)
+        );
+    }
+
+    #[gtk4::test]
+    fn a_result_without_its_whole_key_is_read_only() {
+        let (harness, _) = editing(
+            rows_of(vec![traced("a", "a")], TransactionState::Idle),
+            "SELECT a FROM t",
+        );
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::KeyNotShown));
+    }
+
+    #[gtk4::test]
+    fn rows_read_inside_an_open_transaction_are_read_only() {
+        let (harness, _) = editing(
+            rows_of(
+                vec![traced("id", "id"), traced("a", "a")],
+                TransactionState::InTransaction,
+            ),
+            "SELECT id, a FROM t",
+        );
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::OpenTransaction));
+    }
+
+    #[gtk4::test]
+    fn columns_no_driver_traced_are_read_only() {
+        let (harness, _) = editing(
+            rows_of(
+                vec![
+                    ResultColumn::new("id", ColumnType::untyped_text("text")),
+                    ResultColumn::new("a", ColumnType::untyped_text("text")),
+                ],
+                TransactionState::Idle,
+            ),
+            "SELECT id, a FROM t",
+        );
+        run_and_wait(&harness);
+
+        assert_eq!(settled(&harness), Some(ResultRefusal::Untraced));
+    }
+
+    #[gtk4::test]
+    fn a_run_asks_before_it_drops_changed_rows() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let (harness, tracker) = editing(
+            rows_of(vec![traced("id", "id"), traced("a", "a")], TransactionState::Idle),
+            "SELECT id, a FROM t",
+        );
+        let window = shown(&harness);
+        run_and_wait(&harness);
+        assert_eq!(settled(&harness), None);
+        change_a(&tracker);
+        let before = sent(&harness.fake).len();
+
+        harness.editor.run();
+
+        assert!(!harness.editor.is_running(), "the run dropped a pending change");
+        let mut alert = None;
+        wait_until(WAIT, || {
+            alert = crate::workspace::visible_alert(&window);
+            alert.is_some()
+        })
+        .expect("the discard question");
+        crate::test_support::respond(&alert.expect("the alert"), "discard");
+        wait_until(WAIT, || sent(&harness.fake).len() > before).expect("the run after the discard");
+        assert_eq!(tracker.pending_count(), 0);
+    }
+}
+
+#[gtk4::test]
+fn the_divider_keeps_the_editor_in_view() {
+    let harness = editor_with(Replies::default(), "SELECT 1");
+    let window = crate::test_support::OwnedWindow::presented(
+        gtk4::Window::builder()
+            .default_width(800)
+            .default_height(600)
+            .child(&harness.editor)
+            .build(),
+    );
+    let paned = crate::test_support::descendants(&harness.editor)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk4::Paned>().ok())
+        .expect("the divider between the query and its results");
+    let editor = paned.start_child().expect("the editor pane");
+    let results = paned.end_child().expect("the results pane");
+    wait_until(WAIT, || paned.height() > 0).expect("the editor is allocated");
+
+    for text in ["SELECT 1".to_owned(), "SELECT 1;\n".repeat(300)] {
+        harness.editor.buffer().set_text(&text);
+        paned.set_position(0);
+        wait_until(WAIT, || paned.position() > 0).expect("the divider stops above the editor minimum");
+        let minimum = editor.measure(gtk4::Orientation::Vertical, paned.width()).0;
+        assert!(minimum >= 120);
+        assert!(editor.height() >= minimum);
+        assert!(harness.editor.imp().source_view.height() >= 120);
+
+        let bottom = paned.height();
+        paned.set_position(bottom);
+        wait_until(WAIT, || paned.position() < bottom).expect("the results retain their minimum");
+        assert!(results.height() >= results.measure(gtk4::Orientation::Vertical, paned.width()).0);
+        assert!(editor.height() >= minimum);
+
+        let middle = paned.height() / 2;
+        paned.set_position(middle);
+        wait_until(WAIT, || editor.height() > minimum && results.height() > 0)
+            .expect("the divider can still move between its limits");
+    }
+
+    window.set_default_size(800, 400);
+    wait_until(WAIT, || window.height() < 600).expect("the window becomes shorter");
+    paned.set_position(0);
+    wait_until(WAIT, || paned.position() > 0).expect("a short window keeps the editor visible");
+    assert!(harness.editor.imp().source_view.height() >= 120);
+    assert!(results.height() > 0);
 }

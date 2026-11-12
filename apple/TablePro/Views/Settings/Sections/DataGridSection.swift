@@ -7,6 +7,7 @@ import SwiftUI
 
 struct DataGridSection: View {
     @Binding var settings: DataGridSettings
+    @Binding var valueColors: ValueColorSettings
 
     var body: some View {
         Section {
@@ -27,9 +28,8 @@ struct DataGridSection: View {
                     .help("Max \(SettingsValidationRules.nullDisplayMaxLength) characters")
 
                 if let error = settings.nullDisplayValidationError {
-                    Text(error)
+                    NoticeLabel(error, severity: .error)
                         .font(.caption)
-                        .foregroundStyle(.red)
                 }
             }
 
@@ -39,6 +39,9 @@ struct DataGridSection: View {
             Toggle("Smart value detection", isOn: $settings.enableSmartValueDetection)
             Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 .help(String(localized: "Mark zero-width, control and special space characters in cells and value fields"))
+            Toggle("Color values by type", isOn: $valueColors.colorsValuesByType)
+                .help(String(localized: "Draw strings, numbers, dates and other typed values in the colors of the theme's Values section"))
+                .accessibilityIdentifier("color-values-by-type-toggle")
 
             Picker("Default row sort:", selection: $settings.defaultSortBehavior) {
                 ForEach(DefaultSortBehavior.allCases) { behavior in
@@ -107,9 +110,8 @@ struct DataGridSection: View {
                 }
 
                 if let error = settings.queryResultRowCapValidationError {
-                    Text(error)
+                    NoticeLabel(error, severity: .error)
                         .font(.caption)
-                        .foregroundStyle(.red)
                 }
             }
         } header: {

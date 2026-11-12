@@ -13,8 +13,8 @@ import TableProPluginKit
 extension MainContentCoordinator {
     private static let objectToolsLogger = Logger(subsystem: "com.TablePro", category: "DatabaseObjectTools")
 
-    /// The object a sidebar row or the menu bar's selection names, scoped to its own database and
-    /// schema. A row whose database is nil belongs to the database being browsed.
+    // The object a sidebar row or the menu bar's selection names, scoped to its own database and
+    // schema. A row whose database is nil belongs to the database being browsed.
     func objectTarget(for ref: DatabaseTreeTableRef) -> DatabaseObjectTarget? {
         guard let scope = services.databaseManager.resolvedScope(
             database: ref.database,
@@ -31,7 +31,7 @@ extension MainContentCoordinator {
 
     // MARK: - Copy DDL
 
-    /// The same text the DDL viewer and the Structure tab's DDL show, read in the object's own scope.
+    // The same text the DDL viewer and the Structure tab's DDL show, read in the object's own scope.
     func copyDDL(of ref: DatabaseTreeTableRef) {
         guard let target = objectTarget(for: ref) else { return }
         let name = target.name
@@ -66,8 +66,8 @@ extension MainContentCoordinator {
         }
     }
 
-    /// A failed check still asks the question: the refresh itself does not depend on it, and a
-    /// server that could not answer the catalog read will say why when the refresh runs.
+    // A failed check still asks the question: the refresh itself does not depend on it, and a
+    // server that could not answer the catalog read will say why when the refresh runs.
     private func refreshPrompt(for target: DatabaseObjectTarget) async -> MaterializedViewRefreshPrompt {
         do {
             let availability = try await MaterializedViewRefreshing.concurrentRefreshAvailability(of: target)
@@ -87,14 +87,12 @@ extension MainContentCoordinator {
     private func runMaterializedViewRefresh(_ target: DatabaseObjectTarget, concurrently: Bool) {
         Task {
             do {
+                // The refresh posts a rows change, which reloads every tab showing the view.
                 try await MaterializedViewRefreshing.refresh(target, concurrently: concurrently, connection: connection)
-                AlertHelper.showInfoSheet(
-                    title: String(localized: "Materialized View Refreshed"),
-                    message: String(format: String(localized: "“%@” now holds the current result of its query."), target.qualifiedName),
-                    window: contentWindow
-                )
+                AccessibilityAnnouncement.post(String(localized: "Materialized View Refreshed"))
             } catch ExecutionGateError.cancelledByUser {
             } catch {
+                Self.objectToolsLogger.error("Materialized view refresh failed: \(error.publicLogShape, privacy: .public)")
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Couldn't Refresh Materialized View"),
                     message: error.localizedDescription,
@@ -167,8 +165,10 @@ extension MainContentCoordinator {
             refreshStructure(ofTabs: showing)
         case .dropped:
             closeTabsForRemovedObjects(ids: showing.map(\.id))
+            refreshTableHealth(inDatabase: change.scope.database)
         case .renamed(let newName):
             retitleTabs(ids: Set(showing.map(\.id)), to: newName)
+            refreshTableHealth(inDatabase: change.scope.database)
         }
     }
 }

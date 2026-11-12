@@ -2,13 +2,16 @@
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::{
-    BuildDdlError, CollationName, ColumnVisibility, DraftColumn, DraftTableOptions, DraftType, GeneratedStorage,
-    Permission, RefusalReason, TableDefinition, TableDraft, TableOptions, diff_table,
+    BuildDdlError, CollationName, ColumnVisibility, DatabaseDraft, DraftColumn, DraftTableOptions, DraftType,
+    DropDatabaseOptions, GeneratedStorage, Permission, RefusalReason, TableDefinition, TableDraft, TableOptions,
+    TruncateTableOptions, diff_table, plan_create_database, plan_drop_database, plan_truncate_table,
 };
-use tablepro_core::{Connection, WriteKind};
+use tablepro_core::{Connection, TableRef, WriteKind};
 use tablepro_test_fixtures::{MysqlFlavour, MysqlOptions};
 
-use crate::support::{CALL, FLAVOURS, apply, connect, scalar, setup, start, start_with, table, text, within};
+use crate::support::{
+    CALL, FLAVOURS, apply, apply_on, connect, connect_root, rows, scalar, setup, start, start_with, table, text, within,
+};
 
 async fn read(connection: &dyn Connection) -> TableDefinition {
     connection
@@ -746,5 +749,107 @@ async fn a_retyped_column_keeps_its_character_set_and_on_update() {
         };
         assert_eq!(default.as_deref(), Some("current_timestamp(6)"), "{flavour:?}");
         connection.close().await.expect("a close");
+    }
+}
+
+/// TRUNCATE empties the table, keeps it and starts its AUTO_INCREMENT
+/// counter again. A table another table's foreign key names is refused
+/// even while no row points at it, which is why the app asks first.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn truncate_empties_the_table_and_restarts_its_counter() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE emptied (id int AUTO_INCREMENT PRIMARY KEY, label varchar(10))",
+                "CREATE TABLE parent (id int PRIMARY KEY)",
+                "CREATE TABLE child (id int PRIMARY KEY, parent_id int, \
+                 FOREIGN KEY (parent_id) REFERENCES parent (id))",
+            ],
+        )
+        .await;
+        apply_on(
+            connection.as_ref(),
+            WriteKind::RowChanges,
+            &table("emptied"),
+            &[
+                "INSERT INTO emptied (label) VALUES ('a'), ('b'), ('c')",
+                "INSERT INTO parent (id) VALUES (1)",
+            ],
+        )
+        .await
+        .expect("rows to empty");
+        let dialect = connection.dialect();
+        let truncate = |name: &str| {
+            plan_truncate_table(dialect.as_ref(), &table(name), &TruncateTableOptions::default())
+                .expect("a plan")
+                .into_write_batch(table(name))
+        };
+
+        connection
+            .write_batch(&truncate("emptied"), within(CALL))
+            .await
+            .expect("the truncate runs");
+        let referenced = connection.write_batch(&truncate("parent"), within(CALL)).await;
+        apply_on(
+            connection.as_ref(),
+            WriteKind::RowChanges,
+            &table("emptied"),
+            &["INSERT INTO emptied (label) VALUES ('d')"],
+        )
+        .await
+        .expect("a row after the truncate");
+
+        let kept: Vec<String> = rows(connection.as_ref(), "SELECT COUNT(*), MAX(id) FROM emptied")
+            .await
+            .first()
+            .map(|row| row.iter().map(text).collect())
+            .unwrap_or_default();
+        let parents = text(&scalar(connection.as_ref(), "SELECT COUNT(*) FROM parent").await);
+        assert_eq!(kept, ["1", "1"], "{flavour:?}");
+        assert!(referenced.is_err(), "{flavour:?}: {referenced:?}");
+        assert_eq!(parents, "1", "{flavour:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
+/// A database plan runs through the save path with a batch that names
+/// the database and no table, as the app sends it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_database_is_created_with_its_options_then_dropped() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let root = connect_root(&fixture).await;
+        let dialect = root.dialect();
+        let draft = DatabaseDraft {
+            character_set: Some("latin1".to_owned()),
+            collation: Some("latin1_general_ci".to_owned()),
+            ..DatabaseDraft::named("made")
+        };
+        let made = TableRef::new(Some("made".to_owned()), "");
+        let created = plan_create_database(dialect.as_ref(), &draft).expect("a plan");
+        let dropped = plan_drop_database(dialect.as_ref(), "made", &DropDatabaseOptions::default()).expect("a plan");
+        let listed = "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA \
+                      WHERE SCHEMA_NAME = 'made'";
+
+        root.write_batch(&created.into_write_batch(made.clone()), within(CALL))
+            .await
+            .expect("the database is created");
+        let options: Vec<String> = rows(root.as_ref(), listed)
+            .await
+            .first()
+            .map(|row| row.iter().map(text).collect())
+            .unwrap_or_default();
+        root.write_batch(&dropped.into_write_batch(made), within(CALL))
+            .await
+            .expect("the database is dropped");
+
+        assert_eq!(options, ["latin1", "latin1_general_ci"], "{flavour:?}");
+        assert!(rows(root.as_ref(), listed).await.is_empty(), "{flavour:?}");
+        root.close().await.expect("a close");
     }
 }

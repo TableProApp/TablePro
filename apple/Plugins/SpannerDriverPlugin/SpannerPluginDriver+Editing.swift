@@ -188,12 +188,13 @@ extension SpannerPluginDriver {
                 SpannerRowChange.CellChange(column: $0.columnName, value: spannerCell($0.newValue))
             },
             originalRow: change.originalRow?.map(spannerCell),
-            expressionColumns: expressionColumnNames(of: change, columns: columns)
+            expressionColumns: columnNames(change.expressionColumns, of: change, columns: columns),
+            defaultColumns: columnNames(change.defaultColumns, of: change, columns: columns)
         )
     }
 
-    private static func expressionColumnNames(of change: PluginRowChange, columns: [String]) -> Set<String> {
-        guard let marked = change.expressionColumns, !marked.isEmpty else { return [] }
+    private static func columnNames(_ marked: Set<Int>?, of change: PluginRowChange, columns: [String]) -> Set<String> {
+        guard let marked, !marked.isEmpty else { return [] }
         switch change.type {
         case .update:
             return Set(change.cellChanges.filter { marked.contains($0.columnIndex) }.map(\.columnName))

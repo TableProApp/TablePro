@@ -24,7 +24,7 @@ private struct BoundParameterValues: @unchecked Sendable {
 /// the lease, where the driver can say what the session is already holding. Only the second answer
 /// ran, so the failure banner and the status line are written from it.
 private struct MultiStatementRun {
-    let outcome: BatchStatementOutcome<QueryResult>
+    var outcome: BatchStatementOutcome<QueryResult>
     let plan: BatchTransactionPlan
     let sessionState: PluginSessionTransactionState
     let startState: PluginSessionTransactionState
@@ -100,7 +100,7 @@ private struct ExecutedStatementHistory {
 
 extension QueryExecutionCoordinator {
     func detectAndReconcileParameters(sql: String, existing: [QueryParameter]) -> [QueryParameter] {
-        QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing)
+        QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing, grammar: parent.lexicalGrammar)
     }
 
     func executeQueryWithParameters(
@@ -108,9 +108,10 @@ extension QueryExecutionCoordinator {
         parameters: [QueryParameter],
         bypassRowLimit: Bool = false,
         anchor: StatementAnchor? = nil,
-        install: ResultInstall = .newResult
+        install: ResultInstall = .newResult,
+        onTab target: UUID? = nil
     ) {
-        guard let (_, index) = parent.tabManager.selectedTabAndIndex else { return }
+        guard let (_, index) = parent.executionTab(target) else { return }
 
         let missing = parameters.filter {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -131,7 +132,8 @@ extension QueryExecutionCoordinator {
         let conversion = SQLParameterExtractor.convertToNativeStyle(
             sql: sql,
             parameters: parameters,
-            style: style
+            style: style,
+            grammar: parent.lexicalGrammar
         )
 
         paramLog.info("Executing parameterized query: \(conversion.sql.prefix(100), privacy: .private) with \(conversion.values.count) parameters")
@@ -143,7 +145,8 @@ extension QueryExecutionCoordinator {
             bypassRowLimit: bypassRowLimit,
             originalSQL: sql,
             anchor: anchor,
-            install: install
+            install: install,
+            onTab: target
         )
     }
 
@@ -156,9 +159,10 @@ extension QueryExecutionCoordinator {
         bypassRowLimit: Bool = false,
         originalSQL: String? = nil,
         anchor: StatementAnchor? = nil,
-        install: ResultInstall = .newResult
+        install: ResultInstall = .newResult,
+        onTab target: UUID? = nil
     ) {
-        guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
+        guard let (selectedTab, index) = parent.executionTab(target),
               !parent.tabExecution.isExecuting(selectedTab.id) else { return }
 
         guard let scope = parent.scope(for: selectedTab) else {
@@ -211,6 +215,8 @@ extension QueryExecutionCoordinator {
                     route: DatabaseManager.shared.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
                 ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
+                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                    await DatabaseManager.shared.noteSessionStatements([statement.sql], ranOn: driver, scope: scope)
                     let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,
@@ -282,7 +288,10 @@ extension QueryExecutionCoordinator {
                 )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    guard parent.tabExecution.settle(claim) else { return }
+                    guard parent.tabExecution.settle(claim) else {
+                        parent.reportStopRollback(error, tabId: tabId)
+                        return
+                    }
                     parent.tabManager.mutate(tabId: tabId) { tab in
                         tab.pagination.isLoadingMore = false
                     }
@@ -291,6 +300,7 @@ extension QueryExecutionCoordinator {
                         parent.reportEndedExecutions([
                             EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
                         ])
+                        parent.reportStopRollback(error, tabId: tabId)
                         return
                     }
                     handleQueryExecutionError(
@@ -311,9 +321,10 @@ extension QueryExecutionCoordinator {
     func executeMultipleStatementsWithParameters(
         _ statements: [SQLStatementScanner.ExecutableStatement],
         parameters: [QueryParameter],
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        onTab target: UUID? = nil
     ) {
-        guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
+        guard let (selectedTab, index) = parent.executionTab(target),
               !parent.tabExecution.isExecuting(selectedTab.id) else { return }
 
         let missing = parameters.filter {
@@ -423,6 +434,19 @@ extension QueryExecutionCoordinator {
                 )
             )))
 
+            let results: [QueryResult]
+            switch outcome {
+            case .completed(let ran), .cancelled(let ran), .failed(let ran, _, _):
+                results = ran
+            }
+            let resultPlan = RunResultPlan(producesRows: results.map { !$0.columns.isEmpty })
+            let built = await buildStatementRows(
+                zip(sent, results).enumerated().map { index, pair in
+                    resultPlan.showsRows(ofStatement: index) ? (sql: pair.0.originalSQL as String?, result: pair.1) : nil
+                },
+                tabId: tabId
+            )
+
             switch outcome {
             case .cancelled(let results):
                 guard parent.tabExecution.settle(claim) else { return }
@@ -432,7 +456,8 @@ extension QueryExecutionCoordinator {
                         prepared: sent, results: results, parameters: parameters, connection: conn
                     ),
                     tabId: tabId,
-                    sessionNotice: sessionNotice
+                    sessionNotice: sessionNotice,
+                    built: built
                 )
                 parent.reportEndedExecutions([
                     EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
@@ -444,7 +469,8 @@ extension QueryExecutionCoordinator {
                     ),
                     tabId: tabId,
                     claim: claim,
-                    sessionNotice: sessionNotice
+                    sessionNotice: sessionNotice,
+                    built: built
                 )
             case .failed(let results, let failure, let errorDescription):
                 handleMultiStatementError(
@@ -463,7 +489,8 @@ extension QueryExecutionCoordinator {
                     claim: claim,
                     anchors: sent.map(\.anchor),
                     timing: PluginQueryTiming.batch(of: results),
-                    failureOutput: run.failureOutput
+                    failureOutput: run.failureOutput,
+                    built: built
                 )
             }
         }
@@ -481,10 +508,10 @@ extension QueryExecutionCoordinator {
         let sql = statement.sql
         let parameterNames = parameters.isEmpty || !statement.acceptsBindParameters
             ? []
-            : SQLParameterExtractor.extractParameters(from: sql)
+            : SQLParameterExtractor.extractParameters(from: sql, grammar: grammar)
         let conversion = parameterNames.isEmpty
             ? nil
-            : SQLParameterExtractor.convertToNativeStyle(sql: sql, parameters: parameters, style: style)
+            : SQLParameterExtractor.convertToNativeStyle(sql: sql, parameters: parameters, style: style, grammar: grammar)
         let executableSQL = conversion?.sql ?? sql
         let bounded = resolveStatement(sql: executableSQL, tabType: tabType, bypassLimit: bypassRowLimit)
         return PreparedStatement(
@@ -510,6 +537,7 @@ extension QueryExecutionCoordinator {
         lease: DriverLeaseOwner
     ) async -> MultiStatementRun {
         let failureOutput = ServerOutputBox()
+        let commitOutput = ServerOutputBox()
         let databaseType = parent.connection.type
         do {
             var run = try await DatabaseManager.shared.withScopedDriver(
@@ -535,7 +563,8 @@ extension QueryExecutionCoordinator {
                                 for: databaseType, session: driver.sessionLexicalState
                             ).execution
                         )
-                    }
+                    },
+                    commitOutput: commitOutput
                 ) { statement in
                     try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) {
                         try await self.executeStatement(
@@ -546,6 +575,10 @@ extension QueryExecutionCoordinator {
                         )
                     }
                 }
+                let sent = await running.prepared
+                await DatabaseManager.shared.noteSessionStatements(
+                    sent.prefix(outcome.ranCount(of: sent.count)).map(\.sentSQL), ranOn: driver, scope: scope
+                )
                 guard sessionPlan == .sessionTransaction else {
                     let endState: PluginSessionTransactionState = asksEndState
                         ? await driver.heldSessionTransactionState()
@@ -567,7 +600,11 @@ extension QueryExecutionCoordinator {
                     endState: sessionState
                 )
             }
-            run.failureOutput = failureOutput.output
+            if run.outcome.isCompleted {
+                run.outcome = run.outcome.appendingCommitOutput(commitOutput.output)
+            } else {
+                run.failureOutput = failureOutput.output.appending(commitOutput.output)
+            }
             return run
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
@@ -605,7 +642,8 @@ extension QueryExecutionCoordinator {
     private func keepStoppedStatements(
         history: ExecutedStatementHistory,
         tabId: UUID,
-        sessionNotice: String?
+        sessionNotice: String?,
+        built: StatementRowsBuild
     ) {
         guard !history.results.isEmpty else { return }
         recordExecutedStatements(history, tabId: tabId, commitOutcomeIsUnknown: false)
@@ -613,7 +651,7 @@ extension QueryExecutionCoordinator {
             tabId: tabId,
             timing: PluginQueryTiming.batch(of: history.results),
             totalRowsAffected: history.results.reduce(0) { $0 + $1.rowsAffected },
-            newResultSets: statementResultSets(history, tabId: tabId),
+            newResultSets: statementResultSets(history, tabId: tabId, built: built),
             sessionNotice: sessionNotice
         )
     }
@@ -625,7 +663,8 @@ extension QueryExecutionCoordinator {
         history: ExecutedStatementHistory,
         tabId: UUID,
         claim: TabExecutionClaim,
-        sessionNotice: String?
+        sessionNotice: String?,
+        built: StatementRowsBuild
     ) {
         guard parent.tabExecution.settle(claim) else { return }
         parent.retireQueryTask(.claim(claim))
@@ -643,28 +682,40 @@ extension QueryExecutionCoordinator {
             tabId: tabId,
             timing: PluginQueryTiming.batch(of: history.results),
             totalRowsAffected: totalRowsAffected,
-            newResultSets: statementResultSets(history, tabId: tabId),
+            newResultSets: statementResultSets(history, tabId: tabId, built: built),
             sessionNotice: sessionNotice
         )
     }
 
-    private func statementResultSets(_ history: ExecutedStatementHistory, tabId: UUID) -> [ResultSet] {
+    // Only the statements the plan keeps become results, so a long script builds a few, not one per statement.
+    private func statementResultSets(_ history: ExecutedStatementHistory, tabId: UUID, built: StatementRowsBuild) -> [ResultSet] {
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
-        return zip(history.prepared, history.results).enumerated().map { index, pair in
-            let (statement, result) = pair
-            return makeStatementResultSet(
-                result: result,
-                sql: statement.originalSQL,
-                index: firstNumber + index,
-                baseQuery: statement.executableSQL,
-                baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
-                namedParameterStatement: statement.parameterValues == nil
-                    ? nil
-                    : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
-                tabId: tabId,
-                anchor: statement.anchor
-            )
+        let reading = parent.tableNameReading
+        let ran = Array(zip(history.prepared, history.results))
+        let plan = RunResultPlan(producesRows: ran.map { !$0.1.columns.isEmpty })
+        let resultSets = plan.entries.enumerated().map { position, entry -> ResultSet in
+            switch entry {
+            case .summary(let indices):
+                return makeRunSummaryResultSet(indices.map { RunSummaryPart(ran[$0].1) })
+            case .statement(let index):
+                let (statement, result) = ran[index]
+                return makeStatementResultSet(
+                    result: result,
+                    sql: statement.originalSQL,
+                    index: firstNumber + position,
+                    baseQuery: statement.executableSQL,
+                    baseQueryParameterValues: statement.parameterValues?.map(TypedParameterValue.kept),
+                    namedParameterStatement: statement.parameterValues == nil
+                        ? nil
+                        : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
+                    tabId: tabId,
+                    anchor: statement.anchor,
+                    built: built.statement(at: index, readBy: reading)
+                )
+            }
         }
+        appendDroppedNotice(of: plan, to: resultSets)
+        return resultSets
     }
 
     /// A commit whose connection died before the answer leaves every statement of the batch in a
@@ -705,7 +756,15 @@ extension QueryExecutionCoordinator {
         anchor: StatementAnchor? = nil,
         install: ResultInstall = .newResult
     ) async -> Bool {
-        await MainActor.run { [weak self] in
+        let prepared = await TableRows.preparing(
+            fetchResult.rows,
+            exportDocuments: fetchResult.exportDocuments,
+            absentCells: fetchResult.absentCells,
+            shape: phase1RowShape(
+                tabId: tabId, tableName: tableName, columns: fetchResult.columns, columnTypes: fetchResult.columnTypes
+            )
+        )
+        return await MainActor.run { [weak self] in
             guard let self else { return false }
             guard parent.tabExecution.settle(claim) else { return false }
             parent.retireQueryTask(.claim(claim))
@@ -751,10 +810,13 @@ extension QueryExecutionCoordinator {
                 viewport: install.viewport,
                 source: install.source,
                 serverOutput: fetchResult.serverOutput,
-                absentCells: fetchResult.absentCells
+                exportDocuments: fetchResult.exportDocuments,
+                absentCells: fetchResult.absentCells,
+                columnOrigins: fetchResult.columnOrigins,
+                prepared: prepared
             )
 
-            let parameterValues = nativeParameters.map { $0 as? String }
+            let parameterValues = nativeParameters.map(TypedParameterValue.kept)
             let statement = originalSQL.map { NamedParameterStatement(sql: $0, parameters: originalParameters) }
             parent.tabManager.mutate(tabId: tabId) {
                 $0.pagination.baseQueryParameterValues = parameterValues
@@ -773,7 +835,8 @@ extension QueryExecutionCoordinator {
         claim: TabExecutionClaim,
         anchors: [StatementAnchor?],
         timing: PluginQueryTiming,
-        failureOutput: PluginServerOutput
+        failureOutput: PluginServerOutput,
+        built: StatementRowsBuild
     ) {
         let cumulativeTime = timing.total
         let errorDescription = context.errorDescription
@@ -808,12 +871,13 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = cumulativeTime
             tab.execution.lastExecutedAt = Date()
 
-            tab.display.replaceUnpinnedResults(with: statementResultSets(history, tabId: tabId) + [errorRS])
+            tab.display.replaceUnpinnedResults(with: statementResultSets(history, tabId: tabId, built: built) + [errorRS])
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
             parent.toolbarState.recordQueryTiming(timing, for: tabId)

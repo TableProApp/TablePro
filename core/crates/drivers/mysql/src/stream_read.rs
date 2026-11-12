@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use futures_util::TryStreamExt;
 use sqlx::mysql::{MySqlConnection, MySqlDatabaseError};
-use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, SqlSafeStr as _};
+use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, SqlSafeStr as _, Statement as _};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 use tablepro_core::{
@@ -28,10 +28,13 @@ pub(crate) async fn stream(
     read: &ReadStatement,
     sink: &mut dyn ResultSink,
 ) -> Result<StreamSummary, DriverError> {
-    if let ReadStatement::User(sql) = read {
-        refuse_writes(sql.as_str())?;
-        refuse_more_than_one(connection, flavour, sql.as_str()).await?;
-    }
+    let declared = match read {
+        ReadStatement::User(sql) => {
+            refuse_writes(sql.as_str())?;
+            prepare_as_one(connection, flavour, sql.as_str()).await?
+        }
+        ReadStatement::Generated(_) => Vec::new(),
+    };
     connection
         .execute("START TRANSACTION READ ONLY")
         .await
@@ -61,7 +64,14 @@ pub(crate) async fn stream(
         }
         ReadStatement::User(sql) => {
             let results = connection.fetch_many(sqlx::raw_sql(AssertSqlSafe(sql.as_str().to_owned())));
-            emitter.results(results, flavour).await
+            match emitter.results(results, flavour).await {
+                // sqlx gives an empty set as its OK alone, so its columns come from the prepare.
+                Ok(()) if emitter.rows == 0 && !declared.is_empty() => {
+                    emitter.start(declared.into()).await?;
+                    emitter.finish().await
+                }
+                streamed => streamed,
+            }
         }
     };
     let committed = connection
@@ -90,26 +100,27 @@ pub(crate) fn refuse_writes(sql: &str) -> Result<(), DriverError> {
 /// prepared-statement protocol does not run its kind.
 const UNSUPPORTED_IN_PREPARE: u16 = 1295;
 
-/// The read runs over the text protocol, which runs every statement a
-/// text holds. A prepare parses the text the way the server will, with
-/// multiple statements off, so a text the server reads as more than one
-/// fails here whatever the client's lexer made of it.
-async fn refuse_more_than_one(
+// The text protocol runs every statement a text holds; a prepare fails one the server reads as several, whatever the client's lexer made of it.
+async fn prepare_as_one(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
     sql: &str,
-) -> Result<(), DriverError> {
+) -> Result<Vec<ResultColumn>, DriverError> {
     let prepared = (&mut *connection)
         .prepare(AssertSqlSafe(sql.to_owned()).into_sql_str())
         .await;
     match prepared {
-        Ok(_) => Ok(()),
+        Ok(statement) => Ok(statement
+            .columns()
+            .iter()
+            .map(|column| result_column(column, MySqlTimestampMode::WorkspaceUtc))
+            .collect()),
         Err(sqlx::Error::Database(error))
             if error
                 .try_downcast_ref::<MySqlDatabaseError>()
                 .is_some_and(|mysql| mysql.number() == UNSUPPORTED_IN_PREPARE) =>
         {
-            Ok(())
+            Ok(Vec::new())
         }
         Err(error) => Err(map_error(&error, flavour)),
     }

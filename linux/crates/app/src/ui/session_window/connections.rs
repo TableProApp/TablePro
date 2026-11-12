@@ -8,19 +8,23 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use tablepro_core::SafeModeLevel;
+use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{
-    ConnectionColor, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand, SavedConnection,
+    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand,
+    SavedConnection,
 };
 use uuid::Uuid;
 
-use super::{SessionWindow, SessionWindowInput};
+use super::{LibraryEdit, SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_deletion::DeletionOptions;
 use crate::services::deletion_error::DeletionError;
+use crate::services::library_outline::LibraryMove;
 use crate::services::saved_connection_editor::GroupChoice;
 use crate::services::saved_connection_error::SavedConnectionError;
+use crate::services::secret_save_report::SecretSaveOutcome;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogMode, ConnectPrefill, FormField};
 use crate::ui::delete_connection_dialog::{self, DeleteConnectionDialog};
 use crate::ui::file_read::{FileReadError, read_capped_file};
@@ -63,6 +67,21 @@ impl SessionWindow {
         prefill: Option<ConnectPrefill>,
         focus: Option<FormField>,
     ) {
+        self.present_dialog(mode, prefill, focus, None);
+    }
+
+    pub(super) fn on_connect_from_link(&self, url: Box<ConnectionUrl>) {
+        self.imp().link_queued.set(false);
+        self.present_dialog(ConnectDialogMode::Create, None, None, Some(url));
+    }
+
+    fn present_dialog(
+        &self,
+        mode: ConnectDialogMode,
+        prefill: Option<ConnectPrefill>,
+        focus: Option<FormField>,
+        link: Option<Box<ConnectionUrl>>,
+    ) {
         let Some(state) = self.state() else {
             return;
         };
@@ -82,7 +101,7 @@ impl SessionWindow {
             });
             if let Some(window) = window.upgrade() {
                 window.imp().dialog_opening.set(false);
-                window.show_connect_dialog(mode, prefill, focus, environment);
+                window.show_connect_dialog(mode, prefill, focus, link, environment);
             }
         });
     }
@@ -92,6 +111,7 @@ impl SessionWindow {
         mode: ConnectDialogMode,
         prefill: Option<ConnectPrefill>,
         focus: Option<FormField>,
+        link: Option<Box<ConnectionUrl>>,
         ssh: SshEnvironment,
     ) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
@@ -125,6 +145,9 @@ impl SessionWindow {
         dialog.connect_saved(move |_, id| saved.deliver(SessionWindowInput::ConnectionSaved(id)));
         dialog.connect_closed(move |_| input.deliver(SessionWindowInput::DialogClosed));
         dialog.present(Some(self));
+        if let Some(url) = link {
+            dialog.fill_from_link(*url);
+        }
         if let Some(field) = focus {
             dialog.reveal_field(field);
         }
@@ -138,6 +161,7 @@ impl SessionWindow {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
+        let asked_to_keep = save.secrets.len();
         let secrets = state.context.secrets.clone();
         let writes = StoreConnectionWrites::new(
             state.services.storage.connections().clone(),
@@ -146,10 +170,8 @@ impl SessionWindow {
         crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             match tablepro_session::persist_pending_save(&*secrets, &writes, save).await {
                 Ok(report) => {
-                    for (_, error) in &report.secret_failures {
-                        input.deliver(SessionWindowInput::ShowToast(
-                            crate::services::secret_save_report::not_saved_message(error),
-                        ));
+                    if let Some(outcome) = SecretSaveOutcome::of_connection(asked_to_keep, &report.secret_failures) {
+                        input.deliver(SessionWindowInput::SecretSave(outcome));
                     }
                 }
                 Err(error) => {
@@ -392,8 +414,16 @@ impl SessionWindow {
         );
     }
 
-    /// File a connection under a group, or take it out of the one it
-    /// is in.
+    pub(super) fn on_library_edit(&self, edit: LibraryEdit) {
+        match edit {
+            LibraryEdit::CreateGroup { parent, name, with } => self.on_create_group(parent, name, with),
+            LibraryEdit::RenameGroup(id, name) => self.on_rename_group(id, name),
+            LibraryEdit::DeleteGroup(id) => self.on_delete_group(id),
+            LibraryEdit::Change(change) => self.on_change_library(change),
+            LibraryEdit::SetFavourite(id, favourite) => self.on_set_favourite(id, favourite),
+        }
+    }
+
     pub(super) fn on_set_connection_group(&self, id: Uuid, choice: GroupChoice) {
         let Some(state) = self.state() else {
             return;
@@ -401,6 +431,57 @@ impl SessionWindow {
         let editor = state.services.saved_connection_editor.clone();
         self.change_connection(async move { editor.move_to_group(id, choice).await }, |reason| {
             crate::i18n::gettext_f("The group could not be saved. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_create_group(&self, parent: Option<Uuid>, name: ConnectionGroupName, with: Option<Uuid>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(
+            async move { editor.create_group(parent, name, with).await.map(drop) },
+            |reason| crate::i18n::gettext_f("The group could not be created. {reason}", &[("reason", reason)]),
+        );
+    }
+
+    pub(super) fn on_rename_group(&self, id: Uuid, name: ConnectionGroupName) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.rename_group(id, name).await }, |reason| {
+            crate::i18n::gettext_f("The group could not be renamed. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_delete_group(&self, id: Uuid) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.delete_group(id).await }, |reason| {
+            crate::i18n::gettext_f("The group could not be deleted. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_change_library(&self, change: LibraryMove) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.change_library(change).await }, |reason| {
+            crate::i18n::gettext_f("The change could not be saved. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_set_favourite(&self, id: Uuid, favourite: bool) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.set_favourite(id, favourite).await }, |reason| {
+            crate::i18n::gettext_f("The favourites could not be saved. {reason}", &[("reason", reason)])
         });
     }
 
@@ -638,8 +719,9 @@ impl SessionWindow {
 
     /// Tick the level of the session in front in the main menu.
     pub(super) fn show_safe_mode(&self) {
-        let level = self.front_session().map(|(_, session)| session.safe_mode());
-        super::window_actions::show_safe_mode(self.upcast_ref(), level);
+        let front = self.front_session().map(|(_, session)| session);
+        super::window_actions::show_safe_mode(self.upcast_ref(), front.as_ref().map(|session| session.safe_mode()));
+        crate::ui::workspace::show_transfer_actions(self.upcast_ref(), front.as_deref());
     }
 
     /// Run a change to a saved connection, holding the process until it
@@ -790,7 +872,7 @@ impl SessionWindow {
                 Ok(Ok(report)) => crate::i18n::ngettext_f(
                     "Imported {n} connection.",
                     "Imported {n} connections.",
-                    u32::try_from(report.total()).unwrap_or(u32::MAX),
+                    report.total(),
                     &[("n", &report.total().to_string())],
                 ),
                 Ok(Err(tablepro_storage::StorageError::ImportOutdated)) => crate::i18n::gettext(
@@ -1183,20 +1265,28 @@ mod tests {
         );
     }
 
-    /// A file whose entry takes a saved connection's name but opens
-    /// another file: the dialog shows where it goes and the suffixed name
-    /// before anything is written, and only Import writes it.
+    /// A file whose entry takes a saved connection's name but connects
+    /// to another host without TLS: the dialog shows where it goes, that
+    /// it skips TLS, and the suffixed name before anything is written,
+    /// and only Import writes it.
     #[gtk4::test]
     fn an_import_shows_where_each_connection_goes_before_writing() {
-        let test = TestWindow::picker("ImportPreview");
+        let test = TestWindow::with_script(
+            "ImportPreview",
+            crate::ui::session_window::tests::Script {
+                network: true,
+                ..Default::default()
+            },
+        );
         wait_for_list(&test.window);
         let lookalike = SavedConnection {
             id: Uuid::new_v4(),
-            database: "/srv/elsewhere.sqlite3".to_owned(),
+            host: "db.elsewhere.example".to_owned(),
+            tls: tablepro_core::TlsConfig::disabled(),
             ..test.saved.clone()
         };
         let entry = serde_json::to_string(&lookalike).expect("the entry");
-        let bytes = format!(r#"{{"version": 2, "connections": [{entry}]}}"#).into_bytes();
+        let bytes = format!(r#"{{"version": 1, "connections": [{entry}]}}"#).into_bytes();
 
         test.window.send(SessionWindowInput::ConnectionsFileRead {
             path: "/tmp/connections.json".into(),
@@ -1204,25 +1294,32 @@ mod tests {
         });
         let alert = wait_for_alert(&test.window);
         let list = alert.extra_child().expect("the dialog's rows");
-        let mut rows: Vec<adw::ActionRow> = Vec::new();
+        // A list view's row is its item widget, which holds the title and subtitle labels.
+        let mut rows: Vec<(String, String)> = Vec::new();
         wait_until(WAIT, || {
             rows = crate::test_support::descendants(&list)
                 .into_iter()
-                .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
-                .filter(|row| !row.title().is_empty())
+                .filter(|widget| widget.css_name() == "row")
+                .filter_map(|row| {
+                    let labels: Vec<String> = crate::test_support::descendants(&row)
+                        .into_iter()
+                        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                        .map(|label| label.label().to_string())
+                        .collect();
+                    match labels.as_slice() {
+                        [title, subtitle] if !title.is_empty() => Some((title.clone(), subtitle.clone())),
+                        _ => None,
+                    }
+                })
                 .collect();
             !rows.is_empty()
         })
         .expect("the rows");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].title(), format!("{} (imported)", test.saved.name));
-        assert!(
-            rows[0]
-                .subtitle()
-                .is_some_and(|subtitle| subtitle.contains("elsewhere.sqlite3")),
-            "{:?}",
-            rows[0].subtitle()
-        );
+        assert_eq!(rows[0].0, format!("{} (imported)", test.saved.name));
+        let subtitle = &rows[0].1;
+        assert!(subtitle.contains("app@db.elsewhere.example"), "{subtitle}");
+        assert!(subtitle.contains("Connects without TLS"), "{subtitle}");
         assert!(!listed(&test, lookalike.id), "the preview wrote the list");
 
         respond(&alert, crate::ui::import_preview::IMPORT);
@@ -1314,6 +1411,85 @@ mod tests {
         assert_eq!(test.hold.live(), 1, "the delete ran without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
         assert!(!listed(&test, copy.id), "the hold ended before the delete");
+    }
+
+    #[gtk4::test]
+    fn group_and_favourite_changes_reach_the_store_and_a_refusal_says_so() {
+        let test = TestWindow::picker("GroupChanges");
+        wait_for_list(&test.window);
+        let id = test.saved.id;
+        let library = || test.services.storage.connections().list_blocking().expect("the list");
+        let name = |text: &str| ConnectionGroupName::new(text).expect("a group name");
+
+        test.window.send(SessionWindowInput::Library(LibraryEdit::CreateGroup {
+            parent: None,
+            name: name("Work"),
+            with: Some(id),
+        }));
+        wait_until(WAIT, || library().groups.iter().any(|group| group.name == name("Work"))).expect("the new group");
+        let work = library().groups[0].id;
+        assert_eq!(
+            library()
+                .connections
+                .iter()
+                .find(|saved| saved.id == id)
+                .and_then(|saved| saved.group_id),
+            Some(work),
+            "the connection was not filed in the new group"
+        );
+
+        test.window
+            .send(SessionWindowInput::Library(LibraryEdit::SetFavourite(id, true)));
+        wait_until(WAIT, || library().favorites.contains(&id)).expect("the favourite");
+
+        test.window.send(SessionWindowInput::Library(LibraryEdit::RenameGroup(
+            work,
+            name("Office"),
+        )));
+        wait_until(WAIT, || {
+            library().groups.iter().any(|group| group.name == name("Office"))
+        })
+        .expect("the renamed group");
+
+        test.window.send(SessionWindowInput::Library(LibraryEdit::Change(
+            LibraryMove::Connections {
+                ids: vec![id],
+                group: None,
+                before: None,
+            },
+        )));
+        wait_until(WAIT, || {
+            library()
+                .connections
+                .iter()
+                .any(|saved| saved.id == id && saved.group_id.is_none())
+        })
+        .expect("the move to the top level");
+
+        test.window
+            .send(SessionWindowInput::Library(LibraryEdit::DeleteGroup(work)));
+        wait_until(WAIT, || library().groups.is_empty()).expect("the group deleted");
+
+        let toasts = || -> Vec<String> {
+            test.window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .filter_map(|toast| toast.title().map(|title| title.to_string()))
+                .collect()
+        };
+        assert!(toasts().is_empty(), "{:?}", toasts());
+        test.window.send(SessionWindowInput::Library(LibraryEdit::RenameGroup(
+            work,
+            name("Gone"),
+        )));
+        wait_until(WAIT, || !toasts().is_empty()).expect("the refusal");
+        assert!(
+            toasts()[0].starts_with("The group could not be renamed. "),
+            "{:?}",
+            toasts()
+        );
     }
 
     #[gtk4::test]

@@ -23,6 +23,7 @@ internal enum AppShortcut {
     case deleteRow
     case refresh
     case export
+    case exportResults
     case toggleFilters
     case toggleHistory
     case toggleInspector
@@ -53,6 +54,7 @@ internal enum AppShortcut {
         case .deleteRow: (XCUIKeyboardKey.delete.rawValue, .command)
         case .refresh: ("r", .command)
         case .export: ("e", [.command, .shift])
+        case .exportResults: ("e", [.command, .shift, .option])
         case .toggleFilters: ("f", [.command, .shift])
         case .toggleHistory: ("y", .command)
         case .toggleInspector: ("i", [.command, .option])

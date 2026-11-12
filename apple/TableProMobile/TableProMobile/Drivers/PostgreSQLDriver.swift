@@ -9,7 +9,7 @@ import TableProQuery
 import TableProSQLGrammar
 import TableProSQLQuoting
 
-nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class PostgreSQLDriver: DatabaseDriver, SessionSchemaReporting, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "PostgreSQLDriver")
 
     private let actor = PostgreSQLActor()
@@ -20,6 +20,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let database: String
     private let ssl: DriverSSLConfiguration
     let databaseType: DatabaseType
+    let queryTimeoutSeconds: Int?
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -37,8 +38,12 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         return SQLQuoting.stringLiteralBody(value, escapes: escapes)
     }
 
-    // Set once during connect()/switchSchema() before the driver is shared — safe for concurrent reads
-    nonisolated(unsafe) private(set) var currentSchema: String? = "public"
+    // A run's end writes it while a window reads it, so it sits behind a lock.
+    private let sessionSchema = OSAllocatedUnfairLock<String?>(initialState: "public")
+
+    var currentSchema: String? {
+        sessionSchema.withLock { $0 }
+    }
     nonisolated(unsafe) private(set) var serverVersion: String?
     nonisolated(unsafe) private(set) var serverVersionNumber: Int32 = 0
     nonisolated(unsafe) private(set) var catalogPresence = PostgreSQLDriver.presence(probedRows: nil)
@@ -54,7 +59,8 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         password: String,
         database: String,
         ssl: DriverSSLConfiguration = .disabled,
-        databaseType: DatabaseType = .postgresql
+        databaseType: DatabaseType = .postgresql,
+        queryTimeoutSeconds: Int? = nil
     ) {
         self.host = host
         self.port = port
@@ -63,19 +69,36 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         self.database = database
         self.ssl = ssl
         self.databaseType = databaseType
+        self.queryTimeoutSeconds = queryTimeoutSeconds
     }
 
     // MARK: - Connection
+
+    // None, or 0, keeps the limit the server or the role sets.
+    static func sessionSetupStatements(queryTimeoutSeconds: Int?) -> [String] {
+        guard let queryTimeoutSeconds, queryTimeoutSeconds > 0 else { return [] }
+        return ["SET statement_timeout = \(PluginQueryTimeout.milliseconds(queryTimeoutSeconds))"]
+    }
 
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
         _ = try? await actor.execute("SET standard_conforming_strings = on")
+        // A server that refuses the limit still runs queries, as on the Mac.
+        for statement in Self.sessionSetupStatements(queryTimeoutSeconds: queryTimeoutSeconds) {
+            do {
+                _ = try await actor.execute(statement)
+            } catch {
+                Self.logger.warning(
+                    "Session setup failed with \(statement, privacy: .private): \(error.localizedDescription, privacy: .private)"
+                )
+            }
+        }
         serverVersion = await actor.serverVersion()
         serverVersionNumber = await actor.serverVersionNumber()
         catalogPresence = await probeCatalogPresence()
         columnReadSupport = PostgreSQLColumnReadSupport()
-        await adoptServerSchema()
+        await settleCurrentSchema()
         await settleLexicalFacts()
     }
 
@@ -98,10 +121,11 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func adoptServerSchema() async {
-        guard let schema = try? await actor.execute("SELECT pg_catalog.current_schema()").rows.first?.first ?? nil,
-              !schema.isEmpty else { return }
-        currentSchema = schema
+    // A typed `SET search_path` moves it, and a transaction's end takes back a `SET` made inside it, the picker's own
+    // among them. Inside a transaction block the schema waits for the block to end.
+    func settleCurrentSchema() async {
+        guard let schema = await actor.currentSchemaOutsideBlock(), !schema.isEmpty else { return }
+        sessionSchema.withLock { $0 = schema }
     }
 
     func disconnect() async throws {
@@ -260,7 +284,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func switchSchema(to name: String) async throws {
         _ = try await actor.execute("SET search_path TO \(SQLQuoting.identifier(name))")
-        currentSchema = name
+        sessionSchema.withLock { $0 = name }
     }
 
     func fetchSchemas() async throws -> [String] {
@@ -382,6 +406,10 @@ private actor PostgreSQLActor {
         }
 
         try await pollUntilConnected(connection)
+        // This libpq is built without `__darwin__`, so it takes keepalives_idle and never sets it on the socket.
+        guard SessionSocketKeepalive.enable(on: PQsocket(connection)) else {
+            throw PostgreSQLError.connectionFailed(String(localized: "Failed to configure the connection timeout"))
+        }
 
         self.conn = connection
         adopted = true
@@ -450,6 +478,12 @@ private actor PostgreSQLActor {
             from: PQtransactionStatus(conn),
             statusAtSend: stream?.transactionStatusAtSend
         )
+    }
+
+    // A read inside a block would take a REPEATABLE READ transaction's snapshot, and a later SET TRANSACTION would fail.
+    func currentSchemaOutsideBlock() -> String? {
+        guard let conn, !PostgreSQLSessionTransaction.isInsideBlock(PQtransactionStatus(conn)) else { return nil }
+        return (try? execute("SELECT pg_catalog.current_schema()"))?.rows.first?.first ?? nil
     }
 
     func ping() throws {
@@ -1137,7 +1171,7 @@ nonisolated private func pgOidToTypeName(_ oid: UInt32) -> String {
     case 700: return "real"
     case 701: return "double precision"
     case 869: return "inet"
-    // PostgreSQL OID constants — separators would obscure the wire-protocol values
+    // PostgreSQL OID constants: separators would obscure the wire-protocol values
     // swiftlint:disable number_separator
     case 1042: return "char"
     case 1043: return "varchar"

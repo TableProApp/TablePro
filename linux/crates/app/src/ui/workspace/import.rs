@@ -3,7 +3,6 @@ use std::sync::Arc;
 use gtk4 as gtk;
 use gtk4::{gio, glib};
 use libadwaita::prelude::*;
-use relm4::{Component, ComponentController};
 
 use std::ops::Range;
 use std::time::Duration;
@@ -117,24 +116,18 @@ impl WorkspaceModel {
         columns: Vec<ImportColumn>,
         bytes: Vec<u8>,
     ) {
-        use crate::ui::import_dialog::{ImportCsvDialog, ImportCsvDialogInit, ImportCsvDialogOutput};
+        use crate::ui::import_dialog::{ImportCsvDialog, ImportCsvDialogInit};
 
-        let dialog = ImportCsvDialog::builder()
-            .launch(ImportCsvDialogInit {
-                schema,
-                table,
-                columns,
-                bytes,
-            })
-            .connect_receiver({
-                let input = self.input.clone();
-                move |_, out| {
-                    input.deliver(match out {
-                        ImportCsvDialogOutput::Import(import) => WorkspaceInput::ImportCsvRun(import),
-                    });
-                }
-            });
-        dialog.model().dialog().present(self.dialog_parent().as_ref());
+        let dialog = ImportCsvDialog::new(ImportCsvDialogInit {
+            schema,
+            table,
+            columns,
+            bytes: Arc::from(bytes),
+            tasks: self.context.tasks.clone(),
+        });
+        let input = self.input.clone();
+        dialog.connect_import(move |_, import| input.deliver(WorkspaceInput::ImportCsvRun(Box::new(import))));
+        dialog.present(self.dialog_parent().as_ref());
         self.import_dialog = Some(dialog);
     }
 
@@ -175,11 +168,11 @@ impl WorkspaceModel {
             imports.settle(ticket.id);
             match finished {
                 Ok(Ok(rows)) => {
-                    input.deliver(WorkspaceInput::RefreshPage);
+                    input.deliver(WorkspaceInput::RefreshPage(None));
                     input.deliver(WorkspaceInput::ShowToast(crate::i18n::ngettext_f(
                         "Imported {n} row.",
                         "Imported {n} rows.",
-                        u32::try_from(rows).unwrap_or(u32::MAX),
+                        rows,
                         &[("n", &rows.to_string())],
                     )));
                 }
@@ -187,7 +180,7 @@ impl WorkspaceModel {
                     "That file has no rows to import.",
                 ))),
                 Ok(Err(ImportEnd::Stopped)) => {
-                    input.deliver(WorkspaceInput::RefreshPage);
+                    input.deliver(WorkspaceInput::RefreshPage(None));
                     input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext("Import stopped.")));
                 }
                 Ok(Err(ImportEnd::Declined)) => {}
@@ -416,12 +409,11 @@ fn import_failure_text(error: &OperationError, step_rows: &[Range<usize>], first
                 .take(*statement_index)
                 .map(ExactSizeIterator::len)
                 .sum();
-            let count = u32::try_from(written).unwrap_or(u32::MAX);
             match lines(*statement_index) {
                 Some((first, last)) if first == last => crate::i18n::ngettext_f(
                     "Line {line} could not be written: {error}. The {written} row before it stays in the table, which has no transaction to undo it.",
                     "Line {line} could not be written: {error}. The {written} rows before it stay in the table, which has no transaction to undo them.",
-                    count,
+                    written,
                     &[
                         ("line", &first.to_string()),
                         ("error", &driver_message(source)),
@@ -434,7 +426,7 @@ fn import_failure_text(error: &OperationError, step_rows: &[Range<usize>], first
                 Some((first, last)) => crate::i18n::ngettext_f(
                     "Lines {first} to {last} could not be written: {error}. The table has no transaction to undo the import, so the {written} row before them stays, and some of these lines may have been written too.",
                     "Lines {first} to {last} could not be written: {error}. The table has no transaction to undo the import, so the {written} rows before them stay, and some of these lines may have been written too.",
-                    count,
+                    written,
                     &[
                         ("first", &first.to_string()),
                         ("last", &last.to_string()),
@@ -573,7 +565,7 @@ mod tests {
             columns: vec![column("name"), column("city")],
             mapping: vec![Some(0), Some(1)],
             options: tablepro_core::import::CsvImportOptions::default(),
-            bytes: bytes.as_bytes().to_vec(),
+            bytes: Arc::from(bytes.as_bytes()),
         }
     }
 

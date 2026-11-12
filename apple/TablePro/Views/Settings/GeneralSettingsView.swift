@@ -30,9 +30,16 @@ struct GeneralSettingsView: View {
             }
 
             if let initial = initialLanguage, settings.language != initial {
-                Text("Restart TablePro for the language change to take full effect.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                LabeledContent {
+                    Button(String(localized: "Relaunch")) {
+                        UpdateCenter.shared.relaunch()
+                    }
+                    .accessibilityIdentifier("language-relaunch-button")
+                } label: {
+                    Text("Relaunch TablePro to finish switching languages.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Picker("When TablePro starts:", selection: $settings.startupBehavior) {
@@ -124,8 +131,9 @@ struct GeneralSettingsView: View {
             } footer: {
                 Text(
                     """
-                    One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, \
-                    license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows.
+                    Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, time zone, \
+                    database types, connection count, first connection and query, plan prompts, sign-in and sign-out, \
+                    and your account ID once you sign in. Never hostnames, credentials, queries, or rows.
                     """
                 )
             }

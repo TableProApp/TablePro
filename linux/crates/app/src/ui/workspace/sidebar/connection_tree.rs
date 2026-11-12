@@ -24,15 +24,16 @@ use super::object_target::ObjectTarget;
 use super::sidebar_menu::{GROUP, object_menu, schema_menu};
 use super::sidebar_object::SidebarObject;
 use super::sidebar_view::{Holds, RowsObserverId, SidebarView};
-use super::store_sync;
 use super::tree_menu::{InWindow, SHOW_CONNECT_FAILURE, SHOW_SESSION, session_section};
 use super::tree_node::{NodeKind, TreeNode};
 use super::tree_row::TreeRow;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::connection_search::ConnectionSearch;
+use crate::services::library_outline::{DropSpot, LibraryItem, LibraryOutline, LibrarySection};
 use crate::services::saved_connection_list::{SavedConnectionList, StateObserverId};
 use crate::services::saved_connection_object::SavedConnectionObject;
-use crate::services::saved_connection_order;
+use crate::ui::library_drag::{Zone, ZoneKind, zone};
+use crate::ui::store_sync;
 
 /// The tree's own action: the menu of the row the keyboard is on.
 const TREE: &str = "tree";
@@ -90,12 +91,10 @@ pub(super) struct TreeInner {
     named: gtk::FilterListModel,
     matches: gtk::CustomFilter,
     pub(super) popover: gtk::PopoverMenu,
-    /// The connections in no group, then the groups, then the
-    /// connections the window holds that no saved connection names.
+    // The top-level groups and connections in the library's order, then the connections the window holds that no saved connection names.
     roots: gio::ListStore,
-    /// Each group's node, by its name as the user wrote it: groups that
-    /// differ only in case are two, as in the picker.
-    groups: RefCell<HashMap<String, TreeNode>>,
+    // By id, so a renamed group keeps its node and its row stays open.
+    groups: RefCell<HashMap<Uuid, TreeNode>>,
     /// Every connection's node, which keeps its row whatever the list
     /// does around it.
     nodes: RefCell<HashMap<SessionKey, TreeNode>>,
@@ -136,6 +135,15 @@ struct Heading {
     title: String,
 }
 
+// What a rebuild laid out from the library, in its order.
+#[derive(Default)]
+struct Laid {
+    kept: HashSet<SessionKey>,
+    groups: HashSet<Uuid>,
+    stores: Vec<(TreeNode, Vec<TreeNode>)>,
+    connections: Vec<TreeNode>,
+}
+
 /// What the selection follows, and whether its row is still to be
 /// opened and scrolled to: its list was not read yet, or the row's
 /// parents were never opened.
@@ -160,8 +168,7 @@ impl ConnectionTree {
             let tree_pane = Pane::new(&rows, &crate::i18n::gettext("Connections"));
             let found_pane = Pane::new(&results, &crate::i18n::gettext("Search Results"));
             let root = pages(&tree_pane, &found_pane);
-            let popover = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-            popover.set_has_arrow(true);
+            let popover = crate::ui::context_menu::context_menu(None::<&gio::MenuModel>);
             popover.set_parent(&root);
             TreeInner {
                 root,
@@ -364,6 +371,13 @@ impl ConnectionTree {
         }));
     }
 
+    #[cfg(test)]
+    pub(crate) fn selected_session(&self) -> Option<SessionKey> {
+        let which = self.inner.shown();
+        let position = self.inner.pane(which).selection.selected();
+        self.inner.item_at(which, position)?.1
+    }
+
     pub(crate) fn shutdown(&self) {
         let inner = &self.inner;
         if let Some(watch) = inner.saved_watch.take() {
@@ -481,57 +495,37 @@ impl TreeInner {
         node.update_state(state.is_some(), busy, &problem);
     }
 
-    /// Lay the roots out again from the saved connections as the store
-    /// published them, keeping every node, so the rows that stay keep
-    /// their place, and a row that moves opens again as it was.
+    // Keeps every node, so the rows that stay keep their place and a row that moves opens again as it was.
     fn rebuild(&self) {
         let open = self.open_rows();
+        let focused = focused_row(&self.tree.list_view)
+            .and_then(|row| row.position())
+            .and_then(|at| self.rows.row(at))
+            .and_then(|row| row.item().and_downcast::<TreeNode>());
+        let outline = self.saved.outline();
         let model = self.saved.model();
-        let mut listed: Vec<(tablepro_storage::SavedConnection, bool)> = (0..model.n_items())
+        let listed: Vec<SavedConnectionObject> = (0..model.n_items())
             .filter_map(|at| model.item(at).and_downcast::<SavedConnectionObject>())
-            .filter_map(|object| Some((object.saved()?.clone(), object.file_based())))
             .collect();
-        let labels = self.saved.labels();
-        listed.sort_by(|left, right| saved_connection_order::by_name(&labels, &left.0, &right.0));
-        let mut ungrouped: Vec<TreeNode> = Vec::new();
-        let mut grouped: Vec<(String, Vec<TreeNode>)> = Vec::new();
-        let mut kept: HashSet<SessionKey> = HashSet::new();
-        for (saved, file_based) in &listed {
-            let key = SessionKey::Saved(saved.id);
-            let node = self.node_for(&key, &saved.name);
-            node.update(
-                &saved.name,
-                connection_icon(saved.icon, *file_based),
-                saved.color.map_or("", crate::ui::connection_appearance::color_class),
-            );
-            kept.insert(key);
-            // The connection's other open databases come right after it,
-            // in its group, by name ([0030]).
-            let mut rows = vec![node];
-            for (sibling, database) in self.siblings_of(saved.id) {
-                let title = sibling_title(&saved.name, &database);
-                let node = self.node_for(&sibling, &title);
-                node.update(
-                    &title,
-                    crate::ui::icons::DRIVE_HARDDISK,
-                    saved.color.map_or("", crate::ui::connection_appearance::color_class),
-                );
-                kept.insert(sibling);
-                rows.push(node);
-            }
-            match labels.of(saved) {
-                None => ungrouped.extend(rows),
-                Some(group) => match grouped.last_mut() {
-                    Some((name, members)) if name == group => members.extend(rows),
-                    _ => grouped.push((group.to_owned(), rows)),
-                },
+        let file_based: HashMap<Uuid, bool> = listed
+            .iter()
+            .filter_map(|object| Some((object.saved()?.id, object.file_based())))
+            .collect();
+        let mut laid = Laid::default();
+        let mut desired = self.lay_out(&outline, None, &file_based, &mut laid);
+        // Only a list built by hand files a connection under a group it lacks.
+        for object in &listed {
+            if let Some(saved) = object.saved()
+                && !laid.kept.contains(&SessionKey::Saved(saved.id))
+            {
+                desired.extend(self.connection_rows(saved, object.file_based(), &mut laid));
             }
         }
         let held: Vec<(SessionKey, TreeNode)> = self
             .nodes
             .borrow()
             .iter()
-            .filter(|(key, _)| !kept.contains(*key))
+            .filter(|(key, _)| !laid.kept.contains(*key))
             .map(|(key, node)| (key.clone(), node.clone()))
             .collect();
         let mut others: Vec<TreeNode> = Vec::new();
@@ -547,34 +541,31 @@ impl TreeInner {
             }
         }
         others.sort_by_cached_key(|node| (node.title().to_lowercase(), node.title()));
-        let group_nodes: Vec<TreeNode> = {
+        let gone: Vec<TreeNode> = {
             let mut groups = self.groups.borrow_mut();
-            groups.retain(|name, _| grouped.iter().any(|(held, _)| held == name));
-            grouped
-                .iter()
-                .map(|(name, _)| {
-                    groups
-                        .entry(name.clone())
-                        .or_insert_with(|| TreeNode::group(name))
-                        .clone()
-                })
-                .collect()
+            let ids: Vec<Uuid> = groups.keys().filter(|id| !laid.groups.contains(*id)).copied().collect();
+            ids.iter().filter_map(|id| groups.remove(id)).collect()
         };
-        for (group, (_, members)) in group_nodes.iter().zip(&grouped) {
+        for (group, children) in &laid.stores {
             if let Some(store) = group.child_store() {
-                store_sync::sync(&store, members);
+                store_sync::sync(&store, children);
             }
         }
-        let in_order: Vec<TreeNode> = ungrouped
-            .iter()
-            .chain(grouped.iter().flat_map(|(_, members)| members))
-            .chain(&others)
-            .cloned()
-            .collect();
-        let desired: Vec<TreeNode> = ungrouped.into_iter().chain(group_nodes).chain(others).collect();
+        desired.extend(others.iter().cloned());
         store_sync::sync(&self.roots, &desired);
+        let in_order: Vec<TreeNode> = laid.connections.into_iter().chain(others).collect();
         store_sync::sync(&self.connections, &in_order);
+        // Out of the tree now; emptied so no stale store holds a connection the roots hold.
+        for group in gone {
+            if let Some(store) = group.child_store() {
+                store.remove_all();
+            }
+        }
         self.reopen(&open);
+        if let Some(node) = focused {
+            self.refocus(&node);
+        }
+        self.recount_groups();
         if self.searching() {
             // An edit can change what the search names.
             self.matches.changed(gtk::FilterChange::Different);
@@ -582,6 +573,88 @@ impl TreeInner {
         self.sync_sections();
         self.refresh_page();
         self.reselect();
+    }
+
+    // Groups first, then connections, each in the library's order; a group's rows go to its own store.
+    fn lay_out(
+        &self,
+        outline: &LibraryOutline,
+        parent: Option<Uuid>,
+        file_based: &HashMap<Uuid, bool>,
+        laid: &mut Laid,
+    ) -> Vec<TreeNode> {
+        let mut rows = Vec::new();
+        for item in outline.children(parent) {
+            match item {
+                LibraryItem::Group(id) => {
+                    if !laid.groups.insert(id) {
+                        continue;
+                    }
+                    let Some(group) = outline.group(id) else {
+                        continue;
+                    };
+                    let node = self.group_node(id, group.name.as_str());
+                    let children = self.lay_out(outline, Some(id), file_based, laid);
+                    laid.stores.push((node.clone(), children));
+                    rows.push(node);
+                }
+                LibraryItem::Connection(id) => {
+                    if let Some(saved) = outline.connection(id) {
+                        let file = file_based.get(&id).copied().unwrap_or_default();
+                        rows.extend(self.connection_rows(saved, file, laid));
+                    }
+                }
+            }
+        }
+        rows
+    }
+
+    fn group_node(&self, id: Uuid, name: &str) -> TreeNode {
+        let node = self
+            .groups
+            .borrow_mut()
+            .entry(id)
+            .or_insert_with(|| TreeNode::group(id, name))
+            .clone();
+        if node.title() != name {
+            node.set_title(name);
+        }
+        node
+    }
+
+    // The connection's other open databases come right after it, in its group ([0030]).
+    fn connection_rows(
+        &self,
+        saved: &tablepro_storage::SavedConnection,
+        file_based: bool,
+        laid: &mut Laid,
+    ) -> Vec<TreeNode> {
+        let key = SessionKey::Saved(saved.id);
+        let color = saved.color.map_or("", crate::ui::connection_appearance::color_class);
+        let node = self.node_for(&key, &saved.name);
+        node.update(&saved.name, connection_icon(saved.icon, file_based), color);
+        laid.kept.insert(key);
+        let mut rows = vec![node];
+        for (sibling, database) in self.siblings_of(saved.id) {
+            let title = sibling_title(&saved.name, &database);
+            let node = self.node_for(&sibling, &title);
+            node.update(&title, crate::ui::icons::DRIVE_HARDDISK, color);
+            laid.kept.insert(sibling);
+            rows.push(node);
+        }
+        laid.connections.extend(rows.iter().cloned());
+        rows
+    }
+
+    // A move changes the count of a group whose row stays where it is.
+    fn recount_groups(&self) {
+        let mut child = self.tree.list_view.first_child();
+        while let Some(widget) = child {
+            if let Some(row) = row_in(&widget) {
+                row.recount();
+            }
+            child = widget.next_sibling();
+        }
     }
 
     /// The sections of what the search finds: the connections it names,
@@ -651,12 +724,7 @@ impl TreeInner {
     /// Take `node` out and put it back where it is: whether a
     /// connection's row lists anything is read as the row is made.
     fn reinsert(&self, node: &TreeNode) {
-        let store = if index_in(&self.roots, node).is_some() {
-            Some(self.roots.clone())
-        } else {
-            self.group_of(node).and_then(|group| group.child_store())
-        };
-        if let Some(store) = store
+        if let Some(store) = self.store_of(node)
             && let Some(at) = index_in(&store, node)
         {
             store.remove(at);
@@ -664,16 +732,36 @@ impl TreeInner {
         }
     }
 
-    fn group_of(&self, node: &TreeNode) -> Option<TreeNode> {
-        self.groups
-            .borrow()
-            .values()
-            .find(|group| {
-                group
-                    .child_store()
-                    .is_some_and(|store| index_in(&store, node).is_some())
-            })
-            .cloned()
+    // The groups a connection's row sits in, the top one first; none for a row among the roots.
+    fn group_path(&self, node: &TreeNode) -> Vec<TreeNode> {
+        let item = match (node.group_id(), node.key()) {
+            (Some(group), _) => LibraryItem::Group(group),
+            (None, Some(SessionKey::Saved(id) | SessionKey::SavedIn { id, .. })) => LibraryItem::Connection(id),
+            (None, Some(SessionKey::File(_)) | None) => return Vec::new(),
+        };
+        let outline = self.saved.outline();
+        let groups = self.groups.borrow();
+        let mut path: Vec<TreeNode> = Vec::new();
+        let mut parent = outline.parent_of(item).flatten();
+        while let Some(group) = parent.and_then(|id| groups.get(&id)) {
+            if path.contains(group) {
+                break;
+            }
+            path.push(group.clone());
+            parent = group
+                .group_id()
+                .and_then(|id| outline.parent_of(LibraryItem::Group(id)))
+                .flatten();
+        }
+        path.reverse();
+        path
+    }
+
+    fn store_of(&self, node: &TreeNode) -> Option<gio::ListStore> {
+        match self.group_path(node).last() {
+            Some(group) => group.child_store(),
+            None => Some(self.roots.clone()),
+        }
     }
 
     /// Open the row of a connection that joined, and its group's.
@@ -694,9 +782,7 @@ impl TreeInner {
             let Some(node) = row.item().and_downcast::<TreeNode>() else {
                 continue;
             };
-            if node.kind() != NodeKind::Schema {
-                rows.extend(child_rows(&row));
-            }
+            rows.extend(rows_holding_nodes(&row, &node));
             open.insert(node);
         }
         open
@@ -716,9 +802,7 @@ impl TreeInner {
                 continue;
             }
             expand(&row);
-            if node.kind() != NodeKind::Schema {
-                rows.extend(child_rows(&row));
-            }
+            rows.extend(rows_holding_nodes(&row, &node));
         }
     }
 
@@ -731,7 +815,8 @@ impl TreeInner {
     }
 
     /// A lone schema, as a file or a key-value engine has, opens as it
-    /// comes, while its connection's row is open.
+    /// comes, while its connection's row is open. An empty one opens
+    /// once it holds something, a batch of rows at a time like any other.
     fn open_lone_schema(&self, key: &SessionKey) {
         let Some(view) = self.view_of(key) else {
             return;
@@ -739,7 +824,8 @@ impl TreeInner {
         let schemas = view.schemas();
         let lone = (schemas.n_items() == 1)
             .then(|| schemas.item(0).and_downcast::<TreeNode>())
-            .flatten();
+            .flatten()
+            .filter(|schema| schema.children().is_some_and(|rows| rows.n_items() > 0));
         {
             let mut branches = self.branches.borrow_mut();
             let Some(branch) = branches.get_mut(key) else {
@@ -806,8 +892,7 @@ impl TreeInner {
         self.connection_row(&node, false).is_some_and(|row| row.is_expanded())
     }
 
-    /// Whether the search names the connection `item`: its name, where
-    /// it connects, its group or tags, as the picker's search reads them.
+    // Its name, where it connects, its group's path or its tags, as the picker's search reads them.
     fn finds(&self, item: &glib::Object) -> bool {
         let Some(node) = item.downcast_ref::<TreeNode>() else {
             return false;
@@ -818,7 +903,10 @@ impl TreeInner {
         let search = self.search.borrow();
         match &key {
             SessionKey::Saved(id) => match self.saved.get(*id) {
-                Some(saved) => search.matches(&saved, self.saved.group_label(&saved).as_deref(), &self.saved.tags()),
+                Some(saved) => {
+                    let group = saved.group_id.and_then(|group| self.saved.outline().label(group));
+                    search.matches(&saved, group.as_deref(), &self.saved.tags())
+                }
                 None => search.matches_name(&node.title()),
             },
             SessionKey::SavedIn { .. } | SessionKey::File(_) => search.matches_name(&node.title()),
@@ -844,19 +932,38 @@ impl TreeInner {
         }
     }
 
-    /// The tree's row of the connection `node`, among the roots or in its
-    /// group; `open` opens the group to show it.
+    // Down its group path from the roots; `open` opens each group on the way.
+    // A move takes the row out and puts it back, which drops the keyboard focus it held.
+    fn refocus(&self, node: &TreeNode) {
+        let held = focused_row(&self.tree.list_view)
+            .and_then(|row| row.position())
+            .and_then(|at| self.rows.row(at))
+            .and_then(|row| row.item());
+        if held.as_ref() == Some(node.upcast_ref::<glib::Object>()) {
+            return;
+        }
+        if let Some(row) = self.connection_row(node, false) {
+            self.tree
+                .list_view
+                .scroll_to(row.position(), gtk::ListScrollFlags::FOCUS, None);
+        }
+    }
+
     fn connection_row(&self, node: &TreeNode, open: bool) -> Option<gtk::TreeListRow> {
-        let model = &self.rows;
-        if let Some(at) = index_in(&model.model(), node) {
-            return model.child_row(at);
+        let mut parent: Option<gtk::TreeListRow> = None;
+        for step in self.group_path(node).iter().chain(std::iter::once(node)) {
+            let row = match &parent {
+                None => self.rows.child_row(index_in(&self.roots, step)?)?,
+                Some(parent) => {
+                    if open {
+                        expand(parent);
+                    }
+                    child_row(parent, step)?
+                }
+            };
+            parent = Some(row);
         }
-        let group = self.group_of(node)?;
-        let row = model.child_row(index_in(&model.model(), &group)?)?;
-        if open {
-            expand(&row);
-        }
-        child_row(&row, node)
+        parent
     }
 
     /// The row of `table` under the open connection's `connection` row,
@@ -868,15 +975,21 @@ impl TreeInner {
         table: &TableRef,
         open: bool,
     ) -> Option<gtk::TreeListRow> {
-        let (schema, offset) = self.view_of(key)?.locate(table)?;
+        let located = self.view_of(key)?.locate(table)?;
         if open {
             expand(connection);
         }
-        let schema = child_row(connection, &schema)?;
+        let mut parent = child_row(connection, &located.schema)?;
         if open {
-            expand(&schema);
+            expand(&parent);
         }
-        schema.child_row(offset)
+        if let Some(group) = &located.group {
+            parent = child_row(&parent, group)?;
+            if open {
+                expand(&parent);
+            }
+        }
+        parent.child_row(located.offset)
     }
 
     /// Select the row of `table`, or of the session's connection, in the
@@ -992,7 +1105,7 @@ impl TreeInner {
         };
         match node.kind() {
             NodeKind::Connection => activate_connection(&self.pane(which).list_view, node, self.stored(node)),
-            NodeKind::Group | NodeKind::Schema => {
+            NodeKind::Group | NodeKind::Schema | NodeKind::ObjectGroup => {
                 if let Some(row) = self.rows.row(position).filter(|_| which == Which::Tree) {
                     row.set_expanded(!row.is_expanded());
                 }
@@ -1066,8 +1179,7 @@ impl TreeInner {
             return;
         };
         self.popover.set_menu_model(Some(&menu));
-        self.popover.set_pointing_to(pointing.as_ref());
-        self.popover.popup();
+        crate::ui::context_menu::popup_at(&self.popover, pointing);
     }
 
     /// The Menu key and Shift+F10: the menu of the row the keyboard is
@@ -1099,6 +1211,7 @@ impl TreeInner {
                 &ObjectKey(object.target()),
                 object.kind(),
                 view.affordances(),
+                view.holds(),
             ));
         }
         let node = item.downcast_ref::<TreeNode>()?;
@@ -1106,11 +1219,60 @@ impl TreeInner {
             NodeKind::Schema => {
                 let view = view?;
                 self.popover.insert_action_group(GROUP, Some(view.actions()));
-                schema_menu(node.schema_name().as_deref(), view.affordances(), view.holds())
+                let schema = node.schema_name();
+                let droppable = schema.as_deref().is_some_and(|schema| view.droppable(schema));
+                schema_menu(schema.as_deref(), droppable, view.affordances(), view.holds())
             }
             NodeKind::Connection => self.connection_menu(node),
-            NodeKind::Group | NodeKind::Placeholder => None,
+            NodeKind::Group => self.group_menu(node),
+            NodeKind::ObjectGroup | NodeKind::Placeholder => None,
         }
+    }
+
+    fn group_menu(&self, node: &TreeNode) -> Option<gio::Menu> {
+        let id = node.group_id()?;
+        let outline = self.saved.outline();
+        outline.group(id)?;
+        let list = self.saved.clone();
+        crate::ui::picker::insert_group_actions(&self.popover, self.root.upcast_ref(), id, move || list.outline());
+        Some(crate::ui::picker::group_menu(id, &outline))
+    }
+
+    fn popup_library_menu(&self, pointing: Option<gdk::Rectangle>) {
+        self.popover.set_menu_model(Some(&crate::ui::picker::library_menu()));
+        crate::ui::context_menu::popup_at(&self.popover, pointing);
+    }
+
+    // Only a library item moves: a group, or a saved connection's own row while the list has it.
+    fn library_item(&self, node: &TreeNode) -> Option<LibraryItem> {
+        match node.kind() {
+            NodeKind::Group => node.group_id().map(LibraryItem::Group),
+            NodeKind::Connection => self.stored(node).map(LibraryItem::Connection),
+            NodeKind::Schema | NodeKind::ObjectGroup | NodeKind::Placeholder => None,
+        }
+    }
+
+    fn dragged(&self, item: &gtk::ListItem) -> Option<(LibrarySection, LibraryItem)> {
+        let (_, node) = bound_node(item)?;
+        Some((LibrarySection::Tree, self.library_item(&node)?))
+    }
+
+    fn drop_spot(&self, item: &gtk::ListItem, y: f64, height: f64) -> Option<(DropSpot, bool)> {
+        let (row, node) = bound_node(item)?;
+        let target = self.library_item(&node)?;
+        let tree = LibrarySection::Tree;
+        let spot = match target {
+            LibraryItem::Group(id) => match zone(ZoneKind::Group, y, height) {
+                Zone::Before => DropSpot::Before(tree, target),
+                Zone::Into => DropSpot::Into(id),
+                Zone::After => DropSpot::After(tree, target),
+            },
+            LibraryItem::Connection(_) => match zone(ZoneKind::Connection, y, height) {
+                Zone::Before => DropSpot::Before(tree, target),
+                Zone::Into | Zone::After => DropSpot::After(tree, target),
+            },
+        };
+        Some((spot, row.is_expanded()))
     }
 
     /// The id of the saved connection `node` shows, while the list has it.
@@ -1136,15 +1298,13 @@ impl TreeInner {
                 stored: self.stored(node).is_some(),
             }
         };
-        // A saved connection's own row, on an engine whose catalog holds
-        // one database (0030).
-        let opens_databases = matches!(key, SessionKey::Saved(_))
-            && self
-                .branches
-                .borrow()
-                .get(&key)
-                .is_some_and(|branch| branch.view.affordances().opens_databases);
-        let lead = session_section(&key, state, opens_databases);
+        let affordances = self
+            .branches
+            .borrow()
+            .get(&key)
+            .map(|branch| branch.view.affordances())
+            .unwrap_or_default();
+        let lead = session_section(&key, state, affordances);
         let saved = match &key {
             SessionKey::Saved(id) => self.saved.get(*id),
             SessionKey::SavedIn { .. } | SessionKey::File(_) => None,
@@ -1158,18 +1318,21 @@ impl TreeInner {
             return Some(menu);
         };
         let tags = self.saved.tags();
-        let group = self.saved.group_label(&saved);
+        let section = LibrarySection::Tree;
+        let list = self.saved.clone();
         crate::ui::picker::insert_choice_actions(
             &self.popover,
             self.root.upcast_ref(),
             &saved,
-            group.as_deref(),
+            section,
+            move || list.outline(),
             &tags,
         );
         Some(crate::ui::picker::connection_menu_with(
             &lead,
             saved.id,
-            &self.saved.groups(),
+            section,
+            &self.saved.outline(),
             &tags,
         ))
     }
@@ -1246,7 +1409,12 @@ fn connect_pane(inner: &Rc<TreeInner>, which: Which) {
     let pane = inner.pane(which);
     let tree = Rc::downgrade(inner);
     match which {
-        Which::Tree => pane.list_view.set_factory(Some(&tree_factory(tree))),
+        Which::Tree => {
+            pane.list_view
+                .set_factory(Some(&tree_factory(tree, inner.saved.clone())));
+            take_drops_under_the_rows(inner);
+            offer_a_group_under_the_rows(inner);
+        }
         Which::Found => {
             pane.list_view.set_factory(Some(&found_factory(tree.clone())));
             pane.list_view.set_header_factory(Some(&heading_factory(tree)));
@@ -1270,6 +1438,53 @@ fn connect_pane(inner: &Rc<TreeInner>, which: Which) {
     pane.list_view.add_controller(hover);
 }
 
+// A row's own target refuses what it cannot take, so the list takes a drop only under the rows.
+fn take_drops_under_the_rows(inner: &Rc<TreeInner>) {
+    let list_view = &inner.tree.list_view;
+    let (view, list) = (list_view.downgrade(), inner.saved.clone());
+    crate::ui::library_drag::drop_target(
+        list_view,
+        move |y, _| {
+            let view = view.upgrade()?;
+            below_rows(&view, y).then_some((DropSpot::End(LibrarySection::Tree), false))
+        },
+        move || list.outline(),
+    );
+}
+
+fn offer_a_group_under_the_rows(inner: &Rc<TreeInner>) {
+    let gesture = gtk::GestureClick::new();
+    gesture.set_button(gdk::BUTTON_SECONDARY);
+    let tree = Rc::downgrade(inner);
+    gesture.connect_pressed(move |gesture, _, x, y| {
+        let Some(tree) = tree.upgrade() else {
+            return;
+        };
+        let list_view = &tree.tree.list_view;
+        if !below_rows(list_view, y) {
+            return;
+        }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        let at = list_view.compute_point(&tree.root, &graphene::Point::new(x as f32, y as f32));
+        tree.popup_library_menu(at.map(|point| gdk::Rectangle::new(point.x() as i32, point.y() as i32, 1, 1)));
+    });
+    inner.tree.list_view.add_controller(gesture);
+}
+
+fn below_rows(list_view: &gtk::ListView, y: f64) -> bool {
+    let mut bottom = 0.0_f32;
+    let mut child = list_view.first_child();
+    while let Some(widget) = child {
+        if widget.is_visible()
+            && let Some(bounds) = widget.compute_bounds(list_view)
+        {
+            bottom = bottom.max(bounds.y() + bounds.height());
+        }
+        child = widget.next_sibling();
+    }
+    y >= f64::from(bottom)
+}
+
 fn install_actions(inner: &Rc<TreeInner>) {
     let actions = gio::SimpleActionGroup::new();
     let menu = gio::SimpleAction::new(CONTEXT_MENU, None);
@@ -1286,10 +1501,8 @@ fn install_actions(inner: &Rc<TreeInner>) {
         .add_controller(local_shortcut_controller(ShortcutOwner::ConnectionTree));
 }
 
-/// The ListItem is not focusable, so the keyboard focus is on the
-/// expander, whose keys open and fold the row and which says to a screen
-/// reader whether it is open.
-fn tree_factory(tree: Weak<TreeInner>) -> gtk::SignalListItemFactory {
+// The ListItem is not focusable, so the keyboard focus is on the expander, whose keys open and fold the row.
+fn tree_factory(tree: Weak<TreeInner>, saved: Rc<SavedConnectionList>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(move |_, object| {
         let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
@@ -1300,6 +1513,14 @@ fn tree_factory(tree: Weak<TreeInner>) -> gtk::SignalListItemFactory {
         expander.set_indent_for_icon(true);
         expander.set_child(Some(&TreeRow::new(item)));
         expander.add_controller(click_gesture(tree.clone(), Which::Tree, item));
+        let (dragging, held) = (tree.clone(), item.downgrade());
+        crate::ui::library_drag::drag_source(&expander, move || dragging.upgrade()?.dragged(&held.upgrade()?));
+        let (dropping, held, list) = (tree.clone(), item.downgrade(), saved.clone());
+        crate::ui::library_drag::drop_target(
+            &expander,
+            move |y, height| dropping.upgrade()?.drop_spot(&held.upgrade()?, y, height),
+            move || list.outline(),
+        );
         item.set_child(Some(&expander));
     });
     factory.connect_bind(|_, object| {
@@ -1313,8 +1534,11 @@ fn tree_factory(tree: Weak<TreeInner>) -> gtk::SignalListItemFactory {
             return;
         };
         expander.set_list_row(Some(&row));
-        if let (Some(shown), Some(object)) = (expander.child().and_downcast::<TreeRow>(), row.item()) {
-            shown.bind(&object);
+        if let Some(shown) = expander.child().and_downcast::<TreeRow>() {
+            if let Some(object) = row.item() {
+                shown.bind(&object);
+            }
+            shown.follow_expansion(&expander, &row);
         }
     });
     factory.connect_unbind(|_, object| {
@@ -1429,6 +1653,12 @@ fn click_gesture(tree: Weak<TreeInner>, which: Which, item: &gtk::ListItem) -> g
     gesture
 }
 
+fn bound_node(item: &gtk::ListItem) -> Option<(gtk::TreeListRow, TreeNode)> {
+    let row = item.item().and_downcast::<gtk::TreeListRow>()?;
+    let node = row.item().and_downcast::<TreeNode>()?;
+    Some((row, node))
+}
+
 /// The theme's icon for a connection: the one the user picked, else a
 /// file's or a server's.
 fn connection_icon(icon: Option<tablepro_storage::ConnectionIcon>, file_based: bool) -> &'static str {
@@ -1513,8 +1743,18 @@ fn top_rows(tree: &gtk::TreeListModel) -> Vec<gtk::TreeListRow> {
     (0..count).filter_map(|position| tree.child_row(position)).collect()
 }
 
-/// The rows under an open row, which never holds a schema's tables when
-/// walked from the roots.
+// A schema's rows below its groups are objects, which may be many thousands.
+fn rows_holding_nodes(row: &gtk::TreeListRow, node: &TreeNode) -> Vec<gtk::TreeListRow> {
+    match node.kind() {
+        NodeKind::Schema => {
+            let groups = node.groups().map_or(0, |groups| groups.n_items());
+            (0..groups).filter_map(|position| row.child_row(position)).collect()
+        }
+        NodeKind::ObjectGroup | NodeKind::Placeholder => Vec::new(),
+        NodeKind::Group | NodeKind::Connection => child_rows(row),
+    }
+}
+
 fn child_rows(row: &gtk::TreeListRow) -> Vec<gtk::TreeListRow> {
     let count = row.children().map_or(0, |children| children.n_items());
     (0..count).filter_map(|position| row.child_row(position)).collect()

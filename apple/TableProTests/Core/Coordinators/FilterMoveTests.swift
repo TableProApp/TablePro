@@ -111,12 +111,7 @@ struct FilterMoveTests {
         let filters = [
             TestFixtures.makeTableFilter(column: "created_at", op: .between, value: "2024", secondValue: "2025"),
             TestFixtures.makeTableFilter(column: "status", op: .equal, value: "active", isEnabled: false),
-            TestFixtures.makeTableFilter(
-                column: TableFilter.rawSQLColumn,
-                op: .equal,
-                value: "",
-                rawSQL: "price * quantity > 1000"
-            ),
+            TableFilter.rawCondition("price * quantity > 1000"),
         ]
 
         let move = try #require(

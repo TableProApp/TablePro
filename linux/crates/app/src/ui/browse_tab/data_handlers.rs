@@ -31,7 +31,34 @@ impl BrowseModel {
                 self.begin_read(fx);
                 self.reload_from_columns(ColumnFreshness::Refetch);
             }
-            DataInput::Command(command) => self.on_command(command, fx),
+            DataInput::Renamed(name) => {
+                self.grid.commit_edit();
+                self.sequencer.cancel_all();
+                self.table = name;
+                if let Some(state_key) = self.state_key.as_ref() {
+                    self.filter_settings.set_filters(
+                        state_key,
+                        self.schema.as_deref(),
+                        &self.table,
+                        self.current_filter.clone(),
+                    );
+                    self.highlight_rules.set_rules(
+                        state_key,
+                        self.schema.as_deref(),
+                        &self.table,
+                        self.grid.highlight_rules(),
+                    );
+                }
+                self.grid.rename_table(&self.table);
+                let delta = self.tracker.set_target(SaveTarget {
+                    table: self.table_ref(),
+                    columns: self.current_columns.clone(),
+                });
+                self.grid.apply_delta(&delta);
+                self.reload(fx);
+                fx.output(BrowseTabOutput::StateChanged);
+            }
+            DataInput::Command(command) => self.on_command(*command, fx),
             DataInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             DataInput::SchemaChanged => {
                 self.begin_read(fx);
@@ -113,8 +140,8 @@ impl BrowseModel {
     /// The grid's actions reach the tab's buttons only while its rows are
     /// on screen: rows behind the loading or the error page are not what
     /// the table holds under the tab's filter.
-    fn show_grid_actions(&mut self) {
-        let shown = self.load.has_content();
+    pub(super) fn show_grid_actions(&mut self) {
+        let shown = self.load.has_content() && self.this.upgrade().is_some_and(|tab| tab.shows_data());
         if self.grid_actions_shown == shown {
             return;
         }
@@ -150,6 +177,12 @@ impl BrowseModel {
     }
 
     pub(super) fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
+        if let Some((behavior, direction)) = self.default_sort.take() {
+            let result: Vec<ResultColumn> = columns.iter().map(ColumnInfo::result_column).collect();
+            let sortable = self.grid_columns_for_catalog(&result, &columns);
+            self.current_sort =
+                super::default_sort::resolve(behavior, direction, &sortable).filter(|_| self.sorts_rows());
+        }
         if self.current_columns != columns {
             self.page = None;
             self.shown_view = None;
@@ -187,6 +220,7 @@ impl BrowseModel {
             layout,
             edges,
             seeks,
+            elapsed,
         } = reply;
         self.pager.land(offset, position, edges, seeks);
         let QueryResult { columns, rows, .. } = result;
@@ -209,6 +243,7 @@ impl BrowseModel {
             row_count,
             start_ordinal: offset,
             filtered: !self.current_filter.is_empty(),
+            elapsed,
         });
         self.shown_view = Some(self.page_view());
         self.show_page(rows, offset, fx);
@@ -227,13 +262,15 @@ impl BrowseModel {
     /// its place. A document's field whose name a filter, a sort or an
     /// update cannot spell takes none of them (ADR 0026).
     fn grid_columns_for(&self, result: &[ResultColumn]) -> Arc<[GridColumn]> {
+        self.grid_columns_for_catalog(result, &self.current_columns)
+    }
+
+    fn grid_columns_for_catalog(&self, result: &[ResultColumn], catalog: &[ColumnInfo]) -> Arc<[GridColumn]> {
         let documents = self
             .dialect
             .as_ref()
             .is_some_and(|dialect| dialect.grammar() == SqlGrammar::Mongo);
-        grid_columns(result, &self.current_columns, |name| {
-            !documents || is_addressable_field(name)
-        })
+        grid_columns(result, catalog, |name| !documents || is_addressable_field(name))
     }
 
     /// Give the grid `columns` when it shows others. Its rows go with the

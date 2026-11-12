@@ -8,6 +8,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection as SqlxConnection, Sql
 use sqlx::{Connection as _, Executor as _};
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -246,6 +247,7 @@ async fn read_user_sql(
     sql: &str,
     sink: &mut dyn ResultSink,
 ) -> Result<StreamOutcome, DriverError> {
+    crate::result_stream::refuse_nul(sql)?;
     crate::read_guard::refuse_more_than_one(connection, sql).await?;
     // The count took the busy handler off.
     flag.install(connection, lock_timeout).await?;
@@ -337,6 +339,14 @@ impl Connection for SqliteConnection {
         let object = object.clone();
         self.read(options, move |connection| {
             Box::pin(async move { metadata::fetch_object_definition(connection, &object).await })
+        })
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        self.read(options, move |connection| {
+            Box::pin(async move { crate::dump::read_dump_catalog(connection, &scope).await })
         })
         .await
     }
@@ -497,7 +507,7 @@ impl Connection for SqliteConnection {
         // halfway by the statement timeout would only roll back.
         let options = match batch.kind {
             WriteKind::RowChanges => self.statement_bounded(options),
-            WriteKind::SchemaChanges => options,
+            WriteKind::SchemaChanges | WriteKind::DatabaseChanges => options,
         };
         let pooled = self.acquire(&options).await?;
         let ledger = Arc::new(WriteLedger::new(WriteAtomicity::Transactional));

@@ -10,7 +10,8 @@ use mongodb::options::{ClientOptions, Credential, DriverInfo, ServerAddress};
 use secrecy::ExposeSecret;
 use tablepro_core::{
     APPLICATION_NAME, ConfigError, ConnectEnvironment, Credentials, DriverError, LivenessPolicy, LossPhase,
-    NetworkEndpoint, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, Transport, TransportRoute,
+    NetworkEndpoint, NetworkOptions, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, TlsMode, Transport,
+    TransportRoute,
 };
 use tablepro_net::tls::TlsSetupError;
 
@@ -18,7 +19,6 @@ use crate::client_tls::{ClientTls, private_dir};
 use crate::connect_watch::ConnectWatch;
 use crate::errors::closed_unanswered;
 use crate::errors::map_error;
-#[cfg(unix)]
 use crate::relay::{Relay, RelayTls};
 use crate::server_version;
 
@@ -50,7 +50,6 @@ enum Route {
     /// The library dials the servers and sets up TLS itself.
     Dialed(ClientTls),
     /// The library dials a relay whose streams come from the transport.
-    #[cfg(unix)]
     Relayed(Relay),
 }
 
@@ -64,6 +63,8 @@ pub(crate) struct MongoEndpoint {
     route: Route,
     liveness: LivenessPolicy,
     database: Option<String>,
+    // A seed list's host is no server, so only one host reached in the clear is asked for TLS.
+    plaintext_server: Option<String>,
 }
 
 impl MongoEndpoint {
@@ -77,18 +78,30 @@ impl MongoEndpoint {
         let service = target.transport.service_endpoint().clone();
         let database = target.database.clone().filter(|name| !name.trim().is_empty());
         let mut template = match (target.options.dns_seed_list, target.transport.route()) {
-            (true, TransportRoute::Tcp(_)) => seed_list(&service).await?,
-            (true, TransportRoute::UnixSocket(_)) => return Err(ConfigError::SeedListOverSsh.into()),
+            (true, TransportRoute::Tcp(_)) => seed_list(&service, &target.credentials).await?,
+            (true, TransportRoute::UnixSocket(_) | TransportRoute::InProcess) => {
+                return Err(ConfigError::SeedListOverSsh.into());
+            }
+            (false, TransportRoute::Tcp(endpoint)) if target.options.uses_host_list() => {
+                replica_set(&endpoint, &target.options)?
+            }
+            (false, TransportRoute::UnixSocket(_) | TransportRoute::InProcess) if target.options.uses_host_list() => {
+                return Err(ConfigError::HostListOverSsh.into());
+            }
             (false, TransportRoute::Tcp(endpoint)) => single_host(ServerAddress::Tcp {
                 host: endpoint.host().to_owned(),
                 port: Some(endpoint.port()),
             }),
             // Filled in once the relay listens.
-            (false, TransportRoute::UnixSocket(_)) => single_host(ServerAddress::Tcp {
+            (false, TransportRoute::UnixSocket(_) | TransportRoute::InProcess) => single_host(ServerAddress::Tcp {
                 host: service.host().to_owned(),
                 port: Some(service.port()),
             }),
         };
+        // A replica set the URL names wins over the one a seed list's TXT record gives.
+        if let Some(name) = target.options.replica_set() {
+            template.repl_set_name = Some(name.to_owned());
+        }
         // A seed list's TXT record may name the authentication database.
         let listed_source = template.credential.take().and_then(|listed| listed.source);
         template.credential = credential(target)?.map(|mut credential| {
@@ -115,25 +128,18 @@ impl MongoEndpoint {
             TransportRoute::Tcp(_) => {
                 Route::Dialed(tablepro_net::tls::set_up_off_runtime(move || ClientTls::new(&tls)).await?)
             }
-            #[cfg(unix)]
-            TransportRoute::UnixSocket(_) => {
+            TransportRoute::UnixSocket(_) | TransportRoute::InProcess => {
                 let server_name = target.tls_server_name().to_owned();
                 let relay_tls = tablepro_net::tls::set_up_off_runtime(move || relay_tls(&tls, server_name)).await?;
                 let relay = Relay::start(target.transport.clone(), relay_tls, liveness.login_timeout)
                     .map_err(|error| DriverError::Protocol(format!("the relay socket could not open: {error}")))?;
-                template.hosts = vec![ServerAddress::Unix {
-                    path: relay.path().to_owned(),
-                }];
+                template.hosts = vec![relay.server_address()];
                 template.tls = None;
                 Route::Relayed(relay)
             }
-            #[cfg(not(unix))]
-            TransportRoute::UnixSocket(_) => {
-                return Err(DriverError::Protocol(
-                    "a route through a Unix socket needs the relay, which runs on Unix alone".to_owned(),
-                ));
-            }
         };
+        let plaintext_server = (!target.options.dns_seed_list && target.tls.mode == TlsMode::Disable)
+            .then(|| target.tls_server_name().to_owned());
         Ok(Self {
             transport: target.transport.clone(),
             service,
@@ -141,6 +147,7 @@ impl MongoEndpoint {
             route,
             liveness,
             database,
+            plaintext_server,
         })
     }
 
@@ -169,7 +176,6 @@ impl MongoEndpoint {
             // What an earlier client's streams met is not this one's. The
             // client starts its monitors as it is built, so a failure
             // they meet lands after this.
-            #[cfg(unix)]
             if let Route::Relayed(relay) = &self.route {
                 relay.failure().take();
             }
@@ -184,7 +190,8 @@ impl MongoEndpoint {
                 Ok(Ok(_)) => Ok(client),
                 Ok(Err(error)) => {
                     client.shutdown().immediate(true).await;
-                    Err(self.explain(&error, LossPhase::Connect).await)
+                    let failed = self.explain(&error, LossPhase::Connect).await;
+                    Err(self.refused_in_the_clear(failed).await)
                 }
                 Err(_) => {
                     client.shutdown().immediate(true).await;
@@ -200,12 +207,29 @@ impl MongoEndpoint {
         })
     }
 
+    // A server that takes only TLS drops a connect in the clear unanswered, which a handshake of its own tells apart.
+    async fn refused_in_the_clear(&self, failed: DriverError) -> DriverError {
+        let Some(server_name) = &self.plaintext_server else {
+            return failed;
+        };
+        if !matches!(failed, DriverError::ConnectionLost { .. }) {
+            return failed;
+        }
+        let within = self.liveness.login_timeout;
+        if !tablepro_net::tls::serves_tls(self.transport.as_ref(), server_name, within).await {
+            return failed;
+        }
+        DriverError::Tls {
+            failure: TlsFailure::ServerRequiresTls,
+            detail: failed.to_string(),
+        }
+    }
+
     /// Build the client where the library reads its TLS files, which live
     /// only until it has.
     async fn build(&self, mut options: ClientOptions) -> Result<Client, DriverError> {
         let tls = match &self.route {
             Route::Dialed(tls) => Some(tls.clone()),
-            #[cfg(unix)]
             Route::Relayed(_) => None,
         };
         let runtime = tokio::runtime::Handle::current();
@@ -255,7 +279,6 @@ impl MongoEndpoint {
     fn closed_in_tls(&self, error: &mongodb::error::Error, during: LossPhase) -> bool {
         let tls = match &self.route {
             Route::Dialed(tls) => tls,
-            #[cfg(unix)]
             Route::Relayed(_) => return false,
         };
         during == LossPhase::Connect
@@ -265,7 +288,6 @@ impl MongoEndpoint {
 
     fn relayed_failure(&self) -> Option<DriverError> {
         match &self.route {
-            #[cfg(unix)]
             Route::Relayed(relay) => relay.failure().take(),
             Route::Dialed(_) => None,
         }
@@ -297,13 +319,40 @@ fn single_host(address: ServerAddress) -> ClientOptions {
     options
 }
 
+// The members named are seeds: the client finds the set from them, as mongosh does with a host list.
+fn replica_set(first: &NetworkEndpoint, options: &NetworkOptions) -> Result<ClientOptions, DriverError> {
+    let mut seeds = vec![first.clone()];
+    seeds.extend(options.more_hosts(crate::capabilities::DEFAULT_PORT)?);
+    let mut client = ClientOptions::default();
+    client.hosts = seeds
+        .into_iter()
+        .map(|seed| ServerAddress::Tcp {
+            host: seed.host().to_owned(),
+            port: Some(seed.port()),
+        })
+        .collect();
+    client.direct_connection = Some(false);
+    Ok(client)
+}
+
 /// The servers the host's SRV records name, with the options its TXT
 /// record sets, such as the replica set and the authentication database.
-async fn seed_list(service: &NetworkEndpoint) -> Result<ClientOptions, DriverError> {
-    let uri = format!("mongodb+srv://{}/", percent_encoded(service.host()));
+async fn seed_list(service: &NetworkEndpoint, credentials: &Credentials) -> Result<ClientOptions, DriverError> {
+    let uri = seed_list_uri(service.host(), credentials);
     ClientOptions::parse(uri.as_str())
         .await
         .map_err(|error| map_error(&error, service, LossPhase::Connect))
+}
+
+// The crate puts a TXT record's authSource only on a login the string names, so the user goes in, never the password.
+fn seed_list_uri(host: &str, credentials: &Credentials) -> String {
+    let user = match credentials {
+        Credentials::Password { username, .. } if !username.trim().is_empty() => {
+            format!("{}@", percent_encoded(username.trim()))
+        }
+        _ => String::new(),
+    };
+    format!("mongodb+srv://{user}{}/", percent_encoded(host))
 }
 
 /// The login, checked in the database the user is defined in: the one
@@ -335,7 +384,6 @@ fn credential(target: &NetworkTarget) -> Result<Option<Credential>, DriverError>
     Ok(Some(credential))
 }
 
-#[cfg(unix)]
 fn relay_tls(tls: &tablepro_core::TlsConfig, server_name: String) -> Result<Option<RelayTls>, DriverError> {
     let Some(config) = tablepro_net::tls::build_client_config(tls).map_err(setup_error)? else {
         return Ok(None);
@@ -362,8 +410,8 @@ pub(crate) fn setup_error(error: TlsSetupError) -> DriverError {
     }
 }
 
-/// A host as it goes into a connection string, every byte outside the
-/// unreserved set escaped.
+/// A host or a user name as it goes into a connection string, every
+/// byte outside the unreserved set escaped.
 fn percent_encoded(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for byte in text.bytes() {
@@ -411,6 +459,50 @@ mod tests {
 
         async fn explain_closed_stream(&self) -> Option<TransportError> {
             None
+        }
+    }
+
+    // An SSH route that only `open` reaches, as the in-process transport's forwards are.
+    #[derive(Debug)]
+    struct Tunnelled(NetworkEndpoint);
+
+    #[async_trait::async_trait]
+    impl Transport for Tunnelled {
+        fn service_endpoint(&self) -> &NetworkEndpoint {
+            &self.0
+        }
+
+        fn kind(&self) -> TransportKind {
+            TransportKind::SshForward {
+                destination: "bastion".to_owned(),
+            }
+        }
+
+        fn route(&self) -> TransportRoute {
+            TransportRoute::InProcess
+        }
+
+        async fn open(&self) -> Result<Box<dyn TransportStream>, TransportError> {
+            Err(TransportError::Refused {
+                endpoint: self.0.clone(),
+            })
+        }
+
+        async fn reroute(&self, endpoint: NetworkEndpoint) -> Result<Arc<dyn Transport>, TransportError> {
+            Ok(Arc::new(Self(endpoint)))
+        }
+
+        async fn explain_closed_stream(&self) -> Option<TransportError> {
+            None
+        }
+    }
+
+    fn tunnelled(options: NetworkOptions) -> NetworkTarget {
+        NetworkTarget {
+            transport: Arc::new(Tunnelled(
+                NetworkEndpoint::new("db.example.com", 27017).expect("an endpoint"),
+            )),
+            ..target("ann", Some("shop"), options)
         }
     }
 
@@ -465,6 +557,112 @@ mod tests {
                 .expect("no login")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn a_seed_list_names_the_user_and_never_the_password() {
+        let login = |username: &str| Credentials::Password {
+            username: username.to_owned(),
+            password: SecretString::from("p@ss:word"),
+        };
+        let host = "cluster0.example.net";
+
+        let named = seed_list_uri(host, &login(" a@b:c "));
+
+        assert_eq!(named, "mongodb+srv://a%40b%3Ac@cluster0.example.net/");
+        assert!(!named.contains("p%40ss") && !named.contains("p@ss"), "{named}");
+        let parsed = mongodb::options::ConnectionString::parse(&named).expect("a connection string");
+        let credential = parsed.credential.expect("a login");
+        assert_eq!(credential.username.as_deref(), Some("a@b:c"));
+        assert!(credential.password.is_none());
+        assert_eq!(seed_list_uri(host, &login("  ")), "mongodb+srv://cluster0.example.net/");
+        assert_eq!(
+            seed_list_uri(host, &Credentials::Integrated),
+            "mongodb+srv://cluster0.example.net/"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_in_process_route_dials_the_relay() {
+        let endpoint = MongoEndpoint::new(
+            &tunnelled(NetworkOptions::default()),
+            LivenessPolicy::DESKTOP,
+            &ConnectEnvironment::new("test"),
+        )
+        .await
+        .expect("an endpoint");
+
+        let Route::Relayed(relay) = &endpoint.route else {
+            panic!("the library would dial the server itself");
+        };
+        assert_eq!(endpoint.template.hosts, vec![relay.server_address()]);
+        assert!(endpoint.template.tls.is_none(), "the relay does TLS");
+        #[cfg(unix)]
+        assert!(matches!(&endpoint.template.hosts[..], [ServerAddress::Unix { .. }]));
+        #[cfg(not(unix))]
+        assert!(matches!(&endpoint.template.hosts[..], [ServerAddress::Tcp { host, .. }] if host == "127.0.0.1"));
+    }
+
+    #[tokio::test]
+    async fn a_seed_list_is_refused_over_an_in_process_route() {
+        let seed_list = NetworkOptions {
+            dns_seed_list: true,
+            ..NetworkOptions::default()
+        };
+
+        let refused = MongoEndpoint::new(
+            &tunnelled(seed_list),
+            LivenessPolicy::DESKTOP,
+            &ConnectEnvironment::new("test"),
+        )
+        .await;
+
+        assert!(matches!(
+            refused,
+            Err(DriverError::Config(ConfigError::SeedListOverSsh))
+        ));
+    }
+
+    fn replica_set_options() -> NetworkOptions {
+        NetworkOptions {
+            replica_set: Some("rs0".to_owned()),
+            more_hosts: vec!["db2.example.com:27018".to_owned(), "db3.example.com".to_owned()],
+            ..NetworkOptions::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_host_list_seeds_the_replica_set() {
+        let endpoint = MongoEndpoint::new(
+            &target("ann", Some("shop"), replica_set_options()),
+            LivenessPolicy::DESKTOP,
+            &ConnectEnvironment::new("test"),
+        )
+        .await
+        .expect("an endpoint");
+
+        let hosts: Vec<String> = endpoint.template.hosts.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            hosts,
+            ["db.example.com:27017", "db2.example.com:27018", "db3.example.com:27017"]
+        );
+        assert_eq!(endpoint.template.repl_set_name.as_deref(), Some("rs0"));
+        assert_eq!(endpoint.template.direct_connection, Some(false));
+    }
+
+    #[tokio::test]
+    async fn a_host_list_is_refused_over_an_in_process_route() {
+        let refused = MongoEndpoint::new(
+            &tunnelled(replica_set_options()),
+            LivenessPolicy::DESKTOP,
+            &ConnectEnvironment::new("test"),
+        )
+        .await;
+
+        assert!(matches!(
+            refused,
+            Err(DriverError::Config(ConfigError::HostListOverSsh))
+        ));
     }
 
     #[test]

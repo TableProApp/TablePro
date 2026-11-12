@@ -10,7 +10,7 @@ GTK_A11Y=test GSK_RENDERER=cairo GDK_BACKEND=x11 xvfb-run -a dbus-run-session --
 meson devenv -C _build cargo nextest run --workspace --exclude tablepro --run-ignored only -E "test(/$finding/)"
 ```
 
-The first two run a finding's guards that need no server. The app's are GTK tests, so they need a display, a session bus and the variables the gtk Meson suite sets. The third runs the ones that need Docker, as the integration jobs do. The app runs with `--lib` because its [application tests](testing.md#application-tests) have no test harness to filter, and `startup` needs Meson. Only F-002, F-004 and F-005 have guards in the app.
+The first two run a finding's guards that need no server. The app's are GTK tests, so they need a display, a session bus and the variables the cargo Meson suite sets. The third runs the ones that need Docker, as the integration jobs do. The app runs with `--lib` because its [application tests](testing.md#application-tests) have no test harness to filter, and `startup` needs Meson. Only F-002, F-004 and F-005 have guards in the app.
 
 ## Findings
 
@@ -26,7 +26,7 @@ The first two run a finding's guards that need no server. The app's are GTK test
 
 ## Guards
 
-Kinds: `unit` runs in the Meson unit suite, `gtk` in the gtk suite, `docker` in the integration jobs (ignored with `requires docker`), and `conformance` is a case that `connection_conformance_suite!` emits into every driver's integration target, which for SQLite runs in the unit suite. `ci-job` is a job in the Linux workflow.
+Kinds: `unit` and `gtk`, the app's GTK tests, run in the Meson cargo suite, `docker` in the integration jobs (ignored with `requires docker`), and `conformance` is a case that `connection_conformance_suite!` emits into every driver's integration target, which for SQLite runs in the cargo suite. `ci-job` is a job in the Linux workflow.
 
 | Finding | Kind | Guard | File |
 |---|---|---|---|

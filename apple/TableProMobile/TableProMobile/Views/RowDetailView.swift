@@ -15,6 +15,7 @@ struct RowDetailView: View {
     @State private var showSaveConfirmation = false
     @State private var jsonEditorField: IndexedRow<String>?
     @State private var jsonViewerRoute: JSONValueViewer.Route?
+    @State private var fullValueRoute: FullValueRoute?
     private let coordinator: ConnectionCoordinator?
 
     init(
@@ -69,15 +70,10 @@ struct RowDetailView: View {
         .onChange(of: viewModel.currentIndex) {
             hapticSelection += 1
         }
-        .overlay(alignment: .bottom) {
-            if viewModel.showSaveSuccess {
-                Label("Row updated", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline)
-                    .padding()
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        // The saved values in the fields and the success haptic say it; VoiceOver hears it.
+        .onChange(of: viewModel.showSaveSuccess) { _, saved in
+            guard saved else { return }
+            AccessibilityNotification.Announcement(String(localized: "Row updated")).post()
         }
         .bottomSafeAreaBar {
             if viewModel.showsRowNavigator {
@@ -93,6 +89,12 @@ struct RowDetailView: View {
         // A NavigationLink inside the paged TabView cannot reach the stack: it pushes a blank screen.
         .navigationDestination(item: $jsonViewerRoute) { route in
             JSONValueViewer(route: route)
+        }
+        .navigationDestination(item: $fullValueRoute) { route in
+            FullValueScreen(
+                title: viewModel.columns.indices.contains(route.column) ? viewModel.columns[route.column].name : "",
+                text: viewModel.completeValue(forRow: route.row, at: route.column) ?? ""
+            )
         }
         .toolbar { rowDetailToolbar }
         // An unsaved edit keeps this screen up over a lost session, so the state and Reconnect show here.
@@ -243,7 +245,11 @@ struct RowDetailView: View {
                         }
                     } else {
                         let jsonText = viewModel.jsonText(forRow: rowIndex, at: index)
-                        fieldContent(value: value, jsonPreview: viewModel.isJSON(at: index) ? jsonText : nil)
+                        let longValue = viewModel.longValue(forRow: rowIndex, at: index)
+                        fieldContent(
+                            value: longValue.map { RowDetailViewModel.excerpt(of: $0) } ?? value,
+                            jsonPreview: viewModel.isJSON(at: index) ? jsonText : nil
+                        )
                             .contextMenu {
                                 if let value = viewModel.completeValue(forRow: rowIndex, at: index) {
                                     Button {
@@ -264,6 +270,17 @@ struct RowDetailView: View {
                             } label: {
                                 Label("View as JSON", systemImage: "curlybraces")
                             }
+                        } else if longValue != nil {
+                            Button {
+                                fullValueRoute = FullValueRoute(row: rowIndex, column: index)
+                            } label: {
+                                Label("View Full Value", systemImage: "doc.plaintext")
+                            }
+                        }
+                        if viewModel.isShownInPart(forRow: rowIndex, at: index) {
+                            Text("Shown in part. Run a query that returns fewer rows or columns to see it in full.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                         if index < cells.count, cells[index].isLoadable,
                            !viewModel.hasOverride(forRow: rowIndex, cellIndex: index) {
@@ -355,6 +372,7 @@ struct RowDetailView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .italic()
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if viewModel.isJSON(at: index) {
                 if let value, !value.isEmpty {
                     JSONFieldPreview(text: value)
@@ -366,18 +384,14 @@ struct RowDetailView: View {
             }
 
             if offersNull {
-                Button {
-                    viewModel.toggleNull(at: index)
-                } label: {
+                Toggle(isOn: Binding(
+                    get: { isNull },
+                    set: { _ in viewModel.toggleNull(at: index) }
+                )) {
                     Text("NULL")
-                        .font(.caption2)
-                        .foregroundStyle(isNull ? .white : .secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(isNull ? Color.accentColor : Color(.systemFill))
-                        .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .toggleStyle(.button)
+                .controlSize(.mini)
             }
         }
     }
@@ -408,6 +422,7 @@ struct RowDetailView: View {
     }
 
     private func handleSave() async {
+        guard !refusesWhileDatabaseMoves() else { return }
         let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.saveChanges()
         }
@@ -423,6 +438,7 @@ struct RowDetailView: View {
     }
 
     private func executePendingSave() async {
+        guard !refusesWhileDatabaseMoves() else { return }
         let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.executePendingSave()
         }
@@ -431,5 +447,37 @@ struct RowDetailView: View {
         } else {
             hapticError.toggle()
         }
+    }
+
+    private func refusesWhileDatabaseMoves() -> Bool {
+        guard let refusal = connectionCoordinator.databaseMoveRefusal else { return false }
+        viewModel.operationError = refusal
+        hapticError.toggle()
+        return true
+    }
+
+    // Names the cell rather than carrying its text, so the route stays cheap to compare.
+    private struct FullValueRoute: Hashable {
+        let row: Int
+        let column: Int
+    }
+}
+
+private struct FullValueScreen: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        JSONTextView(readOnlyText: text)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Copy", systemImage: "doc.on.doc") {
+                        ClipboardExporter.copyToClipboard(text)
+                    }
+                }
+            }
     }
 }

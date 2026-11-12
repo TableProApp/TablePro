@@ -7,17 +7,53 @@
 # --install-deps first installs, as root in a throwaway ubuntu:26.04, git
 # and the build dependencies in build-aux/debian/control, the toolchain
 # from ppa:rust-toolchain/staging among them.
-# Usage: make-sources.sh [--install-deps] <output dir>
+# --posthog-key writes the PostHog project key to vendor/posthog-key, which
+# debian/rules, the RPM spec and build-flatpak.sh pass to Meson as
+# -Dposthog_key. The release gives it from a repository variable. Without one,
+# or with an empty one, the packages send no usage data; with it, they send it
+# unless the user turns it off.
+# Usage: make-sources.sh [--install-deps] [--posthog-key KEY] <output dir>
 set -eu
+
+usage() {
+    echo "usage: make-sources.sh [--install-deps] [--posthog-key KEY] <output dir>" >&2
+    exit 2
+}
+
+not_a_key() {
+    echo "make-sources.sh: --posthog-key takes a PostHog project key, phc_ then letters and digits" >&2
+    exit 2
+}
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 workspace="$(cd "$root/.." && pwd)"
 
 container=""
-if [ "${1:-}" = "--install-deps" ]; then
-    shift
-    container=1
+posthog_key=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --install-deps)
+        container=1
+        shift
+        ;;
+    --posthog-key)
+        [ $# -ge 2 ] || usage
+        posthog_key="$2"
+        shift 2
+        ;;
+    *) break ;;
+    esac
+done
+[ $# -eq 1 ] || usage
+# debian/rules puts the key on Meson's command line unquoted.
+case "$posthog_key" in
+    *[!0-9A-Za-z_-]*) not_a_key ;;
+    "" | phc_?*) ;;
+    *) not_a_key ;;
+esac
+
+if [ -n "$container" ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y --no-install-recommends ca-certificates git xz-utils
@@ -29,10 +65,6 @@ if [ "${1:-}" = "--install-deps" ]; then
     PATH="/usr/lib/rust-$rust/bin:$PATH"
 fi
 
-if [ $# -ne 1 ]; then
-    echo "usage: make-sources.sh [--install-deps] <output dir>" >&2
-    exit 2
-fi
 mkdir -p "$1"
 out="$(cd "$1" && pwd)"
 
@@ -57,6 +89,9 @@ mkdir "$work/vendor-root"
     cargo vendor --locked --versioned-dirs --manifest-path "$workspace/Cargo.toml" vendor
 ) > "$work/cargo-config.toml"
 mv "$work/cargo-config.toml" "$work/vendor-root/vendor/cargo-config.toml"
+if [ -n "$posthog_key" ]; then
+    printf '%s\n' "$posthog_key" > "$work/vendor-root/vendor/posthog-key"
+fi
 
 mtime="$(git -C "$root" log -1 --format=%ct)"
 XZ_OPT=-T0 tar -C "$work/vendor-root" --sort=name --owner=0 --group=0 --numeric-owner \

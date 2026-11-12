@@ -1,12 +1,14 @@
 //! One file per area of the contract. Every case gets an engine started
 //! for it alone and returns a `ConformanceFailure` rather than panicking.
 
+pub mod byte_limit;
 pub mod cancellation;
 pub mod close;
 pub mod commit_resolution;
 pub mod ddl;
 pub mod deadlines;
 pub mod document;
+pub mod dump;
 pub mod keyspace;
 pub mod large_table;
 pub mod liveness;

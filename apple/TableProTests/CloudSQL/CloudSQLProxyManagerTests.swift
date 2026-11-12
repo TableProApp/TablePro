@@ -1,4 +1,3 @@
-import CryptoKit
 import Darwin
 import Foundation
 import Testing
@@ -153,9 +152,7 @@ struct CloudSQLProxyManagerTests {
         CloudSQLProxyConfiguration(instanceConnectionName: instance, localPort: localPort, binaryPath: "/bin/echo")
     }
 
-    /// The managed binary is ad-hoc signed and sits in a user-writable directory, so the launch
-    /// path has to obtain it through the checksum-verifying accessor rather than by checking that
-    /// a file exists. It did the latter, which left the pinned checksum unread before exec.
+    // The launch path once checked only that the file existed, so the pinned checksum went unread before exec.
     @Test("A tampered managed binary is refused rather than launched")
     func tamperedManagedBinaryIsRefused() async throws {
         let dir = FileManager.default.temporaryDirectory
@@ -170,21 +167,22 @@ struct CloudSQLProxyManagerTests {
             .write(to: dir.appendingPathComponent("version.txt"), atomically: true, encoding: .utf8)
 
         let started = LaunchFlag()
+        let binaryManager = CloudSQLProxyBinaryManager(
+            baseDirectory: dir,
+            expectedSHA256: ["arm64": "deadbeef", "amd64": "deadbeef"],
+            download: TestProxyDownload.serving(Data("still wrong".utf8), into: dir)
+        )
         let manager = CloudSQLProxyManager(
             runnerFactory: {
                 started.set()
                 return FakeCloudSQLProxyRunner(behavior: .ready)
             },
-            binaryManager: CloudSQLProxyBinaryManager(
-                baseDirectory: dir,
-                expectedSHA256: ["arm64": "deadbeef", "amd64": "deadbeef"],
-                fetch: { _ in Data("still wrong".utf8) }
-            ),
+            managedBinary: { try await binaryManager.ensureBinary() },
             systemBinaryLookup: { _ in nil },
             ownsListener: { _, _ in true }
         )
 
-        await #expect(throws: CloudSQLProxyError.binaryNotFound) {
+        await #expect(throws: CloudSQLProxyError.checksumMismatch) {
             _ = try await manager.createTunnel(
                 connectionId: UUID(),
                 config: CloudSQLProxyConfiguration(
@@ -205,15 +203,15 @@ struct CloudSQLProxyManagerTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let bytes = Data("pinned build".utf8)
-        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let binaryManager = CloudSQLProxyBinaryManager(
+            baseDirectory: dir,
+            expectedSHA256: TestProxyDownload.pins(bytes),
+            download: TestProxyDownload.serving(bytes, into: dir)
+        )
 
         let manager = CloudSQLProxyManager(
             runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) },
-            binaryManager: CloudSQLProxyBinaryManager(
-                baseDirectory: dir,
-                expectedSHA256: ["arm64": digest, "amd64": digest],
-                fetch: { _ in bytes }
-            ),
+            managedBinary: { try await binaryManager.ensureBinary() },
             systemBinaryLookup: { _ in nil },
             ownsListener: { _, _ in true }
         )
@@ -371,8 +369,10 @@ struct CloudSQLProxyManagerTests {
             serviceAccountKeyJSON: "{\"type\":\"service_account\"}"
         )
 
-        let path = FileManager.default.temporaryDirectory
-            .appendingPathComponent("com.TablePro.cloudsqlproxy.\(id.uuidString).json")
+        let arguments = fake.startedArguments
+        let flag = try #require(arguments.firstIndex(of: "--credentials-file"))
+        let path = URL(fileURLWithPath: arguments[flag + 1])
+        #expect(path.lastPathComponent.hasPrefix("com.TablePro.cloudsqlproxy.\(id.uuidString)-"))
         #expect(FileManager.default.fileExists(atPath: path.path))
         let perms = try FileManager.default.attributesOfItem(atPath: path.path)[.posixPermissions] as? Int
         #expect(perms == 0o600)

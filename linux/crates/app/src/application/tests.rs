@@ -37,6 +37,10 @@ impl Drop for Backing {
 }
 
 fn fake_services() -> (AppServices, Backing) {
+    fake_services_with(Vec::new())
+}
+
+fn fake_services_with(more: Vec<FakeDriver>) -> (AppServices, Backing) {
     adw::init().expect("libadwaita initialises under the test backend");
     crate::register_test_resources();
     if let Some(settings) = gtk4::Settings::default() {
@@ -58,6 +62,9 @@ fn fake_services() -> (AppServices, Backing) {
         &FakeDriver::FILE_CAPABILITIES,
         script.clone(),
     )));
+    for driver in more {
+        drivers.register(Arc::new(driver));
+    }
     let services = AppServices::new(AppServicesParts {
         drivers,
         connector: Arc::new(FakeConnector::new([]).always(FakeEstablish::Connect(script))),
@@ -101,6 +108,14 @@ impl TestApp {
             .register(gio::Cancellable::NONE)
             .expect("register the application");
         test
+    }
+
+    fn started_with_drivers(name: &str, more: Vec<FakeDriver>) -> Self {
+        let (services, backing) = fake_services_with(more);
+        let app = TableProApplication::new(services);
+        app.set_application_id(Some(&format!("{}.Test.{name}", crate::config::APP_ID)));
+        app.register(gio::Cancellable::NONE).expect("register the application");
+        Self { app, _backing: backing }
     }
 
     fn window(&self) -> adw::ApplicationWindow {
@@ -276,13 +291,151 @@ fn handle_local_options_without_new_window_does_not_register() {
     assert!(!test.app.is_registered());
 }
 
+// GOption collects the files after the options, so handle-local-options can send them on with its hint.
+#[gtk4::test]
+fn the_files_after_the_options_reach_handle_local_options() {
+    let test = TestApp::new("ParseFiles");
+    let seen = Rc::new(std::cell::RefCell::new(None));
+    let sink = seen.clone();
+    test.app.connect_handle_local_options(move |_, options| {
+        let files = options.lookup::<Vec<std::ffi::OsString>>(imp::FILES_OPTION);
+        sink.replace(Some((options.contains("new-window"), files.ok().flatten())));
+        ControlFlow::Break(glib::ExitCode::SUCCESS)
+    });
+
+    let code = test.app.run_with_args(&[
+        "tablepro",
+        "--new-window",
+        "/tmp/shop.db",
+        "postgresql://ada@db.example.com/shop",
+    ]);
+
+    assert_eq!(code, glib::ExitCode::SUCCESS);
+    let (new_window, files) = seen.take().expect("handle-local-options ran");
+    assert!(new_window);
+    assert_eq!(
+        files,
+        Some(vec![
+            "/tmp/shop.db".into(),
+            "postgresql://ada@db.example.com/shop".into()
+        ])
+    );
+}
+
+// A second `--new-window FILE` once opened an empty window and dropped the files.
+#[gtk4::test]
+fn new_window_with_files_opens_them_and_leaves_the_launch() {
+    let test = TestApp::new("NewWindowFiles");
+    let key = test.database("shop.db");
+    let path = test._backing.dir.path().join("shop.db");
+    let options = glib::VariantDict::new(None);
+    options.insert_value("new-window", &true.to_variant());
+    options.insert_value(imp::FILES_OPTION, &vec![path.into_os_string()].to_variant());
+
+    let flow = test.app.imp().handle_local_options(&options);
+
+    assert!(matches!(flow, ControlFlow::Break(glib::ExitCode::SUCCESS)), "{flow:?}");
+    test.wait_for_sessions(std::slice::from_ref(&key));
+}
+
+#[gtk4::test]
+fn a_file_with_the_new_window_hint_opens_beside_an_idle_picker() {
+    let test = TestApp::started("NewWindowHint");
+    test.app.activate();
+    wait_until(WAIT, || test.app.windows().len() == 1).expect("the picker");
+    let picker = test.app.active_window().expect("the picker");
+    let key = test.database("shop.db");
+    let SessionKey::File(uri) = &key else {
+        unreachable!("a database file opens as a file key");
+    };
+
+    test.app.open(&[gio::File::for_uri(uri)], Placement::NEW_WINDOW_HINT);
+
+    test.wait_for_sessions(std::slice::from_ref(&key));
+    assert_eq!(test.app.windows().len(), 2, "the file did not get a window of its own");
+    assert_ne!(test.window_for(&key).upcast::<gtk4::Window>(), picker);
+}
+
+#[gtk4::test]
+fn a_file_without_a_hint_opens_in_the_idle_picker() {
+    let test = TestApp::started("ReuseHint");
+    test.app.activate();
+    wait_until(WAIT, || test.app.windows().len() == 1).expect("the picker");
+    let picker = test.app.active_window().expect("the picker");
+    let key = test.database("shop.db");
+    let SessionKey::File(uri) = &key else {
+        unreachable!("a database file opens as a file key");
+    };
+
+    test.app.open(&[gio::File::for_uri(uri)], "");
+
+    test.wait_for_sessions(std::slice::from_ref(&key));
+    assert_eq!(test.app.windows().len(), 1);
+    assert_eq!(test.window_for(&key).upcast::<gtk4::Window>(), picker);
+}
+
 #[gtk4::test]
 fn startup_installs_the_app_actions_and_their_accels() {
     let test = TestApp::started("Actions");
 
-    for action in ["new-window", "quit", "preferences", "about"] {
+    for action in ["new-window", "quit", "preferences", "about", "buy-license"] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
+}
+
+// The app's own wiring, with a key as a release has one: usage data goes from the start, as on macOS, and nothing
+// reaches PostHog once Share Usage Data is off, until it is on again.
+#[gtk4::test]
+fn usage_data_goes_by_default_and_nothing_leaves_once_it_is_turned_off() {
+    let (services, _backing) = fake_services();
+    let collector = crate::test_support::PostHogCollector::start();
+    services.start_telemetry_with("phc_test", &collector.url);
+    let telemetry = services.telemetry();
+    let pump = |time: u64| {
+        let _ = wait_until(Duration::from_millis(time), || false);
+    };
+    let everything = || {
+        telemetry.connection_attempted("sqlite");
+        telemetry.connection_succeeded("sqlite");
+        telemetry.query_executed("sqlite");
+        telemetry.upgrade_clicked("app-settings");
+        telemetry.support_ask_shown();
+        telemetry.signed_in("acct_01k8d6wk00f8xsr79e7x052rkk");
+        telemetry.signed_out();
+    };
+    let sent = || (collector.connections(), collector.bodies().len());
+
+    telemetry.upgrade_clicked("app-ask");
+    wait_until(Duration::from_secs(20), || {
+        !collector.named("upgrade_clicked").is_empty()
+    })
+    .expect("sent by default");
+    telemetry.flush();
+    pump(300);
+    let by_default = sent();
+    services.settings.set_share_usage_data(false).expect("turned off");
+    pump(300);
+    everything();
+    telemetry.flush();
+    pump(500);
+    let while_off = sent();
+    services.settings.set_share_usage_data(true).expect("turned on again");
+    telemetry.upgrade_clicked("app-settings");
+    wait_until(Duration::from_secs(20), || {
+        collector.named("upgrade_clicked").len() == 2
+    })
+    .expect("sent once on again");
+
+    assert!(by_default.1 > 0);
+    assert_eq!(while_off, by_default);
+}
+
+#[gtk4::test]
+fn startup_in_a_test_build_has_no_posthog_key() {
+    let test = TestApp::started("NoPostHogKey");
+
+    assert_eq!(crate::config::POSTHOG_KEY, "");
+    assert!(!test.services().telemetry().has_project_key());
 }
 
 #[gtk4::test]
@@ -392,6 +545,63 @@ fn opening_a_file_held_behind_another_session_brings_that_session_forward() {
 
     wait_until(WAIT, || front_key().as_ref() == Some(&first)).expect("the file's session in front");
     assert_eq!(test.app.windows().len(), 1, "the file opened another window");
+}
+
+#[gtk4::test]
+fn a_sql_file_with_no_window_opens_a_picker_that_asks() {
+    let test = TestApp::started("OpenScriptNoWindow");
+    let path = test._backing.dir.path().join("report.sql");
+    std::fs::write(&path, "SELECT 1;").expect("write the script");
+
+    test.app.open(&[gio::File::for_path(&path)], "");
+
+    let picker = || {
+        test.app
+            .windows()
+            .into_iter()
+            .find_map(|window| window.downcast::<SessionWindow>().ok())
+    };
+    wait_until(WAIT, || {
+        picker()
+            .and_then(|window| window.script_banner())
+            .is_some_and(|banner| banner.is_revealed())
+    })
+    .expect("a picker asking for a connection");
+    assert_eq!(test.app.windows().len(), 1, "more than the one picker opened");
+    assert_eq!(picker().map(|window| window.page_name()), Some("picker"));
+}
+
+// A restored session may hold the file in a tab that is not back yet, so a picker asks rather than
+// opening a second tab beside it.
+#[gtk4::test]
+fn a_sql_file_opened_while_sessions_restore_asks_for_a_connection() {
+    let test = TestApp::started("ScriptWhileRestoring");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+    let path = test._backing.dir.path().join("report.sql");
+    std::fs::write(&path, "SELECT 1;").expect("write the script");
+    let script = gio::File::for_path(&path);
+
+    test.app.open(std::slice::from_ref(&script), "");
+    test.wait_for_sessions(std::slice::from_ref(&first));
+    let windows = || {
+        test.app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .collect::<Vec<_>>()
+    };
+    wait_until(WAIT, || {
+        windows()
+            .iter()
+            .any(|window| window.script_banner().is_some_and(|banner| banner.is_revealed()))
+    })
+    .expect("a picker asking for a connection");
+
+    assert!(
+        windows().iter().all(|window| window.script_tab(&script).is_none()),
+        "the script opened in a session while it was restoring"
+    );
 }
 
 #[gtk4::test]
@@ -806,9 +1016,9 @@ fn new_window_action_opens_another_window() {
 
 fn released_version() -> String {
     let xml = super::about_dialog::embedded_metainfo();
-    super::metainfo_release::newest_release(&xml)
-        .expect("the metainfo lists a release")
-        .to_owned()
+    super::metainfo_release::tag_version(
+        super::metainfo_release::newest_release(&xml).expect("the metainfo lists a release"),
+    )
 }
 
 fn said_at_launch(test: &TestApp) -> Vec<crate::ui::LaunchNotice> {
@@ -1027,6 +1237,7 @@ mod mcp {
         WriteApproval {
             connection_id: id,
             connection_name: "Shop".to_owned(),
+            database: None,
             sql: "DELETE FROM orders WHERE id = 1".to_owned(),
             destructive: false,
             cancel,
@@ -1245,5 +1456,220 @@ mod mcp {
         assert_eq!(ids, [readable.id.to_string()]);
         assert_ne!(ids[0], blocked.id.to_string());
         assert_eq!(listed["connections"][0]["is_open"], false);
+    }
+}
+
+mod links {
+    use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, SafeModeLevel, TlsConfig};
+    use tablepro_storage::SavedConnection;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::application::open_links::{CANCEL, OPEN};
+    use crate::ui::SessionWindow;
+
+    // Fakes under SQLite's and PostgreSQL's ids, so sqlite:// and postgresql:// links find a driver.
+    fn started(name: &str) -> TestApp {
+        let script = ConnectionScript::default();
+        let test = TestApp::started_with_drivers(
+            name,
+            vec![
+                FakeDriver::connecting(&FakeDriver::FILE_CAPABILITIES, script.clone()).with_id("sqlite"),
+                FakeDriver::connecting(&FakeDriver::NETWORK_CAPABILITIES, script).with_id("postgres"),
+            ],
+        );
+        test.app.activate();
+        wait_until(WAIT, || test.app.windows().len() == 1).expect("the picker");
+        test
+    }
+
+    fn picker(test: &TestApp) -> SessionWindow {
+        test.app
+            .active_window()
+            .and_downcast::<SessionWindow>()
+            .expect("the picker")
+    }
+
+    fn saved_sqlite(test: &TestApp, name: &str) -> (SavedConnection, String) {
+        let path = test._backing.dir.path().join(name);
+        std::fs::write(&path, b"").expect("create the database");
+        let saved = SavedConnection {
+            id: Uuid::new_v4(),
+            name: "Shop".to_owned(),
+            driver_id: "sqlite".to_owned(),
+            host: String::new(),
+            port: 0,
+            database: path.display().to_string(),
+            username: String::new(),
+            tls: TlsConfig::disabled(),
+            safe_mode: SafeModeLevel::Off,
+            external_access: ExternalAccess::default(),
+            ai_policy: AiPolicy::default(),
+            query_timeout_secs: None,
+            auth_mode: AuthMode::Password,
+            ssh: None,
+            last_opened_at: None,
+            color: None,
+            group_id: None,
+            order: 0,
+            tags: Vec::new(),
+            icon: None,
+            options: Default::default(),
+        };
+        test.services()
+            .storage
+            .connections()
+            .upsert_blocking(saved.clone())
+            .expect("the saved connection");
+        (saved, format!("sqlite://{}", path.display()))
+    }
+
+    fn link(text: &str) -> gio::File {
+        crate::services::connection_link::register_link_schemes().expect("register the connection links");
+        gio::File::for_uri(text)
+    }
+
+    #[gtk4::test]
+    fn a_link_to_a_saved_connection_asks_and_open_connects_it() {
+        let test = started("LinkSavedOpen");
+        let (saved, text) = saved_sqlite(&test, "shop.db");
+        let window = picker(&test);
+
+        test.app.open(&[link(&text)], "");
+
+        wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+        let alert = crate::workspace::visible_alert(&window).expect("the question");
+        assert!(
+            alert.heading().is_some_and(|heading| heading.contains("Shop")),
+            "{:?}",
+            alert.heading()
+        );
+        assert_eq!(alert.default_response().as_deref(), Some(CANCEL));
+        assert_eq!(alert.close_response().as_str(), CANCEL);
+        assert!(crate::workspace::answer(&window, OPEN));
+        let key = SessionKey::Saved(saved.id);
+        let services = test.services();
+        wait_until(WAIT, || services.sessions.window_for(&key).is_some()).expect("the saved connection to open");
+        assert_eq!(test.app.windows().len(), 1, "the link opened another window");
+    }
+
+    #[gtk4::test]
+    fn cancel_on_a_link_opens_nothing() {
+        let test = started("LinkSavedCancel");
+        let (saved, text) = saved_sqlite(&test, "shop.db");
+        let window = picker(&test);
+
+        test.app.open(&[link(&text)], "");
+
+        wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+        assert!(crate::workspace::answer(&window, CANCEL));
+        let opened = wait_until(Duration::from_millis(500), || {
+            test.services()
+                .sessions
+                .window_for(&SessionKey::Saved(saved.id))
+                .is_some()
+        });
+        assert!(opened.is_err(), "Cancel opened the connection");
+        assert_eq!(window.page_name(), "picker");
+    }
+
+    #[gtk4::test]
+    fn a_link_no_saved_connection_matches_fills_the_connect_dialog() {
+        let test = started("LinkUnsaved");
+        let window = picker(&test);
+
+        test.app.open(
+            &[link("postgresql://ada:s3cret@db.example.com:6543/shop?sslmode=require")],
+            "",
+        );
+
+        wait_until(WAIT, || window.connect_dialog().is_some()).expect("the connect dialog");
+        let form = window.connect_dialog().expect("the connect dialog").form();
+        assert_eq!(form.driver_id, "postgres");
+        assert_eq!((form.host.as_str(), form.port), ("db.example.com", 6543));
+        assert_eq!((form.database.as_str(), form.username.as_str()), ("shop", "ada"));
+        assert_eq!(secrecy::ExposeSecret::expose_secret(&form.password), "s3cret");
+        assert!(
+            crate::workspace::visible_alert(&window).is_none(),
+            "a link to a new connection asked first"
+        );
+        assert_eq!(
+            test.services().sessions.live_count(),
+            0,
+            "the link connected on its own"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_queued_link_reserves_its_picker_until_the_dialog_closes() {
+        let test = started("LinkReserved");
+        let window = picker(&test);
+        let url =
+            tablepro_core::connection_url::parse("postgresql://ada@db.example.com/shop").expect("a connection URL");
+        assert!(window.is_idle());
+
+        window.send(crate::ui::SessionWindowInput::ConnectFromLink(Box::new(url)));
+
+        assert!(!window.is_idle(), "the queued link left its picker available");
+        wait_until(WAIT, || window.connect_dialog().is_some()).expect("the connect dialog");
+        assert!(!window.is_idle());
+        window.connect_dialog().expect("the connect dialog").force_close();
+        wait_until(WAIT, || window.is_idle()).expect("the picker to become available again");
+    }
+
+    #[gtk4::test]
+    fn two_unsaved_links_open_both_connect_dialogs() {
+        let test = started("LinkUnsavedPair");
+
+        test.app.open(
+            &[
+                link("postgresql://ada:first-secret@first.example.com:6543/shop"),
+                link("postgresql://grace:second-secret@second.example.com:7654/stock"),
+            ],
+            "",
+        );
+
+        let forms = || {
+            test.app
+                .windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<SessionWindow>().ok())
+                .filter_map(|window| window.connect_dialog())
+                .map(|dialog| dialog.form())
+                .collect::<Vec<_>>()
+        };
+        wait_until(WAIT, || forms().len() == 2).expect("a connect dialog for each link");
+        let mut forms = forms();
+        forms.sort_by(|first, second| first.host.cmp(&second.host));
+        for (form, (host, port, database, username, password)) in forms.iter().zip([
+            ("first.example.com", 6543, "shop", "ada", "first-secret"),
+            ("second.example.com", 7654, "stock", "grace", "second-secret"),
+        ]) {
+            assert_eq!(form.driver_id, "postgres");
+            assert_eq!((form.host.as_str(), form.port), (host, port));
+            assert_eq!((form.database.as_str(), form.username.as_str()), (database, username));
+            assert_eq!(secrecy::ExposeSecret::expose_secret(&form.password), password);
+        }
+        assert_eq!(test.app.windows().len(), 2);
+        assert_eq!(
+            test.services().sessions.live_count(),
+            0,
+            "the links connected on their own"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_link_that_does_not_parse_says_why_and_opens_nothing() {
+        let test = started("LinkUnreadable");
+        let window = picker(&test);
+
+        test.app
+            .open(&[link("postgresql://ada:s3cret@db.example.com:99999/shop")], "");
+
+        crate::test_support::drain_main_context();
+        let _ = wait_until(Duration::from_millis(300), || window.connect_dialog().is_some());
+        assert!(window.connect_dialog().is_none());
+        assert_eq!(test.app.windows().len(), 1);
+        assert_eq!(window.page_name(), "picker");
     }
 }

@@ -6,11 +6,7 @@
 import os
 import SwiftUI
 
-/// Edits the comment on one table, view, materialized view or foreign table.
-///
-/// A sheet with an explicit Save rather than a field that commits on its own: the write is a
-/// statement against the server, and a popover or an inspector field that saves when it loses
-/// focus would run it on a stray click.
+// An explicit Save, not a field that commits on blur: the write is a server statement a stray click would run.
 struct ObjectCommentSheet: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ObjectCommentSheet")
@@ -96,10 +92,8 @@ struct ObjectCommentSheet: View {
                 .accessibilityLabel(String(localized: "Comment"))
                 .accessibilityIdentifier("object-comment-editor")
             if let saveError {
-                Text(saveError)
+                NoticeLabel(saveError, severity: .error)
                     .font(.callout)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             } else {
                 Text("Leave the comment empty to remove it.")
@@ -150,10 +144,8 @@ struct ObjectCommentSheet: View {
         do {
             try await ObjectCommentEditing.setComment(draft.commentToSave, on: target, connection: connection)
             dismiss()
-        } catch ExecutionGateError.cancelledByUser {
-            phase = .editing
         } catch {
-            saveError = error.localizedDescription
+            saveError = GatedOperationFailure(error).message
             phase = .editing
         }
     }

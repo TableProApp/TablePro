@@ -35,7 +35,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     func quoteIdentifier(_ name: String) -> String { name }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .statementPolicy]
+        [.cancelQuery, .statementPolicy, .columnDefaultMarks]
     }
 
     func defaultExportQuery(table: String) -> String? {
@@ -815,7 +815,29 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
-        try writeGenerator(for: table, columns: columns).generateRowWrites(
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
+    }
+
+    // Typed by what was learned of the collection in the database the writes run in, which a script's `use` can have
+    // moved the shell away from.
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        var generator = writeGenerator(for: table, columns: columns, database: context.database)
+        generator.rowLocators = context.rowLocators
+        return try generator.generateRowWrites(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
         )
@@ -829,29 +851,37 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         rows: [[PluginCellValue]],
         absentCells: [Int: Set<Int>]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        writeGenerator(for: table, columns: columns).generateRestore(rows: rows, absentCells: absentCells)
-    }
-
-    // The writes for a grid save, typed by what this driver learned of the collection in `database`, which a caller that
-    // runs them there names, since a script's `use` can have moved the shell meanwhile.
-    func generateRowWrites(
-        table: String,
-        columns: [String],
-        changes: [PluginRowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>,
-        database: String
-    ) throws -> [PluginRowWrite] {
-        try writeGenerator(for: table, columns: columns, database: database).generateRowWrites(
-            from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        generateIdentityPreservingInsert(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, rows: rows,
+            absentCells: absentCells, context: PluginRowWriteContext()
         )
     }
 
-    func identityFilter(table: String, idText: String, database: String? = nil) throws -> String {
-        try writeGenerator(for: table, columns: [MongoDBCollectionDDL.idField], database: database)
-            .identityFilter(forIdText: idText)
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>],
+        context: PluginRowWriteContext
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        var generator = writeGenerator(for: table, columns: columns, database: context.database)
+        generator.rowLocators = context.rowLocators
+        return generator.generateRestore(rows: rows, absentCells: absentCells)
+    }
+
+    // Reads use the same typed predicate as writes, before any cursor limit can hide the row.
+    func identityFilter(locator: String) throws -> String {
+        try MongoDBStatementGenerator.identityFilter(locator: locator)
+    }
+
+    func buildLocatorQuery(table: String, schema: String?, locators: [String], columns: [String]) -> String? {
+        guard !locators.isEmpty,
+              let filters = try? locators.map(MongoDBStatementGenerator.identityFilter(locator:)) else { return nil }
+        let filter = "{\"$or\": [\(filters.joined(separator: ", "))]}"
+        let query = MongoDBQueryBuilder().buildQuery(collection: table, filterDocument: filter, limit: locators.count)
+        return query + #".collation({"locale":"simple"})"#
     }
 
     private func writeGenerator(for table: String, columns: [String], database: String? = nil) -> MongoDBStatementGenerator {
@@ -883,6 +913,10 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginExportStreamElement.cells(streamExportRows(query: query, context: context))
+    }
+
+    func streamExportRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         guard let conn = mongoConnection else {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
         }
@@ -982,14 +1016,14 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     /// one export never mixes two spellings.
     private func yieldMaterialised(
         _ outcome: MongoScriptStatementResult,
-        into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        into continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
     ) {
         let result = MongoScriptResultBuilder.result(
             for: outcome,
             startTime: Date(),
             documents: { documents, collection, isTruncated in
                 self.buildPluginResult(
-                    from: MongoReadDocuments(dictionaries: documents.dictionaries, texts: []), startTime: Date(),
+                    from: documents, startTime: Date(),
                     isTruncated: isTruncated, collection: collection,
                     recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb),
                     filteredFields: outcome.find?.filteredFields ?? []
@@ -997,13 +1031,12 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             }
         )
         if !result.columns.isEmpty {
-            continuation.yield(.header(PluginStreamHeader(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames
-            )))
+            var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
+            if result.isTruncated { header.rowLimit = result.rows.count }
+            continuation.yield(.header(header))
         }
         if !result.rows.isEmpty {
-            continuation.yield(.rows(result.rows))
+            continuation.yield(.rows(result.rows, documents: result.exportDocuments))
         }
     }
 
@@ -1057,6 +1090,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             isTruncated: isTruncated
         )
         result.absentCells = BsonDocumentFlattener.absentCells(of: documents, columns: columns)
+        result.exportDocuments = try? MongoExportDocument.read(read, representation: uuidRepresentation)
         return result
     }
 

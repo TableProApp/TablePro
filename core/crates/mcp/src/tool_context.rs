@@ -1,11 +1,19 @@
 use std::sync::Arc;
 
-use tablepro_session::Session;
+use tablepro_core::dialect::DatabaseLayout;
+use tablepro_session::{OperationKind, Session};
 use tablepro_storage::{ConnectionList, ConnectionListState, ConnectionStore, SavedConnection};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::mcp_host::McpHost;
 use crate::tool_error::ToolError;
+
+pub(crate) struct HeldSession {
+    pub session: Arc<Session>,
+    // None for the connection's own database.
+    pub database: Option<String>,
+}
 
 /// What every tool reads: the saved connections as the store holds them
 /// now, and the app.
@@ -61,5 +69,104 @@ impl ToolContext {
                 connection.name
             ))),
         }
+    }
+
+    // Never opens a database: one the user did not open in TablePro stays closed to clients.
+    pub(crate) async fn held_session(
+        &self,
+        connection: &SavedConnection,
+        database: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<HeldSession, ToolError> {
+        let own = self.session(connection).await?;
+        let Some(database) = database else {
+            return Ok(HeldSession {
+                session: own,
+                database: None,
+            });
+        };
+        if database.is_empty() {
+            return Err(ToolError::InvalidArgument(
+                "database is empty; omit it for the connection's own database".to_owned(),
+            ));
+        }
+        if own.database() == Some(database) {
+            return Ok(HeldSession {
+                session: own,
+                database: None,
+            });
+        }
+        if let Some(session) = self.host.session_in(connection.id, database).await
+            && !session.is_shut_down()
+        {
+            return Ok(HeldSession {
+                session,
+                database: Some(database.to_owned()),
+            });
+        }
+        if own.database().is_none() && opened_in(&own, database, cancel).await {
+            return Ok(HeldSession {
+                session: own,
+                database: None,
+            });
+        }
+        Err(not_held(
+            &connection.name,
+            database,
+            own.current_dialect().map(|dialect| dialect.database_layout()),
+        ))
+    }
+}
+
+// A connection saved without a database opens the login's default, which only the server can name.
+async fn opened_in(session: &Session, database: &str, cancel: &CancellationToken) -> bool {
+    session
+        .run_cancellable(OperationKind::Metadata, cancel, |lease, call| async move {
+            Ok(lease.list_databases(call).await?)
+        })
+        .await
+        .is_ok_and(|listed| listed.iter().any(|own| own.is_default && own.name == database))
+}
+
+fn not_held(connection: &str, database: &str, layout: Option<DatabaseLayout>) -> ToolError {
+    match layout {
+        Some(DatabaseLayout::Single) => ToolError::Unsupported(format!(
+            "“{connection}” reaches one database, so it has no “{database}”"
+        )),
+        Some(DatabaseLayout::AsSchemas) => ToolError::InvalidArgument(format!(
+            "on “{connection}” the database “{database}” is a schema of the connection: pass it as schema, or \
+qualify the names in the query"
+        )),
+        Some(DatabaseLayout::WithSchemas) | None => ToolError::NotConnected(format!(
+            "the database “{database}” of “{connection}” is not open in TablePro; the user can open it with \
+Open Database… on the connection in TablePro, then call again"
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_database_not_held_says_what_reaches_it_on_each_engine() {
+        let codes = [
+            (Some(DatabaseLayout::WithSchemas), "not_connected"),
+            (None, "not_connected"),
+            (Some(DatabaseLayout::AsSchemas), "invalid_argument"),
+            (Some(DatabaseLayout::Single), "unsupported"),
+        ];
+
+        for (layout, code) in codes {
+            let refused = not_held("prod", "analytics", layout);
+
+            assert_eq!(refused.code(), code, "{layout:?}");
+            assert!(refused.message().contains("analytics"), "{}", refused.message());
+        }
+        assert!(
+            not_held("prod", "analytics", Some(DatabaseLayout::WithSchemas))
+                .message()
+                .contains("Open Database…")
+        );
     }
 }

@@ -26,7 +26,7 @@ impl DeadlinePolicy for DefaultDeadlines {
             OperationKind::Metadata => Some(Self::METADATA),
             OperationKind::Page | OperationKind::Count => Some(Self::PAGE),
             OperationKind::Save(WriteKind::RowChanges) => Some(Self::ROW_CHANGES),
-            OperationKind::Save(WriteKind::SchemaChanges) | OperationKind::Export => None,
+            OperationKind::Save(WriteKind::SchemaChanges | WriteKind::DatabaseChanges) | OperationKind::Export => None,
             OperationKind::Probe => Some(self.liveness.probe_timeout),
             OperationKind::Close => Some(self.liveness.close_timeout),
         }
@@ -47,6 +47,7 @@ mod tests {
         assert_eq!(seconds(OperationKind::Count), Some(60));
         assert_eq!(seconds(OperationKind::Save(WriteKind::RowChanges)), Some(120));
         assert_eq!(seconds(OperationKind::Save(WriteKind::SchemaChanges)), None);
+        assert_eq!(seconds(OperationKind::Save(WriteKind::DatabaseChanges)), None);
         assert_eq!(seconds(OperationKind::Probe), Some(5));
         assert_eq!(seconds(OperationKind::Close), Some(10));
     }

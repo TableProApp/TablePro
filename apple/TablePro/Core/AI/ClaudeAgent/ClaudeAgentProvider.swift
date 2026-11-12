@@ -31,7 +31,7 @@ final class ClaudeAgentProvider: ChatTransport {
             let task = Task {
                 var grant: ClaudeAgentToolGrant?
                 do {
-                    grant = await toolBridge.makeGrant()
+                    grant = await toolBridge.makeGrant(connectionId: options.connectionId)
                     let prompt = AgentPromptRenderer.renderPrompt(turns: turns, includingSystemPrompt: nil)
                     let lines = try cli.streamLines(
                         arguments: Self.inferenceArguments(
@@ -51,6 +51,8 @@ final class ClaudeAgentProvider: ChatTransport {
                             continuation.yield(.textDelta(text))
                         case .usage(let usage):
                             continuation.yield(.usage(usage))
+                        case .outputLimit(let limit):
+                            continuation.yield(.outputLimitReached(limit))
                         case .failure(let message):
                             await toolBridge.release(grant)
                             grant = nil
@@ -90,6 +92,7 @@ final class ClaudeAgentProvider: ChatTransport {
     enum DecodedEvent: Equatable {
         case text(String)
         case usage(AITokenUsage)
+        case outputLimit(ChatOutputLimit)
         case failure(String)
     }
 
@@ -129,6 +132,7 @@ final class ClaudeAgentProvider: ChatTransport {
         guard let json = decodeJSON(line), let type = json["type"] as? String else { return nil }
         switch type {
         case "stream_event":
+            if let limit = outputLimit(json) { return .outputLimit(limit) }
             guard let text = partialText(json) else { return nil }
             return .text(text)
         case "result":
@@ -147,6 +151,18 @@ final class ClaudeAgentProvider: ChatTransport {
             return nil
         }
         return text
+    }
+
+    // The CLI passes the Messages API stream through, so a cut response ends with its message_delta stop reason.
+    static func outputLimit(_ json: [String: Any]) -> ChatOutputLimit? {
+        guard let event = json["event"] as? [String: Any],
+              event["type"] as? String == "message_delta",
+              let delta = event["delta"] as? [String: Any] else { return nil }
+        switch delta["stop_reason"] as? String {
+        case "max_tokens": return .outputTokens
+        case "model_context_window_exceeded": return .contextWindow
+        default: return nil
+        }
     }
 
     static func resultEvent(_ json: [String: Any]) -> DecodedEvent? {

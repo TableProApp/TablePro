@@ -43,7 +43,10 @@ impl PgEndpoint {
             .user(username)
             .password(password.expose_secret())
             .application_name(APPLICATION_NAME)
-            .channel_binding(ChannelBinding::Prefer)
+            .channel_binding(match target.options.channel_binding {
+                true => ChannelBinding::Require,
+                false => ChannelBinding::Prefer,
+            })
             .ssl_mode(tls.ssl_mode());
         if let Some(database) = target.database.as_deref().filter(|name| !name.is_empty()) {
             config.dbname(database);
@@ -70,6 +73,15 @@ impl PgEndpoint {
 
     pub(crate) fn database(&self) -> Option<&str> {
         self.config.get_dbname()
+    }
+
+    /// The database a login opens: the one named, or else the server's
+    /// default, a database named after the user.
+    fn login_database(&self) -> &str {
+        self.config
+            .get_dbname()
+            .or_else(|| self.config.get_user())
+            .unwrap_or_default()
     }
 
     pub(crate) fn liveness(&self) -> &LivenessPolicy {
@@ -101,7 +113,7 @@ impl PgEndpoint {
             Ok(Ok(connected)) => Ok(connected),
             Ok(Err(error)) => {
                 let started = handshake_started.load(Ordering::SeqCst);
-                let mapped = map_connect_error(&error, self.tls.requested(), started);
+                let mapped = map_connect_error(&error, self.login_database(), self.tls.required(), started);
                 Err(self.explain(mapped).await)
             }
         }
@@ -162,7 +174,9 @@ impl PgEndpoint {
 /// What the server says it is, read once at connect.
 pub(crate) async fn server_info(client: &Client) -> Result<ServerInfo, DriverError> {
     let messages = client
-        .simple_query("SELECT current_setting('server_version_num'), current_setting('server_version')")
+        .simple_query(
+            "SELECT pg_catalog.current_setting('server_version_num'), pg_catalog.current_setting('server_version')",
+        )
         .await
         .map_err(|error| map_error(&error))?;
     let row = messages.iter().find_map(|message| match message {

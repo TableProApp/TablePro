@@ -534,6 +534,7 @@ internal struct ObjectCopyPlanner {
                 createStatements: statements.create,
                 truncateStatements: statements.truncate,
                 columns: draft.targetColumns,
+                targetColumnTypeNames: draft.targetColumnTypeNames,
                 primaryKeyColumns: draft.snapshot.primaryKeyColumns,
                 sourceQuery: parts?.query ?? "",
                 targetTable: draft.targetTable,

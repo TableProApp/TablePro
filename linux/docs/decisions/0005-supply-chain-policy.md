@@ -1,6 +1,6 @@
 # 0005: Supply-chain policy
 
-- **Status**: Accepted
+- **Status**: Accepted; the MySQL CA bundle's watch list amended by [0037](0037-mysql-ca-bundle-removal-condition.md)
 - **Date**: 2026-09-15
 
 ## Context
@@ -62,3 +62,19 @@ sqlx takes MySQL CA certificates only as PEM bytes and has no hook for a rustls 
 `tablepro-ai` writes the request bodies and reads the streamed events of two protocols by hand, over hyper: Anthropic's Messages API (`anthropic.rs`) and OpenAI's Chat Completions (`openai.rs`), which Ollama and other self-hosted servers also speak. Anthropic publishes no Rust SDK. The community crates for OpenAI's protocol go through reqwest, a second HTTP client beside the hyper one the ClickHouse driver uses, with a TLS setup of its own, where every connection the app makes takes its rustls configuration from `tablepro-net` ([ADR 0009](0009-crypto-provider-and-sources.md)). The server-sent events are parsed by `sse-stream`, which rmcp already brings; `tests/providers.rs` runs both protocols against a local server that answers the way each provider does.
 
 **Watch list**: an official Anthropic Rust SDK, or an OpenAI-protocol crate, that takes the caller's hyper client or rustls `ClientConfig`.
+
+### TablePro account glue (`tablepro-account`)
+
+`oauth2`, progenitor's generated client and `jsonwebtoken` do the protocol work ([core ADR 0016](../../../core/docs/decisions/0016-tablepro-accounts.md)). Three pieces around them are written here:
+
+1. **Loopback redirect listener** (`loopback.rs`): oauth2 5.0.0 builds the authorization URL and exchanges the code, and leaves receiving the redirect to the app. The listener is hyper, which the MCP server already brings, and answers every request until one carries the sign-in's `state` (RFC 8252 section 7.3). `the_listener_keeps_waiting_past_other_requests_for_its_state` runs it over real sockets.
+2. **Token revocation** (`oauth.rs`): oauth2 5.0.0's `revoke_token` refuses a revocation URL that is not https (`ConfigurationError::InsecureUrl`), and the local tablepro-cloud the stack tests run against serves http. It is one RFC 7009 form POST.
+3. **Entitlement checks around jsonwebtoken** (`entitlement.rs`): jsonwebtoken cannot parse a header whose `alg` it does not know, such as `none`, so `alg`, `typ` and `kid` are read from the header first; and it reads `exp` and `nbf` against the system clock, so `mid`, `nbf` and `exp` are checked against the caller's time after it verified the signature and `aud`. tablepro-cloud's shared vectors cover every check.
+
+**Watch list**: oauth2 accepting an http revocation URL on a loopback or test host; jsonwebtoken validating against a caller's time. Each one deletes its piece.
+
+### Command-line output formats (`tablepro-cli`)
+
+The `tablepro` command prints rows as csv, tsv, json, jsonl and a padded table, from the JSON values the MCP server sends ([core ADR 0018](../../../core/docs/decisions/0018-command-line.md)). The `csv` crate quotes per writer, not per field, so it cannot write NULL as an empty field and an empty string as `""` in one record, which the format promises on every platform. `tablepro_core::export` renders typed driver values, which the command never holds. `unicode-width` measures the table's columns.
+
+**Watch list**: a `csv` writer option that quotes an empty field.

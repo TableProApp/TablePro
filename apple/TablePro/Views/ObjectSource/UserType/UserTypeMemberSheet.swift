@@ -37,10 +37,8 @@ struct UserTypeMemberSheet: View {
             Form {
                 fields
                 if let problem {
-                    Text(problem)
+                    NoticeLabel(problem, severity: .error)
                         .font(.callout)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .formStyle(.grouped)

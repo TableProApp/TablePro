@@ -209,6 +209,10 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.dataGridSettingsDidChange() }
             .store(in: &cancellables)
+        AppEvents.shared.valueColorSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.valueColorSettingsDidChange() }
+            .store(in: &cancellables)
         AppEvents.shared.systemTimeZoneChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.reformatText() }
@@ -284,6 +288,13 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         } else if previous.showInvisibleCharacters != settings.showInvisibleCharacters {
             redrawVisibleRows()
         }
+    }
+
+    private func valueColorSettingsDidChange() {
+        let settings = AppSettingsManager.shared.valueColors
+        guard settings.colorsValuesByType != presenter.registry.colorsValuesByType else { return }
+        presenter.registry.reloadValueColors(settings)
+        redrawVisibleRows()
     }
 
     // Rebuilds every formatted string: the date format, NULL text or smart detection moved, or the Mac's time zone did.
@@ -388,8 +399,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             dataColumnsByDisplayPosition: model.columns.columns.map(\.dataIndex),
             policy: policy,
             deletedRowIDs: changeState?.deletedRowIDs ?? [],
-            insertedRowIDs: changeState?.insertedRowIDs ?? [],
-            modifiedCells: changeState?.modifiedCells ?? [:]
+            defaultedCells: changeState?.defaultedCells(in: rows) ?? [:]
         )
     }
 }

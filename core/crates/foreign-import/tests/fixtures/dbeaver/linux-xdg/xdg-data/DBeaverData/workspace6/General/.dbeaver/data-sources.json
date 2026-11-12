@@ -1,0 +1,13 @@
+{
+	"connections": {
+		"xdg": {
+			"provider": "postgresql",
+			"name": "Custom data PG",
+			"configuration": {
+				"host": "xdg.example.com",
+				"port": "5432",
+				"database": "app"
+			}
+		}
+	}
+}

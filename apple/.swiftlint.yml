@@ -365,7 +365,7 @@ custom_rules:
     regex: '(?i)anonymous (?:usage|statistics|analytics|report|heartbeat)'
     excluded: ['.*/(Packages|Plugins)/']
     excluded_match_kinds: [comment, doccomment]
-    message: "The usage report carries a hashed machine ID, so it is not anonymous."
+    message: "Usage data names the account once you sign in, so it is not anonymous."
     severity: error
   count_before_inflected_span:
     name: "Count Before Inflected Span"
@@ -485,6 +485,8 @@ custom_rules:
       - '.*/[^/]*Tests/'
       - '.*Tests\.swift$'
       - '.*/(WebPageOpener|DataLinkPolicy|MCPPairingService|NotificationsSettingsView|SyncSettingsView|ConnectionRecoveryPerformer|OpenConnectionIntent)\.swift$'
+      # Open TablePro's own links, and the user's files and URLs, in the TablePro bundle the command ships in.
+      - '.*/(Handshake|CLILiveEnvironment)\.swift$'
       - '.*/(AppDelegate\+MainMenuActions|WhatsNewWindowController|SupportAskCoordinator|MainContentCoordinator\+Rewind|GoogleSignInService|ChatGPTCodexService)\.swift$'
     excluded_match_kinds: [comment, doccomment]
     message: "Open a URL from a server, a plugin or a file through WebPageOpener. NSWorkspace opens a file: path, an smb: share or any app's scheme as readily as a web page."

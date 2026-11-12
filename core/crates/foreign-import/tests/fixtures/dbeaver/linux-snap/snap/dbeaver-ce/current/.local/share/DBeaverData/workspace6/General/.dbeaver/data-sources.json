@@ -1,0 +1,13 @@
+{
+	"connections": {
+		"snap": {
+			"provider": "postgresql",
+			"name": "Snap PG",
+			"configuration": {
+				"host": "snap.example.com",
+				"port": "5432",
+				"database": "app"
+			}
+		}
+	}
+}

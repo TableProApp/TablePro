@@ -25,7 +25,7 @@ pub(crate) struct WriteConfirmation {
 impl WriteConfirmation {
     /// Editor statements that need an answer before the run starts.
     pub(crate) fn statements(connection: &str, statements: &[String], destructive: bool) -> Self {
-        let count = u32::try_from(statements.len()).unwrap_or(u32::MAX);
+        let count = statements.len();
         let args = [("connection", connection), ("n", &statements.len().to_string())];
         let body = match destructive {
             true => crate::i18n::ngettext_f(
@@ -114,7 +114,7 @@ impl WriteConfirmation {
             body.push_str(&crate::i18n::ngettext_f(
                 "The import runs {n} statement; the first is shown.",
                 "The import runs {n} statements; the first is shown.",
-                u32::try_from(count).unwrap_or(u32::MAX),
+                count,
                 &[("n", &count.to_string())],
             ));
         }
@@ -122,12 +122,24 @@ impl WriteConfirmation {
             heading: crate::i18n::ngettext_f(
                 "Import {n} Row into “{table}”?",
                 "Import {n} Rows into “{table}”?",
-                u32::try_from(rows).unwrap_or(u32::MAX),
+                rows,
                 &[("n", &rows_text), ("table", table)],
             ),
             body,
             sql: terminated(statements.get(..1).unwrap_or_default()),
             proceed: crate::i18n::gettext("_Import"),
+            destructive: false,
+        }
+    }
+
+    /// A schema or database the sidebar creates, on a connection that
+    /// asks before every write. `heading` names what is created.
+    pub(crate) fn creation(connection: &str, heading: String, sql: String) -> Self {
+        Self {
+            heading,
+            body: asks_before_writes(connection),
+            sql,
+            proceed: crate::i18n::gettext("_Create"),
             destructive: false,
         }
     }
@@ -188,6 +200,7 @@ fn shown_value(value: &Value) -> String {
     let text = text.replace(['\n', '\r'], " ");
     match value {
         Value::Bool(_)
+        | Value::Int32(_)
         | Value::Int(_)
         | Value::UInt(_)
         | Value::WideInt(_)
@@ -267,6 +280,14 @@ mod tests {
             .expect("the SQL view");
         let buffer = view.buffer();
         buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
+    }
+
+    #[test]
+    fn a_bound_number_shows_bare_and_text_quoted() {
+        assert_eq!(shown_value(&Value::Int32(5)), "5");
+        assert_eq!(shown_value(&Value::Int(5)), "5");
+        assert_eq!(shown_value(&Value::Text("it's".to_owned())), "'it''s'");
+        assert_eq!(shown_value(&Value::Null), "NULL");
     }
 
     #[gtk4::test]
@@ -381,6 +402,27 @@ mod tests {
             confirmation.body,
             "Safe Mode on “Prod” asks before every change to the database. The import runs 2 statements; the first is shown."
         );
+    }
+
+    #[gtk4::test]
+    fn a_creation_asks_with_its_sql_and_create() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let confirmation = WriteConfirmation::creation(
+            "Prod",
+            "Create Database “shop”?".to_owned(),
+            "CREATE DATABASE \"shop\";".to_owned(),
+        );
+
+        let dialog = build(&confirmation);
+
+        assert_eq!(dialog.heading().as_deref(), Some("Create Database “shop”?"));
+        assert_eq!(
+            dialog.body(),
+            "Safe Mode on “Prod” asks before every change to the database."
+        );
+        assert_eq!(shown_sql(&dialog), "CREATE DATABASE \"shop\";");
+        assert_eq!(dialog.response_label(PROCEED).as_str(), "_Create");
+        assert_eq!(dialog.default_response().as_deref(), Some(CANCEL));
     }
 
     fn bound(sql: &str, value: Option<Value>) -> Statement {

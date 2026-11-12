@@ -3,19 +3,44 @@ import Foundation
 import TableProModels
 
 extension DuckDBActor {
-    static func decodeCell(vector: duckdb_vector, row: idx_t, column: DuckDBStreamColumn, options: StreamOptions) -> Cell {
+    // A streamed BLOB is its bytes, as on every other engine. `decodeCell` keeps the base64 text `execute` returns.
+    static func streamedCell(
+        vector: duckdb_vector,
+        row: idx_t,
+        column: DuckDBStreamColumn,
+        options: StreamOptions,
+        ref: CellRef?
+    ) -> Cell {
+        guard !column.castToText, column.type == DUCKDB_TYPE_BLOB else {
+            return decodeCell(vector: vector, row: row, column: column, options: options, ref: ref)
+        }
+        if let validity = duckdb_vector_get_validity(vector), !duckdb_validity_row_is_valid(validity, row) {
+            return .null
+        }
+        guard let data = duckdb_vector_get_data(vector) else { return .null }
+        let value = data.assumingMemoryBound(to: duckdb_string_t.self)[Int(row)]
+        return .binary(byteCount: Int(duckdb_string_t_length(value)), ref: ref)
+    }
+
+    static func decodeCell(
+        vector: duckdb_vector,
+        row: idx_t,
+        column: DuckDBStreamColumn,
+        options: StreamOptions,
+        ref: CellRef? = nil
+    ) -> Cell {
         if let validity = duckdb_vector_get_validity(vector), !duckdb_validity_row_is_valid(validity, row) {
             return .null
         }
         guard let data = duckdb_vector_get_data(vector) else { return .null }
 
         if column.castToText {
-            return decodeVarchar(data, row: row, options: options)
+            return decodeVarchar(data, row: row, options: options, ref: ref)
         }
 
         switch column.type {
         case DUCKDB_TYPE_VARCHAR:
-            return decodeVarchar(data, row: row, options: options)
+            return decodeVarchar(data, row: row, options: options, ref: ref)
         case DUCKDB_TYPE_BLOB:
             return decodeBlob(data, row: row)
         case DUCKDB_TYPE_BOOLEAN:
@@ -58,7 +83,7 @@ extension DuckDBActor {
         case DUCKDB_TYPE_TIMESTAMP, DUCKDB_TYPE_TIMESTAMP_S, DUCKDB_TYPE_TIMESTAMP_MS, DUCKDB_TYPE_TIMESTAMP_NS:
             return .text(formatTimestamp(normalizedTimestamp(data, row: row, type: column.type)))
         default:
-            return decodeVarchar(data, row: row, options: options)
+            return decodeVarchar(data, row: row, options: options, ref: ref)
         }
     }
 
@@ -66,17 +91,18 @@ extension DuckDBActor {
         data.load(fromByteOffset: Int(row) * MemoryLayout<T>.stride, as: T.self)
     }
 
-    private static func decodeVarchar(_ data: UnsafeMutableRawPointer, row: idx_t, options: StreamOptions) -> Cell {
+    private static func decodeVarchar(
+        _ data: UnsafeMutableRawPointer,
+        row: idx_t,
+        options: StreamOptions,
+        ref: CellRef?
+    ) -> Cell {
         let strings = data.assumingMemoryBound(to: duckdb_string_t.self)
         var value = strings[Int(row)]
         let length = Int(duckdb_string_t_length(value))
         guard length > 0, let pointer = duckdb_string_t_data(&value) else { return .text("") }
         let text = String(bytes: UnsafeRawBufferPointer(start: pointer, count: length), encoding: .utf8) ?? ""
-        if length > options.textTruncationBytes {
-            let prefix = String(text.prefix(options.textTruncationBytes))
-            return .truncatedText(prefix: prefix, totalBytes: length, ref: nil)
-        }
-        return .text(text)
+        return Cell.from(text: text, options: options, ref: ref)
     }
 
     private static func decodeBlob(_ data: UnsafeMutableRawPointer, row: idx_t) -> Cell {

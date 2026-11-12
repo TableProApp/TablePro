@@ -5,8 +5,9 @@ use async_trait::async_trait;
 use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::Executor as _;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{CharacterSet, DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
@@ -22,6 +23,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::cancel::{ControlLink, MySqlStop, StopProgress};
 use crate::dialect::MySqlDialect;
+use crate::dump;
 use crate::editor_session::MysqlEditorSession;
 use crate::errors::{map_error, map_pool_error};
 use crate::flavour::MySqlFlavour;
@@ -119,6 +121,39 @@ impl MysqlConnection {
         self.settle(outcome, &stop).await
     }
 
+    /// Run one read on a login of its own, closed after it, so it never
+    /// holds a pool slot.
+    async fn read_alone<T: Send + 'static>(
+        &self,
+        options: CallOptions,
+        limits: SessionLimits,
+        op: ReadOp<T>,
+    ) -> Result<T, DriverError> {
+        self.ensure_open()?;
+        let stop = Arc::new(MySqlStop::new(self.control.clone()));
+        let endpoint = self.endpoint.clone();
+        let work_stop = stop.clone();
+        let outcome = self
+            .calls
+            .run_read(
+                options,
+                Standalone::new(),
+                stop.clone(),
+                move |mut link, request| async move {
+                    if let Err(error) = link.open(&endpoint, &limits, &request, &work_stop).await {
+                        return (link, Err(error));
+                    }
+                    let result = match link.connection() {
+                        Ok((connection, flavour)) => op(connection, flavour).await,
+                        Err(error) => Err(error),
+                    };
+                    (link, result)
+                },
+            )
+            .await;
+        self.settle(outcome, &stop).await
+    }
+
     /// Decide whether a failed call means the link itself is gone.
     ///
     /// sqlx has no keepalive on a direct route, so a dead peer shows up
@@ -156,10 +191,13 @@ impl MysqlConnection {
     }
 
     /// Whether the table's engine can roll back, read before the write
-    /// so the ledger knows what an interruption leaves behind.
+    /// so the ledger knows what an interruption leaves behind. DDL
+    /// commits each statement whatever the engine, and a database batch
+    /// names no table to look up.
     async fn atomicity(&self, batch: &WriteBatch, options: &CallOptions) -> Result<WriteAtomicity, DriverError> {
-        if batch.kind == WriteKind::SchemaChanges {
-            return Ok(WriteAtomicity::StatementByStatement);
+        match batch.kind {
+            WriteKind::SchemaChanges | WriteKind::DatabaseChanges => return Ok(WriteAtomicity::StatementByStatement),
+            WriteKind::RowChanges => {}
         }
         let table = batch.table.clone();
         // A call cancels its token when it returns, so the lookup gets a
@@ -176,8 +214,11 @@ impl MysqlConnection {
         Ok(engine.atomicity())
     }
 
+    // The server ends a read-only transaction before DDL and its other
+    // implicit commits, so the session is held read-only as well.
     fn stream_limits(&self) -> SessionLimits {
         SessionLimits {
+            read_only: true,
             statement_timeout: None,
             ..SessionLimits::workspace(&self.settings)
         }
@@ -273,12 +314,10 @@ impl Connection for MysqlConnection {
         .await
     }
 
+    /// The schemas this engine lists are the server's databases, which a
+    /// query tab can move between.
     async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
-        self.read(
-            options,
-            read_op(|connection, flavour| Box::pin(metadata::list_databases(connection, flavour))),
-        )
-        .await
+        self.list_schemas(options).await
     }
 
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
@@ -402,6 +441,16 @@ impl Connection for MysqlConnection {
         .await
     }
 
+    async fn fetch_database_choices(&self, options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        self.read(
+            options,
+            read_op(move |connection, flavour| {
+                Box::pin(async move { metadata::fetch_database_choices(connection, flavour).await })
+            }),
+        )
+        .await
+    }
+
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let table = table.clone();
         let dialect = *self.dialect;
@@ -444,31 +493,33 @@ impl Connection for MysqlConnection {
         mut sink: Box<dyn ResultSink>,
         options: CallOptions,
     ) -> Result<StreamSummary, DriverError> {
-        self.ensure_open()?;
-        let stop = Arc::new(MySqlStop::new(self.control.clone()));
-        let endpoint = self.endpoint.clone();
-        let limits = self.stream_limits();
         let read = read.clone();
-        let work_stop = stop.clone();
-        let outcome = self
-            .calls
-            .run_read(
-                options,
-                Standalone::new(),
-                stop.clone(),
-                move |mut link, request| async move {
-                    if let Err(error) = link.open(&endpoint, &limits, &request, &work_stop).await {
-                        return (link, Err(error));
-                    }
-                    let result = match link.connection() {
-                        Ok((connection, flavour)) => stream(connection, flavour, &read, sink.as_mut()).await,
-                        Err(error) => Err(error),
-                    };
-                    (link, result)
-                },
-            )
-            .await;
-        self.settle(outcome, &stop).await
+        self.read_alone(
+            options,
+            self.stream_limits(),
+            read_op(move |connection, flavour| {
+                Box::pin(async move { stream(connection, flavour, &read, sink.as_mut()).await })
+            }),
+        )
+        .await
+    }
+
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        let dialect = *self.dialect;
+        // The read sets the mode SHOW CREATE prints under, which no pooled session may keep.
+        let limits = SessionLimits {
+            read_only: true,
+            ..SessionLimits::workspace(&self.settings)
+        };
+        self.read_alone(
+            options,
+            limits,
+            read_op(move |connection, _| {
+                Box::pin(async move { dump::read_catalog(connection, &dialect, &scope).await })
+            }),
+        )
+        .await
     }
 
     async fn write_batch(&self, batch: &WriteBatch, options: CallOptions) -> Result<WriteReport, DriverError> {

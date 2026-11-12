@@ -18,8 +18,14 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     private let query: String
     private let driver: DatabaseDriver
     private let dbType: DatabaseType
+    private let rowCut = OSAllocatedUnfairLock<Int?>(initialState: nil)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "StreamingQueryExport")
+
+    // Where the driver stopped the stream at a limit it declared, so the file is partial.
+    var driverRowCut: Int? {
+        rowCut.withLock { $0 }
+    }
 
     init(query: String, driver: DatabaseDriver, databaseType: DatabaseType) {
         self.query = query
@@ -33,7 +39,24 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
         guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        return adapter.streamRows(query: query)
+        let rowCut = rowCut
+        return ExportRowCut<PluginStreamElement>.reporting(adapter.streamRows(query: query), engineCeiling: nil) { limit in
+            rowCut.withLock { $0 = limit }
+        }
+    }
+
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        streamExportRows(table: object.name, databaseName: object.databaseName)
+    }
+
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        guard let adapter = driver as? PluginDriverAdapter else {
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
+        }
+        let rowCut = rowCut
+        return ExportRowCut<PluginExportStreamElement>.reporting(adapter.streamExportRows(query: query), engineCeiling: nil) { limit in
+            rowCut.withLock { $0 = limit }
+        }
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {
@@ -54,13 +77,16 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
 
     func execute(query: String) async throws -> PluginQueryResult {
         let result = try await driver.execute(query: query)
-        return PluginQueryResult(
+        var mapped = PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypes.map { $0.rawType ?? "" },
             rows: result.rows,
             rowsAffected: result.rowsAffected,
             executionTime: result.executionTime
         )
+        mapped.exportDocuments = result.exportDocuments
+        mapped.absentCells = result.absentCells
+        return mapped
     }
 
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] {

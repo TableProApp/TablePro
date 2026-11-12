@@ -4,12 +4,13 @@ use std::time::Duration;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::HistoryRecording;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::query_history::{MAX_QUERY_BYTES, NewEntry};
+use tablepro_storage::query_history::{MAX_QUERY_BYTES, NewEntry, Outcome};
 use tablepro_storage::{QueryHistory, StoragePaths};
 use tokio::sync::watch;
 
 use super::history_availability::HistoryAvailability;
 use super::history_preferences::HistoryPreferences;
+use super::telemetry::Telemetry;
 
 /// How often unpinned history is pruned while the app runs. Startup does
 /// one pass, and this keeps a long session from growing without bound.
@@ -27,6 +28,8 @@ pub struct HistoryService {
     store: Arc<Mutex<Option<QueryHistory>>>,
     save: watch::Receiver<bool>,
     _worker: Arc<tokio_util::task::AbortOnDropHandle<()>>,
+    // Every editor run comes through here, history on or off, so the first query that worked is counted here.
+    telemetry: Telemetry,
 }
 
 impl HistoryService {
@@ -72,7 +75,13 @@ impl HistoryService {
             store,
             save,
             _worker: Arc::new(worker),
+            telemetry: Telemetry::default(),
         }
+    }
+
+    pub(crate) fn with_telemetry(mut self, telemetry: Telemetry) -> Self {
+        self.telemetry = telemetry;
+        self
     }
 
     /// Record one run once the database is open, unless the user turned
@@ -87,6 +96,9 @@ impl HistoryService {
         entry: NewEntry,
         dialect: Option<Arc<dyn SqlDialect>>,
     ) -> impl Future<Output = ()> + Send + use<> {
+        if matches!(entry.outcome, Outcome::Success) {
+            self.telemetry.query_executed(&entry.driver_id);
+        }
         let saving = *self.save.borrow();
         let store = self.ready_store();
         async move {
@@ -346,6 +358,55 @@ mod tests {
             rows_affected: None,
             outcome: tablepro_storage::query_history::Outcome::Success,
         }
+    }
+
+    // A plain test thread may not take GLib's default context, which the GTK tests hold, so this polls.
+    fn until(condition: impl Fn() -> bool) {
+        let started = std::time::Instant::now();
+        while !condition() {
+            assert!(started.elapsed() < Duration::from_secs(20), "gave up waiting");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn only_a_run_that_worked_counts_as_the_first_query() {
+        let runtime = crate::test_support::test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        let collector = crate::test_support::PostHogCollector::start();
+        let telemetry = Telemetry::default();
+        telemetry.begin(
+            crate::services::telemetry::TelemetrySettings {
+                key: "phc_test".to_owned(),
+                host: collector.url.clone(),
+                state_file: root.path().join("telemetry.json"),
+                person: crate::services::telemetry::PersonProperties {
+                    app_version: "0.1.0-test".to_owned(),
+                    os_version: "Ubuntu 26.04".to_owned(),
+                    architecture: "arm64".to_owned(),
+                    locale: "en_US".to_owned(),
+                },
+            },
+            true,
+            &runtime.tasks(),
+        );
+        until(|| telemetry.is_sending());
+        // The history is off: the run is still counted.
+        let service = HistoryService::start(paths(&root), preferences(30, false), &runtime.tasks())
+            .with_telemetry(telemetry.clone());
+        let mut failed = run_of("SELECT * FROM boom");
+        failed.outcome = Outcome::Error("relation \"boom\" does not exist".to_owned());
+
+        drop(service.record(failed, fake_dialect()));
+        telemetry.flush();
+        let after_the_failure = collector.named("first_query_executed").len();
+        drop(service.record(run_of("SELECT 1"), fake_dialect()));
+        drop(service.record(run_of("SELECT 2"), fake_dialect()));
+        telemetry.flush();
+
+        until(|| !collector.named("first_query_executed").is_empty());
+        assert_eq!(after_the_failure, 0);
+        assert_eq!(collector.named("first_query_executed").len(), 1);
     }
 
     fn fake_dialect() -> Option<Arc<dyn SqlDialect>> {

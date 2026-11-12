@@ -39,6 +39,14 @@ pub(super) fn for_ai_key(schema: &str, provider: &str) -> HashMap<&'static str, 
     attributes
 }
 
+// Like the MCP token it belongs to no connection.
+pub(super) fn for_account_token(schema: &str) -> HashMap<&'static str, String> {
+    let mut attributes = HashMap::new();
+    attributes.insert("xdg:schema", schema.to_owned());
+    attributes.insert("kind", "account_refresh_token".to_owned());
+    attributes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +114,19 @@ mod tests {
                 anthropic.get("kind"),
                 for_secret(SCHEMA, Uuid::new_v4(), kind).get("kind")
             );
+        }
+    }
+
+    #[test]
+    fn the_account_token_matches_no_connection_and_no_other_item() {
+        let token = for_account_token(SCHEMA);
+
+        assert!(!token.contains_key("connection-id"));
+        assert_eq!(token.get("xdg:schema").map(String::as_str), Some(SCHEMA));
+        assert_ne!(token.get("kind"), for_mcp_token(SCHEMA).get("kind"));
+        assert_ne!(token.get("kind"), for_ai_key(SCHEMA, "anthropic").get("kind"));
+        for kind in SecretKind::ALL {
+            assert_ne!(token.get("kind"), for_secret(SCHEMA, Uuid::new_v4(), kind).get("kind"));
         }
     }
 

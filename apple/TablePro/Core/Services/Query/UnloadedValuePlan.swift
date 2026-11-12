@@ -139,9 +139,12 @@ extension QueryResult {
             columnMeta: fold.columnMeta,
             rowLocators: rowLocators,
             serverOutput: serverOutput,
+            exportDocuments: exportDocuments,
             absentCells: absentCells
         )
         folded.unloadedCells = fold.unloadedCells
+        // The fold drops the trailing length columns, so the origins of the columns it keeps still line up.
+        folded.columnOrigins = columnOrigins.map { Array($0.prefix(fold.columns.count)) }
         return folded
     }
 }
@@ -164,9 +167,12 @@ extension QueryFetchResult {
             timing: timing,
             serverOutput: serverOutput,
             rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
             absentCells: absentCells
         )
         folded.unloadedCells = fold.unloadedCells
+        // The fold drops the trailing length columns, so the origins of the columns it keeps still line up.
+        folded.columnOrigins = columnOrigins.map { Array($0.prefix(fold.columns.count)) }
         return folded
     }
 }

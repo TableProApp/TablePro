@@ -224,7 +224,7 @@ struct MariaDBTLSModeTests {
 
 // One session: a handshake without CLIENT_SSL, then a switch to mysql_clear_password (or to caching_sha2_password and
 // its full authentication), then OK.
-private final class PlaintextMySQLServer: @unchecked Sendable {
+final class PlaintextMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
     struct Session: Sendable {

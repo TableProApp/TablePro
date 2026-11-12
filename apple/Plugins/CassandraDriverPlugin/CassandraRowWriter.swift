@@ -4,16 +4,14 @@
 //
 
 import Foundation
+import TableProCassandraCore
 import TableProPluginKit
 
-/// The CQL a grid save writes: one statement per row, each naming the row by its whole primary key.
-///
-/// CQL has no `OR` and no parenthesised groups, so several rows cannot share one `DELETE`, and an `INSERT` is an
-/// upsert, so a new row whose key is taken would silently replace the row already there. A new row is therefore
-/// written `IF NOT EXISTS`, and anything CQL cannot do to a row is refused by name rather than sent.
+// One statement per row, each naming the row by its whole primary key: CQL has no `OR` and no parenthesised groups.
+// A new row is written `IF NOT EXISTS` and an edit `IF EXISTS` (CassandraConditionalWrite), and anything CQL cannot
+// do to a row is refused by name rather than sent.
 enum CassandraRowWriter {
-    static let defaultSentinel = "__DEFAULT__"
-    static let unappliedMarker = "[applied]"
+    static let unappliedMarker = CassandraConditionalWrite.appliedColumn
 
     static func rowWrites(
         keyspace: String?,
@@ -54,15 +52,18 @@ enum CassandraRowWriter {
         }
     }
 
-    /// An `INSERT … IF NOT EXISTS` that found its key taken answers with `[applied] = false` and the row already
-    /// there, which the server reports as a success.
-    static func unappliedInsertRefusal(statement: String, columns: [String], rows: [[PluginCellValue]]) -> String? {
-        let normalized = statement.uppercased()
-        guard normalized.hasPrefix("INSERT"), normalized.hasSuffix("IF NOT EXISTS"),
-              columns.first == unappliedMarker,
-              rows.first?.first?.asText?.lowercased() == "false"
-        else { return nil }
-        return String(localized: "A row with this primary key already exists. Edit that row instead.")
+    static func unappliedWriteRefusal(statement: String, columns: [String], rows: [[PluginCellValue]]) -> String? {
+        let refusal = CassandraConditionalWrite.refusal(
+            statement: statement, firstColumn: columns.first, firstValue: rows.first?.first?.asText
+        )
+        switch refusal {
+        case .keyTaken:
+            return String(localized: "A row with this primary key already exists. Edit that row instead.")
+        case .rowMissing:
+            return String(localized: "No row has this primary key, so nothing was updated. Another client may have deleted it.")
+        case nil:
+            return nil
+        }
     }
 
     private struct Writer {
@@ -77,12 +78,16 @@ enum CassandraRowWriter {
                 ))
             }
             let row = values ?? rowFromCellChanges(change)
+            // A new row built from its edits leaves every column it never set to the server.
+            let leftOut = (change.defaultColumns ?? []).union(
+                values == nil ? Set(columns.indices).subtracting(change.cellChanges.map(\.columnIndex)) : []
+            )
             let expressionColumns = change.expressionColumns ?? []
             var names: [String] = []
             var placeholders: [String] = []
             var parameters: [PluginCellValue] = []
             for (index, value) in row.enumerated() where index < columns.count {
-                if value.asText == defaultSentinel { continue }
+                if leftOut.contains(index) { continue }
                 names.append(CassandraBrowseRenderer.quote(columns[index]))
                 if let call = expression(value, isMarked: expressionColumns.contains(index)) {
                     placeholders.append(call)
@@ -93,15 +98,14 @@ enum CassandraRowWriter {
             }
             for keyColumn in primaryKeyColumns {
                 guard let index = columns.firstIndex(of: keyColumn), index < row.count, !row[index].isNull,
-                      row[index].asText != defaultSentinel
+                      !leftOut.contains(index)
                 else {
                     throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(
                         format: String(localized: "Enter a value for the primary key column %@."), keyColumn
                     ))
                 }
             }
-            let statement = "INSERT INTO \(target) (\(names.joined(separator: ", "))) "
-                + "VALUES (\(placeholders.joined(separator: ", "))) IF NOT EXISTS"
+            let statement = CassandraConditionalWrite.insertStatement(target: target, names: names, values: placeholders)
             return PluginRowWrite(statement: statement, parameters: parameters, rowIndices: [change.rowIndex])
         }
 
@@ -119,7 +123,7 @@ enum CassandraRowWriter {
                         cell.columnName
                     ))
                 }
-                if cell.newValue.asText == defaultSentinel {
+                if change.isColumnDefault(cell.columnIndex) {
                     throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(
                         localized: "Cassandra columns have no default value."
                     ))
@@ -133,7 +137,9 @@ enum CassandraRowWriter {
                 }
             }
             let key = try keyCondition(for: change)
-            let statement = "UPDATE \(target) SET \(assignments.joined(separator: ", ")) WHERE \(key.cql)"
+            let statement = CassandraConditionalWrite.updateStatement(
+                target: target, assignments: assignments, keyCondition: key.cql
+            )
             return PluginRowWrite(statement: statement, parameters: parameters + key.values, rowIndices: [change.rowIndex])
         }
 
@@ -165,7 +171,7 @@ enum CassandraRowWriter {
         }
 
         private func rowFromCellChanges(_ change: PluginRowChange) -> [PluginCellValue] {
-            var row = [PluginCellValue](repeating: .text(defaultSentinel), count: columns.count)
+            var row = [PluginCellValue](repeating: .null, count: columns.count)
             for cell in change.cellChanges where cell.columnIndex < row.count {
                 row[cell.columnIndex] = cell.newValue
             }

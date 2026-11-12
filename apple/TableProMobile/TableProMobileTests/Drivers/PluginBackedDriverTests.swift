@@ -27,6 +27,13 @@ struct PluginBackedDriverTests {
         return elements
     }
 
+    private func rows(of elements: [StreamElement]) -> [Row] {
+        elements.compactMap { element -> Row? in
+            if case .row(let row) = element { return row }
+            return nil
+        }
+    }
+
     private func result(rows: [[PluginCellValue]]) -> PluginQueryResult {
         PluginQueryResult(
             columns: ["id", "name"],
@@ -99,6 +106,45 @@ struct PluginBackedDriverTests {
         #expect(ref?.primaryKey == [PrimaryKeyComponent(column: "id", value: "7")])
     }
 
+    @Test("A row and its cut-off cell carry the locator the plugin read the row with")
+    func rowCarriesThePluginLocator() async throws {
+        let plugin = StubPluginDriver()
+        plugin.scriptedResult = result(rows: [["7", .text(String(repeating: "x", count: 5_000))], ["8", "b"]])
+        plugin.scriptedResult.rowLocators = [#"{"$oid":"7"}"#, nil]
+        let driver = makeDriver(plugin)
+        let options = StreamOptions(maxRows: 10, lazyContext: LazyContext(table: "t", primaryKeyColumns: ["id"]))
+
+        let read = try await rows(of: drain(driver.executeStreaming(query: "SELECT * FROM t", options: options)))
+
+        #expect(read.map { $0.locator } == [#"{"$oid":"7"}"#, nil])
+        let first = try #require(read.first)
+        guard case .truncatedText(_, _, let ref) = first.cells[1] else {
+            Issue.record("the long cell should be cut off")
+            return
+        }
+        #expect(ref?.locator == #"{"$oid":"7"}"#)
+    }
+
+    @Test("Locators that do not pair one to one with the rows are dropped")
+    func unpairedLocatorsAreDropped() async throws {
+        let plugin = StubPluginDriver()
+        plugin.scriptedResult = result(rows: [["7", .text(String(repeating: "x", count: 5_000))], ["8", "b"]])
+        plugin.scriptedResult.rowLocators = [#"{"$oid":"7"}"#]
+        let driver = makeDriver(plugin)
+        let options = StreamOptions(maxRows: 10, lazyContext: LazyContext(table: "t", primaryKeyColumns: ["id"]))
+
+        let read = try await rows(of: drain(driver.executeStreaming(query: "SELECT * FROM t", options: options)))
+
+        #expect(read.map { $0.locator } == [nil, nil])
+        let first = try #require(read.first)
+        guard case .truncatedText(_, _, let ref) = first.cells[1] else {
+            Issue.record("the long cell should be cut off")
+            return
+        }
+        #expect(ref != nil)
+        #expect(ref?.locator == nil)
+    }
+
     @Test("Bytes stay a binary cell, so a row holding them is never matched by its hex text")
     func bytesStayBinary() async throws {
         let plugin = StubPluginDriver()
@@ -157,6 +203,7 @@ struct PluginBackedDriverTests {
             schema: nil,
             columns: ["id", "name", "note"],
             originalRow: ["1", "signup", nil],
+            documentLocator: nil,
             changes: [(column: "name", value: "purchase")]
         )
         _ = try await driver.run(writes)
@@ -182,6 +229,34 @@ struct PluginBackedDriverTests {
         #expect(plugin.generatedInserts[0] == [
             .text(PluginRowWritingDriver.defaultSentinel), "x", .text(PluginRowWritingDriver.defaultSentinel)
         ])
+    }
+
+    @Test("A plugin that reads the default mark gets every left-out column marked")
+    func insertMarksOmittedColumnsForAMarkingPlugin() throws {
+        let plugin = StubPluginDriver()
+        plugin.declaredCapabilities = .columnDefaultMarks
+        let driver = makeWriter(plugin)
+
+        _ = try driver.insertWrites(
+            table: "events", schema: nil, columns: ["id", "name", "note"], values: [(column: "name", value: "x")]
+        )
+
+        #expect(plugin.generatedChanges.first?.defaultColumns == [0, 2])
+    }
+
+    @Test("A plugin that reads the default mark stores the marker's text as a value")
+    func markingPluginStoresTheMarkerText() throws {
+        let plugin = StubPluginDriver()
+        plugin.declaredCapabilities = .columnDefaultMarks
+        let driver = makeWriter(plugin)
+
+        _ = try driver.insertWrites(
+            table: "events", schema: nil, columns: ["id", "note"],
+            values: [(column: "id", value: "1"), (column: "note", value: PluginRowWritingDriver.defaultSentinel)]
+        )
+
+        #expect(plugin.generatedInserts[0] == ["1", .text(PluginRowWritingDriver.defaultSentinel)])
+        #expect(plugin.generatedChanges.first?.defaultColumns == nil)
     }
 
     @Test("A value spelled as the default marker is refused, never stored as the default")

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use async_trait::async_trait;
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -342,6 +343,19 @@ impl Connection for DuckDbConnection {
         .await
     }
 
+    async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        let scope = scope.clone();
+        // One transaction, so the parts come from the same moment.
+        self.read(options, move |link, catalog| {
+            batch(link, "BEGIN TRANSACTION READ ONLY")?;
+            let read = crate::dump::read_dump_catalog(link, catalog, &scope);
+            link.hold_stops();
+            batch(link, "ROLLBACK")?;
+            read
+        })
+        .await
+    }
+
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
@@ -374,8 +388,7 @@ impl Connection for DuckDbConnection {
         self.read(options, move |link, _| count(link, &statement)).await
     }
 
-    /// Every row, on a connection of the read's own, inside a read-only
-    /// transaction, so user SQL that writes is refused by DuckDB itself.
+    // Inside a read-only transaction, so user SQL that writes is refused by DuckDB itself.
     async fn stream_read(
         &self,
         read: &ReadStatement,
@@ -400,7 +413,7 @@ impl Connection for DuckDbConnection {
                     batch(link, "BEGIN TRANSACTION READ ONLY")?;
                     let streamed = match &read {
                         ReadStatement::Generated(statement) => run_bound(link, statement, events),
-                        ReadStatement::User(sql) => run_script(link, sql.as_str(), None, events, &|| false),
+                        ReadStatement::User(sql) => run_script(link, sql.as_str(), None, events, &|| false, None),
                     };
                     link.hold_stops();
                     let _ = batch(link, "ROLLBACK");
@@ -431,7 +444,7 @@ impl Connection for DuckDbConnection {
         // by the statement timeout would only roll back.
         let options = match batch.kind {
             WriteKind::RowChanges => self.statement_bounded(options),
-            WriteKind::SchemaChanges => options,
+            WriteKind::SchemaChanges | WriteKind::DatabaseChanges => options,
         };
         let ledger = Arc::new(WriteLedger::new(WriteAtomicity::Transactional));
         let recorded = ledger.clone();

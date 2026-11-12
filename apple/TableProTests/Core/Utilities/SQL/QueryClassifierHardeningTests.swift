@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProFirebaseCore
 import TableProSQLGrammar
 import Testing
 
@@ -643,6 +644,19 @@ struct QueryClassifierNonSqlTests {
 
     /// `OUTSIDEBLOCK` is the Server Dashboard's prefix for a command held out of the user's MULTI
     /// block. Read as the bare word, `OUTSIDEBLOCK FLUSHALL` passed as an ordinary write.
+    @Test("Redis MUSTAPPLY prefix is classified by the command it wraps")
+    func redisMustApplyPrefixIsClassifiedByItsCommand() {
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY FLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY SHUTDOWN", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY CONFIG SET dir /tmp", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("DB 0 MUSTAPPLY FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY DB 0 FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("MUSTAPPLY EVAL \"return 1\" 0", databaseType: .redis))
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY RENAMENX a b", databaseType: .redis) == .write)
+        #expect(QueryClassifier.classifyTier("MUSTAPPLY SET k v NX", databaseType: .redis) == .write)
+        #expect(QueryClassifier.isWriteQuery("MUSTAPPLY", databaseType: .redis))
+    }
+
     @Test("Redis OUTSIDEBLOCK prefix is classified by the command it wraps")
     func redisOutsideBlockPrefix() {
         #expect(QueryClassifier.classifyTier("OUTSIDEBLOCK FLUSHALL", databaseType: .redis) == .destructive)
@@ -681,11 +695,9 @@ struct QueryClassifierNonSqlTests {
         let destructive = [
             "lease revoke 7b",
             "LEASE REVOKE 0x7b",
-            "\"lease\" 'revoke' 7b",
             "user delete alice",
             "role delete readers",
             "auth disable",
-            "\"del\" /keys --prefix",
             "delete /keys",
             "compaction 5 --physical"
         ]
@@ -706,14 +718,24 @@ struct QueryClassifierNonSqlTests {
             "endpoint status",
             "endpoint health",
             "user list",
-            "role list",
-            "'get' /keys --prefix"
+            "role list"
         ]
         for statement in reads {
             #expect(
                 QueryClassifier.classifyTier(statement, databaseType: .etcd) == .safe,
                 "\(statement) must be safe"
             )
+        }
+    }
+
+    @Test("etcd quoted verbs stay unknown", arguments: [
+        #""lease" 'revoke' 7b"#, #""del" /keys --prefix"#, #"'get' /keys --prefix"#,
+    ])
+    func etcdQuotedVerbs(statement: String) throws {
+        #expect(QueryClassifier.classifyTier(statement, databaseType: .etcd) == .write)
+        guard case .unknown = try EtcdCommandParser.parse(statement) else {
+            Issue.record("Quoted verbs must not execute")
+            return
         }
     }
 
@@ -1160,6 +1182,35 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("PATCH / {\"users\": null}", databaseType: .firebaseRealtimeDatabase) == .destructive)
         #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
         #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": null}", databaseType: .firestore) == .write)
+    }
+
+    @Test("A Firebase write whose body holds only metadata empties the node, so it ranks with DELETE")
+    func firebaseMetadataOnlyWritesDelete() {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(QueryClassifier.classifyTier("PUT users {\".priority\": 1}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\".value\": null, \".priority\": 1}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\"a\": {\".priority\": 1}}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\".value\": {\".priority\": 1}}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\".value\": 5, \".priority\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users {\".sv\": \"timestamp\"}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users {\"a\": 1, \".priority\": 1}", databaseType: type) == .write)
+        }
+        #expect(QueryClassifier.classifyTier("PATCH / {\"users\": {\".priority\": 1}}", databaseType: .firebaseRealtimeDatabase) == .destructive)
+        #expect(QueryClassifier.classifyTier("PATCH users {\".priority\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
+    }
+
+    @Test("A Firebase path that starts with a mark is tiered as the driver reads it", arguments: [
+        "\u{FE0F}", "\u{E0100}", "\u{0301}", "\u{0903}", "\u{1F3FB}", "\u{FE0F}general", "users\u{0600}"
+    ])
+    func firebasePathStartingWithMark(name: String) {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(QueryClassifier.classifyTier("PUT \(name) null", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier(FirebaseRequest(method: .put, path: name, body: "null").text, databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT \(name) {\"a\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("DELETE \(name)", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("GET \(name)", databaseType: type) == .safe)
+        }
+        #expect(QueryClassifier.classifyTier("PATCH \(name) {\"x\": null}", databaseType: .firebaseRealtimeDatabase) == .destructive)
     }
 
     @Test("A console body declaring a mutation is classified the same as a bare one")

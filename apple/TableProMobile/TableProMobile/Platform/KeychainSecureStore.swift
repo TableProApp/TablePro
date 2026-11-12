@@ -3,11 +3,56 @@ import os
 import Security
 import TableProDatabase
 
+nonisolated struct KeychainCopiedItem: Sendable {
+    let status: OSStatus
+    let data: Data?
+    let modified: Date?
+}
+
+nonisolated protocol KeychainItemStore: Sendable {
+    func add(_ attributes: [String: Any]) -> OSStatus
+    func update(_ query: [String: Any], attributes: [String: Any]) -> OSStatus
+    // The first item the query matches, with its data and modification date.
+    func copyItem(_ query: [String: Any]) -> KeychainCopiedItem
+    func delete(_ query: [String: Any]) -> OSStatus
+}
+
+nonisolated struct SystemKeychainItemStore: KeychainItemStore {
+    func add(_ attributes: [String: Any]) -> OSStatus {
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    func update(_ query: [String: Any], attributes: [String: Any]) -> OSStatus {
+        SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    }
+
+    func copyItem(_ query: [String: Any]) -> KeychainCopiedItem {
+        var query = query
+        query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let item = result as? [String: Any]
+        return KeychainCopiedItem(
+            status: status,
+            data: item?[kSecValueData as String] as? Data,
+            modified: item?[kSecAttrModificationDate as String] as? Date
+        )
+    }
+
+    func delete(_ query: [String: Any]) -> OSStatus {
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
 nonisolated final class KeychainSecureStore: SecureStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainSecureStore")
 
     private static let serviceName = "com.TablePro"
     private let accessGroup: String?
+    private let syncsPasswords: @Sendable () -> Bool
+    private let items: any KeychainItemStore
 
     private static let cachedAccessGroup = OSAllocatedUnfairLock<String?>(initialState: nil)
 
@@ -29,8 +74,13 @@ nonisolated final class KeychainSecureStore: SecureStore {
         return group
     }
 
-    init() {
+    init(
+        syncsPasswords: @escaping @Sendable () -> Bool = { AppPreferences.syncsPasswords },
+        items: any KeychainItemStore = SystemKeychainItemStore()
+    ) {
         self.accessGroup = Self.resolveAccessGroup()
+        self.syncsPasswords = syncsPasswords
+        self.items = items
     }
 
     private func applyingAccessGroup(_ query: [String: Any]) -> [String: Any] {
@@ -54,72 +104,83 @@ nonisolated final class KeychainSecureStore: SecureStore {
         syncsPasswords && !ConnectionSecretKind.isDeviceOnly(account: key)
     }
 
+    // Synchronizable is part of an item's identity, and deleting a synced item deletes it on every device.
     func store(_ value: String, forKey key: String) throws {
         guard let data = value.data(using: .utf8) else { return }
 
-        let synchronizable = Self.synchronizes(key, syncsPasswords: AppPreferences.syncsPasswords)
+        let synchronizable = Self.synchronizes(key, syncsPasswords: syncsPasswords())
+        let accessible = Self.accessibility(forSync: synchronizable)
+        let target = itemQuery(forKey: key, synchronizable: synchronizable)
 
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.serviceName,
-            kSecAttrAccount as String: key,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-        SecItemDelete(applyingAccessGroup(deleteQuery) as CFDictionary)
-
-        var addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.serviceName,
-            kSecAttrAccount as String: key,
+        var status = items.update(target, attributes: [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: Self.accessibility(forSync: synchronizable),
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-        if synchronizable {
-            addQuery[kSecAttrSynchronizable as String] = true
+            kSecAttrAccessible as String: accessible,
+        ])
+        if status == errSecItemNotFound {
+            var attributes = target
+            attributes[kSecValueData as String] = data
+            attributes[kSecAttrAccessible as String] = accessible
+            status = items.add(attributes)
         }
-        let status = SecItemAdd(applyingAccessGroup(addQuery) as CFDictionary, nil)
-        if status != errSecSuccess {
+        guard status == errSecSuccess else {
             throw KeychainError.storeFailed(status)
+        }
+
+        guard synchronizable else { return }
+        let stale = items.delete(itemQuery(forKey: key, synchronizable: false))
+        if stale != errSecSuccess, stale != errSecItemNotFound {
+            Self.logger.error("Removing the device-only copy of '\(key, privacy: .public)' failed: \(stale)")
         }
     }
 
+    // With sync on, a newer device-only copy is a save made while sync was off; with sync off, this device's copy wins.
     func retrieve(forKey key: String) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.serviceName,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(applyingAccessGroup(query) as CFDictionary, &result)
-
-        if status == errSecItemNotFound { return nil }
-        if status != errSecSuccess {
-            throw KeychainError.retrieveFailed(status)
+        let preferred = Self.synchronizes(key, syncsPasswords: syncsPasswords())
+        var found = items.copyItem(itemQuery(forKey: key, synchronizable: preferred))
+        if found.status == errSecItemNotFound {
+            found = items.copyItem(itemQuery(forKey: key, synchronizable: !preferred))
+        } else if found.status == errSecSuccess, preferred {
+            let other = items.copyItem(itemQuery(forKey: key, synchronizable: !preferred))
+            if Self.isNewer(other, than: found) { found = other }
         }
 
-        guard let data = result as? Data else { return nil }
+        if found.status == errSecItemNotFound { return nil }
+        if found.status != errSecSuccess {
+            throw KeychainError.retrieveFailed(found.status)
+        }
+
+        guard let data = found.data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
+    private static func isNewer(_ candidate: KeychainCopiedItem, than current: KeychainCopiedItem) -> Bool {
+        guard candidate.status == errSecSuccess, let candidateDate = candidate.modified,
+              let currentDate = current.modified else { return false }
+        return candidateDate > currentDate
+    }
+
     func delete(forKey key: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.serviceName,
-            kSecAttrAccount as String: key,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-        let status = SecItemDelete(applyingAccessGroup(query) as CFDictionary)
+        var query = baseQuery(forKey: key)
+        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        let status = items.delete(query)
         if status != errSecSuccess && status != errSecItemNotFound {
             throw KeychainError.deleteFailed(status)
         }
+    }
+
+    private func baseQuery(forKey key: String) -> [String: Any] {
+        applyingAccessGroup([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.serviceName,
+            kSecAttrAccount as String: key,
+            kSecUseDataProtectionKeychain as String: true,
+        ])
+    }
+
+    private func itemQuery(forKey key: String, synchronizable: Bool) -> [String: Any] {
+        var query = baseQuery(forKey: key)
+        query[kSecAttrSynchronizable as String] = synchronizable
+        return query
     }
 
     // Device-local items only: deleting a synced one here would remove it from the Mac that wrote it.

@@ -73,6 +73,13 @@ internal final class SessionTransactionTracker: ObservableObject {
         return states.isEmpty ? nil : .open
     }
 
+    // Moves with every turn recorded on any of the connection's lanes.
+    internal func turnRevision(for connectionId: UUID) -> Int {
+        revisions.reduce(0) { total, entry in
+            entry.key.connectionId == connectionId ? total &+ entry.value : total
+        }
+    }
+
     internal func driver(for hold: Hold) -> DatabaseDriver? {
         guard let entry = drivers[hold.key], let driver = entry.driver as? DatabaseDriver else { return nil }
         return driver

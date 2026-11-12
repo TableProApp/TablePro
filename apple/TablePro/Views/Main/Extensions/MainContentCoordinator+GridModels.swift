@@ -139,6 +139,9 @@ extension MainContentCoordinator {
 
     @discardableResult
     func commitActiveGridEdit() -> Bool {
+        guard let selectedTabId = tabManager.selectedTabId else { return true }
+        // A large document's last keys reach the tab on a delay, and a save or close reads the tab.
+        flushEditorText(forTab: selectedTabId)
         guard let tab = tabManager.selectedTab else { return true }
         var committed = existingGridModel(forTab: tab.id)?.commitEditing() ?? true
         if let schemaModel = activeGridModelProvider(for: tab)?.activeGridModel {
@@ -180,6 +183,7 @@ extension MainContentCoordinator {
         configuration.showRowNumbers = AppSettingsManager.shared.dataGrid.showRowNumbers
         configuration.appliesRowSortPreferences = true
         configuration.appliesRowCopyFormat = true
+        configuration.colorsValuesByType = true
         configuration.supportsColumnSort = tab.tabType != .table || supportsColumnSort
         configuration.isEditable = isEditable
         configuration.editRefusalMessage = isSelected ? activeResultEditRefusal?.message : nil

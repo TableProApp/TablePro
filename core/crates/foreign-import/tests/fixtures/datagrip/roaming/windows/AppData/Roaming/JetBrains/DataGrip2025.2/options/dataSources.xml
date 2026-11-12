@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="win_sql" uuid="99999999-0000-4000-8000-000000000009">
+      <driver-ref>sqlserver.ms</driver-ref>
+      <jdbc-url>jdbc:sqlserver://sql.example.com:1433;databaseName=Sales</jdbc-url>
+    </data-source>
+  </component>
+</application>

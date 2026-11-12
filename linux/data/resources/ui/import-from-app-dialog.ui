@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProImportFromAppDialog" parent="AdwDialog">
+    <property name="title" translatable="yes">Import from Another App</property>
+    <property name="content-width">560</property>
+    <property name="content-height">640</property>
+    <property name="child">
+      <object class="AdwNavigationView" id="navigation">
+        <child>
+          <object class="AdwNavigationPage">
+            <property name="tag">sources</property>
+            <property name="title" translatable="yes">Import from Another App</property>
+            <property name="child">
+              <object class="AdwToolbarView">
+                <child type="top">
+                  <object class="AdwHeaderBar">
+                    <child type="end">
+                      <object class="GtkButton" id="continue_button">
+                        <property name="label" translatable="yes">_Continue</property>
+                        <property name="use-underline">true</property>
+                        <property name="sensitive">false</property>
+                        <style>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <property name="content">
+                  <object class="GtkStack" id="sources_stack">
+                    <child>
+                      <object class="GtkStackPage">
+                        <property name="name">loading</property>
+                        <property name="child">
+                          <object class="AdwSpinner">
+                            <property name="halign">center</property>
+                            <property name="valign">center</property>
+                            <property name="width-request">32</property>
+                            <property name="height-request">32</property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkStackPage">
+                        <property name="name">sources</property>
+                        <property name="child">
+                          <object class="AdwPreferencesPage">
+                            <child>
+                              <object class="AdwPreferencesGroup" id="apps_group">
+                                <property name="title" translatable="yes">Apps</property>
+                                <property name="description" translatable="yes">Connections are read from the app's own files and nothing is changed there.</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <child>
+                                  <object class="AdwSwitchRow" id="passwords_row">
+                                    <property name="title" translatable="yes">Include _Passwords</property>
+                                    <property name="use-underline">true</property>
+                                    <property name="active">true</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="queries_row">
+                                    <property name="title" translatable="yes">Include Saved _Queries</property>
+                                    <property name="use-underline">true</property>
+                                    <property name="active">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwNavigationPage">
+            <property name="tag">reading</property>
+            <property name="title" translatable="yes">Reading Connections</property>
+            <property name="can-pop">false</property>
+            <property name="child">
+              <object class="AdwToolbarView">
+                <child type="top">
+                  <object class="AdwHeaderBar"/>
+                </child>
+                <property name="content">
+                  <object class="AdwStatusPage" id="reading_status">
+                    <property name="title" translatable="yes">Reading Connections</property>
+                    <property name="paintable">
+                      <object class="AdwSpinnerPaintable">
+                        <property name="widget">reading_status</property>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwNavigationPage">
+            <property name="tag">failed</property>
+            <property name="title" translatable="yes">Nothing Imported</property>
+            <property name="child">
+              <object class="AdwToolbarView">
+                <child type="top">
+                  <object class="AdwHeaderBar"/>
+                </child>
+                <property name="content">
+                  <object class="AdwStatusPage" id="failed_status">
+                    <property name="icon-name">dialog-warning-symbolic</property>
+                    <property name="title" translatable="yes">Nothing Imported</property>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwNavigationPage" id="review_page">
+            <property name="tag">review</property>
+            <property name="title" translatable="yes">Review</property>
+            <property name="child">
+              <object class="AdwToolbarView">
+                <child type="top">
+                  <object class="AdwHeaderBar"/>
+                </child>
+                <child type="top">
+                  <object class="AdwBanner" id="passwords_banner"/>
+                </child>
+                <property name="content">
+                  <object class="AdwPreferencesPage" id="review_preferences">
+                    <child>
+                      <object class="AdwPreferencesGroup" id="connections_group">
+                        <property name="title" translatable="yes">Connections</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup" id="queries_group">
+                        <property name="title" translatable="yes">Saved Queries</property>
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+                <child type="bottom">
+                  <object class="GtkActionBar">
+                    <child type="start">
+                      <object class="GtkLabel" id="summary_label">
+                        <property name="xalign">0</property>
+                        <property name="wrap">true</property>
+                        <style>
+                          <class name="dim-label"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child type="end">
+                      <object class="GtkButton" id="import_button">
+                        <property name="label" translatable="yes">_Import</property>
+                        <property name="use-underline">true</property>
+                        <style>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

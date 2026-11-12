@@ -85,7 +85,7 @@ struct DataGridFindBar: View {
 
             Text(counterText)
                 .font(.callout)
-                .foregroundStyle(find.problem == nil || status != nil ? Color.secondary : Color(nsColor: .systemRed))
+                .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)
                 .accessibilityLabel(counterText)
@@ -172,11 +172,21 @@ struct DataGridFindBar: View {
     // MARK: - State
 
     private var counterText: String {
+        Self.counterText(status: status, model: model)
+    }
+
+    private var showsSearchAllRows: Bool {
+        Self.showsSearchAllRows(offered: capabilities.offersSearchAllRows, model: model)
+    }
+
+    static func counterText(status: String?, model: DataGridModel) -> String {
+        let find = model.find
         if let status { return status }
         if let problem = find.problem { return problem }
         guard model.hasFindTerm else { return "" }
         // A search that refreshes keeps showing the count it is about to replace.
         if find.matches.isEmpty {
+            if find.isAwaitingLoadedRows { return "" }
             if find.isSearching { return String(localized: "Searching…") }
             if find.searchStopped { return String(localized: "Search stopped") }
         }
@@ -188,9 +198,10 @@ struct DataGridFindBar: View {
     }
 
     // Only when this page has no match, so the bar stays short while matches are on screen.
-    private var showsSearchAllRows: Bool {
-        capabilities.offersSearchAllRows && model.searchAllRowsKeepsTheOptions && model.hasFindTerm
-            && find.problem == nil && find.matches.isEmpty
+    static func showsSearchAllRows(offered: Bool, model: DataGridModel) -> Bool {
+        let find = model.find
+        return offered && model.searchAllRowsKeepsTheOptions && model.hasFindTerm
+            && find.problem == nil && find.matches.isEmpty && !find.isAwaitingLoadedRows
     }
 
     // Use Selection for Find searches on its own, so only typing goes through the delay.

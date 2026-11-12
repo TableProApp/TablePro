@@ -27,6 +27,10 @@
         <attribute name="action">win.save-query</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">E_xport Results…</attribute>
+        <attribute name="action">win.export-results</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Forma_t</attribute>
         <attribute name="action">editor.format</attribute>
         <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;f</attribute>
@@ -195,13 +199,16 @@
             <property name="position">280</property>
             <property name="vexpand">true</property>
             <property name="hexpand">true</property>
+            <!-- GtkPaned otherwise allows the query to disappear below
+                 the scroller's minimum when the results are dragged up. -->
+            <property name="shrink-start-child">false</property>
             <property name="shrink-end-child">false</property>
             <property name="start-child">
               <object class="AdwToolbarView" id="text_pane">
                 <property name="reveal-bottom-bars">false</property>
                 <property name="content">
                   <object class="GtkScrolledWindow">
-                    <property name="min-content-height">200</property>
+                    <property name="min-content-height">120</property>
                     <property name="child">
                       <object class="TableProEditorView" id="source_view">
                         <property name="show-line-numbers">true</property>

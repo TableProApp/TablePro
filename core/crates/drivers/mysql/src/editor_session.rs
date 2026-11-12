@@ -8,29 +8,24 @@ use sqlx::{AssertSqlSafe, Connection as _, Executor as _};
 use tablepro_core::sql_syntax::{SqlGrammar, may_change_database};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
-    LossPhase, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, Value,
+    LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, Value,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel::ControlLink;
+use crate::column_origins::{TracedSet, resolved_columns};
 use crate::decode::decode_row;
 use crate::dialect::quote;
-use crate::editor_run::{RunOutcome, run_script};
+use crate::editor_run::{EditorLink, RunOutcome, run_script};
 use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
 use crate::physical::{MysqlEndpoint, SessionKind};
-use crate::session_statements::{SessionLimits, select_limit};
+use crate::session_statements::SessionLimits;
 use crate::transaction_probe::TransactionProbe;
-
-/// The tab's own connection and the row limit last set on it.
-struct Held {
-    connection: MySqlConnection,
-    select_limit: Option<u64>,
-}
 
 /// One editor tab's own connection to the server.
 ///
@@ -47,7 +42,7 @@ pub(crate) struct MysqlEditorSession {
 /// and settles the session, rather than a statement left running for
 /// nobody.
 struct Shared {
-    held: Arc<tokio::sync::Mutex<Option<Held>>>,
+    held: Arc<tokio::sync::Mutex<Option<EditorLink>>>,
     connection_id: u64,
     flavour: MySqlFlavour,
     control: ControlLink,
@@ -84,10 +79,7 @@ impl MysqlEditorSession {
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
             shared: Arc::new(Shared {
-                held: Arc::new(tokio::sync::Mutex::new(Some(Held {
-                    connection: physical.connection,
-                    select_limit: None,
-                }))),
+                held: Arc::new(tokio::sync::Mutex::new(Some(EditorLink::new(physical.connection)))),
                 connection_id: physical.connection_id,
                 flavour: physical.flavour,
                 control: ControlLink::new(endpoint),
@@ -113,11 +105,10 @@ impl Shared {
         }
     }
 
-    /// One run on the connection `guard` holds, which it gives up when
-    /// the connection cannot take another.
+    // The connection `guard` holds is given up when it cannot take another run.
     async fn run_held(
         &self,
-        mut guard: OwnedMutexGuard<Option<Held>>,
+        mut guard: OwnedMutexGuard<Option<EditorLink>>,
         sql: UserSql,
         options: RunOptions,
         mut sink: Box<dyn ResultSink>,
@@ -131,7 +122,8 @@ impl Shared {
         };
         let started = Instant::now();
         self.running.store(true, Ordering::SeqCst);
-        let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
+        let mut traced = None;
+        let supervised = self.supervise(held, &sql, &options, sink.as_mut(), &mut traced).await;
         // A session in a database nothing knows would run the next script
         // in the wrong one, so it ends instead.
         let placed = match &supervised {
@@ -149,9 +141,16 @@ impl Shared {
             }
             _ => TransactionState::Unknown,
         };
+        let settled = match (&supervised, placed, traced) {
+            (Ok((RunEnd::Completed, true)), true, Some(set)) => {
+                self.trace(&mut held.connection, set, transaction_state, sink.as_mut())
+                    .await
+            }
+            _ => true,
+        };
         self.running.store(false, Ordering::SeqCst);
         let end = match supervised {
-            Ok((end, true)) if placed => end,
+            Ok((end, true)) if placed && settled => end,
             Ok((end, _)) => {
                 self.lost.store(true, Ordering::SeqCst);
                 *guard = None;
@@ -185,16 +184,14 @@ impl Shared {
         true
     }
 
-    /// Run the script, stopping it on a cancel, at the deadline, when
-    /// the session closes or when the sink stops reading. A stop is KILL
-    /// QUERY on a connection of the session's own; the statement then
-    /// has the cancel grace to end, and nothing after it is sent.
+    // A stop is KILL QUERY on a connection of the session's own; the statement then has the cancel grace to end, and nothing after it is sent.
     async fn supervise(
         &self,
-        held: &mut Held,
+        held: &mut EditorLink,
         sql: &UserSql,
         options: &RunOptions,
         sink: &mut dyn ResultSink,
+        traced: &mut Option<TracedSet>,
     ) -> Result<(RunEnd, bool), DriverError> {
         let limit = options.row_limit;
         let deadline = options.deadline.map(|limit| Instant::now() + limit);
@@ -202,11 +199,7 @@ impl Shared {
         // Read synchronously before each statement goes out, since the
         // select below sees a stop only once the run waits.
         let halt = || self.stop_due(options, deadline).is_some();
-        let flavour = self.flavour;
-        let running = async {
-            set_select_limit(held, flavour, limit).await?;
-            run_script(&mut held.connection, flavour, sql.as_str(), limit, sink, &stopped, halt).await
-        };
+        let running = run_script(held, self.flavour, sql.as_str(), limit, sink, &stopped, halt);
         let mut running = std::pin::pin!(running);
         let stop = tokio::select! {
             outcome = &mut running => {
@@ -216,7 +209,10 @@ impl Shared {
                         let stop = self.stop_due(options, deadline).unwrap_or(Stop::Cancelled);
                         Ok((stopped_end(stop, false), true))
                     }
-                    outcome => finished(outcome).map(|end| (end, true)),
+                    mut outcome => {
+                        *traced = outcome.as_mut().ok().and_then(|outcome| outcome.traced.take());
+                        finished(outcome).map(|end| (end, true))
+                    }
                 };
             }
             () = options.cancel.cancelled() => Stop::Cancelled,
@@ -243,6 +239,33 @@ impl Shared {
             // its answer coming and cannot take another run.
             None => Ok((end, false)),
         }
+    }
+
+    // Only a session known to be outside a transaction is traced, since the host edits no other. False when the lookup
+    // did not finish: its answer may still be due on the connection, which then takes no other statement.
+    async fn trace(
+        &self,
+        connection: &mut MySqlConnection,
+        set: TracedSet,
+        state: TransactionState,
+        sink: &mut dyn ResultSink,
+    ) -> bool {
+        if state != TransactionState::Idle {
+            return true;
+        }
+        let resolving = tokio::time::timeout(self.liveness.cancel_grace, resolved_columns(connection, set));
+        let resolved = tokio::select! {
+            biased;
+            () = self.closing.cancelled() => return false,
+            resolved = resolving => match resolved {
+                Ok(resolved) => resolved,
+                Err(_) => return false,
+            },
+        };
+        if let Some(event) = resolved {
+            sink.accept(event).await;
+        }
+        true
     }
 
     fn stop_due(&self, options: &RunOptions, deadline: Option<Instant>) -> Option<Stop> {
@@ -279,18 +302,6 @@ fn confirms_stop(error: &DriverError) -> bool {
                 server_cancelled: true,
             }
     )
-}
-
-async fn set_select_limit(held: &mut Held, flavour: MySqlFlavour, limit: RowLimit) -> Result<(), DriverError> {
-    if held.select_limit == Some(limit.get()) {
-        return Ok(());
-    }
-    held.connection
-        .execute(AssertSqlSafe(select_limit(limit.get())))
-        .await
-        .map_err(|error| map_error(&error, flavour))?;
-    held.select_limit = Some(limit.get());
-    Ok(())
 }
 
 fn finished(outcome: Result<RunOutcome, DriverError>) -> Result<RunEnd, DriverError> {

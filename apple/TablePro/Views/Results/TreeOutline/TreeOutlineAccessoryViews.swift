@@ -70,11 +70,8 @@ internal final class TreeColorSwatchView: NSView {
 }
 
 internal final class TreeBadgeView: NSView {
-    private static let horizontalPadding: CGFloat = 6
-    private static let verticalPadding: CGFloat = 1
-
     private static var font: NSFont {
-        .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .medium)
+        .preferredFont(forTextStyle: .caption2)
     }
 
     internal var text = "" {
@@ -94,22 +91,15 @@ internal final class TreeBadgeView: NSView {
 
     override internal var intrinsicContentSize: NSSize {
         let size = (text as NSString).size(withAttributes: [.font: Self.font])
-        return NSSize(
-            width: ceil(size.width) + 2 * Self.horizontalPadding,
-            height: ceil(size.height) + 2 * Self.verticalPadding
-        )
+        return NSSize(width: ceil(size.width), height: ceil(size.height))
     }
 
     override internal func draw(_ dirtyRect: NSRect) {
-        let selectedText = NSColor.alternateSelectedControlTextColor
-        let fill = isOnEmphasizedRow ? selectedText.withAlphaComponent(0.2) : NSColor.quaternaryLabelColor
-        fill.setFill()
-        let radius = bounds.height / 2
-        NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
-
         let attributes: [NSAttributedString.Key: Any] = [
             .font: Self.font,
-            .foregroundColor: isOnEmphasizedRow ? selectedText.withAlphaComponent(0.8) : NSColor.tertiaryLabelColor
+            .foregroundColor: isOnEmphasizedRow
+                ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.8)
+                : NSColor.tertiaryLabelColor
         ]
         let size = (text as NSString).size(withAttributes: attributes)
         let origin = NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2)

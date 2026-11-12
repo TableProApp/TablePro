@@ -38,8 +38,7 @@ internal struct ImportQueryRowView: View {
                         Text(verbatim: row.folderPath.joined(separator: " / "))
                     }
                     if let note = Self.note(for: row, status: status) {
-                        Text(verbatim: note)
-                            .foregroundStyle(.orange)
+                        NoticeLabel(note)
                             .help(note)
                     }
                 }

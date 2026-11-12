@@ -106,7 +106,7 @@ public enum RealtimeDatabasePath {
     static let forbidden = CharacterSet(charactersIn: ".#$[]/").union(.controlCharacters)
 
     public static func normalized(_ path: String) -> String {
-        path.split(separator: "/", omittingEmptySubsequences: true).joined(separator: "/")
+        FirebaseScalars.split(path, separator: "/").joined(separator: "/")
     }
 
     /// An empty key stands for the node itself, which is how a node holding a plain value shows.

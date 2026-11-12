@@ -53,6 +53,7 @@ public struct ExplainQueryTool: MCPToolImplementation {
                 of: .object(["type": .string("array"), "items": MCPToolSchema.cell])
             ),
             "plan_text": MCPToolSchema.string(String(localized: "Flattened plan text")),
+            "status_message": MCPToolSchema.string(String(localized: "Why values are masked, when they are")),
             "plan": MCPToolSchema.object(
                 properties: [
                     "root": MCPToolSchema.anyValue,
@@ -119,6 +120,9 @@ public struct ExplainQueryTool: MCPToolImplementation {
             sql: request.gatedSQL,
             meta: meta,
             allowsDestructive: false,
+            destructiveAlternative: String(
+                localized: "This plan runs the statement. Explain it without analyze, with a variant that only plans it."
+            ),
             context: context
         )
 

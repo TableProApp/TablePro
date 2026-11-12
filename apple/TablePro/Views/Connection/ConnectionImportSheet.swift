@@ -102,9 +102,8 @@ struct ConnectionImportSheet: View {
                 .onSubmit { requestDecrypt() }
 
             if let passphraseError {
-                Label(passphraseError, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(passphraseError)
                     .font(.subheadline)
-                    .foregroundStyle(.orange)
             }
 
             Spacer()

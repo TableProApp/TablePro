@@ -11,9 +11,6 @@ import OSLog
 public enum OracleCellFormatting {
     public static let maxHexBytes = 4_096
 
-    /// A region-named zone is sent as an id into Oracle's time zone file, which the client does not have.
-    public static let timeZoneRegionPlaceholder = unsupportedPlaceholder(typeName: "time zone region")
-
     // MARK: - Datetimes
 
     /// A zone's hour and minute are each sent above a bias, so a zone west of UTC sends bytes below it.
@@ -32,15 +29,24 @@ public enum OracleCellFormatting {
         return fields.text(fractionDigits: fractionDigits)
     }
 
-    /// `TIMESTAMP(p) WITH TIME ZONE` as the wall clock at the value's own offset, followed by that offset
-    /// with no space. The date and time bytes are UTC.
-    public static func timestampWithTimeZoneText(wire bytes: [UInt8], fractionDigits: Int) -> String? {
+    // The date and time bytes are UTC, whether the zone is an offset or a region.
+    public static func timestampWithTimeZoneText(
+        wire bytes: [UInt8],
+        fractionDigits: Int,
+        regions: OracleTimeZoneRegions = .none
+    ) -> String? {
         guard var fields = OracleWireDateTime(bytes) else { return nil }
+        if let id = OracleTimeZoneRegions.regionID(wire: bytes) {
+            guard let region = regions.region(forID: id), let zone = region.zone else {
+                return fields.text(fractionDigits: fractionDigits) + offsetText(minutes: 0)
+            }
+            let instant = Date(timeIntervalSince1970: TimeInterval(fields.secondsTreatingFieldsAsUTC))
+            fields.shift(bySeconds: zone.secondsFromGMT(for: instant))
+            // A space before the name, as Oracle's TZR spells it.
+            return fields.text(fractionDigits: fractionDigits) + " " + region.name
+        }
         guard bytes.count >= 13, bytes[11] != 0, bytes[12] != 0 else {
             return fields.text(fractionDigits: fractionDigits) + "+00:00"
-        }
-        if bytes[11] & 0x80 != 0 {
-            return timeZoneRegionPlaceholder
         }
         let offsetMinutes = (Int(bytes[11]) - zoneHourBias) * 60 + Int(bytes[12]) - zoneMinuteBias
         fields.shift(bySeconds: offsetMinutes * 60)
@@ -324,11 +330,12 @@ struct OracleResultColumn: Sendable, Equatable {
 enum OracleCellDecoding {
     private static let logger = Logger(subsystem: "com.TablePro", category: "OracleCellDecoding")
 
-    /// `unsupported` hears the type name of a cell rendered as a placeholder, so the caller can log it once.
+    // `unsupported` hears the type name of a cell rendered as a placeholder, so the caller can log it once.
     static func decode(
         _ cell: OracleCell,
         column: OracleResultColumn,
         zones: OracleSessionTimeZones,
+        regions: OracleTimeZoneRegions = .none,
         unsupported: (String) -> Void
     ) -> OracleRawCell {
         guard let bytes = cell.bytes else { return .null }
@@ -339,7 +346,7 @@ enum OracleCellDecoding {
 
         do {
             guard let text = try text(of: cell, wire: Array(bytes.readableBytesView), column: column, zones: zones,
-                                      unsupported: unsupported)
+                                      regions: regions, unsupported: unsupported)
             else { return .null }
             return .string(text)
         } catch {
@@ -355,6 +362,7 @@ enum OracleCellDecoding {
         wire: [UInt8],
         column: OracleResultColumn,
         zones: OracleSessionTimeZones,
+        regions: OracleTimeZoneRegions,
         unsupported: (String) -> Void
     ) throws -> String? {
         switch cell.dataType {
@@ -380,7 +388,9 @@ enum OracleCellDecoding {
             return OracleCellFormatting.timestampText(wire: wire, fractionDigits: column.fractionDigits)
 
         case .timestampTZ:
-            return OracleCellFormatting.timestampWithTimeZoneText(wire: wire, fractionDigits: column.fractionDigits)
+            return OracleCellFormatting.timestampWithTimeZoneText(
+                wire: wire, fractionDigits: column.fractionDigits, regions: regions
+            )
 
         case .timestampLTZ:
             return OracleCellFormatting.localTimestampText(wire: wire, fractionDigits: column.fractionDigits, zones: zones)

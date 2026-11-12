@@ -6,6 +6,7 @@
 import CDuckDB
 import Foundation
 import os
+import TableProDuckDBCore
 import TableProPluginKit
 import TableProSQLGrammar
 import TableProSQLQuoting
@@ -31,6 +32,15 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let requiresAuthentication = false
     static let connectionMode: ConnectionMode = .apiOnly
     static let supportsHealthMonitor = false
+    // Remote carries its own SSL Mode: the shared one is keyed to the built-in Host, which this driver
+    // never dials, and every connection saved before it stores Disabled while Quack uses HTTPS.
+    static let supportsSSL = false
+    // The app forwards duckdbHost and duckdbPort and rewrites them to the loopback, so every tunnel kind
+    // carries a Remote connection. Local File dials nothing, and the app offers none there.
+    static let supportsSSH = true
+    // DuckDB has no switch for foreign key checks: `PRAGMA foreign_keys=OFF` is accepted and changes
+    // nothing, so a Drop prompt offering to ignore them would add no statement.
+    static let supportsForeignKeyDisable = false
     static let urlSchemes: [String] = ["duckdb", "quack"]
 
     static let additionalConnectionFields: [ConnectionField] = [
@@ -72,6 +82,7 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         ConnectionField(
             id: "duckdbToken",
             label: String(localized: "Token"),
+            required: true,
             fieldType: .secure,
             section: .authentication,
             hidesPassword: true,
@@ -85,6 +96,34 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "remotedb",
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbSSLMode",
+            label: String(localized: "SSL Mode"),
+            defaultValue: QuackSSLMode.automatic.rawValue,
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: QuackSSLMode.automatic.rawValue, label: String(localized: "Automatic")),
+                ConnectionField.DropdownOption(value: QuackSSLMode.disabled.rawValue, label: String(localized: "Disabled")),
+                ConnectionField.DropdownOption(value: QuackSSLMode.required.rawValue, label: String(localized: "Required (skip verify)")),
+                ConnectionField.DropdownOption(value: QuackSSLMode.verifyIdentity.rawValue, label: String(localized: "Verify Identity")),
+                ConnectionField.DropdownOption(value: QuackSSLMode.verifyFingerprint.rawValue, label: String(localized: "Verify Fingerprint"))
+            ]),
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "duckdbCACertificateFilePath",
+            label: String(localized: "CA Certificate"),
+            placeholder: String(localized: "Optional"),
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbSSLMode", values: [QuackSSLMode.verifyIdentity.rawValue])
+        ),
+        ConnectionField(
+            id: "duckdbCertificateFingerprint",
+            label: String(localized: "Certificate Fingerprint"),
+            required: true,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbSSLMode", values: [QuackSSLMode.verifyFingerprint.rawValue])
         ),
         /// Named for what it does to the file rather than to TablePro, to keep it apart from
         /// Safe Mode's own Read-Only level: that one is a policy this app applies to itself and
@@ -197,6 +236,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let liveConnection = DuckDBLiveConnectionBox()
     private let connectionActor: DuckDBConnectionActor
     private let idleReleaseTimer = DuckDBIdleReleaseTimer()
+    private let trustBundleFile = DuckDBTrustBundleFile()
     private let stateLock = NSLock()
     nonisolated(unsafe) private var _currentSchema: String = "main"
     nonisolated(unsafe) private var _currentDatabase: String?
@@ -337,22 +377,23 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func connectRemote() async throws {
-        let host = (config.additionalFields["duckdbHost"] ?? "").trimmingCharacters(in: .whitespaces)
-        let aliasInput = (config.additionalFields["duckdbAlias"] ?? "").trimmingCharacters(in: .whitespaces)
-        let portInput = config.additionalFields["duckdbPort"] ?? ""
-        let token = config.additionalFields["duckdbToken"] ?? ""
-
-        guard QuackConnectBuilder.isValidHost(host) else {
-            throw DuckDBPluginError.connectionFailed(
-                String(localized: "Host is required for a remote DuckDB connection")
-            )
+        let plan: QuackConnectPlan
+        do {
+            plan = try QuackConnectPlan(QuackConnectRequest(
+                host: config.additionalFields["duckdbHost"] ?? "",
+                port: config.additionalFields["duckdbPort"] ?? "",
+                alias: config.additionalFields["duckdbAlias"] ?? "",
+                token: config.additionalFields["duckdbToken"] ?? "",
+                sslMode: config.additionalFields["duckdbSSLMode"],
+                caCertificatePath: config.additionalFields["duckdbCACertificateFilePath"],
+                certificateFingerprint: config.additionalFields["duckdbCertificateFingerprint"],
+                // Through a tunnel the app has rewritten duckdbHost and duckdbPort to the loopback forward
+                // and keeps the server's own name here, which is the name its certificate carries.
+                tunneledServerHost: config.tunneledServerName
+            ))
+        } catch {
+            throw Self.remoteConnectFailure(error, tunneled: false)
         }
-        guard let port = QuackConnectBuilder.normalizedPort(portInput) else {
-            throw DuckDBPluginError.connectionFailed(
-                String(localized: "Port must be a number between 1 and 65535")
-            )
-        }
-        let alias = aliasInput.isEmpty ? "remotedb" : aliasInput
         let attempt = DuckDBConnectAttempt(
             additionalFields: config.additionalFields,
             interrupt: { [liveConnection] in liveConnection.interrupt() }
@@ -374,27 +415,18 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try await withTaskCancellationHandler(
                 operation: {
                     try attempt.check()
-                    try await connectionActor.open(spec: DuckDBOpenSpec(path: ":memory:", accessMode: .readWrite))
+                    try await connectionActor.open(spec: DuckDBOpenSpec(
+                        path: ":memory:", accessMode: .readWrite, allowsPersistentSecrets: false
+                    ))
                     try attempt.check()
                     try await enableExtensionAutoloading(during: attempt)
-                    try await loadQuackExtension(during: attempt)
-
-                    if !token.isEmpty {
-                        try await executeRemoteConnectStatement(
-                            QuackConnectBuilder.secretSQL(token: token),
-                            during: attempt
-                        )
+                    for step in plan.steps {
+                        try await runRemoteConnectStep(step, during: attempt)
                     }
-
-                    try await executeRemoteConnectStatement(
-                        QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias),
-                        during: attempt
-                    )
-                    try await executeRemoteConnectStatement(QuackConnectBuilder.useSQL(alias: alias), during: attempt)
                     try attempt.finish {
                         stateLock.withLock {
                             _currentSchema = "main"
-                            _currentDatabase = alias
+                            _currentDatabase = plan.alias
                         }
                     }
                 },
@@ -407,15 +439,40 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let attemptError = attempt.stop()
             resetCurrentPosition()
             await connectionActor.close()
+            trustBundleFile.remove()
             if attemptError is DuckDBConnectAttemptError {
                 throw DuckDBPluginError.connectionFailed(
                     String(localized: "Connecting to the remote DuckDB database timed out.")
                 )
             }
             if let attemptError { throw attemptError }
-            throw error
+            throw Self.remoteConnectFailure(error, tunneled: plan.isTunneled)
         }
         timeoutTask.cancel()
+    }
+
+    private func runRemoteConnectStep(_ step: QuackConnectPlan.Step, during attempt: DuckDBConnectAttempt) async throws {
+        switch step {
+        case .loadExtension(let name):
+            try await QuackExtensionLoader.load(name) { statement in
+                try await executeRemoteConnectStatement(statement, during: attempt)
+            }
+        case .trustCACertificate(let path):
+            let bundlePath = try trustBundleFile.write(caCertificatePath: path)
+            try await executeRemoteConnectStatement(
+                QuackConnectPlan.setCACertFileStatement(bundlePath: bundlePath),
+                during: attempt
+            )
+        case .statement(let statement):
+            try await executeRemoteConnectStatement(statement, during: attempt)
+        }
+    }
+
+    /// curl's TLS texts name no field, and one of them mentions an SSH key, so they are replaced by
+    /// messages that name the SSL Mode, CA Certificate or Certificate Fingerprint to change.
+    private static func remoteConnectFailure(_ error: any Error, tunneled: Bool) -> any Error {
+        guard let classified = QuackConnectErrorClassifier.classify(error, tunneled: tunneled) else { return error }
+        return DuckDBPluginError.connectionFailed(classified.localizedDescription)
     }
 
     /// Every metadata query is anchored to the catalog, and the app seeds the browsed
@@ -502,17 +559,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func enableExtensionAutoloading(during attempt: DuckDBConnectAttempt) async throws {
         for statement in ["SET autoinstall_known_extensions=1", "SET autoload_known_extensions=1"] {
-            do {
-                try await executeRemoteConnectStatement(statement, during: attempt)
-            } catch {
-                try attempt.check()
-                Self.logger.warning("DuckDB '\(statement)' failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func loadQuackExtension(during attempt: DuckDBConnectAttempt) async throws {
-        for statement in ["INSTALL quack", "LOAD quack"] {
             do {
                 try await executeRemoteConnectStatement(statement, during: attempt)
             } catch {
@@ -620,9 +666,12 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         resetCurrentPosition()
         let actor = connectionActor
         let timer = idleReleaseTimer
+        let trustBundle = trustBundleFile.take()
         Task {
             await timer.stop()
             await actor.close()
+            // Only once the instance is closed, so no request of it reads a bundle that is gone.
+            if let trustBundle { try? FileManager.default.removeItem(at: trustBundle) }
         }
     }
 
@@ -666,6 +715,18 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters))
     }
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard rowCap > 0 else { return nil }
+        return Self.queryResult(try await connectionActor.executeBounded(query, parameters: [], rowCap: rowCap))
+    }
+
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        guard let cap = rowCap, cap > 0 else {
+            return Self.queryResult(try await connectionActor.executePrepared(query, parameters: parameters ?? []))
+        }
+        return Self.queryResult(try await connectionActor.executeBounded(query, parameters: parameters ?? [], rowCap: cap))
+    }
+
     func executeUserQuery(
         query: String,
         rowCap: Int?,
@@ -675,16 +736,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard context.readOnly, context.origin == .external else {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
-        let raw = Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters ?? []))
-        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
-        return PluginQueryResult(
-            columns: raw.columns,
-            columnTypeNames: raw.columnTypeNames,
-            rows: Array(raw.rows.prefix(cap)),
-            rowsAffected: raw.rowsAffected,
-            executionTime: raw.executionTime,
-            isTruncated: true
-        )
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters ?? [], rowCap: cap))
     }
 
     private static func queryResult(_ rawResult: DuckDBRawResult) -> PluginQueryResult {
@@ -707,7 +760,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let actor = connectionActor
 
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
             Task {
                 do {
                     try await actor.streamQuery(query, continuation: continuation)
@@ -721,7 +774,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard context.readOnly, context.origin == .external else { return streamRows(query: query) }
         let actor = connectionActor
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
             Task {
                 do {
                     try await actor.streamReadOnly(query, continuation: continuation)

@@ -1,3 +1,4 @@
+import TableProMSSQLCore
 import Foundation
 import TableProDatabase
 import TableProModels
@@ -31,8 +32,20 @@ nonisolated enum ClipboardExporter {
     }
 
     nonisolated struct TooLarge: LocalizedError, Equatable {
+        enum Source: Equatable {
+            case page
+            case queryResult
+        }
+
+        var source: Source = .page
+
         var errorDescription: String? {
-            String(localized: "The full values on this page need more memory than this device has free. Choose a smaller page size and try again.")
+            switch source {
+            case .page:
+                String(localized: "The full values on this page need more memory than this device has free. Choose a smaller page size and try again.")
+            case .queryResult:
+                String(localized: "The full values in this result need more memory than this device has free. Run a query that returns fewer rows and try again.")
+            }
         }
     }
 
@@ -170,19 +183,54 @@ nonisolated enum ClipboardExporter {
         for (i, col) in columns.enumerated() {
             let value = i < row.count ? row[i] : nil
             let key = "  " + JSONText.stringLiteral(col.name)
-            if let value {
-                if isJsonNumber(value) {
-                    pairs.append("\(key): \(value)")
-                } else if value == "true" || value == "false" {
-                    pairs.append("\(key): \(value)")
-                } else {
-                    pairs.append("\(key): \(JSONText.stringLiteral(value))")
-                }
-            } else {
-                pairs.append("\(key): null")
-            }
+            pairs.append("\(key): \(value.map { jsonValue($0, typeName: col.typeName) } ?? "null")")
         }
         return "{\n" + pairs.joined(separator: ",\n") + "\n}"
+    }
+
+    // The column's type decides, as in the Mac export: text that reads like a number or `true` stays text. A column with
+    // no type, as SQLite reports for an expression, is read by its value.
+    private static func jsonValue(_ value: String, typeName: String) -> String {
+        if typeName.trimmingCharacters(in: .whitespaces).isEmpty {
+            let bare = isJsonNumber(value) || value == "true" || value == "false"
+            return bare ? value : JSONText.stringLiteral(value)
+        }
+        if isBooleanType(typeName), let flag = booleanLiteral(value) {
+            return flag
+        }
+        if isNumberType(typeName), isJsonNumber(value) {
+            return value
+        }
+        return JSONText.stringLiteral(value)
+    }
+
+    // PostgreSQL's text format sends `t` or `f`, and SQLite keeps a boolean as 1 or 0.
+    private static func booleanLiteral(_ value: String) -> String? {
+        switch value.lowercased() {
+        case "true", "t", "1": "true"
+        case "false", "f", "0": "false"
+        default: nil
+        }
+    }
+
+    // SQL Server documents `bit` as an integer type that holds 1, 0 or NULL.
+    private static func isNumberType(_ typeName: String) -> Bool {
+        ColumnInfo.isNumericType(typeName: typeName) || unwrappedTypeName(typeName) == "bit"
+    }
+
+    private static func isBooleanType(_ typeName: String) -> Bool {
+        let base = unwrappedTypeName(typeName)
+        return base == "bool" || base == "boolean"
+    }
+
+    // ClickHouse wraps the type, as in `Nullable(Bool)`.
+    private static func unwrappedTypeName(_ typeName: String) -> String {
+        var base = typeName.lowercased().trimmingCharacters(in: .whitespaces)
+        while base.hasSuffix(")"), let open = base.firstIndex(of: "("),
+              ["nullable", "lowcardinality"].contains(String(base[..<open])) {
+            base = String(base[base.index(after: open) ..< base.index(before: base.endIndex)])
+        }
+        return base
     }
 
     private static func rowToCsv(columns: [ColumnInfo], row: [String?], includeHeader: Bool) -> String {
@@ -211,6 +259,7 @@ nonisolated enum ClipboardExporter {
         let vals = columns.indices.map { i in
             let value = i < row.count ? row[i] : nil
             guard let value else { return "NULL" }
+            if databaseType == .mssql { return MSSQLStringLiteral.quoted(value) }
             return "'\(escapeLiteral(value, databaseType: databaseType, driver: driver))'"
         }.joined(separator: ", ")
         return "INSERT INTO \(quotedTable) (\(cols)) VALUES (\(vals));"

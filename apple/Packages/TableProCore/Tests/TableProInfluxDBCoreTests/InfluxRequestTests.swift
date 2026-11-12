@@ -224,6 +224,38 @@ struct InfluxRequestTests {
         #expect(try InfluxCatalogDecoder.v3Databases(body) == ["_internal", "metrics"])
     }
 
+    @Test func aStreamedV2InfluxQLQueryAsksForChunksOfTenThousand() throws {
+        let statement = InfluxStatement(language: .influxQL, text: #"SELECT * FROM "cpu""#)
+        let streamed = try InfluxRequests.query(
+            statement, database: "metrics", organization: "", generation: .v2, credentials: token, streamed: true
+        )
+        #expect(queryItems(ofForm: streamed.body) == [
+            URLQueryItem(name: "q", value: #"SELECT * FROM "cpu""#),
+            URLQueryItem(name: "db", value: "metrics"),
+            URLQueryItem(name: "chunked", value: "true"),
+            URLQueryItem(name: "chunk_size", value: "10000"),
+        ])
+        let collected = try InfluxRequests.query(
+            statement, database: "metrics", organization: "", generation: .v2, credentials: token
+        )
+        #expect(queryItems(ofForm: collected.body) == [
+            URLQueryItem(name: "q", value: #"SELECT * FROM "cpu""#),
+            URLQueryItem(name: "db", value: "metrics"),
+        ])
+    }
+
+    @Test(arguments: [InfluxQueryLanguage.sql, .influxQL])
+    func aStreamedV3QueryIsTheCollectedRequest(language: InfluxQueryLanguage) throws {
+        let statement = InfluxStatement(language: language, text: #"SELECT * FROM "cpu""#)
+        let streamed = try InfluxRequests.query(
+            statement, database: "metrics", organization: "", generation: .v3, credentials: token, streamed: true
+        )
+        let collected = try InfluxRequests.query(
+            statement, database: "metrics", organization: "", generation: .v3, credentials: token
+        )
+        #expect(streamed == collected)
+    }
+
     @Test func anInfluxQLFormBodyCarriesTheRetentionPolicy() throws {
         let request = try InfluxRequests.query(
             InfluxStatement(language: .influxQL, text: "SHOW MEASUREMENTS"),

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 /// What the AI assistant may send from one connection.
 ///
 /// It is persisted with the connection, so a variant is never renamed:
-/// the stored spelling is the serde name. A connection saved before the
-/// policy existed reads as `Ask`, the policy a new one starts at.
+/// the stored spelling is the serde name. A new connection starts at
+/// `Ask`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AiPolicy {

@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 /// The queue, in the order it runs, with the server's answer on the change it refused.
 struct UserTypePendingChangesView: View {
@@ -38,9 +39,8 @@ struct UserTypePendingChangesView: View {
     private func row(_ change: StagedTypeChange) -> some View {
         let message = model.message(for: change)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: message == nil ? "circle.fill" : "exclamationmark.triangle.fill")
-                .font(.caption2)
-                .foregroundStyle(message == nil ? Color.secondary : Color.red)
+            Image(systemName: message == nil ? Self.symbolName(for: change.change) : NoticeSeverity.error.symbolName)
+                .foregroundStyle(message == nil ? Color.secondary : NoticeSeverity.error.tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(change.summary)
@@ -49,7 +49,7 @@ struct UserTypePendingChangesView: View {
                 if let message {
                     Text(message)
                         .font(.callout)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
@@ -67,6 +67,19 @@ struct UserTypePendingChangesView: View {
             .accessibilityLabel(String(format: String(localized: "Remove “%@”"), change.summary))
         }
         .font(.subheadline)
+    }
+
+    private static func symbolName(for change: PluginUserDefinedTypeChange) -> String {
+        switch change {
+        case .addEnumLabel, .addCheck, .addField:
+            return "plus.circle"
+        case .dropConstraint, .dropField:
+            return "minus.circle"
+        case .validateConstraint:
+            return "checkmark.circle"
+        default:
+            return "pencil.circle"
+        }
     }
 
     private var bar: some View {

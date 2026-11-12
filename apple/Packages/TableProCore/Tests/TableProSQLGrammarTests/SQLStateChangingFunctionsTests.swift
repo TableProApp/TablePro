@@ -25,7 +25,11 @@ struct SQLStateChangingFunctionsTests {
         "files_and_extensions": SQLStateChangingFunctions.filesAndExtensions,
         "catalog_and_storage": SQLStateChangingFunctions.catalogAndStorage,
         "index_maintenance": SQLStateChangingFunctions.indexMaintenance,
-        "sql_text_runners": SQLStateChangingFunctions.sqlTextRunners
+        "sql_text_runners": SQLStateChangingFunctions.sqlTextRunners,
+        "scheduled_jobs": SQLStateChangingFunctions.scheduledJobs,
+        "hypertables_and_chunks": SQLStateChangingFunctions.hypertablesAndChunks,
+        "roles_and_grants": SQLStateChangingFunctions.rolesAndGrants,
+        "duckdb_calls": SQLStateChangingFunctions.duckDBCalls
     ]
 
     @Test("Each family lists the names the Linux app lists")
@@ -33,9 +37,9 @@ struct SQLStateChangingFunctionsTests {
         let data = try Data(contentsOf: Self.sharedNames)
         let shared = try JSONDecoder().decode([String: [String]].self, from: data)
         let sharedFamilies = shared.mapValues { Set($0) }
-        let everyName = Set(shared.values.joined())
+        let everyEngine = Set(shared.filter { $0.key != "duckdb_calls" }.values.joined())
         #expect(Self.families == sharedFamilies)
-        #expect(SQLStateChangingFunctions.names == everyName)
+        #expect(SQLStateChangingFunctions.names == everyEngine)
     }
 
     @Test("A listed name matches in any case, under sys_, and with a letter MariaDB folds", arguments: [

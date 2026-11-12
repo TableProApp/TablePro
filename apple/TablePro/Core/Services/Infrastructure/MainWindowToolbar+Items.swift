@@ -273,6 +273,7 @@ extension MainWindowToolbar {
             label: String(localized: "Restore Previous Values"),
             symbol: "clock.arrow.circlepath",
             action: #selector(performRestorePreviousValues(_:)),
+            shortcut: .restorePreviousValues,
             description: String(localized: "Restore the previous values of a save")
         )
     }

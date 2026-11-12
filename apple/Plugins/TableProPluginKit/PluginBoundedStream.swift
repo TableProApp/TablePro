@@ -27,9 +27,11 @@ public enum PluginBoundedStream {
         let cap = max(rowCap, 1)
         var columns: [String] = []
         var columnTypeNames: [String] = []
+        var columnOrigins: [PluginColumnOrigin?]?
         var rows: [PluginRow] = []
         rows.reserveCapacity(min(cap, 10_000))
         var truncated = false
+        var declaredLimit: Int?
         /// The first batch to arrive is the first row the server produced, which is the only part
         /// of a streamed read that separates the query's own cost from the cost of moving its rows.
         var firstRowTime: TimeInterval?
@@ -39,6 +41,8 @@ public enum PluginBoundedStream {
             case .header(let header):
                 columns = header.columns
                 columnTypeNames = header.columnTypeNames
+                columnOrigins = header.columnOrigins
+                declaredLimit = header.rowLimit
             case .rows(let batch):
                 if firstRowTime == nil, !batch.isEmpty {
                     firstRowTime = Date().timeIntervalSince(startedAt)
@@ -53,8 +57,12 @@ public enum PluginBoundedStream {
             }
             if truncated { break }
         }
+        // A stream that ended at the limit its header declared was cut there, below the cap.
+        if let declaredLimit, rows.count >= declaredLimit {
+            truncated = true
+        }
 
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: columns,
             columnTypeNames: columnTypeNames,
             rows: rows,
@@ -66,5 +74,7 @@ public enum PluginBoundedStream {
             ),
             isTruncated: truncated
         )
+        result.columnOrigins = columnOrigins
+        return result
     }
 }

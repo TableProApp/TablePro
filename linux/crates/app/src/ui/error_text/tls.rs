@@ -17,6 +17,12 @@ pub(super) fn tls_message(failure: TlsFailure, detail: &str) -> String {
         TlsFailure::ServerRequiresTls => {
             crate::i18n::gettext("The server requires TLS. Turn TLS on for this connection.")
         }
+        TlsFailure::ServerRefusedStrict => crate::i18n::gettext(
+            "The server closed the strict connection. It does not take strict encryption (TDS 8.0), or has no certificate set up for it. Set Encryption to Verify full.",
+        ),
+        TlsFailure::ServerRequiresStrict => crate::i18n::gettext(
+            "The server closed the connection before answering. A server that accepts only strict encryption does this. Set Encryption to Strict.",
+        ),
         TlsFailure::HandshakeRejected => {
             log_library_text(failure, detail);
             crate::i18n::gettext("The server ended the secure handshake.")

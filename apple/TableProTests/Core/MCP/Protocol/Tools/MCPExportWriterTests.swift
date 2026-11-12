@@ -72,6 +72,12 @@ struct MCPCsvExportTests {
 }
 
 struct MCPSqlExportDialectTests {
+    @Test("SQL Server exports preserve Unicode and line endings")
+    func sqlServerTextLiteral() throws {
+        let dialect = try #require(MCPSqlExportDialect.resolve(for: .mssql))
+        #expect(dialect.literal("日本\\\n") == "N'日本\\\\\n\n'")
+    }
+
     private let postgres = MCPSqlExportDialect(
         identifierQuote: "\"",
         booleanStyle: .truefalse,

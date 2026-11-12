@@ -30,6 +30,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         /// Read from the driver when its connect is adopted, so it outlives the `disconnect()` Test Connection
         /// makes before anyone asks for it.
         var connectionWarning: String?
+        // Only a yes is kept, so the driver's own code is not asked again on every read.
+        var buildsBrowseQueries = false
     }
 
     let connection: DatabaseConnection
@@ -60,15 +62,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var schemaPluginDriver: any PluginDatabaseDriver { pluginDriver }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? {
-        // Expose plugin driver for query building dispatch if it implements the hooks.
-        // SQL drivers without custom pagination (MySQL, PostgreSQL, etc.) return nil
-        // from buildBrowseQuery and use standard SQL query rewriting instead.
-        guard pluginDriver.buildBrowseQuery(
-            table: "_probe", sortColumns: [], columns: [], limit: 1, offset: 0
-        ) != nil else {
-            return nil
-        }
+        if state.withLock({ $0.buildsBrowseQueries }) { return pluginDriver }
+        guard Self.buildsBrowseQueries(pluginDriver) else { return nil }
+        state.withLock { $0.buildsBrowseQueries = true }
         return pluginDriver
+    }
+
+    // Asks the schema-aware overload: its default forwards to the older one, so it answers for a driver
+    // that implements either. A driver that leaves browsing to the app returns nil from both.
+    static func buildsBrowseQueries(_ driver: any PluginDatabaseDriver) -> Bool {
+        driver.buildBrowseQuery(
+            table: "_probe", schema: nil, sortColumns: [], columns: [], limit: 1, offset: 0
+        ) != nil
     }
 
     var rowWritingPluginDriver: (any PluginDatabaseDriver)? {
@@ -101,6 +106,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     static func cellValue(for parameter: Any?) -> PluginCellValue {
         guard let parameter else { return .null }
+        if let typed = parameter as? TypedParameterValue { return .text(typed.text) }
         if let data = parameter as? Data { return .bytes(data) }
         if let f = parameter as? Float {
             guard f.isFinite else { return .null }
@@ -433,14 +439,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
     }
 
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        if let error = StatementTextValidator.error(for: query) {
-            return AsyncThrowingStream { $0.finish(throwing: error) }
-        }
-        return pluginDriver.streamRows(query: query, context: statementContext(query))
-    }
-
-    private func statementContext(_ query: String) -> PluginStatementContext {
+    func statementContext(_ query: String) -> PluginStatementContext {
         var context = PluginStatementContext.statement(query, databaseType: connection.type)
         context.lexicalFeatures = sessionLexicalFeatures
         return context
@@ -686,6 +685,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        guard !FilterSQLGenerator.withholdsFromDriver(filters, databaseType: connection.type) else { return nil }
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)
@@ -697,6 +697,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        guard !FilterSQLGenerator.withholdsFromDriver(filters, databaseType: connection.type) else { return nil }
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)
@@ -1340,6 +1341,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
         result.rowLocators = pluginResult.rowLocators
+        result.columnOrigins = pluginResult.columnOrigins
+        result.exportDocuments = pluginResult.exportDocuments
         result.absentCells = pluginResult.absentCells ?? [:]
         return result
     }
@@ -1437,7 +1440,7 @@ extension PluginDriverAdapter {
         let pluginResult = try await pluginDriver.executeParameterized(
             query: query,
             parameters: parameters.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context)
+            context: statementContext(query, approvedAs: context, parameters: parameters)
         )
         return mapQueryResult(pluginResult)
     }
@@ -1454,14 +1457,15 @@ extension PluginDriverAdapter {
             query: query,
             rowCap: rowCap,
             parameters: parameters?.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context)
+            context: statementContext(query, approvedAs: context, parameters: parameters)
         )
         return mapQueryResult(pluginResult)
     }
 
-    fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext) -> PluginStatementContext {
+    fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext, parameters: [Any?]? = nil) -> PluginStatementContext {
         var context = PluginStatementContext.statement(query, databaseType: connection.type, approvedAs: caller)
         context.lexicalFeatures = sessionLexicalFeatures
+        context.parameterKinds = TypedParameterValue.kinds(of: parameters) ?? context.parameterKinds
         return context
     }
 

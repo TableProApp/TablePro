@@ -21,7 +21,9 @@ pub(crate) enum CellPlan {
     Integer,
     Float32,
     Float64,
-    Decimal,
+    Decimal {
+        scale: u32,
+    },
     Bool,
     Date,
     DateTime,
@@ -58,7 +60,9 @@ impl CellPlan {
             | DataTypeNode::Int256 => Self::Integer,
             DataTypeNode::Float32 | DataTypeNode::BFloat16 => Self::Float32,
             DataTypeNode::Float64 => Self::Float64,
-            DataTypeNode::Decimal(..) => Self::Decimal,
+            DataTypeNode::Decimal(_, scale, _) => Self::Decimal {
+                scale: u32::from(*scale),
+            },
             DataTypeNode::Bool => Self::Bool,
             DataTypeNode::Date | DataTypeNode::Date32 => Self::Date,
             DataTypeNode::DateTime(_) | DataTypeNode::DateTime64(..) => Self::DateTime,
@@ -103,7 +107,7 @@ impl CellPlan {
             Self::Integer => "Integer".to_owned(),
             Self::Float32 => "Float32".to_owned(),
             Self::Float64 => "Float64".to_owned(),
-            Self::Decimal => "Decimal".to_owned(),
+            Self::Decimal { .. } => "Decimal".to_owned(),
             Self::Bool => "Bool".to_owned(),
             Self::Date => "Date".to_owned(),
             Self::DateTime => "DateTime".to_owned(),
@@ -153,7 +157,7 @@ impl<'de> DeserializeSeed<'de> for CellSeed<'_> {
                 let text = Option::<String>::deserialize(deserializer)?;
                 Ok(text.map_or(Value::Null, |text| temporal_or_uuid(plan, &text)))
             }
-            CellPlan::Integer | CellPlan::Float32 | CellPlan::Float64 | CellPlan::Decimal | CellPlan::Bool => {
+            CellPlan::Integer | CellPlan::Float32 | CellPlan::Float64 | CellPlan::Decimal { .. } | CellPlan::Bool => {
                 let raw = <&RawValue>::deserialize(deserializer)?;
                 Ok(number(plan, raw.get()))
             }
@@ -178,8 +182,13 @@ fn undecodable(plan: &CellPlan, reason: UndecodableReason) -> Value {
 /// A number token, quoted or bare: the server quotes 64-bit and wider
 /// integers, and the non-finite floats, so that JSON readers keep them.
 fn number(plan: &CellPlan, token: &str) -> Value {
+    // A Nullable column takes its null before this, so a float's null is a NaN or an infinity, which a login that may
+    // not set `output_format_json_quote_denormals` gets as null.
     if token == "null" {
-        return Value::Null;
+        return match plan {
+            CellPlan::Float32 | CellPlan::Float64 => undecodable(plan, UndecodableReason::OutOfRange),
+            _ => Value::Null,
+        };
     }
     let text = token
         .strip_prefix('"')
@@ -189,7 +198,9 @@ fn number(plan: &CellPlan, token: &str) -> Value {
         CellPlan::Integer => integer(text),
         CellPlan::Float32 => f32::from_str(text).ok().map(Value::Float32),
         CellPlan::Float64 => f64::from_str(text).ok().map(Value::Float64),
-        CellPlan::Decimal => SqlDecimal::from_str(text).ok().map(Value::Decimal),
+        CellPlan::Decimal { scale } => SqlDecimal::from_str(text)
+            .ok()
+            .map(|decimal| Value::Decimal(at_scale(decimal, *scale))),
         CellPlan::Bool => match text {
             "true" | "1" => Some(Value::Bool(true)),
             "false" | "0" => Some(Value::Bool(false)),
@@ -198,6 +209,19 @@ fn number(plan: &CellPlan, token: &str) -> Value {
         _ => None,
     };
     parsed.unwrap_or_else(|| undecodable(plan, UndecodableReason::OutOfRange))
+}
+
+// A login that may not set `output_format_decimal_trailing_zeros` gets `1.5` for a `Decimal(10, 2)` holding 1.50, which
+// is not equal to the 1.50 an edit of it parses.
+fn at_scale(decimal: SqlDecimal, scale: u32) -> SqlDecimal {
+    let padded = match decimal.parts() {
+        Some((negative, coefficient, written)) if written < scale => {
+            let zeros = "0".repeat(usize::try_from(scale - written).unwrap_or(0));
+            SqlDecimal::from_parts(negative, &format!("{coefficient}{zeros}"), scale).ok()
+        }
+        _ => None,
+    };
+    padded.unwrap_or(decimal)
 }
 
 /// An integer of any width, in the smallest variant that holds it, the
@@ -377,8 +401,42 @@ mod tests {
         assert_eq!(wide.to_string(), widest);
         let decimal = "12345678901234567890123456789012345678901234567890123456.12345678901234567890";
         assert_eq!(
-            read(&CellPlan::Decimal, decimal.as_bytes()),
+            read(&CellPlan::Decimal { scale: 20 }, decimal.as_bytes()),
             Value::Decimal(decimal.parse().expect("a decimal"))
+        );
+    }
+
+    #[test]
+    fn a_decimal_written_without_its_trailing_zeros_reads_at_its_columns_scale() {
+        let plan = CellPlan::Decimal { scale: 2 };
+        let at = |text: &str| Value::Decimal(text.parse().expect("a decimal"));
+
+        assert_eq!(read(&plan, b"1.5"), at("1.50"));
+        assert_eq!(read(&plan, b"-0.1"), at("-0.10"));
+        assert_eq!(read(&plan, b"7"), at("7.00"));
+        assert_eq!(read(&plan, b"0"), at("0.00"));
+        assert_eq!(read(&plan, b"1.25"), at("1.25"));
+        assert_eq!(read(&CellPlan::Decimal { scale: 0 }, b"12"), at("12"));
+    }
+
+    #[test]
+    fn a_float_the_server_wrote_as_null_is_out_of_range_unless_its_column_is_nullable() {
+        let out_of_range = |type_name: &str| {
+            Value::Undecodable(Box::new(UndecodedValue {
+                type_name: type_name.to_owned(),
+                reason: UndecodableReason::OutOfRange,
+            }))
+        };
+
+        assert_eq!(read(&CellPlan::Float64, b"null"), out_of_range("Float64"));
+        assert_eq!(read(&CellPlan::Float32, b"null"), out_of_range("Float32"));
+        assert_eq!(
+            read(&CellPlan::Array(Box::new(CellPlan::Float64)), b"[1.5,null]"),
+            Value::Array(vec![Value::Float64(1.5), out_of_range("Float64")])
+        );
+        assert_eq!(
+            read(&CellPlan::Nullable(Box::new(CellPlan::Float64)), b"null"),
+            Value::Null
         );
     }
 

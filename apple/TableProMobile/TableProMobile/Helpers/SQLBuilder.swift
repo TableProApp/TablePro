@@ -1,12 +1,18 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProMSSQLCore
 import TableProPluginKit
 import TableProQuery
 import TableProSQLGrammar
 import TableProSQLQuoting
 
 nonisolated enum SQLBuilder {
+    static func stringLiteral(_ value: String, for type: DatabaseType, driver: any DatabaseDriver) -> String {
+        if type == .mssql { return MSSQLStringLiteral.quoted(value) }
+        return "'\(driver.escapeStringLiteral(value))'"
+    }
+
     static func speaksMySQLDialect(_ type: DatabaseType) -> Bool {
         SqlDialect.from(databaseTypeId: type.rawValue) == .mysql
     }
@@ -51,7 +57,8 @@ nonisolated enum SQLBuilder {
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
-    // Every pair of a composite key is matched: one column alone can return another tenant's row.
+    // Every pair of a composite key is matched: one column alone can return another tenant's row. A foreign key's
+    // value finds its parent by the column's collation, so `abc` finds `ABC`, and is never held to the exact text.
     static func buildSingleRowLookup(
         table: String,
         schema: String?,
@@ -61,7 +68,8 @@ nonisolated enum SQLBuilder {
         driver: any DatabaseDriver
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let predicate = key.isEmpty ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver)
+        let predicate = key.isEmpty
+            ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, exactText: false)
         let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
         return "SELECT * FROM \(quotedTable) WHERE \(predicate) \(pagination)"
     }
@@ -75,7 +83,8 @@ nonisolated enum SQLBuilder {
         columns: [ColumnInfo],
         type: DatabaseType,
         driver: any DatabaseDriver,
-        uniqueIn quotedTable: String? = nil
+        uniqueIn quotedTable: String? = nil,
+        exactText: Bool = true
     ) -> String {
         let predicate = key.map { pair in
             let column = quoteIdentifier(pair.column, for: type)
@@ -84,7 +93,11 @@ nonisolated enum SQLBuilder {
             case .number(let value):
                 return "\(column) = \(value)"
             case .text(let value):
-                return "\(column) = '\(driver.escapeStringLiteral(value))'"
+                let literal = stringLiteral(value, for: type, driver: driver)
+                guard exactText, type == .mssql, MSSQLRowMatch.comparesText(typeName: info?.typeName) else {
+                    return "\(column) = \(literal)"
+                }
+                return "\(column) = \(literal) AND \(MSSQLRowMatch.exactText(column, equals: literal))"
             case .numberOrText(let value):
                 // CAST is the text the grid read, so a REAL another spelling of the same number parses to stays out.
                 return "\(column) IN (\(value), '\(value)') AND CAST(\(column) AS TEXT) = '\(value)'"
@@ -156,7 +169,7 @@ nonisolated enum SQLBuilder {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         let assignments = changes.map { col, val in
             let qcol = quoteIdentifier(col, for: type)
-            if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
+            if let val { return "\(qcol) = \(stringLiteral(val, for: type, driver: driver))" }
             return "\(qcol) = NULL"
         }.joined(separator: ", ")
         let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver, uniqueIn: quotedTable)
@@ -177,7 +190,7 @@ nonisolated enum SQLBuilder {
         }
         let cols = columns.map { quoteIdentifier($0, for: type) }.joined(separator: ", ")
         let vals = values.map { val in
-            if let val { return "'\(driver.escapeStringLiteral(val))'" }
+            if let val { return stringLiteral(val, for: type, driver: driver) }
             return "NULL"
         }.joined(separator: ", ")
         return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
@@ -369,7 +382,8 @@ nonisolated enum SQLBuilder {
                 return SQLSubstringMatch.contains(castExpr, literal: substring, fold: dialect.caseFoldFunction)
             }
             let likeOp = (type == .postgresql || type == .redshift) ? "ILIKE" : "LIKE"
-            return "\(castExpr) \(likeOp) '%\(pattern)%'\(generator.likeEscapeClause)"
+            let prefix = type == .mssql ? "N" : ""
+            return "\(castExpr) \(likeOp) \(prefix)'%\(pattern)%'\(generator.likeEscapeClause)"
         }
 
         return "(\(conditions.joined(separator: " OR ")))"

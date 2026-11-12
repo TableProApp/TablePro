@@ -39,6 +39,10 @@ impl WorkspaceFileName {
         format!("{id}-database-")
     }
 
+    pub fn storage_key(&self) -> &str {
+        &self.stem
+    }
+
     pub fn file_name(&self) -> String {
         format!("{}.json", self.stem)
     }

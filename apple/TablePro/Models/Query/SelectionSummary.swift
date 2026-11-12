@@ -32,8 +32,8 @@ struct SelectionSummaryInput: Sendable {
     let dataColumnsByDisplayPosition: [Int]
     let policy: SelectionSummaryColumnPolicy
     let deletedRowIDs: Set<RowID>
-    let insertedRowIDs: Set<RowID>
-    let modifiedCells: [RowID: Set<Int>]
+    // The cells a pending edit set to the column's default, which hold the keyword as text.
+    let defaultedCells: [RowID: Set<Int>]
 
     init(
         selection: GridSelection,
@@ -42,8 +42,7 @@ struct SelectionSummaryInput: Sendable {
         dataColumnsByDisplayPosition: [Int],
         policy: SelectionSummaryColumnPolicy,
         deletedRowIDs: Set<RowID> = [],
-        insertedRowIDs: Set<RowID> = [],
-        modifiedCells: [RowID: Set<Int>] = [:]
+        defaultedCells: [RowID: Set<Int>] = [:]
     ) {
         self.selection = selection
         self.tableRows = tableRows
@@ -51,8 +50,7 @@ struct SelectionSummaryInput: Sendable {
         self.dataColumnsByDisplayPosition = dataColumnsByDisplayPosition
         self.policy = policy
         self.deletedRowIDs = deletedRowIDs
-        self.insertedRowIDs = insertedRowIDs
-        self.modifiedCells = modifiedCells
+        self.defaultedCells = defaultedCells
     }
 }
 

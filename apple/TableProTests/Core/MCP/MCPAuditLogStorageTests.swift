@@ -1,13 +1,3 @@
-//
-//  MCPAuditLogStorageTests.swift
-//  TableProTests
-//
-//  The audit log is evidence, so it has to survive being read by the wrong person and being edited
-//  by one. Every row carries the token id that caused it, so a token can be traced; the statement
-//  is reduced to a digest, so a CREATE USER with an inline password never lands on disk in
-//  cleartext; and the store and its journal files are owner-only.
-//
-
 import Foundation
 import TableProMCP
 import TableProPluginKit
@@ -18,7 +8,12 @@ import Testing
 @Suite("MCP Audit Log Storage", .serialized)
 struct MCPAuditLogStorageTests {
     private func makeStorage() -> MCPAuditLogStorage {
-        MCPAuditLogStorage(isolatedForTesting: true)
+        MCPAuditLogStorage(directory: Self.makeDirectory())
+    }
+
+    private static func makeDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("MCPAuditLogStorageTests-\(UUID().uuidString)", isDirectory: true)
     }
 
     private func makeEntry(
@@ -180,16 +175,16 @@ struct MCPAuditLogStorageTests {
 
     @Test("The store and its journal files stay readable by their owner alone")
     func databaseFilesAreNotWorldReadable() async throws {
-        let storage = makeStorage()
+        let directory = Self.makeDirectory()
+        let storage = MCPAuditLogStorage(directory: directory)
         await storage.addEntry(makeEntry(action: "tool.permissions"))
 
-        let directory = Self.auditDirectory()
         let directoryPermissions = try #require(Self.permissions(ofItemAt: directory.path))
         #expect(directoryPermissions & 0o077 == 0)
 
-        let paths = await storage.databaseFilePaths
-        #expect(paths.isEmpty == false)
-        for path in paths {
+        let databasePath = directory.appendingPathComponent(MCPAuditLogStorage.databaseFileName).path
+        #expect(FileManager.default.fileExists(atPath: databasePath))
+        for path in [databasePath, databasePath + "-wal", databasePath + "-shm"] {
             guard let permissions = Self.permissions(ofItemAt: path) else { continue }
             #expect(
                 permissions & 0o077 == 0,
@@ -261,8 +256,58 @@ struct MCPAuditLogStorageTests {
         #expect(row.tokenName == "client")
     }
 
-    private static func auditDirectory() -> URL {
-        AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
+    @Test("A damaged log is kept beside a fresh one, which starts by recording the reset")
+    func damagedLogIsSetAsideAndAFreshOneStarts() async throws {
+        let directory = Self.makeDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = directory.appendingPathComponent(MCPAuditLogStorage.databaseFileName)
+        let damaged = Data(repeating: 0x2A, count: 4_096)
+        try damaged.write(to: databaseURL)
+
+        let storage = MCPAuditLogStorage(directory: directory)
+        #expect(await storage.addEntry(makeEntry(action: "tool.afterReset")))
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        let copyName = try #require(names.first { $0.hasPrefix("mcp-audit.damaged-") && $0.hasSuffix(".db") })
+        let copyURL = directory.appendingPathComponent(copyName)
+        #expect(try Data(contentsOf: copyURL) == damaged)
+        let copyPermissions = try #require(Self.permissions(ofItemAt: copyURL.path))
+        #expect(copyPermissions & 0o077 == 0)
+        let freshPermissions = try #require(Self.permissions(ofItemAt: databaseURL.path))
+        #expect(freshPermissions & 0o077 == 0)
+
+        let entries = await storage.query()
+        let actions = Set(entries.map { $0.action })
+        #expect(actions == ["auditLog.setAside", "tool.afterReset"])
+        let notice = try #require(entries.first { $0.action == "auditLog.setAside" })
+        #expect(notice.details == "setAside=\(copyName)")
+        #expect(await storage.verify() == .intact(count: 2))
+    }
+
+    @Test("The first entry after the log is reopened continues its chain")
+    func reopenedLogContinuesItsChain() async {
+        let directory = Self.makeDirectory()
+        do {
+            let first = MCPAuditLogStorage(directory: directory)
+            #expect(await first.addEntry(makeEntry(action: "tool.beforeRelaunch")))
+            #expect(await first.addEntry(makeEntry(action: "tool.beforeRelaunch2")))
+        }
+
+        let reopened = MCPAuditLogStorage(directory: directory)
+        #expect(await reopened.addEntry(makeEntry(action: "tool.afterRelaunch")))
+        #expect(await reopened.count() == 3)
+        #expect(await reopened.verify() == .intact(count: 3))
+    }
+
+    @Test("The shared log writes the storage folder's mcp-audit.db, under a test host as in the app")
+    func sharedLogUsesTheStorageFolder() async throws {
+        MCPAuditLogger.logTokenCreated(tokenId: UUID(), tokenName: "paired client")
+        await MCPAuditLogger.flush()
+
+        let directory = AppStorageEnvironment.shared.supportDirectory
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(names.contains(MCPAuditLogStorage.databaseFileName))
+        #expect(names.allSatisfy { !$0.hasPrefix("mcp-audit-test_") })
     }
 
     private static func permissions(ofItemAt path: String) -> Int? {

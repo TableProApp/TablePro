@@ -16,6 +16,7 @@ mod connecting_page;
 mod connections;
 mod file_location_dialog;
 mod imp;
+mod import_from_app;
 mod launch_notice;
 mod locate_file;
 mod notification_request;
@@ -30,6 +31,7 @@ mod session_restore;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
+mod state_file_status;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
@@ -48,13 +50,13 @@ use libadwaita as adw;
 use libadwaita::prelude::AdwApplicationWindowExt;
 use tokio_util::sync::CancellationToken;
 
-use tablepro_core::{DatabaseDriver, DriverError, SafeModeLevel, TransportClass};
+use tablepro_core::{DataModel, DatabaseDriver, DriverError, SafeModeLevel, TransportClass};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::runtime::ProcessHold;
 use tablepro_session::{
-    ClaimError, ConnectError, ConnectIntent, ConnectSource, MonitorSignal, PendingSession, RequestTarget, Session,
-    SessionClaim, SessionKey,
+    ClaimError, ConnectError, ConnectIntent, ConnectSource, CredentialSource, MonitorSignal, PendingSession,
+    RequestTarget, Session, SessionClaim, SessionKey,
 };
 use tablepro_storage::{CredentialDemand, SavedConnection};
 
@@ -67,9 +69,11 @@ pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, TakenFailure, source_key};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
-pub(crate) use self::session_window_input::{MovedTab, SessionWindowInput};
+pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
+use crate::services::connection_link::without_password;
+use crate::services::secret_save_report::{ReportingCredentials, SecretSaveOutcome};
 use crate::services::session_context::SessionContext;
 use crate::ui::connect_dialog::{ConnectDialogMode, ConnectSubmission};
 use crate::ui::welcome_view::WelcomeView;
@@ -168,6 +172,10 @@ impl SessionWindow {
         picker
             .banner()
             .connect_button_clicked(move |_| reset_input.deliver(SessionWindowInput::ResetConnectionList));
+        let drop_input = input.clone();
+        picker
+            .script_banner()
+            .connect_button_clicked(move |_| drop_input.deliver(SessionWindowInput::Script(ScriptInput::DropWaiting)));
         let window = self.downgrade();
         imp.list_observer.set(Some(list.connect_state_changed(move |_| {
             if let Some(window) = window.upgrade() {
@@ -184,6 +192,7 @@ impl SessionWindow {
 
         self.render();
         self.show_connection_list_banner();
+        self.watch_state_files();
         input.deliver(SessionWindowInput::LoadConnections);
         self.open_launch(launch, &input);
     }
@@ -223,6 +232,11 @@ impl SessionWindow {
     }
 
     #[cfg(test)]
+    pub(crate) fn connect_dialog(&self) -> Option<crate::ui::connect_dialog::ConnectDialog> {
+        self.imp().dialog.borrow().clone()
+    }
+
+    #[cfg(test)]
     pub(crate) fn manage_tags(&self) -> Option<std::rc::Rc<crate::ui::tags::ManageTagsDialog>> {
         self.imp().manage_tags.borrow().clone()
     }
@@ -234,6 +248,10 @@ impl SessionWindow {
 
     pub(crate) fn send(&self, message: SessionWindowInput) {
         if let Some(input) = self.imp().input.get() {
+            // Routing must see the reservation before the input queue runs.
+            if matches!(&message, SessionWindowInput::ConnectFromLink(_)) {
+                self.imp().link_queued.set(true);
+            }
             input.deliver(message);
         }
     }
@@ -245,6 +263,7 @@ impl SessionWindow {
         self.page() == SessionPage::Picker
             && !imp.opening_file.get()
             && !imp.dialog_opening.get()
+            && !imp.link_queued.get()
             && imp.dialog.try_borrow().is_ok_and(|dialog| dialog.is_none())
     }
 
@@ -294,6 +313,7 @@ impl SessionWindow {
         if let Some(presenter) = imp.prompt_presenter.take() {
             presenter.abort();
         }
+        self.stop_state_file_watches();
         self.release_session();
         drop(imp.dialog.take());
         if let Some(welcome) = imp.welcome.take() {
@@ -436,31 +456,21 @@ impl SessionWindow {
             SessionWindowInput::OpenSaved(saved) => self.on_open_saved(*saved),
             SessionWindowInput::OpenFile(file) => self.on_open_file(file),
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
+            SessionWindowInput::Script(input) => self.on_script_input(input),
             SessionWindowInput::Restore(key) => self.on_restore(key),
             SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
             SessionWindowInput::RestoreUnread(key) => self.end_restore(&key),
-            SessionWindowInput::OpenConnectDialog => {
-                self.present_connect_dialog(ConnectDialogMode::Create, None, None);
-            }
+            SessionWindowInput::OpenConnectDialog => self.present_connect_dialog(ConnectDialogMode::Create, None, None),
+            SessionWindowInput::ConnectFromLink(url) => self.on_connect_from_link(url),
             SessionWindowInput::ConnectFromDialog(submission) => self.on_connect_from_dialog(*submission),
             SessionWindowInput::DialogClosed => drop(self.imp().dialog.take()),
             SessionWindowInput::CancelConnect => self.on_cancel_connect(),
             SessionWindowInput::StopConnecting(key) => self.stop_connecting(&key),
-            SessionWindowInput::RetryConnect => {
-                if let Some(key) = self.failed_key() {
-                    self.on_retry_connect(&key);
-                }
-            }
+            SessionWindowInput::RetryConnect => self.on_failed(|key| self.on_retry_connect(key)),
             SessionWindowInput::RetryWithNewSecret(kind) => {
-                if let Some(key) = self.failed_key() {
-                    self.on_retry_with_new_secret(&key, kind);
-                }
+                self.on_failed(|key| self.on_retry_with_new_secret(key, kind));
             }
-            SessionWindowInput::EditConnection => {
-                if let Some(key) = self.failed_key() {
-                    self.on_edit_connection(&key);
-                }
-            }
+            SessionWindowInput::EditConnection => self.on_failed(|key| self.on_edit_connection(key)),
             SessionWindowInput::Remedy { key, remedy } => self.on_remedy(key, remedy),
             SessionWindowInput::ShowConnectFailure(key) => self.on_show_connect_failure(key),
             SessionWindowInput::ForgetConnectFailure(key) => self.forget_failure(&key),
@@ -469,38 +479,31 @@ impl SessionWindow {
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
+            SessionWindowInput::NewTableIn(key) => self.deliver_to(&key, WorkspaceInput::NewTableTab { schema: None }),
+            SessionWindowInput::NewDatabaseIn(key) => self.deliver_to(&key, WorkspaceInput::NewDatabasePrompt),
+            SessionWindowInput::NewSchemaIn(key) => self.deliver_to(&key, WorkspaceInput::NewSchemaPrompt),
+            SessionWindowInput::DropDatabaseIn(key) => self.drop_database_in(key),
+            SessionWindowInput::ReleaseDatabase { target, options } => self.release_database(target, options),
+            SessionWindowInput::DatabaseDropFinished(target) => self.lift_reservation(&target),
+            SessionWindowInput::DatabasesChanged(key) => self.databases_changed(&key),
+            SessionWindowInput::OpenDatabaseIn { key, database } => self.open_database_in(&key, database),
             SessionWindowInput::MovedTab(asked) => self.on_moved_tab(asked),
             SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
             SessionWindowInput::ShowSession(key) => self.show_session(&key),
             SessionWindowInput::NewQueryIn(key) => self.deliver_to(&key, WorkspaceInput::NewEditorTab),
             SessionWindowInput::RefreshIn(key) => self.deliver_to(&key, WorkspaceInput::RefreshCatalog),
             SessionWindowInput::FrontChanged => self.sync_actions(),
-            SessionWindowInput::ReturnForeignTab(page) => {
+            SessionWindowInput::ReturnTab(page) => {
                 if let Some(page) = page.upgrade() {
-                    self.on_return_foreign_tab(&page);
+                    self.on_return_tab(&page);
                 }
             }
             SessionWindowInput::SetSafeMode { key, level } => self.on_set_safe_mode(&key, level),
             SessionWindowInput::ReopenApproved(id) => self.on_reopen_approved(id),
             SessionWindowInput::CloseCurrent => self.on_close_current(),
-            SessionWindowInput::Reconnect => {
-                if let Some((_, session)) = self.front_session() {
-                    session.signal(MonitorSignal::RetryNow);
-                }
-            }
-            SessionWindowInput::ResetWorkspaceLayout => {
-                if let Some(input) = self.workspace().and_then(|workspace| workspace.sender()) {
-                    input.deliver(WorkspaceInput::ResetWorkspaceLayout);
-                }
-            }
-            SessionWindowInput::CloseRequested(CloseReason::Quit(reply)) => {
-                if let Some(guards) = self.close_guards() {
-                    guards.request_window_close(self, move |decision: CloseDecision| {
-                        // A quit that went away no longer needs the answer.
-                        let _ = reply.send(decision);
-                    });
-                }
-            }
+            SessionWindowInput::Reconnect => self.on_reconnect(),
+            SessionWindowInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
+            SessionWindowInput::CloseRequested(reason) => self.on_close_requested(reason),
             SessionWindowInput::DirtyChanged | SessionWindowInput::SavesInFlightChanged => self.refresh_dirty(),
             SessionWindowInput::WorkCompleted(work) => self.on_work_completed(work),
             SessionWindowInput::TabsChanged => self.on_tabs_changed(),
@@ -520,6 +523,7 @@ impl SessionWindow {
             SessionWindowInput::SetConnectionColor(id, color) => self.on_set_connection_color(id, color),
             SessionWindowInput::SetConnectionGroup(id, group) => self.on_set_connection_group(id, group),
             SessionWindowInput::SetConnectionTag(id, tag, carried) => self.on_set_connection_tag(id, tag, carried),
+            SessionWindowInput::Library(edit) => self.on_library_edit(edit),
             SessionWindowInput::CreateTag { name, color, on } => self.on_create_tag(name, color, on),
             SessionWindowInput::UpdateTag(tag) => self.on_update_tag(tag),
             SessionWindowInput::DeleteTag(id) => self.on_delete_tag(id),
@@ -528,12 +532,50 @@ impl SessionWindow {
             SessionWindowInput::ImportConnections => self.on_import_connections(),
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),
             SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
+            SessionWindowInput::ImportFromApp => self.on_import_from_app(),
+            SessionWindowInput::StateFileStatus(kind) => self.show_state_file_status(kind),
+            SessionWindowInput::RetryStateFile(kind) => self.retry_state_file(kind),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
+            SessionWindowInput::SecretSave(outcome) => self.on_secret_save(outcome),
+        }
+    }
+
+    /// The health banner's Retry, for the session in front.
+    fn on_reconnect(&self) {
+        if let Some((_, session)) = self.front_session() {
+            session.signal(MonitorSignal::RetryNow);
+        }
+    }
+
+    fn on_close_requested(&self, reason: CloseReason) {
+        let CloseReason::Quit(reply) = reason;
+        if let Some(guards) = self.close_guards() {
+            guards.request_window_close(self, move |decision: CloseDecision| {
+                // A quit that went away no longer needs the answer.
+                let _ = reply.send(decision);
+            });
+        }
+    }
+
+    fn on_reset_workspace_layout(&self) {
+        if let Some(input) = self.workspace().and_then(|workspace| workspace.sender()) {
+            input.deliver(WorkspaceInput::ResetWorkspaceLayout);
         }
     }
 
     fn show_toast(&self, message: &str) {
         self.add_toast(crate::ui::plain_toast(message));
+    }
+
+    // The refusal toast stays until dismissed, so a save the keyring took since takes it down.
+    fn on_secret_save(&self, outcome: SecretSaveOutcome) {
+        match outcome {
+            SecretSaveOutcome::Refused(report) => {
+                let toast = self.imp().unsaved_secrets.replace(report, self);
+                self.add_toast(toast);
+            }
+            SecretSaveOutcome::Kept => self.imp().unsaved_secrets.dismiss(),
+        }
     }
 
     /// On the page on screen: a toast for a page left behind would never
@@ -627,12 +669,42 @@ impl SessionWindow {
         // A Cancel or Retry left as the default would take Enter on a
         // page that no longer shows it.
         self.set_default_widget(None::<&gtk::Widget>);
+        // Unparented with the focus inside, GTK 4.22 keeps the focus on the detached widget and never frees the page.
+        let refocus = self.content().is_some_and(|page| crate::ui::a11y::holds_focus(&page));
+        if refocus {
+            GtkWindowExt::set_focus(self, None::<&gtk::Widget>);
+        }
         self.set_content(child.as_ref());
+        if refocus {
+            self.focus_first_control_after_paint();
+        }
         match shown {
             ShownPage::Connecting(page, name) => page.show(&name),
             ShownPage::Failed(page) => page.show(),
             ShownPage::Other => {}
         }
+    }
+
+    // Where GTK moves the focus of a removed page once the window paints, unless something took it first.
+    fn focus_first_control_after_paint(&self) {
+        let Some(clock) = self.frame_clock() else {
+            return;
+        };
+        let window = self.downgrade();
+        let handler: Rc<std::cell::Cell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let connected = handler.clone();
+        let id = clock.connect_after_paint(move |clock| {
+            if let Some(id) = connected.take() {
+                clock.disconnect(id);
+            }
+            if let Some(window) = window.upgrade()
+                && GtkWindowExt::focus(&window).is_none()
+            {
+                window.child_focus(gtk::DirectionType::TabForward);
+            }
+        });
+        handler.set(Some(id));
+        clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
     }
 
     /// Each action is enabled where it means something, and the Safe
@@ -757,29 +829,38 @@ impl SessionWindow {
         }
     }
 
-    /// A tab belongs to its session, which only its own window holds: one
-    /// dropped here goes back to the end of that window's tab bar.
-    fn on_return_foreign_tab(&self, page: &adw::TabPage) {
+    /// A tab belongs to its session, and a session to one window. A tab
+    /// that landed here goes back to its session's view, where the drag
+    /// took it from; one whose session closed meanwhile closes, since that
+    /// close already asked about it.
+    fn on_return_tab(&self, page: &adw::TabPage) {
         let (Some(shell), Some(app)) = (self.shell(), self.application()) else {
             return;
         };
         let view = shell.tab_view();
-        if !(0..view.n_pages()).any(|position| &view.nth_page(position) == page) {
+        if crate::ui::workspace::page_position(&view, page).is_none() {
             return;
         }
         let owner = app
             .windows()
             .into_iter()
             .filter_map(|window| window.downcast::<SessionWindow>().ok())
-            .filter(|window| window != self)
             .filter_map(|window| window.shell())
             .find(|other| other.owner_of(page).is_some());
         let Some(owner) = owner else {
-            tracing::debug!("a tab no other window's session owns was dropped here");
+            view.close_page(page);
             return;
         };
         let target = owner.tab_view();
-        view.transfer_page(page, &target, target.n_pages());
+        let left_at = owner.take_departure(page);
+        if target == view {
+            if let Some(position) = left_at {
+                view.reorder_page(page, position.min(view.n_pages() - 1));
+            }
+        } else {
+            let position = left_at.unwrap_or(i32::MAX).min(target.n_pages());
+            view.transfer_page(page, &target, position);
+        }
     }
 
     /// Start the session that connected and build its workspace in the
@@ -788,7 +869,7 @@ impl SessionWindow {
         let Connected {
             pending,
             saved,
-            warnings,
+            secrets,
             session_only,
         } = connected;
         let (Some(state), Some(_), Some(input)) = (self.state(), self.close_guards(), self.input()) else {
@@ -796,7 +877,11 @@ impl SessionWindow {
             return;
         };
         let key = claim.key().clone();
-        let credentials = state.context.session_credentials(saved.as_ref(), &session_only);
+        let refused = input.clone();
+        let credentials: Arc<dyn CredentialSource> = Arc::new(ReportingCredentials::new(
+            state.context.session_credentials(saved.as_ref(), &session_only),
+            move |outcome| refused.deliver(SessionWindowInput::SecretSave(outcome)),
+        ));
         let session = Session::start(pending, state.context.session_deps(credentials));
         claim.attach(&session);
         self.remember_session(&key, saved.as_ref());
@@ -820,9 +905,13 @@ impl SessionWindow {
         self.render();
         shell.add_session(&workspace);
         workspace.start();
+        // The picker that asked is gone from view, so a session that runs no SQL hands the question on.
+        let waiting = self.imp().waiting_scripts.take();
+        self.show_waiting_scripts();
+        self.open_scripts_in(&workspace, waiting);
         self.sync_actions();
-        for warning in warnings {
-            self.show_toast(&warning);
+        if let Some(outcome) = secrets {
+            self.on_secret_save(outcome);
         }
         if let SessionKey::Saved(id) = key {
             self.touch_last_opened(id);
@@ -872,7 +961,11 @@ impl SessionWindow {
                 // A window that stayed to say the owner could not be
                 // shown is the user's picker from then on.
                 let opened_for_file = self.imp().opened_for_file.replace(false);
-                if self.present_owner(window_id, &key) && opened_for_file {
+                let presented = self.present_owner(window_id, &key);
+                if presented {
+                    self.hand_waiting_scripts_to(window_id, &key);
+                }
+                if presented && opened_for_file {
                     self.close();
                 }
                 None
@@ -1074,8 +1167,12 @@ impl SessionWindow {
                 }
                 self.connect(ConnectSource::File(identity), CredentialDemand::default());
             }
+            Ok(FileTarget::Script) => {
+                self.forget_unclaimed(&arrived);
+                self.on_open_script(gio::File::for_uri(&uri));
+            }
             Err(error) => {
-                tracing::warn!(%error, %uri, "could not open the file");
+                tracing::warn!(%error, uri = %without_password(&uri), "could not open the file");
                 self.forget_unclaimed(&arrived);
                 let message = file_failure_message(&uri, &error);
                 if !matches!(self.page(), SessionPage::Picker | SessionPage::Failed) {
@@ -1093,6 +1190,240 @@ impl SessionWindow {
                 });
             }
         }
+    }
+
+    // Sessions still to restore, connecting, or reading their saved tabs may hold a script in a tab
+    // that is not there yet.
+    pub(crate) fn settling(&self) -> bool {
+        let imp = self.imp();
+        !imp.restoring.try_borrow().is_ok_and(|restoring| restoring.is_empty())
+            || !imp.connects.try_borrow().is_ok_and(|connects| connects.is_empty())
+            || !imp
+                .sessions
+                .try_borrow()
+                .is_ok_and(|sessions| sessions.iter().all(|open| !open.databases.is_opening()))
+            || self.workspaces().iter().any(Workspace::tabs_loading)
+    }
+
+    // Every window: while a script waited, a tab bound to its file may have come back in another one.
+    fn focus_bound_tab(&self, file: &gio::File) -> bool {
+        self.application()
+            .is_some_and(|app| Self::focus_tab_bound_to(&app, file))
+    }
+
+    // A workspace handling input answers no lookup, so the caller checks its own tabs itself.
+    pub(crate) fn focus_tab_bound_to(app: &impl IsA<gtk::Application>, file: &gio::File) -> bool {
+        let found = app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .find_map(|window| window.script_tab(file).map(|tab| (window, tab)));
+        let Some((window, tab)) = found else {
+            return false;
+        };
+        window.send(SessionWindowInput::FocusTab(tab));
+        window.present();
+        true
+    }
+
+    pub(crate) fn script_tab(&self, file: &gio::File) -> Option<uuid::Uuid> {
+        self.workspaces()
+            .iter()
+            .find_map(|workspace| workspace.editor_tab_for(file))
+    }
+
+    // Read the way Open SQL File reads, with the same limit and messages.
+    fn on_script_input(&self, input: ScriptInput) {
+        match input {
+            ScriptInput::Open(file) => self.on_open_script(file),
+            ScriptInput::Loaded { file, text, target } => self.on_script_loaded(file, text, target),
+            ScriptInput::For { key, scripts } => self.on_scripts_for(key, scripts),
+            ScriptInput::DropWaiting => {
+                self.imp().waiting_scripts.borrow_mut().clear();
+                self.show_waiting_scripts();
+            }
+        }
+    }
+
+    // The session in front now is the one it goes to, even if another comes forward during a slow read.
+    fn on_open_script(&self, file: gio::File) {
+        let Some(input) = self.input() else {
+            return;
+        };
+        let target = self
+            .workspace()
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+            .and_then(|workspace| workspace.key());
+        glib::spawn_future_local(async move {
+            let text = crate::ui::editor::load_text(&file).await;
+            input.deliver(SessionWindowInput::Script(ScriptInput::Loaded { file, text, target }));
+        });
+    }
+
+    // A script opens in the relational session in front and is never run.
+    fn on_script_loaded(&self, file: gio::File, text: Result<String, String>, target: Option<SessionKey>) {
+        let text = match text {
+            Ok(text) => text,
+            Err(reason) => {
+                let name = file.parse_name().to_string();
+                self.show_toast(&crate::i18n::gettext_f(
+                    "{file} could not be opened. {reason}",
+                    &[("file", &name), ("reason", &reason)],
+                ));
+                return;
+            }
+        };
+        if self.focus_bound_tab(&file) {
+            return;
+        }
+        let chosen = target.and_then(|key| {
+            self.workspaces()
+                .into_iter()
+                .find(|workspace| workspace.key().as_ref() == Some(&key))
+        });
+        let front = chosen
+            .or_else(|| self.workspace())
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+            .and_then(|workspace| workspace.sender());
+        match front {
+            Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
+            None if self.page() != SessionPage::Shell => self.wait_for_session(file, text),
+            None => self.ask_elsewhere(vec![(file, text)]),
+        }
+    }
+
+    fn wait_for_session(&self, file: gio::File, text: String) {
+        {
+            let mut waiting = self.imp().waiting_scripts.borrow_mut();
+            waiting.retain(|(kept, _)| !kept.equal(&file));
+            waiting.push((file, text));
+        }
+        self.show_waiting_scripts();
+    }
+
+    // A session that holds keys or documents runs no SQL, so the script
+    // asks for a connection in a window of its own.
+    fn ask_elsewhere(&self, scripts: Vec<(gio::File, String)>) {
+        if scripts.is_empty() {
+            return;
+        }
+        let window = self
+            .application()
+            .and_downcast::<crate::application::TableProApplication>()
+            .and_then(|app| app.open_window(WindowLaunch::Picker))
+            .and_downcast::<SessionWindow>();
+        let Some(window) = window else {
+            tracing::warn!("no window to open a SQL file in");
+            return;
+        };
+        for (file, text) in scripts {
+            window.send(SessionWindowInput::Script(ScriptInput::Loaded {
+                file,
+                text: Ok(text),
+                target: None,
+            }));
+        }
+    }
+
+    // Only to a session that has joined there: one still connecting could fail or be cancelled, and
+    // the scripts would no longer be asked for anywhere.
+    fn hand_waiting_scripts_to(&self, window_id: u32, key: &SessionKey) {
+        let Some(owner) = self
+            .application()
+            .and_then(|app| app.window_by_id(window_id))
+            .and_downcast::<SessionWindow>()
+        else {
+            return;
+        };
+        if self.imp().waiting_scripts.borrow().is_empty() {
+            return;
+        }
+        if !owner
+            .workspaces()
+            .iter()
+            .any(|workspace| workspace.key().as_ref() == Some(key))
+        {
+            self.show_toast(&crate::i18n::gettext(
+                "That connection is still connecting in another window. Choose it again once it is open.",
+            ));
+            return;
+        }
+        let scripts = self.imp().waiting_scripts.take();
+        owner.send(SessionWindowInput::Script(ScriptInput::For {
+            key: key.clone(),
+            scripts,
+        }));
+        self.show_waiting_scripts();
+    }
+
+    // The session left between the hand-over and now: they wait here instead, behind the picker's banner.
+    fn on_scripts_for(&self, key: SessionKey, scripts: Vec<(gio::File, String)>) {
+        match self
+            .workspaces()
+            .into_iter()
+            .find(|workspace| workspace.key().as_ref() == Some(&key))
+        {
+            Some(workspace) => self.open_scripts_in(&workspace, scripts),
+            None => {
+                for (file, text) in scripts {
+                    self.wait_for_session(file, text);
+                }
+            }
+        }
+    }
+
+    // A session that runs no SQL leaves them waiting for one that does.
+    fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<(gio::File, String)>) {
+        let scripts: Vec<(gio::File, String)> = scripts
+            .into_iter()
+            .filter(|(file, _)| !self.focus_bound_tab(file))
+            .collect();
+        let input = workspace
+            .sender()
+            .filter(|_| workspace.data_model() == Some(DataModel::Relational));
+        match input {
+            Some(input) => {
+                for (file, text) in scripts {
+                    input.deliver(WorkspaceInput::OpenScript { file, text });
+                }
+            }
+            None => self.ask_elsewhere(scripts),
+        }
+    }
+
+    fn show_waiting_scripts(&self) {
+        let Some(picker) = self.imp().picker.get() else {
+            return;
+        };
+        let banner = picker.script_banner();
+        let title = match self.imp().waiting_scripts.borrow().as_slice() {
+            [] => None,
+            [(file, _)] => Some(crate::i18n::gettext_f(
+                "Choose a connection to open “{name}”",
+                &[("name", &file_display_name(&file.uri()))],
+            )),
+            waiting => {
+                let count = waiting.len();
+                Some(crate::i18n::ngettext_f(
+                    "Choose a connection to open {n} SQL file",
+                    "Choose a connection to open {n} SQL files",
+                    u32::try_from(count).unwrap_or(u32::MAX),
+                    &[("n", &count.to_string())],
+                ))
+            }
+        };
+        match title {
+            Some(title) => {
+                banner.set_title(&title);
+                banner.set_revealed(true);
+            }
+            None => banner.set_revealed(false),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn script_banner(&self) -> Option<adw::Banner> {
+        self.imp().picker.get().map(PickerPage::script_banner)
     }
 
     /// The dialog may be editing a connection the window shows or already
@@ -1268,7 +1599,13 @@ impl SessionWindow {
         self.connects_changed();
     }
 
-    /// The key the failed page is about.
+    // The failure page's buttons act on the connect that failed.
+    fn on_failed(&self, act: impl FnOnce(&SessionKey)) {
+        if let Some(key) = self.failed_key() {
+            act(&key);
+        }
+    }
+
     fn failed_key(&self) -> Option<SessionKey> {
         self.imp()
             .failed
@@ -1467,11 +1804,23 @@ impl SessionWindow {
         }
     }
 
-    /// The window closes through one pass of the close prompts over every
-    /// session: one Save Changes for all of them, and Cancel keeps them
-    /// all.
     fn close_guards_for_window(&self) -> Rc<CloseGuards> {
         let guards = CloseGuards::new();
+        let window = self.downgrade();
+        guards.set_window_preflight(move || {
+            let window = window.clone();
+            let discarded = Rc::new(std::cell::Cell::new(None));
+            Rc::new(move |_| {
+                let window = window.upgrade();
+                let discarded = discarded.clone();
+                Box::pin(async move {
+                    match window {
+                        Some(window) => window.confirm_state_files_before_close(&discarded).await,
+                        None => CloseDecision::Approved,
+                    }
+                })
+            })
+        });
         let window = self.downgrade();
         guards.connect_window(
             self,
@@ -1612,11 +1961,7 @@ fn connect_saved(
             Ok(login) => Ok(Connected {
                 pending: login.pending,
                 saved: Some(saved),
-                warnings: login
-                    .refused
-                    .iter()
-                    .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
-                    .collect(),
+                secrets: SecretSaveOutcome::of_connection(login.asked_to_keep, &login.refused),
                 session_only: login.session_only,
             }),
             Err(error) => Err(match attempt_error(&error, server_name_shown) {
@@ -1662,6 +2007,7 @@ fn connect_intent(
         }
         .boxed();
     };
+    let asked_to_keep = pending_save.secrets.len();
     let secrets = context.secrets.clone();
     let writes = StoreConnectionWrites::new(
         state.services.storage.connections().clone(),
@@ -1681,14 +2027,7 @@ fn connect_intent(
         match saving {
             Ok((pending, report)) => Ok(Connected {
                 pending,
-                // A keyring refusal must not be silent: the
-                // connection opened, but the password will be
-                // asked for next time.
-                warnings: report
-                    .secret_failures
-                    .iter()
-                    .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
-                    .collect(),
+                secrets: SecretSaveOutcome::of_connection(asked_to_keep, &report.secret_failures),
                 session_only: report.secret_failures.iter().map(|(kind, _)| *kind).collect(),
                 saved: Some(report.saved),
             }),
@@ -1743,7 +2082,7 @@ fn unsaved(pending: PendingSession) -> Connected {
     Connected {
         pending,
         saved: None,
-        warnings: Vec::new(),
+        secrets: None,
         session_only: Vec::new(),
     }
 }
@@ -1806,7 +2145,7 @@ enum ShownPage {
 }
 
 fn file_failure_message(uri: &str, error: &FileResolveError) -> String {
-    let name = gio::File::for_uri(uri).parse_name().to_string();
+    let name = without_password(&gio::File::for_uri(uri).parse_name());
     match error {
         FileResolveError::NotLocal => crate::i18n::gettext_f(
             "{file} is not on this computer. Copy it to a local folder to open it.",

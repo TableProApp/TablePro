@@ -102,7 +102,6 @@ final class AppCommands {
     // MARK: - File / Connection Import-Export
 
     let openSQLFiles = PassthroughSubject<[URL], Never>()
-    let exportQueryResults = PassthroughSubject<Void, Never>()
 
     private init() {}
 }

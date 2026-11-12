@@ -95,7 +95,15 @@ final class DuckDBDriverTests: XCTestCase {
 
         XCTAssertEqual(streamed.count, 1)
         XCTAssertEqual(materialized.rows.count, 1)
-        XCTAssertEqual(streamed[0], materialized.rows[0], "streamed output must match the materialized path exactly")
+        // A streamed BLOB is a binary cell, as on every other engine; `execute` still carries its base64.
+        let payload = 10
+        XCTAssertEqual(streamed[0][payload], Cell.binary(byteCount: 3, ref: nil).displayString)
+        XCTAssertEqual(materialized.rows[0][payload], Data("abc".utf8).base64EncodedString())
+        var streamedRest = streamed[0]
+        var materializedRest = materialized.rows[0]
+        streamedRest.remove(at: payload)
+        materializedRest.remove(at: payload)
+        XCTAssertEqual(streamedRest, materializedRest, "streamed output must match the materialized path for every other type")
     }
 
     func testStreamingMultiRowOrder() async throws {
@@ -323,6 +331,30 @@ final class DuckDBDriverTests: XCTestCase {
     }
 }
 
+struct DuckDBBlobStreamingTests {
+    @Test("A streamed BLOB is a binary cell of its byte count, with the ref every other column gets")
+    func blobStreamsAsBinary() async throws {
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        _ = try await driver.execute(query: "CREATE TABLE files (id INTEGER PRIMARY KEY, payload BLOB)")
+        _ = try await driver.execute(query: "INSERT INTO files VALUES (1, 'abc'::BLOB)")
+        let options = StreamOptions(maxRows: 10, lazyContext: LazyContext(table: "files", primaryKeyColumns: ["id"]))
+
+        var cells: [Cell] = []
+        for try await element in driver.executeStreaming(query: "SELECT id, payload FROM files", options: options) {
+            if case .row(let row) = element { cells = row.cells }
+        }
+        try await driver.disconnect()
+
+        guard cells.count == 2, case .binary(let byteCount, let ref) = cells[1] else {
+            Issue.record("the BLOB should stream as a binary cell, got \(cells)")
+            return
+        }
+        #expect(byteCount == 3)
+        #expect(ref?.primaryKey == [PrimaryKeyComponent(column: "id", value: "1")])
+    }
+}
+
 struct DuckDBDriverTransactionStateTests {
     private func connectedDriver() async throws -> DuckDBDriver {
         let driver = DuckDBDriver(source: .inMemory)
@@ -472,5 +504,31 @@ struct DuckDBDriverStorageVersionTests {
 
         #expect(rows.map { $0[0] } == ["cube", "side"])
         #expect(rows.allSatisfy { $0[1]?.hasPrefix("v1.") == true })
+    }
+}
+
+struct DuckDBNulTextTests {
+    @Test("NUL text inserts and edits by its whole primary key")
+    func nulTextInsertsAndEditsByItsKeyWhole() async throws {
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        _ = try await driver.execute(query: "CREATE TABLE notes (id VARCHAR PRIMARY KEY, body VARCHAR)")
+        let columns = try await driver.fetchColumns(table: "notes", schema: nil)
+        let key = "k\u{0}1"
+        let insert = try #require(SQLBuilder.buildInsert(
+            table: "notes", schema: nil, type: .duckdb, driver: driver, columns: ["id", "body"], values: [key, "a\u{0}b"]
+        ))
+        try await driver.executeWrite([insert, "INSERT INTO notes VALUES ('k', 'other')"])
+        let inserted = try await driver.execute(query: "SELECT body FROM notes WHERE body <> 'other'")
+
+        try await driver.executeWrite([SQLBuilder.buildUpdate(
+            table: "notes", schema: nil, type: .duckdb, driver: driver,
+            changes: [(column: "body", value: "x\u{0}y")], primaryKeys: [(column: "id", value: key)], columns: columns
+        )])
+        let after = try await driver.execute(query: "SELECT id, body FROM notes ORDER BY id")
+
+        try await driver.disconnect()
+        #expect(inserted.rows == [["a\u{0}b"]])
+        #expect(after.rows == [["k", "other"], [key, "x\u{0}y"]])
     }
 }

@@ -19,6 +19,8 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     // checked against the name the driver supplies on every route.
     tls: Some(TlsCapabilities {
         modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+        default_mode: TlsMode::Disable,
+        tls_ports: &[],
         ca_file: true,
         client_identity: true,
         server_name_override: ServerNameOverride::AnyRoute,

@@ -1,6 +1,6 @@
 # State management
 
-The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). A few views are still [Relm4](https://relm4.org) components ([decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md)): the saved-queries and CSV import dialogs. New views are subclasses. This page covers where state lives, the rules every view follows, and the patterns for each kind.
+The `app` crate's application, windows, workspace, tabs and dialogs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). This page covers where state lives, the rules every view follows, and the patterns for each kind.
 
 ## Where state lives
 
@@ -21,9 +21,9 @@ Windows share nothing but `AppServices`. CI fails on a `thread_local!` under `cr
 
 ## Rules for every view
 
-**Background work goes through `Tasks`.** Use `crate::runtime::spawn_and_deliver` to run work on the app runtime and get its result on the GTK thread, and `spawn_held` for work that has to finish even if its window goes, such as saving a named query or importing a connection list. A table or structure save goes through `WorkspaceHandle::save`, whose `SaveLedger` holds the process. `crates/app/clippy.toml` bans `tokio::spawn`, `Handle::current`, `relm4::spawn` and their siblings, so nothing reaches for whichever runtime happens to be ambient.
+**Background work goes through `Tasks`.** Use `crate::runtime::spawn_and_deliver` to run work on the app runtime and get its result on the GTK thread, and `spawn_held` for work that has to finish even if its window goes, such as saving a named query or importing a connection list. A table or structure save goes through `WorkspaceHandle::save`, whose `SaveLedger` holds the process. `crates/app/clippy.toml` bans `tokio::spawn`, `Handle::current` and their siblings, so nothing reaches for whichever runtime happens to be ambient.
 
-**Input goes through `DeliverInput::deliver`.** It works on an input queue's sender, a `relm4::Sender`, a `ComponentSender` and a `FactorySender`. A message to a view that has shut down is dropped and logged at debug under the `component` target, so a read or a save that comes back after its window closed changes nothing. `ComponentSender::input` and `FactorySender::input` are banned: relm4 0.11 calls `expect` on a closed channel, which would take every window down. Use `try_deliver` when the caller must act on a dropped message, as `QuitSequence` does when a window is already gone.
+**Input goes through `DeliverInput::deliver`.** It works on an input queue's sender. A message to a view that has shut down is dropped and logged at debug under the `component` target, so a read or a save that comes back after its window closed changes nothing. Use `try_deliver` when the caller must act on a dropped message, as `QuitSequence` does when a window is already gone.
 
 **A watch loop is a `WatchForwarder`.** The session publishes its health (`Session::health`), its link generation (`link_changes`) and each scope's objects (`subscribe_objects`) on `tokio::sync::watch` channels. A view keeps a `WatchForwarder` in a field: it delivers the current value, then every change, on the GTK thread, and stops when the field drops. A value published after the view went away is never delivered.
 
@@ -79,6 +79,28 @@ The closure holds only the sender, so a window that closed before the read ends 
 
 A browse or structure tab is a subclass whose model sits in its `imp` struct. `send` hands the model one input and handles it at once; an input a widget signal sets off while another is being handled waits in the tab's queue until that one finishes. The model's update returns effects: more inputs for the queue, and outputs the tab emits as signals. The workspace connects those signals, tags them with the tab's id and queues them as `WorkspaceInput`, so the tabs never call each other.
 
+A table tab owns Data, Structure and JSON pages in one `AdwViewStack`, selected by an `AdwInlineViewSwitcher` in its bottom bar. Structure is built on first selection. Data banners, filters and pending edits stay inside the Data page. Save and Refresh route from the selected page, including when focus is on the switch. JSON is read-only: Refresh reads its rows, while Save and row editing actions are unavailable. JSON shares the pager and offers Filter Rows by returning to Data. Row actions are available only on Data. Structure lends its controls to the shared bottom bar; their model and action group stay owned by Structure. The shared bar exposes that group only on the Structure page. Compact tabs put secondary Structure commands in More. Standalone Structure tabs keep their own bar.
+
+JSON uses the row model's load presentation and refreshes after model updates, including equal-length page replacements. Its preview takes displayed row order, visible columns and pending values, excludes rows marked for deletion, and reports preview limits. Serialization runs off the GTK thread with one active render and only the latest pending snapshot.
+
+The workspace registers both trackers under the same tab id. A close considers both, with an unknown save outcome taking precedence over pending changes. A row save and a structure save cannot run together on that tab. Rename keeps the tab, its row drafts and its selection, and updates the grid and persistence keys to the new table name.
+
+A tab belongs to its session, and a session to one window ([decisions/0028-sessions-share-a-window.md](decisions/0028-sessions-share-a-window.md)). libadwaita 1.9 lets every tab bar of the process take a dragged tab, so the shell holds a tab to that while the drag moves it:
+
+- When a drag takes a tab out of the view, the shell of its session's window records the position it left (`Departure`, from `page-detached`).
+- Dropped on its own bar, it stays where it was dropped.
+- Dropped on another window's bar, that window sends it back (`SessionWindowInput::ReturnTab`), into its session's view at the position it left.
+- Dropped outside every window, `create-window` declines a new window and the tab goes back to that position ([toolkit-workarounds.md](toolkit-workarounds.md#a-tab-dropped-outside-every-window)).
+- `ReturnTab` runs from the window's queue, after libadwaita finishes attaching the page. A tab whose session closed while it was out closes where it is; the session's close already asked about it, and its view no longer holds the page to close it.
+
+## Grid preferences
+
+`AppSettings` owns one `GridPreferences` object. It reads the grid keys from GSettings and announces each changed snapshot. Every grid holds that object through its settings and follows its change signal. Preferences rows bind directly to GSettings, including both directions for choices stored as strings. Each grid owns its font CSS provider, scoped to that grid and removed when the grid closes. Its custom font description supplies both the rendered font and column width measurement. Show Invisible Characters reads the same snapshot. Cells and the row details' field list write each zero-width, control and special space character as its short name over a tint; the inline editor and the value editor mark it with a Pango attribute or a text tag, which leaves their text, selection and undo history as they are. Automatic Row Details opening reads the same snapshot when the selection changes and opens only for a nonempty selection. Closing it keeps it closed through focus changes and clearing the selection. Turning the preference off leaves an open pane alone. Copy reads the row format from the shared snapshot when it runs; a single focused cell keeps its value format, and Copy As keeps the requested format.
+
+The snapshot belongs to its settings backend, so isolated test settings cannot change another grid. A display change redraws the existing row slots and resizes automatic columns. It keeps row selection, user column widths and active editor drafts. The formatting helpers receive display choices explicitly and keep no global preference state. Date display changes update cells, detail fields and automatic widths. Find captures the date format before its worker starts and repeats an active search when that format changes. The value editor, Copy and export retain the canonical value spelling.
+
+A new table tab snapshots the default sort from `GridPreferences`. `InitialSort::Default` is resolved once after accepted initial metadata, before its first page query. A metadata failure keeps it pending, and an explicit sort cancels it. Restored and reopened tabs carry `InitialSort::Kept`, including an unsorted first page. Later preference changes and refreshes preserve the tab's sort. The saved workspace format stays the same.
+
 ## The SQL editor
 
 `SqlEditor` (`crates/app/src/ui/editor/`) runs SQL on a connection of its own and lists what each statement returned.
@@ -118,7 +140,7 @@ A finished run goes to `HistoryService::record` with the text that was run, `DEL
 
 ### The tab's file
 
-Open SQL File (Ctrl+O) and Save As (Ctrl+Shift+S) bind the tab to a `.sql` file, through the file chooser portal; Save (Ctrl+S) writes to it, or asks for one. The tab is named after the file, and the buffer's own modified flag says whether its text differs from the file's, so Undo back to the saved text clears it. The tab's record keeps the file's URI and that flag (`EditorFileRecord`), and its draft keeps the text, so a restore brings back both.
+Open SQL File (Ctrl+O) and Save As (Ctrl+Shift+S) bind the tab to a `.sql` file, through the file chooser portal; Save (Ctrl+S) writes to it, or asks for one. A `.sql` file handed over from Files or the command line opens in a new tab bound to it (`WorkspaceInput::OpenScript`). The tab is named after the file, and the buffer's own modified flag says whether its text differs from the file's, so Undo back to the saved text clears it. The tab's record keeps the file's URI and that flag (`EditorFileRecord`), and its draft keeps the text, so a restore brings back both.
 
 Closing the tab asks about unsaved file changes through the same Save Changes prompt as row and structure edits (`DirtyKind::UnsavedFile`), and its Save writes the file. Closing the window does not ask: the draft keeps the text for the next session.
 
@@ -132,6 +154,28 @@ Every `RunSummary` carries the session's `TransactionState`, and the last one a 
 
 The tab emits `transaction-changed` when that flips, and the workspace reads `WorkspaceHandle::dirty_tabs` again. Through `TabDirectory::tabs` it lists the tab as `DirtyKind::OpenTransaction` when the tab has nothing else pending, so the page shows the unsaved icon and the close prompts ask about it. A close asks once: the tabs the user agreed to lose are not asked about again in that close.
 
+## Open Quickly
+
+`QuickOpen` owns its session's catalog watch and explicitly reads all schemas when it opens.
+Its pure `SearchIndex` prepares names and ranks candidates on a blocking worker, with a limit of
+200 displayed results. Request stamps discard older index and search replies. A changed search
+cannot activate the old selection; Enter waits for the current results. Catalog updates preserve
+the selected object's identity, and failed reads retain the displayed content with Retry.
+
+The workspace closes the dialog when another session comes forward or the workspace shuts down.
+Closing stops watches and cancels delivery even while the workspace still retains the widget.
+Saved queries load independently for the active connection, through the same index and ranking.
+Each source retains its own error, so a successful catalog refresh cannot hide a query read failure.
+Choosing a saved query reads its current SQL by id, checks its connection, and opens a new editor
+without running it. A reply after closing or switching connections is discarded.
+Past queries load independently from the first 100 successful history entries for that connection,
+in the history store's pinned-first order. Repeated SQL has one row. The same matcher searches its
+full SQL, while the list shows a first-line preview of at most 120 characters. Choosing a past query
+reads it by id again, so a deleted entry cannot reopen from the search snapshot.
+Ctrl+Shift+O opens it, matching Open Quickly on macOS; Ctrl+Alt+O opens the tab overview.
+Up and Down keep focus in the search entry and scroll the selection into view. Ctrl+Enter opens
+structure only for objects and dialects that support it.
+
 ## The query history dialog
 
 `HistoryDialog` reads the history a page of 100 at a time off the GTK thread, by the keyset [storage.md](storage.md#searching-the-history) describes.
@@ -141,31 +185,22 @@ The tab emits `transaction-changed` when that flips, and the workspace reads `Wo
 - Pinning moves the row to where the history now lists it without reading again. A row that now sorts past the pages read comes back with its page.
 - Delete happens at once and offers Undo ([storage.md](storage.md#deleting-and-restoring)).
 
-## Relm4 components
-
-The components that remain follow these conventions until a rewrite turns them into subclasses:
-
-- Input reaches them through `deliver`. Their output reaches the subclass that hosts them through `connect_receiver`, whose closure delivers it to that subclass's queue.
-- Their commands (`sender.command`, `oneshot_command`) run on Relm4's own runtime, not on `Tasks`. The saved-queries dialog still loads that way; new work goes through `spawn_and_deliver`.
-- They present their dialogs on the window they belong to. `ComponentBuilder::transient_for` is banned, because Relm4 applies it only from `relm4::RelmApp`, which this app does not use.
-
 ## Naming
 
 - `<Thing>Input`: every message a view handles, as an enum (`SessionWindowInput`, `WorkspaceInput`, `BrowseTabInput`).
 - A view with many inputs groups them by the state each one changes, one enum per group (`BrowseTabInput::Paging(PagingInput)`, `StructureTabInput::Save(SaveInput)`), and handles each group in its own `*_handlers` module. Senders pass the group's enum; `send` takes anything that converts into the view's input.
 - `<Thing>Output`: only the messages a parent should react to.
-- `<Thing>Cmd`: a Relm4 command's result.
 - `<Thing>Init`: what the parent hands a view when it builds it (`SessionWindowInit`, `WorkspaceInit`).
 
 ## Alert dialogs
 
 - `AdwAlertDialog` closes itself before it emits `response`. A response handler that calls `close()` again finds the dialog gone, and libadwaita logs a critical when animations are off.
 - That close emits `closed` before the `response` the click chose. A `closed` handler that answers at once turns every click into the close response. `workspace::respond` defers its close response to an idle callback, so the click's response comes first.
-- To wait for an answer, use `workspace::respond`, which also answers when the dialog goes without a response. `choose_future` is not used: its callback aborts the process in that case.
+- To wait for an answer, use `workspace::respond`, which also answers when the dialog goes without a response, its window destroyed under it included. `choose_future` is not used: it never resolves in that case, and its callback aborts the process when the call is cancelled ([toolkit-workarounds.md](toolkit-workarounds.md#adwalertdialogchoose)).
 
 ## Anti-patterns to flag in review
 
-- `tokio::spawn`, `relm4::spawn` or `Handle::current` in app code. Use `Tasks`.
+- `tokio::spawn` or `Handle::current` in app code. Use `Tasks`.
 - `ComponentSender::input` or `FactorySender::input`. Use `deliver`.
 - A hand-written loop over a watch channel. Use `WatchForwarder`.
 - A view that keeps a `Connection`, or a dialect past a link change.

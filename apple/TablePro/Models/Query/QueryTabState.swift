@@ -174,6 +174,9 @@ struct TabChangeSnapshot: Equatable {
     var insertedRowIDs: Set<RowID>
     var modifiedCells: [RowID: Set<Int>]
     var insertedRowData: [RowID: [PluginCellValue]]
+    var supersededUpdates: [RowID: RowChange] = [:]
+    // The result these edits were made on. They name its rows, so they are void on any other.
+    var resultSetId: UUID?
     var primaryKeyColumns: [String]
     var columns: [String]
 
@@ -285,10 +288,10 @@ struct PaginationState: Equatable {
     var hasMoreRows: Bool = false
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
-    var baseQueryParameterValues: [String?]?
+    var baseQueryParameterValues: [TypedParameterValue?]?
 
     // Set together: stale bindings sent with a placeholder-free query made Fetch All fail on the server.
-    mutating func setBaseQueryForMore(_ sql: String?, parameterValues: [String?]?) {
+    mutating func setBaseQueryForMore(_ sql: String?, parameterValues: [TypedParameterValue?]?) {
         baseQueryForMore = sql
         baseQueryParameterValues = parameterValues
     }
@@ -509,16 +512,21 @@ struct TabExecutionState: Equatable {
     var lastExecutedAt: Date?
 
     // Set when work finished out of sight, cleared on select; survives missed banners, denied notifications and Focus.
-    var finishedUnseenAt: Date?
+    var unseenOutcome: TabUnseenOutcome?
 
-    // Hand-written: every field the UI draws must be compared, or SwiftUI sees no change (finishedUnseenAt drives a dot).
+    // Hand-written: every field the UI draws must be compared, or SwiftUI sees no change (unseenOutcome drives the mark).
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
         lhs.executionTime == rhs.executionTime
             && lhs.statusMessage == rhs.statusMessage
             && lhs.errorMessage == rhs.errorMessage
             && lhs.rowsAffected == rhs.rowsAffected
-            && lhs.finishedUnseenAt == rhs.finishedUnseenAt
+            && lhs.unseenOutcome == rhs.unseenOutcome
     }
+}
+
+enum TabUnseenOutcome: Equatable, Sendable {
+    case succeeded
+    case failed
 }
 
 struct TabTableContext: Equatable {
@@ -695,6 +703,12 @@ struct TabDisplayState: Equatable {
         result.isPinned = resultSets[index].isPinned
         resultSets[index] = result
         activeResultSetId = result.id
+        leaveOutputModeWithoutOutput()
+    }
+
+    @MainActor
+    mutating func replaceActiveServerOutput(_ output: PluginServerOutput) {
+        activeResultSet?.serverOutput = output
         leaveOutputModeWithoutOutput()
     }
 

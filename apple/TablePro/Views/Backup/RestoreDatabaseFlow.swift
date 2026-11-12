@@ -16,6 +16,7 @@ struct RestoreDatabaseFlow: View {
     @StateObject private var service = NativeDumpService(kind: .restore)
     @State private var phase: Phase = .resolvingTarget
     @State private var hostWindow: NSWindow?
+    @State private var progress: TransferProgress?
 
     private enum Phase: Equatable {
         case resolvingTarget
@@ -34,14 +35,11 @@ struct RestoreDatabaseFlow: View {
             case .pickDatabase:
                 pickerView
             case .running(let database):
-                BackupProgressSheet(
-                    kind: .restore,
-                    database: database,
-                    bytesWritten: 0,
-                    totalBytes: nil,
-                    isCancelling: service.state == .cancelling,
-                    onCancel: { service.cancel() }
-                )
+                TransferProgressSheet(
+                    progress: service.state.restoreProgress(database: database, last: progress)
+                ) {
+                    service.cancel()
+                }
             case .finished(let database, let skippedSettings):
                 BackupResultSheet(
                     kind: .restore,
@@ -154,6 +152,7 @@ struct RestoreDatabaseFlow: View {
         switch state {
         case .running(let database, _, _, _):
             phase = .running(database: database)
+            progress = state.restoreProgress(database: database, last: progress)
         case .finished(let database, _, _, let skippedSettings):
             phase = .finished(database: database, skippedSettings: skippedSettings)
             CatalogChangeService.post(

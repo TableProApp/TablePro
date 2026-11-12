@@ -9,10 +9,10 @@ use sourceview5::prelude::*;
 use tablepro_linux_platform::AppSettings;
 
 use crate::ui::clipboard::ClipboardPayload;
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 use crate::ui::handler_guard::HandlerGuard;
 
-const FALLBACK_SCHEME: &str = "Adwaita";
+const FALLBACK_SCHEME: &str = "";
 
 /// Read-only text in a source view, with Copy. What it shows may be cut
 /// short, since the view lays out every character it holds; Copy always
@@ -37,8 +37,6 @@ pub(crate) struct SourceDialog {
     pub(crate) header: adw::HeaderBar,
 }
 
-/// With `settings`, the text takes the SQL editor's scheme, following a
-/// change of it or of the light or dark style while the dialog is open.
 pub(crate) fn source_dialog(text: SourceText, settings: Option<&Rc<AppSettings>>) -> SourceDialog {
     let buffer = sourceview5::Buffer::new(None);
     if let Some(language) = sourceview5::LanguageManager::default().language(text.language) {
@@ -91,16 +89,14 @@ pub(crate) fn source_dialog(text: SourceText, settings: Option<&Rc<AppSettings>>
     let shown_in = view.downgrade();
     dialog.connect_closed(move |_| {
         guards.borrow_mut().clear();
-        // GtkSourceView before 5.21 never frees a view that has drawn its
-        // line numbers, so the closed dialog takes the text back.
         if let Some(view) = shown_in.upgrade() {
-            view.set_buffer(Some(&sourceview5::Buffer::new(None)));
+            crate::ui::text_view_teardown::release(&view);
         }
     });
     SourceDialog { dialog, header }
 }
 
-fn follow_scheme(buffer: &sourceview5::Buffer, settings: Option<&Rc<AppSettings>>) -> Vec<HandlerGuard> {
+pub(crate) fn follow_scheme(buffer: &sourceview5::Buffer, settings: Option<&Rc<AppSettings>>) -> Vec<HandlerGuard> {
     let paint = {
         let buffer = buffer.downgrade();
         let settings = settings.map(Rc::downgrade);
@@ -143,7 +139,7 @@ pub(crate) fn more_bytes(more: u64) -> String {
     crate::i18n::ngettext_f(
         "… ({count} more byte)",
         "… ({count} more bytes)",
-        plural_count(more),
+        more,
         &[("count", &format_thousands(more))],
     )
 }
@@ -207,11 +203,32 @@ mod tests {
         shown.dialog.present(Some(&*window));
         assert_eq!(scheme_of(&shown.dialog).as_deref(), Some("classic"));
 
-        settings.get().gio().set_string(key, "Adwaita").expect("a writable key");
-        assert_eq!(scheme_of(&shown.dialog).as_deref(), Some("Adwaita"));
+        let style = adw::StyleManager::default();
+        for (id, appearance) in [
+            ("Adwaita-dark", adw::ColorScheme::ForceLight),
+            ("Adwaita", adw::ColorScheme::ForceDark),
+        ] {
+            settings.get().gio().set_string(key, id).expect("a writable key");
+            style.set_color_scheme(appearance);
+            assert_eq!(scheme_of(&shown.dialog).as_deref(), Some(id));
+        }
 
         shown.dialog.force_close();
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::Default);
+    }
+
+    #[gtk4::test]
+    fn a_closed_dialog_lets_go_of_its_text_and_input_method() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = OwnedWindow::presented(adw::Window::new());
+        let shown = source_dialog(text("SELECT secret FROM vault"), None);
+        shown.dialog.present(Some(&*window));
+        let view = first_descendant_of_type::<sourceview5::View>(&shown.dialog).expect("the text");
+
+        shown.dialog.force_close();
+
+        assert_eq!(view.buffer().char_count(), 0);
+        assert_eq!(view.im_module().as_deref(), Some("gtk-im-context-none"));
     }
 
     #[test]

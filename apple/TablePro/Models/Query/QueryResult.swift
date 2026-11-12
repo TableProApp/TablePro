@@ -32,6 +32,9 @@ struct QueryResult {
 
     var columnMeta: [ResultColumnMeta]?
 
+    // See `PluginQueryResult.columnOrigins`.
+    var columnOrigins: [PluginColumnOrigin?]?
+
     /// Per row, what the driver finds that row by again. Only the driver reads it.
     var rowLocators: [String?]?
 
@@ -39,6 +42,7 @@ struct QueryResult {
     var serverOutput: PluginServerOutput = .none
 
     /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
+    var exportDocuments: [PluginExportDocument]?
     var absentCells: [Int: Set<Int>] = [:]
     var unloadedCells: [Int: [Int: Int]] = [:]
 

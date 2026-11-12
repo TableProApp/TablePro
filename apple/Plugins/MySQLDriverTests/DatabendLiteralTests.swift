@@ -13,7 +13,23 @@ struct DatabendLiteralTests {
         #expect(DatabendLiteral.quoted("it's") == "'it''s'")
         #expect(DatabendLiteral.quoted("C:\\temp\\") == "'C:\\\\temp\\\\'")
         #expect(DatabendLiteral.quoted("a\nb\tc\rd") == "'a\\nb\\tc\\rd'")
-        #expect(DatabendLiteral.quoted("a\0b") == "'a\\0b'")
+        #expect(DatabendLiteral.quoted("a\0b") == "'a\\x00b'")
+    }
+
+    // Measured on 1.2.880 and 1.2.958: '\071f3ac2' reads as 9f3ac2, and '\x0071f3ac2' as NUL then 71f3ac2.
+    @Test("NUL before an octal digit stays NUL, not the start of an octal escape")
+    func nulBeforeOctalDigit() {
+        #expect(DatabendLiteral.quoted("\u{0}71f3ac2") == "'\\x0071f3ac2'")
+        #expect(databendStringValue(of: DatabendLiteral.quoted("\u{0}71f3ac2")) == "\u{0}71f3ac2")
+    }
+
+    @Test("Databend reads every written literal back as the value, as one token")
+    func literalRoundTrip() throws {
+        for value in databendHostileValues(count: 600, seed: 0xDA7A_BE01) {
+            let sql = try DatabendLiteral.inline("SELECT ?", parameters: [.text(value)])
+            let literal = String(sql.dropFirst("SELECT ".count))
+            #expect(databendStringValue(of: literal) == value, "\(literal.debugDescription)")
+        }
     }
 
     @Test("Ctrl-Z stays a raw character, since Databend reads backslash-Z as two characters")
@@ -63,6 +79,105 @@ struct DatabendLiteralTests {
         )
         #expect(sql.hasPrefix("SELECT \"a\\\"?\" AS label"))
         #expect(sql.hasSuffix("WHERE number = 'x\" AS label, 42 AS injected FROM numbers(1) --'"))
+    }
+
+    // Measured on 1.2.880: `/** c **/ SELECT 1 WHERE 'a' = '*/ SELECT 2 --'` returned 2.
+    @Test("A placeholder that an older Databend reads inside a comment is refused", arguments: [
+        "/** customers of one region **/\nSELECT id FROM customers WHERE region = ?",
+        "/**/ SELECT id FROM customers WHERE region = ?",
+        "/* note **/ SELECT id FROM customers WHERE region = ?",
+        "/** a **/ SELECT ? /* b */",
+    ])
+    func refusesPlaceholderBehindAPairedStarComment(sql: String) {
+        #expect(throws: DatabendLiteralError.placeholdersDependOnServerVersion) {
+            try DatabendLiteral.inline(sql, parameters: [.text("*/ DROP TABLE customers --")])
+        }
+    }
+
+    @Test("A comment every release ends in the same place still binds", arguments: [
+        "/* note */ SELECT ?", "/***/ SELECT ?", "/** note */ SELECT ?", "SELECT ? /** trailing",
+    ])
+    func bindsBehindAnUnambiguousComment(sql: String) throws {
+        let bound = try DatabendLiteral.inline(sql, parameters: [.text("*/ x")])
+        #expect(bound.contains("'*/ x'"))
+    }
+
+    @Test("A form feed ends a line comment, so the placeholder after it is bound")
+    func formFeedEndsLineComment() throws {
+        let sql = try DatabendLiteral.inline("SELECT 1 --x\u{0C}, ?", parameters: [.text("v")])
+        #expect(sql == "SELECT 1 --x\u{0C}, 'v'")
+    }
+
+    // Measured on 1.2.880 and 1.2.958: `/*+ ' */ SELECT 1 -- ' */ SELECT 2` returned 2.
+    @Test("A hint's body is tokens, so a quote in it hides the placeholder after the hint")
+    func hintBodyIsTokens() throws {
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try DatabendLiteral.inline("/*+ ' */ SELECT ? -- ' */ SELECT 2", parameters: [.text("v")])
+        }
+        let sql = try DatabendLiteral.inline("SELECT /*+ SET_VAR(a=1) */ * FROM t WHERE c = ?", parameters: [.text("v")])
+        #expect(sql == "SELECT /*+ SET_VAR(a=1) */ * FROM t WHERE c = 'v'")
+        let skipped = try DatabendLiteral.inline("/*+ ? ~*/ */ SELECT ?", parameters: [.text("v")])
+        #expect(skipped == "/*+ ? ~*/ */ SELECT 'v'")
+        let taken = try DatabendLiteral.inline("/*+ SELECT /*+ x */ SELECT ?", parameters: [.text("v")])
+        #expect(taken == "/*+ SELECT /*+ x */ SELECT 'v'")
+        #expect(throws: DatabendLiteralError.placeholdersDependOnServerVersion) {
+            try DatabendLiteral.inline("MERGE /*+ SET_VAR(a=?) */ INTO t USING s ON t.id = s.id", parameters: [.text("v")])
+        }
+    }
+
+    // Measured on 1.2.880 and 1.2.958: `a$$` is one name, and `$$` after a number opens a code string.
+    @Test("A `$$` opens a code string only where it does not continue a name")
+    func dollarQuotesFollowTokens() throws {
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try DatabendLiteral.inline("SELECT 1 AS a$$ /* $$ ? */", parameters: [.text("v")])
+        }
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try DatabendLiteral.inline("SELECT 1 AS \u{E9}$$ /* $$ ? */", parameters: [.text("v")])
+        }
+        let afterNumber = try DatabendLiteral.inline("SELECT 1e5$$ ? $$, ?", parameters: [.text("v")])
+        #expect(afterNumber == "SELECT 1e5$$ ? $$, 'v'")
+        let afterPosition = try DatabendLiteral.inline("SELECT $1$$ ? $$, ?", parameters: [.text("v")])
+        #expect(afterPosition == "SELECT $1$$ ? $$, 'v'")
+    }
+
+    @Test("A stage name keeps a quote after a backslash, so the placeholder in it is not bound")
+    func stageNameHoldsItsPlaceholder() throws {
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try DatabendLiteral.inline("COPY INTO t FROM @s\\?", parameters: [.text("v")])
+        }
+        let sql = try DatabendLiteral.inline("SELECT * FROM @s WHERE x = ?", parameters: [.text("v")])
+        #expect(sql == "SELECT * FROM @s WHERE x = 'v'")
+        #expect(throws: DatabendLiteralError.placeholdersDependOnServerVersion) {
+            try DatabendLiteral.inline("SELECT * FROM @s,? ", parameters: [.text("v")])
+        }
+    }
+
+    @Test("An operator never splits into a comment opener the server does not read")
+    func operatorsStayWhole() throws {
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try DatabendLiteral.inline("SELECT 2 */* ' */ ? '", parameters: [.text("v")])
+        }
+        let sql = try DatabendLiteral.inline("SELECT 4 //* ?", parameters: [.text("v")])
+        #expect(sql == "SELECT 4 //* 'v'")
+        #expect(throws: DatabendLiteralError.placeholdersDependOnServerVersion) {
+            try DatabendLiteral.inline("SELECT a !*/* ? */", parameters: [.text("v")])
+        }
+        let json = try DatabendLiteral.inline("SELECT j ?| ['a'] FROM t WHERE id = ?", parameters: [.text("v")])
+        #expect(json == "SELECT j ?| ['a'] FROM t WHERE id = 'v'")
+    }
+
+    @Test("A server older than the tokenizer rules the binder reads is refused, and an unread banner is not")
+    func refusesAServerTooOldToBind() throws {
+        #expect(throws: DatabendLiteralError.serverTooOldToBind) {
+            try DatabendLiteral.inline("SELECT ?", parameters: [.text("v")], serverVersion: "8.0.90-v1.2.100-nightly")
+        }
+        let current = try DatabendLiteral.inline(
+            "SELECT ?", parameters: [.text("v")], serverVersion: "8.0.90-v1.2.473-nightly-a1b2c3(rust-1.78.0)"
+        )
+        #expect(current == "SELECT 'v'")
+        #expect(try DatabendLiteral.inline("SELECT ?", parameters: [.text("v")], serverVersion: "8.0.90") == "SELECT 'v'")
+        let release = try #require(DatabendLiteral.release(fromServerVersion: "8.0.90-v1.2.925-patch-15(rust)"))
+        #expect(release.major == 1 && release.minor == 2 && release.patch == 925)
     }
 
     @Test("A placeholder count that does not match the values is refused")
@@ -115,4 +230,188 @@ struct DatabendResultShapeTests {
             columns: ["number of rows updated"], rows: [[.text("1")], [.text("1")]]
         ) == nil)
     }
+}
+
+struct StarRocksLiteralTests {
+    @Test("StarRocks keeps MySQL's NUL escape, which reads no octal")
+    func nulStaysMySQLStyle() throws {
+        #expect(StarRocksLiteral.quoted("a\u{0}71") == "'a\\071'")
+        #expect(try StarRocksLiteral.inline("SELECT ?", parameters: [.text("x")]) == "SELECT 'x'")
+    }
+
+    @Test("A form feed stays a raw character, since StarRocks reads backslash-f as f")
+    func formFeedStaysRaw() {
+        #expect(StarRocksLiteral.quoted("a\u{0C}b") == "'a\u{0C}b'")
+        #expect(starRocksStringValue(of: StarRocksLiteral.quoted("a\u{0C}b")) == "a\u{0C}b")
+    }
+
+    @Test("StarRocks reads every written literal back as the value, as one token")
+    func literalRoundTrip() throws {
+        for value in databendHostileValues(count: 600, seed: 0x57A2_0C45) {
+            let sql = try StarRocksLiteral.inline("SELECT ?", parameters: [.text(value)])
+            let literal = String(sql.dropFirst("SELECT ".count))
+            #expect(starRocksStringValue(of: literal) == value, "\(literal.debugDescription)")
+        }
+    }
+
+    // Measured on StarRocks 4.1.7: `a$$`, `$$x$$`, `1e5$$` and `.5$$` are names, and `$$ x $$` after `1.5` an attachment.
+    @Test("A `$$` in a name or a number opens nothing, and one alone opens an attachment only where it closes")
+    func dollarsFollowStarRocksTokens() throws {
+        let quoted = try StarRocksLiteral.inline("SELECT 1 AS a$$, '$$ --\r? -- ', ?", parameters: [.text("v")])
+        #expect(quoted == "SELECT 1 AS a$$, '$$ --\r? -- ', 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1 AS $$x$$, ?", parameters: [.text("v")]) == "SELECT 1 AS $$x$$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1.5$$ ? $$, ?", parameters: [.text("v")]) == "SELECT 1.5$$ ? $$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1e5$$, ?", parameters: [.text("v")]) == "SELECT 1e5$$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT .5$$ ?", parameters: [.text("v")]) == "SELECT .5$$ 'v'")
+    }
+
+    @Test("Nothing after a `$$` the statement leaves open is bound, since a value holding `$$` would close it")
+    func openAttachmentBindsNothingAfterIt() {
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try StarRocksLiteral.inline("SELECT 1 AS $$, ?", parameters: [.text("$$, (SELECT 2) -- ")])
+        }
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try StarRocksLiteral.inline("SELECT 1 AS $$x, ?", parameters: [.text("$$")])
+        }
+    }
+
+    @Test("A carriage return ends a line comment, so the placeholder after it is bound")
+    func carriageReturnEndsLineComment() throws {
+        let sql = try StarRocksLiteral.inline("SELECT 1 -- x\r, ?", parameters: [.text("v")])
+        #expect(sql == "SELECT 1 -- x\r, 'v'")
+        let crlf = try StarRocksLiteral.inline("SELECT 1 -- ?\r\n, ?", parameters: [.text("v")])
+        #expect(crlf == "SELECT 1 -- ?\r\n, 'v'")
+    }
+}
+
+private struct SplitMix64: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var mixed = state
+        mixed = (mixed ^ (mixed >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        mixed = (mixed ^ (mixed >> 27)) &* 0x94D0_49BB_1331_11EB
+        return mixed ^ (mixed >> 31)
+    }
+}
+
+private func databendHostileValues(count: Int, seed: UInt64) -> [String] {
+    let scalars: [Unicode.Scalar] = [
+        "\0", "0", "7", "8", "x", "u", "\\", "'", "\"", "`", "\n", "\r", "\t", "\u{08}", "\u{0C}", "\u{1A}", "*", "/",
+        "$", "?", "-", "a", "\u{E9}", "\u{1F600}",
+    ]
+    var generator = SplitMix64(seed: seed)
+    return (0..<count).map { _ in
+        var value = String.UnicodeScalarView()
+        for _ in 0..<Int.random(in: 1...12, using: &generator) {
+            value.append(scalars.randomElement(using: &generator) ?? "a")
+        }
+        return String(value)
+    }
+}
+
+// What Databend reads from a whole single-quoted literal, or nil when it is not exactly one string token: the
+// token.rs rule `'([^'\\]|\\.|'')*'` and QuotedString::from_str in src/query/ast/src/ast/quote.rs.
+private func databendStringValue(of literal: String) -> String? {
+    let scalars = Array(literal.unicodeScalars)
+    guard scalars.count >= 2, scalars.first == "'" else { return nil }
+    var index = 1
+    var value = String.UnicodeScalarView()
+    while index < scalars.count {
+        let scalar = scalars[index]
+        if scalar == "'" {
+            if index + 1 < scalars.count, scalars[index + 1] == "'" {
+                value.append("'")
+                index += 2
+                continue
+            }
+            return index == scalars.count - 1 ? String(value) : nil
+        }
+        guard scalar == "\\" else {
+            value.append(scalar)
+            index += 1
+            continue
+        }
+        guard index + 1 < scalars.count, scalars[index + 1] != "\n" else { return nil }
+        let escaped = scalars[index + 1]
+        index += 2
+        switch escaped {
+        case "b": value.append("\u{08}")
+        case "f": value.append("\u{0C}")
+        case "n": value.append("\n")
+        case "r": value.append("\r")
+        case "t": value.append("\t")
+        case "'", "\"", "\\": value.append(escaped)
+        case "x":
+            guard index + 2 <= scalars.count,
+                  let byte = UInt8(String(String.UnicodeScalarView(scalars[index..<(index + 2)])), radix: 16)
+            else { return nil }
+            value.append(Unicode.Scalar(byte))
+            index += 2
+        case "0"..."7":
+            var code = escaped.value - 48
+            while index < scalars.count, ("0"..."7").contains(scalars[index]) {
+                code = code * 8 + scalars[index].value - 48
+                index += 1
+            }
+            guard let decoded = Unicode.Scalar(code) else { return nil }
+            value.append(decoded)
+        default:
+            value.append("\\")
+            value.append(escaped)
+        }
+    }
+    return nil
+}
+
+// What StarRocks reads from a whole single-quoted literal, or nil when it is not exactly one string token:
+// SINGLE_QUOTED_TEXT in StarRocksLex.g4, then AstBuilder.visitString, which folds `''` before escapeBackSlash.
+private func starRocksStringValue(of literal: String) -> String? {
+    let scalars = Array(literal.unicodeScalars)
+    guard scalars.count >= 2, scalars.first == "'" else { return nil }
+    var index = 1
+    var closed = false
+    while index < scalars.count {
+        switch scalars[index] {
+        case "\\" where index + 1 < scalars.count:
+            index += 2
+        case "'" where index + 1 < scalars.count && scalars[index + 1] == "'":
+            index += 2
+        case "'":
+            closed = index == scalars.count - 1
+            index = scalars.count
+        default:
+            index += 1
+        }
+    }
+    guard closed else { return nil }
+    let body = String(String.UnicodeScalarView(scalars[1..<(scalars.count - 1)]))
+        .replacingOccurrences(of: "''", with: "'", options: .literal)
+    let units = Array(body.utf16)
+    var value: [UInt16] = []
+    var cursor = 0
+    while cursor < units.count {
+        guard units[cursor] == 0x5C, cursor + 1 < units.count else {
+            value.append(units[cursor])
+            cursor += 1
+            continue
+        }
+        switch Unicode.Scalar(units[cursor + 1]).map(Character.init) {
+        case "n": value.append(0x0A)
+        case "t": value.append(0x09)
+        case "r": value.append(0x0D)
+        case "b": value.append(0x08)
+        case "0": value.append(0x00)
+        case "Z": value.append(0x1A)
+        case "_", "%": value += [0x5C, units[cursor + 1]]
+        default: value.append(units[cursor + 1])
+        }
+        cursor += 2
+    }
+    return String(utf16CodeUnits: value, count: value.count)
 }

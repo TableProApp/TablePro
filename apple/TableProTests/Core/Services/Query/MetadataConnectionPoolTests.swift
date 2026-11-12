@@ -84,7 +84,7 @@ struct MetadataConnectionPoolTests {
     func prepareSessionPassesThrough() async throws {
         let driver = MockDatabaseDriver()
 
-        try await MetadataConnectionPool.prepareSession(
+        let failures = try await MetadataConnectionPool.prepareSession(
             driver,
             queryTimeoutSeconds: 30,
             startupCommands: nil,
@@ -93,6 +93,25 @@ struct MetadataConnectionPoolTests {
         )
 
         #expect(driver.applyQueryTimeoutValues == [30])
+        #expect(failures.isEmpty)
+    }
+
+    // A pool entry or a lane whose `SET ROLE` failed would otherwise run with the login's own rights unannounced.
+    @Test("session preparation hands back the startup commands that failed")
+    func prepareSessionReturnsFailedStartupCommands() async throws {
+        let driver = MockDatabaseDriver()
+        driver.failsStatementContaining = ("SET ROLE", DatabaseError.queryFailed("role \"app_ro\" does not exist"))
+
+        let failures = try await MetadataConnectionPool.prepareSession(
+            driver,
+            queryTimeoutSeconds: 0,
+            startupCommands: "SET ROLE app_ro\nSET search_path = app",
+            connectionName: "test",
+            timeoutSeconds: 1
+        )
+
+        #expect(failures.map { $0.statement } == ["SET ROLE app_ro"])
+        #expect(driver.executedQueries == ["SET ROLE app_ro", "SET search_path = app"])
     }
 
     @Test("database switch rejects a driver that cannot switch")

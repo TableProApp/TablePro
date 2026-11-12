@@ -172,6 +172,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             .alterTableDDL,
             .cellExpressions,
             .uuidCellText,
+            .columnDefaultMarks,
         ]
     }
 
@@ -324,7 +325,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let rawResult = try await connectionActor.executeQuery(
             query, consistency: consistency, cancellation: cancellation
         )
-        if let refusal = CassandraRowWriter.unappliedInsertRefusal(
+        if let refusal = CassandraRowWriter.unappliedWriteRefusal(
             statement: query, columns: rawResult.columns, rows: rawResult.rows
         ) {
             throw CassandraPluginError.queryFailed(refusal)
@@ -371,7 +372,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let rawResult = try await connectionActor.executePrepared(
             query, parameters: parameters, consistency: consistency
         )
-        if let refusal = CassandraRowWriter.unappliedInsertRefusal(
+        if let refusal = CassandraRowWriter.unappliedWriteRefusal(
             statement: query, columns: rawResult.columns, rows: rawResult.rows
         ) {
             throw CassandraPluginError.queryFailed(refusal)

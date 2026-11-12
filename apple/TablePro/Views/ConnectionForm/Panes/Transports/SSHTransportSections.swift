@@ -17,7 +17,9 @@ struct SSHTransportSections: View {
 
     var body: some View {
         SSHServerSections(sshState: $coordinator.ssh.state)
-        forwardTargetSection
+        if DatabaseConnection.socketForwardApplies(to: coordinator.network.type) {
+            forwardTargetSection
+        }
     }
 
     /// A tunnel normally forwards to Host and Port; a database that only listens on a unix socket
@@ -79,9 +81,14 @@ struct SSHTransportSections: View {
     }
 
     private func caption(_ message: String, systemImage: String, tint: Color) -> some View {
-        Label(message, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(tint)
+        Label {
+            Text(message)
+                .foregroundStyle(.secondary)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+        }
+        .font(.caption)
     }
 }
 

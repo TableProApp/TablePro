@@ -12,6 +12,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use super::actor::{Command, session_actor};
+use super::notice_queue::{NOTICES_PER_RUN, notice_channel};
 use super::session_core::SessionCore;
 use super::session_status::SessionStatus;
 use crate::physical::PgEndpoint;
@@ -43,7 +44,7 @@ impl PgEditorSession {
         let (client, connection) = endpoint.open(&cancel).await?;
         let database = endpoint.database().map(str::to_owned);
         let close_timeout = endpoint.liveness().close_timeout;
-        let (notice_sender, notices) = mpsc::unbounded_channel();
+        let (notice_sender, notices) = notice_channel(NOTICES_PER_RUN);
         // PostgreSQL has defaulted to on since 9.1; the server reports
         // its own value at startup and on every change.
         let conforming = Arc::new(AtomicBool::new(true));

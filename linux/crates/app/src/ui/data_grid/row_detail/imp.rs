@@ -41,7 +41,17 @@ pub struct RowDetailPane {
     #[template_child]
     pub field_list: TemplateChild<gtk::ListView>,
     #[template_child]
-    pub field_label: TemplateChild<gtk::Label>,
+    pub field_results: TemplateChild<gtk::Stack>,
+    #[template_child]
+    pub field_search: TemplateChild<gtk::SearchEntry>,
+    #[template_child]
+    pub edited_toggle: TemplateChild<gtk::ToggleButton>,
+    #[template_child]
+    pub editor_dock: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub editor_tools: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub editor_box: TemplateChild<gtk::Box>,
     #[template_child]
     pub choice_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
@@ -65,7 +75,7 @@ pub struct RowDetailPane {
     #[template_child]
     pub clock_set: TemplateChild<gtk::Button>,
     #[template_child]
-    pub value_menu_button: TemplateChild<gtk::MenuButton>,
+    pub value_menu: TemplateChild<gio::Menu>,
     #[template_child]
     pub value_scroller: TemplateChild<gtk::ScrolledWindow>,
     #[template_child]
@@ -80,6 +90,8 @@ pub struct RowDetailPane {
     pub grid: glib::WeakRef<DataGrid>,
     pub fields: Fields,
     pub selection: gtk::SingleSelection,
+    pub filtered: gtk::FilterListModel,
+    pub field_filter: gtk::CustomFilter,
     /// The row the pane shows, while it has one.
     pub shown: RefCell<Option<Shown>>,
     /// The data column of the selected field.
@@ -128,6 +140,7 @@ impl ObjectSubclass for RowDetailPane {
 
 impl ObjectImpl for RowDetailPane {
     fn dispose(&self) {
+        crate::ui::text_view_teardown::release(&self.value_view.get());
         if let Some(load) = self.picture_load.take() {
             load.stop();
         }

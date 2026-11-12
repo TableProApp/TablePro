@@ -1,7 +1,8 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,9 +15,13 @@ use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
 use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
 
-mod legacy_groups;
+mod additions;
+mod cloud;
 mod library;
 mod placement;
+
+pub use additions::ImportedConnection;
+pub(crate) use placement::cyclic;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
@@ -30,36 +35,26 @@ pub struct SavedConnection {
     pub port: u16,
     pub database: String,
     pub username: String,
-    /// Required, with no default: a file without it was written before
-    /// TLS modes existed, and guessing a mode for it could silently
-    /// connect in the clear.
+    /// Required, with no default: guessing a mode for a file that lost it
+    /// could silently connect in the clear.
     pub tls: TlsConfig,
     /// Required, with no default: guessing Off for a file that lost it
     /// would drop a guard the user set.
     pub safe_mode: SafeModeLevel,
-    /// What MCP clients may do here. A file written before the level
-    /// existed reads as Read Only, the level a new connection starts at.
-    #[serde(default)]
+    /// What MCP clients may do here.
     pub external_access: ExternalAccess,
-    /// What the AI assistant may send from here. A file written before
-    /// the policy existed reads as Ask, the policy a new connection
-    /// starts at.
-    #[serde(default)]
+    /// What the AI assistant may send from here.
     pub ai_policy: AiPolicy,
-    /// The editor's query timeout here, in seconds, zero for none. A file
-    /// written before it existed, like a connection that never set one,
-    /// leaves it out and follows the one in Preferences.
+    /// The editor's query timeout here, in seconds, zero for none. A
+    /// connection that never set one leaves it out and follows the one in
+    /// Preferences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_timeout_secs: Option<u32>,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SavedSshConfig>,
-    /// Last successful open of this connection. Drives the welcome
-    /// view's recency-first sort. `None` for connections saved before
-    /// this field shipped (legacy files just deserialize into None);
-    /// they sort after every connection that has been opened at least
-    /// once and fall back to alphabetical against each other.
+    // The picker's Recent section reads it; `None` for one never opened.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<DateTime<Utc>>,
     /// A colour the user put on this connection to tell production
@@ -119,7 +114,7 @@ impl SavedConnection {
     /// Whether the two differ at most in how the list shows them. A
     /// field added later counts as part of the connection until it is
     /// listed here.
-    fn connects_like(&self, other: &Self) -> bool {
+    pub fn connects_like(&self, other: &Self) -> bool {
         let shown_alike = |saved: &Self| Self {
             name: String::new(),
             last_opened_at: None,
@@ -258,46 +253,7 @@ impl ConnectionsDocument {
 
 impl crate::document::VersionedDocument for ConnectionsDocument {
     const KIND: &'static str = "connections";
-    const VERSION: u32 = 3;
-    const UPGRADES: &'static [crate::document::Upgrade] =
-        &[read_only_to_safe_mode, legacy_groups::group_names_to_groups];
-}
-
-/// Version 1 had a read-only switch, which became the Safe Mode level:
-/// on is Read-Only, off is Off.
-fn read_only_to_safe_mode(mut document: serde_json::Value) -> Result<serde_json::Value, String> {
-    let slot = document
-        .get_mut("connections")
-        .ok_or_else(|| "the file has no list of connections".to_owned())?;
-    let switches: Vec<ReadOnlySwitch> = serde_json::from_value(slot.take()).map_err(|error| error.to_string())?;
-    let levels: Vec<SafeModeLevelled> = switches
-        .into_iter()
-        .map(|connection| SafeModeLevelled {
-            safe_mode: match connection.read_only.unwrap_or(false) {
-                true => SafeModeLevel::ReadOnly,
-                false => SafeModeLevel::Off,
-            },
-            rest: connection.rest,
-        })
-        .collect();
-    *slot = serde_json::to_value(levels).map_err(|error| error.to_string())?;
-    Ok(document)
-}
-
-/// A version 1 connection: its switch, and everything else as it was.
-#[derive(Deserialize)]
-struct ReadOnlySwitch {
-    #[serde(default)]
-    read_only: Option<bool>,
-    #[serde(flatten)]
-    rest: serde_json::Value,
-}
-
-#[derive(Serialize)]
-struct SafeModeLevelled {
-    safe_mode: SafeModeLevel,
-    #[serde(flatten)]
-    rest: serde_json::Value,
+    const VERSION: u32 = 1;
 }
 
 /// The connections, their groups and tags, and the favourites, as one
@@ -442,14 +398,17 @@ pub struct ImportEntry {
     pub change: ImportChange,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportChange {
     /// A connection the list did not have, including one whose id was
     /// taken by a different connection and was given its own.
     Added,
     /// A connection already in the list that the file only renamed,
     /// recoloured, regrouped, retagged or gave another icon.
-    Updated,
+    Updated {
+        /// The name it had, when the import gives it another.
+        renamed_from: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,19 +417,18 @@ pub enum RemoveOutcome {
     NotPresent,
 }
 
+// The file's bytes when the cache was read from it or written to it, `None` for no file.
+type FileBytes = Option<Vec<u8>>;
+
 #[derive(Debug)]
 enum StoreState {
     Unloaded,
-    Ready(ConnectionsDocument),
-    Unavailable(DocumentProblem),
+    Ready(ConnectionsDocument, FileBytes),
+    // `None` when the file could not be read at all.
+    Unavailable(DocumentProblem, Option<FileBytes>),
 }
 
-/// The saved-connection list on disk. One store per storage root, so a
-/// development build and an installed build never share a file.
-///
-/// Every mutation holds the mutex across read, apply, encode and write,
-/// so two threads cannot interleave a read-modify-write and lose an
-/// entry.
+// A write holds the mutex and a lock file from its re-read of the list to its rename, so no writer loses an entry.
 #[derive(Clone)]
 pub struct ConnectionStore {
     inner: Arc<StoreInner>,
@@ -480,6 +438,25 @@ struct StoreInner {
     path: PathBuf,
     state: Mutex<StoreState>,
     snapshot: watch::Sender<ConnectionListSnapshot>,
+}
+
+struct WriteGuard<'a> {
+    state: MutexGuard<'a, StoreState>,
+    _file: Option<std::fs::File>,
+}
+
+impl Deref for WriteGuard<'_> {
+    type Target = StoreState;
+
+    fn deref(&self) -> &StoreState {
+        &self.state
+    }
+}
+
+impl DerefMut for WriteGuard<'_> {
+    fn deref_mut(&mut self) -> &mut StoreState {
+        &mut self.state
+    }
 }
 
 impl ConnectionStore {
@@ -521,8 +498,8 @@ impl ConnectionStore {
 
     /// A new entry, or one that changed group, goes last in its group.
     pub fn upsert_blocking(&self, connection: SavedConnection) -> Result<(), StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let mut connection = connection;
         let stored = document
             .connections
@@ -535,9 +512,43 @@ impl ConnectionStore {
         self.commit(&mut state, document)
     }
 
+    // One write, so no publish shows a copy at the end of its group before it moves up.
+    pub fn insert_after_blocking(&self, connection: SavedConnection, after: Uuid) -> Result<(), StorageError> {
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
+        let mut connection = connection;
+        let stored = document
+            .connections
+            .iter()
+            .find(|saved| saved.id == connection.id)
+            .map(|saved| (saved.group_id, saved.order));
+        document.connections.retain(|saved| saved.id != connection.id);
+        let anchor = document
+            .connections
+            .iter()
+            .find(|saved| saved.id == after)
+            .map(|saved| (saved.group_id, saved.order));
+        match anchor {
+            Some((group, order)) => {
+                for later in document
+                    .connections
+                    .iter_mut()
+                    .filter(|saved| saved.group_id == group && saved.order > order)
+                {
+                    later.order = later.order.saturating_add(1);
+                }
+                connection.group_id = group;
+                connection.order = order.saturating_add(1);
+            }
+            None => document.settle_place(&mut connection, stored),
+        }
+        document.connections.push(connection);
+        self.commit(&mut state, document)
+    }
+
     pub fn remove_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let before = document.connections.len();
         document.connections.retain(|saved| saved.id != id);
         if document.connections.len() == before {
@@ -554,8 +565,8 @@ impl ConnectionStore {
         name: ConnectionTagName,
         color: crate::ConnectionColor,
     ) -> Result<ConnectionTag, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         if document.tags.iter().any(|tag| tag.name.same_name(name.as_str())) {
             return Err(StorageError::TagNameTaken);
         }
@@ -568,8 +579,8 @@ impl ConnectionStore {
     /// Rename or recolour the tag with `changed`'s id, on every
     /// connection that carries it.
     pub fn update_tag_blocking(&self, changed: ConnectionTag) -> Result<(), StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         if document
             .tags
             .iter()
@@ -589,8 +600,8 @@ impl ConnectionStore {
 
     /// Delete a tag and take it off every connection, in one write.
     pub fn delete_tag_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let before = document.tags.len();
         document.tags.retain(|tag| tag.id != id);
         if document.tags.len() == before {
@@ -609,8 +620,8 @@ impl ConnectionStore {
         id: Uuid,
         change: impl FnOnce(&mut SavedConnection),
     ) -> Result<Option<SavedConnection>, StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let Some(index) = document.connections.iter().position(|saved| saved.id == id) else {
             return Ok(None);
         };
@@ -630,12 +641,10 @@ impl ConnectionStore {
         Ok(Some(updated))
     }
 
-    /// Stamp the last-opened time so the welcome view can sort
-    /// recency-first. An id that is not in the list writes nothing:
-    /// a connection opened without saving has nothing to update.
+    // For the picker's Recent section. A connection opened without saving has no entry, so nothing is written.
     pub fn touch_last_opened_blocking(&self, id: Uuid) -> Result<(), StorageError> {
-        let mut state = self.lock();
-        let mut document = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
         let Some(connection) = document.connections.iter_mut().find(|saved| saved.id == id) else {
             return Ok(());
         };
@@ -683,7 +692,8 @@ impl ConnectionStore {
     /// when the import began, whatever order the file lists them in, and
     /// an added one never takes the file's last-opened time, so a file
     /// cannot pass one host off as another saved connection or sort it
-    /// above one.
+    /// above one. An updated entry whose name the file keeps keeps it,
+    /// even when another entry has the same one.
     ///
     /// Tags are matched by id first and then by name, so importing a
     /// file twice, or a file from a machine whose `production` tag has
@@ -723,8 +733,8 @@ impl ConnectionStore {
             landed.insert(from, entry.connection.id);
             entries.push(entry);
         }
-        // Added and never taken away: a file written before favourites
-        // existed lists none, and must not clear the user's.
+        // Added and never taken away: a file that lists none must not
+        // clear the user's.
         let mut favorites: HashSet<Uuid> = document.favorites.iter().copied().collect();
         for id in incoming.favorites.iter().filter_map(|id| landed.get(id)) {
             if favorites.insert(*id) {
@@ -742,8 +752,8 @@ impl ConnectionStore {
     /// refused, since the user agreed to that preview and not another.
     pub fn apply_import_blocking(&self, preview: &ImportPreview) -> Result<ImportReport, StorageError> {
         let report = preview.report();
-        let mut state = self.lock();
-        let current = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let current = self.ensure_current(&mut state)?;
         if current != preview.before {
             return Err(StorageError::ImportOutdated);
         }
@@ -756,23 +766,25 @@ impl ConnectionStore {
         Ok(report)
     }
 
-    /// Move the unreadable file aside and start from an empty list,
-    /// returning the name the old file now has so the user can find it.
-    /// Only valid while the list is unavailable.
+    // Returns the name the unreadable file was moved to. Another process may have reset or rewritten it since.
     pub fn reset_unreadable_blocking(&self, now: std::time::SystemTime) -> Result<PathBuf, StorageError> {
-        let mut state = self.lock();
-        if !matches!(*state, StoreState::Unavailable(_)) {
-            return Err(StorageError::Schema(
-                "the saved connections are readable; there is nothing to reset".to_owned(),
-            ));
+        let mut state = self.lock_to_write();
+        match self.ensure_current(&mut state) {
+            Err(StorageError::DocumentUnavailable(_)) => {}
+            Ok(_) => {
+                return Err(StorageError::Schema(
+                    "the saved connections are readable; there is nothing to reset".to_owned(),
+                ));
+            }
+            Err(error) => return Err(error),
         }
         let moved = crate::fs::move_aside_blocking(&self.inner.path, now)?;
-        *state = StoreState::Ready(ConnectionsDocument::default());
+        *state = StoreState::Ready(ConnectionsDocument::default(), None);
         self.publish(&state);
         Ok(moved)
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, StoreState> {
+    fn lock(&self) -> MutexGuard<'_, StoreState> {
         match self.inner.state.lock() {
             Ok(guard) => guard,
             // A panic mid-mutation leaves the cache suspect, so drop it
@@ -785,29 +797,74 @@ impl ConnectionStore {
         }
     }
 
-    /// A copy of the list to change, read from disk the first time.
+    fn lock_to_write(&self) -> WriteGuard<'_> {
+        let state = self.lock();
+        let file = crate::fs::lock_beside_blocking(&self.inner.path);
+        WriteGuard { state, _file: file }
+    }
+
     fn ensure_loaded(&self, state: &mut StoreState) -> Result<ConnectionsDocument, StorageError> {
-        if let StoreState::Unloaded = state {
-            *state = match read_document(&self.inner.path) {
-                Ok(document) => StoreState::Ready(document),
-                Err(problem) => StoreState::Unavailable(problem),
-            };
-            self.publish(state);
+        self.refresh(state, false)
+    }
+
+    fn ensure_current(&self, state: &mut WriteGuard<'_>) -> Result<ConnectionsDocument, StorageError> {
+        self.refresh(state, true)
+    }
+
+    // A file that cannot be read keeps the list for a read and refuses a write, which would land over unseen bytes.
+    fn refresh(&self, state: &mut StoreState, writing: bool) -> Result<ConnectionsDocument, StorageError> {
+        let path = self.inner.path.as_path();
+        match read_bytes(path) {
+            Ok(found) => {
+                let unchanged = match &*state {
+                    StoreState::Ready(_, seen) | StoreState::Unavailable(_, Some(seen)) => *seen == found,
+                    StoreState::Unloaded | StoreState::Unavailable(_, None) => false,
+                };
+                if !unchanged {
+                    let decoded = decode(path, found.as_deref());
+                    *state = match decoded {
+                        Ok(document) => StoreState::Ready(document, found),
+                        Err(problem) => StoreState::Unavailable(problem, Some(found)),
+                    };
+                    self.publish(state);
+                }
+            }
+            Err(source) => {
+                if let StoreState::Ready(document, _) = &*state {
+                    if writing {
+                        return Err(StorageError::Io {
+                            path: path.to_owned(),
+                            source,
+                        });
+                    }
+                    return Ok(document.clone());
+                }
+                let problem = DocumentProblem::new(
+                    path,
+                    DocumentProblemKind::Unreadable {
+                        detail: source.to_string(),
+                    },
+                );
+                if !matches!(&*state, StoreState::Unavailable(held, None) if *held == problem) {
+                    *state = StoreState::Unavailable(problem, None);
+                    self.publish(state);
+                }
+            }
         }
         match state {
-            StoreState::Ready(document) => Ok(document.clone()),
-            StoreState::Unavailable(problem) => Err(StorageError::DocumentUnavailable(problem.clone())),
+            StoreState::Ready(document, _) => Ok(document.clone()),
+            StoreState::Unavailable(problem, _) => Err(StorageError::DocumentUnavailable(problem.clone())),
             StoreState::Unloaded => unreachable!("just loaded"),
         }
     }
 
-    /// A change that changes nothing writes nothing.
+    // A change that changes nothing writes nothing.
     fn edit<T>(
         &self,
         change: impl FnOnce(&mut ConnectionsDocument) -> Result<T, StorageError>,
     ) -> Result<T, StorageError> {
-        let mut state = self.lock();
-        let before = self.ensure_loaded(&mut state)?;
+        let mut state = self.lock_to_write();
+        let before = self.ensure_current(&mut state)?;
         let mut document = before.clone();
         let outcome = change(&mut document)?;
         document.tidy();
@@ -817,14 +874,18 @@ impl ConnectionStore {
         Ok(outcome)
     }
 
-    /// Write first, then adopt. A failed write leaves both the file and
-    /// the cached list exactly as they were.
-    fn commit(&self, state: &mut StoreState, mut document: ConnectionsDocument) -> Result<(), StorageError> {
+    // Write first, then adopt, so a failed write leaves the file and the cache as they were.
+    fn commit(&self, state: &mut WriteGuard<'_>, mut document: ConnectionsDocument) -> Result<(), StorageError> {
         // A connection saved with a tag deleted meanwhile drops it here.
         document.tidy();
         let bytes = crate::document::encode_document(&document)?;
+        crate::upgrade_copies::keep_before_write_blocking::<ConnectionsDocument>(&self.inner.path)?;
+        // Before the list itself, so a deleted connection is never gone from the list but kept in a
+        // copy, and a failed trim leaves both as they were for the next write to try again.
+        let kept = document.connections.iter().map(|saved| saved.id.to_string()).collect();
+        crate::upgrade_copies::trim_connection_copies_blocking(&self.inner.path, &kept)?;
         crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
-        *state = StoreState::Ready(document);
+        **state = StoreState::Ready(document, Some(bytes));
         self.publish(state);
         Ok(())
     }
@@ -832,8 +893,8 @@ impl ConnectionStore {
     fn publish(&self, state: &StoreState) {
         let next = match state {
             StoreState::Unloaded => ConnectionListState::Loading,
-            StoreState::Ready(document) => ConnectionListState::Ready(document.list()),
-            StoreState::Unavailable(problem) => ConnectionListState::Unavailable(Arc::new(problem.clone())),
+            StoreState::Ready(document, _) => ConnectionListState::Ready(document.list()),
+            StoreState::Unavailable(problem, _) => ConnectionListState::Unavailable(Arc::new(problem.clone())),
         };
         let revision = self.inner.snapshot.borrow().revision + 1;
         // send() drops the value when no receiver is alive, which would
@@ -852,24 +913,20 @@ impl std::fmt::Debug for ConnectionStore {
     }
 }
 
-fn read_document(path: &Path) -> Result<ConnectionsDocument, DocumentProblem> {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        // No file is an empty list, not a problem: a first run has none.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(ConnectionsDocument::default()),
-        Err(error) => {
-            return Err(DocumentProblem::new(
-                path,
-                DocumentProblemKind::Unreadable {
-                    detail: error.to_string(),
-                },
-            ));
-        }
-    };
-    if bytes.iter().all(u8::is_ascii_whitespace) {
-        return Ok(ConnectionsDocument::default());
+fn read_bytes(path: &Path) -> std::io::Result<FileBytes> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
     }
-    let mut document = crate::document::decode_document::<ConnectionsDocument>(path, &bytes)?;
+}
+
+// No file is an empty list, not a problem: a first run has none.
+fn decode(path: &Path, bytes: Option<&[u8]>) -> Result<ConnectionsDocument, DocumentProblem> {
+    let Some(bytes) = bytes.filter(|bytes| !bytes.iter().all(u8::is_ascii_whitespace)) else {
+        return Ok(ConnectionsDocument::default());
+    };
+    let mut document = crate::document::decode_document::<ConnectionsDocument>(path, bytes)?;
     document.tidy();
     Ok(document)
 }
@@ -919,22 +976,29 @@ fn merge_connection(
 ) -> ImportEntry {
     match list.iter().position(|saved| saved.id == connection.id) {
         Some(index) if list[index].connects_like(&connection) => {
-            let name = unclaimed_name(list, held, &connection.name, Some(connection.id));
+            // Two connections saved without a name to one server share
+            // one, and re-importing their export must rename neither.
+            let name = if connection.name == list[index].name {
+                connection.name
+            } else {
+                unclaimed_name(list, held, &connection.name, Some(connection.id))
+            };
             let order = if list[index].group_id == connection.group_id {
                 list[index].order
             } else {
                 placement::next_order(list, connection.group_id)
             };
             let existing = &mut list[index];
-            existing.name = name;
+            let before = std::mem::replace(&mut existing.name, name);
             existing.color = connection.color;
             existing.group_id = connection.group_id;
             existing.order = order;
             existing.tags = connection.tags;
             existing.icon = connection.icon;
+            let renamed_from = (existing.name != before).then_some(before);
             ImportEntry {
                 connection: existing.clone(),
-                change: ImportChange::Updated,
+                change: ImportChange::Updated { renamed_from },
             }
         }
         Some(_) => {
@@ -1147,10 +1211,7 @@ mod tests {
     #[test]
     fn unknown_auth_mode_is_corrupt_not_empty() {
         let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"},"auth_mode":"from_the_future"}]}"#,
-        );
+        seed(&root, &connections_json(r#","auth_mode":"from_the_future""#));
 
         let refused = store(&root).load_blocking();
 
@@ -1163,60 +1224,39 @@ mod tests {
     }
 
     #[test]
-    fn a_version_1_entry_without_the_switch_reads_as_off() {
-        let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(None));
+    fn an_entry_without_a_level_a_policy_or_an_access_level_is_refused() {
+        for (field, value) in [
+            ("safe_mode", r#""off""#),
+            ("external_access", r#""read_only""#),
+            ("ai_policy", r#""ask""#),
+        ] {
+            let root = TempDir::new().expect("tempdir");
+            let full = connections_json("");
+            let without = full.replace(&format!(r#","{field}":{value}"#), "");
+            assert_ne!(without, full, "{field}");
+            seed(&root, &without);
 
-        let list = store(&root).load_blocking().expect("load");
+            let refused = store(&root).load_blocking();
 
-        assert_eq!(list[0].safe_mode, SafeModeLevel::Off);
-    }
-
-    #[test]
-    fn a_version_1_switch_that_is_not_a_bool_is_refused() {
-        let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"},"read_only":"yes"}]}"#,
-        );
-
-        let refused = store(&root).load_blocking();
-
-        assert!(
-            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
-            "{refused:?}"
-        );
-    }
-
-    #[test]
-    fn a_version_2_entry_without_a_level_is_refused() {
-        let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 2, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"}}]}"#,
-        );
-
-        let refused = store(&root).load_blocking();
-
-        // Guessing Off would drop a Read-Only the user set.
-        assert!(
-            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
-            "{refused:?}"
-        );
+            // Guessing would drop a guard the user set.
+            assert!(
+                matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+                "{field}: {refused:?}"
+            );
+        }
     }
 
     #[test]
     fn saved_connection_requires_tls_field() {
         let root = TempDir::new().expect("tempdir");
-        seed(
-            &root,
-            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","use_tls":true}]}"#,
-        );
+        let full = connections_json("");
+        let without = full.replace(r#","tls":{"mode":"disable"}"#, "");
+        assert_ne!(without, full);
+        seed(&root, &without);
 
         let refused = store(&root).load_blocking();
 
-        // A list written before TLS modes is refused rather than read as
-        // a guess, which could connect in the clear.
+        // A guessed mode could connect in the clear.
         assert!(
             matches!(refused, Err(StorageError::DocumentUnavailable(_))),
             "{refused:?}"
@@ -1311,6 +1351,123 @@ mod tests {
 
         let list = store.load_blocking().expect("load");
         assert_eq!(list.len(), 16, "an interleaved read-modify-write lost entries");
+    }
+
+    // Two stores on one root stand for two app processes.
+    #[test]
+    fn a_connect_keeps_a_connection_another_process_saved_after_this_one_read_the_list() {
+        let root = TempDir::new().expect("tempdir");
+        let mine = store(&root);
+        let theirs = store(&root);
+        let opened = sample_connection();
+        mine.upsert_blocking(opened.clone()).expect("upsert");
+        let added = SavedConnection {
+            name: "Added elsewhere".to_owned(),
+            ..sample_connection()
+        };
+        theirs.upsert_blocking(added.clone()).expect("their save");
+
+        mine.touch_last_opened_blocking(opened.id).expect("touch");
+
+        let saved = store(&root).load_blocking().expect("load");
+        assert!(
+            saved.iter().any(|connection| connection.id == added.id),
+            "the connect wrote over the other process's save"
+        );
+        let ConnectionListState::Ready(list) = mine.snapshot().state else {
+            panic!("expected Ready");
+        };
+        assert_eq!(list.connections.len(), 2, "the list read again was not published");
+    }
+
+    #[test]
+    fn two_stores_on_one_file_writing_at_once_lose_nothing() {
+        let root = TempDir::new().expect("tempdir");
+        let stores = [store(&root), store(&root)];
+
+        let handles: Vec<_> = (0..16)
+            .map(|index| {
+                let store = stores[index % 2].clone();
+                std::thread::spawn(move || {
+                    let mut connection = sample_connection();
+                    connection.name = format!("connection {index}");
+                    store.upsert_blocking(connection).expect("upsert");
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().expect("join");
+        }
+
+        assert_eq!(
+            store(&root).load_blocking().expect("load").len(),
+            16,
+            "one store's write went over the other's"
+        );
+    }
+
+    #[test]
+    fn a_save_goes_ahead_when_the_lock_file_cannot_be_opened() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut lock = store.path().as_os_str().to_owned();
+        lock.push(".lock");
+        std::fs::create_dir_all(PathBuf::from(lock)).expect("a directory in its place");
+
+        store.upsert_blocking(sample_connection()).expect("the save");
+
+        assert_eq!(store.load_blocking().expect("load").len(), 1);
+    }
+
+    #[test]
+    fn a_file_broken_by_hand_after_the_list_was_read_is_never_written_over() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(sample_connection()).expect("upsert");
+        std::fs::write(store.path(), b"{ half an edit").expect("the hand edit");
+
+        let refused = store.upsert_blocking(sample_connection());
+
+        assert!(
+            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+            "{refused:?}"
+        );
+        assert_eq!(std::fs::read(store.path()).expect("read"), b"{ half an edit");
+        assert!(matches!(store.snapshot().state, ConnectionListState::Unavailable(_)));
+    }
+
+    #[test]
+    fn a_list_that_cannot_be_read_again_still_shows_and_refuses_writes() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(sample_connection()).expect("upsert");
+        let revision = store.snapshot().revision;
+        std::fs::remove_file(store.path()).expect("remove");
+        std::fs::create_dir(store.path()).expect("a directory in its place");
+
+        assert_eq!(store.load_blocking().expect("the list read before").len(), 1);
+        let refused = store.upsert_blocking(sample_connection());
+
+        assert!(matches!(refused, Err(StorageError::Io { .. })), "{refused:?}");
+        assert_eq!(store.snapshot().revision, revision);
+    }
+
+    #[test]
+    fn a_reset_another_process_already_made_moves_nothing_aside() {
+        let root = TempDir::new().expect("tempdir");
+        seed(&root, "not json at all");
+        let mine = store(&root);
+        let theirs = store(&root);
+        mine.load_blocking().expect_err("unavailable");
+        theirs
+            .reset_unreadable_blocking(std::time::SystemTime::now())
+            .expect("their reset");
+        theirs.upsert_blocking(sample_connection()).expect("their save");
+
+        let refused = mine.reset_unreadable_blocking(std::time::SystemTime::now());
+
+        assert!(refused.is_err(), "{refused:?}");
+        assert_eq!(mine.load_blocking().expect("the list").len(), 1);
     }
 
     #[test]
@@ -1496,7 +1653,7 @@ mod tests {
 
         assert!(text.contains("production"), "{text}");
         assert!(text.contains("staging"), "{text}");
-        assert!(text.contains("\"version\": 3"), "{text}");
+        assert!(text.contains("\"version\": 1"), "{text}");
     }
 
     /// Every key in `value`, however deep, so a secret cannot be added
@@ -1759,18 +1916,120 @@ mod tests {
     }
 
     #[test]
+    fn a_rename_in_the_file_does_not_free_the_name_for_an_entry_under_the_same_id() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = saved("production");
+        store.upsert_blocking(mine.clone()).expect("upsert");
+        let renamed = SavedConnection {
+            name: "staging".to_owned(),
+            ..mine.clone()
+        };
+        let elsewhere = SavedConnection {
+            host: "db.other.example".to_owned(),
+            ..mine.clone()
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![renamed, elsewhere],
+            ..ConnectionsDocument::default()
+        })
+        .expect("encode");
+
+        let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        assert_eq!(report, ImportReport { added: 1, updated: 1 });
+        let list = store.load_blocking().expect("load");
+        let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
+        assert_eq!(kept.name, "staging");
+        assert_eq!(kept.host, "db.internal");
+        let added = list.iter().find(|saved| saved.id != mine.id).expect("the import");
+        assert_eq!(added.name, "production (imported)");
+        assert_eq!(added.host, "db.other.example");
+    }
+
+    #[test]
+    fn an_unchanged_reimport_keeps_names_two_entries_share() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(saved("postgres@localhost")).expect("upsert");
+        let reports = SavedConnection {
+            database: "reports".to_owned(),
+            ..saved("postgres@localhost")
+        };
+        store.upsert_blocking(reports).expect("upsert");
+        let bytes = store.export_blocking().expect("export");
+
+        let preview = store
+            .preview_import_blocking(Path::new("/tmp/c.json"), &bytes)
+            .expect("preview");
+
+        for entry in preview.entries() {
+            assert_eq!(entry.change, ImportChange::Updated { renamed_from: None });
+        }
+        assert_eq!(
+            store.apply_import_blocking(&preview).expect("apply"),
+            ImportReport { added: 0, updated: 2 }
+        );
+        let names: Vec<String> = store
+            .load_blocking()
+            .expect("load")
+            .iter()
+            .map(|saved| saved.name.clone())
+            .collect();
+        assert_eq!(names, ["postgres@localhost", "postgres@localhost"]);
+    }
+
+    #[test]
+    fn a_preview_names_what_an_updated_entry_was_called() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let production = saved("production");
+        let staging = saved("staging");
+        store.upsert_blocking(production.clone()).expect("upsert");
+        store.upsert_blocking(staging.clone()).expect("upsert");
+        let renamed = SavedConnection {
+            name: "reporting".to_owned(),
+            ..production
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![renamed, staging],
+            ..ConnectionsDocument::default()
+        })
+        .expect("encode");
+
+        let preview = store
+            .preview_import_blocking(Path::new("/tmp/c.json"), &bytes)
+            .expect("preview");
+
+        let changes: Vec<ImportChange> = preview.entries().iter().map(|entry| entry.change.clone()).collect();
+        assert_eq!(
+            changes,
+            [
+                ImportChange::Updated {
+                    renamed_from: Some("production".to_owned())
+                },
+                ImportChange::Updated { renamed_from: None },
+            ]
+        );
+        assert_eq!(preview.entries()[0].connection.name, "reporting");
+    }
+
+    #[test]
     fn a_name_that_only_looks_like_a_saved_one_is_suffixed() {
-        for lookalike in [
-            "production ",
-            " production",
-            "production\u{a0}",
-            "produ\u{200b}ction",
-            "\u{feff}production",
-            "production\u{2060}",
+        for (mine, lookalike) in [
+            ("production", "production "),
+            ("production", " production"),
+            ("production", "production\u{a0}"),
+            ("production", "produ\u{200b}ction"),
+            ("production", "\u{feff}production"),
+            ("production", "production\u{2060}"),
+            ("staging db", "staging\u{a0}db"),
+            ("staging db", "staging\u{2007}db"),
+            ("Caf\u{e9} prod", "Cafe\u{301} prod"),
         ] {
             let root = TempDir::new().expect("tempdir");
             let store = store(&root);
-            store.upsert_blocking(saved("production")).expect("upsert");
+            store.upsert_blocking(saved(mine)).expect("upsert");
             let imported = SavedConnection {
                 host: "db.attacker.example".to_owned(),
                 ..saved(lookalike)
@@ -1785,7 +2044,7 @@ mod tests {
 
             let list = store.load_blocking().expect("load");
             let added = list.iter().find(|saved| saved.id == imported.id).expect("the import");
-            assert_eq!(added.name, "production (imported)", "{lookalike:?}");
+            assert_eq!(added.name, format!("{mine} (imported)"), "{lookalike:?}");
         }
     }
 
@@ -1920,11 +2179,16 @@ mod tests {
         assert!(problem.is_newer_version(), "{problem:?}");
     }
 
-    fn connections_json(group: Option<&str>) -> String {
-        let group = group.map_or_else(String::new, |group| format!(r#","group":{group}"#));
+    /// One complete entry, with `extra` added to it and `rest` after the
+    /// connections, as the store writes them.
+    fn connections_document(extra: &str, rest: &str) -> String {
         format!(
-            r#"{{"version": 1, "connections": [{{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}}{group}}}]}}"#
+            r#"{{"version": 1, "connections": [{{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}},"safe_mode":"off","external_access":"read_only","ai_policy":"ask"{extra}}}]{rest}}}"#
         )
+    }
+
+    fn connections_json(extra: &str) -> String {
+        connections_document(extra, "")
     }
 
     /// The label of the group `store`'s first connection sits in.
@@ -1935,48 +2199,23 @@ mod tests {
     }
 
     #[test]
-    fn a_group_name_from_an_older_file_becomes_a_group_written_by_id() {
-        let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(None));
-        assert_eq!(first_group(&store(&root)), None);
-
-        let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(Some(r#"" Work ""#)));
-        let opened = store(&root);
-        assert_eq!(first_group(&opened).as_deref(), Some("Work"));
-        let work = crate::ConnectionGroup::legacy(crate::ConnectionGroupName::new("Work").expect("a name"));
-        let list = opened.load_blocking().expect("load");
-        assert_eq!(list[0].group_id, Some(work.id));
-        opened.upsert_blocking(list[0].clone()).expect("rewrite");
-        let raw: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(opened.path()).expect("read")).expect("json");
-        assert_eq!(raw["version"], 3);
-        assert_eq!(raw["connections"][0]["group_id"], work.id.to_string());
-        assert!(raw["connections"][0].get("group").is_none(), "{raw}");
-        assert_eq!(raw["groups"][0]["name"], "Work");
-
-        for blank in [r#""""#, r#""   ""#, "null"] {
-            let root = TempDir::new().expect("tempdir");
-            seed(&root, &connections_json(Some(blank)));
-
-            assert_eq!(first_group(&store(&root)), None, "{blank}");
-            assert!(store(&root).list_blocking().expect(blank).groups.is_empty(), "{blank}");
-        }
-    }
-
-    #[test]
     fn a_long_group_loads_whole_and_control_characters_are_cleaned() {
         let long = "g".repeat(200);
+        let group = "6a1f0c2e-3b4d-4e5f-8a9b-0c1d2e3f4a5b";
         for (stored, read) in [
             (format!(r#""{long}""#), long.clone()),
             (String::from(r#""Work\tHome""#), String::from("Work Home")),
         ] {
             let root = TempDir::new().expect("tempdir");
-            seed(&root, &connections_json(Some(&stored)));
+            seed(
+                &root,
+                &connections_document(
+                    &format!(r#","group_id":"{group}""#),
+                    &format!(r#", "groups": [{{"id":"{group}","name":{stored}}}]"#),
+                ),
+            );
 
-            let group = first_group(&store(&root));
-
-            assert_eq!(group.as_deref(), Some(read.as_str()), "{stored}");
+            assert_eq!(first_group(&store(&root)).as_deref(), Some(read.as_str()), "{stored}");
         }
     }
 
@@ -2194,7 +2433,7 @@ mod tests {
         let root = TempDir::new().expect("tempdir");
         seed(
             &root,
-            r#"{"version": 2, "connections": [], "tags": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"  ","color":"red"}]}"#,
+            r#"{"version": 1, "connections": [], "tags": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"  ","color":"red"}]}"#,
         );
 
         assert!(matches!(
@@ -2206,7 +2445,7 @@ mod tests {
     #[test]
     fn a_file_without_tags_or_icons_reads_and_writes_none() {
         let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(None));
+        seed(&root, &connections_json(""));
         let store = store(&root);
 
         let list = store.load_blocking().expect("load");
@@ -2299,6 +2538,27 @@ mod tests {
             vec![mine.clone(), fresh.clone()]
         );
         assert_eq!(store.load_blocking().expect("list")[0].tags, [mine.id, fresh.id]);
+    }
+
+    #[test]
+    fn an_imported_tag_that_only_looks_like_one_the_list_has_becomes_that_tag() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        let theirs = tag("lookalike", crate::ConnectionColor::Green);
+        let connection = tagged("globex-prod", &[&theirs]);
+        let file = String::from_utf8(document(vec![connection], vec![theirs]))
+            .expect("utf-8")
+            .replace("lookalike", "production\u{200b}");
+
+        store
+            .import_blocking(Path::new("/tmp/c.json"), file.as_bytes())
+            .expect("import");
+
+        assert_eq!(store.tags_blocking().expect("tags").to_vec(), vec![mine.clone()]);
+        assert_eq!(store.load_blocking().expect("list")[0].tags, [mine.id]);
     }
 
     #[test]

@@ -168,7 +168,7 @@ mod tests {
             match message {
                 ExportMessage::Chunk { bytes, rows } => chunks.push((bytes, rows)),
                 ExportMessage::Finished { rows } => finished = Some(rows),
-                ExportMessage::Progress { .. } => {}
+                ExportMessage::Progress { .. } | ExportMessage::Tables { .. } => {}
                 ExportMessage::Failed(failure) => panic!("the export failed: {failure}"),
             }
         }
@@ -239,7 +239,7 @@ mod tests {
 
         assert_eq!(finished, Some(1));
         let text: Vec<u8> = chunks.into_iter().flat_map(|(bytes, _)| bytes).collect();
-        assert_eq!(String::from_utf8(text).expect("utf-8"), "\"x\",\"y\"\n\"1\",\"2\"\n");
+        assert_eq!(String::from_utf8(text).expect("utf-8"), "x,y\n1,2\n");
     }
 
     #[tokio::test(start_paused = true)]

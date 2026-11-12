@@ -2,8 +2,9 @@ use tablepro_core::Value;
 use tablepro_core::column::{ColumnKind, TemporalZone, TextLength};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use super::display_text::display_text;
+use super::display_text::display_text_formatted;
 use super::{CellDisplay, GridColumn};
+use tablepro_linux_platform::settings::DateFormat;
 
 const MIN_CHARS: u32 = 4;
 const TEXT_MAX_CHARS: u32 = 40;
@@ -15,25 +16,22 @@ const TYPICAL_CHARS: u32 = 20;
 /// A number of a type that sets no precision.
 const TYPICAL_DIGITS: u32 = 10;
 
-/// The monospace cells a column's values open at: its widest sampled
-/// value. Text is capped so one long value does not push the rest off
-/// screen; a number or a date is never cut. The header, drawn in another
-/// font, is the caller's to measure.
-pub fn default_width_chars<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> u32 {
-    let widest = widest_cells(column, sample);
+pub fn default_width_chars<'a>(
+    column: &GridColumn,
+    sample: impl IntoIterator<Item = &'a Value>,
+    date_format: DateFormat,
+) -> u32 {
+    let widest = widest_cells(column, sample, date_format);
     let cells = match column.display() {
         CellDisplay::Bool => BOOL_CHARS,
         CellDisplay::Number => widest,
-        CellDisplay::Temporal => widest.max(spelled_chars(&column.column_type.kind).unwrap_or(0)),
+        CellDisplay::Temporal => widest.max(spelled_chars(&column.column_type.kind, date_format).unwrap_or(0)),
         CellDisplay::Text | CellDisplay::Json | CellDisplay::Binary => widest.min(TEXT_MAX_CHARS),
     };
     cells.max(MIN_CHARS)
 }
 
-/// The monospace cells a column's values open at in a table that holds
-/// no rows: a value its type leads one to expect. A bounded type gives
-/// its widest value, text no wider than a name.
-pub fn typical_width_chars(column: &GridColumn) -> u32 {
+pub fn typical_width_chars(column: &GridColumn, date_format: DateFormat) -> u32 {
     let kind = &column.column_type.kind;
     let typical = match kind {
         ColumnKind::Bool(_) => BOOL_CHARS,
@@ -46,24 +44,22 @@ pub fn typical_width_chars(column: &GridColumn) -> u32 {
         ColumnKind::Text {
             length: TextLength::Varying(length) | TextLength::Fixed(length),
         } => (*length).min(TYPICAL_CHARS),
-        _ => spelled_chars(kind).unwrap_or(TYPICAL_CHARS),
+        _ => spelled_chars(kind, date_format).unwrap_or(TYPICAL_CHARS),
     };
     typical.clamp(MIN_CHARS, TEXT_MAX_CHARS)
 }
 
-/// The values the column's type spells out, cut at the cap, for the
-/// caller to measure.
-pub fn typical_texts(column: &GridColumn) -> Vec<String> {
-    spelled(&column.column_type.kind)
+pub fn typical_texts(column: &GridColumn, date_format: DateFormat) -> Vec<String> {
+    spelled(&column.column_type.kind, date_format)
         .into_iter()
-        .map(|text| within_cap(text).to_owned())
+        .map(|text| within_cap(&text).to_owned())
         .collect()
 }
 
 /// The width of a column that turned out to hold only numbers, as an
 /// untyped PostgreSQL result does: a number is never cut.
 pub fn number_width_chars<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> u32 {
-    widest_cells(column, sample).max(MIN_CHARS)
+    widest_cells(column, sample, DateFormat::Iso).max(MIN_CHARS)
 }
 
 /// The column's name as its header draws it, cut at the cap.
@@ -71,23 +67,22 @@ pub fn header_text(column: &GridColumn) -> &str {
     within_cap(&column.name)
 }
 
-fn widest_cells<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> u32 {
+fn widest_cells<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>, date_format: DateFormat) -> u32 {
     let mut scratch = String::new();
     sample
         .into_iter()
         .take(SAMPLE_ROWS)
         .filter(|value| !value.is_null())
-        .map(|value| cells(display_text(value, &column.column_type, &mut scratch).text))
+        .map(|value| cells(display_text_formatted(value, &column.column_type, date_format, &mut scratch).text))
         .max()
         .unwrap_or(0)
 }
 
-/// The sampled values for the caller to measure, as the cells draw them
-/// and cut at the cap: of the plain ASCII ones, which a monospace font
-/// draws one cell each, the one that takes the most cells, and every
-/// other one, since its characters may draw in a fallback font. A number
-/// column is measured in tabular digits instead.
-pub fn sampled_texts<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> Vec<String> {
+pub fn sampled_texts<'a>(
+    column: &GridColumn,
+    sample: impl IntoIterator<Item = &'a Value>,
+    date_format: DateFormat,
+) -> Vec<String> {
     if column.display() == CellDisplay::Number {
         return Vec::new();
     }
@@ -95,7 +90,7 @@ pub fn sampled_texts<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &
     let mut widest_plain: Option<(u32, String)> = None;
     let mut others = Vec::new();
     for value in sample.into_iter().take(SAMPLE_ROWS).filter(|value| !value.is_null()) {
-        let text = within_cap(display_text(value, &column.column_type, &mut scratch).text);
+        let text = within_cap(display_text_formatted(value, &column.column_type, date_format, &mut scratch).text);
         if !is_plain(text) {
             others.push(text.to_owned());
             continue;
@@ -111,12 +106,8 @@ pub fn sampled_texts<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &
     others
 }
 
-/// The values of a type that holds nothing wider: a date or a time
-/// without the fractional seconds a sample adds when the column holds
-/// them, a UUID, or an enum's labels, as many as a sample holds. A MySQL
-/// SET joins its labels, so it has none.
-fn spelled(kind: &ColumnKind) -> Vec<&str> {
-    match kind {
+fn spelled(kind: &ColumnKind, date_format: DateFormat) -> Vec<String> {
+    let values: Vec<&str> = match kind {
         ColumnKind::Date => vec!["0000-00-00"],
         ColumnKind::Time { with_offset: false, .. } => vec!["00:00:00"],
         ColumnKind::Time { with_offset: true, .. } => vec!["00:00:00+00:00"],
@@ -131,11 +122,15 @@ fn spelled(kind: &ColumnKind) -> Vec<&str> {
             multiple: false,
         } => labels.iter().take(SAMPLE_ROWS).map(String::as_str).collect(),
         _ => Vec::new(),
-    }
+    };
+    values
+        .into_iter()
+        .map(|text| super::date_display::width_text(text, kind, date_format))
+        .collect()
 }
 
-fn spelled_chars(kind: &ColumnKind) -> Option<u32> {
-    spelled(kind).into_iter().map(cells).max()
+fn spelled_chars(kind: &ColumnKind, date_format: DateFormat) -> Option<u32> {
+    spelled(kind, date_format).iter().map(|text| cells(text)).max()
 }
 
 /// The cells `text` takes in a monospace font, where a Chinese or
@@ -169,8 +164,25 @@ mod tests {
     use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth, TemporalZone, TextLength};
     use tablepro_core::value::{SqlDecimal, Temporal};
 
-    use super::{default_width_chars, number_width_chars, sampled_texts, typical_texts, typical_width_chars};
+    use super::{DateFormat, number_width_chars};
+    use crate::services::grid::GridColumn;
     use crate::services::grid::test_columns::result_only;
+
+    fn default_width_chars<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> u32 {
+        super::default_width_chars(column, sample, DateFormat::Iso)
+    }
+
+    fn sampled_texts<'a>(column: &GridColumn, sample: impl IntoIterator<Item = &'a Value>) -> Vec<String> {
+        super::sampled_texts(column, sample, DateFormat::Iso)
+    }
+
+    fn typical_width_chars(column: &GridColumn) -> u32 {
+        super::typical_width_chars(column, DateFormat::Iso)
+    }
+
+    fn typical_texts(column: &GridColumn) -> Vec<String> {
+        super::typical_texts(column, DateFormat::Iso)
+    }
 
     fn text() -> ColumnKind {
         ColumnKind::Text {
@@ -430,5 +442,27 @@ mod tests {
             typical_texts(&result_only("name", text())).is_empty(),
             "text has no widest"
         );
+    }
+    #[test]
+    fn empty_timestamp_columns_size_the_selected_format_and_declared_fraction() {
+        let column = result_only(
+            "at",
+            ColumnKind::Timestamp {
+                fractional_digits: Some(6),
+                zone: TemporalZone::Offset,
+            },
+        );
+        for (format, width) in [
+            (DateFormat::Iso, 32),
+            (DateFormat::UsLong, 35),
+            (DateFormat::EuLong, 32),
+            (DateFormat::IsoDate, 10),
+            (DateFormat::UsShort, 10),
+            (DateFormat::EuShort, 10),
+        ] {
+            assert_eq!(super::default_width_chars(&column, &[], format), width);
+            assert_eq!(super::typical_width_chars(&column, format), width);
+            assert_eq!(super::typical_texts(&column, format)[0].len(), width as usize);
+        }
     }
 }

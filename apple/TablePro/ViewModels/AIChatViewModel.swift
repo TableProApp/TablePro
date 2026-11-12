@@ -31,6 +31,10 @@ final class AIChatViewModel: ObservableObject {
     @Published var selectedProviderId: UUID?
     @Published var selectedModel: String?
     @Published var availableModels: [UUID: [String]] = [:]
+    @Published private(set) var providerSettingsRevision = 0
+    private var modelListSources: [UUID: AIModelListSource] = [:]
+    private var staleModelLists: Set<UUID> = []
+    private var modelListGenerations: [UUID: Int] = [:]
     @Published var attachedContext: [ContextItem] = []
     @Published var attachedImages: [ChatImageInput] = []
     @Published var savedQueries: [SQLFavorite] = []
@@ -125,6 +129,7 @@ final class AIChatViewModel: ObservableObject {
     var chatStorage: AIChatStorage { services.aiChatStorage }
     var cachedSavedQueries: [UUID: SQLFavorite] = [:]
     private var savedQueryCancellables: Set<AnyCancellable> = []
+    private var aiSettingsCancellables: Set<AnyCancellable> = []
 
     static let maxMessageCount = 200
 
@@ -185,6 +190,7 @@ final class AIChatViewModel: ObservableObject {
         self.conversationToRestore = conversationId
         self.queryContextMetadata = services.databaseManager
         observeSavedQueryUpdates()
+        observeAISettingsChanges()
     }
 
     deinit {
@@ -406,37 +412,92 @@ final class AIChatViewModel: ObservableObject {
         pendingWalkthroughSource = nil
     }
 
+    private func observeAISettingsChanges() {
+        services.appEvents.aiSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.dropSelectionOfRemovedProvider() }
+            .store(in: &aiSettingsCancellables)
+        services.appEvents.aiProviderSaved
+            .receive(on: RunLoop.main)
+            .sink { [weak self] id in self?.providerWasSaved(id) }
+            .store(in: &aiSettingsCancellables)
+    }
+
+    private func dropSelectionOfRemovedProvider() {
+        guard let selectedProviderId,
+              !services.appSettings.ai.providers.contains(where: { $0.id == selectedProviderId })
+        else { return }
+        self.selectedProviderId = nil
+        selectedModel = nil
+    }
+
+    // A save can bring a new key, which nothing in the provider list shows.
+    private func providerWasSaved(_ id: UUID) {
+        staleModelLists.insert(id)
+        modelListGenerations[id, default: 0] += 1
+        providerSettingsRevision += 1
+    }
+
+    func modelListIsStale(for config: AIProviderConfig) -> Bool {
+        modelListSources[config.id] != AIModelListSource(config: config) || staleModelLists.contains(config.id)
+    }
+
+    private enum ModelListOutcome: Sendable {
+        case listed([String])
+        case failed
+        case notReady
+    }
+
+    private struct PendingModelList {
+        let config: AIProviderConfig
+        let apiKey: String?
+        let source: AIModelListSource
+        let generation: Int
+        let catalogRevision: Int
+    }
+
     func loadAvailableModels() async {
         let settings = services.appSettings.ai
-        let pending = settings.providers.filter { availableModels[$0.id] == nil }
+        let providerIDs = Set(settings.providers.map(\.id))
+        if availableModels.keys.contains(where: { !providerIDs.contains($0) }) {
+            availableModels = availableModels.filter { providerIDs.contains($0.key) }
+        }
+        modelListSources = modelListSources.filter { providerIDs.contains($0.key) }
+
+        let pending = settings.providers.compactMap { config -> PendingModelList? in
+            guard modelListIsStale(for: config) else { return nil }
+            return PendingModelList(
+                config: config,
+                apiKey: config.authStyle.usesAPIKey ? services.aiKeyStorage.loadAPIKey(for: config.id) : nil,
+                source: AIModelListSource(config: config),
+                generation: modelListGenerations[config.id, default: 0],
+                catalogRevision: AIModelCatalog.shared.revision(providerID: config.id)
+            )
+        }
         guard !pending.isEmpty else { return }
 
-        let results = await withTaskGroup(of: (UUID, [String]?).self) { group in
-            for config in pending {
-                let apiKey: String?
-                switch config.authStyle {
-                case .apiKey, .optionalApiKey:
-                    apiKey = services.aiKeyStorage.loadAPIKey(for: config.id)
-                case .oauth, .none:
-                    apiKey = nil
-                }
+        let results = await withTaskGroup(of: (UUID, ModelListOutcome).self) { group in
+            for entry in pending {
+                let config = entry.config
+                let apiKey = entry.apiKey
+                let catalogRevision = entry.catalogRevision
                 group.addTask {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
                     do {
                         let models = try await transport.fetchAvailableModels()
-                        AIModelCatalog.shared.store(providerID: config.id, models: models)
-                        return (config.id, models.map(\.id))
+                        AIModelCatalog.shared.store(providerID: config.id, models: models, ifUnchangedSince: catalogRevision)
+                        return (config.id, .listed(models.map(\.id)))
                     } catch is CancellationError {
-                        return (config.id, nil)
+                        return (config.id, .notReady)
                     } catch CopilotError.serverNotRunning {
-                        return (config.id, nil)
+                        return (config.id, .notReady)
                     } catch {
-                        return (config.id, [])
+                        return (config.id, .failed)
                     }
                 }
             }
 
-            var collected: [(UUID, [String]?)] = []
+            var collected: [(UUID, ModelListOutcome)] = []
             for await result in group {
                 collected.append(result)
             }
@@ -445,14 +506,26 @@ final class AIChatViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
-        for (id, models) in results {
-            guard let models else { continue }
-            if models.isEmpty {
-                let fallback = pending.first(where: { $0.id == id })?.model
-                availableModels[id] = (fallback?.isEmpty == false) ? [fallback ?? ""] : []
-            } else {
+        for (id, outcome) in results {
+            // A save while this fetch was out may have brought a new key: its own fetch decides.
+            guard let entry = pending.first(where: { $0.config.id == id }),
+                  modelListGenerations[id, default: 0] == entry.generation
+            else { continue }
+            switch outcome {
+            case .notReady:
+                continue
+            case .listed(let models) where !models.isEmpty:
                 availableModels[id] = models
+                modelListSources[id] = entry.source
+            case .failed where modelListSources[id] == entry.source && availableModels[id]?.isEmpty == false:
+                break
+            case .listed, .failed:
+                // Empty, so the menu shows the saved model as it stands; recorded, so a dead server is
+                // asked again only after a change or a save.
+                availableModels[id] = []
+                modelListSources[id] = entry.source
             }
+            staleModelLists.remove(id)
         }
     }
 
@@ -495,5 +568,20 @@ final class AIChatViewModel: ObservableObject {
         while messages.first?.role == .assistant {
             messages.removeFirst()
         }
+    }
+}
+
+// A change to any of these means another server, so the list on hand no longer describes it.
+struct AIModelListSource: Equatable, Sendable {
+    let id: UUID
+    let type: AIProviderType
+    let presetID: String?
+    let endpoint: String
+
+    init(config: AIProviderConfig) {
+        id = config.id
+        type = config.type
+        presetID = config.presetID
+        endpoint = config.endpoint
     }
 }

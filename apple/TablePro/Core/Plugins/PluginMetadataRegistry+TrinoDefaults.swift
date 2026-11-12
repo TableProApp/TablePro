@@ -37,7 +37,8 @@ extension PluginMetadataRegistry {
                     defaultSSLMode: .disabled,
                     supportsOpportunisticTLS: false,
                     tlsImpliedPorts: [443],
-                    verifiesServerWithSystemTrust: true
+                    verifiesServerWithSystemTrust: true,
+                    requestedTLSVerifiesIdentity: true
                 ),
                 schema: Self.trinoSchemaInfo,
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -88,6 +89,7 @@ extension PluginMetadataRegistry {
                     supportsOpportunisticTLS: false,
                     tlsImpliedPorts: [443],
                     verifiesServerWithSystemTrust: true,
+                    requestedTLSVerifiesIdentity: true,
                     // OFFSET is off by default (offset_clause_enabled), and the grammar takes neither
                     // FETCH NEXT nor LIMIT before OFFSET.
                     pagination: .leadingRowsOnly(maximumRows: nil)

@@ -282,7 +282,7 @@ nonisolated fileprivate extension MongoDBConnection {
 
     /// Built from the length libbson reports rather than from a terminating NUL, which a string
     /// value may hold.
-    func canonicalText(of bson: OpaquePointer) throws -> String {
+    internal func canonicalText(of bson: OpaquePointer) throws -> String {
         var length = 0
         guard let text = bson_as_canonical_extended_json(bson, &length) else {
             throw MongoDBError(code: 0, message: MongoDocumentText.unreadableDocument(""))

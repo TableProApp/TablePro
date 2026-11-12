@@ -21,7 +21,7 @@ FROM pg_catalog.pg_index i
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
 CROSS JOIN LATERAL pg_catalog.unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
 LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum AND k.attnum > 0
-WHERE i.indrelid = $1::text::regclass::oid AND k.ord <= i.indnkeyatts
+WHERE i.indrelid = $1::text::oid AND k.ord <= i.indnkeyatts
 ORDER BY ic.relname, k.ord";
 
 pub(crate) async fn fetch_indexes(client: &Client, relation: &str) -> Result<Vec<IndexInfo>, DriverError> {
@@ -68,7 +68,7 @@ SELECT ic.relname::text,
 FROM pg_catalog.pg_index i
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
 LEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid = ic.reltablespace
-WHERE i.indrelid = $1::text::regclass::oid
+WHERE i.indrelid = $1::text::oid
   AND NOT EXISTS (
       SELECT 1 FROM pg_catalog.pg_constraint c
       WHERE c.conindid = i.indexrelid AND c.conrelid = i.indrelid AND c.contype IN ('p', 'u', 'x'))
@@ -99,7 +99,7 @@ pub(super) async fn fetch_index_statements(
 
 // pg_get_indexdef prints ON ONLY for a partitioned table's index and has no form without it;
 // run as is, it builds the parent's index alone, invalid and on no partition.
-fn without_only(statement: String, unique: bool, quoted_name: &str) -> String {
+pub(crate) fn without_only(statement: String, unique: bool, quoted_name: &str) -> String {
     let head = format!("CREATE {}INDEX {quoted_name} ON ", if unique { "UNIQUE " } else { "" });
     match statement
         .strip_prefix(&head)
@@ -111,7 +111,7 @@ fn without_only(statement: String, unique: bool, quoted_name: &str) -> String {
 }
 
 // pg_get_indexdef leaves the tablespace out. It goes before the predicate, which ends the text.
-fn in_tablespace(statement: String, tablespace: &str, predicate: Option<&str>) -> String {
+pub(crate) fn in_tablespace(statement: String, tablespace: &str, predicate: Option<&str>) -> String {
     let clause = format!(" TABLESPACE {tablespace}");
     let head = predicate.and_then(|predicate| statement.strip_suffix(&format!(" WHERE {predicate}")));
     match (head, predicate) {

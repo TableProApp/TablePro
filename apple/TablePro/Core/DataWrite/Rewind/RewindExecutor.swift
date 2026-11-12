@@ -134,12 +134,23 @@ struct RewindExecutor {
         )
     }
 
+    // In the order the restore ran them, each step ordered by when the restore ran it, since undoing the restore
+    // runs its record backwards.
     static func inverseOperations(of plan: RewindPlan) -> [RowWriteOperation] {
-        plan.rows.filter { $0.outcome.restores }.map { row -> RowWriteOperation in
-            let source = row.operation
+        let restored = plan.rows.filter { $0.outcome.restores }.map(\.operation)
+        var rank: [RewindPlanner.RunEntry: Int] = [:]
+        for (position, entry) in RewindPlanner.runOrder(of: restored).enumerated() {
+            rank[entry] = position
+        }
+        return restored.enumerated().reversed().map { index, source -> RowWriteOperation in
             let kind = source.kind.inverted
             // The same stored refusal a save through a view writes, so a build without the view flag refuses too.
             let throughView = plan.record.writtenThroughView == true && kind == .delete
+            let steps = source.steps.map { sourceSteps in
+                sourceSteps.indices.reversed().map { stepIndex in
+                    sourceSteps[stepIndex].inverted.reordered(rank[.init(operation: index, step: stepIndex)] ?? 0)
+                }
+            }
             return RowWriteOperation(
                 kind: kind,
                 target: source.target,
@@ -150,7 +161,10 @@ struct RewindExecutor {
                 writtenColumns: source.writtenColumns,
                 refusal: throughView ? .identityNotPreservable : nil,
                 preImageAbsentColumns: source.postImageAbsentColumns,
-                postImageAbsentColumns: source.preImageAbsentColumns
+                postImageAbsentColumns: source.preImageAbsentColumns,
+                rowLocator: source.rowLocator,
+                order: steps?.first?.order ?? rank[.init(operation: index, step: nil)],
+                steps: steps
             )
         }
     }

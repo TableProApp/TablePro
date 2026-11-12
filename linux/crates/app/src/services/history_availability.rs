@@ -47,7 +47,9 @@ fn open_failure_text(error: &StorageError) -> String {
         StorageError::HistoryMigration(_) => {
             crate::i18n::gettext("The query history could not be updated for this version of TablePro.")
         }
-        StorageError::Io { path, source } | StorageError::Permissions { path, source } => {
+        StorageError::Io { path, source }
+        | StorageError::Permissions { path, source }
+        | StorageError::Write { path, source } => {
             let path = path.display().to_string();
             match source.kind() {
                 ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
@@ -89,6 +91,15 @@ mod tests {
         assert_eq!(
             HistoryAvailability::failed(&StorageError::HistoryNewerThanApp { version: 9 }).failure(),
             Some("The query history was written by a newer version of TablePro. Update TablePro to read it.")
+        );
+        let copy = "/home/ada/.local/state/tablepro/history.db.v20260918000000-1762300000";
+        assert_eq!(
+            HistoryAvailability::failed(&StorageError::Write {
+                path: PathBuf::from(copy),
+                source: std::io::Error::from(ErrorKind::StorageFull),
+            })
+            .failure(),
+            Some(format!("The disk that holds {copy} is full.").as_str())
         );
         assert_eq!(
             HistoryAvailability::failed(&StorageError::NotInitialised).failure(),

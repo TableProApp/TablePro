@@ -18,7 +18,7 @@ impl DeletionReport {
     /// behind, or `None` when it left nothing.
     pub fn summary(&self, name: &str) -> Option<String> {
         let left = |wanted: fn(&PurgeFailure) -> bool| self.purge_failures.iter().any(wanted);
-        let tabs = left(|failure| matches!(failure, PurgeFailure::Workspace(_)));
+        let tabs = left(|failure| matches!(failure, PurgeFailure::Workspace(_) | PurgeFailure::Settings(_)));
         let queries = left(|failure| matches!(failure, PurgeFailure::SavedQueries(_)));
         let history = left(|failure| matches!(failure, PurgeFailure::History(_)));
         let named = &[("name", name)];
@@ -51,6 +51,8 @@ impl DeletionReport {
 
 #[derive(Debug, Error)]
 pub enum PurgeFailure {
+    #[error(transparent)]
+    Settings(crate::persistence::StateFileError),
     #[error(transparent)]
     Workspace(WorkspaceSaveError),
     #[error("could not delete the saved queries: {0}")]

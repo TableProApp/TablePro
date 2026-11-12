@@ -1,9 +1,11 @@
 import SwiftUI
+import TableProSyncTransport
 
 struct WelcomeActionsPanel: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var updates = UpdateCenter.shared
-    let onActivateLicense: () -> Void
+    @ObservedObject private var syncCoordinator = SyncCoordinator.shared
+    let onSignIn: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
     let onImportFromURL: () -> Void
@@ -68,8 +70,9 @@ struct WelcomeActionsPanel: View {
             }
 
             VStack(spacing: 4) {
-                licenseNotice
-                if licenseManager.supportAudience == .prospect {
+                licenseLine
+                syncLine
+                if featureAccess.supportAudience == .prospect {
                     prospectLinks
                 }
             }
@@ -129,23 +132,46 @@ struct WelcomeActionsPanel: View {
         showsWhatsNew = WhatsNewNotice(bundle: .main, defaults: AppStorageEnvironment.shared.defaults).recordLaunch()
     }
 
-    // Only states that need the person: an active license says nothing. A license the server has not
-    // confirmed in 30 days still pauses paid features, so it keeps its warning.
+    // Only a state that needs the person: a working plan says nothing, and neither does a free account.
     @ViewBuilder
-    private var licenseNotice: some View {
-        switch licenseManager.status {
-        case .active:
-            EmptyView()
-        case .validationFailed:
-            Label(licenseManager.currentTier.displayName, systemImage: "exclamationmark.seal.fill")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.orange)
-                .help(String(localized: "License not verified in 30 days. Connect to the internet to check it."))
-        case .unlicensed, .expired, .suspended, .deactivated:
-            Button(action: onActivateLicense) {
-                Text(String(localized: "Activate License"))
+    private var licenseLine: some View {
+        if let line = LicensePresentation.welcomeLine(
+            state: featureAccess.state,
+            configuration: AccountServices.shared.configuration,
+            now: Date()
+        ) {
+            Button(line.title) {
+                perform(line.action)
             }
             .buttonStyle(.link)
+            .help(line.message)
+            .accessibilityIdentifier("welcome-license-line")
+        }
+    }
+
+    // A state without an action, and a check whose outcome needs room, open Settings > Account.
+    private func perform(_ action: LicenseNoticeAction?) {
+        switch action {
+        case .signIn:
+            onSignIn()
+        case .some(let action):
+            action.perform(referrer: .welcome)
+        case nil:
+            WindowOpener.shared.openSettings(tab: .account)
+        }
+    }
+
+    // Only a blocker that stops uploads until the person acts; the Sync pane explains it.
+    @ViewBuilder
+    private var syncLine: some View {
+        let presentation = SyncStatusPresentation(status: syncCoordinator.syncStatus)
+        if presentation.showsOnWelcome {
+            Button(presentation.title) {
+                WindowOpener.shared.openSettings(tab: .sync)
+            }
+            .buttonStyle(.link)
+            .help(presentation.message ?? "")
+            .accessibilityIdentifier("welcome-sync-line")
         }
     }
 }

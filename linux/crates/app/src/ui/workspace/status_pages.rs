@@ -1,15 +1,33 @@
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use relm4::{Component, ComponentController};
 
 use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, QueryDestination};
-use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
+use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit};
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
 use crate::ui::plain_toast;
 
+#[derive(Debug)]
+pub(crate) enum SearchInput {
+    History,
+    SavedQueries,
+    QuickOpen,
+    CloseQuickOpen,
+    QuickOpenChosen(crate::ui::quick_open::Pick),
+}
+
 impl WorkspaceModel {
+    pub(super) fn on_search(&mut self, input: SearchInput) {
+        match input {
+            SearchInput::History => self.on_show_history(),
+            SearchInput::SavedQueries => self.on_show_saved_queries(),
+            SearchInput::QuickOpen => self.on_show_quick_open(),
+            SearchInput::CloseQuickOpen => self.close_quick_open(),
+            SearchInput::QuickOpenChosen(pick) => self.on_quick_open_chosen(pick),
+        }
+    }
+
     pub(super) fn show_toast(&self, msg: &str) {
         self.add_toast(plain_toast(msg));
     }
@@ -69,24 +87,64 @@ impl WorkspaceModel {
         if self.alert_history_unavailable(&crate::i18n::gettext("Saved Queries Unavailable")) {
             return;
         }
-        let dialog = SavedQueriesDialog::builder()
-            .launch(SavedQueriesDialogInit {
-                store: self.history.store().map(|history| history.saved_queries()),
-                active_connection: self.context.active.metadata().map(|metadata| metadata.id),
-            })
-            .connect_receiver({
-                let input = self.input.clone();
-                move |_, out| {
-                    input.deliver(match out {
-                        SavedQueriesDialogOutput::OpenInNewTab(text) => WorkspaceInput::OpenHistoryQuery(text),
-                        SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => {
-                            WorkspaceInput::ReplaceActiveTabQuery(text)
-                        }
-                    });
-                }
+        let dialog = SavedQueriesDialog::new(SavedQueriesDialogInit {
+            store: self.history.store().map(|history| history.saved_queries()),
+            active_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            tasks: self.tasks.clone(),
+            hold: self.context.hold.clone(),
+        });
+        let input = self.input.clone();
+        dialog.connect_query_chosen(move |_, destination, text| {
+            input.deliver(match destination {
+                QueryDestination::NewTab => WorkspaceInput::OpenHistoryQuery(text),
+                QueryDestination::CurrentTab => WorkspaceInput::ReplaceActiveTabQuery(text),
             });
-        dialog.model().dialog().present(self.dialog_parent().as_ref());
+        });
+        dialog.present(self.dialog_parent().as_ref());
         self.saved_queries_dialog = Some(dialog);
+    }
+
+    pub(super) fn close_quick_open(&mut self) {
+        if let Some(dialog) = self.quick_open_dialog.take() {
+            dialog.dismiss();
+        }
+    }
+
+    pub(super) fn on_show_quick_open(&mut self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        self.close_quick_open();
+        let input = self.input.clone();
+        let dialog = crate::ui::quick_open::QuickOpen::new(session, self.tasks.clone(), move |pick| {
+            input.deliver(WorkspaceInput::Search(SearchInput::QuickOpenChosen(pick)));
+        });
+        if let Some(metadata) = self.context.active.metadata() {
+            dialog.include_queries(self.history.clone(), metadata.id);
+        }
+        dialog.present(self.dialog_parent().as_ref());
+        self.quick_open_dialog = Some(dialog);
+    }
+
+    pub(super) fn on_quick_open_chosen(&mut self, pick: crate::ui::quick_open::Pick) {
+        if !self.is_front() {
+            return;
+        }
+        use crate::ui::quick_open::Pick;
+        self.update(match pick {
+            Pick::Query(sql) => WorkspaceInput::OpenHistoryQuery(sql),
+            Pick::Table {
+                table: tablepro_core::meta::TableRef { schema, name },
+                structure,
+            } => match structure {
+                true => WorkspaceInput::EditStructureTab { schema, table: name },
+                false => WorkspaceInput::SelectTable {
+                    schema,
+                    name,
+                    open_mode: super::OpenMode::SwitchOrAppend,
+                },
+            },
+        });
     }
 
     /// Ask what to call the SQL in front of the user, then keep it.
@@ -147,11 +205,40 @@ impl WorkspaceModel {
             return;
         };
         let new_query = tablepro_storage::saved_queries::NewSavedQuery {
-            name: name.clone(),
+            name,
             query,
             connection_id: metadata.id,
             connection_name: metadata.name,
         };
+        self.save_named_query(new_query, false);
+    }
+
+    pub(super) fn confirm_replace_saved_query(&self, query: tablepro_storage::saved_queries::NewSavedQuery) {
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::i18n::gettext_f(
+                "Replace “{name}”?",
+                &[("name", query.name.trim())],
+            )),
+            Some(&crate::i18n::gettext(
+                "A saved query already uses this name. Replacing it will overwrite its SQL.",
+            )),
+        );
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("replace", &crate::i18n::gettext("Replace"));
+        dialog.set_response_appearance("replace", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let input = self.input.clone();
+        dialog.connect_response(None, move |_, response| {
+            if response == "replace" {
+                input.deliver(WorkspaceInput::ReplaceSavedQuery(query.clone()));
+            }
+        });
+        dialog.present(self.dialog_parent().as_ref());
+    }
+
+    pub(super) fn save_named_query(&self, new_query: tablepro_storage::saved_queries::NewSavedQuery, replace: bool) {
+        let name = new_query.name.clone();
         // The save lands even when the workspace is gone by then; only
         // its toast is dropped. A database still opening is waited for.
         let input = self.input.clone();
@@ -165,9 +252,21 @@ impl WorkspaceModel {
                 });
                 return;
             };
-            let message = match store.save(new_query).await {
-                Ok(outcome) if outcome.replaced => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
-                Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
+            let saved = if replace {
+                store.save(new_query).await.map(|outcome| outcome.replaced)
+            } else {
+                match store.save_if_new(new_query.clone()).await {
+                    Ok(Some(_)) => Ok(false),
+                    Ok(None) => {
+                        input.deliver(WorkspaceInput::ConfirmReplaceSavedQuery(new_query));
+                        return;
+                    }
+                    Err(error) => Err(error),
+                }
+            };
+            let message = match saved {
+                Ok(true) => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
+                Ok(false) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
                 Err(error) => {
                     tracing::warn!(%error, "could not save the query");
                     crate::i18n::gettext("Could not save that query.")
@@ -205,6 +304,23 @@ mod tests {
     use crate::ui::session_window::tests::{TestWindow, WAIT};
 
     #[gtk4::test]
+    fn open_quickly_closes_on_disconnect() {
+        use gtk4::prelude::*;
+        let test = TestWindow::connected("QuickOpenDisconnect");
+        let dialog = test
+            .workspace()
+            .with_model(|model| {
+                model.on_show_quick_open();
+                model.quick_open_dialog.clone().expect("quick open")
+            })
+            .expect("workspace");
+        wait_until(WAIT, || dialog.parent().is_some()).expect("shown");
+        test.window.send(crate::ui::SessionWindowInput::Disconnect);
+        wait_until(WAIT, || dialog.parent().is_none()).expect("dialog closed");
+        wait_until(WAIT, || test.window.page_name() == "picker").expect("disconnected");
+    }
+
+    #[gtk4::test]
     fn a_saved_query_is_written_under_a_hold() {
         let test = TestWindow::connected("SaveQueryHeld");
         let history = test.services.history();
@@ -227,6 +343,163 @@ mod tests {
             saved.iter().any(|query| query.name == "Orders"),
             "the hold ended before the save"
         );
+    }
+
+    #[gtk4::test]
+    fn replacing_a_saved_query_needs_confirmation_and_keeps_its_id() {
+        use crate::workspace::{answer, visible_alert};
+        let test = TestWindow::connected("ConfirmSavedQuery");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
+        let save = |sql: &str| {
+            test.workspace()
+                .with_model(|model| model.on_save_query_named("Orders".to_owned(), sql.to_owned()));
+            wait_until(WAIT, || test.hold.live() == 0).expect("save complete");
+        };
+        let read = || {
+            let store = test.services.history().store().expect("history").saved_queries();
+            let reading = test.services.tasks.spawn_task(async move { store.list(None).await });
+            finish_on_main(WAIT, reading)
+                .expect("read complete")
+                .expect("task")
+                .expect("list")
+                .remove(0)
+        };
+        save("SELECT 1");
+        let original = read();
+        save("SELECT 2");
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("replace prompt");
+        answer(&test.window, "cancel");
+        assert_eq!(read().query, "SELECT 1");
+        save("SELECT 3");
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("replace prompt");
+        answer(&test.window, "replace");
+        wait_until(WAIT, || read().query == "SELECT 3").expect("replacement");
+        assert_eq!(read().id, original.id);
+    }
+
+    #[gtk4::test]
+    fn the_favorites_scope_lists_the_saved_queries_of_the_front_connection() {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        let test = TestWindow::connected("FavoritesScope");
+        let history = test.services.history();
+        let availability = history.availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
+        let shell = test.window.shell().expect("shell");
+        let favorites = shell.imp().favorites.get().expect("favorites");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("saved query listed");
+        let store = history.store().expect("history").saved_queries();
+        let work = test.services.tasks.spawn_task(async move {
+            let saved = store.list(None).await.expect("list");
+            store.rename(saved[0].id, "Renamed").await.expect("rename");
+        });
+        finish_on_main(WAIT, work).expect("rename finished").expect("task");
+        wait_until(WAIT, || favorites.names() == ["Renamed"]).expect("external rename listed");
+        let store = history.store().expect("history").saved_queries();
+        let work = test.services.tasks.spawn_task(async move {
+            let saved = store.list(None).await.expect("list");
+            store.delete(saved[0].id).await.expect("delete");
+        });
+        finish_on_main(WAIT, work).expect("delete finished").expect("task");
+        wait_until(WAIT, || favorites.names().is_empty()).expect("external deletion listed");
+    }
+
+    #[gtk4::test]
+    fn favorites_for_an_unsaved_file_survive_reopening_it() {
+        use gtk4::{gio, subclass::prelude::ObjectSubclassIsExt};
+        let test = TestWindow::picker("FileFavorites");
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("favorites.db");
+        std::fs::write(&path, "").expect("database");
+        let file = gio::File::for_path(path);
+        test.window.send(crate::ui::SessionWindowInput::OpenFile(file.clone()));
+        test.wait_for_page("workspace");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
+        let connection = test.workspace().connection_id();
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("File query".to_owned(), "SELECT 2".to_owned()));
+        wait_until(WAIT, || test.hold.live() == 0).expect("save finished");
+        test.window.send(crate::ui::SessionWindowInput::Disconnect);
+        test.wait_for_page("picker");
+        test.window.send(crate::ui::SessionWindowInput::OpenFile(file));
+        test.wait_for_page("workspace");
+        assert_eq!(test.workspace().connection_id(), connection);
+        let shell = test.window.shell().expect("shell");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        let favorites = shell.imp().favorites.get().expect("favorites");
+        wait_until(WAIT, || favorites.names() == ["File query"]).expect("file query listed after reopen");
+    }
+
+    #[gtk4::test]
+    fn a_favorite_is_renamed_and_deleted_from_the_list() {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+        let test = TestWindow::connected("FavoritesChange");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        let shell = test.window.shell().expect("the shell");
+        let favorites = shell.imp().favorites.get().cloned().expect("the favorites pane");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
+        let id = favorites.ids()[0];
+        wait_until(WAIT, || test.hold.live() == 0).expect("save complete");
+
+        shell.rename_favorite(id, "Weekly orders".to_owned());
+        assert_eq!(test.hold.live(), 1);
+        wait_until(WAIT, || favorites.names() == ["Weekly orders"]).expect("the new name to be listed");
+
+        wait_until(WAIT, || test.hold.live() == 0).expect("rename complete");
+        shell.delete_favorite(id);
+        assert_eq!(test.hold.live(), 1);
+        wait_until(WAIT, || favorites.names().is_empty()).expect("the favorite to go");
+    }
+
+    #[gtk4::test]
+    fn favorites_are_filed_in_folders_and_a_deleted_folder_leaves_its_queries() {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+        let test = TestWindow::connected("FavoritesFolders");
+        let availability = test.services.history().availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        let shell = test.window.shell().expect("the shell");
+        let favorites = shell.imp().favorites.get().cloned().expect("the favorites pane");
+        shell.imp().scope_toggle.set_active_name(Some("favorites"));
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        wait_until(WAIT, || favorites.names() == ["Orders"]).expect("the saved query to be listed");
+
+        shell.create_folder("Reports".to_owned(), None);
+        wait_until(WAIT, || favorites.folder_destinations().len() == 1).expect("the folder to be listed");
+        let folder = favorites.folder_destinations()[0].0;
+        let store = test.services.history().store().expect("history").saved_query_folders();
+        let owner = test.workspace().connection_id().expect("connection");
+        let work = test
+            .services
+            .tasks
+            .spawn_task(async move { store.create(owner, "Monthly", Some(folder)).await });
+        let child = finish_on_main(WAIT, work)
+            .expect("created")
+            .expect("task")
+            .expect("folder");
+        wait_until(WAIT, || favorites.folder_destinations().len() == 2).expect("external folder listed");
+        assert!(
+            favorites
+                .folder_destinations()
+                .contains(&(child, "/Reports/Monthly".to_owned()))
+        );
+        shell.move_favorite(favorites.ids()[0], Some(child));
+        wait_until(WAIT, || favorites.folder_of_first_query() == Some(child)).expect("the query filed in it");
+
+        shell.delete_folder(folder);
+        wait_until(WAIT, || favorites.folder_destinations().is_empty()).expect("the folder to go");
+        assert_eq!(favorites.names(), ["Orders"], "the query went with its folder");
+        assert_eq!(favorites.folder_of_first_query(), None);
     }
 
     #[gtk4::test]

@@ -33,6 +33,7 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         schema: String?,
         columns: [String],
         originalRow: [String?],
+        documentLocator: String?,
         changes: [(column: String, value: String?)]
     ) throws -> [PluginRowWrite] {
         let original = originalRow.map(PluginCellValue.init(optionalText:))
@@ -42,13 +43,34 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
             return (index, change.column, old, PluginCellValue(optionalText: change.value))
         }
         let rowChange = PluginRowChange(rowIndex: 0, type: .update, cellChanges: cellChanges, originalRow: original)
-        return try generate(table: table, schema: schema, columns: columns, changes: [rowChange])
+        return try generate(
+            table: table, schema: schema, columns: columns, changes: [rowChange],
+            context: Self.context(locating: documentLocator)
+        )
     }
 
-    func deleteWrites(table: String, schema: String?, columns: [String], originalRow: [String?]) throws -> [PluginRowWrite] {
+    func deleteWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        originalRow: [String?],
+        documentLocator: String?
+    ) throws -> [PluginRowWrite] {
         let original = originalRow.map(PluginCellValue.init(optionalText:))
         let rowChange = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: original)
-        return try generate(table: table, schema: schema, columns: columns, changes: [rowChange], deleted: [0])
+        return try generate(
+            table: table, schema: schema, columns: columns, changes: [rowChange], deleted: [0],
+            context: Self.context(locating: documentLocator)
+        )
+    }
+
+    // The one change these build is row 0.
+    private static func context(locating documentLocator: String?) -> PluginRowWriteContext {
+        var context = PluginRowWriteContext()
+        if let documentLocator {
+            context.rowLocators = [0: documentLocator]
+        }
+        return context
     }
 
     func insertWrites(
@@ -57,8 +79,8 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         columns: [String],
         values: [(column: String, value: String?)]
     ) throws -> [PluginRowWrite] {
-        // The plugin reads this text as "leave the column out", so storing it as a value cannot be expressed.
-        if values.contains(where: { $0.value == Self.defaultSentinel }) {
+        // A plugin that does not read the default mark reads this text as "leave the column out", so it cannot store it.
+        if !plugin.capabilities.contains(.columnDefaultMarks), values.contains(where: { $0.value == Self.defaultSentinel }) {
             throw DatabaseError(message: String(format: String(
                 localized: "The text %@ cannot be inserted: this database reads it as the column's default."
             ), Self.defaultSentinel))
@@ -68,9 +90,12 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
             guard let value = given[column] else { return .text(Self.defaultSentinel) }
             return PluginCellValue(optionalText: value)
         }
-        let rowChange = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        var rowChange = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let defaulted = Set(columns.indices.filter { given[columns[$0]] == nil })
+        rowChange.defaultColumns = defaulted.isEmpty ? nil : defaulted
         return try generate(
-            table: table, schema: schema, columns: columns, changes: [rowChange], inserted: [0: row]
+            table: table, schema: schema, columns: columns, changes: [rowChange], inserted: [0: row],
+            context: PluginRowWriteContext()
         )
     }
 
@@ -135,7 +160,7 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         DatabaseError(message: String(localized: "This database cannot write this change from iPhone or iPad."))
     }
 
-    // The Mac's grid marks a cell left at the column default with this text, and the drivers leave such a column out.
+    // What a column left at its default holds, for a plugin built before `PluginRowChange.defaultColumns`.
     static let defaultSentinel = "__DEFAULT__"
 
     private func generate(
@@ -144,10 +169,12 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         columns: [String],
         changes: [PluginRowChange],
         inserted: [Int: [PluginCellValue]] = [:],
-        deleted: Set<Int> = []
+        deleted: Set<Int> = [],
+        context: PluginRowWriteContext
     ) throws -> [PluginRowWrite] {
         guard let writes = try pluginRowWrites(
-            table: table, schema: schema, columns: columns, changes: changes, inserted: inserted, deleted: deleted
+            table: table, schema: schema, columns: columns, changes: changes, inserted: inserted, deleted: deleted,
+            context: context
         ) else {
             throw Self.cannotWrite
         }
@@ -160,7 +187,8 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         columns: [String],
         changes: [PluginRowChange],
         inserted: [Int: [PluginCellValue]],
-        deleted: Set<Int>
+        deleted: Set<Int>,
+        context: PluginRowWriteContext
     ) throws -> [PluginRowWrite]? {
         try plugin.generateRowWrites(
             table: table,
@@ -171,7 +199,7 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
             insertedRowData: inserted,
             deletedRowIndices: deleted,
             insertedRowIndices: Set(inserted.keys),
-            context: PluginRowWriteContext()
+            context: context
         )
     }
 }

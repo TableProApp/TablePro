@@ -96,8 +96,13 @@ final class RowDetailViewModel {
 
     private var currentLocator: RowLocator? {
         RowLocator.locate(
-            cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails, identity: rowIdentity
+            cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails, identity: rowIdentity,
+            documentLocator: documentLocator(at: currentIndex)
         )
+    }
+
+    private func documentLocator(at index: Int) -> String? {
+        rows.indices.contains(index) ? rows[index].locator : nil
     }
 
     private func primaryKeyValues(at rowIndex: Int) -> [(column: String, value: String)]? {
@@ -149,6 +154,27 @@ final class RowDetailViewModel {
         case .null, .binary:
             return nil
         }
+    }
+
+    // Past this the row shows an excerpt, and the whole value opens on a screen of its own.
+    static let inlineByteLimit = Cell.previewByteLimit
+
+    static func excerpt(of value: String) -> String {
+        Cell.preview(of: value, maxBytes: inlineByteLimit)
+    }
+
+    func longValue(forRow rowIndex: Int, at index: Int) -> String? {
+        guard let value = completeValue(forRow: rowIndex, at: index), value.utf8.count > Self.inlineByteLimit else {
+            return nil
+        }
+        return value
+    }
+
+    // Cut with no key to read it again by: a query result past its memory budget, or a table without a primary key.
+    func isShownInPart(forRow rowIndex: Int, at index: Int) -> Bool {
+        let rowCells = cells(at: rowIndex)
+        guard rowCells.indices.contains(index), case .truncatedText(_, _, .none) = rowCells[index] else { return false }
+        return true
     }
 
     // MariaDB's catalog names a JSON column longtext while its result column says JSON, so either type decides.
@@ -508,9 +534,10 @@ final class RowDetailViewModel {
         guard rowIdentity == .keyColumns, let loadFullValueProvider, let table,
               let pkValues = primaryKeyValues(at: rowIndex) else { return nil }
         let keys = pkValues.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
+        let locator = documentLocator(at: rowIndex)
         var stored: [Int: Cell] = [:]
         for index in columnIndices {
-            let ref = CellRef(table: table.name, column: columns[index].name, primaryKey: keys)
+            let ref = CellRef(table: table.name, column: columns[index].name, primaryKey: keys, locator: locator)
             stored[index] = try await loadFullValueProvider(ref).map { Cell.text($0) } ?? .null
         }
         return stored
@@ -539,7 +566,7 @@ final class RowDetailViewModel {
         let cells = rows[rowIndex].cells.enumerated().map { index, cell in
             savedCells[index] ?? cell
         }
-        rows[rowIndex] = Row(cells: cells)
+        rows[rowIndex] = Row(cells: cells, locator: rows[rowIndex].locator)
         let overrides = (fullValueOverrides[rowIndex] ?? [:]).filter { savedCells[$0.key] == nil }
         fullValueOverrides[rowIndex] = overrides.isEmpty ? nil : overrides
     }

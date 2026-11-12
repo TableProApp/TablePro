@@ -87,6 +87,7 @@ struct SQLiteRawResult: Sendable {
     let rowsAffected: Int
     let executionTime: TimeInterval
     let isTruncated: Bool
+    var columnOrigins: [PluginColumnOrigin?]?
 }
 
 // MARK: - Busy Wait
@@ -363,6 +364,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         let columnCount = firstStep.count
         let columns = firstStep.names
         let columnTypeNames = firstStep.typeNames
+        let columnOrigins = Self.columnOrigins(after: firstStep, of: statement, on: db, text: query)
 
         var rows: [[PluginCellValue]] = []
         var truncated = false
@@ -387,8 +389,19 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             rows: rows,
             rowsAffected: rowsAffected,
             executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: truncated
+            isTruncated: truncated,
+            columnOrigins: columnOrigins
         )
+    }
+
+    private static func columnOrigins(
+        after firstStep: SQLiteResultColumns.FirstStep,
+        of statement: OpaquePointer?,
+        on db: OpaquePointer,
+        text: String
+    ) -> [PluginColumnOrigin?]? {
+        guard firstStep.result == SQLITE_ROW || firstStep.result == SQLITE_DONE else { return nil }
+        return SQLiteColumnOrigins.origins(of: statement, on: db, text: text)
     }
 
     // SQLite compiles only a text's first statement; a second one in the tail would be dropped without a word. The
@@ -441,9 +454,11 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
         let firstStep = SQLiteResultColumns.stepFirst(statement)
         let columnCount = firstStep.count
-        continuation.yield(.header(PluginStreamHeader(
+        var header = PluginStreamHeader(
             columns: firstStep.names, columnTypeNames: firstStep.typeNames, estimatedRowCount: nil
-        )))
+        )
+        header.columnOrigins = Self.columnOrigins(after: firstStep, of: statement, on: db, text: query)
+        continuation.yield(.header(header))
 
         let batchSize = 5_000
         var batch: [PluginRow] = []
@@ -486,7 +501,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             case .null:
                 bindResult = sqlite3_bind_null(statement, bindIndex)
             case .text(let stringValue):
-                bindResult = sqlite3_bind_text(statement, bindIndex, stringValue, -1, sqliteTransient)
+                bindResult = SQLiteText.bind(stringValue, to: statement, at: bindIndex)
             case .bytes(let data):
                 bindResult = data.withUnsafeBytes { rawBuffer -> Int32 in
                     sqlite3_bind_blob(statement, bindIndex, rawBuffer.baseAddress, Int32(data.count), sqliteTransient)
@@ -511,8 +526,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
                 } else {
                     row.append(.bytes(Data()))
                 }
-            } else if let text = sqlite3_column_text(statement, i) {
-                row.append(.text(String(cString: text)))
+            } else if let text = SQLiteText.column(statement, i) {
+                row.append(.text(text))
             } else {
                 row.append(.null)
             }

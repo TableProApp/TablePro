@@ -5,6 +5,7 @@
 
 import Combine
 import SwiftUI
+import TableProPluginKit
 
 @MainActor
 final class TriggerInspectorState: ObservableObject {
@@ -93,6 +94,30 @@ enum TriggerListColumns {
             return lhs.offset < rhs.offset
         }
         .map(\.trigger)
+    }
+}
+
+enum TriggerEditSource {
+    // `statement` is only the action body on some engines, and an editor seeded with it saves the body in place of the trigger.
+    static func resolve(
+        _ trigger: TriggerInfo,
+        table: String,
+        databaseType: DatabaseType,
+        on driver: any DatabaseDriver
+    ) async throws -> String {
+        if let editable = try? await driver.fetchTriggerDefinition(name: trigger.name, table: table), !editable.isEmpty {
+            return editable
+        }
+        do {
+            let source = try await driver.fetchTriggerDDL(trigger)
+            if !source.isEmpty { return source }
+        } catch {
+            guard TriggerStatementShape.createsTrigger(trigger.statement, databaseType: databaseType) else { throw error }
+        }
+        guard TriggerStatementShape.createsTrigger(trigger.statement, databaseType: databaseType) else {
+            throw PluginObjectSourceError.unsupported(trigger.name)
+        }
+        return trigger.statement
     }
 }
 
@@ -223,15 +248,22 @@ struct TriggerDetailView: View {
         Task {
             let scope = scope
             let tableName = tableName
-            let name = trigger.name
-            let fetched = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchTriggerDefinition(name: name, table: tableName)
+            let databaseType = connection.type
+            do {
+                let source = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                    try await TriggerEditSource.resolve(trigger, table: tableName, databaseType: databaseType, on: driver)
+                }
+                editorSheet = TriggerEditorSheetItem(
+                    mode: .edit(originalName: trigger.name, originalDefinition: source),
+                    sql: source
+                )
+            } catch {
+                actionError = String(
+                    format: String(localized: "The definition of trigger “%@” could not be read, so it cannot be edited: %@"),
+                    trigger.name,
+                    error.localizedDescription
+                )
             }
-            let sql = (fetched ?? nil) ?? trigger.statement
-            editorSheet = TriggerEditorSheetItem(
-                mode: .edit(originalName: trigger.name, originalDefinition: trigger.statement),
-                sql: sql
-            )
         }
     }
 
@@ -245,7 +277,7 @@ struct TriggerDetailView: View {
                     name: trigger.name
                 )
             } catch {
-                actionError = error.localizedDescription
+                actionError = GatedOperationFailure(error).message
             }
         }
     }

@@ -52,6 +52,9 @@ pub(crate) struct TlsPlan {
 
 impl TlsPlan {
     pub(crate) fn new(tls: &TlsConfig) -> Result<Self, DriverError> {
+        if tls.mode == TlsMode::Prefer {
+            return Err(DriverError::Config(ConfigError::UnsupportedTlsMode));
+        }
         if tls.client_identity.is_some() {
             return Err(DriverError::Config(ConfigError::ClientIdentityUnsupported));
         }
@@ -69,21 +72,38 @@ impl TlsPlan {
     pub(crate) fn apply(&self, config: &mut Config) {
         match self.mode {
             TlsMode::Disable => config.encryption(EncryptionLevel::NotSupported),
-            TlsMode::Require => {
+            TlsMode::Prefer | TlsMode::Require => {
                 config.encryption(EncryptionLevel::Required);
                 config.trust_cert();
             }
             TlsMode::VerifyFull => {
                 config.encryption(EncryptionLevel::Required);
-                // Added to the system roots, not in place of them.
-                if let Some(ca_file) = &self.ca_file {
-                    config.trust_cert_ca(ca_file.to_string_lossy());
-                }
-                if let Some(server_name) = &self.server_name {
-                    config.hostname_in_certificate(server_name);
-                }
+                self.verify(config);
+            }
+            TlsMode::Strict => {
+                config.encryption(EncryptionLevel::Strict);
+                self.verify(config);
             }
         }
+    }
+
+    fn verify(&self, config: &mut Config) {
+        // Added to the system roots, not in place of them.
+        if let Some(ca_file) = &self.ca_file {
+            config.trust_cert_ca(ca_file.to_string_lossy());
+        }
+        if let Some(server_name) = &self.server_name {
+            config.hostname_in_certificate(server_name);
+        }
+    }
+
+    pub(crate) fn mode(&self) -> TlsMode {
+        self.mode
+    }
+
+    /// The name the certificate is checked against on a login to `host`.
+    pub(crate) fn server_name<'a>(&'a self, host: &'a str) -> &'a str {
+        self.server_name.as_deref().unwrap_or(host)
     }
 
     /// What a failed login means, given what was asked of TLS.
@@ -122,8 +142,36 @@ impl TlsPlan {
     fn handshake_failure(&self, failure: TlsFailure) -> TlsFailure {
         match self.mode {
             TlsMode::Disable => TlsFailure::ServerRequiresTls,
-            TlsMode::Require | TlsMode::VerifyFull => failure,
+            TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyFull | TlsMode::Strict => failure,
         }
+    }
+
+    /// The failure of a login the server hung up on without a byte while
+    /// it answers the other way to begin one: a strict TLS hello it cannot
+    /// read, or a TDS 7 pre-login when it allows only strict TLS.
+    pub(crate) fn opening_refused(&self, detail: String) -> DriverError {
+        let failure = match self.mode {
+            TlsMode::Strict => TlsFailure::ServerRefusedStrict,
+            TlsMode::Disable | TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyFull => {
+                TlsFailure::ServerRequiresStrict
+            }
+        };
+        DriverError::Tls { failure, detail }
+    }
+}
+
+/// The text of a failure that is the server closing the stream.
+pub(crate) fn hung_up(error: &Error) -> Option<&str> {
+    match error {
+        Error::Io {
+            kind:
+                IoErrorKind::UnexpectedEof
+                | IoErrorKind::ConnectionReset
+                | IoErrorKind::ConnectionAborted
+                | IoErrorKind::BrokenPipe,
+            message,
+        } => Some(message),
+        _ => None,
     }
 }
 
@@ -312,6 +360,64 @@ mod tests {
         let mut config = Config::new();
         plan(TlsMode::Disable).apply(&mut config);
         assert!(format!("{config:?}").contains("encryption: NotSupported"));
+    }
+
+    #[test]
+    fn strict_starts_tls_first_and_checks_the_certificate() {
+        let strict = TlsPlan {
+            mode: TlsMode::Strict,
+            ca_file: Some(PathBuf::from("/etc/tablepro/ca.pem")),
+            server_name: Some("db.tablepro.test".to_owned()),
+        };
+        let mut config = Config::new();
+        strict.apply(&mut config);
+        let described = format!("{config:?}");
+
+        assert!(described.contains("encryption: Strict"), "{described}");
+        assert!(described.contains("bypass: false"), "{described}");
+        assert!(described.contains("/etc/tablepro/ca.pem"), "{described}");
+        assert!(
+            described.contains("hostname_in_certificate: Some(\"db.tablepro.test\")"),
+            "{described}"
+        );
+    }
+
+    #[test]
+    fn a_refused_opening_names_the_mode_the_server_takes() {
+        let failure = |mode| match plan(mode).opening_refused("tls handshake eof".to_owned()) {
+            DriverError::Tls { failure, .. } => Some(failure),
+            _ => None,
+        };
+
+        assert_eq!(failure(TlsMode::Strict), Some(TlsFailure::ServerRefusedStrict));
+        for mode in [TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull] {
+            assert_eq!(failure(mode), Some(TlsFailure::ServerRequiresStrict), "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn only_a_closed_stream_is_a_hang_up() {
+        let io = |kind| Error::Io {
+            kind,
+            message: "failed to fill whole buffer".to_owned(),
+        };
+
+        for kind in [
+            IoErrorKind::UnexpectedEof,
+            IoErrorKind::ConnectionReset,
+            IoErrorKind::ConnectionAborted,
+            IoErrorKind::BrokenPipe,
+        ] {
+            assert_eq!(hung_up(&io(kind)), Some("failed to fill whole buffer"), "{kind:?}");
+        }
+        assert_eq!(hung_up(&io(IoErrorKind::TimedOut)), None);
+        assert_eq!(hung_up(&Error::Tls("received fatal alert".to_owned())), None);
+        assert_eq!(
+            plan(TlsMode::VerifyFull).login_error(io(IoErrorKind::UnexpectedEof)),
+            DriverError::ConnectionLost {
+                during: LossPhase::Connect
+            }
+        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use libadwaita::prelude::*;
 use tablepro_core::ddl::TableDraft;
 
 use super::save_gate::SaveGate;
@@ -15,15 +16,42 @@ impl StructureModel {
     pub(super) fn on_save(&mut self, input: SaveInput, fx: &mut StructureEffects) {
         match input {
             SaveInput::Save => self.save(fx),
+            SaveInput::RequestRefresh => self.request_refresh(fx),
+            SaveInput::DiscardAndReload { acknowledged_unknown } => {
+                if !acknowledged_unknown
+                    && matches!(
+                        self.tracker.pending_state(),
+                        crate::workspace::PendingState::OutcomeUnknown(_)
+                    )
+                {
+                    fx.input(SaveInput::RequestRefresh);
+                } else if !self.saving && !self.tracker.is_saving() {
+                    fx.input(SaveInput::Discard);
+                    fx.input(SaveInput::Reload);
+                }
+            }
             SaveInput::SaveStarted => self.show_saving(true),
             SaveInput::StopSaving => fx.output(StructureTabOutput::StopSaveRequested),
             SaveInput::ConfirmDiscard => {
                 let pending = self.pending().change_count();
-                if pending > 0 {
+                if pending > 0
+                    || matches!(
+                        self.tracker.pending_state(),
+                        crate::workspace::PendingState::OutcomeUnknown(_)
+                    )
+                {
                     let sender = StructureTabSender { tab: self.this.clone() };
-                    confirm_discard(&self.widgets.inner_stack, pending, move || {
-                        sender.input(SaveInput::Discard);
-                    });
+                    confirm_discard(
+                        &self.widgets.inner_stack,
+                        pending,
+                        {
+                            let tracker = self.tracker.clone();
+                            move || tracker.pending_state()
+                        },
+                        move || {
+                            sender.input(SaveInput::Discard);
+                        },
+                    );
                 }
             }
             SaveInput::Reload => {
@@ -34,6 +62,7 @@ impl StructureModel {
                     StructureMode::New => fx.input(SaveInput::Discard),
                 }
             }
+            SaveInput::Discard if self.tracker.is_saving() => {}
             SaveInput::Discard => {
                 // This also lets go of a save whose outcome was unknown.
                 self.tracker.clear();
@@ -82,7 +111,54 @@ impl StructureModel {
         }
     }
 
+    fn request_refresh(&mut self, fx: &mut StructureEffects) {
+        if self.saving || self.tracker.is_saving() || self.load.is_running() {
+            return;
+        }
+        if self.refetching {
+            fx.input(SaveInput::Reload);
+            return;
+        }
+        let unknown = matches!(
+            self.tracker.pending_state(),
+            crate::workspace::PendingState::OutcomeUnknown(_)
+        );
+        if !unknown && self.pending().change_count() == 0 {
+            fx.input(SaveInput::Reload);
+            return;
+        }
+        let body = if unknown {
+            crate::i18n::gettext(
+                "The last save may have changed the database. Reload to read its current structure and discard this draft.",
+            )
+        } else {
+            crate::i18n::gettext(
+                "Refreshing reloads the table structure from the database and discards its unsaved changes.",
+            )
+        };
+        let dialog =
+            libadwaita::AlertDialog::new(Some(&crate::i18n::gettext("Discard Structure Changes?")), Some(&body));
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("discard", &crate::i18n::gettext("Discard and Refresh"));
+        dialog.set_response_appearance("discard", libadwaita::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let sender = StructureTabSender { tab: self.this.clone() };
+        dialog.connect_response(None, move |_, response| {
+            if response == "discard" {
+                sender.input(SaveInput::DiscardAndReload {
+                    acknowledged_unknown: unknown,
+                });
+            }
+        });
+        dialog.present(Some(&self.widgets.inner_stack));
+    }
+
     fn save(&self, fx: &mut StructureEffects) {
+        if self.edits_locked() {
+            self.refuse_edit(&SaveInput::Save.into(), fx);
+            return;
+        }
         let pending = self.pending();
         match SaveGate::of(&pending) {
             SaveGate::Enabled => {}
@@ -129,15 +205,13 @@ impl StructureModel {
         self.sync_editable();
     }
 
-    /// The draft holds still from the moment a save takes it until the
-    /// table is read again after a commit. That read replaces the draft,
-    /// so an edit made before it would be lost without a prompt.
     pub(super) fn edits_locked(&self) -> bool {
-        self.saving || self.refetching || self.tracker.is_saving()
+        // Every definition read replaces the draft, including refreshes that did not follow a save.
+        self.saving || self.refetching || self.tracker.is_saving() || self.load.is_running()
     }
 
     pub(super) fn sync_editable(&self) {
-        let editable = !self.saving && !self.refetching;
+        let editable = !self.edits_locked();
         for widget in [
             self.widgets.name_row.upcast_ref::<gtk::Widget>(),
             self.widgets.columns_box.upcast_ref(),
@@ -163,11 +237,12 @@ impl StructureModel {
         // The save landed and the read after it failed, so only Retry
         // unlocks the draft.
         let read_failed = self.refetching && !self.saving && !self.tracker.is_saving() && !self.load.is_running();
-        let text = match read_failed {
-            true => {
-                crate::i18n::gettext("The table couldn't be read after the save. Retry, then make the change again.")
-            }
-            false => crate::i18n::gettext("Wait for the save to finish, then make the change again."),
+        let text = if read_failed {
+            crate::i18n::gettext("The table couldn't be read after the save. Retry, then make the change again.")
+        } else if self.load.is_running() {
+            crate::i18n::gettext("Wait for the table structure to load, then make the change again.")
+        } else {
+            crate::i18n::gettext("Wait for the save to finish, then make the change again.")
         };
         fx.output(StructureTabOutput::ShowToast(text));
     }
@@ -202,14 +277,14 @@ impl StructureModel {
     }
 
     pub(super) fn refresh_buttons(&self, pending_count: usize, defaults_parsed: bool) {
-        let has_pending = pending_count > 0 && !self.saving;
+        let has_pending = pending_count > 0 && !self.edits_locked();
         self.widgets.save_button.set_sensitive(has_pending && defaults_parsed);
         self.widgets.discard_button.set_sensitive(has_pending);
         if has_pending {
             let label = crate::i18n::ngettext_f(
                 "{n} unsaved change",
                 "{n} unsaved changes",
-                u32::try_from(pending_count).unwrap_or(u32::MAX),
+                pending_count,
                 &[("n", &pending_count.to_string())],
             );
             crate::ui::a11y::show_status(&self.widgets.pending_label, &label);

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use futures_util::TryStreamExt;
 use postgres_types::{ToSql, Type};
-use tablepro_core::statement::{RowGuard, Statement};
+use tablepro_core::statement::{GuardedStatement, RowGuard, Statement};
 use tablepro_core::{
     CommitToken, DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WorkspaceSettings, WriteBatch, WriteKind,
     WriteLedger, WriteReport,
@@ -22,6 +22,14 @@ pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), Driver
     if read_only {
         return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
     }
+    // A database change goes out as a simple query, which carries no
+    // parameters and reports no row count a guard could check.
+    let bare = |step: &GuardedStatement| step.statement.params().is_empty() && step.guard == RowGuard::None;
+    if batch.kind == WriteKind::DatabaseChanges && !batch.steps.iter().all(bare) {
+        return Err(DriverError::Protocol(
+            "a database change carries no parameters or row guards".to_owned(),
+        ));
+    }
     batch.foreign_keys.require_enforced()
 }
 
@@ -34,21 +42,25 @@ pub(crate) struct WritePlan {
     pub(crate) legacy_txid: bool,
 }
 
-/// Run the batch in one transaction, recording each step in the ledger
-/// so a lost connection reports what is really in the database.
+/// Run the batch in one transaction, or a database change statement by
+/// statement, recording each step in the ledger so a lost connection
+/// reports what is really in the database.
 pub(crate) async fn perform(
     call: &PgCall,
     plan: &WritePlan,
     request: &StopRequest,
     stop: &PgStop,
 ) -> Result<WriteReport, DriverError> {
+    if plan.batch.kind == WriteKind::DatabaseChanges {
+        return statement_by_statement(call, plan, request, stop).await;
+    }
     let client = call.client()?;
     let ledger = &plan.ledger;
     // A schema change may legitimately run long; the call's deadline and
     // cancel still bound it.
     let statement_timeout = match plan.batch.kind {
         WriteKind::RowChanges => Some(plan.settings.statement_timeout),
-        WriteKind::SchemaChanges => None,
+        WriteKind::SchemaChanges | WriteKind::DatabaseChanges => None,
     };
     let begin = Preamble::new(Access::ReadWrite, statement_timeout, plan.settings.lock_timeout);
     let started = Instant::now();
@@ -124,6 +136,57 @@ pub(crate) async fn perform(
     }
 }
 
+/// CREATE and DROP DATABASE refuse a transaction block, and statements
+/// sent together in one simple query form one, so each goes out alone
+/// and lands on its own. No bound is set: SET LOCAL needs a transaction,
+/// and a session setting would stay on a server connection a pooler
+/// hands to other clients. The call's deadline and cancel still stop it.
+async fn statement_by_statement(
+    call: &PgCall,
+    plan: &WritePlan,
+    request: &StopRequest,
+    stop: &PgStop,
+) -> Result<WriteReport, DriverError> {
+    let client = call.client()?;
+    let ledger = &plan.ledger;
+    let mut report = Vec::with_capacity(plan.batch.steps.len());
+    for (index, step) in plan.batch.steps.iter().enumerate() {
+        if request.is_requested() {
+            return Err(ledger.interrupted(stop.interrupted(request), SessionFate::Discarded));
+        }
+        ledger.statement_sending(index);
+        if let Err(error) = client.batch_execute(step.statement.sql()).await {
+            return Err(statement_failed(call, plan, index, &error, request, stop));
+        }
+        ledger.statement_confirmed(index);
+        report.push(None);
+    }
+    Ok(WriteReport::new(report))
+}
+
+/// A statement the server answered with an error did not apply. One
+/// whose answer was lost may have, so its outcome is left unknown.
+fn statement_failed(
+    call: &PgCall,
+    plan: &WritePlan,
+    index: usize,
+    error: &tokio_postgres::Error,
+    request: &StopRequest,
+    stop: &PgStop,
+) -> DriverError {
+    let answered = error.as_db_error().is_some();
+    let error = map_error(error);
+    if !answered {
+        call.taint();
+        return plan.ledger.interrupted(error, SessionFate::Discarded);
+    }
+    let error = match request.is_requested() && acknowledges_stop(&error) {
+        true => acknowledged_stop(request, stop),
+        false => error,
+    };
+    plan.ledger.failed(index, error, SessionFate::RolledBack)
+}
+
 /// A statement the server refused, or one a stop interrupted. The
 /// transaction is rolled back either way, and the stop reads as what
 /// asked for it.
@@ -187,9 +250,9 @@ async fn count(client: &Client, probe: &Statement) -> Result<u64, DriverError> {
 /// lost can be asked about afterwards.
 async fn transaction_id(client: &Client, legacy: bool) -> Result<CommitToken, DriverError> {
     let sql = if legacy {
-        "SELECT txid_current()::text"
+        "SELECT pg_catalog.txid_current()::pg_catalog.text"
     } else {
-        "SELECT pg_current_xact_id()::text"
+        "SELECT pg_catalog.pg_current_xact_id()::pg_catalog.text"
     };
     let messages = client.simple_query(sql).await.map_err(|error| map_error(&error))?;
     let xid = messages
@@ -209,7 +272,8 @@ async fn transaction_id(client: &Client, legacy: bool) -> Result<CommitToken, Dr
 #[cfg(test)]
 mod tests {
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature};
+    use tablepro_core::statement::{BoundParam, ParamType, StatementBuilder};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature, Value};
 
     use super::*;
 
@@ -243,5 +307,45 @@ mod tests {
             precheck(&batch(ForeignKeyMode::Enforced), true),
             Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
         ));
+    }
+
+    fn sql(text: &str) -> Statement {
+        let mut builder = StatementBuilder::new();
+        builder.push_sql(text);
+        builder.finish()
+    }
+
+    fn database_changes(steps: Vec<GuardedStatement>) -> WriteBatch {
+        WriteBatch::new(
+            WriteKind::DatabaseChanges,
+            TableRef::new(Some("shop".to_owned()), ""),
+            steps,
+            ForeignKeyMode::Enforced,
+        )
+    }
+
+    #[test]
+    fn a_database_change_goes_out_only_as_plain_statements() {
+        let mut bound = StatementBuilder::new();
+        bound.push_sql("DROP DATABASE $1");
+        bound.push_bound(BoundParam::new(Value::Text("shop".to_owned()), ParamType::Text).expect("a text parameter"));
+        let plain = GuardedStatement::unguarded(sql("DROP DATABASE \"shop\""));
+
+        assert!(precheck(&database_changes(vec![plain.clone()]), false).is_ok());
+        for refused in [
+            GuardedStatement::unguarded(bound.finish()),
+            GuardedStatement::affecting_exactly(sql("DROP DATABASE \"shop\""), 1),
+        ] {
+            assert!(
+                matches!(
+                    precheck(&database_changes(vec![plain.clone(), refused.clone()]), false),
+                    Err(DriverError::Protocol(_))
+                ),
+                "{refused:?}"
+            );
+        }
+        let mut guarded = batch(ForeignKeyMode::Enforced);
+        guarded.steps = vec![GuardedStatement::affecting_exactly(sql("DELETE FROM t"), 1)];
+        assert!(precheck(&guarded, false).is_ok());
     }
 }

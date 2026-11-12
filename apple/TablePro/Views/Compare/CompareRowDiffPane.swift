@@ -169,11 +169,12 @@ internal struct CompareRowDiffPane: View {
         HStack(spacing: 8) {
             Label {
                 Text("Some included tables have not been compared with their current settings.")
+                    .foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: "exclamationmark.arrow.circlepath")
+                    .foregroundStyle(CompareStatusStyle.warning)
             }
             .font(.callout)
-            .foregroundStyle(CompareStatusStyle.warning)
             .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button("Compare", action: onCompare)
@@ -207,12 +208,27 @@ internal struct CompareRowDiffPane: View {
         )
     }
 
+    // Named by side, because the two tables usually share a name and only one database cut its stream.
+    private func rowCutNotices(for summary: DataDiffSummary, plan: DataComparePlan) -> [String] {
+        let sides: [(endpoint: DatabaseEndpoint?, cut: Int?)] = [
+            (session.source, summary.sourceRowCut), (session.target, summary.targetRowCut)
+        ]
+        return sides.compactMap { side in
+            guard let cut = side.cut else { return nil }
+            let table = ([side.endpoint?.qualifiedDescription].compactMap { $0 } + [plan.table]).joined(separator: " / ")
+            return StreamRowCutWarning.text(table: table, limit: cut)
+        }
+    }
+
     @ViewBuilder
     private func notices(for plan: DataComparePlan) -> some View {
         if let failure = plan.comparisonFailure {
             notice(failure, systemImage: "exclamationmark.octagon.fill")
         }
         if let summary = plan.summary {
+            ForEach(rowCutNotices(for: summary, plan: plan), id: \.self) { text in
+                notice(text, systemImage: "exclamationmark.triangle.fill")
+            }
             if summary.stoppedAtRowLimit {
                 notice(rowLimitNotice(for: summary), systemImage: "info.circle.fill")
             }
@@ -259,11 +275,12 @@ internal struct CompareRowDiffPane: View {
     private func notice(_ text: String, systemImage: String) -> some View {
         Label {
             Text(text)
+                .foregroundStyle(.secondary)
         } icon: {
             Image(systemName: systemImage)
+                .foregroundStyle(CompareStatusStyle.warning)
         }
         .font(.callout)
-        .foregroundStyle(CompareStatusStyle.warning)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)

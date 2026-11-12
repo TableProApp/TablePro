@@ -31,6 +31,10 @@ extension CollectedImport {
         bundle.connections.first { $0.settings.name == name }?.ref
     }
 
+    func notes(named name: String) -> [String] {
+        connectionRef(named: name).flatMap { connectionNotes[$0] } ?? []
+    }
+
     func savedQuery(named name: String) -> BundleSavedQuery? {
         bundle.savedQueries.first { $0.name == name }
     }

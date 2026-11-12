@@ -8,7 +8,7 @@ import TableProImport
 import UniformTypeIdentifiers
 
 struct ConnectionExportOptionsSheet: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     let connections: [DatabaseConnection]
 
     @Environment(\.dismiss) private var dismiss
@@ -25,7 +25,7 @@ struct ConnectionExportOptionsSheet: View {
     @State private var includeGlobalSavedQueries = false
 
     private var isProAvailable: Bool {
-        licenseManager.isFeatureAvailable(.encryptedExport)
+        featureAccess.isAvailable(.encryptedExport)
     }
 
     private var passphraseState: ConnectionExportPassphraseState {
@@ -112,17 +112,16 @@ struct ConnectionExportOptionsSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Toggle("Include Credentials", isOn: $includeCredentials)
-                        .toggleStyle(.checkbox)
-                        .disabled(!isProAvailable)
-                    if !isProAvailable {
-                        ProBadge(feature: .encryptedExport)
-                    }
-                }
+                Toggle("Include Credentials", isOn: $includeCredentials)
+                    .toggleStyle(.checkbox)
+                    .disabled(!isProAvailable)
                 Text("Off by default. Turn it on to encrypt saved passwords with a passphrase.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if !isProAvailable {
+                LicenseGateRow(feature: .encryptedExport)
             }
 
             if includeCredentials {
@@ -210,9 +209,8 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private func warningLabel(_ text: String) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle.fill")
+        NoticeLabel(text)
             .font(.caption)
-            .foregroundStyle(.orange)
     }
 
     private var footer: some View {

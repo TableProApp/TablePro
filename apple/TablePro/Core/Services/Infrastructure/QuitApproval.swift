@@ -1,35 +1,43 @@
 import AppKit
 
-/// Everything that can still stop a quit, asked from `applicationShouldTerminate`. The termination
-/// notification comes after AppKit is told yes, too late for any of these to cancel it.
+// The termination notification comes after AppKit is told yes, too late to cancel a quit.
 @MainActor
 internal enum QuitApproval {
-    internal static func approve() -> Bool {
-        guard approvesStoppingSync() else { return false }
+    internal static func approve(
+        registry: RunningWorkRegistry = .shared,
+        relaunchApproved: Bool = AppRelauncher.shared.hasApprovedRunningWork
+    ) -> Bool {
+        // A relaunch asked both questions before it quit; the work it approved stopping stops now.
+        guard !relaunchApproved else {
+            registry.cancel(registry.items(in: .app))
+            return true
+        }
+        // The theme editor can still cancel, so it asks before any work is stopped.
         guard ThemeEditorWindows.shared.prepareToTerminate() else { return false }
-        return approvesDiscardingUnsavedTabs()
+        return approvesStoppingWork(registry: registry, action: .quit)
     }
 
-    private static func approvesStoppingSync() -> Bool {
-        guard CompareSyncRunRegistry.shared.isApplying else { return true }
-        let alert = NSAlert()
-        alert.messageText = String(localized: "A sync is still running")
-        alert.informativeText = String(
-            format: String(localized: "Quitting stops the run against %@. Statements that already ran stay applied."),
-            CompareSyncRunRegistry.shared.applyingTargetNames.joined(separator: ", ")
-        )
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: String(localized: "Keep Running"))
-        alert.addButton(withTitle: String(localized: "Stop and Quit"))
-        alert.buttons[1].hasDestructiveAction = true
-        return alert.runModal() == .alertSecondButtonReturn
+    // One alert for what a quit or relaunch loses. Running work lists the unsaved tabs with it.
+    internal static func approvesStoppingWork(
+        registry: RunningWorkRegistry,
+        action: RunningWorkAction,
+        stopsWork: Bool = true
+    ) -> Bool {
+        // A large document's last keys reach its tab on a delay; without them a dirty file reads as clean.
+        EditorEventRouter.shared.flushAllPendingText()
+        let work = registry.items(in: .app)
+        let hasUnsavedTabs = MainContentCoordinator.hasAnyUnsavedChanges()
+        let losses = hasUnsavedTabs ? [String(localized: "Unsaved edits in open tabs")] : []
+        if let prompt = RunningWorkPrompt.make(action: action, work: work, otherLosses: losses) {
+            guard RunningWorkApproval.confirmModally(prompt) else { return false }
+            if stopsWork { registry.cancel(work) }
+            return true
+        }
+        return !hasUnsavedTabs || approvesDiscardingUnsavedTabs()
     }
 
     private static func approvesDiscardingUnsavedTabs() -> Bool {
-        guard MainContentCoordinator.hasAnyUnsavedChanges() else { return true }
-        // Quitting can be asked for from outside the app, so this alert has to come forward on its
-        // own: it blocks termination in a nested modal loop, and a background process has no Dock
-        // icon to reach it by.
+        // A quit can come from outside the app, and a background process has no Dock icon to reach the alert by.
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = String(localized: "You have unsaved changes")

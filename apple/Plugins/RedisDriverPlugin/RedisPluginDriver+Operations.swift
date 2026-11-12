@@ -25,12 +25,31 @@ extension RedisPluginDriver {
             return try await runOperation(operation, connection: conn, startTime: startTime)
         } catch let queued as RedisQueuedCommand {
             guard operation.queuedCommandAnswer == .reportQueued else { throw queued }
-            recordQueued(queued.command)
+            recordQueued(queued.command, mustApply: operation.mustApply)
             return buildStatusResult(Self.queuedStatus, startTime: startTime)
         }
     }
 
     private func runOperation(
+        _ operation: RedisOperation,
+        connection conn: any RedisCommandChannel,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        guard let staging = RedisConditionalWrite.stagingKey(written: operation), isIssuedStagingKey(staging) else {
+            return try await dispatchOperation(operation, connection: conn, startTime: startTime)
+        }
+        do {
+            return try await dispatchOperation(operation, connection: conn, startTime: startTime)
+        } catch let queued as RedisQueuedCommand {
+            throw queued
+        } catch {
+            // Sent outside any block: inside one it would be queued with the rest, and EXEC drops it there anyway.
+            _ = try? await conn.run(["DEL", staging], scope: .outsideBlock)
+            throw error
+        }
+    }
+
+    private func dispatchOperation(
         _ operation: RedisOperation,
         connection conn: any RedisCommandChannel,
         startTime: Date
@@ -73,6 +92,13 @@ extension RedisPluginDriver {
              .multi, .exec, .discard:
             return try await executeServerOperation(operation, connection: conn, startTime: startTime)
 
+        case .mustApply(let args):
+            let reply = try await conn.run(args.asRedisArguments)
+            guard RedisConditionalWrite.applied(reply) else {
+                throw RedisPluginError(code: 0, message: RedisConditionalWrite.refusedMessage)
+            }
+            return buildStatusResult("OK", startTime: startTime)
+
         case .inDatabase(let database, let operation):
             return try await conn.withDatabase(database) {
                 try await runOperation(operation, connection: conn, startTime: startTime)
@@ -113,9 +139,11 @@ extension RedisPluginDriver {
                 if let pxat = opts.pxat { args += ["PXAT", String(pxat)].asRedisArguments }
                 if opts.nx { args.append("NX".redisArgument) }
                 if opts.xx { args.append("XX".redisArgument) }
+                if opts.keepTTL { args.append("KEEPTTL".redisArgument) }
             }
-            try await conn.run(args)
-            return buildStatusResult("OK", startTime: startTime)
+            // NX or XX that stops the write answers nil, not an error.
+            let reply = try await conn.run(args)
+            return buildStatusResult(reply.displayText, startTime: startTime)
 
         case .del(let keys):
             let args = ["DEL"] + keys

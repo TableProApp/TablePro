@@ -24,16 +24,20 @@ fn main() -> ExitCode {
         empty: &empty,
         runtime: &runtime,
     };
-    if help_lists_the_gapplication_options(&schemas, &sandbox).is_err() {
+    if the_binary_has_no_posthog_key().is_err() {
         return ExitCode::FAILURE;
     }
-    if version_prints_the_version(&schemas, &sandbox).is_err() {
-        return ExitCode::FAILURE;
+    let cases = [
+        help_all_lists_the_gapplication_options(&schemas, &sandbox),
+        version_prints_the_version_with_no_display_or_schema(&sandbox),
+        commands_need_no_display_or_schema(&sandbox),
+        an_unknown_word_is_a_usage_error(&sandbox),
+        a_missing_schema_is_reported(&sandbox),
+    ];
+    match cases.iter().all(Result::is_ok) {
+        true => ExitCode::SUCCESS,
+        false => ExitCode::FAILURE,
     }
-    if a_missing_schema_is_reported(&sandbox).is_err() {
-        return ExitCode::FAILURE;
-    }
-    ExitCode::SUCCESS
 }
 
 /// The directories a run is confined to.
@@ -148,34 +152,97 @@ fn combined(output: &Output) -> String {
     )
 }
 
+// The binary is built with the library this test links, so one key for both.
+fn the_binary_has_no_posthog_key() -> Result<(), ()> {
+    if tablepro_app::config::POSTHOG_KEY.is_empty() {
+        return Ok(());
+    }
+    eprintln!("the tests have a PostHog key; build them with TABLEPRO_POSTHOG_KEY empty, as meson test does");
+    Err(())
+}
+
 /// `--help-gapplication` appears only once GApplication has parsed the
 /// command line, which happens after `run()` registered the embedded
 /// GResource. A missing or malformed gresource aborts before that.
-fn help_lists_the_gapplication_options(schemas: &Path, sandbox: &Sandbox<'_>) -> Result<(), ()> {
+fn help_all_lists_the_gapplication_options(schemas: &Path, sandbox: &Sandbox<'_>) -> Result<(), ()> {
     let output = run(
-        tablepro(sandbox).arg("--help").env("GSETTINGS_SCHEMA_DIR", schemas),
-        "--help",
+        tablepro(sandbox).arg("--help-all").env("GSETTINGS_SCHEMA_DIR", schemas),
+        "--help-all",
     )?;
 
     if !output.status.success() {
-        eprintln!("tablepro --help exited with {}:\n{}", output.status, combined(&output));
+        eprintln!(
+            "tablepro --help-all exited with {}:\n{}",
+            output.status,
+            combined(&output)
+        );
         return Err(());
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("--help-gapplication") {
-        eprintln!("tablepro --help did not list the GApplication options:\n{stdout}");
+    for option in ["--help-gapplication", "--new-window"] {
+        if !stdout.contains(option) {
+            eprintln!("tablepro --help-all did not list {option}:\n{stdout}");
+            return Err(());
+        }
+    }
+    Ok(())
+}
+
+// Without a display GTK cannot start and without the schema the GUI refuses to, so a run that succeeds here
+// opened no window.
+fn headless(sandbox: &Sandbox<'_>) -> Command {
+    let mut command = tablepro(sandbox);
+    command
+        .env("GSETTINGS_SCHEMA_DIR", sandbox.empty)
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("DBUS_SESSION_BUS_ADDRESS");
+    command
+}
+
+fn commands_need_no_display_or_schema(sandbox: &Sandbox<'_>) -> Result<(), ()> {
+    let cases: [(&[&str], &str); 7] = [
+        (&["--help"], "completion"),
+        (&["-h"], "completion"),
+        (&["help"], "completion"),
+        (&["help", "query"], "--connection"),
+        (&["completion", "bash"], "tablepro"),
+        (&["completion", "zsh"], "tablepro"),
+        (&["completion", "fish"], "tablepro"),
+    ];
+    for (arguments, expected) in cases {
+        let what = arguments.join(" ");
+        let output = run(headless(sandbox).args(arguments), &what)?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !output.status.success() || !stdout.contains(expected) {
+            eprintln!(
+                "tablepro {what} exited with {} without {expected} on stdout:\n{}",
+                output.status,
+                combined(&output)
+            );
+            return Err(());
+        }
+    }
+    Ok(())
+}
+
+// It once opened a window saying the file could not be found.
+fn an_unknown_word_is_a_usage_error(sandbox: &Sandbox<'_>) -> Result<(), ()> {
+    let output = run(headless(sandbox).arg("qeury"), "an unknown word")?;
+
+    if output.status.code() != Some(2) || output.stderr.is_empty() {
+        eprintln!(
+            "tablepro qeury exited with {}, not 2 with a message:\n{}",
+            output.status,
+            combined(&output)
+        );
         return Err(());
     }
     Ok(())
 }
 
-/// `--version` prints the version and exits rather than opening a
-/// window.
-fn version_prints_the_version(schemas: &Path, sandbox: &Sandbox<'_>) -> Result<(), ()> {
-    let output = run(
-        tablepro(sandbox).arg("--version").env("GSETTINGS_SCHEMA_DIR", schemas),
-        "--version",
-    )?;
+fn version_prints_the_version_with_no_display_or_schema(sandbox: &Sandbox<'_>) -> Result<(), ()> {
+    let output = run(headless(sandbox).arg("--version"), "--version")?;
 
     if !output.status.success() {
         eprintln!(

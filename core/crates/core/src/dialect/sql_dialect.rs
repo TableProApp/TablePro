@@ -1,5 +1,6 @@
 use crate::column::{ColumnInfo, ColumnType, SqlExpression};
 use crate::ddl::DdlDialect;
+use crate::dump::DumpDialect;
 use crate::edit::CellExpression;
 use crate::filter::{Combinator, FilterOp, operators_for};
 use crate::meta::{EngineRowId, EngineRowIdPart, TableRef};
@@ -34,6 +35,13 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
 
     fn database_layout(&self) -> DatabaseLayout {
         DatabaseLayout::Single
+    }
+
+    /// Whether the catalog names the default schema's objects with no
+    /// schema, as SQLite names main's, so an action on that schema names
+    /// none either and lands on the same table the list shows.
+    fn unqualified_default_schema(&self) -> bool {
+        false
     }
 
     /// Bind one value, giving back the SQL that names it.
@@ -86,6 +94,12 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// The engine's structure-change spelling, or `None` where the app
     /// does not edit this engine's structure.
     fn ddl(&self) -> Option<&dyn DdlDialect> {
+        None
+    }
+
+    /// How the engine writes a SQL dump and runs one back, or `None`
+    /// where the app has no dump for it.
+    fn dump(&self) -> Option<&dyn DumpDialect> {
         None
     }
 
@@ -269,6 +283,11 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
 
     /// Whether `UPDATE ... SET c = DEFAULT` parses.
     fn update_sets_default(&self) -> bool {
+        false
+    }
+
+    /// Whether a read gives NULL for a value the row does not hold, as a document's missing field.
+    fn reads_missing_as_null(&self) -> bool {
         false
     }
 }

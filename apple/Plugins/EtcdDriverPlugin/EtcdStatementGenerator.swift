@@ -2,10 +2,9 @@
 //  EtcdStatementGenerator.swift
 //  EtcdDriverPlugin
 //
-//  Generates etcdctl commands from tracked cell changes.
-//
 
 import Foundation
+import TableProEtcdCore
 import TableProPluginKit
 
 struct EtcdStatementGenerator {
@@ -15,14 +14,13 @@ struct EtcdStatementGenerator {
     var keyColumnIndex: Int? { columns.firstIndex(of: "Key") }
     private var valueColumnIndex: Int? { columns.firstIndex(of: "Value") }
     private var leaseColumnIndex: Int? { columns.firstIndex(of: "Lease") }
+    private var modRevisionColumnIndex: Int? { columns.firstIndex(of: "ModRevision") }
 
-    /// The columns a `put` can set. The rest, the version and the two revisions, are etcd's own.
-    /// etcd stores no NULL, so a NULL written to Value means an empty value, and to Lease, no lease.
+    // etcd stores no NULL, so a NULL written to Value means an empty value, and to Lease, no lease.
     private static let writableColumns: Set<String> = ["Key", "Value", "Lease"]
 
-    /// The commands that write the grid's changes, each naming the change it writes. A change
-    /// carrying a value these commands cannot express is refused whole, because writing the rest
-    /// of it would let the save succeed and clear the value it left out.
+    // A change carrying a value these commands cannot express is refused whole: writing the rest of it
+    // would let the save succeed and clear the value it left out.
     func generateRowWrites(
         from changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
@@ -44,7 +42,7 @@ struct EtcdStatementGenerator {
                 guard let key = extractKey(from: change) else {
                     throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.unaddressableKeyReason)
                 }
-                commands = ["del \(EtcdCommandArgument.quoted(key))"]
+                commands = [EtcdCommandText.command("del", arguments: [key])]
             }
             writes += commands.map { PluginRowWrite(statement: $0, rowIndices: [change.rowIndex]) }
         }
@@ -60,19 +58,19 @@ struct EtcdStatementGenerator {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(column))
         }
 
-        var key: String?
-        var value: String?
+        var key: Data?
+        var value: Data?
         var leaseId: String?
 
         if let values = insertedRowData[change.rowIndex] {
-            if let ki = keyColumnIndex, ki < values.count { key = values[ki].asText }
-            if let vi = valueColumnIndex, vi < values.count { value = values[vi].asText }
+            if let ki = keyColumnIndex, ki < values.count { key = values[ki].etcdBytes }
+            if let vi = valueColumnIndex, vi < values.count { value = values[vi].etcdBytes }
             if let li = leaseColumnIndex, li < values.count { leaseId = values[li].asText }
         } else {
             for cellChange in change.cellChanges {
                 switch cellChange.columnName {
-                case "Key": key = cellChange.newValue.asText
-                case "Value": value = cellChange.newValue.asText
+                case "Key": key = cellChange.newValue.etcdBytes
+                case "Value": value = cellChange.newValue.etcdBytes
                 case "Lease": leaseId = cellChange.newValue.asText
                 default: break
                 }
@@ -83,14 +81,9 @@ struct EtcdStatementGenerator {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(localized: "A new key needs a name."))
         }
 
-        // Prepend the current browse prefix if the key doesn't already include it
-        let fullKey: String
-        if !prefix.isEmpty && !k.hasPrefix("/") {
-            fullKey = prefix + k
-        } else {
-            fullKey = k
-        }
-        return [Self.putCommand(key: fullKey, value: value ?? "", lease: leaseId)]
+        // A key typed without a leading slash lands under the table's prefix.
+        let fullKey = !prefix.isEmpty && k.first != UInt8(ascii: "/") ? Data(prefix.utf8) + k : k
+        return [Self.writeCommand("create", arguments: [fullKey, value ?? Data()], lease: leaseId)]
     }
 
     private func updateCommands(for change: PluginRowChange) throws -> [String] {
@@ -102,43 +95,45 @@ struct EtcdStatementGenerator {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(column))
         }
 
-        var commands: [String] = []
-
         let keyChange = change.cellChanges.first { $0.columnName == "Key" }
         let valueChange = change.cellChanges.first { $0.columnName == "Value" }
         let leaseChange = change.cellChanges.first { $0.columnName == "Lease" }
 
-        let newKey = keyChange.map { $0.newValue.asText ?? "" } ?? originalKey
+        let newKey = keyChange.map { $0.newValue.etcdBytes ?? Data() } ?? originalKey
         guard !newKey.isEmpty else {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(localized: "A key needs a name."))
         }
 
         let shouldDeleteOriginalKey = newKey != originalKey
         let editedLease = leaseChange.map { $0.newValue.asText ?? "" }
-        let lease = editedLease ?? originalText(at: leaseColumnIndex, of: change)
+        let lease = editedLease ?? originalCell(at: leaseColumnIndex, of: change)?.asText
 
-        if valueChange != nil || newKey != originalKey {
-            let newValue = valueChange.map { $0.newValue.asText ?? "" } ?? originalText(at: valueColumnIndex, of: change) ?? ""
-            commands.append(Self.putCommand(key: newKey, value: newValue, lease: lease))
-            if shouldDeleteOriginalKey {
-                commands.append("del \(EtcdCommandArgument.quoted(originalKey))")
-            }
-        } else if editedLease != nil {
-            let currentValue = originalText(at: valueColumnIndex, of: change) ?? ""
-            commands.append(Self.putCommand(key: newKey, value: currentValue, lease: lease))
+        let newValue = valueChange.map { $0.newValue.etcdBytes ?? Data() } ?? originalValue(of: change)
+        if shouldDeleteOriginalKey {
+            // One transaction: a put and a del sent apart replace a key already at the new name
+            // and leave both keys behind when the del fails.
+            let revision = originalCell(at: modRevisionColumnIndex, of: change)?.asText.flatMap { Int64($0) }
+            return [Self.writeCommand(
+                "mv",
+                arguments: [originalKey, newKey, newValue],
+                lease: lease,
+                flags: revision.map { ["--mod-rev=\($0)"] } ?? []
+            )]
         }
-
-        return commands
+        guard valueChange != nil || editedLease != nil else { return [] }
+        return [Self.writeCommand("put", arguments: [newKey, newValue], lease: lease)]
     }
 
-    private static func putCommand(key: String, value: String, lease: String?) -> String {
-        let put = "put \(EtcdCommandArgument.quoted(key)) \(EtcdCommandArgument.quoted(value))"
-        guard let lease, !lease.isEmpty, lease != "0" else { return put }
-        return put + " --lease=\(lease)"
+    private static func writeCommand(_ name: String, arguments: [Data], lease: String?, flags: [String] = []) -> String {
+        guard let lease, !lease.isEmpty, lease != "0" else {
+            return EtcdCommandText.command(name, arguments: arguments, flags: flags)
+        }
+        return EtcdCommandText.command(
+            name, arguments: arguments, flags: flags + ["--lease=" + EtcdCommandText.quoted(lease)]
+        )
     }
 
-    /// An edit to a column no `put` can set, which the save would otherwise drop. A new row's NULL
-    /// there leaves the value to etcd, so only a value set in one counts.
+    // A new row's NULL in a server-owned column leaves the value to etcd, so only a value set in one counts.
     private func serverOwnedColumn(in change: PluginRowChange) -> String? {
         change.cellChanges
             .first { cell in
@@ -150,7 +145,7 @@ struct EtcdStatementGenerator {
     // MARK: - Refusals
 
     private static var unaddressableKeyReason: String {
-        String(localized: "This key's name is not text, so it cannot be addressed from the grid.")
+        String(localized: "This row has no key, so it cannot be addressed from the grid.")
     }
 
     private static func serverOwnedReason(_ column: String) -> String {
@@ -159,14 +154,24 @@ struct EtcdStatementGenerator {
 
     // MARK: - Helpers
 
-    private func extractKey(from change: PluginRowChange) -> String? {
-        originalText(at: keyColumnIndex, of: change)
+    private func extractKey(from change: PluginRowChange) -> Data? {
+        originalCell(at: keyColumnIndex, of: change)?.etcdBytes
     }
 
-    private func originalText(at columnIndex: Int?, of change: PluginRowChange) -> String? {
+    private func originalValue(of change: PluginRowChange) -> Data {
+        originalCell(at: valueColumnIndex, of: change)?.etcdBytes ?? Data()
+    }
+
+    private func originalCell(at columnIndex: Int?, of change: PluginRowChange) -> PluginCellValue? {
         guard let columnIndex,
               let originalRow = change.originalRow,
               columnIndex < originalRow.count else { return nil }
-        return originalRow[columnIndex].asText
+        return originalRow[columnIndex]
     }
+}
+
+struct EtcdGuardedWriteRefusal: Error, PluginDriverError {
+    let message: String
+
+    var pluginErrorMessage: String { message }
 }

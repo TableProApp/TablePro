@@ -6,11 +6,30 @@ use crate::{ConnectionColor, ConnectionTagName};
 /// A label several connections can share. Connections name it by id, so
 /// a rename or a new colour reaches every one of them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "StoredTag")]
 pub struct ConnectionTag {
     pub id: Uuid,
-    #[serde(deserialize_with = "crate::connection_tag_name::deserialize_stored")]
     pub name: ConnectionTagName,
     pub color: ConnectionColor,
+}
+
+#[derive(Deserialize)]
+struct StoredTag {
+    id: Uuid,
+    name: String,
+    color: ConnectionColor,
+}
+
+impl TryFrom<StoredTag> for ConnectionTag {
+    type Error = crate::TagNameError;
+
+    fn try_from(stored: StoredTag) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: stored.id,
+            name: ConnectionTagName::from_stored(&stored.name)?,
+            color: stored.color,
+        })
+    }
 }
 
 impl ConnectionTag {
@@ -42,6 +61,13 @@ mod tests {
     #[test]
     fn a_tag_without_a_colour_is_refused() {
         let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","name":"acme"}"#;
+
+        assert!(serde_json::from_str::<ConnectionTag>(json).is_err());
+    }
+
+    #[test]
+    fn a_stored_tag_with_a_blank_name_is_refused() {
+        let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","name":" \t\n ","color":"teal"}"#;
 
         assert!(serde_json::from_str::<ConnectionTag>(json).is_err());
     }

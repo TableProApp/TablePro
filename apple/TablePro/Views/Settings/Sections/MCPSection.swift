@@ -11,6 +11,7 @@ struct MCPSection: View {
     @State private var showRevealSheet = false
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
+    @State private var revocationNotSaved = false
 
     var body: some View {
         Section {
@@ -18,9 +19,7 @@ struct MCPSection: View {
                 .accessibilityIdentifier("mcp-enable-server-toggle")
 
             if settings.enabled {
-                LabeledContent(String(localized: "Status")) {
-                    MCPStatusIndicator()
-                }
+                MCPStatusRow(configuredPort: settings.port)
             }
         }
 
@@ -106,7 +105,14 @@ struct MCPSection: View {
             MCPTokenListView(
                 tokens: tokenList,
                 onGenerate: { showCreateSheet = true },
-                onRevoke: { id in Task { await manager.tokenStore?.revoke(tokenId: id); await refreshTokens() } },
+                onRevoke: { id in
+                    Task {
+                        if !(await manager.revokeToken(id: id)) {
+                            revocationNotSaved = true
+                        }
+                        await refreshTokens()
+                    }
+                },
                 onDelete: { id in Task { await manager.tokenStore?.delete(tokenId: id); await refreshTokens() } }
             )
         }
@@ -122,6 +128,11 @@ struct MCPSection: View {
                     port: manager.listeningPort ?? settings.port
                 )
             }
+        }
+        .alert(String(localized: "Couldn't Save the Revocation"), isPresented: $revocationNotSaved) {
+            Button(String(localized: "OK")) {}
+        } message: {
+            Text(String(localized: "TablePro could not save the change to the Keychain. The token works again after TablePro restarts."))
         }
     }
 
@@ -149,6 +160,7 @@ struct MCPSection: View {
                 connectionAccess: access,
                 expiresAt: expiresAt,
                 isBridgeCredential: false,
+                isClaudeAgentCredential: false,
                 extraScopes: []
             ) else { return }
             revealedToken = result.token
@@ -165,36 +177,30 @@ struct MCPSection: View {
     }
 }
 
-private struct MCPStatusIndicator: View {
+private struct MCPStatusRow: View {
     @ObservedObject private var manager = MCPServerManager.shared
+    let configuredPort: Int
 
     var body: some View {
-        IntegrationStatusIndicator(status: status, label: statusText)
-    }
-
-    private var status: IntegrationStatus {
-        switch manager.state {
-        case .stopped: .stopped
-        case .starting: .starting
-        case .running: .running
-        case .failed: .failed
-        }
-    }
-
-    private var statusText: String {
-        switch manager.state {
-        case .stopped:
-            String(localized: "Stopped")
-        case .starting:
-            String(localized: "Starting…")
-        case .running(let port):
-            String(format: String(localized: "Running on port %d"), port)
-        case .failed(let message):
-            if message.contains("48") || message.lowercased().contains("address already in use") {
-                String(localized: "Port is already in use. Try a different port or close the other process.")
-            } else {
-                String(format: String(localized: "Failed: %@"), message)
+        let presentation = MCPServerStatusPresentation(state: manager.state, configuredPort: configuredPort)
+        LabeledContent(String(localized: "Status")) {
+            HStack(spacing: 8) {
+                IntegrationStatusIndicator(status: presentation.status, label: presentation.title)
+                if presentation.offersRetry {
+                    Button(String(localized: "Try Again")) {
+                        manager.retry()
+                    }
+                    .controlSize(.small)
+                    .accessibilityIdentifier("mcp-status-try-again")
+                }
             }
+        }
+        if let detail = presentation.detail {
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

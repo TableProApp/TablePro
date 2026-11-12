@@ -1,6 +1,9 @@
 #!/usr/bin/make -f
 
 include /usr/share/dpkg/buildopts.mk
+include /usr/share/dpkg/architecture.mk
+
+builddir := obj-$(DEB_HOST_GNU_TYPE)
 
 # rustc-1.97 and cargo-1.97 install rustc, rustdoc and cargo here, and
 # Meson looks for cargo on PATH only. 1.97 is the workspace rust-version.
@@ -29,11 +32,25 @@ export CARGO_PROFILE_RELEASE_DEBUG = line-tables-only
 # what DuckDB's C++ build writes and the memory each of its translation
 # units takes; rustc links without -flto, so their GIMPLE half goes unused.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=-lto
+# DuckDB's C++ builds once for the package and once for its tests, and
+# with full DWARF its objects and archives filled the builder's disk. -g1
+# keeps the line tables the dbgsym package needs, as the .rpm does.
+export DEB_CFLAGS_MAINT_APPEND = -g1
+export DEB_CXXFLAGS_MAINT_APPEND = -g1
 
 # The tarball holds the repository's layout: the Meson project is linux/,
 # and the Cargo workspace and vendor/ are at the top.
 %:
-	dh $@ --buildsystem=meson --sourcedirectory=linux
+	dh $@ --buildsystem=meson --sourcedirectory=linux --builddirectory=$(builddir)
+
+# Tests change Cargo's LTO profile; install the package binaries already built before them.
+# Debian's zsh reads completions from vendor-completions, where its own packages put them, and
+# has no site-functions under /usr/share.
+override_dh_auto_install:
+	meson install -C $(builddir) --no-rebuild --destdir "$(CURDIR)/debian/tablepro"
+	mkdir -p debian/tablepro/usr/share/zsh/vendor-completions
+	mv debian/tablepro/usr/share/zsh/site-functions/_tablepro debian/tablepro/usr/share/zsh/vendor-completions/
+	rmdir debian/tablepro/usr/share/zsh/site-functions
 
 # The upstream changelog is the Linux app's, not a file at the top.
 override_dh_installchangelogs:
@@ -50,10 +67,12 @@ override_dh_clean:
 
 # Meson runs cargo from the build directory under the top of this tree, and
 # Cargo reads .cargo/config.toml from the directories above where it runs.
+# A release's vendor tarball also carries the PostHog key; without it the
+# app never offers to share usage data.
 override_dh_auto_configure:
 	mkdir -p .cargo
 	cp vendor/cargo-config.toml .cargo/config.toml
-	dh_auto_configure -- -Dprofile=default -Dkerberos=true
+	dh_auto_configure -- -Dprofile=default -Dkerberos=true -Dposthog_key=$(shell cat vendor/posthog-key 2>/dev/null)
 
 # The gtk suite opens windows on a display and owns D-Bus names.
 override_dh_auto_test:

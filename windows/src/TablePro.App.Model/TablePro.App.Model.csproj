@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The app's state and rules with no WinUI, so tests/TablePro.App.Model.Tests runs on any machine. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>TablePro.App.Model</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../TablePro.DataGrid.Model/TablePro.DataGrid.Model.csproj" />
+    <ProjectReference Include="../TablePro.Interop/TablePro.Interop.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -6,8 +6,9 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use crate::call_options::CallOptions;
 use crate::column::ColumnInfo;
 use crate::commit::{CommitResolution, CommitToken};
-use crate::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
+use crate::ddl::{CharacterSet, DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use crate::dialect::SqlDialect;
+use crate::dump::{DumpCatalog, DumpScope};
 use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
 use crate::foreign_key_info::ForeignKeyInfo;
@@ -115,6 +116,23 @@ pub trait Connection: Send + Sync {
     ) -> Result<Option<ObjectDefinition>, DriverError> {
         Err(DriverError::Unsupported {
             feature: UnsupportedFeature::ObjectDefinitions,
+        })
+    }
+
+    /// What the server offers for a new database's options, for the New
+    /// Database dialog's pickers.
+    async fn fetch_database_choices(&self, _options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::DatabaseOptions,
+        })
+    }
+
+    /// What a dump of `scope` writes: each object's SQL in the server's
+    /// own text where the engine keeps one, and the tables whose rows go
+    /// in. Read as one operation, so it has the call's whole deadline.
+    async fn read_dump_catalog(&self, _scope: &DumpScope, _options: CallOptions) -> Result<DumpCatalog, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::SqlDump,
         })
     }
 

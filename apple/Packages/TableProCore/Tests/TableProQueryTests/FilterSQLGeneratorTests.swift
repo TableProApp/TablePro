@@ -277,7 +277,7 @@ struct FilterSQLGeneratorTests {
     func mssqlLikeEscapesBracket() {
         let generator = FilterSQLGenerator(dialect: makeDialect(quote: "["), databaseType: .mssql)
         let filter = TableFilter(columnName: "code", filterOperator: .contains, value: "[a]")
-        #expect(generator.generateWhereClause(from: [filter], logicMode: .and) == "WHERE [code] LIKE '%![a]%' ESCAPE '!'")
+        #expect(generator.generateWhereClause(from: [filter], logicMode: .and) == "WHERE [code] LIKE N'%![a]%' ESCAPE '!'")
     }
 
     // A combining mark joins the quote into one grapheme cluster.
@@ -522,6 +522,17 @@ struct FilterSQLGeneratorTests {
             == "WHERE CAST(\"f\" AS TEXT) ILIKE '%TRUE%' ESCAPE '!'")
     }
 
+    @Test("Match Case off still folds a value that opens with a combining mark")
+    func leadingCombiningMarkIsFolded() {
+        let column = ColumnInfo(name: "c", typeName: "text")
+        #expect(engineClause(.postgresql, column, "\u{0301}ABC", isCaseSensitive: false, dialect: castingDialect)
+            == "WHERE LOWER(\"c\") = LOWER('\u{0301}ABC')")
+        #expect(engineClause(.postgresql, column, "\u{0301}A, B", op: .in, isCaseSensitive: false, dialect: castingDialect)
+            == "WHERE LOWER(\"c\") IN (LOWER('\u{0301}A'), LOWER('B'))")
+        #expect(engineClause(.mssql, column, "\u{0301}ABC", isCaseSensitive: false, dialect: castingDialect)
+            .hasSuffix("= LOWER(N'\u{0301}ABC')"))
+    }
+
     @Test("A character column keeps its own operand", arguments: ["character varying", "text", "citext", "bpchar", "name"])
     func characterColumnIsNotCast(typeName: String) {
         let column = ColumnInfo(name: "c", typeName: typeName)
@@ -556,5 +567,15 @@ struct FilterSQLGeneratorTests {
         #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: .sqlite) == .numberOrText("5"))
         #expect(FilterColumnKind.keyLiteral("05", column: nil, databaseType: .sqlite) == .text("05"))
         #expect(FilterColumnKind.keyLiteral("2.5", column: nil, databaseType: .sqlite) == .numberOrText("2.5"))
+    }
+
+    @Test("SQL Server filters keep Unicode and backslash line endings")
+    func sqlServerTextConstants() {
+        let generator = FilterSQLGenerator(dialect: dialect, databaseType: .mssql)
+        #expect(generator.stringLiteral("日本\\\n") == "N'日本\\\\\n\n'")
+        let equal = TableFilter(columnName: "name", filterOperator: .equal, value: "日本\\\r\n")
+        #expect(generator.generateWhereClause(from: [equal], logicMode: .and).contains("N'日本\\\\\r\n\r\n'"))
+        let contains = TableFilter(columnName: "name", filterOperator: .contains, value: "日本\\\n")
+        #expect(generator.generateWhereClause(from: [contains], logicMode: .and).contains("N'%日本\\\\\n\n%'"))
     }
 }

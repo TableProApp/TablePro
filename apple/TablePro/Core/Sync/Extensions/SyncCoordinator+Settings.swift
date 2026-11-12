@@ -22,6 +22,7 @@ extension SyncCoordinator {
             case AppSettingsCategory.ai: return try encoder.encode(storage.loadAI())
             case AppSettingsCategory.notifications: return try encoder.encode(storage.loadNotifications())
             case AppSettingsCategory.formatter: return try encoder.encode(storage.loadFormatter())
+            case AppSettingsCategory.valueColors: return try encoder.encode(storage.loadValueColors())
             case CustomSlashCommandStorage.syncCategory:
                 return try encoder.encode(CustomSlashCommandStorage.shared.commands)
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
@@ -57,6 +58,8 @@ extension SyncCoordinator {
                 manager.notifications = try decoder.decode(NotificationSettings.self, from: data)
             case AppSettingsCategory.formatter:
                 manager.formatter = try decoder.decode(SQLFormatterSettings.self, from: data)
+            case AppSettingsCategory.valueColors:
+                manager.valueColors = try decoder.decode(ValueColorSettings.self, from: data)
             case CustomSlashCommandStorage.syncCategory:
                 CustomSlashCommandStorage.shared.applyRemote(try decoder.decode([CustomSlashCommand].self, from: data))
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
@@ -82,9 +85,17 @@ extension SyncCoordinator {
     // Fetches the zone once for a formatter record this Mac skipped while on an older build.
     static let formatterContentKind = "\(SyncRecordType.settings.rawValue)/\(AppSettingsCategory.formatter).v1"
 
+    // Fetches the zone once for a value colors record this Mac skipped while on an older build.
+    static let valueColorsContentKind = "\(SyncRecordType.settings.rawValue)/\(AppSettingsCategory.valueColors).v1"
+
     static var readableContent: Set<String> {
         Set(SyncRecordType.verifiedInProduction.map(\.rawValue))
-            .union([Self.themeContentKind, Self.formatterContentKind, ConnectionSyncField.sshRouteContentKind])
+            .union([
+                Self.themeContentKind,
+                Self.formatterContentKind,
+                Self.valueColorsContentKind,
+                ConnectionSyncField.sshRouteContentKind,
+            ])
     }
 
     // Only what this Mac applies: a pull skips a category that is off and still moves the token past it.
@@ -96,6 +107,7 @@ extension SyncCoordinator {
         if settings.syncs(.settings) {
             content.insert(Self.themeContentKind)
             content.insert(Self.formatterContentKind)
+            content.insert(Self.valueColorsContentKind)
         }
         return content
     }

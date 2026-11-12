@@ -158,6 +158,22 @@ private final class MockTrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockPostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock PostgreSQL"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the bundled PostgreSQL plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "PostgreSQL"
+    static let databaseDisplayName = "PostgreSQL"
+    static let iconName = "postgresql-icon"
+    static let defaultPort = 5_432
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock ClickHouse"
     static let pluginVersion = "1.0.0"
@@ -225,6 +241,38 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
             built.capabilities.supportsConnectionPooling == false,
             "A second duckdb_open is a different database, so metadata must stay on the session driver (#2108)"
         )
+    }
+
+    @Test("Curated DuckDB offers port forwards, no SSL section, and names the fields that hold its server")
+    func duckDBCuratedTransportCapabilities() throws {
+        let curated = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "DuckDB"))
+
+        #expect(curated.capabilities.supportsSSH, "Remote mode dials a TCP server a forward can carry")
+        #expect(!curated.capabilities.supportsSSL, "Quack's TLS lives in the Remote fields, never the built-in section")
+        #expect(
+            curated.capabilities.serverEndpointFields
+                == ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort")
+        )
+        let declared = Set(curated.connection.additionalConnectionFields.map(\.id))
+        #expect(declared.isSuperset(of: ["duckdbHost", "duckdbPort"]))
+    }
+
+    @Test("DuckDB keeps its server fields when its plugin registers")
+    func duckDBKeepsItsServerEndpointFields() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
+
+        #expect(
+            built.capabilities.serverEndpointFields
+                == ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort"),
+            "No DriverPlugin declares them, so loading the plugin would otherwise forward the built-in Host"
+        )
+    }
+
+    @Test("Only DuckDB keeps its server outside the built-in Host and Port")
+    func onlyDuckDBNamesServerEndpointFields() {
+        for entry in PluginMetadataRegistry.shared.builtInDefaults() where entry.typeId != "DuckDB" {
+            #expect(entry.snapshot.capabilities.serverEndpointFields == nil, "\(entry.typeId)")
+        }
     }
 
     @Test("DuckDB keeps its file signatures when its plugin registers")
@@ -316,10 +364,29 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
             built.capabilities.exactRowCountIsFullScan == true,
             "Every automatic count would be a Scan of the whole table that AWS bills for"
         )
+        #expect(built.capabilities.supportsRawFilter == false, "its driver refuses every raw filter")
     }
 
-    /// None of these has a `DriverPlugin` static, so a plugin that registers would reset them to the struct
-    /// defaults: counts on every open that read every partition, a header sort CQL refuses, and Match Any.
+    @Test("Engines whose driver refuses or misreads a raw condition are not offered one", arguments: [
+        "etcd", "DynamoDB", "Memcached", "Weaviate", "InfluxDB", "Kafka"
+    ])
+    func refusingEnginesOfferNoRawFilter(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsRawFilter == false)
+    }
+
+    @Test("Engines that run a raw condition natively still offer one", arguments: [
+        "MySQL", "PostgreSQL", "SQL Server", "Oracle", "MongoDB", "Elasticsearch"
+    ])
+    func nativeEnginesOfferRawFilter(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsRawFilter)
+    }
+
+    // None of these has a `DriverPlugin` static, so a plugin that registers would reset them to the struct
+    // defaults: counts on every open that read every partition, a header sort CQL refuses, and Match Any.
     @Test("Cassandra keeps its count, sort and filter limits when its plugin registers")
     func cassandraKeepsItsCuratedQueryLimits() {
         let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockCassandraPlugin.self)
@@ -382,8 +449,8 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         }
     }
 
-    /// Measured: `ADD … NOT NULL` and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` is refused, and only a
-    /// primary key column can be renamed, so the Structure tab offers adding and dropping a column and nothing else.
+    // Measured: `ADD … NOT NULL` and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` is refused, and only a
+    // primary key column can be renamed, so the Structure tab offers adding and dropping a column and nothing else.
     @Test("Cassandra and ScyllaDB offer only the column edits CQL can run", arguments: ["Cassandra", "ScyllaDB"])
     func cassandraStructureEdits(typeId: String) throws {
         let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
@@ -429,8 +496,8 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.connection.defaultLocalSocketPath == MySQLLocalSocket.defaultPath)
     }
 
-    /// A MySQL-protocol session opened with no database has none at all, so it lists nothing until
-    /// one is chosen. Databend's session falls back to its `default` database instead.
+    // A MySQL-protocol session opened with no database has none at all, so it lists nothing until
+    // one is chosen. Databend's session falls back to its `default` database instead.
     @Test("Only the MySQL engines with no default database require a selected database to browse")
     func browsingRequiresSelectedDatabasePerEngine() {
         let registry = PluginMetadataRegistry.shared
@@ -540,6 +607,49 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.verifiesServerWithSystemTrust == true)
     }
 
+    @Test("PostgreSQL keeps system trust, and TLS asked for without a mode stays Required, when its plugin registers")
+    func postgreSQLKeepsItsTLSCapabilities() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockPostgreSQLPlugin.self)
+
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(built.capabilities.requestedTLSVerifiesIdentity == false)
+    }
+
+    @Test("Trino and ClickHouse keep Verify Identity for TLS asked for without a mode when their plugins register")
+    func requestedTLSSurvivesRegistration() {
+        let registry = PluginMetadataRegistry.shared
+
+        #expect(registry.buildMetadataSnapshot(from: MockTrinoPlugin.self).capabilities.requestedTLSVerifiesIdentity)
+        #expect(registry.buildMetadataSnapshot(from: MockClickHousePlugin.self).capabilities.requestedTLSVerifiesIdentity)
+        #expect(registry.buildMetadataSnapshot(from: MockHanaPlugin.self).capabilities.requestedTLSVerifiesIdentity)
+    }
+
+    @Test(
+        "The libpq engines check the system trust store, while TLS asked for without a mode stays Required",
+        arguments: ["PostgreSQL", "Redshift", "CockroachDB", "KingbaseES"]
+    )
+    func libpqEnginesSplitTheTwoTLSFlags(typeId: String) throws {
+        let curated = try #require(
+            PluginMetadataRegistry.shared.builtInDefaults().first { $0.typeId == typeId }?.snapshot
+        )
+
+        #expect(curated.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(curated.capabilities.requestedTLSVerifiesIdentity == false)
+    }
+
+    @Test(
+        "The engines that already verified the system trust store keep both TLS flags",
+        arguments: ["SAP HANA", "Kafka", "Trino", "Presto", "Qdrant", "DuckDB", "ClickHouse"]
+    )
+    func systemTrustEnginesKeepBothTLSFlags(typeId: String) throws {
+        let curated = try #require(
+            PluginMetadataRegistry.shared.builtInDefaults().first { $0.typeId == typeId }?.snapshot
+        )
+
+        #expect(curated.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(curated.capabilities.requestedTLSVerifiesIdentity == true)
+    }
+
     @Test("etcd offers no generic SSL Mode, since its driver reads only its own TLS Mode field")
     @MainActor
     func etcdDeclaresNoGenericSSL() {
@@ -567,11 +677,13 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.exactRowCountIsFullScan == false)
         #expect(built.capabilities.supportsColumnSort == true)
         #expect(built.capabilities.supportsMatchAnyFilters == true)
+        #expect(built.capabilities.supportsRawFilter == true)
         #expect(built.capabilities.columnsAreSampled == false)
         #expect(built.capabilities.patternFiltersReadAnyColumn == false)
         #expect(built.capabilities.filtersTypedByReadRows == false)
         #expect(built.capabilities.tlsImpliedPorts.isEmpty)
         #expect(built.capabilities.verifiesServerWithSystemTrust == false)
+        #expect(built.capabilities.requestedTLSVerifiesIdentity == false)
         #expect(built.capabilities.supportsPerConnectionCertificatePaths == true)
         #expect(built.capabilities.newDatabaseFileExtensions.isEmpty)
         #expect(built.schema.implicitSchemaName == nil)

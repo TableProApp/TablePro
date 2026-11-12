@@ -3,6 +3,8 @@ import Foundation
 public protocol PluginExportDataSource: AnyObject, Sendable {
     var databaseTypeId: String { get }
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error>
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error>
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error>
     func fetchTableDDL(table: String, databaseName: String) async throws -> String
     func execute(query: String) async throws -> PluginQueryResult
     func quoteIdentifier(_ identifier: String) -> String
@@ -80,6 +82,14 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
 }
 
 public extension PluginExportDataSource {
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        PluginExportStreamElement.wrapping(streamRows(table: table, databaseName: databaseName))
+    }
+
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        PluginExportStreamElement.wrapping(streamRows(for: object))
+    }
+
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] { [] }
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo] { [] }
     func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] { [] }

@@ -32,15 +32,21 @@ actor QueryHistoryStorage {
     private var insertsSinceCleanup: Int = 0
     private var didBackfillFingerprints = false
 
+    var rewindRevision = 0
+    var rewindSubscribers: [UUID: AsyncStream<RewindAvailability>.Continuation] = [:]
+
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
+    private let onSetAside: @Sendable (SetAsideDamagedStore) -> Void
 
     init(
         databaseURL: URL = QueryHistoryStorage.defaultDatabaseURL(),
-        removeDatabaseOnDeinit: Bool = false
+        removeDatabaseOnDeinit: Bool = false,
+        onSetAside: @escaping @Sendable (SetAsideDamagedStore) -> Void = { _ in }
     ) {
         self.databaseURL = databaseURL
         self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
+        self.onSetAside = onSetAside
     }
 
     static func defaultDatabaseURL() -> URL {
@@ -50,6 +56,9 @@ actor QueryHistoryStorage {
     }
 
     deinit {
+        for subscriber in rewindSubscribers.values {
+            subscriber.finish()
+        }
         if let pointer = dbHandle.pointer {
             sqlite3_close_v2(pointer)
         }
@@ -71,25 +80,29 @@ actor QueryHistoryStorage {
         let dbPath = databaseURL.path(percentEncoded: false)
         protectDatabaseFiles(at: dbPath)
 
-        guard sqlite3_open(dbPath, &dbHandle.pointer) == SQLITE_OK else {
+        guard case .opened(let pointer, let setAside) = LocalSQLiteStoreOpener.open(at: databaseURL) else {
             Self.logger.error("Failed to open query history database at \(dbPath, privacy: .private(mask: .hash))")
-            if let pointer = dbHandle.pointer {
-                sqlite3_close_v2(pointer)
-            }
-            dbHandle.pointer = nil
             return
+        }
+        dbHandle.pointer = pointer
+        if let setAside {
+            onSetAside(setAside)
         }
 
         execute("PRAGMA journal_mode=WAL;")
         execute("PRAGMA synchronous=NORMAL;")
-        /// Off by default in SQLite, and `plan_snapshots.history_id` needs it: without it the
-        /// `ON DELETE SET NULL` never fires and a pruned history row leaves a plan pointing at a
-        /// row that no longer exists.
+        // plan_snapshots.history_id's ON DELETE SET NULL only fires with foreign keys on.
         execute("PRAGMA foreign_keys=ON;")
         sqlite3_busy_timeout(db, 3_000)
 
         createTables()
-        migrateIfNeeded()
+        guard migrateIfNeeded() else {
+            // A half-migrated schema reads as an empty history, so the store stays closed instead.
+            Self.logger.error("Query history migration failed; the store stays closed")
+            sqlite3_close_v2(pointer)
+            dbHandle.pointer = nil
+            return
+        }
         createFingerprintIndex()
         createPlanSnapshotStorage()
         createRewindSnapshotStorage()
@@ -148,23 +161,31 @@ actor QueryHistoryStorage {
         createIndexes()
     }
 
-    private func createFtsTriggers() {
-        execute("""
-            CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
-                INSERT INTO history_fts(rowid, query) VALUES (new.rowid, new.query);
-            END;
-            """)
-        execute("""
-            CREATE TRIGGER IF NOT EXISTS history_ad AFTER DELETE ON history BEGIN
-                INSERT INTO history_fts(history_fts, rowid, query) VALUES('delete', old.rowid, old.query);
-            END;
-            """)
+    @discardableResult
+    private func createFtsTriggers() -> Bool {
+        let results = [
+            execute("""
+                CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
+                    INSERT INTO history_fts(rowid, query) VALUES (new.rowid, new.query);
+                END;
+                """),
+            execute("""
+                CREATE TRIGGER IF NOT EXISTS history_ad AFTER DELETE ON history BEGIN
+                    INSERT INTO history_fts(history_fts, rowid, query) VALUES('delete', old.rowid, old.query);
+                END;
+                """),
+        ]
+        return !results.contains(false)
     }
 
-    private func createIndexes() {
-        execute("CREATE INDEX IF NOT EXISTS idx_history_connection_executed ON history(connection_id, executed_at DESC);")
-        execute("CREATE INDEX IF NOT EXISTS idx_history_executed_at ON history(executed_at DESC);")
-        execute("CREATE INDEX IF NOT EXISTS idx_history_source ON history(source);")
+    @discardableResult
+    private func createIndexes() -> Bool {
+        let results = [
+            execute("CREATE INDEX IF NOT EXISTS idx_history_connection_executed ON history(connection_id, executed_at DESC);"),
+            execute("CREATE INDEX IF NOT EXISTS idx_history_executed_at ON history(executed_at DESC);"),
+            execute("CREATE INDEX IF NOT EXISTS idx_history_source ON history(source);"),
+        ]
+        return !results.contains(false)
     }
 
     /// Kept out of `createIndexes` because that runs before the migration, when a database written
@@ -189,47 +210,26 @@ actor QueryHistoryStorage {
 
     // MARK: - Migration
 
-    /// `createTables` already builds the current shape, so a fresh database needs no migration at
-    /// all. Only a table left over from an older release is missing `source`, and the rebuild below
-    /// copies it forward by name, so every earlier version reaches v3 through the same path.
-    private func migrateIfNeeded() {
-        guard db != nil else { return }
+    private func migrateIfNeeded() -> Bool {
+        guard db != nil, let hasSource = hasColumn("source", inTable: "history") else { return false }
 
-        if hasColumn("source", inTable: "history") == false {
-            migrateToVersion3()
+        if !hasSource {
+            guard migrateToVersion3() else { return false }
         }
-        migrateToVersion4()
-        migrateToVersion5()
-        // Stamped only once the column it describes is actually there. Stamping regardless would
-        // claim a schema a failed ALTER never produced, and `record`'s insert would then fail to
-        // prepare against the old column count, silently recording nothing.
-        if hasColumn("fingerprint_hash", inTable: "history") {
-            setUserVersion(hasColumn("server_time", inTable: "history") ? 5 : 4)
+        guard addColumnIfMissing("fingerprint_hash", definition: "INTEGER NOT NULL DEFAULT 0"),
+              addColumnIfMissing("first_row_time", definition: "REAL"),
+              addColumnIfMissing("server_time", definition: "REAL")
+        else {
+            return false
         }
+        setUserVersion(5)
+        return true
     }
 
-    /// Both columns are nullable and deliberately not backfilled. A row written before the split
-    /// existed has no honest value to put in either, and `COALESCE` down to `execution_time` reads
-    /// it exactly as this release's predecessor did.
-    private func migrateToVersion5() {
-        if hasColumn("first_row_time", inTable: "history") == false {
-            execute("ALTER TABLE history ADD COLUMN first_row_time REAL;")
-        }
-        if hasColumn("server_time", inTable: "history") == false {
-            execute("ALTER TABLE history ADD COLUMN server_time REAL;")
-        }
-    }
-
-    /// Grouping a statement by its shape needs the shape stored, because deriving it on every read
-    /// costs about sixty times what reading a stored column does. The column is added first and
-    /// filled second so an app killed between the two reopens with an unfilled column and finishes
-    /// the backfill, rather than with no column and a version number claiming otherwise.
-    ///
-    /// A row the v3 rebuild carried forward arrives here with the column's `0` default, so both the
-    /// upgrade-from-v3 path and the upgrade-from-v2 path are covered by the same backfill.
-    private func migrateToVersion4() {
-        guard hasColumn("fingerprint_hash", inTable: "history") == false else { return }
-        execute("ALTER TABLE history ADD COLUMN fingerprint_hash INTEGER NOT NULL DEFAULT 0;")
+    // first_row_time and server_time stay NULL for older rows: COALESCE falls back to execution_time.
+    private func addColumnIfMissing(_ column: String, definition: String) -> Bool {
+        guard let present = hasColumn(column, inTable: "history") else { return false }
+        return present || execute("ALTER TABLE history ADD COLUMN \(column) \(definition);")
     }
 
     /// Filling the column is deliberately not part of `init`.
@@ -301,69 +301,73 @@ actor QueryHistoryStorage {
         return pending
     }
 
-    /// Renaming the table takes its triggers with it and dropping it destroys them, so between the
-    /// rename and `createFtsTriggers` the search index has no way to stay in step. Everything runs
-    /// in one transaction, and the version is only stamped once that transaction commits, so an
-    /// app killed midway reopens as the old schema and migrates again instead of stranding a
-    /// half-built index behind a version number that says the work is done.
-    private func migrateToVersion3() {
-        let legacyRows = readLegacyRowsForBackfill()
+    // One transaction, stamped inside it: any failed step rolls back to the legacy table intact.
+    private func migrateToVersion3() -> Bool {
+        guard let legacyRows = readLegacyRowsForBackfill(), beginTransaction() else { return false }
 
-        beginTransaction()
-        execute("ALTER TABLE history RENAME TO history_legacy;")
-        execute(Self.historyTableSql)
-        execute("""
-            INSERT INTO history (
-                id, query, connection_id, database_name, database_type, schema_name,
-                source, statement_type, executed_at, execution_time, row_count,
-                was_successful, error_message
-            )
-            SELECT
-                id, query, connection_id, database_name, '', NULL,
-                'editor', 'other', executed_at, execution_time, row_count,
-                was_successful, error_message
-            FROM history_legacy;
-            """)
-        execute("DROP TABLE history_legacy;")
+        let migrated = execute("ALTER TABLE history RENAME TO history_legacy;")
+            && execute(Self.historyTableSql)
+            && execute("""
+                INSERT INTO history (
+                    id, query, connection_id, database_name, database_type, schema_name,
+                    source, statement_type, executed_at, execution_time, row_count,
+                    was_successful, error_message
+                )
+                SELECT
+                    id, query, connection_id, database_name, '', NULL,
+                    'editor', 'other', executed_at, execution_time, row_count,
+                    was_successful, error_message
+                FROM history_legacy;
+                """)
+            && execute("DROP TABLE history_legacy;")
+            && execute("DROP TRIGGER IF EXISTS history_ai;")
+            && execute("DROP TRIGGER IF EXISTS history_ad;")
+            && execute("DROP TRIGGER IF EXISTS history_au;")
+            && execute("DROP TABLE IF EXISTS history_fts;")
+            && execute(Self.ftsTableSql)
+            && createFtsTriggers()
+            && execute("INSERT INTO history_fts(history_fts) VALUES('rebuild');")
+            && execute("DROP INDEX IF EXISTS idx_history_connection;")
+            && createIndexes()
+            && applyStatementTypes(legacyRows)
+            && setUserVersion(3)
 
-        execute("DROP TRIGGER IF EXISTS history_ai;")
-        execute("DROP TRIGGER IF EXISTS history_ad;")
-        execute("DROP TRIGGER IF EXISTS history_au;")
-        execute("DROP TABLE IF EXISTS history_fts;")
-        execute(Self.ftsTableSql)
-        createFtsTriggers()
-        execute("INSERT INTO history_fts(history_fts) VALUES('rebuild');")
-
-        execute("DROP INDEX IF EXISTS idx_history_connection;")
-        createIndexes()
-
-        applyStatementTypes(legacyRows)
-        setUserVersion(3)
-
-        commitTransaction()
+        guard migrated else {
+            Self.logger.error("Query history migration to version 3 failed and was rolled back")
+            rollbackTransaction()
+            return false
+        }
+        return commitTransaction()
     }
 
-    private func readLegacyRowsForBackfill() -> [(id: String, statementType: String)] {
+    private func readLegacyRowsForBackfill() -> [(id: String, statementType: String)]? {
         var pending: [(id: String, statementType: String)] = []
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(db, "SELECT id, query FROM history;", -1, &statement, nil) == SQLITE_OK else {
             logSqliteError(context: "prepare backfill read")
-            return pending
+            return nil
         }
-        while sqlite3_step(statement) == SQLITE_ROW {
-            guard let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
-                  let query = sqlite3_column_text(statement, 1).map({ String(cString: $0) })
-            else { continue }
-            // A legacy row has no engine; standard SQL comments are enough to find a label's keyword.
-            pending.append((id, QueryHistoryStatementType.classify(query, grammar: .ansi).rawValue))
+        while true {
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW:
+                guard let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                      let query = sqlite3_column_text(statement, 1).map({ String(cString: $0) })
+                else { continue }
+                // A legacy row has no engine; standard SQL comments are enough to find a label's keyword.
+                pending.append((id, QueryHistoryStatementType.classify(query, grammar: .ansi).rawValue))
+            case SQLITE_DONE:
+                return pending
+            default:
+                logSqliteError(context: "backfill read")
+                return nil
+            }
         }
-        return pending
     }
 
-    private func applyStatementTypes(_ rows: [(id: String, statementType: String)]) {
-        guard !rows.isEmpty else { return }
+    private func applyStatementTypes(_ rows: [(id: String, statementType: String)]) -> Bool {
+        guard !rows.isEmpty else { return true }
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -375,33 +379,42 @@ actor QueryHistoryStorage {
             nil
         ) == SQLITE_OK else {
             logSqliteError(context: "prepare backfill write")
-            return
+            return false
         }
 
         for row in rows {
             QueryHistorySqlBinding.text(row.statementType).bind(to: statement, at: 1)
             QueryHistorySqlBinding.text(row.id).bind(to: statement, at: 2)
-            if sqlite3_step(statement) != SQLITE_DONE {
+            guard sqlite3_step(statement) == SQLITE_DONE else {
                 logSqliteError(context: "backfill statement type")
+                return false
             }
             sqlite3_reset(statement)
             sqlite3_clear_bindings(statement)
         }
+        return true
     }
 
-    private func hasColumn(_ column: String, inTable table: String) -> Bool {
-        guard db != nil else { return false }
+    // nil when the schema cannot be read: a guess of false would rebuild a current table as legacy.
+    private func hasColumn(_ column: String, inTable table: String) -> Bool? {
+        guard db != nil else { return nil }
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table))", -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return nil
         }
-        while sqlite3_step(statement) == SQLITE_ROW {
-            if let name = sqlite3_column_text(statement, 1), String(cString: name) == column {
-                return true
+        while true {
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW:
+                if let name = sqlite3_column_text(statement, 1), String(cString: name) == column {
+                    return true
+                }
+            case SQLITE_DONE:
+                return false
+            default:
+                return nil
             }
         }
-        return false
     }
 
     private func userVersion() -> Int32 {
@@ -416,25 +429,29 @@ actor QueryHistoryStorage {
         return sqlite3_column_int(statement, 0)
     }
 
-    private func setUserVersion(_ version: Int32) {
+    @discardableResult
+    private func setUserVersion(_ version: Int32) -> Bool {
         execute("PRAGMA user_version = \(version);")
     }
 
     // MARK: - Statement Helpers
 
-    func execute(_ sql: String) {
-        guard let db else { return }
+    @discardableResult
+    func execute(_ sql: String) -> Bool {
+        guard let db else { return false }
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
 
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             logSqliteError(context: "prepare")
-            return
+            return false
         }
         let result = sqlite3_step(statement)
-        if result != SQLITE_DONE, result != SQLITE_ROW {
+        guard result == SQLITE_DONE || result == SQLITE_ROW else {
             logSqliteError(context: "step")
+            return false
         }
+        return true
     }
 
     func logSqliteError(context: String) {
@@ -442,19 +459,30 @@ actor QueryHistoryStorage {
         Self.logger.error("Query history SQL \(context, privacy: .public) failed: \(String(cString: message), privacy: .private)")
     }
 
-    private func beginTransaction() {
-        guard let db else { return }
-        if sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) != SQLITE_OK {
+    @discardableResult
+    private func beginTransaction() -> Bool {
+        guard let db else { return false }
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
             logSqliteError(context: "begin")
+            return false
         }
+        return true
     }
 
-    private func commitTransaction() {
-        guard let db else { return }
-        if sqlite3_exec(db, "COMMIT;", nil, nil, nil) != SQLITE_OK {
+    @discardableResult
+    private func commitTransaction() -> Bool {
+        guard let db else { return false }
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
             logSqliteError(context: "commit")
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            rollbackTransaction()
+            return false
         }
+        return true
+    }
+
+    private func rollbackTransaction() {
+        guard let db else { return }
+        sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
     }
 
     // MARK: - Writes
@@ -1095,16 +1123,14 @@ actor QueryHistoryStorage {
             logSqliteError(context: "clear")
             return false
         }
+        if Self.coversEveryRow(filter), !LocalSQLiteStoreOpener.removeSetAsideCopies(of: databaseURL) {
+            Self.logger.fault("History was cleared, but a damaged copy set aside earlier could not be deleted")
+        }
         return true
     }
 
-    /// Everything this connection left in the database, across all three tables.
-    ///
-    /// `clear(matching:)` cannot serve, because it deletes from `history` alone and both snapshot
-    /// tables hold their own copy of what the statement said: `plan_snapshots.subject_sql` and
-    /// `raw_plan`, and `rewind_snapshots.payload`, which is captured row data. Their `history_id`
-    /// is `ON DELETE SET NULL`, so deleting the history rows unlinks them and leaves them on disk,
-    /// out of reach of the UI and, for a pinned plan, out of reach of retention pruning too.
+    // Not clear(matching:): the snapshot tables keep their own copy of the statement and rows, and
+    // deleting history only unlinks them (ON DELETE SET NULL), out of reach of the UI and retention.
     @discardableResult
     func deleteEverything(forConnection connectionId: UUID) -> Bool {
         guard let db else { return false }
@@ -1126,6 +1152,7 @@ actor QueryHistoryStorage {
             }
             sqlite3_finalize(statement)
         }
+        rewindSnapshotsDidChange()
         return succeeded
     }
 

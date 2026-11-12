@@ -14,6 +14,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     private let columns: [String]
     private let columnTypeNames: [String]
     private let rows: [[PluginCellValue]]
+    private let exportDocuments: [PluginExportDocument?]
     // Row index to the row, for rows holding values the page left on the server.
     private let unloadedRows: [Int: Row]
     private let fillUnloaded: UnloadedValueFill?
@@ -34,6 +35,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         columns: [String],
         columnTypeNames: [String],
         rows: [[PluginCellValue]],
+        exportDocuments: [PluginExportDocument?] = [],
         unloadedRows: [Int: Row] = [:],
         fillUnloaded: UnloadedValueFill? = nil,
         databaseTypeId: String,
@@ -45,6 +47,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         self.columns = columns
         self.columnTypeNames = columnTypeNames
         self.rows = rows
+        self.exportDocuments = exportDocuments
         self.unloadedRows = unloadedRows
         self.fillUnloaded = fillUnloaded
         self.quoteIdentifierFn = quoteIdentifier
@@ -67,6 +70,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
             columns: tableRows.columns,
             columnTypeNames: Self.columnTypeNames(of: tableRows),
             rows: tableRows.rows.map { Array($0.values) },
+            exportDocuments: tableRows.rows.map { $0.exportSnapshot?.document(matching: $0) },
             unloadedRows: unloadedRows,
             fillUnloaded: fillUnloaded.map { Self.masking($0, by: tableRows.masks) },
             databaseTypeId: databaseType.rawValue,
@@ -77,13 +81,15 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     }
 
     convenience init(detachedRows tableRows: TableRows, rowIndices: [Int]? = nil, databaseTypeId: String) {
-        let rows = rowIndices.map { indices in
-            indices.filter { tableRows.rows.indices.contains($0) }.map { Array(tableRows.rows[$0].values) }
-        } ?? tableRows.rows.map { Array($0.values) }
+        let selected = rowIndices.map { indices in
+            indices.filter { tableRows.rows.indices.contains($0) }.map { tableRows.rows[$0] }
+        } ?? Array(tableRows.rows)
+        let rows = selected.map { Array($0.values) }
         self.init(
             columns: tableRows.columns,
             columnTypeNames: Self.columnTypeNames(of: tableRows),
             rows: rows,
+            exportDocuments: selected.map { $0.exportSnapshot?.document(matching: $0) },
             databaseTypeId: databaseTypeId,
             quoteIdentifier: SQLEscaping.quoteIdentifier,
             escapeStringLiteral: SQLEscaping.escapeStringLiteral
@@ -159,6 +165,38 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
                 continuation.yield(.rows(snapshot))
             }
             continuation.finish()
+        }
+    }
+
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        streamExportRows(table: object.name, databaseName: object.databaseName)
+    }
+
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        let stream = streamRows(table: table, databaseName: databaseName)
+        let documents = exportDocuments
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                var offset = 0
+                do {
+                    for try await element in stream {
+                        switch element {
+                        case .header(let header):
+                            continuation.yield(.header(header))
+                        case .rows(let rows):
+                            let end = offset + rows.count
+                            let aligned = end <= documents.count ? Array(documents[offset..<end]) : []
+                            let complete = aligned.compactMap { $0 }
+                            continuation.yield(.rows(rows, documents: complete.count == rows.count ? complete : nil))
+                            offset = end
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

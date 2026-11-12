@@ -21,7 +21,7 @@ The library must:
 
 - be maintained and published on crates.io, used without a fork ([ADR 0005](decisions/0005-supply-chain-policy.md)); `deny.toml` allows no git source;
 - use rustls with aws-lc-rs, or no TLS of its own ([ADR 0009](decisions/0009-crypto-provider-and-sources.md));
-- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket ([Transports](../../core/ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
+- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket, and relay an in-process SSH channel, which has no address, through `tablepro_net::PrivateListener` ([Transports](../../core/ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
 - have a way to stop a statement already sent: a cancel request, a KILL, an attention, an interrupt. Where the protocol has none, as CQL's has not, it drops the request and keeps the connection serving (`StatementStop::Abandon`);
 - let the driver keep a connection clean for the next caller, with no server-side state it did not ask for.
 
@@ -109,7 +109,7 @@ pub trait DatabaseDriver: Send + Sync {
 | `row_count_estimate` | `Statistics` ("about N"), `ExactMetadata` or `Unavailable`. |
 | `object_kinds` | The `ObjectKind`s `list_objects` returns. |
 | `database_required` | Whether a connect without a database name is refused before anything is opened. |
-| `network_options` | The `NetworkOption`s the connect dialog offers beyond host, port and database: `DnsSeedList` and `AuthDatabase`. `NetworkOptions::validate` refuses one the driver does not list, which only a saved or imported connection can carry. |
+| `network_options` | The `NetworkOption`s the connect dialog offers beyond host, port and database: `DnsSeedList`, `AuthDatabase`, `HostList` (a replica set name and more members), `ChannelBinding` and `LocalSocket`. `NetworkOptions::validate` refuses one the driver does not list, which only a saved or imported connection can carry. |
 | `statement_stop` | `Server` where the engine stop reaches the server, `Abandon` where the protocol carries none and the server runs the statement to its own timeout. |
 
 The shipped drivers:
@@ -120,7 +120,7 @@ The shipped drivers:
 | `endpoint` | 5432 | 3306 | `File` | `File` | 1433 | 8123 | 9042 | 6379 | 27017 |
 | `auth_modes` | Password | Password | none | none | Password, Kerberos | Password | Password | Password | Password |
 | `username_required` | yes | yes | | | yes | yes | no | no | no |
-| TLS modes | all three | all three | none | none | all three | all three | all three | all three | all three |
+| TLS modes | all three | all three | none | none | all three and `Strict` | all three | all three | all three | all three |
 | CA file | yes | yes | | | yes | yes | yes | yes | yes |
 | Client certificate | yes | yes | | | no | yes | yes | yes | yes |
 | Server name override | `AnyRoute` | `SshForwardOnly` | | | `AnyRoute` | `AnyRoute` | `AnyRoute` | `AnyRoute` | `SshForwardOnly` |
@@ -133,7 +133,7 @@ The shipped drivers:
 | `database_required` | no | yes | no | no | no | no | no | no | no |
 | `statement_stop` | `Server` | `Server` | `Server` | `Server` | `Server` | `Server` | `Abandon` | `Server` | `Server` |
 
-SQL Server offers Kerberos only when built with the `kerberos` feature. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
+SQL Server offers Kerberos on Linux and macOS only when built with the `kerberos` feature, and always on Windows, where it signs in through SSPI. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
 
 ### Connecting
 
@@ -216,7 +216,7 @@ Start the resource empty and fill it inside the work, as `PgCall::acquire` and `
 | ClickHouse | `KILL QUERY WHERE query_id = ? ASYNC` on a sessionless client | `OutOfBand(Statement)` |
 | Cassandra, ScyllaDB | None in the protocol: the call drops its request, and the server runs it to its own timeout | `InBand` |
 | Redis | A workspace read stops between its bounded commands; an editor command gets `CLIENT UNBLOCK <id> ERROR`, then `CLIENT KILL ID <id>` past the grace, from a link of its own ([redis.md](drivers/redis.md#stops-and-timeouts)) | `InBand` |
-| MongoDB | `killSessions` for the call's own logical session, from the same client | `OutOfBand(Statement)` |
+| MongoDB | `killSessions` for the call's own logical session, from the same client; where it is refused, `killOp` for each operation `currentOp` lists in that session ([mongodb.md](drivers/mongodb.md#stops-and-timeouts)) | `OutOfBand(Statement)` |
 
 ### `CallResource` release rules
 
@@ -238,7 +238,9 @@ A call that times out or loses its connection may have met a dead route or only 
 
 ## 5. Writes and the `WriteLedger`
 
-A `WriteBatch` is a `WriteKind` (`RowChanges` or `SchemaChanges`), the `TableRef` it changes, the `GuardedStatement` steps and a `ForeignKeyMode`. A row change runs under the workspace statement timeout where the engine can stop one safely; a schema change never does. Both stay bounded by the call's deadline and cancel.
+A `WriteBatch` is a `WriteKind` (`RowChanges`, `SchemaChanges` or `DatabaseChanges`), the `TableRef` it changes, the `GuardedStatement` steps and a `ForeignKeyMode`. A row change runs under the workspace statement timeout where the engine can stop one safely; a schema or database change never does. All stay bounded by the call's deadline and cancel.
+
+A `DatabaseChanges` batch creates or drops a database, and its `TableRef` names that database as the schema with an empty table name. The driver opens no transaction for it and runs the statements one at a time, because PostgreSQL and SQL Server refuse CREATE and DROP DATABASE inside one.
 
 Each step is a statement and a `RowGuard`: `None`, `AffectedExactly(n)`, or `ProbeExactly { probe, rows }`, which counts the rows with a `SELECT` before the statement runs. A mismatch means the row is not the one that was loaded, and the batch stops with `RowGuardFailed`. An engine that cannot report an affected count refuses `AffectedExactly` with `GuardUnsupported` before anything is sent.
 
@@ -291,7 +293,7 @@ An editor tab holds one session for as long as it is open, because the state a u
 - It is never pooled and never reopened behind the user's back. `state()` is `Ready`, `Running` or `Lost`. A lost connection is `EditorSessionState::Lost`, and the tab opens a new session on its next run.
 - One run at a time: a second `run` fails with `EditorSessionBusy`.
 - `transaction_state(options)` answers what the session holds now, outside a run.
-- `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
+- `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `byte_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
 - A dropped caller is a cancel. The run goes on a task of its own, or an actor's, and `run` arms `options.cancel.clone().drop_guard()` until the outcome arrives, so the stop still goes out and the session settles to `Ready` or `Lost`. `MysqlEditorSession::run` is the shape to copy.
 - The app's editor splits a script with the engine's grammar and sends one statement per run, or one `GO` batch on SQL Server. A driver still runs whatever text it is given, a whole script included.
 - A stopped run sends nothing more, whether or not the stop reached the server: the statement running, or the batch the server runs as one (a `GO` batch on SQL Server, text MySQL has to send whole), is its last. `TimedOut { server_cancelled: true }` means the server said it stopped the statement, never only that the stop went out.
@@ -305,23 +307,27 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 - `ResultSetStarted { columns }` opens a result set.
 - `ColumnsResolved { set_index, columns }` replaces the columns of a set whose types the driver could only learn from its rows (SQLite).
-- `Rows` carries a batch of rows, 256 in the shipped drivers.
+- `Rows` carries a batch of rows. `RowBatch` sends one at 256 rows or 4 MiB of `Value::retained_bytes`, whichever comes first.
 - `RowLimitReached { retained }` comes once per set, before `ResultSetFinished`.
-- `ResultSetFinished { retained, total_rows, truncation }` closes the set. `Truncation` is `Complete`, `ServerStopped` or `ReadPastLimit`, and `total_rows` is `None` when the driver did not read the rest.
+- `ByteLimitReached { retained }` comes once per set the run's byte limit cut, before `ResultSetFinished`. The session's `ByteLimitSink` sends it; a driver sends it only when it holds a set before its first event (The row-limit rule, below).
+- `ResultSetFinished { retained, total_rows, truncation }` closes the set. `Truncation` is `Complete`, `ServerStopped`, `ReadPastLimit` or `ByteLimit`, and `total_rows` is `None` when the driver did not read the rest.
 - `CommandCompleted { rows_affected }` reports a statement that returned no rows; `None` is "not reported", not zero.
 - `Notice` passes on a server notice or warning.
+- `NoticeLimitReached { retained }` comes once per run when the driver kept fewer notices than the server sent, after the `retained` ones it passed on.
 
-`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, SQLite stops stepping it, DuckDB stops fetching its streamed result, and the Cassandra driver asks for no more pages. `stream_read` uses the same sink and events, without a row limit.
+`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. One exception: an editor result whose columns a document engine finds from its documents, since a later document can add a column. It reads the documents it keeps, at most the row limit and one more, and closes the cursor before `ResultSetStarted`, then sends them under the same backpressure. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, SQLite stops stepping it, DuckDB stops fetching its streamed result, and the Cassandra driver asks for no more pages. `stream_read` uses the same sink and events, without a row limit.
 
 ## The row-limit rule
 
 `RowLimit` wraps a `NonZeroU64`; `RowLimit::EDITOR_DEFAULT` is 10,000.
 
 - `query_bound` keeps at most the limit and reads one more row to mark the result truncated.
-- An editor run keeps at most the limit in each result set and sends `RowLimitReached` once. A set the server cut at one row past the limit ends with `Truncation::ServerStopped` and no `total_rows`: PostgreSQL reports it when its cursor stopped the set, MySQL when `sql_select_limit` did. A set read past the limit ends with `Truncation::ReadPastLimit`. Where the engine allows, the rest of the set is stopped on the server rather than read: a `FETCH` of one row past the limit (PostgreSQL), `sql_select_limit` (MySQL), `KILL QUERY` (ClickHouse). SQLite stops stepping and DuckDB stops fetching the chunks of its streamed result, so the rest is never produced, and the Cassandra driver asks the server for no more pages (`ServerStopped`). Otherwise the rows past the limit are counted without being decoded (SQL Server, and MySQL where `sql_select_limit` does not apply).
+- An editor run keeps at most the limit in each result set and sends `RowLimitReached` once. A set the server cut at one row past the limit ends with `Truncation::ServerStopped` and no `total_rows`: PostgreSQL reports it when its cursor stopped the set, MySQL when `sql_select_limit` did. A set read past the limit ends with `Truncation::ReadPastLimit`. Where the engine allows, the rest of the set is stopped on the server rather than read: a `FETCH` of one row past the limit (PostgreSQL), `sql_select_limit` (MySQL), `KILL QUERY` (ClickHouse). SQLite stops stepping and DuckDB stops fetching the chunks of its streamed result, so the rest is never produced, and the Cassandra driver asks the server for no more pages (`ServerStopped`). Otherwise the rows past the limit are counted without being decoded (SQL Server, and MySQL in a run with a `SELECT` that writes to a file or locks, since `sql_select_limit` would also cut what it writes or locks).
 - The limit never ends the script, the user's transaction or the statements after the limited one. The conformance case `row_limit_keeps_transaction_and_later_statements` checks this on every engine with editor transactions.
 - The driver never rewrites the user's SQL to add a `LIMIT`.
 - `stream_read` has no limit.
+
+`RunOptions::byte_limit` bounds the bytes of rows a whole run keeps, `ByteLimit::EDITOR_DEFAULT` (256,000,000) unless the caller sets one (core ADR 0020, `core/docs/decisions/0020-a-run-keeps-a-byte-limit-of-rows.md`). The driver does not enforce it: `Session::open_editor_session` wraps every editor session so its runs go through `ByteLimitSink`. The sink keeps the row that crosses the limit whole, sends `ByteLimitReached`, drops the run's later rows and finishes a cut set as `Truncation::ByteLimit` with the driver's `total_rows`, or keeps the driver's `ServerStopped`, which says more. It answers `Continue` for the rows it drops, never `ConsumerGone`, so the limit ends neither the statement nor the user's transaction, and rows past the cut are still read up to the row limit. A driver that holds a set before its first event, as MongoDB holds a cursor's documents, stops holding at the limit itself, ends the set with `ByteLimitReached` and `Truncation::ByteLimit`, and the sink passes them on. The conformance case `byte_limit_keeps_whole_rows_and_later_statements` checks the sink on every engine with an editor, and `a_document_read_stops_at_the_byte_limit` the driver's own stop.
 
 ## 7. Dialects
 
@@ -329,7 +335,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 A table whose scan has no order to page by, as a CQL scan in token order has none, returns `TablePaging::ServerState` from `table_paging`: the browse tab then pages by the state the server hands back, through `Connection::query_server_page`, offers no sort, and reaches a page by number by skipping rows. `filter_operators`, `filter_combinators` and `filtered_read_suffix` narrow the filter strip to what the engine evaluates and add what it needs after a WHERE clause. `capabilities().insert_conflict` says what an INSERT of a taken key does, which decides how a save proves an insert: refused (`Refused`), skipped (`Skipped`, proved by the count), or replaced (`Replaced`, proved by a probe for the key first). A column that holds one value per partition, a CQL partition key or static column, is `ColumnInfo::partition_scoped`: an update of such columns alone names only the partition, is spelled by `partition_update_statement`, and is proved by a probe for its row.
 
-`SqlDialect::cell_expressions` lists the SQL a date, time or timestamp cell may be set to, such as `NOW()`, each with the column kinds it fills and the other spellings typed for it. The grid matches what the user types against this list and the save writes the listed spelling into the statement, so only list an expression after running it against the engine for every kind it names; `check_cell_expressions` in `tablepro-test-support` does that from a driver's integration tests. `update_sets_default` says whether `UPDATE ... SET c = DEFAULT` parses, which lets a saved row's cell take the column's default.
+`SqlDialect::cell_expressions` lists the SQL a date, time or timestamp cell may be set to, such as `NOW()`, each with the column kinds it fills and the other spellings typed for it. The grid matches what the user types against this list and the save writes the listed spelling into the statement, so only list an expression after running it against the engine for every kind it names; `check_cell_expressions` in `tablepro-test-support` does that from a driver's integration tests. `update_sets_default` says whether `UPDATE ... SET c = DEFAULT` parses, which lets a saved row's cell take the column's default. `reads_missing_as_null` says a read gives NULL for a value the row does not hold, as a document's missing field: a NULL Duplicate Rows copies or a CSV import's null marker names then takes the column's default (`edit::read_cell`), while NULL typed into a cell is written.
 
 `SqlDialect::grammar()` names the engine's `SqlGrammar`, which the editor's split and completion, filter and default validation, and the history check read. `SqlGrammar` is closed: an engine with its own lexical rules adds a variant, and the compiler lists every match to extend, starting with its rules in `core/crates/core/src/sql_syntax/script/script_rules.rs`. A language that is not SQL adds a variant too, with no SQL rules ([Engines without SQL](#engines-without-sql)). Each rule gets a named case in `core/crates/core/tests/script_corpus.rs` ([testing.md](testing.md#the-script-planner)). An engine with its own error numbering adds a `ServerCode` variant the same way ([error-handling.md](error-handling.md#serverdiagnostics)).
 
@@ -414,8 +420,8 @@ What a new engine without SQL does:
 
 MongoDB holds databases of collections and takes mongosh statements. A collection opens in the table tab, so every builder the tab, an export, a save and the MCP server reach (`build_page`, `build_count`, `build_export`, `plan_save`, `build_filter`, `validate_raw_predicate`, the SQL export's inserts) has a document arm, chosen by the dialect's grammar, that writes the engine's shell call with every value bound ([ADR 0026](decisions/0026-documents-in-the-table-tab.md)). What a document engine does beyond the steps above:
 
-1. **Capabilities.** `data_model: Document`, `object_kinds` tables and views, and `network_options` for what its connection strings carry beyond a host (MongoDB: `DnsSeedList`, `AuthDatabase`).
-2. **Catalogue.** Databases from `list_schemas`, collections and views from `list_objects`. `fetch_columns` reads the top-level fields of a bounded sample on the server, the key first, with the column kind the field's values share and JSON for nested or mixed ones. `row_identity` is the document key, `Unordered` for a view.
+1. **Capabilities.** `data_model: Document`, `object_kinds` tables and views, and `network_options` for what its connection strings carry beyond a host (MongoDB: `DnsSeedList`, `AuthDatabase`, `HostList`).
+2. **Catalogue.** Databases from `list_schemas`, collections and views from `list_objects`. `fetch_columns` reads the top-level fields of a bounded sample on the server, the key first, with the column kind the field's values share and JSON for nested or mixed ones, numbers of more than one BSON type included. `row_identity` is the document key, `Unordered` for a view.
 3. **Grammar and builders.** The `SqlGrammar` variant's module (`sql_syntax/mongo/`) parses the shell into an AST that keeps key order and prints it back, so a generated statement is runnable text, and the driver reads generated and typed statements through the same parser and the same read-only check. The document arms live in `tablepro_core::document`; a builder that meets a field a query cannot name refuses it (`UnaddressableField`).
 4. **Values.** A cell comes from the value's own type, not the column's; a nested value is Extended JSON that names its types, and a JSON cell the user edits goes back as the BSON it names.
 5. **Tests.** `document_conformance_suite!` through `DocumentEngine` ([testing.md](testing.md#document-conformance)), and the TLS suite on each route the driver does TLS on.
@@ -428,7 +434,7 @@ MongoDB holds databases of collections and takes mongosh statements. A collectio
 - [ ] Every call runs under `OwnedCalls` with the engine's stop, and a connection-scoped stop never releases an unsettled connection.
 - [ ] `probe` never waits for a pool slot; `stream_read` never holds one.
 - [ ] Saves record every step in a `WriteLedger`, and the stop is held while a commit is in flight.
-- [ ] Editor sessions are one connection per tab, one run at a time, with `ResultSink` backpressure and the row-limit rule.
+- [ ] Editor sessions are one connection per tab, one run at a time, with `ResultSink` backpressure (or the document exception in [ResultSink and backpressure](#resultsink-and-backpressure)) and the row-limit rule.
 - [ ] Errors map to `DriverError` by the engine's code ([error-handling.md](error-handling.md)).
 - [ ] The client library's log target is in `SILENCED_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
 - [ ] Registered in `build_registry`; added to the workspace and to `crates/app/Cargo.toml`.

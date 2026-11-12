@@ -4,15 +4,19 @@ mod created_object;
 mod credential_rules;
 mod errors;
 mod grammar;
+mod highlight;
 mod history_recording;
 mod keywords;
 mod literal_token;
 pub mod mongo;
+mod order_by;
 mod parse_expression;
 mod parse_type;
 pub mod redis;
 mod reserved_words;
 pub mod script;
+mod sort_reference;
+mod source_table;
 mod state_changing_functions;
 mod statement_access;
 mod statement_tokens;
@@ -23,8 +27,14 @@ pub use created_object::{holds_client_directive, mysql_program_script, qualify_c
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
 pub use grammar::SqlGrammar;
+pub use highlight::{SyntaxKind, SyntaxToken, syntax_tokens};
 pub use history_recording::{HistoryRecording, WithholdReason, classify_for_history};
 pub use literal_token::LiteralToken;
+pub use order_by::with_order_by;
 pub use parse_expression::{MAX_EXPRESSION_LEN, ValidatedExpression, parse_expression};
 pub use parse_type::{MAX_TYPE_LEN, TypeShape, ValidatedType, parse_type};
+pub use sort_reference::{SortReference, sort_reference};
+pub use source_table::{
+    SourceItem, SourceName, SourceRefusal, SourceTable, same_name, source_columns_for_result, source_table,
+};
 pub use statement_access::{StatementAccess, sqlite_pragma_reports, statement_access};

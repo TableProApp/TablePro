@@ -73,7 +73,7 @@ UI flows: `.claude/rules/ui-tests.md`. Running tests and reading verdicts: `.cla
 Use one before writing a local helper.
 
 - `TableProTestSupport` (TableProCore): `waitUntil`, `AsyncGate`, `ManualClock` (production code takes `clock: any Clock<Duration> = ContinuousClock()`), `BoundedCall`, `HeldOpenWriter`, `BackgroundPipeWriter`, `BackgroundPipeReader`.
-- `apple/TableProTests/Helpers/`: `GlobalStateSuites`, `EphemeralDefaults`, `.appSettings { }`, `.recordingClipboard`, `CoordinatorFixture`, `OfflineRegistry`, `InMemoryColumnLayoutStore`, `InMemoryKeychain`, `PluginDriverStub`, `TestFixtures`, `AlwaysAllowGate`, `AlwaysDenyGate`.
+- `apple/TableProTests/Helpers/`: `GlobalStateSuites`, `EphemeralDefaults`, `.appSettings { }`, `.recordingClipboard`, `CoordinatorFixture`, `OfflineRegistry`, `InMemoryColumnLayoutStore`, `InMemoryKeychain`, `PluginDriverStub`, `TestFixtures`, `AlwaysAllowGate`, `AlwaysDenyGate`, `CountingOpener`, `MCPInMemoryApprovalStore`, `MCPFixedApprovalReader`, `ArrayRowProvider`, `ScopeRecordingKeychain`.
 - `TableProMCPTestSupport` (TableProMacCore): `MCPTestClock`, `MockHttpServer`, `RecordingBridgeLogger`. `TableProTLSTestFixtures` (TableProCore), also for the iOS tests.
 
 ## Known failures and flakes

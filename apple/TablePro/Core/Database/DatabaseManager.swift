@@ -9,6 +9,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Manages database connections and active drivers
 @MainActor
@@ -25,6 +26,7 @@ final class DatabaseManager: ObservableObject {
     internal let localCredentialConsent: LocalCredentialConsent
     internal let postDisconnectScripts: PostDisconnectScripts
     internal let localNetworkProbe: any LocalNetworkAccessProbing
+    internal let cnameResolver: any CNAMEResolving
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
     // Keyed by the credential profile, or by the connection and where it dials: a linked-folder row keeps its id
@@ -126,6 +128,10 @@ final class DatabaseManager: ObservableObject {
     /// for the same reason every other shared write here is generation-checked.
     internal var connectionStages: [UUID: ConnectionStage] = [:]
 
+    // The startup statements a connection's warning has already named since its connect, so a pool entry or lane
+    // opened later names only a failure the window was not told about.
+    internal var reportedStartupFailures: [UUID: Set<String>] = [:]
+
     /// Orders operations that move the shared driver, so two windows cannot interleave
     /// their pins and each run against the other's database.
     internal let sessionDriverGate = SessionDriverGate()
@@ -135,6 +141,11 @@ final class DatabaseManager: ObservableObject {
 
     /// Which session connections hold a transaction, recorded after every turn on them.
     internal lazy var sessionTransactions = SessionTransactionTracker { [weak self] key, driver in
+        self?.isLiveSessionDriver(driver, for: key) ?? false
+    }
+
+    // What the user's statements set up on each session connection, read before a reconnect closes one.
+    internal lazy var sessionStateLedger = SessionStateLedger { [weak self] key, driver in
         self?.isLiveSessionDriver(driver, for: key) ?? false
     }
 
@@ -191,6 +202,7 @@ final class DatabaseManager: ObservableObject {
         localCredentialConsent: LocalCredentialConsent = LocalCredentialConsent(),
         postDisconnectScripts: PostDisconnectScripts = PostDisconnectScripts(),
         localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe(),
+        cnameResolver: any CNAMEResolving = SystemCNAMEResolver(),
         recoveryClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.connectionStorage = connectionStorage
@@ -202,9 +214,14 @@ final class DatabaseManager: ObservableObject {
         self.localCredentialConsent = localCredentialConsent
         self.postDisconnectScripts = postDisconnectScripts
         self.localNetworkProbe = localNetworkProbe
+        self.cnameResolver = cnameResolver
         self.recoveryClock = recoveryClock
         sessionLanes.onClose = { [weak self] connectionId in
             self?.sessionTransactions.prune(connectionId)
+            self?.sessionStateLedger.prune(connectionId)
+        }
+        sessionLanes.recordedState = { [weak self] driver, connectionId in
+            self?.sessionStateLedger.state(heldBy: driver, for: connectionId) ?? []
         }
         observeConnectionUpdates()
         observeHealthCheckSetting()

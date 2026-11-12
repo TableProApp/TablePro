@@ -29,10 +29,10 @@ struct SQLLexicalFeatureMappingTests {
             .sqlScriptBlocks, .cqlBatches, .hashAndAtInIdentifiers, .angleQuotedIdentifiers,
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
             .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
-            .withoutDashComments, .escapeStringContinuations,
+            .withoutDashComments, .escapeStringContinuations, .databendTokens,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 40) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 41) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -82,11 +82,12 @@ struct SQLLexicalFeatureMappingTests {
         )
     }
 
-    @Test("Databend's form feed rule stays in the app's curated grammar and never reaches the kit")
+    @Test("Databend's form feed rule and token reading stay in the app's curated grammar and never reach the kit")
     func formFeedRuleIsAppCurated() {
         let databend = DatabaseType.databend.lexicalGrammar
-        #expect(databend.contains(.formFeedEndsLineComments))
-        #expect(SQLLexicalGrammar(pluginFeatures: databend.pluginFeatures) == databend.subtracting(.formFeedEndsLineComments))
+        let curatedOnly: SQLLexicalGrammar = [.formFeedEndsLineComments, .databendTokens]
+        #expect(databend.isSuperset(of: curatedOnly))
+        #expect(SQLLexicalGrammar(pluginFeatures: databend.pluginFeatures) == databend.subtracting(curatedOnly))
     }
 
     @Test("A grammar survives the trip through the kit's features, less the facts only the curated table sets")
@@ -109,7 +110,7 @@ struct SQLLexicalFeatureMappingTests {
             .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
         ]
         #expect(SQLLexicalGrammar(pluginFeatures: mySQL) == DatabaseType.mysql.lexicalGrammar)
-        let curatedDatabend = DatabaseType.databend.lexicalGrammar.subtracting(.formFeedEndsLineComments)
+        let curatedDatabend = DatabaseType.databend.lexicalGrammar.subtracting([.formFeedEndsLineComments, .databendTokens])
         #expect(SQLLexicalGrammar(pluginFeatures: databend) == curatedDatabend)
     }
 

@@ -39,7 +39,6 @@ use crate::i18n::{gettext, ngettext_f};
 use crate::runtime::spawn_and_deliver;
 use crate::services::history_service::HistoryService;
 use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
-use crate::ui::format::plural_count;
 use history_export::{ExportKind, history_export_failure_text, save_export, show_export_failure};
 
 use connection_filter::ConnectionFilterModel;
@@ -75,7 +74,7 @@ pub(crate) enum QueryDestination {
 }
 
 impl QueryDestination {
-    fn signal(self) -> &'static str {
+    pub(crate) fn signal(self) -> &'static str {
         match self {
             Self::NewTab => "open-in-new-tab",
             Self::CurrentTab => "replace-current-tab",
@@ -104,8 +103,7 @@ impl HistoryDialog {
         let entries = gio::ListStore::new::<HistoryEntryObject>();
         let sorted = gtk::SortListModel::new(Some(entries.clone()), None::<gtk::Sorter>);
         sorted.set_section_sorter(Some(&pinned_first()));
-        let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-        menu.set_has_arrow(true);
+        let menu = crate::ui::context_menu::context_menu(None::<&gio::MenuModel>);
         // Parented now: a popover menu finds its actions through the
         // parent it had when it was set up.
         menu.set_parent(&imp.list_view.get());
@@ -330,8 +328,7 @@ impl HistoryDialog {
             }),
         };
         parts.menu.set_menu_model(Some(&row_menu(&entry)));
-        parts.menu.set_pointing_to(pointing.as_ref());
-        parts.menu.popup();
+        crate::ui::context_menu::popup_at(&parts.menu, pointing);
     }
 
     fn popup_focused_row_menu(&self) {
@@ -373,12 +370,8 @@ impl HistoryDialog {
             return;
         }
         let n = count as u64;
-        imp.selection_label.set_label(&ngettext_f(
-            "{n} selected",
-            "{n} selected",
-            plural_count(n),
-            &[("n", &n.to_string())],
-        ));
+        imp.selection_label
+            .set_label(&ngettext_f("{n} selected", "{n} selected", n, &[("n", &n.to_string())]));
         imp.selection_bar.set_reveal_child(true);
     }
 
@@ -641,7 +634,7 @@ impl HistoryDialog {
         let toast = crate::ui::plain_toast(&ngettext_f(
             "{count} query deleted",
             "{count} queries deleted",
-            plural_count(count),
+            count,
             &[("count", &count.to_string())],
         ));
         toast.set_button_label(Some(&gettext("_Undo")));

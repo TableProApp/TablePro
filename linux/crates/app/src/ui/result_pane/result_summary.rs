@@ -1,7 +1,7 @@
 use tablepro_core::Truncation;
 
 use crate::i18n::{gettext_f, ngettext_f};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// How much of a result set an editor run kept, as the driver reported
 /// it when the set ended.
@@ -15,6 +15,8 @@ pub struct ResultSummary {
     /// The run's limit on the rows of all its results, when that limit
     /// cut this one short.
     pub run_limit: Option<u64>,
+    // The run's limit on the bytes of all its results, when that limit cut this one short.
+    pub size_limit: Option<u64>,
 }
 
 impl ResultSummary {
@@ -25,20 +27,21 @@ impl ResultSummary {
             total_rows: None,
             truncation: Truncation::Complete,
             run_limit: None,
+            size_limit: None,
         }
     }
 
     pub(crate) fn is_truncated(&self) -> bool {
-        self.truncation != Truncation::Complete || self.run_limit.is_some()
+        self.truncation != Truncation::Complete || self.run_limit.is_some() || self.size_limit.is_some()
     }
 
     /// What the banner over a cut-short result says. `None` for a
     /// complete one, which shows no banner.
     pub(crate) fn limit_title(&self) -> Option<String> {
-        self.limit_title_with(format_thousands)
+        self.limit_title_with(format_thousands, |bytes| gtk4::glib::format_size(bytes).to_string())
     }
 
-    fn limit_title_with(&self, format: impl Fn(u64) -> String) -> Option<String> {
+    fn limit_title_with(&self, format: impl Fn(u64) -> String, format_size: impl Fn(u64) -> String) -> Option<String> {
         let shown = format(self.retained);
         if let Some(limit) = self.run_limit {
             let limit = format(limit);
@@ -50,33 +53,66 @@ impl ResultSummary {
                 retained => ngettext_f(
                     "Showing the first {shown} row; a run keeps at most {limit} rows across its results",
                     "Showing the first {shown} rows; a run keeps at most {limit} rows across its results",
-                    plural_count(retained),
+                    retained,
                     &[("shown", &shown), ("limit", &limit)],
                 ),
             });
         }
+        if let Some(bytes) = self.size_limit {
+            return Some(self.size_title(&shown, &format_size(bytes), format));
+        }
         match (self.truncation, self.total_rows) {
             (Truncation::Complete, _) => None,
-            (Truncation::ReadPastLimit, Some(total)) => Some(ngettext_f(
+            (Truncation::ReadPastLimit | Truncation::ByteLimit, Some(total)) => Some(ngettext_f(
                 "Showing {shown} of {total} row",
                 "Showing {shown} of {total} rows",
-                plural_count(total),
+                total,
                 &[("shown", &shown), ("total", &format(total))],
             )),
-            (Truncation::ReadPastLimit, None) => Some(ngettext_f(
+            (Truncation::ReadPastLimit | Truncation::ByteLimit, None) => Some(ngettext_f(
                 "Showing the first {shown} row",
                 "Showing the first {shown} rows",
-                plural_count(self.retained),
+                self.retained,
                 &[("shown", &shown)],
             )),
-            // A SELECT that calls a function per row did that for these
-            // rows only, which "showing" alone would hide.
+            // A SELECT that calls a function per row may have done that for
+            // only part of the rows, which "showing" alone would hide.
             (Truncation::ServerStopped, _) => Some(ngettext_f(
-                "Stopped after the first {shown} row: the statement did not run past it",
-                "Stopped after the first {shown} rows: the statement did not run past them",
-                plural_count(self.retained),
+                "Showing the first {shown} row: the server stopped the statement at the row limit, before its end",
+                "Showing the first {shown} rows: the server stopped the statement at the row limit, before its end",
+                self.retained,
                 &[("shown", &shown)],
             )),
+        }
+    }
+
+    // The row that crosses the size is kept whole, so the size is where keeping stops, not a cap.
+    fn size_title(&self, shown: &str, size: &str, format: impl Fn(u64) -> String) -> String {
+        let stopped = self.truncation == Truncation::ServerStopped;
+        match (self.retained, self.total_rows) {
+            (0, _) if stopped => gettext_f(
+                "No rows kept; a run stops keeping rows past {size}, and the server stopped the statement at the row limit, before its end",
+                &[("size", size)],
+            ),
+            (0, _) => gettext_f("No rows kept; a run stops keeping rows past {size}", &[("size", size)]),
+            (retained, _) if stopped => ngettext_f(
+                "Showing the first {shown} row; a run stops keeping rows past {size}, and the server stopped the statement at the row limit, before its end",
+                "Showing the first {shown} rows; a run stops keeping rows past {size}, and the server stopped the statement at the row limit, before its end",
+                retained,
+                &[("shown", shown), ("size", size)],
+            ),
+            (_, Some(total)) => ngettext_f(
+                "Showing {shown} of {total} row; a run stops keeping rows past {size}",
+                "Showing {shown} of {total} rows; a run stops keeping rows past {size}",
+                total,
+                &[("shown", shown), ("total", &format(total)), ("size", size)],
+            ),
+            (retained, None) => ngettext_f(
+                "Showing the first {shown} row; a run stops keeping rows past {size}",
+                "Showing the first {shown} rows; a run stops keeping rows past {size}",
+                retained,
+                &[("shown", shown), ("size", size)],
+            ),
         }
     }
 
@@ -119,12 +155,18 @@ mod tests {
         Thousands::for_posix_locale("en_US.UTF-8").format(n)
     }
 
+    // A fixed spelling, since glib writes the decimal point of the test's locale.
+    fn megabytes(bytes: u64) -> String {
+        format!("{} MB", bytes / 1_000_000)
+    }
+
     fn summary(retained: u64, total_rows: Option<u64>, truncation: Truncation) -> ResultSummary {
         ResultSummary {
             retained,
             total_rows,
             truncation,
             run_limit: None,
+            size_limit: None,
         }
     }
 
@@ -134,11 +176,11 @@ mod tests {
         let read_past = summary(1_000, None, Truncation::ReadPastLimit);
 
         assert_eq!(
-            stopped.limit_title_with(english).as_deref(),
-            Some("Stopped after the first 1,000 rows: the statement did not run past them")
+            stopped.limit_title_with(english, megabytes).as_deref(),
+            Some("Showing the first 1,000 rows: the server stopped the statement at the row limit, before its end")
         );
         assert_eq!(
-            read_past.limit_title_with(english).as_deref(),
+            read_past.limit_title_with(english, megabytes).as_deref(),
             Some("Showing the first 1,000 rows")
         );
     }
@@ -148,7 +190,7 @@ mod tests {
         let read_past = summary(10_000, Some(1_234_567), Truncation::ReadPastLimit);
 
         assert_eq!(
-            read_past.limit_title_with(english).as_deref(),
+            read_past.limit_title_with(english, megabytes).as_deref(),
             Some("Showing 10,000 of 1,234,567 rows")
         );
     }
@@ -161,11 +203,11 @@ mod tests {
         };
 
         assert_eq!(
-            cut(2_500).limit_title_with(english).as_deref(),
+            cut(2_500).limit_title_with(english, megabytes).as_deref(),
             Some("Showing the first 2,500 rows; a run keeps at most 100,000 rows across its results")
         );
         assert_eq!(
-            cut(0).limit_title_with(english).as_deref(),
+            cut(0).limit_title_with(english, megabytes).as_deref(),
             Some("No rows kept; a run keeps at most 100,000 rows across its results")
         );
         assert_eq!(cut(0).tab_label_with(4, english), "Result 5 (0+)");
@@ -173,12 +215,57 @@ mod tests {
     }
 
     #[test]
+    fn limit_title_names_the_size_limit_when_it_cut_the_result() {
+        let cut = |retained, total_rows| ResultSummary {
+            size_limit: Some(256_000_000),
+            ..summary(retained, total_rows, Truncation::ByteLimit)
+        };
+
+        assert_eq!(
+            cut(128, None).limit_title_with(english, megabytes).as_deref(),
+            Some("Showing the first 128 rows; a run stops keeping rows past 256 MB")
+        );
+        assert_eq!(
+            cut(1_280, Some(10_000)).limit_title_with(english, megabytes).as_deref(),
+            Some("Showing 1,280 of 10,000 rows; a run stops keeping rows past 256 MB")
+        );
+        assert_eq!(
+            cut(0, Some(4)).limit_title_with(english, megabytes).as_deref(),
+            Some("No rows kept; a run stops keeping rows past 256 MB")
+        );
+        let stopped = ResultSummary {
+            truncation: Truncation::ServerStopped,
+            ..cut(128, None)
+        };
+        assert_eq!(
+            stopped.limit_title_with(english, megabytes).as_deref(),
+            Some(
+                "Showing the first 128 rows; a run stops keeping rows past 256 MB, and the server stopped the statement at the row limit, before its end"
+            )
+        );
+        let stopped_empty = ResultSummary {
+            truncation: Truncation::ServerStopped,
+            ..cut(0, None)
+        };
+        assert_eq!(
+            stopped_empty.limit_title_with(english, megabytes).as_deref(),
+            Some(
+                "No rows kept; a run stops keeping rows past 256 MB, and the server stopped the statement at the row limit, before its end"
+            )
+        );
+        assert_eq!(cut(128, None).tab_label_with(0, english), "Result 1 (128+)");
+        assert_eq!(cut(1_280, Some(10_000)).tab_label_with(1, english), "Result 2 (10,000)");
+        assert_eq!(cut(0, Some(4)).tab_label_with(2, english), "Result 3 (4)");
+        assert_eq!(cut(128, None).history_row_count(), None);
+    }
+
+    #[test]
     fn limit_title_none_when_complete() {
         assert_eq!(
-            summary(5, Some(5), Truncation::Complete).limit_title_with(english),
+            summary(5, Some(5), Truncation::Complete).limit_title_with(english, megabytes),
             None
         );
-        assert_eq!(ResultSummary::complete(0).limit_title_with(english), None);
+        assert_eq!(ResultSummary::complete(0).limit_title_with(english, megabytes), None);
     }
 
     #[test]

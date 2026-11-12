@@ -84,13 +84,9 @@ fn second_digits(kind: &ColumnKind) -> Option<u8> {
     kind.fractional_digits().map(|digits| digits.min(9))
 }
 
-/// The fractional second, at the digits the column declares.
-///
-/// With no declared precision the fraction is the one the value
-/// carries, trimmed, because inventing digits would claim a precision
-/// the column never promised.
 fn fraction_text(nanos: u32, digits: Option<u8>) -> String {
-    let nanos = nanos.min(999_999_999);
+    // Chrono encodes a leap second above one billion nanos; %S already prints its extra second.
+    let nanos = nanos % 1_000_000_000;
     let Some(digits) = digits else {
         return match nanos {
             0 => String::new(),
@@ -135,6 +131,7 @@ pub fn value_to_text(v: &Value) -> Option<String> {
     match v {
         Value::Null => None,
         Value::Bool(b) => Some(if *b { "true".to_string() } else { "false".to_string() }),
+        Value::Int32(i) => Some(i.to_string()),
         Value::Int(i) => Some(i.to_string()),
         Value::UInt(i) => Some(i.to_string()),
         Value::WideInt(i) => Some(i.to_string()),
@@ -303,6 +300,7 @@ mod tests {
         assert_eq!(value_to_text(&Value::Bool(true)), Some("true".to_string()));
         assert_eq!(value_to_text(&Value::Bool(false)), Some("false".to_string()));
         assert_eq!(value_to_text(&Value::Int(42)), Some("42".to_string()));
+        assert_eq!(value_to_text(&Value::Int32(-42)), Some("-42".to_string()));
         assert_eq!(value_to_text(&Value::UInt(u64::MAX)), Some(u64::MAX.to_string()));
         assert_eq!(value_to_text(&Value::Float64(1.5)), Some("1.5".to_string()));
         assert_eq!(value_to_text(&Value::Text("hi".into())), Some("hi".to_string()));
@@ -458,6 +456,50 @@ mod tests {
         assert_eq!(
             value_text(&stamp, &column).as_deref(),
             Some("2024-06-15 12:00:00.100000")
+        );
+    }
+
+    #[test]
+    fn timestamp_leap_seconds_keep_their_fraction_at_each_precision() {
+        let value = Value::Timestamp(Temporal::Finite(
+            NaiveDate::from_ymd_opt(2016, 12, 31)
+                .expect("a date")
+                .and_hms_nano_opt(23, 59, 59, 1_123_000_000)
+                .expect("a leap second"),
+        ));
+        for (digits, expected) in [
+            (Some(0), "2016-12-31 23:59:60"),
+            (Some(3), "2016-12-31 23:59:60.123"),
+            (Some(6), "2016-12-31 23:59:60.123000"),
+            (Some(9), "2016-12-31 23:59:60.123000000"),
+            (None, "2016-12-31 23:59:60.123"),
+        ] {
+            let column = typed("timestamp", stamp(digits, TemporalZone::Naive));
+            assert_eq!(value_text(&value, &column).as_deref(), Some(expected), "{digits:?}");
+        }
+        assert_eq!(value_to_text(&value).as_deref(), Some("2016-12-31 23:59:60.123"));
+    }
+
+    #[test]
+    fn offset_timestamp_leap_seconds_keep_their_fraction_at_each_precision() {
+        let timestamp = chrono::DateTime::parse_from_rfc3339("2017-01-01T05:29:60.123456789+05:30")
+            .expect("a leap second with an offset");
+        let value = Value::TimestampTz(Temporal::Finite(crate::value::OffsetTimestamp::from_datetime(
+            timestamp,
+        )));
+        for (digits, expected) in [
+            (Some(0), "2017-01-01 05:29:60+05:30"),
+            (Some(3), "2017-01-01 05:29:60.123+05:30"),
+            (Some(6), "2017-01-01 05:29:60.123456+05:30"),
+            (Some(9), "2017-01-01 05:29:60.123456789+05:30"),
+            (None, "2017-01-01 05:29:60.123456789+05:30"),
+        ] {
+            let column = typed("timestamptz", stamp(digits, TemporalZone::Offset));
+            assert_eq!(value_text(&value, &column).as_deref(), Some(expected), "{digits:?}");
+        }
+        assert_eq!(
+            value_to_text(&value).as_deref(),
+            Some("2017-01-01 05:29:60.123456789+05:30")
         );
     }
 

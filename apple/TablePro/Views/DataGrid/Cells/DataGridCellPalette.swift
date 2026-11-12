@@ -16,6 +16,7 @@ struct DataGridCellPalette: Equatable {
     let placeholderText: NSColor
     let booleanTrueText: NSColor
     let booleanFalseText: NSColor
+    let valueColors: DataGridValueColors
     let rowNumberText: NSColor
     let deletedRowText: NSColor
     let modifiedColumnTint: NSColor
@@ -33,6 +34,7 @@ struct DataGridCellPalette: Equatable {
         placeholderText: NSColor,
         booleanTrueText: NSColor,
         booleanFalseText: NSColor,
+        valueColors: DataGridValueColors,
         rowNumberText: NSColor,
         deletedRowText: NSColor,
         modifiedColumnTint: NSColor,
@@ -49,6 +51,7 @@ struct DataGridCellPalette: Equatable {
         self.placeholderText = placeholderText
         self.booleanTrueText = booleanTrueText
         self.booleanFalseText = booleanFalseText
+        self.valueColors = valueColors
         self.rowNumberText = rowNumberText
         self.deletedRowText = deletedRowText
         self.modifiedColumnTint = modifiedColumnTint
@@ -73,6 +76,36 @@ struct DataGridCellPalette: Equatable {
     }
 }
 
+// Stored fields, so a cell's color is a switch and never a lookup.
+struct DataGridValueColors: Equatable {
+    let string: NSColor
+    let number: NSColor
+    let dateTime: NSColor
+    let binary: NSColor
+    let json: NSColor
+    let uuid: NSColor
+    let enumeration: NSColor
+
+    func color(for tone: DataGridValueTone) -> NSColor? {
+        switch tone {
+        case .plain: return nil
+        case .string: return string
+        case .number: return number
+        case .dateTime: return dateTime
+        case .binary: return binary
+        case .json: return json
+        case .uuid: return uuid
+        case .enumeration: return enumeration
+        }
+    }
+}
+
+extension DataGridValueColors {
+    init(all color: NSColor) {
+        self.init(string: color, number: color, dateTime: color, binary: color, json: color, uuid: color, enumeration: color)
+    }
+}
+
 extension ThemeScope {
     // The row-state tints are dynamic providers that cost four times a catalog color per fill, so they resolve once here.
     func dataGridCellPalette(
@@ -89,6 +122,15 @@ extension ThemeScope {
             placeholderText: resolved[.gridNullValue],
             booleanTrueText: resolved[.gridBoolTrue],
             booleanFalseText: resolved[.gridBoolFalse],
+            valueColors: DataGridValueColors(
+                string: resolved[.gridString],
+                number: resolved[.gridNumber],
+                dateTime: resolved[.gridDateTime],
+                binary: resolved[.gridBinary],
+                json: resolved[.gridJSON],
+                uuid: resolved[.gridUUID],
+                enumeration: resolved[.gridEnum]
+            ),
             rowNumberText: resolved[.gridRowNumber],
             deletedRowText: Self.resolvedTint(.gridDeletedText, of: resolved, in: appearance),
             modifiedColumnTint: Self.resolvedTint(.gridModified, of: resolved, in: appearance),

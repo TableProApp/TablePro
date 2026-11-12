@@ -62,10 +62,14 @@ internal actor LinkedSQLIndex {
         let dir = databaseURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        let dbPath = databaseURL.path(percentEncoded: false)
-        if sqlite3_open(dbPath, &dbHandle.pointer) != SQLITE_OK {
+        guard case .opened(let pointer, let setAside) = LocalSQLiteStoreOpener.open(at: databaseURL) else {
             Self.logger.error("Error opening linked SQL index database")
             return
+        }
+        dbHandle.pointer = pointer
+        // Only a cache of the linked files, which the next folder scan rebuilds, so no damaged copy is kept.
+        if setAside != nil {
+            LocalSQLiteStoreOpener.removeSetAsideCopies(of: databaseURL)
         }
 
         execute("PRAGMA journal_mode=WAL;")

@@ -2,6 +2,7 @@ use std::fmt::Write;
 
 use tablepro_core::Value;
 use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
+use tablepro_linux_platform::settings::DateFormat;
 
 /// A million-character value would hang the main thread in Pango
 /// layout, and the cell shapes all it is given though a line of it
@@ -35,6 +36,13 @@ pub fn editable_null_sentinel() -> String {
     crate::i18n::gettext("<NULL>")
 }
 
+pub fn null_text(text: &str, editable: bool) -> String {
+    match (editable, text) {
+        (true, "NULL") => editable_null_sentinel(),
+        _ => text.to_owned(),
+    }
+}
+
 /// A read-only cell dims its NULL instead, so it needs no brackets.
 /// A technical term, so it is not translated.
 const READONLY_NULL: &str = "NULL";
@@ -45,10 +53,16 @@ pub fn auto_filled_sentinel() -> String {
     crate::i18n::gettext("(auto)")
 }
 
-/// The text of `value` as the cell draws it. Text, JSON and a value the
-/// driver kept as the server's text are borrowed; anything else is
-/// written into `scratch`, the cell's own buffer.
 pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut String) -> DisplayText<'a> {
+    display_text_formatted(value, column, DateFormat::Iso, scratch)
+}
+
+pub fn display_text_formatted<'a>(
+    value: &'a Value,
+    column: &ColumnType,
+    date_format: DateFormat,
+    scratch: &'a mut String,
+) -> DisplayText<'a> {
     scratch.clear();
     match value {
         Value::Null => DisplayText::placeholder(READONLY_NULL),
@@ -63,7 +77,7 @@ pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut 
             *scratch = crate::i18n::ngettext_f(
                 "<{count} byte>",
                 "<{count} bytes>",
-                plural_count(count),
+                count,
                 &[("count", &count.to_string())],
             );
             DisplayText::placeholder(scratch)
@@ -75,16 +89,18 @@ pub fn display_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut 
             DisplayText::placeholder(scratch)
         }
         other => {
-            write_value(other, column, scratch);
+            write_value(other, column, date_format, scratch);
             cut_in_place(scratch)
         }
     }
 }
 
-/// The text `display_text` spells, whole: past the cell's cut and without
-/// its note of what it left out, for a search that must reach the rest. A
-/// placeholder is the placeholder.
-pub fn whole_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut String) -> &'a str {
+pub fn whole_text<'a>(
+    value: &'a Value,
+    column: &ColumnType,
+    date_format: DateFormat,
+    scratch: &'a mut String,
+) -> &'a str {
     match value {
         Value::Text(text) => text,
         Value::Json(json) => json.as_str(),
@@ -92,16 +108,17 @@ pub fn whole_text<'a>(value: &'a Value, column: &ColumnType, scratch: &'a mut St
         Value::Null | Value::Bytes(_) | Value::Undecodable(_) => display_text(value, column, scratch).text,
         other => {
             scratch.clear();
-            write_value(other, column, scratch);
+            write_value(other, column, date_format, scratch);
             scratch
         }
     }
 }
 
-/// Everything else renders the way it exports, so what the grid shows
-/// and what a copy produces are the same text. The common scalars are
-/// written straight into the buffer.
-fn write_value(value: &Value, column: &ColumnType, scratch: &mut String) {
+fn write_value(value: &Value, column: &ColumnType, date_format: DateFormat, scratch: &mut String) {
+    if let Some(text) = super::date_display::formatted(value, column, date_format) {
+        *scratch = text;
+        return;
+    }
     // Writing to a String cannot fail.
     let _ = match value {
         Value::Bool(flag) => scratch.write_str(if *flag { "true" } else { "false" }),
@@ -113,6 +130,7 @@ fn write_value(value: &Value, column: &ColumnType, scratch: &mut String) {
         Value::UInt(flag @ (0 | 1)) if column.kind == ColumnKind::Bool(BoolStorage::Integer) => {
             scratch.write_str(if *flag == 1 { "true" } else { "false" })
         }
+        Value::Int32(number) => write!(scratch, "{number}"),
         Value::Int(number) => write!(scratch, "{number}"),
         Value::UInt(number) => write!(scratch, "{number}"),
         Value::Float32(number) if number.is_finite() => write!(scratch, "{number}"),
@@ -173,7 +191,7 @@ pub fn more_bytes(count: usize) -> String {
     crate::i18n::ngettext_f(
         "… ({count} more byte)",
         "… ({count} more bytes)",
-        plural_count(count),
+        count,
         &[("count", &count.to_string())],
     )
 }
@@ -200,17 +218,13 @@ fn push_without_nul(scratch: &mut String, text: &str) {
     }
 }
 
-fn plural_count(count: usize) -> u32 {
-    u32::try_from(count).unwrap_or(u32::MAX)
-}
-
 #[cfg(test)]
 mod tests {
     use tablepro_core::Value;
     use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
     use tablepro_core::value::{JsonText, OffsetTimestamp, SqlTime, Temporal, UndecodableReason, UndecodedValue};
 
-    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text};
+    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text, null_text};
 
     fn text_column() -> ColumnType {
         ColumnType::untyped_text("text")
@@ -219,6 +233,14 @@ mod tests {
     fn shown(value: &Value) -> String {
         let mut scratch = String::new();
         display_text(value, &text_column(), &mut scratch).text.to_owned()
+    }
+
+    #[test]
+    fn a_chosen_null_text_reaches_editable_cells_and_the_default_keeps_its_brackets() {
+        assert_eq!(null_text("NULL", true), "<NULL>");
+        assert_eq!(null_text("(none)", true), "(none)");
+        assert_eq!(null_text("(none)", false), "(none)");
+        assert_eq!(null_text("NULL", false), "NULL");
     }
 
     #[test]
@@ -316,6 +338,7 @@ mod tests {
         assert_eq!(shown(&Value::Bool(true)), "true");
         assert_eq!(shown(&Value::Int(42)), "42");
         assert_eq!(shown(&Value::UInt(7)), "7");
+        assert_eq!(shown(&Value::Int32(-7)), "-7");
         assert_eq!(shown(&Value::Float64(1.5)), "1.5");
         assert_eq!(shown(&Value::Float32(0.1)), "0.1");
         assert_eq!(shown(&Value::Text("hello".into())), "hello");

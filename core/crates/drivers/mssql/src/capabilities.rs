@@ -6,8 +6,8 @@ use tablepro_core::{
 
 pub(crate) const DEFAULT_PORT: u16 = 1433;
 
-/// Integrated login needs MIT Kerberos at build time on Unix, so a build
-/// without it never offers the mode. Windows signs in through SSPI.
+/// Integrated login needs GSSAPI at build time on Linux and macOS, so a
+/// build without it never offers the mode. Windows signs in through SSPI.
 #[cfg(any(all(unix, feature = "kerberos"), windows))]
 const AUTH_MODES: &[AuthMode] = &[AuthMode::Password, AuthMode::Kerberos];
 #[cfg(not(any(all(unix, feature = "kerberos"), windows)))]
@@ -23,7 +23,9 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     // tiberius can present a client certificate, but SQL Server logins
     // are not authenticated by one, so there is nothing for it to prove.
     tls: Some(TlsCapabilities {
-        modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+        modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict],
+        default_mode: TlsMode::VerifyFull,
+        tls_ports: &[],
         ca_file: true,
         client_identity: false,
         server_name_override: ServerNameOverride::AnyRoute,
@@ -56,14 +58,17 @@ mod tests {
     #[test]
     fn auth_modes_follow_kerberos_feature() {
         assert!(CAPABILITIES.supports(AuthMode::Password));
-        assert_eq!(CAPABILITIES.supports(AuthMode::Kerberos), cfg!(feature = "kerberos"));
+        assert_eq!(
+            CAPABILITIES.supports(AuthMode::Kerberos),
+            cfg!(any(all(unix, feature = "kerberos"), windows))
+        );
     }
 
     #[test]
     fn capabilities_match_driver_contract() {
         assert_eq!(CAPABILITIES.default_port(), Some(1433));
         let tls = CAPABILITIES.tls.expect("SQL Server offers TLS");
-        assert_eq!(tls.modes.len(), 3);
+        assert_eq!(tls.modes.last(), Some(&TlsMode::Strict));
         assert!(tls.ca_file);
         assert!(!tls.client_identity);
         assert_eq!(tls.server_name_override, ServerNameOverride::AnyRoute);

@@ -26,7 +26,6 @@ let package = Package(
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
         .library(name: "TableProSyncTransport", targets: ["TableProSyncTransport"]),
         .library(name: "TableProSync", targets: ["TableProSync"]),
-        .library(name: "TableProAnalytics", targets: ["TableProAnalytics"]),
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProKerberos", targets: ["TableProKerberos"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
@@ -68,7 +67,9 @@ let package = Package(
         .library(name: "TableProWireIO", targets: ["TableProWireIO"]),
         .library(name: "TableProGzip", targets: ["TableProGzip"]),
         .library(name: "TableProKafkaCore", targets: ["TableProKafkaCore"]),
-        .library(name: "TableProCassandraCore", targets: ["TableProCassandraCore"])
+        .library(name: "TableProCassandraCore", targets: ["TableProCassandraCore"]),
+        .library(name: "TableProEtcdCore", targets: ["TableProEtcdCore"]),
+        .library(name: "TableProDuckDBCore", targets: ["TableProDuckDBCore"])
     ],
     // Kafka brokers hand back whatever codec the producer stored, and macOS has no zstd.
     dependencies: [
@@ -147,11 +148,6 @@ let package = Package(
             name: "TableProSync",
             dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes", "TableProConnectionLibrary"],
             path: "Sources/TableProSync"
-        ),
-        .target(
-            name: "TableProAnalytics",
-            dependencies: [],
-            path: "Sources/TableProAnalytics"
         ),
         .target(
             name: "TableProMSSQLCore",
@@ -367,6 +363,20 @@ let package = Package(
             path: "Sources/TableProCassandraCore",
             swiftSettings: pluginCoreSettings
         ),
+        // Linked by the macOS app and a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProEtcdCore",
+            dependencies: [],
+            path: "Sources/TableProEtcdCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        // Linked by a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProDuckDBCore",
+            dependencies: ["TableProSQLQuoting"],
+            path: "Sources/TableProDuckDBCore",
+            swiftSettings: pluginCoreSettings
+        ),
         .testTarget(
             name: "TableProBigtableCoreTests",
             dependencies: ["TableProBigtableCore", "TableProGoogleCloud"],
@@ -384,7 +394,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProFirebaseCoreTests",
-            dependencies: ["TableProFirebaseCore"],
+            dependencies: ["TableProFirebaseCore", "TableProGoogleCloud"],
             path: "Tests/TableProFirebaseCoreTests"
         ),
         .testTarget(
@@ -520,11 +530,6 @@ let package = Package(
             swiftSettings: pluginCoreSettings
         ),
         .testTarget(
-            name: "TableProAnalyticsTests",
-            dependencies: ["TableProAnalytics"],
-            path: "Tests/TableProAnalyticsTests"
-        ),
-        .testTarget(
             name: "TableProMSSQLCoreTests",
             dependencies: ["TableProMSSQLCore", "TableProSQLGrammar", "TableProTestSupport"],
             path: "Tests/TableProMSSQLCoreTests"
@@ -536,7 +541,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTLSClientIdentityTests",
-            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures"],
+            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures", "TableProTestSupport"],
             path: "Tests/TableProTLSClientIdentityTests"
         ),
         .testTarget(
@@ -571,6 +576,11 @@ let package = Package(
             dependencies: ["TableProMemcachedCore"],
             path: "Tests/TableProMemcachedCoreTests",
             swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProDocumentPathTests",
+            dependencies: ["TableProDocumentPath"],
+            path: "Tests/TableProDocumentPathTests"
         ),
         .testTarget(
             name: "TableProRedisCoreTests",
@@ -610,6 +620,18 @@ let package = Package(
             name: "TableProCassandraCoreTests",
             dependencies: ["TableProCassandraCore", "TableProSQLGrammar"],
             path: "Tests/TableProCassandraCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProEtcdCoreTests",
+            dependencies: ["TableProEtcdCore"],
+            path: "Tests/TableProEtcdCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProDuckDBCoreTests",
+            dependencies: ["TableProDuckDBCore"],
+            path: "Tests/TableProDuckDBCoreTests",
             swiftSettings: pluginCoreSettings
         )
     ]

@@ -5,9 +5,7 @@
 
 import SwiftUI
 
-/// The sheets that move data in or out of a connection: export, import, transfer, backup and
-/// restore. They live apart from the rest because together they were more than half of what
-/// `sheetContent(for:)` had to hold.
+// Apart from `sheetContent(for:)`, which they made more than twice as long.
 extension MainContentView {
     @ViewBuilder
     func transferSheetContent(for sheet: ActiveSheet, dismiss dismissBinding: Binding<Bool>) -> some View {
@@ -25,7 +23,8 @@ extension MainContentView {
                         )
                 ),
                 sidebarTables: tables,
-                initialFormatId: coordinator.exportFormatId
+                initialFormatId: coordinator.exportFormatId,
+                sheetWork: coordinator.sheetWork
             )
         case .exportQueryResults:
             if let tab = coordinator.tabManager.selectedTab {
@@ -37,7 +36,8 @@ extension MainContentView {
                             connection: connectionWithCurrentDatabase,
                             query: baseQuery,
                             suggestedFileName: fileName
-                        )
+                        ),
+                        sheetWork: coordinator.sheetWork
                     )
                 } else {
                     ExportDialog(
@@ -47,10 +47,17 @@ extension MainContentView {
                             tableRows: coordinator.tabSessionRegistry.tableRows(for: tab.id),
                             suggestedFileName: fileName,
                             fillUnloaded: coordinator.unloadedValueFill(for: tab)
-                        )
+                        ),
+                        sheetWork: coordinator.sheetWork
                     )
                 }
             }
+        case .exportDataSource(let request):
+            ExportDialog(
+                isPresented: dismissBinding,
+                mode: .dataSource(request),
+                sheetWork: coordinator.sheetWork
+            )
         case .importDialog(let formatId):
             ImportDialog(
                 isPresented: dismissBinding,

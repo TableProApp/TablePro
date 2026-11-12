@@ -31,39 +31,63 @@ enum RowWriteOperationBuilder {
         generatedColumns: Set<String>,
         containsTableOperation: Bool,
         rowsWithUnloadedValues: Set<RowID> = [],
-        writesThroughView: Bool = false
+        writesThroughView: Bool = false,
+        rowLocators: [RowID: String] = [:]
     ) -> [RowWriteOperation] {
-        changes.compactMap { change in
+        // The same steps the save runs, so the record matches what ran.
+        let keyColumns = Set(primaryKeyColumns.compactMap { columns.firstIndex(of: $0) })
+        var stepsByRow: [RowID: [RowChange]] = [:]
+        for step in RowChange.saveSteps(changes, keyColumns: keyColumns) where step.type == .update {
+            stepsByRow[step.rowID, default: []].append(step)
+        }
+        func firstOrder(of change: RowChange) -> Int {
+            guard change.type == .update else { return change.sequence }
+            return stepsByRow[change.rowID]?.first?.sequence ?? change.sequence
+        }
+
+        // A rewind undoes them newest first, and `changes` stops being in edit order once a change is cancelled.
+        let ordered = changes.enumerated()
+            .sorted { (firstOrder(of: $0.element), $0.offset) < (firstOrder(of: $1.element), $1.offset) }
+            .map(\.element)
+        return ordered.compactMap { change -> RowWriteOperation? in
+            var operation: RowWriteOperation
             switch change.type {
             case .update:
-                return update(
-                    change, target: target, columns: columns,
+                let steps = stepsByRow[change.rowID] ?? [change]
+                operation = update(
+                    change, steps: steps, target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns, generatedColumns: generatedColumns,
                     containsTableOperation: containsTableOperation
                 )
+                operation.rowLocator = rowLocators[change.rowID]
+                operation.steps = steps.count > 1 ? steps.map { RowWriteStep($0) } : nil
             case .delete:
                 guard deletedRowIDs.contains(change.rowID) else { return nil }
-                return delete(
+                operation = delete(
                     change, target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns,
                     containsTableOperation: containsTableOperation,
                     hasUnloadedValues: rowsWithUnloadedValues.contains(change.rowID),
                     throughView: writesThroughView
                 )
+                operation.rowLocator = rowLocators[change.rowID]
             case .insert:
                 guard insertedRowIDs.contains(change.rowID) else { return nil }
-                return insert(
+                operation = insert(
                     change, values: insertedRowData[change.rowID],
                     target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns,
                     containsTableOperation: containsTableOperation
                 )
             }
+            operation.order = firstOrder(of: change)
+            return operation
         }
     }
 
     private static func update(
         _ change: RowChange,
+        steps: [RowChange],
         target: DataWriteTarget,
         columns: [String],
         primaryKeyColumns: [String],
@@ -89,16 +113,18 @@ enum RowWriteOperationBuilder {
             postImage: postImage,
             writtenColumns: writtenColumns,
             refusal: updateRefusal(
-                change, preImage: preImage, primaryKeyColumns: primaryKeyColumns,
-                generatedColumns: generatedColumns, containsTableOperation: containsTableOperation
+                writing: change.cellChanges + steps.flatMap(\.cellChanges), preImage: preImage,
+                primaryKeyColumns: primaryKeyColumns, generatedColumns: generatedColumns,
+                containsTableOperation: containsTableOperation
             ),
             preImageAbsentColumns: change.absentColumns,
             postImageAbsentColumns: change.absentColumnsAfterUpdate
         )
     }
 
+    // Every step's cells count: the inverse of a later step would write an earlier step's SQL back as a literal.
     private static func updateRefusal(
-        _ change: RowChange,
+        writing cellChanges: [CellChange],
         preImage: [PluginCellValue]?,
         primaryKeyColumns: [String],
         generatedColumns: Set<String>,
@@ -106,14 +132,14 @@ enum RowWriteOperationBuilder {
     ) -> RewindRefusal? {
         if containsTableOperation { return .destructiveTableOperation }
         if primaryKeyColumns.isEmpty || preImage == nil { return .noPrimaryKey }
-        if change.cellChanges.contains(where: { $0.newIsExpression || $0.newValue.isDefaultMarker }) {
+        if cellChanges.contains(where: \.newIsExpression) {
             return .serverComputedValue
         }
-        if change.cellChanges.contains(where: { generatedColumns.contains($0.columnName) }) {
+        if cellChanges.contains(where: { generatedColumns.contains($0.columnName) }) {
             return .serverComputedValue
         }
         if let preImage, preImage.contains(where: exceedsCapture) { return .valueTooLarge }
-        if change.cellChanges.contains(where: { exceedsCapture($0.newValue) }) { return .valueTooLarge }
+        if cellChanges.contains(where: { exceedsCapture($0.newValue) }) { return .valueTooLarge }
         return nil
     }
 
@@ -167,11 +193,11 @@ enum RowWriteOperationBuilder {
                     return .serverAssignedKey
                 }
                 let value = values[index]
-                if value.isNull || value.isDefaultMarker || change.expressionColumns.contains(index) {
+                if value.isNull || change.expressionColumns.contains(index) {
                     return .serverAssignedKey
                 }
             }
-            if values.contains(where: \.isDefaultMarker) || !change.expressionColumns.isEmpty {
+            if !change.expressionColumns.isEmpty {
                 return .serverComputedValue
             }
             if values.contains(where: exceedsCapture) { return .valueTooLarge }

@@ -20,7 +20,8 @@ internal struct FavoritesOutlineInput {
     internal let teamQueries: [FavoritesOutlineTeamQuery]
     internal let renamingFolderId: UUID?
     internal let allFolders: [SQLFavoriteFolder]
-    internal let teamLibraryAvailable: Bool
+    internal let teamLibraryTeams: [TeamLibraryTeam]
+    internal let hasTeamLibraryConflicts: Bool
     internal var linkedFileGitStates: [UUID: LinkedFileGitState] = [:]
     internal var linkedFolderGitStates: [UUID: LinkedFolderGitMenuState] = [:]
 }
@@ -28,7 +29,13 @@ internal struct FavoritesOutlineInput {
 internal struct FavoritesOutlineTeamQuery {
     internal let id: String
     internal let name: String
-    internal let publishedBy: String?
+    internal let detail: String?
+
+    internal init(_ query: TeamLibraryQuery) {
+        id = query.id
+        name = query.name
+        detail = query.detail
+    }
 }
 
 /// Both actions carry the row's own kind rather than the persisted `FavoriteSelection`, because a
@@ -44,12 +51,9 @@ internal struct FavoritesOutlineActions {
     internal let performMenuCommand: (FavoritesMenuCommand) -> Void
 }
 
-/// The Favorites list as an `NSOutlineView`.
-///
-/// A SwiftUI `List` here could not draw an emphasized selection or answer an arrow key, because the
-/// app hosts it in a bare `NSHostingController` with no SwiftUI scene above it. Rows stay SwiftUI:
-/// AppKit publishes `NSTableCellView.backgroundStyle` into the hosted view's environment, so the
-/// existing row content keeps working with no emphasis plumbing of its own.
+/// The Favorites list as an `NSOutlineView`, for dragging a favorite out and in-place rename.
+/// Rows stay SwiftUI: AppKit publishes `NSTableCellView.backgroundStyle` into the hosted view's
+/// environment, so the row content needs no emphasis plumbing of its own.
 internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
     internal let input: FavoritesOutlineInput
     @Binding internal var selection: FavoriteSelection?

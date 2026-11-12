@@ -6,6 +6,7 @@
 import Foundation
 import os
 import Security
+import TableProEtcdCore
 import TableProPluginKit
 import TableProTLSClientIdentity
 
@@ -58,9 +59,10 @@ internal struct EtcdResponseHeader: Decodable {
     }
 }
 
+// Keys and values are bytes; the gateway sends them as base64, which JSONDecoder reads into Data.
 internal struct EtcdKeyValue: Decodable {
-    let key: String
-    let value: String?
+    let key: Data
+    let value: Data?
     let version: String?
     let createRevision: String?
     let modRevision: String?
@@ -79,13 +81,14 @@ internal struct EtcdKeyValue: Decodable {
 // KV Request/Response
 
 internal struct EtcdRangeRequest: Encodable {
-    let key: String
-    var rangeEnd: String?
+    let key: Data
+    var rangeEnd: Data?
     var limit: Int64?
     var sortOrder: String?
     var sortTarget: String?
     var keysOnly: Bool?
     var countOnly: Bool?
+    var revision: Int64?
 
     private enum CodingKeys: String, CodingKey {
         case key
@@ -95,18 +98,20 @@ internal struct EtcdRangeRequest: Encodable {
         case sortTarget = "sort_target"
         case keysOnly = "keys_only"
         case countOnly = "count_only"
+        case revision
     }
 }
 
 internal struct EtcdRangeResponse: Decodable {
+    let header: EtcdResponseHeader?
     let kvs: [EtcdKeyValue]?
     let count: String?
     let more: Bool?
 }
 
 internal struct EtcdPutRequest: Encodable {
-    let key: String
-    let value: String
+    let key: Data
+    let value: Data
     var lease: String?
     var prevKv: Bool?
 
@@ -129,8 +134,8 @@ internal struct EtcdPutResponse: Decodable {
 }
 
 internal struct EtcdDeleteRequest: Encodable {
-    let key: String
-    var rangeEnd: String?
+    let key: Data
+    var rangeEnd: Data?
     var prevKv: Bool?
 
     private enum CodingKeys: String, CodingKey {
@@ -176,7 +181,7 @@ internal struct EtcdLeaseTimeToLiveResponse: Decodable {
     let ID: String?
     let TTL: String?
     let grantedTTL: String?
-    let keys: [String]?
+    let keys: [Data]?
 }
 
 internal struct EtcdLeaseListResponse: Decodable {
@@ -222,8 +227,8 @@ internal struct EtcdWatchRequest: Encodable {
 }
 
 internal struct EtcdWatchCreateRequest: Encodable {
-    let key: String
-    var rangeEnd: String?
+    let key: Data
+    var rangeEnd: Data?
 
     private enum CodingKeys: String, CodingKey {
         case key
@@ -476,7 +481,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     func healthCheck() async throws {
         do {
             let request = EtcdRangeRequest(
-                key: Self.base64Encode(Self.healthProbeKey),
+                key: Self.healthProbeKey,
                 limit: 1,
                 keysOnly: true
             )
@@ -524,7 +529,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         }
 
         let probe = EtcdRangeRequest(
-            key: Self.base64Encode(Self.healthProbeKey),
+            key: Self.healthProbeKey,
             limit: 1,
             keysOnly: true
         )
@@ -557,6 +562,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     func deleteRequest(_ req: EtcdDeleteRequest) async throws -> EtcdDeleteResponse {
         try await post(path: apiPath("kv/deleterange"), body: req)
+    }
+
+    func txnRequest(_ req: EtcdTxnRequest) async throws -> EtcdTxnResponse {
+        try await post(path: apiPath("kv/txn"), body: req)
     }
 
     // MARK: - Lease Operations
@@ -614,13 +623,12 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     // MARK: - Watch
 
-    func watch(key: String, prefix: Bool, timeout: TimeInterval) async throws -> [EtcdWatchEvent] {
-        try await watch(key: key, prefix: prefix, timeout: timeout, isRetry: false)
+    func watch(range: EtcdKeyRange, timeout: TimeInterval) async throws -> [EtcdWatchEvent] {
+        try await watch(range: range, timeout: timeout, isRetry: false)
     }
 
     private func watch(
-        key: String,
-        prefix: Bool,
+        range: EtcdKeyRange,
         timeout: TimeInterval,
         isRetry: Bool
     ) async throws -> [EtcdWatchEvent] {
@@ -629,10 +637,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             return authToken
         }
 
-        var createRequest = EtcdWatchCreateRequest(key: Self.base64Encode(key))
-        if prefix {
-            createRequest.rangeEnd = Self.base64Encode(Self.prefixRangeEnd(for: key))
-        }
+        let createRequest = EtcdWatchCreateRequest(key: range.key, rangeEnd: range.rangeEnd)
         let window = Self.watchWindow(timeout)
         let watchRequest = try buildRequest(
             path: apiPath("watch"),
@@ -652,7 +657,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             )
             guard recovery == .reauthenticateAndRetry else { throw EtcdError.fault(fault) }
             try await refreshToken(replacing: token)
-            return try await watch(key: key, prefix: prefix, timeout: timeout, isRetry: true)
+            return try await watch(range: range, timeout: timeout, isRetry: true)
         }
 
         return Self.parseWatchEvents(from: outcome.data)
@@ -1011,39 +1016,13 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         return events
     }
 
-    // MARK: - Base64 Helpers
-
-    static func base64Encode(_ string: String) -> String {
-        Data(string.utf8).base64EncodedString()
-    }
-
-    static func base64Decode(_ string: String) -> String {
-        guard let data = Data(base64Encoded: string) else { return string }
-        return String(data: data, encoding: .utf8) ?? "<b64:\(string)>"
-    }
-
-    static func prefixRangeEnd(for prefix: String) -> String {
-        // Increment last byte for prefix range queries
-        var bytes = Array(prefix.utf8)
-        guard !bytes.isEmpty else { return "\0" }
-        var i = bytes.count - 1
-        while i >= 0 {
-            if bytes[i] < 0xFF {
-                bytes[i] += 1
-                return String(bytes: Array(bytes[0 ... i]), encoding: .utf8) ?? "\0"
-            }
-            i -= 1
-        }
-        return "\0"
-    }
-
     // MARK: - Empty Body Helper
 
     private struct EmptyBody: Encodable {}
 
     // MARK: - Request Handle
 
-    private static let healthProbeKey = "health"
+    private static let healthProbeKey = Data("health".utf8)
     private static let watchTransportGrace = TimeInterval(HttpQueryTimeout.defaultGraceSeconds)
     private static let maximumWatchWindow =
         TimeInterval(HttpQueryTimeout.resourceCeilingSeconds) - watchTransportGrace

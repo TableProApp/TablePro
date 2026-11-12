@@ -12,6 +12,7 @@ public struct MCPValidatedToken: Sendable, Equatable {
     public let issuedAt: Date
     public let expiresAt: Date?
     public let isBridgeCredential: Bool
+    public let isClaudeAgentCredential: Bool
 
     public init(
         tokenId: UUID,
@@ -20,13 +21,15 @@ public struct MCPValidatedToken: Sendable, Equatable {
         connectionAccess: ConnectionAccess,
         issuedAt: Date,
         expiresAt: Date?,
-        isBridgeCredential: Bool = false
+        isBridgeCredential: Bool = false,
+        isClaudeAgentCredential: Bool = false
     ) {
         self.tokenId = tokenId
         self.label = label
         self.scopes = scopes
         self.connectionAccess = connectionAccess
         self.isBridgeCredential = isBridgeCredential
+        self.isClaudeAgentCredential = isClaudeAgentCredential
         self.issuedAt = issuedAt
         self.expiresAt = expiresAt
     }
@@ -54,7 +57,8 @@ internal extension MCPTokenStore {
                 connectionAccess: authToken.connectionAccess,
                 issuedAt: authToken.createdAt,
                 expiresAt: authToken.expiresAt,
-                isBridgeCredential: authToken.isBridgeCredential
+                isBridgeCredential: authToken.isBridgeCredential,
+                isClaudeAgentCredential: authToken.isClaudeAgentCredential
             )
         }
     }
@@ -127,7 +131,8 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
                     label: validated.label,
                     issuedAt: validated.issuedAt,
                     expiresAt: validated.expiresAt,
-                    isBridgeCredential: validated.isBridgeCredential
+                    isBridgeCredential: validated.isBridgeCredential,
+                    isClaudeAgentCredential: validated.isClaudeAgentCredential
                 )
             )
             MCPAuditLogger.logAuthSuccess(

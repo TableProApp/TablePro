@@ -85,10 +85,20 @@ extension GlobalStateSuites {
 
         @Test("An item with no shortcut keeps a plain tooltip and no key equivalent")
         func itemWithoutShortcutHasNoKeyEquivalent() {
-            let owner = MainWindowToolbar()
-            let item = vend(MainWindowToolbar.restorePreviousValues, from: owner)
+            let item = MainWindowToolbar().makeDebugItem(MainWindowToolbar.debugStop)
             #expect(item?.menuFormRepresentation?.keyEquivalent == "")
             #expect(item?.toolTip?.isEmpty == false)
+        }
+
+        @Test(
+            "Restore Previous Values takes the binding the user gave it",
+            .appSettings { $0.keyboard.setShortcut(.character("z", command: true, control: true), for: .restorePreviousValues) }
+        )
+        func restorePreviousValuesFollowsItsBinding() {
+            let item = vend(MainWindowToolbar.restorePreviousValues, from: MainWindowToolbar())
+            #expect(item?.menuFormRepresentation?.keyEquivalent == "z")
+            #expect(item?.menuFormRepresentation?.keyEquivalentModifierMask == [.command, .control])
+            #expect(item?.toolTip?.contains("⌃⌘Z") == true)
         }
 
         /// Back is reachable from `allItems()` only while it is installed in its group, and `allItems()`

@@ -23,18 +23,24 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/find-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/history-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/history-row.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/import-csv-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/import-from-app-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/pager-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/pending-changes-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/picker-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-account-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-data-browser-group.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-editor-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-general-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-grid-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-history-group.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-ai-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-mcp-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/row-detail-pane.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/saved-queries-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/saved-query-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/database-file-row.ui</file>

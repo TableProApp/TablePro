@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{ScriptPlan, ScriptToken, ScriptTokenKind};
-use crate::sql_syntax::state_changing_functions::changes_state;
+use crate::sql_syntax::state_changing_functions::{changes_state, duckdb_call};
 use crate::unicode_blank::is_blank;
 
 /// What running a piece of SQL can do, from its own words. Ordered, so
@@ -37,8 +37,19 @@ const WRITE_WORDS: [&str; 15] = [
 
 /// SQL Server needs no `;` between statements, so a batch that opens
 /// with SELECT can go on to any of these. They are the T-SQL statements
-/// that change data, state or the server, beyond the words above.
-const TSQL_WRITE_WORDS: [&str; 26] = [
+/// that change data, state or the server, beyond the words above. FETCH
+/// is left out: a read's `OFFSET … FETCH NEXT` takes it.
+const TSQL_WRITE_WORDS: [&str; 36] = [
+    "SET",
+    "OPEN",
+    "CLOSE",
+    "DEALLOCATE",
+    "RAISERROR",
+    "WAITFOR",
+    "REVERT",
+    "DECLARE",
+    "DUMP",
+    "LOAD",
     "DENY",
     "BEGIN",
     "COMMIT",
@@ -95,6 +106,12 @@ const STATEMENT_VERBS: [&str; 10] = [
     "DELETE", "UPDATE", "DROP", "TRUNCATE", "SELECT", "INSERT", "MERGE", "EXEC", "EXECUTE", "ALTER",
 ];
 
+/// SQL Server also starts a statement at CREATE with no `;` before it,
+/// and a CREATE INDEX or CREATE STATISTICS can carry its own WHERE.
+const TSQL_STATEMENT_VERBS: [&str; 11] = [
+    "DELETE", "UPDATE", "DROP", "TRUNCATE", "SELECT", "INSERT", "MERGE", "EXEC", "EXECUTE", "ALTER", "CREATE",
+];
+
 /// Statement verbs that MySQL also has as functions: `TRUNCATE(x, 2)`
 /// rounds and `INSERT(s, 1, 2, 'x')` splices, both inside a read.
 const ALSO_FUNCTIONS: [&str; 2] = ["TRUNCATE", "INSERT"];
@@ -135,7 +152,9 @@ const TSQL_CLAUSE_WORDS: [&str; 9] = ["THEN", "FOR", "OF", "GRANT", "REVOKE", "D
 
 /// What a T-SQL DROP statement drops and an ALTER's DROP clause never
 /// does, so `DROP TABLE` after an ALTER with no `;` starts a statement.
-const TSQL_DROPPED_OBJECTS: [&str; 24] = [
+/// ALTER LOGIN's `DROP CREDENTIAL` clause reads as one too, the stricter
+/// way.
+const TSQL_DROPPED_OBJECTS: [&str; 48] = [
     "TABLE",
     "VIEW",
     "PROCEDURE",
@@ -160,6 +179,30 @@ const TSQL_DROPPED_OBJECTS: [&str; 24] = [
     "FULLTEXT",
     "XML",
     "SECURITY",
+    "APPLICATION",
+    "ASYMMETRIC",
+    "AVAILABILITY",
+    "BROKER",
+    "CERTIFICATE",
+    "CONTRACT",
+    "CREDENTIAL",
+    "CRYPTOGRAPHIC",
+    "ENDPOINT",
+    "MASTER",
+    "MESSAGE",
+    "PARTITION",
+    "QUEUE",
+    "REMOTE",
+    "RESOURCE",
+    "ROUTE",
+    "SEARCH",
+    "SENSITIVITY",
+    "SERVER",
+    "SERVICE",
+    "SIGNATURE",
+    "COUNTERSIGNATURE",
+    "SYMMETRIC",
+    "WORKLOAD",
 ];
 
 /// The strictest access among the statements of `sql`.
@@ -337,14 +380,84 @@ fn writes(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
             !is_call(part, index)
                 && (is(token.text, &WRITE_WORDS)
                     || (grammar == SqlGrammar::MsSql && is(token.text, &TSQL_WRITE_WORDS))
+                    // `OPTION (USE HINT ('…'))` is a hint inside a read.
+                    || (grammar == SqlGrammar::MsSql && token.depth == 0 && is(token.text, &["USE"]))
                     || (is(token.text, &["SHARE"]) && follows(index, &["FOR", "KEY", "IN"]))
                     // `NEXT VALUE FOR` takes a number from a sequence.
                     || (is(token.text, &["VALUE"]) && follows(index, &["NEXT"]))
-                    || calls_mutator(part, index, grammar))
+                    || calls_mutator(part, index, grammar)
+                    || names_pragma_optimize(part, index, grammar))
         }
-        Kind::Quoted => calls_mutator(part, index, grammar),
+        Kind::Quoted => calls_mutator(part, index, grammar) || names_pragma_optimize(part, index, grammar),
+        Kind::Literal => names_pragma_optimize(part, index, grammar),
         _ => false,
     })
+}
+
+/// SQLite runs ANALYZE wherever `pragma_optimize` names a table, called
+/// or not, and takes a quoted name or a string for a table name there.
+/// Where an expression stands it is a value, a column or an alias.
+fn names_pragma_optimize(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
+    let text = part[index].text;
+    let name = match part[index].kind {
+        Kind::Literal => text.get(1..text.len().saturating_sub(1)).unwrap_or_default(),
+        _ => text,
+    };
+    grammar == SqlGrammar::Sqlite && name.eq_ignore_ascii_case("pragma_optimize") && !in_expression(part, index)
+}
+
+/// Words after which SQLite reads an expression or an alias, never a
+/// table. FROM, JOIN, IN and a schema's `.` lead to a table instead.
+const EXPRESSION_LEADS: [&str; 26] = [
+    "SELECT",
+    "DISTINCT",
+    "ALL",
+    "WHERE",
+    "AND",
+    "OR",
+    "NOT",
+    "ON",
+    "HAVING",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "LIKE",
+    "GLOB",
+    "REGEXP",
+    "MATCH",
+    "IS",
+    "BETWEEN",
+    "ESCAPE",
+    "BY",
+    "AS",
+    "RETURNING",
+    "SET",
+    "LIMIT",
+    "OFFSET",
+];
+
+/// Whether `part[index]` stands where an expression does: after an
+/// operator, a word in `EXPRESSION_LEADS`, or the `(` of a call or of a
+/// list. A `,` or a `(` that may belong to a FROM list counts as a table.
+fn in_expression(part: &[Code<'_>], index: usize) -> bool {
+    let Some(before) = index.checked_sub(1).and_then(|at| part.get(at)) else {
+        return false;
+    };
+    match before.kind {
+        Kind::Equals => true,
+        Kind::Other => before.text != ".",
+        Kind::Word => is(before.text, &EXPRESSION_LEADS),
+        Kind::Open => index
+            .checked_sub(2)
+            .and_then(|at| part.get(at))
+            .is_some_and(|opener| match opener.kind {
+                Kind::Word => !opener.is_word(&["FROM", "JOIN"]),
+                Kind::Comma | Kind::Open => false,
+                _ => true,
+            }),
+        _ => false,
+    }
 }
 
 /// A call of a built-in that changes state, its name quoted or not.
@@ -354,10 +467,14 @@ fn writes(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
 fn calls_mutator(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
     let arguments = match decodes_unicode_names(grammar) && spelled_in_escapes(part, index) {
         true => after_uescape(part, index + 1),
-        false if changes_state(part[index].text) => index + 1,
+        false if changes_state(part[index].text) || runs_duckdb_call(&part[index], grammar) => index + 1,
         false => return false,
     };
     part.get(arguments).is_some_and(|next| next.kind == Kind::Open)
+}
+
+fn runs_duckdb_call(token: &Code<'_>, grammar: SqlGrammar) -> bool {
+    grammar == SqlGrammar::DuckDb && duckdb_call(token.text)
 }
 
 /// The grammars whose scanner is PostgreSQL's, which reads `U&"…"`.
@@ -553,6 +670,10 @@ fn statement_destroys(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
 }
 
 fn statement_starts(code: &[Code<'_>], grammar: SqlGrammar) -> Vec<usize> {
+    let verbs: &[&str] = match grammar {
+        SqlGrammar::MsSql => &TSQL_STATEMENT_VERBS,
+        _ => &STATEMENT_VERBS,
+    };
     let mut starts = Vec::new();
     let mut lead: Option<&str> = None;
     for (index, token) in code.iter().enumerate() {
@@ -560,7 +681,10 @@ fn statement_starts(code: &[Code<'_>], grammar: SqlGrammar) -> Vec<usize> {
             _ if is_call(code, index) => false,
             None => token.kind == Kind::Word,
             Some(before) if token.is_word(&["DELETE", "UPDATE"]) && before.kind == Kind::Open => true,
-            Some(before) if token.depth == 0 && token.is_word(&STATEMENT_VERBS) => {
+            // A T-SQL DELETE or UPDATE never holds a SELECT outside
+            // parentheses, so one there ends it, a cursor's after FOR too.
+            Some(_) if grammar == SqlGrammar::MsSql && token.depth == 0 && token.is_word(&["SELECT"]) => true,
+            Some(before) if token.depth == 0 && token.is_word(verbs) => {
                 let led_in = leads_in(before, &code[index..], grammar) || before.kind == Kind::Comma;
                 let alters = lead.is_some_and(|lead| is(lead, &["ALTER"]))
                     && token.is_word(&["DROP", "ALTER"])
@@ -595,9 +719,15 @@ fn leads_in(before: &Code<'_>, code: &[Code<'_>], grammar: SqlGrammar) -> bool {
 }
 
 /// A DROP at `code[0]` that names a kind of object only a DROP statement
-/// takes.
+/// takes. An ALTER drops an event or a column as a clause, so those two
+/// count only as the statements' own `EVENT SESSION`, `EVENT
+/// NOTIFICATION` and `COLUMN MASTER KEY` or `COLUMN ENCRYPTION KEY`.
 fn drops_an_object(code: &[Code<'_>]) -> bool {
-    code[0].is_word(&["DROP"]) && code.get(1).is_some_and(|kind| kind.is_word(&TSQL_DROPPED_OBJECTS))
+    let word = |at: usize, set: &[&str]| code.get(at).is_some_and(|token| token.is_word(set));
+    word(0, &["DROP"])
+        && (word(1, &TSQL_DROPPED_OBJECTS)
+            || (word(1, &["EVENT"]) && word(2, &["SESSION", "NOTIFICATION"]))
+            || (word(1, &["COLUMN"]) && word(2, &["MASTER", "ENCRYPTION"]) && word(3, &["KEY"])))
 }
 
 /// The statement that starts at `code[0]` and runs to the end of `code`
@@ -1264,20 +1394,32 @@ mod tests {
             "SELECT E'x'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
             "SELECT e'x' -- note\r\n  -- note\n\t'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
             "SELECT E'x'\n'y'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+            // PostgreSQL 16 and later take a vertical tab as a space.
+            "SELECT E'x'\x0b\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
         ] {
-            for grammar in [SqlGrammar::PostgreSql, SqlGrammar::DuckDb] {
-                assert_eq!(
-                    access(sql, grammar),
-                    StatementAccess::Destructive,
-                    "{grammar:?}: {sql:?}"
-                );
-            }
+            assert_eq!(
+                access(sql, SqlGrammar::PostgreSql),
+                StatementAccess::Destructive,
+                "{sql:?}"
+            );
         }
         for sql in [
             "SELECT E'x'\n'\\'; DELETE FROM orders; --'",
             "SELECT E'a\\'b'\n'c\\'d' FROM orders",
         ] {
             assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql:?}");
+        }
+    }
+
+    #[test]
+    fn a_duckdb_string_ends_at_its_quote_and_a_backtick_quotes_a_name() {
+        // DuckDB 2.0 carries no backslash escapes into a string on the
+        // next line, and reads a backtick as a name quote.
+        for sql in [
+            "SELECT E'x'\n'\\'; DELETE FROM orders; --'",
+            "SELECT 1 AS `'`; DROP TABLE orders; --'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Destructive, "{sql:?}");
         }
     }
 
@@ -1411,16 +1553,69 @@ mod tests {
             "SELECT pg_stat_reset_shared('bgwriter')",
             "SELECT pg_wal_replay_pause()",
             "SELECT gin_clean_pending_list('i'::regclass)",
+            "SELECT * FROM crosstab('SELECT pid::text, ''x'', pg_terminate_backend(pid)::text FROM pg_stat_activity') AS ct(r text, x text)",
+            "SELECT * FROM connectby('tree', 'id', 'parent', '1', 0) AS t(id text, parent text, level int)",
+            "SELECT * FROM xpath_table('id', 'doc', 'docs', '/a', 'true') AS t(id int, a text)",
+            "SELECT pg_import_system_collations('public'::regnamespace)",
+            "SELECT heap_force_kill('orders'::regclass, ARRAY['(0,1)']::tid[])",
+            "SELECT pg_file_write('postgresql.auto.conf', 'x', true)",
+            "SELECT pg_background_launch('SELECT 1')",
+            "SELECT * FROM pg_background_run_query_v2('SELECT 1') AS r(n int)",
+            "SELECT pg_background_cancel_all()",
+            "SELECT pg_background_grant_privileges('app')",
+            "SELECT cron.schedule('0 3 * * *', 'VACUUM orders')",
+            "SELECT cron.unschedule('nightly')",
+            "SELECT drop_chunks('conditions', INTERVAL '3 months')",
+            "SELECT compress_chunk(c) FROM show_chunks('conditions') c",
+            "SELECT create_hypertable('conditions', by_range('time'))",
+            "SELECT add_retention_policy('conditions', INTERVAL '1 year')",
+            "SELECT alter_job(1000, schedule_interval => INTERVAL '1 day')",
+            "SELECT timescaledb_experimental.remove_all_policies('conditions')",
+            "SELECT timescaledb_pre_restore()",
+            "SELECT dblink_close('app', 'c')",
+            "SELECT dblink_cancel_query('app')",
         ] {
             assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Write, "{sql}");
         }
-        for sql in ["SELECT GET_LOCK('l', 1)", "SELECT release_all_locks()"] {
+        // MariaDB folds `ſ` to `s` when it looks a function up.
+        for sql in [
+            "SELECT GET_LOCK('l', 1)",
+            "SELECT release_all_locks()",
+            "SELECT relea\u{17f}e_lock('l')",
+        ] {
             assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Write, "{sql}");
+        }
+        for sql in [
+            "SELECT * FROM query('SELECT nextval(''s'')')",
+            "SELECT * FROM postgres_execute('pg', 'SELECT 1')",
+            "SELECT * FROM postgres_query('pg', 'SELECT nextval(''s'')')",
+            "SELECT * FROM mysql_query('my', 'SELECT 1')",
+            "CALL mysql_execute('my', 'UPDATE orders SET total = 0 WHERE id = 1')",
+            "SELECT * FROM sqlite_query('lite', 'SELECT 1')",
+            "SELECT * FROM json_execute_serialized_sql(json_serialize_sql('SELECT nextval(''s'')'))",
+            "SELECT * FROM dbgen(sf = 0.01)",
+            "SELECT * FROM DSDGEN(sf = 0.01)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Write, "{sql}");
+        }
+        for sql in [
+            "SELECT dblink_build_sql_insert('t', '1', 1, '{1}', '{2}')",
+            "SELECT dblink FROM links",
+            "SELECT file, url, query(1) FROM downloads",
+            "SELECT * FROM postgres_execute('pg', 'SELECT 1')",
+            "SELECT * FROM pg_background_result(123) AS r(n int)",
+            "SELECT pg_background_detach(123)",
+            "SELECT show_chunks('conditions')",
+            "SELECT * FROM cron.job",
+            "SELECT dblink_connect('app', 'dbname=shop')",
+            "SELECT schedule FROM jobs",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql}");
         }
         assert_eq!(
             access(
-                "SELECT dblink_build_sql_insert('t', '1', 1, '{1}', '{2}')",
-                SqlGrammar::PostgreSql
+                "SELECT * FROM postgres_scan('pg', 'public', 'orders')",
+                SqlGrammar::DuckDb
             ),
             StatementAccess::Read
         );
@@ -1484,6 +1679,12 @@ mod tests {
             "SELECT * FROM do\nUPDATE orders SET total = 0",
             "ALTER TABLE t ADD x int\nDROP TABLE y",
             "ALTER TABLE t ADD x int\nDELETE FROM y",
+            "ALTER TABLE t ADD x int\nDROP PARTITION SCHEME ps",
+            "ALTER TABLE t ADD x int\nDROP SYMMETRIC KEY k",
+            "ALTER TABLE t ADD x int\nDROP EVENT SESSION s ON SERVER",
+            "ALTER TABLE t ADD x int\nDROP COLUMN MASTER KEY k",
+            "SET NOCOUNT ON\nALTER TABLE t ADD x int\nDROP TABLE y",
+            "SET IDENTITY_INSERT t ON\nDELETE no",
         ] {
             assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Destructive, "{sql}");
         }
@@ -1496,8 +1697,94 @@ mod tests {
             "ALTER TABLE orders DROP CONSTRAINT orders_pk",
             "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE",
             "DECLARE c CURSOR FOR SELECT id FROM orders FOR UPDATE",
+            "ALTER EVENT SESSION s ON SERVER DROP EVENT sqlserver.lock_deadlock",
+            "ALTER ROLE r DROP MEMBER u",
+            "ALTER TABLE t DROP COLUMN master",
         ] {
             assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Write, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_where_in_a_later_sql_server_statement_does_not_bound_an_earlier_one() {
+        for sql in [
+            "UPDATE orders SET total = 0\nDECLARE c CURSOR FOR SELECT id FROM orders WHERE id = 1",
+            "DELETE FROM orders\nSET @c = CURSOR FOR SELECT id FROM orders WHERE id = 1",
+            "DELETE FROM orders\nCREATE INDEX ix ON lines (order_id) WHERE order_id > 0",
+            "UPDATE orders SET total = 0\nCREATE STATISTICS s ON lines (order_id) WHERE order_id > 0",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Destructive, "{sql}");
+        }
+        for sql in [
+            "DECLARE c CURSOR FOR SELECT id FROM orders FOR UPDATE",
+            "GRANT CREATE TABLE TO someone",
+            "GRANT SELECT, UPDATE, DELETE ON orders TO someone",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Write, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_sql_server_statement_after_a_select_that_sets_session_state_writes() {
+        for sql in [
+            "SELECT 1\nSET NOCOUNT ON",
+            "SELECT 1\nUSE master",
+            "SELECT 1\nRAISERROR('x', 10, 1) WITH LOG",
+            "SELECT 1\nWAITFOR DELAY '00:00:05'",
+            "SELECT 1\nDECLARE @n int",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Write, "{sql}");
+        }
+        for sql in [
+            "SELECT a FROM t OPTION (USE HINT ('FORCE_LEGACY_CARDINALITY_ESTIMATION'))",
+            "SELECT a FROM t ORDER BY a OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY",
+            "SELECT a FROM t WITH (NOLOCK) WHERE id = 1",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MsSql), StatementAccess::Read, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_pragma_named_as_a_table_runs_on_sqlite() {
+        for sql in [
+            "SELECT * FROM pragma_optimize",
+            "SELECT * FROM main.pragma_optimize(0x10002)",
+            "SELECT * FROM orders, \"pragma_optimize\"",
+            "SELECT * FROM pragma_optimize WHERE arg = 65538",
+            "SELECT * FROM [PRAGMA_OPTIMIZE]",
+            "SELECT * FROM 'pragma_optimize'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Write, "{sql}");
+        }
+        assert_eq!(
+            access("SELECT * FROM pragma_table_info('orders')", SqlGrammar::Sqlite),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
+    fn a_pragma_name_as_a_value_column_or_alias_reads_on_sqlite() {
+        for sql in [
+            "SELECT 'pragma_optimize'",
+            "SELECT name FROM sqlite_schema WHERE name = 'pragma_optimize'",
+            "SELECT name FROM sqlite_schema WHERE name IN ('pragma_optimize', 'x')",
+            "SELECT name FROM sqlite_schema WHERE name LIKE 'pragma_optimize'",
+            "SELECT pragma_optimize FROM settings",
+            "SELECT 1 AS pragma_optimize",
+            "SELECT lower('pragma_optimize')",
+            "SELECT 'a' || 'pragma_optimize'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Read, "{sql}");
+        }
+        for sql in [
+            "SELECT * FROM (pragma_optimize)",
+            "SELECT * FROM orders JOIN 'pragma_optimize'",
+            "SELECT * FROM orders AS o, pragma_optimize",
+            "SELECT 1 WHERE 1 IN pragma_optimize",
+            "SELECT * FROM main.'pragma_optimize'",
+            "SELECT * FROM orders WHERE id IN (SELECT arg FROM pragma_optimize)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Write, "{sql}");
         }
     }
 }

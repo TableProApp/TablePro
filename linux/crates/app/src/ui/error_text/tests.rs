@@ -184,6 +184,27 @@ fn tls_unknown_issuer_suggests_ca() {
 }
 
 #[test]
+fn a_closed_strict_connect_names_the_encryption_to_choose() {
+    let tls = |failure| {
+        ConnectError::Driver(DriverError::Tls {
+            failure,
+            detail: "the server closed the stream".to_owned(),
+        })
+    };
+    let refused = tls(TlsFailure::ServerRefusedStrict);
+    let requires = tls(TlsFailure::ServerRequiresStrict);
+
+    let refused_text = connect_error_message(&refused);
+    assert!(refused_text.contains("TDS 8.0"), "{refused_text}");
+    assert!(refused_text.contains("Verify full"), "{refused_text}");
+    let requires_text = connect_error_message(&requires);
+    assert!(requires_text.contains("Set Encryption to Strict"), "{requires_text}");
+    for error in [refused, requires] {
+        assert_eq!(connect_remedy(&error, false), Some(TlsRemedy::ChangeEncryption));
+    }
+}
+
+#[test]
 fn auth_message_has_no_secret() {
     let message = driver_message(&DriverError::auth(Some(ServerDiagnostics::new(
         None,
@@ -789,5 +810,44 @@ fn a_column_change_beside_a_convert_says_to_save_it_first() {
         text,
         "Column email can't be changed this way. Save column and primary key changes before converting existing \
          columns."
+    );
+}
+
+#[test]
+fn a_database_that_is_gone_is_named_on_the_connect_page_and_the_banner() {
+    let gone = DriverError::DatabaseNotFound {
+        database: "shop".to_owned(),
+    };
+
+    assert_eq!(
+        connect_error_message(&ConnectError::Driver(gone.clone())),
+        "The database “shop” does not exist on the server."
+    );
+    assert_eq!(
+        operation_error_message(&OperationError::Driver(gone)),
+        "The database “shop” does not exist on the server."
+    );
+}
+
+#[test]
+fn a_catalog_option_the_statement_cannot_carry_says_which() {
+    use tablepro_core::ddl::{BuildDdlError, CatalogOption};
+
+    let invalid = |option, value: &str| {
+        build_error_text(&BuildDdlError::InvalidOption {
+            option,
+            value: value.to_owned(),
+        })
+    };
+
+    assert_eq!(invalid(CatalogOption::Name, "  "), "Enter a name.");
+    assert!(invalid(CatalogOption::Name, "a_very_long_name").contains("a_very_long_name"));
+    assert_eq!(
+        invalid(CatalogOption::Collation, "utf8 bin"),
+        "“utf8 bin” is not a collation this database takes."
+    );
+    assert_eq!(
+        invalid(CatalogOption::Template, ""),
+        "This database takes no template for a new database."
     );
 }

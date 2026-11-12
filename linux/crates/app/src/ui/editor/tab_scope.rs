@@ -154,9 +154,10 @@ impl SqlEditor {
             .or_else(|| self.imp().listed_own_database.borrow().clone())
     }
 
-    /// Ask the server for its databases, for the bar's menu. A server
-    /// that cannot list them leaves the bar a label.
-    pub(super) fn list_databases(&self) {
+    /// Ask the server for its databases, for the bar's menu: when the tab
+    /// opens, and after a database is created or dropped anywhere in the
+    /// window. A server that cannot list them leaves the bar a label.
+    pub(crate) fn list_databases(&self) {
         let Some((session, tasks)) = self
             .deps()
             .and_then(|deps| deps.session.get().map(|session| (session, deps.tasks.clone())))
@@ -236,16 +237,17 @@ impl SqlEditor {
         )
     }
 
-    /// Completion reads `session`'s catalog: the session the window holds
-    /// for the tab's database, or `None` back on the connection's own.
     pub(crate) fn follow_catalog(&self, session: Option<Arc<Session>>) {
-        // A session opened late for a database the tab has since left
-        // changes nothing; the one it is in may have answered first.
-        let current = self.imp().named_database.borrow().clone();
-        if session
+        let database = session
             .as_ref()
-            .is_some_and(|session| session.database() != current.as_deref())
-        {
+            .and_then(|session| session.database())
+            .map(str::to_owned);
+        self.follow_catalog_for(database.as_deref(), session);
+    }
+
+    pub(crate) fn follow_catalog_for(&self, database: Option<&str>, session: Option<Arc<Session>>) {
+        // A late catalog must not replace the one for a newer database choice.
+        if session.is_some() && self.imp().named_database.borrow().as_deref() != database {
             return;
         }
         for provider in self.imp().completion_providers.borrow().iter() {
@@ -255,15 +257,16 @@ impl SqlEditor {
         }
     }
 
-    /// The database of the session whose catalog completion reads, when
-    /// the window handed one over.
-    #[cfg(test)]
-    pub(crate) fn followed_catalog(&self) -> Option<String> {
+    pub(crate) fn catalog_session(&self) -> Option<Arc<Session>> {
         self.imp().completion_providers.borrow().iter().find_map(|provider| {
             let provider = provider.downcast_ref::<SqlCompletionProvider>()?;
-            let session = provider.imp().catalog_session.borrow().clone()?;
-            session.database().map(str::to_owned)
+            provider.imp().catalog_session.borrow().clone()
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn followed_catalog(&self) -> Option<String> {
+        self.catalog_session()?.database().map(str::to_owned)
     }
 
     /// Where unqualified names in this tab resolve, for what the assistant

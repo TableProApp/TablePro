@@ -97,10 +97,15 @@ struct CreateUserTypeSheet: View {
             .disabled(isCreating)
             Divider()
             DialogFooter {
-                if let message = failure ?? draft.problems.first {
+                if let failure {
+                    NoticeLabel(failure, severity: .error)
+                        .font(.callout)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                } else if let message = draft.problems.first {
                     Text(message)
                         .font(.callout)
-                        .foregroundStyle(failure == nil ? Color.secondary : Color.red)
+                        .foregroundStyle(.secondary)
                         .lineLimit(3)
                         .textSelection(.enabled)
                 }
@@ -240,11 +245,12 @@ struct CreateUserTypeSheet: View {
             try await UserTypeCreation.create(definition, in: scope, connection: connection)
             dismiss()
             onCreated(definition)
-        } catch ExecutionGateError.cancelledByUser {
-            return
         } catch {
-            Self.logger.error("Create Type failed: \(error.publicLogShape, privacy: .public)")
-            failure = error.localizedDescription
+            let outcome = GatedOperationFailure(error)
+            if outcome.reportsFailure {
+                Self.logger.error("Create Type failed: \(error.publicLogShape, privacy: .public)")
+            }
+            failure = outcome.message
         }
     }
 }

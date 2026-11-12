@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProEtcdCore
 import TableProPluginKit
 
 internal enum EtcdColumn: String, Codable, CaseIterable, Sendable {
@@ -78,22 +79,44 @@ internal struct EtcdFilterRefusal: Error, Equatable, PluginDriverError {
     }
 }
 
+extension PluginCellValue {
+    // Text only when the bytes are exactly UTF-8, so a grid write sends back the bytes the server holds.
+    static func etcd(_ bytes: Data) -> PluginCellValue {
+        EtcdCommandText.text(bytes).map(PluginCellValue.text) ?? .bytes(bytes)
+    }
+
+    var etcdBytes: Data? {
+        switch self {
+        case .null: return nil
+        case .text(let text): return Data(text.utf8)
+        case .bytes(let bytes): return bytes
+        }
+    }
+}
+
 internal struct EtcdFilterRow: Equatable, Sendable {
-    let key: String
-    let value: String?
+    let key: Data
+    let value: Data?
     let version: String
     let modRevision: String
     let createRevision: String
     let lease: String
 
     var cells: [PluginCellValue] {
-        EtcdColumn.allCases.map { PluginCellValue.fromOptional(text(of: $0)) }
+        EtcdColumn.allCases.map { column in
+            switch column {
+            case .key: return .etcd(key)
+            case .value: return value.map(PluginCellValue.etcd) ?? .null
+            default: return .fromOptional(text(of: column))
+            }
+        }
     }
 
+    // Bytes that are not UTF-8 match as U+FFFD.
     func text(of column: EtcdColumn) -> String? {
         switch column {
-        case .key: return key
-        case .value: return value
+        case .key: return Self.readable(key)
+        case .value: return value.map(Self.readable)
         case .version: return version
         case .modRevision: return modRevision
         case .createRevision: return createRevision
@@ -109,6 +132,18 @@ internal struct EtcdFilterRow: Equatable, Sendable {
         case .createRevision: return Int64(createRevision)
         case .lease: return Int64(lease) ?? 0
         }
+    }
+
+    func bytes(of column: EtcdColumn) -> Data? {
+        switch column {
+        case .key: return key
+        case .value: return value
+        default: return text(of: column).map { Data($0.utf8) }
+        }
+    }
+
+    private static func readable(_ bytes: Data) -> String {
+        String(decoding: bytes, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
     }
 }
 
@@ -304,9 +339,12 @@ private struct EtcdConditionTest {
             guard let cellNumber = row.number(of: condition.column) else { return nil }
             return Self.compare(cellNumber, number)
         case .text(let text):
-            guard let cell = row.text(of: condition.column) else { return nil }
-            guard isOrdering else { return cell.compare(text, options: textOptions) }
-            return Self.byteOrder(cell, text)
+            guard isOrdering else {
+                guard let cell = row.text(of: condition.column) else { return nil }
+                return cell.compare(text, options: textOptions)
+            }
+            guard let cell = row.bytes(of: condition.column) else { return nil }
+            return Self.byteOrder(cell, Data(text.utf8))
         }
     }
 
@@ -315,9 +353,9 @@ private struct EtcdConditionTest {
         return lhs < rhs ? .orderedAscending : .orderedDescending
     }
 
-    private static func byteOrder(_ lhs: String, _ rhs: String) -> ComparisonResult {
-        if lhs.utf8.elementsEqual(rhs.utf8) { return .orderedSame }
-        return lhs.utf8.lexicographicallyPrecedes(rhs.utf8) ? .orderedAscending : .orderedDescending
+    private static func byteOrder(_ lhs: Data, _ rhs: Data) -> ComparisonResult {
+        if lhs == rhs { return .orderedSame }
+        return lhs.lexicographicallyPrecedes(rhs) ? .orderedAscending : .orderedDescending
     }
 
     private static func operand(_ text: String, for column: EtcdColumn) throws(EtcdFilterRefusal) -> Operand {

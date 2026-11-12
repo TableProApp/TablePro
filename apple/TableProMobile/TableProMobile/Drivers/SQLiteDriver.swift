@@ -16,6 +16,13 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: sqlite3_libversion()) }
 
+    // SQLite ends statement text at a NUL, so a NUL in a value goes in as char(0) between two literals.
+    func escapeStringLiteral(_ value: String) -> String {
+        value.split(separator: "\0", omittingEmptySubsequences: false)
+            .map { SQLQuoting.stringLiteralBody(String($0)) }
+            .joined(separator: "'||char(0)||'")
+    }
+
     init(source: LocalDatabaseFileSource, openMode: LocalDatabaseOpenMode = .existingOnly) {
         self.source = source
         self.openMode = openMode
@@ -415,8 +422,8 @@ private actor SQLiteActor {
                     } else {
                         row.append("")
                     }
-                } else if let text = sqlite3_column_text(stmt, i) {
-                    row.append(String(cString: text))
+                } else if let text = Self.text(of: stmt, column: i) {
+                    row.append(text)
                 } else {
                     row.append(nil)
                 }
@@ -533,15 +540,10 @@ private actor SQLiteActor {
                 let ref = makeCellRef(column: columns[i].name, columns: columns, statement: stmt, options: options)
                 cells.append(.binary(byteCount: bytes, ref: ref))
             default:
-                if let text = sqlite3_column_text(stmt, columnIndex) {
-                    let str = String(cString: text)
+                if let str = Self.text(of: stmt, column: columnIndex) {
                     let ref = makeCellRef(column: columns[i].name, columns: columns, statement: stmt, options: options)
-                    cells.append(Cell.from(
-                        legacyValue: str,
-                        columnTypeName: columns[i].typeName,
-                        options: options,
-                        ref: ref
-                    ))
+                    // The storage class, not the declared type: a BLOB column can hold text.
+                    cells.append(Cell.from(text: str, options: options, ref: ref))
                 } else {
                     cells.append(.null)
                 }
@@ -583,10 +585,17 @@ private actor SQLiteActor {
             if sqlite3_column_type(statement, idx) == SQLITE_NULL {
                 return nil
             }
-            guard let text = sqlite3_column_text(statement, idx) else { return nil }
-            pkComponents.append(PrimaryKeyComponent(column: pkColumn, value: String(cString: text)))
+            guard let text = Self.text(of: statement, column: idx) else { return nil }
+            pkComponents.append(PrimaryKeyComponent(column: pkColumn, value: text))
         }
         return CellRef(table: lazyContext.table, column: column, primaryKey: pkComponents)
+    }
+
+    // SQLite keeps a NUL inside text, and a C string ends at the first one.
+    private static func text(of statement: OpaquePointer?, column: Int32) -> String? {
+        guard let text = sqlite3_column_text(statement, column) else { return nil }
+        let count = Int(sqlite3_column_bytes(statement, column))
+        return String(decoding: UnsafeBufferPointer(start: text, count: count), as: UTF8.self)
     }
 }
 

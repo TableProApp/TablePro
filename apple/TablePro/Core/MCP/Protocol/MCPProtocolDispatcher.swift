@@ -99,6 +99,24 @@ public actor MCPProtocolDispatcher {
         return count
     }
 
+    // For a superseded credential: its requests may finish, but none outlives the credential's own expiry.
+    public func cancelInflight(matchingTokenId tokenId: UUID, at deadline: Date) async {
+        let clock = self.clock
+        let remaining = deadline.timeIntervalSince(await clock.now())
+        guard remaining > 0 else {
+            await cancelInflight(matchingTokenId: tokenId)
+            return
+        }
+        Task { [weak self] in
+            do {
+                try await clock.sleep(for: .seconds(remaining))
+            } catch {
+                return
+            }
+            _ = await self?.cancelInflight(matchingTokenId: tokenId)
+        }
+    }
+
     @discardableResult
     public func cancelAllInflight(reason: MCPCancellationReason = .serverShuttingDown) async -> Int {
         await inflight.cancelAll(reason: reason)

@@ -1,7 +1,8 @@
 use std::net::TcpListener;
+use std::path::Path;
 use std::time::Duration;
 
-use testcontainers::core::IntoContainerPort;
+use testcontainers::core::{IntoContainerPort, Mount};
 use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 use tokio::time::Instant;
@@ -37,24 +38,25 @@ pub struct PostgresFixture {
 impl PostgresFixture {
     pub const TLS_DIR: &'static str = "/tls";
     pub const NETWORK_ROLE: &'static str = "postgres";
+    pub const SOCKET_DIR: &'static str = "/var/run/postgresql";
 
     pub async fn start(hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::selected()?, None, PkiAlgorithm::default(), None).await
+        Self::launch(TestPki::generate()?, hba, PostgresVersion::selected()?, None, None).await
     }
 
     pub async fn start_in(hba: HbaMode, network: &TestNetwork) -> Result<Self, FixtureError> {
         Self::launch(
+            TestPki::generate()?,
             hba,
             PostgresVersion::selected()?,
             Some(network),
-            PkiAlgorithm::default(),
             None,
         )
         .await
     }
 
     pub async fn start_version(version: PostgresVersion, hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, version, None, PkiAlgorithm::default(), None).await
+        Self::launch(TestPki::generate()?, hba, version, None, None).await
     }
 
     /// A server on a host port picked here rather than by Docker, which
@@ -64,10 +66,10 @@ impl PostgresFixture {
     pub async fn start_restartable(hba: HbaMode) -> Result<Self, FixtureError> {
         let port = TcpListener::bind(("0.0.0.0", 0))?.local_addr()?.port();
         Self::launch(
+            TestPki::generate()?,
             hba,
             PostgresVersion::selected()?,
             None,
-            PkiAlgorithm::default(),
             Some(port),
         )
         .await
@@ -77,17 +79,62 @@ impl PostgresFixture {
     /// binding cases: the server hashes its certificate by the
     /// algorithm that signed it.
     pub async fn start_with_pki(hba: HbaMode, algorithm: PkiAlgorithm) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::selected()?, None, algorithm, None).await
+        Self::launch(
+            TestPki::generate_with(algorithm)?,
+            hba,
+            PostgresVersion::selected()?,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// A server whose certificate is self-signed, which a client accepts
+    /// only by trusting that certificate itself.
+    pub async fn start_self_signed(hba: HbaMode) -> Result<Self, FixtureError> {
+        Self::launch(
+            TestPki::generate_self_signed()?,
+            hba,
+            PostgresVersion::selected()?,
+            None,
+            None,
+        )
+        .await
     }
 
     async fn launch(
+        pki: TestPki,
         hba: HbaMode,
         version: PostgresVersion,
         network: Option<&TestNetwork>,
-        algorithm: PkiAlgorithm,
         host_port: Option<u16>,
     ) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate_with(algorithm)?;
+        Self::launch_with(pki, hba, version, network, host_port, None).await
+    }
+
+    /// A server whose socket folder is `dir` on this machine, for a client
+    /// that connects through the socket. `dir` must be writable by the
+    /// container's postgres user.
+    pub async fn start_with_socket_dir(dir: &Path) -> Result<Self, FixtureError> {
+        Self::launch_with(
+            TestPki::generate()?,
+            HbaMode::Password,
+            PostgresVersion::selected()?,
+            None,
+            None,
+            Some(dir),
+        )
+        .await
+    }
+
+    async fn launch_with(
+        pki: TestPki,
+        hba: HbaMode,
+        version: PostgresVersion,
+        network: Option<&TestNetwork>,
+        host_port: Option<u16>,
+        socket_dir: Option<&Path>,
+    ) -> Result<Self, FixtureError> {
         let password = FixtureCredentials::generate_password();
         let image = version.image();
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
@@ -107,6 +154,9 @@ impl PostgresFixture {
             }
             if let Some(host_port) = host_port {
                 request = request.with_mapped_port(host_port, CONTAINER_PORT.tcp());
+            }
+            if let Some(dir) = socket_dir {
+                request = request.with_mount(Mount::bind_mount(dir.display().to_string(), Self::SOCKET_DIR));
             }
             with_files(request, files.clone())
         })

@@ -18,6 +18,7 @@ const NAME_CASE: &str = "verify_full_with_wrong_server_name_reports_name_mismatc
 const REQUIRE_CASE: &str = "require_connects_without_ca";
 const REQUIRE_CA_CASE: &str = "require_with_ca_file_is_refused";
 const DISABLE_CASE: &str = "disable_against_tls_only_server_is_refused";
+const SELF_SIGNED_CASE: &str = "self_signed_certificate_is_refused_until_trusted";
 const IDENTITY_CASE: &str = "client_identity_is_required_by_the_server";
 const FLAGS_CASE: &str = "tls_suite_flags_match_driver_capabilities";
 
@@ -137,10 +138,39 @@ pub async fn disable_against_tls_only_server_is_refused<E: TlsConformanceEngine>
 ) -> Result<(), ConformanceFailure> {
     let expected = engine.plaintext_rejection_category();
     let outcome = open::<E>(DISABLE_CASE, engine.connect_options(TlsConfig::disabled())).await?;
-    let refused = matches!(&outcome, Err(error) if error.category() == expected);
+    // Of the TLS failures, only this one tells the app that turning TLS on fixes the connect.
+    let (refused, wanted) = match expected {
+        ErrorCategory::Tls => (
+            tls_failure(&outcome) == Some(TlsFailure::ServerRequiresTls),
+            format!("{:?}", TlsFailure::ServerRequiresTls),
+        ),
+        _ => (
+            matches!(&outcome, Err(error) if error.category() == expected),
+            format!("{expected:?}"),
+        ),
+    };
     expect(DISABLE_CASE, refused, || {
-        format!("a plaintext connect gave {}, not {expected:?}", describe(&outcome))
+        format!("a plaintext connect gave {}, not {wanted}", describe(&outcome))
     })
+}
+
+/// A self-signed certificate is an unknown issuer to the system store,
+/// and the client gets in once it trusts that certificate itself.
+pub async fn self_signed_certificate_is_refused_until_trusted<E: TlsConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
+    let untrusted = TlsConfig {
+        ca_file: None,
+        ..verified(&engine, engine.ca_file())
+    };
+    let outcome = open::<E>(SELF_SIGNED_CASE, engine.connect_options(untrusted)).await?;
+    expect(
+        SELF_SIGNED_CASE,
+        tls_failure(&outcome) == Some(TlsFailure::UnknownIssuer),
+        || format!("the system store alone gave {}", describe(&outcome)),
+    )?;
+    let trusted = verified(&engine, engine.server_certificate_file());
+    connects::<E>(SELF_SIGNED_CASE, engine.connect_options(trusted)).await
 }
 
 /// TLS case 6: the certificate principal gets in with its certificate

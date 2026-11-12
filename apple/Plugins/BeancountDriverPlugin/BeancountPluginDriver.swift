@@ -460,11 +460,13 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         }
                         return try executeSQLite(query: query, parameters: [])
                     }
-                    continuation.yield(.header(PluginStreamHeader(
+                    var header = PluginStreamHeader(
                         columns: result.columns,
                         columnTypeNames: result.columnTypeNames,
                         estimatedRowCount: result.rows.count
-                    )))
+                    )
+                    if result.isTruncated { header.rowLimit = result.rows.count }
+                    continuation.yield(.header(header))
                     continuation.yield(.rows(result.rows))
                     continuation.finish()
                 } catch {
@@ -510,7 +512,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 case .null:
                     sqlite3_bind_null(statement, position)
                 case .text(let value):
-                    sqlite3_bind_text(statement, position, value, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_text64(
+                        statement, position, value, sqlite3_uint64(value.utf8.count), SQLITE_TRANSIENT,
+                        UInt8(SQLITE_UTF8)
+                    )
                 case .bytes(let data):
                     _ = data.withUnsafeBytes { buffer in
                         sqlite3_bind_blob(statement, position, buffer.baseAddress, Int32(data.count), SQLITE_TRANSIENT)
@@ -1176,7 +1181,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let text = sqlite3_column_text(statement, column) else {
             return .null
         }
-        return .text(String(cString: text))
+        let count = Int(sqlite3_column_bytes(statement, column))
+        return .text(String(decoding: UnsafeBufferPointer(start: text, count: count), as: UTF8.self))
     }
 
     private static func isReadOnlyQuery(_ query: String) -> Bool {

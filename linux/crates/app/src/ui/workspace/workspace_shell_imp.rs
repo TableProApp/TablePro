@@ -1,4 +1,4 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::VecDeque;
 
 use gtk4 as gtk;
@@ -28,6 +28,12 @@ pub(super) struct ClosedTab {
     pub(super) tab: ClosedTabDescriptor,
 }
 
+/// Where a tab stood when a drag took it out of the view.
+pub(super) struct Departure {
+    pub(super) page: glib::WeakRef<adw::TabPage>,
+    pub(super) position: i32,
+}
+
 #[derive(Default, gtk::CompositeTemplate, glib::Properties)]
 #[properties(wrapper_type = super::WorkspaceShell)]
 #[template(resource = "/app/tablepro/TablePro/ui/workspace-shell.ui")]
@@ -51,13 +57,23 @@ pub struct WorkspaceShell {
     #[template_child]
     pub refresh_tables_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub sidebar_bar: TemplateChild<gtk::ActionBar>,
+    #[template_child]
+    pub sidebar_add_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub table_search_bar: TemplateChild<gtk::SearchBar>,
     #[template_child]
     pub table_search: TemplateChild<gtk::SearchEntry>,
     #[template_child]
     pub list_banners: TemplateChild<gtk::Stack>,
     #[template_child]
+    pub schema_filter_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
+    pub sidebar_handle: TemplateChild<gtk::Box>,
+    #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
+    #[template_child]
+    pub scope_toggle: TemplateChild<adw::ToggleGroup>,
     #[template_child]
     pub assistant_split: TemplateChild<adw::OverlaySplitView>,
     #[template_child]
@@ -75,7 +91,15 @@ pub struct WorkspaceShell {
     #[template_child]
     pub connection_icon: TemplateChild<gtk::Image>,
     #[template_child]
+    pub save_changes_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub refresh_page_button: TemplateChild<gtk::Button>,
+    #[template_child]
     pub assistant_toggle: TemplateChild<gtk::ToggleButton>,
+    #[template_child]
+    pub safe_mode_slot: TemplateChild<adw::Bin>,
+    #[template_child]
+    pub safe_mode_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
     pub tab_button: TemplateChild<adw::TabButton>,
     #[template_child]
@@ -108,6 +132,17 @@ pub struct WorkspaceShell {
     /// The saved connections, and the schemas and tables of each one open
     /// in the window.
     pub(super) tree: OnceCell<super::sidebar::ConnectionTree>,
+    pub(super) sidebar_stack: OnceCell<gtk::Stack>,
+    pub(super) favorites: OnceCell<super::sidebar::FavoritesPane>,
+    pub(super) favorites_source: OnceCell<(
+        crate::services::history_service::HistoryService,
+        tablepro_session::runtime::Tasks,
+    )>,
+    pub(super) favorites_hold: OnceCell<std::rc::Rc<dyn tablepro_session::runtime::ProcessHold>>,
+    pub(super) favorites_generation: Cell<u64>,
+    pub(super) favorites_connection: Cell<Option<uuid::Uuid>>,
+    pub(super) favorites_watch: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
+    pub(super) favorites_availability: RefCell<Option<tablepro_session::runtime::WatchForwarder>>,
     /// The window the shell added its actions to.
     pub(super) window: glib::WeakRef<adw::ApplicationWindow>,
     pub(super) sender: OnceCell<InputSender<SessionWindowInput>>,
@@ -125,8 +160,16 @@ pub struct WorkspaceShell {
     pub(super) history_gate: RefCell<Option<glib::JoinHandle<()>>>,
     /// What follows the session in front, let go of at shutdown.
     pub(super) watches: RefCell<Vec<gtk::ExpressionWatch>>,
+    pub(super) save_changes_binding: RefCell<Option<glib::Binding>>,
+    pub(super) save_changes_view:
+        RefCell<Option<(glib::WeakRef<crate::ui::browse_tab::BrowseTab>, glib::SignalHandlerId)>>,
     /// The overview's new tab, connected to the front's tab factory.
     pub(super) create_tab: RefCell<Option<glib::SignalHandlerId>>,
+    /// The tab of this window a drag has out of the view.
+    pub(super) departure: RefCell<Option<Departure>>,
+    /// Set from `create-window` until libadwaita attaches the tab it
+    /// declined to put in a new window.
+    pub(super) declined_tear_out: Cell<bool>,
 }
 
 #[glib::object_subclass]

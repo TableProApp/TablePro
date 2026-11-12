@@ -2,7 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_core::edit::{CellInput, EditParseError};
+use tablepro_core::edit::{CellInput, EditParseError, read_cell};
 use tablepro_core::import::{CsvRowError, ImportError, PastedRows, PastedTable};
 use tablepro_core::{ColumnInfo, Value};
 
@@ -11,7 +11,7 @@ use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::services::grid::{cell_presets, parse_cell_text};
 use crate::ui::data_grid::{DataGrid, PinnedRow};
 use crate::ui::error_text::{edit_parse_message, row_error_message};
-use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::format::format_thousands;
 
 /// A paste of more rows asks first: each becomes a pending row, and
 /// Import CSV is the tool for a lot of data.
@@ -144,10 +144,14 @@ impl EditController {
             return;
         };
         let dialect = grid.sql_dialect();
+        let read = row
+            .cells()
+            .and_then(|cells| cells.get(column).cloned())
+            .unwrap_or(Value::Null);
         let input = match text {
             None if cell_presets(&grid_column, &row.id(), dialect.as_deref()).null => Ok(CellInput::Value(Value::Null)),
             None => Err(EditParseError::Required),
-            Some(text) => parse_cell_text(text, catalog, &row.id(), dialect.as_deref()),
+            Some(text) => parse_cell_text(text, catalog, &row.id(), &read, dialect.as_deref()),
         };
         match input {
             Ok(input) => {
@@ -160,7 +164,17 @@ impl EditController {
     }
 
     fn insert_pasted(&self, grid: &DataGrid, pasted: PastedRows) {
-        let PastedRows { rows, skipped } = pasted;
+        let PastedRows { mut rows, skipped } = pasted;
+        // A pasted NULL is a value read elsewhere, which a document engine reads for a field a row lacks.
+        if let (Some(dialect), Some(columns)) = (grid.dialect(), catalog_columns(grid)) {
+            for row in &mut rows {
+                for (cell, column) in row.iter_mut().zip(&columns) {
+                    if matches!(cell, CellInput::Value(Value::Null)) {
+                        *cell = read_cell(Value::Null, column, &*dialect);
+                    }
+                }
+            }
+        }
         let count = rows.len();
         if count == 0 {
             grid.toast(gettext("The clipboard has no rows to paste."));
@@ -174,7 +188,7 @@ impl EditController {
         grid.toast(ngettext_f(
             "Pasted {n} row",
             "Pasted {n} rows",
-            plural_count(n),
+            n,
             &[("n", &format_thousands(n))],
         ));
         if skipped > 0 {
@@ -182,7 +196,7 @@ impl EditController {
             grid.toast(ngettext_f(
                 "Left out {n} value no column could take",
                 "Left out {n} values no column could take",
-                plural_count(n),
+                n,
                 &[("n", &format_thousands(n))],
             ));
         }
@@ -193,7 +207,7 @@ impl EditController {
         let title = ngettext_f(
             "Paste {n} Row?",
             "Paste {n} Rows?",
-            plural_count(count),
+            count,
             &[("n", &format_thousands(count))],
         );
         let body = gettext(

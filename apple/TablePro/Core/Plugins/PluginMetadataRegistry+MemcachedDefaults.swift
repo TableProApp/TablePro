@@ -27,6 +27,7 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: false,
                     supportsOpportunisticTLS: false,
                     supportsColumnSort: false,
+                    supportsRawFilter: false,
                     readOnlyEnforcement: .clientGuard
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

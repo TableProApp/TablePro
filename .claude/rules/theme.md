@@ -10,8 +10,10 @@ paths:
 
 ## Content, never chrome
 
-- **A theme colors content and the window backdrop, never chrome.** Content: code, the grid, values and wells (an editable value is a `ValueTextField`, not a bezeled control), value trees, diffs, record tables, diagrams, charts, and their stand-in states. Chrome: controls, Accent, Highlight, sidebar, inspector frame, toolbar, titlebar, tab strip, bars, Settings, Welcome, the connection form, sheets, popovers, and `List`, `Form` and `Table` backgrounds. `NSApp.appearance` is the only lever on chrome.
+- **A theme colors content and the window backdrop, never chrome.** Content: code, the grid, values and wells (an editable value is a `ValueTextField`, not a bezeled control), value trees, diffs, record tables, diagrams, charts, and their stand-in states. Chrome: controls, Accent, Highlight, sidebar, inspector frame, toolbar, titlebar, tab strip, bars, Settings, Welcome, the connection form, sheets, popovers, and `List`, `Form` and `Table` backgrounds. `NSApp.appearance` is the only lever on chrome, apart from the Reduce Transparency fill below.
 - **Chrome never reads a slot.** It asks `ThemeBackdropState.isThemed` and picks a system style: `.paneBarBackground(_:ignoresSafeAreaEdges:)` on a pane bar (nothing while themed; no edges, so a top bar never reaches under the toolbar), `.statusBarChrome()` on a status bar, `.splitItemGlassBackground()` on a list filling a glass sidebar or inspector item. No `.tint` with a theme color.
+- **Reduce Transparency is the one fill on chrome.** It swaps the sidebar and inspector glass for an opaque system fill that drops the window color. So while it is on, on macOS 26 and later, and the theme sets `window.background`, each glass sidebar and inspector pane draws that color under its whole pane (Windows). Its lists stay clear, so the selection and controls stay system. Increase Contrast keeps the system fill.
+- **A bar is themed only where the window color reaches what is behind it.** Before macOS 26 nothing colors a sidebar or inspector, so a bar there keeps its material: the pane says it sits on a split item, and `ThemeBackdropState` asks `canReachChrome` for it.
 - **The slot family follows the surface.** Code, values, trees, wells: `editor.*`, so a code field in a form (Startup Commands, Agent SQL) wears it while the form stays system. Records, schema objects, diagram nodes, chart plots, grid stand-ins: `dataGrid.*`. Diff rows: `dataGrid.inserted`, `modified`, `deleted`. Behind panes: `window.background`. Identity, severity and status hues stay system.
 - **Every call site passes the exact system color it drew before as the fallback**, so an unset slot draws an unthemed app. A default changes only on purpose, named in the PR and a changelog fragment.
 
@@ -20,7 +22,7 @@ paths:
 - `TableProTheme` is Foundation only, so the iOS app can adopt it; AppKit and SwiftUI code stays in `apple/TablePro/Theme`.
 - **`ThemeSlot` is the one registry.** A slot exists only while a view reads it: removing its last reader removes the slot.
 - `isOverridden(_:)` means the slot draws a theme color, set or derived: ask it before swapping a native drawing path (a code table's selection, the caret). Only the theme editor asks `hasExplicitColor(_:)`.
-- **Adding a slot bumps `ThemeSchema.current`.** `ThemeFileFormat` reads only the current schema: an older or newer one, or an unknown key, is refused rather than loaded without colors its author wrote, so a bump stops every older file from loading. The bump renames the sync content kind (Sync).
+- **Adding a slot bumps `ThemeSchema.current`, and the slot records the schema that introduced it.** `ThemeFileFormat` reads every schema from 3 to the current one. A newer schema, an unknown key, or a key newer than the file's schema is refused rather than loaded without colors its author wrote. It writes the oldest schema that holds every key the theme sets, so a theme that sets no new slot stays readable by the previous stable (`.claude/rules/data-sync-storage.md`). The bump renames the sync content kind (Sync).
 - **An imported file is untrusted.** `ThemeFileImporter` checks the size before it reads, mints a fresh id every time, and never follows a VS Code `include` out of the file's folder.
 
 ## Reading colors
@@ -37,6 +39,7 @@ paths:
 - **A content window subclasses `ContentWindow`** and holds a `ThemeWindowBackdrop`. On macOS 26 and later the backdrop sets `window.background` only while the theme sets it; earlier the window keeps its own color. Code asks `ThemeWindowBackdrop.canReachChrome`, never an `#available` of its own.
 - `ContentWindow` owns the titlebar. Before macOS 26 it stays opaque: a transparent one there swaps its material for a flat fill.
 - The detail column sits on `DetailColumnBackdrop`, so a pane that draws nothing shows `window.background`. `DetailPaneBackdropFill` goes only there.
+- A glass sidebar or inspector pane sits on `SplitItemBackdrop`, pinned to the pane's edges and not its safe area, so it covers the titlebar band too. It draws only under Reduce Transparency (Content, never chrome) and is clear otherwise, so the glass shows.
 
 ## Engine and catalog
 
@@ -52,7 +55,8 @@ paths:
 
 ## Sync
 
-- **Each user theme syncs as the `AppSettings` record `theme.<id>`** holding `ThemeFileFormat.encode(_:)` bytes. A user edit marks it dirty, a trash marks it deleted once the trash lands, and a load or migration marks nothing. Built-ins never sync.
+- **Each user theme syncs as the `AppSettings` record `theme.<id>`** holding `ThemeFileFormat.encode(_:)` bytes, at the oldest schema that holds its keys. A user edit marks it dirty, a trash marks it deleted once the trash lands, and a load or migration marks nothing. Built-ins never sync.
+- **A record at a newer schema is skipped by an older Mac**, which keeps it as the merge base, so that Mac shows its default theme and its next edit of the theme drops the newer keys. A theme that sets no newer key stays at the old schema and syncs with it. This lasts only while an older build shares the zone, and it is named in the release that bumps the schema.
 - **A synced theme is untrusted.** `ThemeCatalog.applyRemote(category:data:)` checks the category id (never a built-in), a 64 KB cap, nesting depth, a full decode and the file id, and never writes over bytes it has not read. A validation failure is a logged skip; only a disk failure returns `.failed`, which withholds the change token so the pull replays. A remote delete trashes the file through `removeWithoutSync(ids:)`.
 - The light and dark theme ids sync. The appearance mode and fonts are device-local, and a received `appearance` record never changes them.
 - `SyncCoordinator.themeContentKind` names `ThemeSchema.current`, so a Mac upgraded past a bump refetches the zone once. After the first full pull, only local themes the server lacks are marked dirty, once.

@@ -364,23 +364,18 @@ private struct EditorTabStripItem: View {
         .contentShape(Rectangle())
     }
 
-    /// What this tab is doing, in the trailing accessory slot the layout already reserves, so
-    /// nothing reflows as it changes. Running outranks finished-unseen because it is the later
-    /// state: a tab that started new work is no longer holding an unread result.
-    ///
-    /// The spinner shows on the selected tab too, unlike the dot. The dot answers "did something
-    /// happen while I was away", which selecting the tab settles; the spinner answers "is it still
-    /// going", which selecting the tab does not.
+    // The trailing slot is reserved, so nothing reflows. Running outranks the unseen mark, and shows on the selected tab too.
     @ViewBuilder
     private var unseenIndicator: some View {
         if isBusy {
             ProgressView()
                 .controlSize(.mini)
                 .accessibilityHidden(true)
-        } else if tab.execution.finishedUnseenAt != nil, !isSelected {
-            Circle()
-                .fill(Color.accentColor)
-                .frame(width: EditorTabStripLayout.unseenDotDiameter)
+        } else if let outcome = tab.execution.unseenOutcome, !isSelected {
+            Image(systemName: outcome == .failed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .font(.system(size: EditorTabStripLayout.unseenGlyphSize))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(outcome == .failed ? Color.red : Color.accentColor)
                 .accessibilityHidden(true)
         } else {
             Color.clear
@@ -437,8 +432,9 @@ private struct EditorTabStripItem: View {
         if isBusy {
             return String(format: String(localized: "%@, running"), description)
         }
-        guard tab.execution.finishedUnseenAt != nil, !isSelected else { return description }
-        return String(format: String(localized: "%@, finished"), description)
+        guard let outcome = tab.execution.unseenOutcome, !isSelected else { return description }
+        guard outcome == .failed else { return String(format: String(localized: "%@, finished"), description) }
+        return String(format: String(localized: "%@, failed"), description)
     }
 
     /// The system draws both labels in the same face at the same size and separates them by colour

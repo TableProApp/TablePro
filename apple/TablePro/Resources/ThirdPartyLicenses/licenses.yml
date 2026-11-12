@@ -518,6 +518,30 @@
     reproduced wherever OracleNIO ships. Reaches users only through the registry-only Oracle plugin and
     through TableProMobile: no `$s9OracleNIO` symbols in the app dylib, and none in any of the 14 bundled
     plugins.'
+- id: posthog-ios
+  name: PostHog iOS SDK
+  version: 3.92.7
+  spdx: MIT AND BSD-3-Clause AND Apache-2.0
+  copyrights:
+  - Copyright (c) 2023 PostHog
+  - Copyright (c) 2015 Sentry
+  - Copyright (c) Microsoft Corporation.
+  - Copyright (c) 2008 - 2014 Plausible Labs Cooperative, Inc.
+  - Copyright 2008, Dave Benson.
+  - Copyright (c) 2010, Google Inc.
+  homepageURL: https://github.com/PostHog/posthog-ios
+  licenseTextURL: https://github.com/PostHog/posthog-ios/blob/3.92.7/LICENSE
+  textFile: texts/posthog-ios.txt
+  source: spm:posthog-ios
+  patched: false
+  platforms: [macos, ios]
+  notes: 'The PostHog product, linked statically into both apps for usage data. LICENSE is MIT for PostHog''s
+    code plus an MIT section for the files taken from getsentry/sentry-cocoa. The package also compiles two
+    vendored targets into the app, listed in vendor/UPSTREAM.md: PHPLCrashReporter (PLCrashReporter 1.12.2,
+    MIT, with protobuf-c 1.4.0 and PLCrashLogWriterEncoding.c under Apache-2.0) and phlibwebp (libwebp
+    1.5.0, BSD-3-Clause, with its PATENTS grant). The text file is LICENSE, then the PLCrashReporter LICENSE,
+    then libwebp''s COPYING and PATENTS. The crash reporter stays off: PostHogTelemetryClient sets
+    errorTrackingConfig.autoCapture to false.'
 - id: postgresql-libpq
   name: PostgreSQL (libpq client library)
   version: '17.4'
@@ -631,6 +655,21 @@
     SQLite and libSQL driver plugins, with its symbols hidden. The app itself still uses the macOS
     libsqlite3 for its own storage. Public domain; the SPDX id "blessing" names the notice the sources
     carry in place of a license.'
+- id: swift-argument-parser
+  name: swift-argument-parser
+  version: 1.8.2
+  spdx: Apache-2.0 WITH Swift-exception
+  copyrights:
+  - Copyright (c) 2020 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/apple/swift-argument-parser
+  licenseTextURL: https://github.com/apple/swift-argument-parser/blob/1.8.2/LICENSE.txt
+  textFile: texts/swift-argument-parser.txt
+  source: spm:swift-argument-parser
+  patched: false
+  platforms: [macos]
+  notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
+    file). No NOTICE.txt. Linked only into Contents/MacOS/tablepro-cli through TableProCommandLine; the
+    app itself does not link it. Copyright line taken from the manifest header.'
 - id: swift-asn1
   name: swift-asn1
   version: 1.5.1, 1.7.1
@@ -732,6 +771,21 @@
   platforms: [macos, ios]
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
     the root tree). Copyright from a source header. Transitive via oracle-nio.
+- id: swift-http-types
+  name: swift-http-types
+  version: 1.8.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2023 The Swift HTTP Types Project
+  - Copyright (c) 2023 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/apple/swift-http-types
+  licenseTextURL: https://github.com/apple/swift-http-types/blob/1.8.0/LICENSE.txt
+  textFile: texts/swift-http-types.txt
+  source: spm:swift-http-types
+  patched: false
+  platforms: [macos]
+  notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present; the text file
+    is LICENSE.txt then NOTICE.txt. Transitive via swift-openapi-runtime, linked by TableProCloudAPI.
 - id: swift-log
   name: swift-log
   version: 1.15.0
@@ -763,6 +817,37 @@
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
     the root tree), unlike its swift-nio siblings, so nothing to carry under 4(d). Copyright line taken
     from a source header, since the LICENSE names no holder.
+- id: swift-openapi-runtime
+  name: swift-openapi-runtime
+  version: 1.13.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2023 The SwiftOpenAPIGenerator Project
+  - Copyright (c) 2023 Apple Inc. and the SwiftOpenAPIGenerator project authors
+  homepageURL: https://github.com/apple/swift-openapi-runtime
+  licenseTextURL: https://github.com/apple/swift-openapi-runtime/blob/1.13.0/LICENSE.txt
+  textFile: texts/swift-openapi-runtime.txt
+  source: spm:swift-openapi-runtime
+  patched: false
+  platforms: [macos]
+  notes: PLAIN Apache-2.0 (11359 bytes, no Runtime Library Exception). NOTICE.txt present; the text file
+    is LICENSE.txt then NOTICE.txt. Linked by TableProCloudAPI, the generated /v2 client. The generator
+    itself runs only at build time and ships nothing.
+- id: swift-openapi-urlsession
+  name: swift-openapi-urlsession
+  version: 1.4.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2023 The SwiftOpenAPIGenerator Project
+  - Copyright (c) 2023 Apple Inc. and the SwiftOpenAPIGenerator project authors
+  homepageURL: https://github.com/apple/swift-openapi-urlsession
+  licenseTextURL: https://github.com/apple/swift-openapi-urlsession/blob/1.4.0/LICENSE.txt
+  textFile: texts/swift-openapi-urlsession.txt
+  source: spm:swift-openapi-urlsession
+  patched: false
+  platforms: [macos]
+  notes: PLAIN Apache-2.0 (11359 bytes, no Runtime Library Exception). NOTICE.txt present; the text file
+    is LICENSE.txt then NOTICE.txt. Linked by TableProCloudAPI as the /v2 client's transport.
 - id: swift-service-context
   name: swift-service-context
   version: 1.3.0

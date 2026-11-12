@@ -242,6 +242,15 @@ impl KeyTab {
         reload(&Rc::downgrade(&self.inner));
     }
 
+    pub(crate) fn export_shown(&self) -> bool {
+        let grid = &self.inner.grid;
+        if grid.row_count() == 0 || self.inner.state.borrow().shown.is_none() {
+            return false;
+        }
+        self.inner.export(grid.export_source());
+        true
+    }
+
     /// Drop what a read still on its way would show.
     pub(crate) fn shutdown(&self) {
         self.inner.shut_down.set(true);
@@ -258,6 +267,7 @@ fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
         sorting: GridSorting::Client,
         rules: None,
         tracker: None,
+        result_lock: None,
         settings,
         layout: None,
         references: None,

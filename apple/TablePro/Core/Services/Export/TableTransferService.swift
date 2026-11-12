@@ -252,8 +252,91 @@ final class TableTransferService: ObservableObject {
                 sourceFields: Set(request.sourceColumns[object.name] ?? []),
                 isCancelled: { [flag = cancellationFlag] in flag.isCancelled }
             )
-            try await transferOne(object: object, from: source, into: sink, request: request)
+            let bitKinds = try await Self.bitColumnKinds(
+                for: object, source: source, request: request, destinationDriver: destinationDriver)
+            // A Stop during those reads must land before "Delete existing rows first" empties the target.
+            try checkCancellation()
+            try await transferOne(
+                object: object, from: source, into: sink, request: request,
+                bitSpelling: { header in
+                    Self.bitRespelling(for: header, mapping: mapping, request: request, kinds: bitKinds)
+                }
+            )
         }
+    }
+
+    struct BitColumnKinds {
+        let source: [String: CanonicalTypeKind]
+        let target: [String: CanonicalTypeKind]
+    }
+
+    // PostgreSQL and DuckDB read a BIT as its digits and MySQL as its number, so 00000101 bound to a MySQL BIT stores 101.
+    // Read before the row stream opens: a catalog read queued behind the source's own open stream waits for the whole
+    // table, and behind DuckDB's bounded one never ends. The catalog, because a fresh PostgreSQL session's header names
+    // a bit column `unknown` and MySQL's drops the width of a BIT(1).
+    static func bitColumnKinds(
+        for object: ExportObjectItem,
+        source: ExportDataSourceAdapter,
+        request: Request,
+        destinationDriver: DatabaseDriver
+    ) async throws -> BitColumnKinds? {
+        let sourceFamily = SQLTypeFamily.of(request.sourceType)
+        let targetFamily = SQLTypeFamily.of(request.destinationType)
+        guard sourceFamily.readsBitsAsDecimal != targetFamily.readsBitsAsDecimal,
+              Self.spellsBitStrings(sourceFamily), Self.spellsBitStrings(targetFamily) else { return nil }
+
+        let sourceColumns = try await source.fetchColumns(table: object.name, databaseName: object.databaseName)
+        let sourceKinds = Self.kinds(of: sourceColumns.map { ($0.name, $0.typeNameForClassification, $0.ddlSpelling) },
+                                     family: sourceFamily)
+        // A catalog that lists the table's columns and no bit string leaves nothing to respell.
+        guard sourceKinds.isEmpty || sourceKinds.values.contains(where: { Self.isBitString($0) }) else { return nil }
+
+        let targetColumns = try await destinationDriver.fetchColumns(table: object.name, schema: request.destinationSchema)
+        let targetKinds = Self.kinds(of: targetColumns.map { ($0.name, $0.typeNameForClassification, $0.ddlSpelling) },
+                                     family: targetFamily)
+        return BitColumnKinds(source: sourceKinds, target: targetKinds)
+    }
+
+    // A column the catalog did not list keeps the header's type.
+    static func bitRespelling(
+        for header: PluginStreamHeader,
+        mapping: [String: String],
+        request: Request,
+        kinds: BitColumnKinds?
+    ) -> CrossEngineValueCoercer? {
+        guard let kinds else { return nil }
+        let sourceFamily = SQLTypeFamily.of(request.sourceType)
+        let pairs = header.columns.enumerated().map { index, column -> CrossEngineValueCoercer.ColumnPair in
+            let sourceKind = kinds.source[column] ?? (index < header.columnTypeNames.count
+                ? SQLTypeParser.parse(header.columnTypeNames[index], family: sourceFamily).kind
+                : nil)
+            let targetKind = mapping[column].flatMap { kinds.target[$0] }
+            guard Self.isBitString(sourceKind), Self.isBitString(targetKind) else { return .init(source: nil, target: nil) }
+            return .init(source: sourceKind, target: targetKind)
+        }
+        let coercer = CrossEngineValueCoercer(pairs: pairs, from: sourceFamily, to: SQLTypeFamily.of(request.destinationType))
+        return coercer.isNeeded ? coercer : nil
+    }
+
+    // Only a family whose BIT is a bit string can take part: SQL Server reads BIT as a boolean, SQLite not at all.
+    private static func spellsBitStrings(_ family: SQLTypeFamily) -> Bool {
+        isBitString(SQLTypeParser.parse("BIT", family: family).kind)
+    }
+
+    private static func kinds(
+        of columns: [(name: String, type: String, catalogSpelling: String?)],
+        family: SQLTypeFamily
+    ) -> [String: CanonicalTypeKind] {
+        var kinds: [String: CanonicalTypeKind] = [:]
+        for column in columns {
+            kinds[column.name] = SQLTypeParser.parse(column.type, catalogSpelling: column.catalogSpelling, family: family).kind
+        }
+        return kinds
+    }
+
+    private static func isBitString(_ kind: CanonicalTypeKind?) -> Bool {
+        guard case .bitString = kind else { return false }
+        return true
     }
 
     /// Checked for every table before the first is written: the INSERT would name the contested
@@ -317,7 +400,8 @@ final class TableTransferService: ObservableObject {
         object: ExportObjectItem,
         from source: ExportDataSourceAdapter,
         into sink: ImportDataSinkAdapter,
-        request: Request
+        request: Request,
+        bitSpelling: (PluginStreamHeader) -> CrossEngineValueCoercer?
     ) async throws {
         let exportTable = PluginExportTable(
             name: object.name,
@@ -332,6 +416,7 @@ final class TableTransferService: ObservableObject {
         )
 
         var columns: [String] = []
+        var coercer: CrossEngineValueCoercer?
         var filler = SQLWriteBatchFiller<[String: PluginCellValue]>(budget: Self.batchBudget)
         var wroteAnything = false
 
@@ -351,9 +436,10 @@ final class TableTransferService: ObservableObject {
                 switch element {
                 case .header(let header):
                     columns = header.columns
+                    coercer = bitSpelling(header)
                 case .rows(let rows):
                     for row in rows {
-                        let keyed = Self.dictionary(columns: columns, row: row)
+                        let keyed = Self.dictionary(columns: columns, row: coercer?.coerce(row) ?? row)
                         let bytes = Self.batchBudget.byteCount(of: keyed.values)
                         guard let batch = filler.append(keyed, bytes: bytes) else { continue }
                         try await sink.insertRows(batch)
@@ -380,6 +466,10 @@ final class TableTransferService: ObservableObject {
                 } catch {
                     Self.logger.warning("Rollback after a failed transfer also failed: \(error.localizedDescription)")
                 }
+            }
+            // A Stop stays a stop, so the sheet reports it as cancelled rather than as a failure.
+            if isCancelled || error is PluginImportCancellationError || error is CancellationError {
+                throw PluginImportCancellationError()
             }
             state.errorMessage = error.localizedDescription
             throw TableTransferError.transferFailed(error.localizedDescription)

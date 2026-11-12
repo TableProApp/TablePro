@@ -7,6 +7,8 @@ nonisolated struct RowLocator: Sendable {
     let keyValues: [(column: String, value: String)]?
     // The columns `row` holds, when that is not every column read.
     var storedColumns: [String]?
+    // The row's `Row.locator`, which a document store writes by instead of the key's display text.
+    var documentLocator: String?
 
     func columnNames(of columns: [ColumnInfo]) -> [String] {
         storedColumns ?? columns.map(\.name)
@@ -36,7 +38,8 @@ nonisolated struct RowLocator: Sendable {
         cells: [Cell],
         columns: [ColumnInfo],
         columnDetails: [ColumnInfo],
-        identity: RowIdentity
+        identity: RowIdentity,
+        documentLocator: String? = nil
     ) -> RowLocator? {
         let row = Row(cells: cells).legacyValues
         switch identity {
@@ -50,7 +53,7 @@ nonisolated struct RowLocator: Sendable {
                       let value = cells[index].keyText(column: key.name) else { return nil }
                 values.append((column: key.name, value: value))
             }
-            return RowLocator(row: row, keyValues: values)
+            return RowLocator(row: row, keyValues: values, documentLocator: documentLocator)
         case .everyColumn:
             guard cells.count == columns.count else { return nil }
             let generated = generatedNames(columnDetails)
@@ -63,11 +66,14 @@ nonisolated struct RowLocator: Sendable {
                 }
             }
             guard isExact else { return nil }
-            guard stored.count < columns.count else { return RowLocator(row: row, keyValues: nil) }
+            guard stored.count < columns.count else {
+                return RowLocator(row: row, keyValues: nil, documentLocator: documentLocator)
+            }
             return RowLocator(
                 row: stored.map { row[$0] },
                 keyValues: nil,
-                storedColumns: stored.map { columns[$0].name }
+                storedColumns: stored.map { columns[$0].name },
+                documentLocator: documentLocator
             )
         }
     }

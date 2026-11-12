@@ -4,7 +4,8 @@
 # `accepted` is deny.toml's [licenses].allow in the same order, so a crate
 # under "MIT OR Apache-2.0" is listed under the first one deny accepts.
 # third-party.json also keeps the whole expression of each crate, which
-# the Debian copyright file and the RPM License tag name.
+# the RPM License tag names. A clarify entry's license also corrects the
+# crate's paragraph in the Debian copyright file.
 accepted = [
     "AGPL-3.0-or-later",
     "MIT",
@@ -222,3 +223,17 @@ license = "MIT"
 start = "Copyright (c) 2024-2025 Model Context Protocol"
 end = "SOFTWARE."
 checksum = "a403f7ef905cd68df03a304a8c169dc7b3c5c50e4dba17c0ce8c58421055bd43"
+
+# cargo-about does not identify the crate's LICENSE, the Apache-2.0 text.
+[sync_wrapper.clarify]
+license = "Apache-2.0"
+[[sync_wrapper.clarify.files]]
+path = "LICENSE"
+checksum = "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+
+# cargo-about cannot identify the combined BSD and MIT license text.
+[sha1_smol.clarify]
+license = "BSD-3-Clause AND MIT"
+[[sha1_smol.clarify.files]]
+path = "LICENSE"
+checksum = "282a21b0710441c364025461a447362daf18f5798a7b72ae2f801a2aa536da51"

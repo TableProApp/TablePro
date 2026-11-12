@@ -34,10 +34,24 @@ pub struct MySqlTlsEngine<S> {
     fixture: MysqlFixture,
     ca: PathBuf,
     unrelated_ca: PathBuf,
+    server_certificate: PathBuf,
     server: PhantomData<S>,
 }
 
 impl<S: Server> MySqlTlsEngine<S> {
+    fn from_fixture(fixture: MysqlFixture) -> Self {
+        let ca = fixture.pki().path(PkiFile::Ca);
+        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
+        let server_certificate = fixture.pki().path(PkiFile::ServerCertificate);
+        Self {
+            fixture,
+            ca,
+            unrelated_ca,
+            server_certificate,
+            server: PhantomData,
+        }
+    }
+
     fn options_to(&self, host: &str, credentials: tablepro_core::Credentials, tls: TlsConfig) -> ConnectOptions {
         let liveness = test_liveness();
         options_over(
@@ -58,17 +72,17 @@ impl<S: Server> TlsConformanceEngine for MySqlTlsEngine<S> {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        let fixture = MysqlFixture::start(S::FLAVOUR)
+        MysqlFixture::start(S::FLAVOUR)
             .await
-            .map_err(ConformanceFailure::setup)?;
-        let ca = fixture.pki().path(PkiFile::Ca);
-        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
-        Ok(Self {
-            fixture,
-            ca,
-            unrelated_ca,
-            server: PhantomData,
-        })
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
+    }
+
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        MysqlFixture::start_self_signed(S::FLAVOUR)
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -82,6 +96,10 @@ impl<S: Server> TlsConformanceEngine for MySqlTlsEngine<S> {
 
     fn unrelated_ca_file(&self) -> &Path {
         &self.unrelated_ca
+    }
+
+    fn server_certificate_file(&self) -> &Path {
+        &self.server_certificate
     }
 
     fn served_name(&self) -> &str {
@@ -339,6 +357,52 @@ async fn disabled_against_require_secure_transport() {
             false => refused_for_tls,
         };
         assert!(expected, "{flavour:?}: {:?}", outcome.err());
+    }
+}
+
+/// Prefer is sqlx's `Preferred`, as the mysql client's `PREFERRED`: a
+/// server without TLS is reached in plaintext, and one with TLS is
+/// encrypted with its certificate, which no system root vouches for,
+/// left unchecked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn prefer_encrypts_where_the_server_offers_tls_and_connects_where_it_does_not() {
+    let prefer = TlsConfig {
+        mode: TlsMode::Prefer,
+        ..TlsConfig::disabled()
+    };
+    for flavour in FLAVOURS {
+        let tls_off = match flavour {
+            MysqlFlavour::Mysql => "--tls-version=",
+            MysqlFlavour::Mariadb => "--skip-ssl",
+        };
+        let plain = start_with(
+            MysqlOptions::new(flavour)
+                .allowing_plaintext()
+                .with_server_argument(tls_off),
+        )
+        .await;
+        let with_tls = start_with(MysqlOptions::new(flavour).allowing_plaintext()).await;
+        for (fixture, encrypted) in [(&plain, false), (&with_tls, true)] {
+            let liveness = test_liveness();
+            let options = options_over(
+                direct(fixture.host(), fixture.port(), &liveness),
+                password(&fixture.root_credentials()),
+                fixture.database(),
+                prefer.clone(),
+                WorkspaceSettings::workspace(false),
+                liveness,
+            );
+
+            let connection = MysqlDriver
+                .connect(options, CancellationToken::new())
+                .await
+                .unwrap_or_else(|error| panic!("{flavour:?}, TLS {encrypted}: {error:?}"));
+
+            let version = ssl_version(connection.as_ref()).await;
+            assert_eq!(version.starts_with("TLS"), encrypted, "{flavour:?}: {version:?}");
+            connection.close().await.expect("a close");
+        }
     }
 }
 

@@ -51,15 +51,17 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         var errors: [PluginImportResult.ImportStatementError] = []
         let maxErrors = 1_000
 
-        let errorMode = settings.errorHandling
-        let useTransaction = settings.wrapInTransaction && errorMode != .skipAndContinue
+        // One plugin instance serves every window: a checkbox unticked elsewhere mid-import left the checks off.
+        let options = settings
+        let errorMode = options.errorHandling
+        let useTransaction = options.wrapInTransaction && errorMode != .skipAndContinue
 
         let fileSizeBytes = source.fileSizeBytes()
         let estimatedTotal = max(1, Int(fileSizeBytes / 500))
         progress.setEstimatedTotal(estimatedTotal)
 
         do {
-            if settings.disableForeignKeyChecks {
+            if options.disableForeignKeyChecks {
                 try await sink.disableForeignKeyChecks()
             }
 
@@ -76,6 +78,10 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                     try await sink.execute(statement: statement, line: lineNumber)
                     executedCount += 1
                     progress.incrementStatement()
+                } catch is PluginImportCancellationError {
+                    throw PluginImportCancellationError()
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
                     switch errorMode {
                     case .stopAndRollback:
@@ -92,14 +98,14 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                                 try await sink.commitTransaction()
                                 didCommit = true
                             } catch {
-                                Self.logger.warning("Failed to commit partial import: \(error.localizedDescription)")
+                                Self.logger.warning("Failed to commit partial import")
                             }
                         }
-                        if settings.disableForeignKeyChecks {
+                        if options.disableForeignKeyChecks {
                             do {
                                 try await sink.enableForeignKeyChecks()
                             } catch {
-                                Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                                Self.logger.warning("Failed to re-enable foreign key checks")
                             }
                         }
                         throw PluginImportError.statementFailed(
@@ -130,11 +136,11 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 didCommit = true
             }
 
-            if settings.disableForeignKeyChecks {
+            if options.disableForeignKeyChecks {
                 do {
                     try await sink.enableForeignKeyChecks()
                 } catch {
-                    Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                    Self.logger.warning("Failed to re-enable foreign key checks")
                 }
             }
         } catch {
@@ -146,17 +152,17 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                     try await sink.rollbackTransaction()
                 } catch {
                     Self.logger.error(
-                        "Import failed: \(importError.localizedDescription). Rollback also failed: \(error.localizedDescription)"
+                        "The import and its rollback both failed"
                     )
                     rollbackError = error
                 }
             }
 
-            if settings.disableForeignKeyChecks {
+            if options.disableForeignKeyChecks {
                 do {
                     try await sink.enableForeignKeyChecks()
                 } catch {
-                    Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                    Self.logger.warning("Failed to re-enable foreign key checks")
                 }
             }
 

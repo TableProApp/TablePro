@@ -8,7 +8,6 @@ import TableProPluginKit
 import TableProUtilities
 
 extension PluginMetadataRegistry {
-    /// The curated snapshot for DuckDB, alongside its connection fields in the sibling file.
     func duckdbPluginDefaults(
         dialect: SQLDialectDescriptor,
         columnTypes: [String: [String]]
@@ -33,17 +32,25 @@ extension PluginMetadataRegistry {
                     supportsSchemaSwitching: true,
                     supportsImport: true,
                     supportsExport: true,
-                    supportsSSH: false,
+                    // Remote mode dials a TCP server, so a forward can carry it. TLS is Quack's own model, set in
+                    // the Remote fields, so the built-in SSL section never applies.
+                    supportsSSH: true,
                     supportsSSL: false,
                     supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: true,
+                    supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsRenameColumn: true,
+                    // httpfs checks a server against the system CA bundle when no CA is given, so a URL asking
+                    // for TLS with no mode means a verified connection, never Required's unchecked one.
+                    verifiesServerWithSystemTrust: true,
+                    requestedTLSVerifiesIdentity: true,
                     supportsConnectionPooling: false,
                     localFilePathField: .additionalField("duckdbFilePath"),
+                    serverEndpointFields: ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort"),
+                    fieldsRequiringDriverSupport: ["duckdbSSLMode"],
                     newDatabaseFileExtensions: ["duckdb", "ddb"],
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -57,16 +64,15 @@ extension PluginMetadataRegistry {
                     systemDatabaseNames: ["system", "temp"],
                     systemSchemaNames: [],
                     fileExtensions: ["duckdb", "ddb", "parquet", "csv", "tsv", "json", "ndjson"],
-                    /// Only DuckDB's own storage. The data formats above are recognised by name
-                    /// alone, because `duckdb_open` picks their reader from the extension and
-                    /// refuses a Parquet file called anything else.
-                    ///
-                    /// `DUCK` sits behind the header's eight-byte checksum, followed by the storage
-                    /// version as a little-endian `uint64`. Four bytes on their own are not enough
-                    /// to name a format, and `SELECT 'DUCK';` spells them at exactly that offset,
-                    /// so the version's high six bytes have to be zero as well. Storage versions
-                    /// are still in the sixties, and a version past 65535 would cost recognition by
-                    /// content rather than break it.
+                    // Only DuckDB's own storage. The data formats above are recognised by name
+                    // alone, because `duckdb_open` picks their reader from the extension and
+                    // refuses a Parquet file called anything else.
+                    // `DUCK` sits behind the header's eight-byte checksum, followed by the storage
+                    // version as a little-endian `uint64`. Four bytes on their own are not enough
+                    // to name a format, and `SELECT 'DUCK';` spells them at exactly that offset,
+                    // so the version's high six bytes have to be zero as well. Storage versions
+                    // are still in the sixties, and a version past 65535 would cost recognition by
+                    // content rather than break it.
                     fileSignatures: [.magic("DUCK", at: 8).andZeroes(at: 14, count: 6)],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]

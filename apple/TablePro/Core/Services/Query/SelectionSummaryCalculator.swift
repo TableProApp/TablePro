@@ -61,11 +61,8 @@ actor SelectionSummaryCalculator {
 }
 
 private struct Tally {
-    private static let defaultMarkerLength = PluginCellValue.defaultMarkerText.utf8.count
-
     let emptyTextIsEmpty: Bool
-    let insertedRowIDs: Set<RowID>
-    let modifiedCells: [RowID: Set<Int>]
+    let defaultedCells: [RowID: Set<Int>]
     var valueCount = 0
     var emptyCount = 0
     var notANumberCount = 0
@@ -73,8 +70,7 @@ private struct Tally {
 
     init(input: SelectionSummaryInput) {
         emptyTextIsEmpty = input.policy.emptyTextIsEmpty
-        insertedRowIDs = input.insertedRowIDs
-        modifiedCells = input.modifiedCells
+        defaultedCells = input.defaultedCells
     }
 
     mutating func add(_ value: PluginCellValue, column: Int, rule: SelectionSummaryColumnRule, rowID: RowID) {
@@ -108,13 +104,9 @@ private struct Tally {
         return numbers.add(text.trimmingCharacters(in: .whitespaces))
     }
 
-    // The default marker is the grid's placeholder only where an edit put it; elsewhere it is text the table holds.
     private func isEmpty(_ text: String, column: Int, rowID: RowID) -> Bool {
         if text.isEmpty { return emptyTextIsEmpty }
-        guard text.utf8.count == Self.defaultMarkerLength, text == PluginCellValue.defaultMarkerText else {
-            return false
-        }
-        return insertedRowIDs.contains(rowID) || modifiedCells[rowID]?.contains(column) == true
+        return defaultedCells[rowID]?.contains(column) == true
     }
 
     func summary(coversWholeColumn: Bool) -> SelectionSummary {

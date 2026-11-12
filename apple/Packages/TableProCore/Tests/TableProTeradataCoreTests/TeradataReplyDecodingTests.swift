@@ -19,6 +19,12 @@ struct TeradataReplyDecodingTests {
         return bytes
     }
 
+    private static func execute(_ reply: [UInt8]) throws -> TeradataResultSet {
+        let transport = StoppableTransport(replies: [LanMessage(kind: .start, body: reply).encoded()])
+        let config = TeradataConnectionConfig(host: "td.example", username: "dbc", password: "dbc")
+        return try TeradataConnection(config: config, transport: transport).execute("SELECT c FROM t")
+    }
+
     @Test("A result description whose CHAR column has length -1 fails the reply instead of crashing")
     func negativeColumnLengthFailsTheReply() throws {
         let reply = Self.reply(charLength: [UInt8](repeating: 0xFF, count: 8), record: [0x00, 0x78])
@@ -26,13 +32,13 @@ struct TeradataReplyDecodingTests {
         let parcels = try Parcel.decodeAll(reply)
         let flavors = parcels.map(\.flavor)
         #expect(flavors == [ParcelFlavor.prepInfoX.rawValue, ParcelFlavor.record.rawValue, ParcelFlavor.endRequest.rawValue])
-        #expect(throws: WireIOError.lengthOutOfRange("-1", limit: 1)) { try TeradataResultParser.parse(parcels) }
+        #expect(throws: WireIOError.lengthOutOfRange("-1", limit: 1)) { try Self.execute(reply) }
     }
 
     @Test("A CHAR column of the declared length still decodes")
     func charColumnDecodes() throws {
         let reply = Self.reply(charLength: [0, 0, 0, 0, 0, 0, 0, 3], record: [0x00, 0x61, 0x62, 0x63])
-        let result = try TeradataResultParser.parse(try Parcel.decodeAll(reply))
+        let result = try Self.execute(reply)
         #expect(result.rows == [[TeradataValue.text("abc")]])
     }
 

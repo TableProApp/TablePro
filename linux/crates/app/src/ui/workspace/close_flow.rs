@@ -14,6 +14,7 @@ use super::workspace_persistence::WorkspaceTabs;
 use super::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 use crate::runtime::DeliverInput;
 use crate::ui::browse_tab::BrowseTab;
+use crate::ui::editor::SqlEditor;
 use crate::workspace::CloseDecision;
 
 /// Every editor tab's connection, taken from its tab. Each tab's run is
@@ -38,8 +39,9 @@ impl WorkspaceModel {
     /// disconnect does not lose them.
     pub(super) fn flush(&self) {
         let hold = self.context.hold.acquire();
-        let column_widths = self.storage.column_widths().flush();
+        let column_layouts = self.storage.column_layouts().flush();
         let filter_settings = self.storage.filter_settings().flush();
+        let highlight_rules = self.storage.highlight_rules().flush();
         // The key is free once the window lets go of it, which is before
         // these land; a delete of the connection waits for them.
         let drafts_landing = self.storage.workspaces().writes_in_flight(&self.key);
@@ -47,8 +49,11 @@ impl WorkspaceModel {
         let writer = self.drafts.clone();
         let tabs = self.workspace.detach();
         glib::spawn_future_local(async move {
-            column_widths.await;
-            filter_settings.await;
+            for result in [column_layouts.await, filter_settings.await, highlight_rules.await] {
+                if let Err(error) = result {
+                    tracing::warn!(%error, "table settings were not saved");
+                }
+            }
             for failure in editor_drafts.await {
                 tracing::warn!(failure, "an editor draft was not saved");
             }
@@ -68,6 +73,17 @@ impl WorkspaceModel {
     }
 
     /// The table tabs, or only `id` when it is one.
+    pub(super) fn editor_tabs(&self) -> Vec<SqlEditor> {
+        self.workspace_tabs
+            .borrow()
+            .values()
+            .filter_map(|tab| match tab {
+                WorkspaceTab::Editor(slot) => Some(slot.editor.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub(super) fn browse_tabs(&self, id: Option<Uuid>) -> Vec<BrowseTab> {
         self.workspace_tabs
             .borrow()
@@ -89,6 +105,9 @@ impl WorkspaceModel {
     pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid) {
         for browse in self.browse_tabs(Some(id)) {
             browse.commit_cell_edit();
+        }
+        if let Some(editor) = self.editor_tab(id) {
+            editor.commit_result_edit();
         }
         let tab_view = self.tab_view.clone();
         if self.close_guards.may_close_tab(&self.workspace_handle, id) {

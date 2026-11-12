@@ -471,18 +471,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 rowCap: rowCap,
                 sessionState: readOnlySessionState
             )
-            return PluginQueryResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                rowsAffected: Int(result.affectedRows),
-                timing: PluginQueryTiming(
-                    total: Date().timeIntervalSince(startTime),
-                    firstRow: result.firstRowTime
-                ),
-                isTruncated: result.isTruncated,
-                columnMeta: result.columnMeta
-            )
+            return Self.pluginResult(result, startedAt: startTime)
         } catch let error as MariaDBPluginError where !isRetry
             && parameters == nil
             && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
@@ -524,7 +513,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             await refreshTransactionFlag(after: error, on: conn)
             throw error
         }
-        return PluginQueryResult(
+        return Self.pluginResult(result, startedAt: startTime)
+    }
+
+    private static func pluginResult(_ result: MariaDBPluginQueryResult, startedAt startTime: Date) -> PluginQueryResult {
+        var answer = PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
             rows: result.rows,
@@ -536,6 +529,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             isTruncated: result.isTruncated,
             columnMeta: result.columnMeta
         )
+        answer.columnOrigins = result.columnOrigins
+        return answer
     }
 
     func cancelQuery() throws {
@@ -579,19 +574,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         do {
             let result = try await conn.executeQuery(query, rowCap: rowCap)
-
-            return PluginQueryResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                rowsAffected: Int(result.affectedRows),
-                timing: PluginQueryTiming(
-                    total: Date().timeIntervalSince(startTime),
-                    firstRow: result.firstRowTime
-                ),
-                isTruncated: result.isTruncated,
-                columnMeta: result.columnMeta
-            )
+            return Self.pluginResult(result, startedAt: startTime)
         } catch let error as MariaDBPluginError where !isRetry
             && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
             && mayReplay(query) {
@@ -836,7 +819,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.disconnect()
         mariadbConnection = nil
         sessionLock.withLock { footprint.reset() }
-        try await connect()
+        // A minted IAM token is good for 15 minutes, and this sign-in can come long after the first.
+        try await open(password: try await config.passwordForNewSignIn())
         if let seconds = sessionLock.withLock({ appliedQueryTimeoutSeconds }) {
             try await applyQueryTimeout(seconds)
         }

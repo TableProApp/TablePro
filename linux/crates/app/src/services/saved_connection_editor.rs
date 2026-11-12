@@ -2,25 +2,35 @@ use std::sync::Arc;
 
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::{SecretError, SecretKind, SecretLookup, SecretVault};
+use tablepro_foreign_import::review::{
+    AppliedImport, ImportPlan, ImportReview, QueryImportOutcome, apply_blocking, save_queries,
+};
 use tablepro_session::runtime::Tasks;
+use tablepro_storage::saved_queries::SavedQueries;
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag, ConnectionTagName,
-    SavedConnection, StorageError,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag,
+    ConnectionTagName, SavedConnection, StorageError,
 };
 use uuid::Uuid;
 
 use super::duplicate_name::duplicate_name;
+use super::library_outline::LibraryMove;
 use super::saved_connection_error::SavedConnectionError;
 use super::secret_change::SecretChange;
 use super::secret_changes::SecretChanges;
 use super::secret_labels::secret_label;
 
+// What an import from another app wrote: the connections, and how many of their secrets the
+// keyring refused, which the user then types at connect.
+pub struct ImportedFromApp {
+    pub applied: AppliedImport,
+    pub secrets_not_kept: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroupChoice {
     None,
     Existing(Uuid),
-    /// The top-level group of that name, made when the list has none.
-    Named(ConnectionGroupName),
 }
 
 /// Changes a saved connection together with its keyring secrets: an
@@ -162,10 +172,7 @@ impl SavedConnectionEditor {
         }
     }
 
-    /// Copy the connection `id` under a name of its own, with copies of
-    /// its secrets. The copy is a connection of its own: a new id, so
-    /// deleting either leaves the other able to connect. It has never
-    /// been opened, so it does not claim the original's place at the top.
+    // A new id, so deleting either leaves the other able to connect. Never opened, so it stays out of Recent.
     pub async fn duplicate(&self, id: Uuid) -> Result<SavedConnection, SavedConnectionError> {
         let _turn = self.turn.lock().await;
         let list = self.list().await?;
@@ -191,7 +198,7 @@ impl SavedConnectionEditor {
             .tasks
             .spawn_blocking_task(move || {
                 let id = entry.id;
-                store.upsert_blocking(entry)?;
+                store.insert_after_blocking(entry, source.id)?;
                 // The store gives the copy its place in the group.
                 let stored = store
                     .load_blocking()
@@ -209,6 +216,81 @@ impl SavedConnectionEditor {
                 Err(error)
             }
         }
+    }
+
+    // The list must still be the one reviewed; a refused secret leaves its connection saved.
+    pub async fn add_imported(
+        &self,
+        review: ImportReview,
+        plan: ImportPlan,
+    ) -> Result<ImportedFromApp, SavedConnectionError> {
+        let _turn = self.turn.lock().await;
+        let store = self.store.clone();
+        let applied = self
+            .tasks
+            .spawn_blocking_task(move || apply_blocking(&review, &plan, &store))
+            .await??;
+        let mut secrets_not_kept = 0;
+        for imported in &applied.connections {
+            for secret in &imported.secrets {
+                let label = secret_label(secret.kind, &imported.connection);
+                if let Err(error) = self
+                    .secrets
+                    .store(imported.connection.id, secret.kind, &secret.secret, &label)
+                    .await
+                {
+                    tracing::warn!(%error, kind = ?secret.kind, "a secret of an imported connection was not kept");
+                    secrets_not_kept += 1;
+                }
+            }
+        }
+        // A delete from another window can land between the write and the keyring, and its own
+        // clean-up ran before these secrets existed.
+        if let Ok(list) = self.list().await {
+            for imported in &applied.connections {
+                let id = imported.connection.id;
+                if !imported.secrets.is_empty() && !list.iter().any(|saved| saved.id == id) {
+                    self.forget_secrets(id).await;
+                }
+            }
+        }
+        Ok(ImportedFromApp {
+            applied,
+            secrets_not_kept,
+        })
+    }
+
+    // A delete from another window purges a connection's queries once; any this import saves for
+    // it afterwards are removed again here.
+    pub async fn save_imported_queries(
+        &self,
+        applied: &AppliedImport,
+        store: &SavedQueries,
+    ) -> Result<QueryImportOutcome, SavedConnectionError> {
+        let outcome = save_queries(applied, store).await;
+        let list = self.list().await?;
+        let mut gone: Vec<Uuid> = applied
+            .queries
+            .iter()
+            .map(|query| query.query.connection_id)
+            .filter(|id| !list.iter().any(|saved| saved.id == *id))
+            .collect();
+        gone.sort_unstable();
+        gone.dedup();
+        let mut failure = None;
+        for &id in &gone {
+            if let Err(error) = store.delete_for_connection(id).await {
+                failure.get_or_insert(SavedConnectionError::Storage(error));
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        // Removed queries must not be reported as successfully imported.
+        if let Some(&id) = gone.first() {
+            return Err(SavedConnectionError::NotFound(id));
+        }
+        Ok(outcome)
     }
 
     /// A pick of the group it is already in writes nothing.
@@ -230,15 +312,97 @@ impl SavedConnectionEditor {
                     (GroupChoice::Existing(group), Some(_)) => {
                         store.move_connections_blocking(&[id], Some(group), None)
                     }
-                    (GroupChoice::Named(name), Some(_)) => store
-                        .move_connections_to_group_named_blocking(&[id], None, name)
-                        .map(drop),
                 }
             })
             .await?;
         match moved {
             Err(StorageError::ConnectionNotFound { .. }) => Err(SavedConnectionError::NotFound(id)),
             moved => Ok(moved?),
+        }
+    }
+
+    // `with` is filed in the new group, so New Group from a connection's menu takes the same path as New Group.
+    pub async fn create_group(
+        &self,
+        parent: Option<Uuid>,
+        name: ConnectionGroupName,
+        with: Option<Uuid>,
+    ) -> Result<ConnectionGroup, SavedConnectionError> {
+        let store = self.store.clone();
+        let created = self
+            .tasks
+            .spawn_blocking_task(move || {
+                // One write, so a connection deleted meanwhile leaves no empty group behind.
+                match with {
+                    Some(id) => store.move_connections_to_group_named_blocking(&[id], parent, name),
+                    None => store.create_group_blocking(ConnectionGroup::new(name, parent)),
+                }
+            })
+            .await?;
+        match created {
+            Err(StorageError::ConnectionNotFound { id }) => Err(SavedConnectionError::NotFound(id)),
+            created => Ok(created?),
+        }
+    }
+
+    // The core would refuse a group its own name beside a case-only sibling, which an imported file can leave.
+    pub async fn rename_group(&self, id: Uuid, name: ConnectionGroupName) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        self.tasks
+            .spawn_blocking_task(move || {
+                let unchanged = store
+                    .list_blocking()?
+                    .group_tree()
+                    .get(id)
+                    .is_some_and(|group| group.name == name);
+                if unchanged {
+                    return Ok(());
+                }
+                store.rename_group_blocking(id, name)
+            })
+            .await??;
+        Ok(())
+    }
+
+    // A group already gone is what the user asked for.
+    pub async fn delete_group(&self, id: Uuid) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        self.tasks
+            .spawn_blocking_task(move || store.delete_group_blocking(id))
+            .await??;
+        Ok(())
+    }
+
+    pub(crate) async fn change_library(&self, change: LibraryMove) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        self.tasks
+            .spawn_blocking_task(move || match change {
+                LibraryMove::Connections { ids, group, before } => store.move_connections_blocking(&ids, group, before),
+                LibraryMove::Groups { ids, parent, before } => store.move_groups_blocking(&ids, parent, before),
+                LibraryMove::Favourites { ids, before } => store.add_favorites_blocking(&ids, before),
+            })
+            .await??;
+        Ok(())
+    }
+
+    // Adding a favourite again would move it to the end, since adding is how favourites reorder.
+    pub async fn set_favourite(&self, id: Uuid, favourite: bool) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        let set = self
+            .tasks
+            .spawn_blocking_task(move || {
+                if !favourite {
+                    return store.remove_favorites_blocking(&[id]);
+                }
+                if store.list_blocking()?.is_favorite(id) {
+                    return Ok(());
+                }
+                store.add_favorites_blocking(&[id], None)
+            })
+            .await?;
+        match set {
+            Err(StorageError::ConnectionNotFound { .. }) => Err(SavedConnectionError::NotFound(id)),
+            set => Ok(set?),
         }
     }
 
@@ -377,7 +541,7 @@ impl std::fmt::Debug for SavedConnectionEditor {
 mod tests {
     use secrecy::SecretString;
     use tablepro_core::{AuthMode, TlsConfig};
-    use tablepro_storage::{ConnectionListState, StoragePaths};
+    use tablepro_storage::{ConnectionList, ConnectionListState, StoragePaths};
     use tablepro_test_support::{Call, FakeSecretVault};
 
     use super::*;
@@ -931,16 +1095,35 @@ mod tests {
         assert!(stored(&fixture.store).is_empty(), "the edit brought the entry back");
     }
 
+    fn group_name(name: &str) -> ConnectionGroupName {
+        ConnectionGroupName::new(name).expect("a group name")
+    }
+
+    fn library(store: &ConnectionStore) -> ConnectionList {
+        store.list_blocking().expect("the list")
+    }
+
+    fn another(name: &str) -> SavedConnection {
+        SavedConnection {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            ..connection()
+        }
+    }
+
     #[tokio::test]
     async fn move_to_group_publishes_a_revision() {
         let fixture = fixture().await;
+        let archive = fixture
+            .store
+            .create_group_blocking(ConnectionGroup::new(group_name("Archive"), None))
+            .expect("the group");
         let mut receiver = fixture.store.subscribe();
         receiver.borrow_and_update();
-        let archive = ConnectionGroupName::new("Archive").expect("a name");
 
         fixture
             .editor
-            .move_to_group(fixture.saved.id, GroupChoice::Named(archive))
+            .move_to_group(fixture.saved.id, GroupChoice::Existing(archive.id))
             .await
             .expect("the move");
 
@@ -948,13 +1131,7 @@ mod tests {
         let ConnectionListState::Ready(list) = receiver.borrow_and_update().state.clone() else {
             panic!("expected a ready list");
         };
-        let group = list.connections[0].group_id.expect("a group");
-        assert_eq!(list.group_tree().label(group).as_deref(), Some("Archive"));
-        assert_eq!(
-            list.group_tree().depth(Some(group)),
-            1,
-            "a new group was not made at the top"
-        );
+        assert_eq!(list.connections[0].group_id, Some(archive.id));
         fixture
             .editor
             .move_to_group(fixture.saved.id, GroupChoice::None)
@@ -964,7 +1141,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_named_group_the_list_has_takes_the_connection_and_a_repeat_writes_nothing() {
+    async fn an_existing_group_takes_the_connection_and_a_repeat_writes_nothing() {
         let fixture = fixture().await;
         let work = fixture.saved.group_id.expect("the fixture's group");
         fixture
@@ -975,10 +1152,7 @@ mod tests {
 
         fixture
             .editor
-            .move_to_group(
-                fixture.saved.id,
-                GroupChoice::Named(ConnectionGroupName::new("work").expect("a name")),
-            )
+            .move_to_group(fixture.saved.id, GroupChoice::Existing(work))
             .await
             .expect("back in");
         let revision = fixture.store.snapshot().revision;
@@ -989,7 +1163,6 @@ mod tests {
             .expect("the same group");
 
         assert_eq!(stored(&fixture.store)[0].group_id, Some(work));
-        assert_eq!(fixture.store.list_blocking().expect("the list").groups.len(), 1);
         assert_eq!(
             fixture.store.snapshot().revision,
             revision,
@@ -1008,5 +1181,384 @@ mod tests {
         );
         let missing = fixture.editor.move_to_group(Uuid::new_v4(), GroupChoice::None).await;
         assert!(matches!(missing, Err(SavedConnectionError::NotFound(_))), "{missing:?}");
+    }
+
+    #[tokio::test]
+    async fn a_new_group_goes_where_it_is_asked_and_takes_the_connection_with_it() {
+        let fixture = fixture().await;
+        let work = fixture.saved.group_id.expect("the fixture's group");
+
+        let staging = fixture
+            .editor
+            .create_group(Some(work), group_name("Staging"), None)
+            .await
+            .expect("the subgroup");
+        let archive = fixture
+            .editor
+            .create_group(None, group_name("Archive"), Some(fixture.saved.id))
+            .await
+            .expect("the group");
+
+        let list = library(&fixture.store);
+        assert_eq!(list.group_tree().label(staging.id).as_deref(), Some("Work / Staging"));
+        let top: Vec<Uuid> = list.group_tree().children(None).iter().map(|group| group.id).collect();
+        assert_eq!(top, [work, archive.id], "a new group was not made last");
+        assert_eq!(
+            stored(&fixture.store)[0].group_id,
+            Some(archive.id),
+            "the connection was left out"
+        );
+        let taken = fixture.editor.create_group(None, group_name("archive"), None).await;
+        assert!(
+            matches!(
+                taken,
+                Err(SavedConnectionError::Storage(StorageError::GroupNameTaken { .. }))
+            ),
+            "{taken:?}"
+        );
+        let eu = fixture
+            .editor
+            .create_group(Some(staging.id), group_name("EU"), None)
+            .await
+            .expect("a third level");
+        let deep = fixture.editor.create_group(Some(eu.id), group_name("Zone"), None).await;
+        assert!(
+            matches!(
+                deep,
+                Err(SavedConnectionError::Storage(StorageError::GroupTooDeep { .. }))
+            ),
+            "{deep:?}"
+        );
+        let gone = Uuid::new_v4();
+        let missing = fixture.editor.create_group(None, group_name("Spare"), Some(gone)).await;
+        assert!(
+            matches!(missing, Err(SavedConnectionError::NotFound(id)) if id == gone),
+            "{missing:?}"
+        );
+        assert!(
+            !library(&fixture.store)
+                .groups
+                .iter()
+                .any(|group| group.name.as_str() == "Spare"),
+            "a refused move left its new group behind"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rename_takes_a_new_name_or_case_and_refuses_a_siblings_name() {
+        let fixture = fixture().await;
+        let work = fixture.saved.group_id.expect("the fixture's group");
+        let home = fixture
+            .editor
+            .create_group(None, group_name("Home"), None)
+            .await
+            .expect("a sibling");
+
+        fixture
+            .editor
+            .rename_group(work, group_name("WORK"))
+            .await
+            .expect("a case change");
+        fixture
+            .editor
+            .rename_group(home.id, group_name("Office"))
+            .await
+            .expect("a new name");
+
+        let list = library(&fixture.store);
+        assert_eq!(list.group_tree().label(work).as_deref(), Some("WORK"));
+        assert_eq!(list.group_tree().label(home.id).as_deref(), Some("Office"));
+        let taken = fixture.editor.rename_group(home.id, group_name("work")).await;
+        assert!(
+            matches!(
+                taken,
+                Err(SavedConnectionError::Storage(StorageError::GroupNameTaken { .. }))
+            ),
+            "{taken:?}"
+        );
+        let gone = fixture.editor.rename_group(Uuid::new_v4(), group_name("Gone")).await;
+        assert!(
+            matches!(
+                gone,
+                Err(SavedConnectionError::Storage(StorageError::GroupNotFound { .. }))
+            ),
+            "{gone:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_group_keeps_its_own_name_beside_a_case_only_sibling() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.Test");
+        let work = crate::test_support::group_id("Work");
+        let filed = |group: Uuid| SavedConnection {
+            group_id: Some(group),
+            ..another("Prod")
+        };
+        crate::test_support::seed_library(&paths, &[filed(work), filed(crate::test_support::group_id("work"))]);
+        let store = ConnectionStore::new(&paths);
+        let editor = SavedConnectionEditor::new(store.clone(), Arc::new(FakeSecretVault::new()), paused_tasks());
+        store.load_blocking().expect("the list");
+        let revision = store.snapshot().revision;
+
+        editor
+            .rename_group(work, group_name("Work"))
+            .await
+            .expect("its own name");
+
+        assert_eq!(store.snapshot().revision, revision, "an unchanged name was written");
+        let clash = editor.rename_group(work, group_name("WORK")).await;
+        assert!(
+            matches!(
+                clash,
+                Err(SavedConnectionError::Storage(StorageError::GroupNameTaken { .. }))
+            ),
+            "{clash:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_deleted_group_frees_its_connections_and_a_repeat_is_done() {
+        let fixture = fixture().await;
+        let work = fixture.saved.group_id.expect("the fixture's group");
+        fixture
+            .editor
+            .create_group(Some(work), group_name("Staging"), None)
+            .await
+            .expect("a subgroup");
+
+        fixture.editor.delete_group(work).await.expect("the delete");
+
+        assert_eq!(stored(&fixture.store)[0].group_id, None);
+        assert!(
+            library(&fixture.store).groups.is_empty(),
+            "the subgroup outlived its parent"
+        );
+        let revision = fixture.store.snapshot().revision;
+        fixture.editor.delete_group(work).await.expect("gone already");
+        assert_eq!(fixture.store.snapshot().revision, revision);
+    }
+
+    #[tokio::test]
+    async fn each_library_change_reaches_the_store() {
+        let fixture = fixture().await;
+        let (id, work) = (fixture.saved.id, fixture.saved.group_id.expect("the fixture's group"));
+        let stage = another("Stage");
+        crate::test_support::save_filed(&fixture.store, stage.clone());
+        let home = fixture
+            .editor
+            .create_group(None, group_name("Home"), None)
+            .await
+            .expect("a group");
+        let apply = |change: LibraryMove| fixture.editor.change_library(change);
+
+        apply(LibraryMove::Connections {
+            ids: vec![stage.id],
+            group: Some(work),
+            before: Some(id),
+        })
+        .await
+        .expect("the reorder");
+        apply(LibraryMove::Groups {
+            ids: vec![home.id],
+            parent: None,
+            before: Some(work),
+        })
+        .await
+        .expect("the group move");
+        apply(LibraryMove::Favourites {
+            ids: vec![id, stage.id],
+            before: None,
+        })
+        .await
+        .expect("the favourites");
+        apply(LibraryMove::Favourites {
+            ids: vec![stage.id],
+            before: Some(id),
+        })
+        .await
+        .expect("the favourites reorder");
+
+        let list = library(&fixture.store);
+        let in_work: Vec<Uuid> = list.connections_in(Some(work)).iter().map(|saved| saved.id).collect();
+        assert_eq!(in_work, [stage.id, id]);
+        let top: Vec<Uuid> = list.group_tree().children(None).iter().map(|group| group.id).collect();
+        assert_eq!(top, [home.id, work]);
+        assert_eq!(list.favorites.to_vec(), [stage.id, id]);
+        let cycle = apply(LibraryMove::Groups {
+            ids: vec![work],
+            parent: Some(work),
+            before: None,
+        })
+        .await;
+        assert!(
+            matches!(
+                cycle,
+                Err(SavedConnectionError::Storage(StorageError::GroupCycle { .. }))
+            ),
+            "{cycle:?}"
+        );
+        let gone = apply(LibraryMove::Favourites {
+            ids: vec![Uuid::new_v4()],
+            before: None,
+        })
+        .await;
+        assert!(
+            matches!(
+                gone,
+                Err(SavedConnectionError::Storage(StorageError::ConnectionNotFound { .. }))
+            ),
+            "{gone:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_favourite_goes_last_once_and_comes_off() {
+        let fixture = fixture().await;
+        let id = fixture.saved.id;
+        let stage = another("Stage");
+        crate::test_support::save_filed(&fixture.store, stage.clone());
+        let favourites = || library(&fixture.store).favorites.to_vec();
+
+        fixture.editor.set_favourite(stage.id, true).await.expect("a favourite");
+        fixture
+            .editor
+            .set_favourite(id, true)
+            .await
+            .expect("a second favourite");
+        assert_eq!(favourites(), [stage.id, id]);
+        let revision = fixture.store.snapshot().revision;
+        fixture
+            .editor
+            .set_favourite(stage.id, true)
+            .await
+            .expect("a favourite again");
+        assert_eq!(favourites(), [stage.id, id], "a favourite again moved to the end");
+        assert_eq!(fixture.store.snapshot().revision, revision);
+
+        fixture.editor.set_favourite(stage.id, false).await.expect("off");
+        assert_eq!(favourites(), [id]);
+        fixture.editor.set_favourite(stage.id, false).await.expect("off again");
+        assert_eq!(favourites(), [id]);
+        let gone = Uuid::new_v4();
+        let missing = fixture.editor.set_favourite(gone, true).await;
+        assert!(
+            matches!(missing, Err(SavedConnectionError::NotFound(at)) if at == gone),
+            "{missing:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_copy_lands_right_after_its_original() {
+        let fixture = fixture().await;
+        let work = fixture.saved.group_id.expect("the fixture's group");
+        crate::test_support::save_filed(&fixture.store, another("Stage"));
+        crate::test_support::save_filed(&fixture.store, another("Test"));
+
+        let copy = fixture.editor.duplicate(fixture.saved.id).await.expect("the copy");
+
+        let names: Vec<String> = library(&fixture.store)
+            .connections_in(Some(work))
+            .iter()
+            .map(|saved| saved.name.clone())
+            .collect();
+        assert_eq!(names, ["Prod", "Prod (Copy)", "Stage", "Test"]);
+        assert_eq!(copy.order, 1);
+    }
+    fn imported_query(id: Uuid) -> AppliedImport {
+        AppliedImport {
+            queries: vec![tablepro_foreign_import::review::ImportedQuery {
+                reference: "report".to_owned(),
+                query: tablepro_storage::saved_queries::NewSavedQuery {
+                    name: "Report".to_owned(),
+                    query: "SELECT 1".to_owned(),
+                    connection_id: id,
+                    connection_name: "Prod".to_owned(),
+                },
+            }],
+            ..AppliedImport::default()
+        }
+    }
+
+    async fn query_store(fixture: &Fixture) -> SavedQueries {
+        let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
+        tablepro_storage::QueryHistory::open(&paths)
+            .await
+            .expect("history")
+            .saved_queries()
+    }
+
+    #[tokio::test]
+    async fn an_import_does_not_report_queries_removed_with_their_connection_as_added() {
+        let fixture = fixture().await;
+        let queries = query_store(&fixture).await;
+        let applied = imported_query(fixture.saved.id);
+        fixture
+            .store
+            .remove_blocking(fixture.saved.id)
+            .expect("connection removed");
+        let result = fixture.editor.save_imported_queries(&applied, &queries).await;
+        assert!(matches!(result, Err(SavedConnectionError::NotFound(id)) if id == fixture.saved.id));
+        assert!(queries.list(None).await.expect("queries").is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_import_reports_a_connection_list_read_failure() {
+        let fixture = fixture().await;
+        let queries = query_store(&fixture).await;
+        let applied = imported_query(fixture.saved.id);
+        std::fs::remove_file(fixture.store.path()).expect("remove connection file");
+        std::fs::create_dir(fixture.store.path()).expect("unreadable connection file");
+        let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
+        let editor = SavedConnectionEditor::new(ConnectionStore::new(&paths), fixture.vault.clone(), paused_tasks());
+        let result = editor.save_imported_queries(&applied, &queries).await;
+        assert!(matches!(result, Err(SavedConnectionError::Storage(_))));
+    }
+
+    #[tokio::test]
+    async fn an_import_reports_failure_to_remove_queries_of_a_deleted_connection() {
+        use tablepro_core::statement::{GuardedStatement, StatementBuilder};
+        use tablepro_core::{
+            CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, DatabaseDriver, FileEndpoint,
+            ForeignKeyMode, TableRef, WorkspaceSettings, WriteBatch, WriteKind,
+        };
+        use tokio_util::sync::CancellationToken;
+
+        let fixture = fixture().await;
+        let queries = query_store(&fixture).await;
+        let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
+        let options = ConnectOptions {
+            target: ConnectTarget::File(FileEndpoint::open_existing(paths.history_database()).expect("history file")),
+            workspace_settings: WorkspaceSettings::workspace(false),
+            liveness: tablepro_core::LivenessPolicy::DESKTOP,
+            environment: ConnectEnvironment::new("test"),
+        };
+        let mut trigger = StatementBuilder::new();
+        trigger.push_sql("CREATE TRIGGER refuse_delete BEFORE DELETE ON saved_queries BEGIN SELECT RAISE(ABORT, 'test refuses delete'); END");
+        let batch = WriteBatch::new(
+            WriteKind::SchemaChanges,
+            TableRef::unqualified("saved_queries"),
+            vec![GuardedStatement::unguarded(trigger.finish())],
+            ForeignKeyMode::Enforced,
+        );
+        let connection = tablepro_driver_sqlite::SqliteDriver
+            .connect(options, CancellationToken::new())
+            .await
+            .expect("connect");
+        connection
+            .write_batch(&batch, CallOptions::new(None, CancellationToken::new()))
+            .await
+            .expect("trigger");
+        connection.close().await.expect("close");
+        fixture
+            .store
+            .remove_blocking(fixture.saved.id)
+            .expect("connection removed");
+        let result = fixture
+            .editor
+            .save_imported_queries(&imported_query(fixture.saved.id), &queries)
+            .await;
+        assert!(matches!(result, Err(SavedConnectionError::Storage(_))));
+        assert_eq!(queries.list(None).await.expect("queries").len(), 1);
     }
 }

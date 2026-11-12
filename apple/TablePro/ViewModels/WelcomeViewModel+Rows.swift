@@ -4,6 +4,8 @@ import TableProConnectionLibrary
 extension WelcomeViewModel {
     func rowModel(for row: LibraryRowID) -> WelcomeRowModel {
         switch row {
+        case .section(.teamLibrary):
+            return .teamLibrarySection(title: WelcomeRowPresentation.title(for: .teamLibrary))
         case .section(let kind):
             return .section(title: WelcomeRowPresentation.title(for: kind))
         case .group(let id):

@@ -38,6 +38,8 @@ internal struct ObjectCopyRowCopier: Sendable {
     internal struct Outcome: Sendable {
         internal let inserted: Int
         internal let cancelled: Bool
+        // The limit the source's stream stopped at, so the table holds only its leading rows.
+        internal var rowCut: Int?
     }
 
     /// A table that failed after some of its batches were written. Outside a transaction those stay
@@ -94,7 +96,13 @@ internal struct ObjectCopyRowCopier: Sendable {
         let generator = try makeGenerator(targetDriver: targetDriver)
         let budget = SQLWriteBatchBudget(columnCount: step.columns.count, generator: generator)
         var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
-        var stream = sourceDriver.streamRows(query: step.sourceQuery).makeAsyncIterator()
+        let cut = OSAllocatedUnfairLock<Int?>(initialState: nil)
+        // The copy's SELECT states no engine ceiling, so only a limit the driver declares applies, as for its own export query.
+        var stream = ExportRowCut<PluginStreamElement>.reporting(
+            sourceDriver.streamRows(query: step.sourceQuery), engineCeiling: nil
+        ) { limit in
+            cut.withLock { $0 = limit }
+        }.makeAsyncIterator()
 
         var inserted = 0
 
@@ -121,7 +129,7 @@ internal struct ObjectCopyRowCopier: Sendable {
                 inserted += try await write(batch, generator: generator, driver: targetDriver)
                 onProgress(inserted)
             }
-            return Outcome(inserted: inserted, cancelled: Task.isCancelled)
+            return Outcome(inserted: inserted, cancelled: Task.isCancelled, rowCut: cut.withLock { $0 })
         } catch is CancellationError {
             return Outcome(inserted: inserted, cancelled: true)
         } catch where inserted > 0 {
@@ -163,6 +171,7 @@ internal struct ObjectCopyRowCopier: Sendable {
             columns: step.columns,
             primaryKeyColumns: step.primaryKeyColumns,
             databaseType: targetDatabaseType,
+            columnTypeNames: step.targetColumnTypeNames,
             parameterStyle: targetDriver.parameterStyle,
             quoteIdentifier: targetDriver.quoteIdentifier
         )

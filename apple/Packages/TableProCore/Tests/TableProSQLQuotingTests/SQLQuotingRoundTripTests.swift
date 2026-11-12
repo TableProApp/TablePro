@@ -115,7 +115,7 @@ struct SQLQuotingRoundTripTests {
     @Test("A written literal decodes back to its value, and anything else decodes to nothing")
     func decodeRoundTrip() {
         for value in hostileStrings(count: 400, seed: 0xB3_33) {
-            for escapes in [SQLStringEscapes.standard, .backslash, .mysql, .googleSQL] {
+            for escapes in [SQLStringEscapes.standard, .backslash, .mysql, .googleSQL, .sqlServer] {
                 let literal = SQLQuoting.stringLiteral(value, escapes: escapes)
                 #expect(SQLQuoting.decodedStringLiteral(literal, escapes: escapes) == value, "\(literal.debugDescription)")
             }
@@ -124,6 +124,60 @@ struct SQLQuotingRoundTripTests {
             #expect(SQLQuoting.decodedStringLiteral(text) == nil, "\(text.debugDescription)")
         }
         #expect(SQLQuoting.decodedStringLiteral("'O''\u{301}Neil'") == "O'\u{301}Neil")
+    }
+
+    // Measured on 1.2.880, which reads `orders``backup` as orders aliased backup, and on 1.2.958, which reads it
+    // as one name; both read "orders`backup" as one name and keep "bs`\\b" as bs`\\b.
+    @Test("Databend reads a quoted name back as the name, or refuses it, under either backtick rule")
+    func databendIdentifierRoundTrip() {
+        let measured = ["orders`backup", "bs`\\b", "bs`\\\\c", "b\\s"]
+        for value in measured + hostileStrings(count: 600, seed: 0xDA7A_BE) {
+            let quoted = SQLQuoting.databendIdentifier(value)
+            for doubledBackticks in [false, true] {
+                let name = databendName(quoted, doubledBackticks: doubledBackticks)
+                #expect(name == value || name == nil, "\(quoted.debugDescription)")
+                if !value.unicodeScalars.contains("`") || !value.unicodeScalars.contains("\\") {
+                    #expect(name == value, "\(quoted.debugDescription)")
+                }
+            }
+        }
+        #expect(databendName(SQLQuoting.databendIdentifier("t`u\\"), doubledBackticks: false) == nil)
+        #expect(databendName(SQLQuoting.identifier("orders`backup", quote: .backtick), doubledBackticks: false) == "orders")
+    }
+
+    // The name Databend reads from the first token of `text`, or nil when it refuses it: the token.rs rules
+    // `` `[^`]*` `` (`` `([^`]|``)*` `` from 1.2.945) and `"([^"\\]|\\.|"")*"`, then QuotedIdent::from_str in
+    // src/query/ast/src/ast/quote.rs, which keeps a backslash and undoubles the quote.
+    private func databendName(_ text: String, doubledBackticks: Bool) -> String? {
+        let scalars = Array(text.unicodeScalars)
+        guard let quote = scalars.first, quote == "`" || quote == "\"" else { return nil }
+        var index = 1
+        var end: Int?
+        while index < scalars.count {
+            let scalar = scalars[index]
+            if quote == "\"", scalar == "\\" {
+                guard index + 1 < scalars.count, scalars[index + 1] != "\n" else { return nil }
+                index += 2
+                continue
+            }
+            if scalar == quote {
+                if index + 1 < scalars.count, scalars[index + 1] == quote, quote == "\"" || doubledBackticks {
+                    index += 2
+                    continue
+                }
+                end = index
+                break
+            }
+            index += 1
+        }
+        guard let end else { return nil }
+        var name = String.UnicodeScalarView()
+        var body = scalars[1..<end].makeIterator()
+        while let scalar = body.next() {
+            if scalar == quote, body.next() != quote { return nil }
+            name.append(scalar)
+        }
+        return String(name)
     }
 
     private func quotes(in grammar: SQLLexicalGrammar) -> [SQLIdentifierQuote] {
@@ -138,5 +192,22 @@ struct SQLQuotingRoundTripTests {
         let source = text as NSString
         guard let span = SQLNonCodeSpan.span(at: 0, in: source, grammar: grammar) else { return false }
         return span.kind == .quoted && span.isTerminated && span.end == source.length
+    }
+    @Test("SQL Server keeps continuation bytes and only removes NUL")
+    func sqlServerLineEndings() {
+        for newline in ["\n", "\r\n", "\r", "\r\r\n", "\r\\\n", "\n\r"] {
+            for count in 1...4 {
+                let value = "日本'\u{301}" + String(repeating: "\\", count: count) + newline + "'; SELECT 1; --"
+                let literal = SQLQuoting.stringLiteral(value, escapes: .sqlServer)
+                #expect(SQLQuoting.decodedStringLiteral(literal, escapes: .sqlServer) == value)
+                #expect(!SQLStringEscapes.sqlServer.backslashEscapes)
+            }
+        }
+        let literal = SQLQuoting.stringLiteral("x\\\0\n", escapes: .sqlServer)
+        #expect(literal == "'x\\\\\n\n'")
+        #expect(SQLQuoting.decodedStringLiteral(literal, escapes: .sqlServer) == "x\\\n")
+        #expect(SQLQuoting.decodedStringLiteral("'a\\\nb'", escapes: .sqlServer) == "ab")
+        #expect(SQLQuoting.decodedStringLiteral("'a\\\r\nb'", escapes: .sqlServer) == "ab")
+        #expect(SQLQuoting.decodedStringLiteral("'a\\\rb'", escapes: .sqlServer) == "a\rb")
     }
 }

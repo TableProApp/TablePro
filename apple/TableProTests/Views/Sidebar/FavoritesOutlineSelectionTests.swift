@@ -38,7 +38,7 @@ struct FavoritesOutlineSelectionTests {
         ))))
         #expect(FavoritesOutlineSelection.isSelectable(.table(table("users"))))
         #expect(FavoritesOutlineSelection.isSelectable(.query(.favorite(favorite("daily")))))
-        #expect(FavoritesOutlineSelection.isSelectable(.teamQuery(id: "t1", name: "Shared", publishedBy: nil)))
+        #expect(FavoritesOutlineSelection.isSelectable(.teamQuery(id: "t1", name: "Shared", detail: nil)))
     }
 
     @Test("A table row maps to the table selection the app persists")
@@ -97,9 +97,24 @@ struct FavoritesOutlineSelectionTests {
     @Test("A Team Library row maps to a selection of its own")
     func teamQueryMapsToSelection() {
         let selection = FavoritesOutlineSelection.selection(
-            for: .teamQuery(id: "abc", name: "Shared", publishedBy: "sam")
+            for: .teamQuery(id: "abc", name: "Shared", detail: "sam")
         )
         #expect(selection == .node(id: FavoritesOutlineNode.teamQueryId("abc")))
+    }
+
+    @Test("A Team Library row names the query's last writer, and its folder when the pull names no one")
+    func teamQueryRowNamesItsWriter() {
+        let named = TeamLibraryQuery(
+            id: "q1", name: "Orders", query: "select 1", keyword: nil, folderName: "Reports", lastWriter: "Grace Hopper"
+        )
+        let nameless = TeamLibraryQuery(
+            id: "q2", name: "Users", query: "select 1", keyword: nil, folderName: "Reports", lastWriter: nil
+        )
+
+        #expect(FavoritesOutlineTeamQuery(named).detail == "Grace Hopper")
+        #expect(FavoritesOutlineTeamQuery(nameless).detail == "Reports")
+        #expect(FavoritesOutlineTeamQuery(named).id == "q1")
+        #expect(FavoritesOutlineTeamQuery(named).name == "Orders")
     }
 
     @Test("A header maps to no selection")
@@ -124,7 +139,7 @@ struct FavoritesOutlineSelectionTests {
         #expect(FavoritesOutlineSelection.matchString(for: .query(.favorite(favorite("daily")))) == "daily")
         #expect(
             FavoritesOutlineSelection.matchString(
-                for: .teamQuery(id: "t", name: "Shared", publishedBy: nil)
+                for: .teamQuery(id: "t", name: "Shared", detail: nil)
             ) == "Shared"
         )
     }

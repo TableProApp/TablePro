@@ -1,8 +1,10 @@
 mod editor_font;
 mod error;
+mod grid_preferences;
 pub mod keys;
 mod window_geometry;
 
+use std::cell::OnceCell;
 use std::path::Path;
 use std::time::Duration;
 
@@ -12,6 +14,9 @@ use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, 
 
 pub use editor_font::EditorFont;
 pub use error::SettingsError;
+pub use grid_preferences::{
+    DateFormat, DefaultSort, GridPreferenceValues, GridPreferences, GridRowHeight, GridSortDirection, RowCopyFormat,
+};
 pub use window_geometry::WindowGeometry;
 
 /// The provider setting's value while the assistant is off.
@@ -19,6 +24,7 @@ pub const AI_PROVIDER_NONE: &str = "none";
 
 pub struct AppSettings {
     settings: gio::Settings,
+    grid_preferences: OnceCell<GridPreferences>,
 }
 
 impl AppSettings {
@@ -33,6 +39,7 @@ impl AppSettings {
             .ok_or_else(|| SettingsError::SchemaNotFound(schema_id.to_owned()))?;
         Ok(Self {
             settings: gio::Settings::new_full(&schema, gio::SettingsBackend::NONE, None),
+            grid_preferences: OnceCell::new(),
         })
     }
 
@@ -55,12 +62,18 @@ impl AppSettings {
             .ok_or_else(|| SettingsError::SchemaNotFound(schema_id.to_owned()))?;
         Ok(Self {
             settings: gio::Settings::new_full(&schema, Some(backend), None),
+            grid_preferences: OnceCell::new(),
         })
     }
 
     /// The underlying settings, for `bind` on a preference row.
     pub fn gio(&self) -> &gio::Settings {
         &self.settings
+    }
+
+    pub fn grid_preferences(&self) -> &GridPreferences {
+        self.grid_preferences
+            .get_or_init(|| GridPreferences::new(&self.settings))
     }
 
     pub fn default_page_size(&self) -> u32 {
@@ -81,11 +94,83 @@ impl AppSettings {
     }
 
     pub fn show_alternate_rows(&self) -> bool {
-        self.settings.boolean(keys::SHOW_ALTERNATE_ROWS)
+        self.grid_preferences().snapshot().show_alternate_rows
     }
 
     pub fn set_show_alternate_rows(&self, show: bool) -> Result<(), SettingsError> {
         self.set_boolean(keys::SHOW_ALTERNATE_ROWS, show)
+    }
+
+    pub fn show_row_numbers(&self) -> bool {
+        self.grid_preferences().snapshot().show_row_numbers
+    }
+
+    pub fn set_show_row_numbers(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHOW_ROW_NUMBERS, show)
+    }
+
+    pub fn grid_row_height(&self) -> String {
+        self.grid_preferences().snapshot().row_height.nick().to_owned()
+    }
+
+    pub fn set_grid_row_height(&self, height: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::GRID_ROW_HEIGHT, height)
+    }
+
+    pub fn auto_show_inspector(&self) -> bool {
+        self.grid_preferences().snapshot().auto_show_inspector
+    }
+
+    pub fn set_auto_show_inspector(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::AUTO_SHOW_INSPECTOR, show)
+    }
+
+    pub fn default_sort(&self) -> DefaultSort {
+        self.grid_preferences().snapshot().default_sort
+    }
+
+    pub fn set_default_sort(&self, behavior: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DEFAULT_SORT, behavior)
+    }
+
+    pub fn default_sort_direction(&self) -> GridSortDirection {
+        self.grid_preferences().snapshot().default_sort_direction
+    }
+
+    pub fn set_default_sort_direction(&self, direction: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DEFAULT_SORT_DIRECTION, direction)
+    }
+
+    pub fn show_invisible_characters(&self) -> bool {
+        self.grid_preferences().snapshot().show_invisible_characters
+    }
+
+    pub fn set_show_invisible_characters(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, show)
+    }
+
+    pub fn date_format(&self) -> DateFormat {
+        self.grid_preferences().snapshot().date_format
+    }
+
+    pub fn set_date_format(&self, format: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DATE_FORMAT, format)
+    }
+
+    pub fn row_copy_format(&self) -> RowCopyFormat {
+        self.grid_preferences().snapshot().row_copy_format
+    }
+
+    pub fn set_row_copy_format(&self, format: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::ROW_COPY_FORMAT, format)
+    }
+
+    pub fn null_display(&self) -> String {
+        self.grid_preferences().snapshot().null_display.clone()
+    }
+
+    pub fn set_null_display(&self, text: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::NULL_DISPLAY, text)
     }
 
     /// Whether runs go into the query history. Off records nothing and
@@ -137,6 +222,20 @@ impl AppSettings {
         }
     }
 
+    pub fn grid_font(&self) -> EditorFont {
+        self.grid_preferences().snapshot().font.clone()
+    }
+
+    pub fn set_grid_font(&self, font: &EditorFont) -> Result<(), SettingsError> {
+        match font {
+            EditorFont::System => self.set_boolean(keys::GRID_USE_SYSTEM_FONT, true),
+            EditorFont::Custom(description) => {
+                self.set_string(keys::GRID_FONT, description)?;
+                self.set_boolean(keys::GRID_USE_SYSTEM_FONT, false)
+            }
+        }
+    }
+
     pub fn style_scheme(&self) -> String {
         self.settings.string(keys::STYLE_SCHEME).into()
     }
@@ -179,6 +278,40 @@ impl AppSettings {
 
     pub fn set_last_seen_version(&self, version: &str) -> Result<(), SettingsError> {
         self.set_string(keys::LAST_SEEN_VERSION, version)
+    }
+
+    pub fn share_usage_data(&self) -> bool {
+        self.settings.boolean(keys::SHARE_USAGE_DATA)
+    }
+
+    pub fn set_share_usage_data(&self, share: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHARE_USAGE_DATA, share)
+    }
+
+    pub fn usage_days(&self) -> u32 {
+        self.settings.uint(keys::USAGE_DAYS)
+    }
+
+    pub fn last_usage_day(&self) -> String {
+        self.settings.string(keys::LAST_USAGE_DAY).into()
+    }
+
+    // Counts `day` once, however often it is recorded.
+    pub fn record_usage_day(&self, day: &str) -> Result<(), SettingsError> {
+        if self.last_usage_day() == day {
+            return Ok(());
+        }
+        self.set_string(keys::LAST_USAGE_DAY, day)?;
+        self.set_uint(keys::USAGE_DAYS, self.usage_days().saturating_add(1))
+    }
+
+    pub fn license_ask_day(&self) -> String {
+        self.settings.string(keys::LICENSE_ASK_DAY).into()
+    }
+
+    // Recorded as it shows, so quitting while it shows still counts as an ask.
+    pub fn set_license_asked(&self, day: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::LICENSE_ASK_DAY, day)
     }
 
     /// Whether the MCP server runs. Off until the user turns it on.

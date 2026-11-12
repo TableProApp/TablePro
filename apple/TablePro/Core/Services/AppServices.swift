@@ -24,7 +24,7 @@ struct AppServices {
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
     let credentialProfileStorage: CredentialProfileStorage
-    let licenseManager: LicenseManager
+    let featureAccess: FeatureAccess
     let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
@@ -34,6 +34,7 @@ struct AppServices {
     let mcpServerManager: MCPServerManager
     let syncTracker: SyncChangeTracker
     let welcomeRouter: WelcomeRouter
+    let telemetry: Telemetry
 
     static let live = AppServices(
         appEvents: .shared,
@@ -57,7 +58,7 @@ struct AppServices {
         tagStorage: .shared,
         sshProfileStorage: .shared,
         credentialProfileStorage: .shared,
-        licenseManager: .shared,
+        featureAccess: .shared,
         syncMetadataStorage: .appDefault,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
@@ -66,7 +67,8 @@ struct AppServices {
         copilotService: .shared,
         mcpServerManager: .shared,
         syncTracker: .shared,
-        welcomeRouter: .shared
+        welcomeRouter: .shared,
+        telemetry: .shared
     )
 }
 

@@ -67,6 +67,7 @@ where
             .enumerate()
             .map(|(index, value)| {
                 let column = column_type(columns, index);
+                let value = &*crate::document::json_number(value, column);
                 if let Some(number) = numbers.get_mut(index) {
                     number.take(value);
                 }
@@ -249,6 +250,23 @@ mod tests {
              |   1 | Ada Lovelace |\n\
              | 200 | NULL         |\n\
              +-----+--------------+"
+        );
+    }
+
+    #[test]
+    fn text_table_writes_a_number_fields_json_as_the_number_and_other_json_as_it_is() {
+        let (columns, rows) = super::super::test_columns::mixed_json();
+        let kept = [0, 1, 3];
+        let columns: Vec<ResultColumn> = kept.iter().map(|index| columns[*index].clone()).collect();
+        let rows = vec![kept.iter().map(|index| rows[0][*index].clone()).collect::<Vec<_>>()];
+
+        assert_eq!(
+            table(&columns, &rows),
+            "+------------+-------+----------+\n\
+             | long       | price | pg_price |\n\
+             +------------+-------+----------+\n\
+             | 3000000000 | 19.90 | 19.90    |\n\
+             +------------+-------+----------+"
         );
     }
 

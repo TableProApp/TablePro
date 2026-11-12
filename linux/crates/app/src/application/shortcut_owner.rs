@@ -1,6 +1,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShortcutOwner {
+    WorkspaceShell,
     BrowseTab,
+    QuickOpen,
     /// A data grid's column view, ahead of the list's own key bindings.
     GridCell,
     /// A data grid's column view, after a focused editor had its turn.
@@ -14,6 +16,8 @@ pub enum ShortcutOwner {
     SqlEditorCursors,
     /// The whole SQL editor tab, its find bar included.
     SqlEditorTab,
+    // The editor's results, ahead of the tab, so Ctrl+S saves changed rows before the file.
+    EditorResults,
     StructureTab,
     FilterStrip,
     /// A row of the window's connection tree.

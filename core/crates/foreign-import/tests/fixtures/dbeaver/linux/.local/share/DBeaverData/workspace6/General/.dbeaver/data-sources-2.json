@@ -1,0 +1,14 @@
+{
+	"connections": {
+		"sub-1": {
+			"provider": "postgresql",
+			"name": "From second file",
+			"folder": "Shared",
+			"configuration": {
+				"host": "second.example.com",
+				"port": "5432",
+				"database": "reports"
+			}
+		}
+	}
+}

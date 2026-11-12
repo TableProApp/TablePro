@@ -14,14 +14,10 @@ import SwiftUI
 struct ConnectionFormActionBar: View {
     @ObservedObject var coordinator: ConnectionFormCoordinator
 
-    /// Walked once per body evaluation and read four times from it.
-    ///
-    /// Every read costs three `PluginManager.additionalConnectionFields` calls, several locked
-    /// `PluginMetadataRegistry` lookups and an `SSHConfiguration` allocation, and this view observes
-    /// the connection name, so it re-evaluates on every keystroke in the Name field.
+    // Read once per body: each read walks plugin field metadata, and the body runs on every Name keystroke.
     var body: some View {
         let issues = coordinator.validationIssues
-        let canCommit = issues.isEmpty && !coordinator.isInstallingPlugin
+        let canCommit = issues.isEmpty
 
         return HStack(spacing: 12) {
             deleteButton
@@ -38,11 +34,13 @@ struct ConnectionFormActionBar: View {
             .keyboardShortcut(.cancelAction)
             if coordinator.isNew {
                 Button(String(localized: "Save")) {
+                    endEditing()
                     coordinator.save()
                 }
                 .disabled(!canCommit)
             }
             Button(defaultActionTitle) {
+                endEditing()
                 coordinator.commit()
             }
             .keyboardShortcut(.defaultAction)
@@ -51,6 +49,11 @@ struct ConnectionFormActionBar: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+
+    // A click does not end editing, so a tag still being typed in the token field is committed first.
+    private func endEditing() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     /// Restores the Delete the editor shipped through 0.38.0.

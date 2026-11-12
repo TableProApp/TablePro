@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="TablePro.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TitleBar
+            x:Name="AppTitleBar"
+            Title="TablePro"
+            AutomationProperties.AutomationId="AppTitleBar"
+            BackRequested="OnBackRequested"
+            PaneToggleRequested="OnPaneToggleRequested">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="ms-appx:///Assets/AppIcon.png" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <MenuBar x:Name="AppMenuBar" Grid.Row="1" AutomationProperties.AutomationId="AppMenuBar">
+            <MenuBarItem x:Uid="FileMenu" x:Name="FileMenu">
+                <MenuFlyoutItem x:Uid="MenuNewConnection" x:Name="MenuNewConnection" Click="OnNewConnection">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="N" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuOpenFile" x:Name="MenuOpenFile" Click="OnOpenFile">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="OpenFile" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="O" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuImport" x:Name="MenuImport" Click="OnImport">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Import" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuNewQueryTab" x:Name="MenuNewQueryTab" Click="OnNewQueryTab" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="T" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuCloseTab" x:Name="MenuCloseTab" Click="OnCloseTab" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="W" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuReopenTab" x:Name="MenuReopenTab" Click="OnReopenTab" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="T" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuMoveTab" x:Name="MenuMoveTab" Click="OnMoveTab" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="NewWindow" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <!-- A table tab's pending changes; the keys live here only, so one press never runs twice. -->
+                <MenuFlyoutItem x:Uid="MenuSaveChanges" x:Name="MenuSaveChanges" Click="OnSaveChanges" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="S" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuDiscardChanges" x:Name="MenuDiscardChanges" Click="OnDiscardChanges" IsEnabled="False" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuExportResults" x:Name="MenuExportResults" Click="OnExportResults" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Download" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="E" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuSettings" x:Name="MenuSettings" Click="OnShowSettings">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Setting" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuExit" x:Name="MenuExit" Click="OnExit" />
+            </MenuBarItem>
+
+            <MenuBarItem x:Uid="EditMenu" x:Name="EditMenu">
+                <MenuFlyoutItem x:Uid="MenuUndo" x:Name="MenuUndo" Click="OnUndo" KeyboardAcceleratorTextOverride="Ctrl+Z">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Undo" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuRedo" x:Name="MenuRedo" Click="OnRedo" KeyboardAcceleratorTextOverride="Ctrl+Y">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Redo" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuCut" x:Name="MenuCut" Click="OnCut" KeyboardAcceleratorTextOverride="Ctrl+X">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Cut" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuCopy" x:Name="MenuCopy" Click="OnCopy" KeyboardAcceleratorTextOverride="Ctrl+C">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Copy" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuPaste" x:Name="MenuPaste" Click="OnPaste" KeyboardAcceleratorTextOverride="Ctrl+V">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Paste" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuSelectAll" x:Name="MenuSelectAll" Click="OnSelectAll" KeyboardAcceleratorTextOverride="Ctrl+A" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuFind" x:Name="MenuFind" Click="OnFind" KeyboardAcceleratorTextOverride="Ctrl+F">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Find" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuAddRow" x:Name="MenuAddRow" Click="OnAddRow" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="N" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuDuplicateRow" x:Name="MenuDuplicateRow" Click="OnDuplicateRow" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Copy" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="D" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <!-- The grid takes Delete itself, so the menu only names the key. -->
+                <MenuFlyoutItem x:Uid="MenuDeleteRows" x:Name="MenuDeleteRows" Click="OnDeleteRows" IsEnabled="False" KeyboardAcceleratorTextOverride="Delete">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Delete" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+            </MenuBarItem>
+
+            <MenuBarItem x:Uid="ViewMenu" x:Name="ViewMenu">
+                <MenuFlyoutItem x:Uid="MenuShowConnections" x:Name="MenuShowConnections" Click="OnShowConnections">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Home" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="H" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <ToggleMenuFlyoutItem x:Uid="MenuShowObjects" x:Name="MenuShowObjects" IsChecked="True" Click="OnToggleObjects" IsEnabled="False">
+                    <ToggleMenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="B" />
+                    </ToggleMenuFlyoutItem.KeyboardAccelerators>
+                </ToggleMenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuFilterObjects" x:Name="MenuFilterObjects" Click="OnFilterObjects" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="P" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <ToggleMenuFlyoutItem x:Uid="MenuShowHistory" x:Name="MenuShowHistory" Click="OnToggleHistory" IsEnabled="False" />
+            </MenuBarItem>
+
+            <MenuBarItem x:Uid="DatabaseMenu" x:Name="DatabaseMenu">
+                <MenuFlyoutItem x:Uid="MenuRefresh" x:Name="MenuRefresh" Click="OnRefresh" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Refresh" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F5" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuEditConnection" x:Name="MenuEditConnection" Click="OnEditConnection" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Edit" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuReconnect" x:Name="MenuReconnect" Click="OnReconnect" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuDisconnect" x:Name="MenuDisconnect" Click="OnDisconnect" IsEnabled="False" />
+            </MenuBarItem>
+
+            <MenuBarItem x:Uid="QueryMenu" x:Name="QueryMenu">
+                <MenuFlyoutItem x:Uid="MenuRun" x:Name="MenuRun" Click="OnRun" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Play" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="Enter" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuRunStatement" x:Name="MenuRunStatement" Click="OnRunStatement" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="Enter" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuStop" x:Name="MenuStop" Click="OnStop" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Stop" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Shift" Key="F5" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Filter" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="F" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuPreviewSql" x:Name="MenuPreviewSql" Click="OnPreviewSql" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Preview" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="P" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+            </MenuBarItem>
+
+            <MenuBarItem x:Uid="HelpMenu" x:Name="HelpMenu">
+                <MenuFlyoutItem x:Uid="MenuDocumentation" x:Name="MenuDocumentation" Click="OnDocumentation">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Help" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F1" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuReportIssue" x:Name="MenuReportIssue" Click="OnReportIssue" />
+                <MenuFlyoutItem x:Uid="MenuSample" x:Name="MenuSample" Click="OnOpenSample" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuAbout" x:Name="MenuAbout" Click="OnAbout" />
+            </MenuBarItem>
+        </MenuBar>
+
+        <NavigationView
+            x:Name="Rail"
+            Grid.Row="2"
+            AutomationProperties.AutomationId="Rail"
+            PaneDisplayMode="LeftCompact"
+            IsPaneVisible="False"
+            IsPaneToggleButtonVisible="False"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="True"
+            IsTitleBarAutoPaddingEnabled="False"
+            SelectionChanged="OnRailSelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Uid="HomeItem" x:Name="HomeItem" Tag="home" AutomationProperties.AutomationId="HomeItem">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItemSeparator x:Name="RailSeparator" />
+            </NavigationView.MenuItems>
+        </NavigationView>
+    </Grid>
+</Window>

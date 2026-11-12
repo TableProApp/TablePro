@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#00212B",
     "background": "#002B36",
-    "boolFalse": "#DC322F",
-    "boolTrue": "#859900",
+    "binary": "#FF96C5",
+    "boolFalse": "#F77471",
+    "boolTrue": "#91A61F",
+    "dateTime": "#42A3EB",
     "deleted": "#DC322F26",
     "deletedText": "#DC322F80",
+    "enum": "#9297DE",
     "focusBorder": "#2AA198",
     "gridLine": "#23464F",
     "headerBackground": "#00212B",
     "headerText": "#93A1A1",
     "inactiveSelection": "#003846",
     "inserted": "#85990026",
+    "json": "#C29620",
     "modified": "#B5890026",
     "nullValue": "#586E75",
+    "number": "#EF72AD",
     "rowNumber": "#586E75",
     "selection": "#005A6F",
     "selectionText": "#EEE8D5",
-    "text": "#839496"
+    "string": "#3AADA3",
+    "text": "#839496",
+    "uuid": "#FA7540"
   },
   "editor": {
     "background": "#002B36",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.solarized-dark",
   "name": "Solarized Dark",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#002B36"
   }

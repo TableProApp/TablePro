@@ -16,6 +16,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
     internal let applicationSupportRoot: URL
     internal let defaults: UserDefaults
     internal let keychain: any KeychainStoring
+    internal let deviceOnlyKeychain: any KeychainStoring
     internal let isIsolated: Bool
     internal let isUnitTestHost: Bool
     internal let defaultsSuiteName: String?
@@ -41,6 +42,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         applicationSupportRoot: URL,
         defaults: UserDefaults,
         keychain: any KeychainStoring,
+        deviceOnlyKeychain: any KeychainStoring,
         isIsolated: Bool,
         isUnitTestHost: Bool,
         defaultsSuiteName: String? = nil
@@ -48,6 +50,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         self.applicationSupportRoot = applicationSupportRoot
         self.defaults = defaults
         self.keychain = keychain
+        self.deviceOnlyKeychain = deviceOnlyKeychain
         self.isIsolated = isIsolated
         self.isUnitTestHost = isUnitTestHost
         self.defaultsSuiteName = defaultsSuiteName
@@ -102,6 +105,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             applicationSupportRoot: productionRoot(),
             defaults: .standard,
             keychain: KeychainHelper.shared,
+            deviceOnlyKeychain: KeychainHelper(followsPasswordSync: false),
             isIsolated: false,
             isUnitTestHost: isUnitTestHost
         )
@@ -134,10 +138,12 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         emptyDefaultsIfNewSandbox(defaults, suiteName: suiteName, supportDirectory: supportDirectory)
 
         logger.notice("Storage sandboxed at \(supportDirectory.path, privacy: .private(mask: .hash))")
+        let keychain = SandboxKeychainStore(fileURL: supportDirectory.appendingPathComponent("keychain.json"))
         return AppStorageEnvironment(
             applicationSupportRoot: root,
             defaults: defaults,
-            keychain: SandboxKeychainStore(fileURL: supportDirectory.appendingPathComponent("keychain.json")),
+            keychain: keychain,
+            deviceOnlyKeychain: keychain,
             isIsolated: true,
             isUnitTestHost: isUnitTestHost,
             defaultsSuiteName: suiteName

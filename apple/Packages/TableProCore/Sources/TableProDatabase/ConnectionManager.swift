@@ -45,13 +45,13 @@ public final class ConnectionManager: @unchecked Sendable {
 
     // A teardown wait that gives up leaves the teardown running and counting as suspension-blocking.
     public func connect(
-        _ connection: DatabaseConnection,
+        _ saved: DatabaseConnection,
         prompter: (any ConnectionPrompter)? = nil
     ) async throws -> ConnectionSession {
         // Ahead of beginAttempt, so a refusal neither cancels an attempt in flight nor tears down the open session.
-        if let refusal = driverFactory.refusal(for: connection) { throw refusal }
-        let generation = beginAttempt(for: connection.id)
-        switch await awaitTeardown(of: connection.id, bound: .after(teardownWaitLimit)) {
+        if let refusal = driverFactory.refusal(for: saved) { throw refusal }
+        let generation = beginAttempt(for: saved.id)
+        switch await awaitTeardown(of: saved.id, bound: .after(teardownWaitLimit)) {
         case .cleared:
             break
         case .cancelled:
@@ -59,6 +59,9 @@ public final class ConnectionManager: @unchecked Sendable {
         case .stillClosing:
             throw ConnectionError.previousSessionStillClosing
         }
+        guard isCurrentAttempt(generation, for: saved.id) else { throw CancellationError() }
+        // Everything after this mints for, tunnels to and dials the endpoint this names.
+        let connection = try await driverFactory.resolvingEndpointAlias(for: saved)
         guard isCurrentAttempt(generation, for: connection.id) else { throw CancellationError() }
         let stored = try secureStore.retrieve(forKey: Self.passwordKey(for: connection.id))
         let password = try await driverFactory.resolvePassword(for: connection, stored: stored, secureStore: secureStore)
@@ -99,7 +102,10 @@ public final class ConnectionManager: @unchecked Sendable {
             let driver = try driverFactory.createDriver(
                 for: effectiveConnection,
                 password: password,
-                preTunnelHost: preTunnelHost
+                preTunnelHost: preTunnelHost,
+                refreshPassword: Self.passwordRefresh(
+                    for: connection, stored: stored, factory: driverFactory, secureStore: secureStore
+                )
             )
             try await driver.connect()
 
@@ -407,6 +413,16 @@ public final class ConnectionManager: @unchecked Sendable {
         return catalogs[connectionId] === connection
     }
 
+    // Resolves for the connection as saved: behind a tunnel the driver's own connection names the loopback.
+    private static func passwordRefresh(
+        for saved: DatabaseConnection,
+        stored: String?,
+        factory: DriverFactory,
+        secureStore: SecureStore
+    ) -> @Sendable () async throws -> String? {
+        { try await factory.resolvePassword(for: saved, stored: stored, secureStore: secureStore) }
+    }
+
     private static func openCatalogDriver(
         dial: SessionDial,
         database: String,
@@ -420,7 +436,12 @@ public final class ConnectionManager: @unchecked Sendable {
         // An IAM token is minted for the saved host and expires, so each catalog connection gets its own.
         let stored = try secureStore.retrieve(forKey: passwordKey(for: dial.saved.id))
         let password = try await factory.resolvePassword(for: dial.saved, stored: stored, secureStore: secureStore)
-        let driver = try factory.createDriver(for: target, password: password, preTunnelHost: dial.preTunnelHost)
+        let driver = try factory.createDriver(
+            for: target,
+            password: password,
+            preTunnelHost: dial.preTunnelHost,
+            refreshPassword: passwordRefresh(for: dial.saved, stored: stored, factory: factory, secureStore: secureStore)
+        )
         try await driver.connect()
         do {
             try await factory.prepareCatalogDriver(driver, for: target)

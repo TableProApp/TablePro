@@ -307,7 +307,7 @@ impl Layouts {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("tempdir");
         let runtime = crate::test_support::test_runtime();
-        let store = ColumnLayoutStore::load(root.path().join("column_widths.json"), &runtime.tasks());
+        let store = ColumnLayoutStore::load(root.path().join("column_layouts.json"), &runtime.tasks());
         Self {
             store,
             connection_id: Uuid::new_v4(),
@@ -319,7 +319,7 @@ impl Layouts {
     fn binding(&self, table: &str) -> LayoutBinding {
         LayoutBinding {
             store: self.store.clone(),
-            connection_id: self.connection_id,
+            state_key: self.connection_id.into(),
             schema: Some("public".to_owned()),
             table: table.to_owned(),
         }

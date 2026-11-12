@@ -3,13 +3,13 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita::prelude::*;
-use tablepro_core::column::{ColumnDefault, ColumnType};
+use tablepro_core::column::ColumnDefault;
 use tablepro_core::meta::{RowCountEstimate, RowIdentity, TableEstimate};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use tablepro_test_support::{ConnectionScript, FakeReply};
 use uuid::Uuid;
 
-use super::super::{OpenMode, WorkspaceInput};
+use super::super::{OpenMode, SaveRequest, WorkspaceInput};
 use super::shell_of;
 use crate::runtime::DeliverInput;
 use crate::test_support::{after_next_frame, drain_main_context, wait_until};
@@ -18,10 +18,12 @@ use crate::ui::data_grid::GridCell;
 use crate::ui::session_window::tests::{TestWindow, WAIT};
 use crate::workspace::{answer, visible_alert};
 
-fn column(name: &str, primary_key: bool) -> ColumnInfo {
+fn column(name: &str, sql_type: &str, primary_key: bool) -> ColumnInfo {
     ColumnInfo {
         name: name.to_owned(),
-        column_type: ColumnType::untyped_text("text"),
+        column_type: crate::workspace::test_workspace::sqlite()
+            .parse_type(sql_type)
+            .expect("a fixture column type"),
         nullable: !primary_key,
         primary_key,
         is_auto_increment: false,
@@ -32,9 +34,8 @@ fn column(name: &str, primary_key: bool) -> ColumnInfo {
     }
 }
 
-/// Every table has the same two keyed rows.
 fn serving_tables(script: &mut ConnectionScript) {
-    let columns = [column("id", true), column("name", false)];
+    let columns = [column("id", "INTEGER", true), column("name", "TEXT", false)];
     script.fetch_columns.always(FakeReply::ok(columns.to_vec()));
     script.row_identity.always(FakeReply::ok(RowIdentity::UniqueKey {
         columns: vec!["id".to_owned()],
@@ -333,4 +334,496 @@ fn close_all_tabs_asks_before_closing_unsaved_work() {
     wait_until(WAIT, || view.n_pages() == 1).expect("the tabs with nothing to lose to close");
     assert!(tab_is_open(&test, id), "the tab with unsaved changes closed");
     assert_eq!(crate::test_support::read_text_file(&path), "SELECT 1;");
+}
+
+#[gtk4::test]
+fn header_save_commits_the_first_inline_edit_and_follows_the_running_save() {
+    use tablepro_core::WriteReport;
+    use tablepro_test_support::CallCounters;
+    use tokio_util::sync::CancellationToken;
+
+    let release = CancellationToken::new();
+    let test = TestWindow::connected_with("HeaderInlineSave", |script| {
+        serving_tables(script);
+        script.write_batch.always(FakeReply::UntilReleased {
+            release: release.clone(),
+            outcome: Ok(WriteReport::new(vec![Some(1)])),
+        });
+    });
+    let (id, tab) = open_table(&test, "users");
+    let shell = shell_of(&test.workspace());
+    let button = shell.imp().save_changes_button.get();
+    crate::test_support::assert_labelled(&button).expect("Save Changes has a name");
+    assert_eq!(button.tooltip_text().as_deref(), Some("Save Changes"));
+    assert!(gtk::test_accessible_has_property(
+        &button,
+        gtk::AccessibleProperty::KeyShortcuts
+    ));
+    assert!(!button.is_sensitive());
+    let cell = type_a_name(&tab);
+    let changes = super::row_tracker(&test.workspace(), id).expect("the changes");
+    assert_eq!(changes.pending_count(), 0);
+    wait_until(WAIT, || button.is_sensitive()).expect("Save Changes for the first inline edit");
+
+    let requested = std::rc::Rc::new(std::cell::Cell::new(0));
+    let requests = requested.clone();
+    tab.connect_save_requested(move |_| requests.set(requests.get() + 1));
+    button.emit_clicked();
+
+    assert_eq!(requested.get(), 1, "the header activates the tab's save action");
+    assert!(!cell.is_editing(), "the save commits the open cell");
+    assert_eq!(changes.pending_count(), 1, "the typed value reaches the tracker");
+    assert!(changes.preview_save().expect("the edit can be saved").is_some());
+    let connection = test.connection();
+    wait_until(WAIT, || CallCounters::get(&connection.counters().write_batch) == 1).unwrap_or_else(|error| {
+        panic!(
+            "the header starts the write: {error:?}; state: {:?}; alert: {:?}; writes: {:?}",
+            changes.pending_state(),
+            visible_alert(&test.window).map(|alert| (alert.heading(), alert.body())),
+            test.connector
+                .connections()
+                .iter()
+                .map(|connection| CallCounters::get(&connection.counters().write_batch))
+                .collect::<Vec<_>>()
+        )
+    });
+    assert!(!button.is_sensitive(), "Save stays disabled during its write");
+    assert!(
+        connection
+            .observed_sql("write_batch")
+            .iter()
+            .flatten()
+            .any(|sql| sql.contains("UPDATE"))
+    );
+    release.cancel();
+    wait_until(WAIT, || changes.pending_count() == 0 && !test.workspace().is_saving()).expect("the save settles");
+    assert!(!button.is_sensitive(), "the saved tab has nothing to save");
+}
+
+#[gtk4::test]
+fn header_save_follows_sidebar_selection_and_drops_the_previous_tabs_state() {
+    let test = TestWindow::connected_with("HeaderSidebarSave", serving_tables);
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    let button = shell.imp().save_changes_button.get();
+    let (first, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.grid().commit_edit();
+    wait_until(WAIT, || button.is_sensitive()).expect("the first tab has edits");
+    let (_, other) = open_table(&test, "teams");
+    assert!(!button.is_sensitive());
+
+    workspace.sender().expect("input").deliver(WorkspaceInput::SelectTable {
+        schema: None,
+        name: "users".to_owned(),
+        open_mode: OpenMode::SwitchOrAppend,
+    });
+    wait_until(WAIT, || workspace.selected_tab() == Some(first)).expect("sidebar selects the edited tab");
+    assert!(
+        button.is_sensitive(),
+        "selection under the workspace borrow lost the action state"
+    );
+
+    other.send(crate::ui::browse_tab::SaveInput::SaveStarted);
+    assert!(
+        button.is_sensitive(),
+        "a background tab changed the selected tab's action"
+    );
+    tab.send(crate::ui::browse_tab::SaveInput::SaveStarted);
+    assert!(!button.is_sensitive());
+    tab.send(crate::ui::browse_tab::SaveInput::SaveCommitted(Default::default()));
+    super::open_editor(&workspace);
+    assert!(
+        !button.is_sensitive(),
+        "a SQL editor without result edits cannot save data"
+    );
+    shell.shutdown();
+    assert!(test.window.lookup_action("save-changes").is_none());
+}
+
+#[gtk4::test]
+fn header_save_uses_the_structure_tabs_save_action() {
+    use crate::ui::structure_tab::{ColumnsInput, SaveInput, StructureTab};
+
+    let test = TestWindow::connected_with("HeaderStructureSave", |script| {
+        script.dialect = std::sync::Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        ));
+    });
+    let workspace = test.workspace();
+    let shell = shell_of(&workspace);
+    workspace
+        .sender()
+        .expect("input")
+        .deliver(WorkspaceInput::NewTableTab { schema: None });
+    let mut tab = None;
+    wait_until(WAIT, || {
+        tab = shell
+            .tab_view()
+            .selected_page()
+            .and_then(|page| page.child().downcast::<StructureTab>().ok());
+        tab.is_some()
+    })
+    .expect("a new structure tab");
+    let tab = tab.expect("the structure");
+    let button = shell.imp().save_changes_button.get();
+    let source = tab.save_action().expect("the structure save action");
+    assert_eq!(button.is_sensitive(), source.is_enabled());
+    tab.send(ColumnsInput::AddColumn);
+    assert!(source.is_enabled());
+    assert!(button.is_sensitive());
+    tab.send(SaveInput::SaveStarted);
+    assert!(!button.is_sensitive());
+    tab.send(SaveInput::SaveFailed("The connection closed.".to_owned()));
+    assert!(button.is_sensitive());
+}
+
+#[gtk4::test]
+fn header_save_switches_between_sessions_and_disables_without_a_tab() {
+    let sessions = super::two_sessions_with("HeaderSessionSave", "Other", serving_tables);
+    let shell = &sessions.shell;
+    let button = shell.imp().save_changes_button.get();
+    assert!(!button.is_sensitive());
+    super::open_editor(&sessions.first);
+    let (_, tab) = open_table(&sessions.test, "users");
+    type_a_name(&tab);
+    tab.grid().commit_edit();
+    assert!(button.is_sensitive());
+    let edited = shell.tab_view().selected_page().expect("the edited page");
+
+    let clean = super::open_editor(&sessions.second);
+    assert!(!button.is_sensitive());
+    shell.tab_view().set_selected_page(&edited);
+    assert!(button.is_sensitive());
+    shell.tab_view().set_selected_page(&clean);
+    tab.send(crate::ui::browse_tab::SaveInput::SaveStarted);
+    assert!(
+        !button.is_sensitive(),
+        "a background session cannot enable Save Changes"
+    );
+}
+
+fn serving_a_structure(script: &mut ConnectionScript) {
+    use tablepro_core::ddl::{ColumnAttributes, ColumnDefinition, TableDefinition};
+
+    serving_tables(script);
+    script.dialect = std::sync::Arc::new(tablepro_driver_postgres::PgDialect::new(
+        &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+    ));
+    script.fetch_table_definition.always(FakeReply::ok(TableDefinition {
+        table: tablepro_core::meta::TableRef::unqualified("users"),
+        columns: vec![ColumnDefinition::new(
+            column("name", "TEXT", false),
+            ColumnAttributes::default(),
+        )],
+        primary_key: None,
+        indexes: Vec::new(),
+        foreign_keys: Vec::new(),
+        inbound_foreign_keys: Vec::new(),
+        source: None,
+        options: None,
+    }));
+}
+
+fn show_structure(tab: &BrowseTab) -> crate::ui::structure_tab::StructureTab {
+    tab.imp().view_stack.set_visible_child_name("structure");
+    let mut structure = None;
+    wait_until(WAIT, || {
+        structure = tab.structure_tab().filter(|structure| {
+            !structure.is_loading() && structure.imp().inner_stack.visible_child_name().as_deref() == Some("editor")
+        });
+        structure.is_some()
+    })
+    .expect("the table's structure");
+    structure.expect("the structure")
+}
+
+#[gtk4::test]
+fn header_save_saves_the_structure_a_table_tab_shows() {
+    let test = TestWindow::connected_with("HeaderStructureViewSave", serving_a_structure);
+    let (id, tab) = open_table(&test, "users");
+    let button = shell_of(&test.workspace()).imp().save_changes_button.get();
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    wait_until(WAIT, || button.is_sensitive()).expect("the row edit enables Save Changes");
+
+    let structure = show_structure(&tab);
+    assert!(!button.is_sensitive(), "the unchanged structure has nothing to save");
+    structure.send(crate::ui::structure_tab::ColumnsInput::AddColumn);
+    assert!(button.is_sensitive(), "the structure's draft enables Save Changes");
+    assert_eq!(button.tooltip_text().as_deref(), Some("Save Changes"));
+
+    let schema_saves = crate::test_support::SignalLog::connect(&structure, "save-requested", |_| ());
+    let row_saves = crate::test_support::SignalLog::connect(&tab, "save-requested", |_| ());
+    button.emit_clicked();
+    assert_eq!(schema_saves.count(), 1, "the header saves the structure on screen");
+    assert_eq!(row_saves.count(), 0);
+    let rows = super::row_tracker(&test.workspace(), id).expect("the row changes");
+    assert_eq!(rows.pending_count(), 1, "the row edit waits for the Data view");
+}
+
+#[gtk4::test]
+fn header_save_follows_the_rows_again_once_the_table_tab_shows_its_data() {
+    let test = TestWindow::connected_with("HeaderDataViewSave", serving_a_structure);
+    let (_, tab) = open_table(&test, "users");
+    let button = shell_of(&test.workspace()).imp().save_changes_button.get();
+    let structure = show_structure(&tab);
+    structure.send(crate::ui::structure_tab::ColumnsInput::AddColumn);
+    assert!(button.is_sensitive());
+
+    tab.imp().view_stack.set_visible_child_name("data");
+    assert!(!button.is_sensitive(), "the rows have nothing to save");
+    type_a_name(&tab);
+    wait_until(WAIT, || button.is_sensitive()).expect("the row edit enables Save Changes");
+
+    let schema_saves = crate::test_support::SignalLog::connect(&structure, "save-requested", |_| ());
+    let row_saves = crate::test_support::SignalLog::connect(&tab, "save-requested", |_| ());
+    button.emit_clicked();
+    assert_eq!(row_saves.count(), 1, "the header saves the rows on screen");
+    assert_eq!(schema_saves.count(), 0);
+}
+
+#[gtk4::test]
+fn a_schema_rename_keeps_the_table_tab_and_its_pending_rows() {
+    let test = TestWindow::connected_with("RenameCombinedTable", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    let page = shell_of(&workspace)
+        .imp()
+        .tab_view
+        .selected_page()
+        .expect("the table page");
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    assert_eq!(tracker.pending_count(), 1);
+
+    workspace.with_model(|model| model.on_structure_save_completed(id, Some("people".to_owned())));
+    drain_main_context();
+
+    assert_eq!(workspace.selected_tab(), Some(id));
+    assert_eq!(shell_of(&workspace).imp().tab_view.selected_page(), Some(page.clone()));
+    assert_eq!(tab.table(), "people");
+    assert_eq!(tracker.pending_count(), 1);
+    assert_eq!(
+        super::row_tracker(&workspace, id)
+            .expect("the same tab's rows")
+            .pending_count(),
+        1
+    );
+    workspace.with_model(|model| {
+        let tabs = model.workspace_tabs.borrow();
+        let Some(super::super::WorkspaceTab::Table(slot)) = tabs.get(&id) else {
+            panic!("the renamed tab was replaced");
+        };
+        assert_eq!(slot.table, "people");
+        assert_eq!(slot.browse, tab);
+    });
+    assert!(page.title().contains("people"));
+}
+
+#[gtk4::test]
+fn refreshing_cannot_discard_rows_while_their_save_is_running() {
+    for refresh_first in [false, true] {
+        let test = TestWindow::connected_with("RefreshDuringSave", |script| {
+            serving_tables(script);
+            script
+                .write_batch
+                .always(FakeReply::StoppedWith(Err(tablepro_core::DriverError::RolledBack {
+                    statement_index: 0,
+                    source: Box::new(tablepro_core::DriverError::Cancelled),
+                })));
+        });
+        let workspace = test.workspace();
+        let (id, tab) = open_table(&test, "users");
+        type_a_name(&tab);
+        tab.commit_cell_edit();
+        let tracker = super::row_tracker(&workspace, id).expect("row changes");
+        if refresh_first {
+            workspace.with_model(|model| model.on_refresh_tab(id));
+            wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the discard question");
+        }
+        workspace
+            .sender()
+            .expect("workspace input")
+            .deliver(WorkspaceInput::Save(SaveRequest::Rows(id)));
+        let connection = test.connection();
+        let began_waiting = std::time::Instant::now();
+        let started = wait_until(WAIT, || {
+            tracker.pending_state() == crate::workspace::PendingState::Saving
+                && !connection.observed_cancels("write_batch").is_empty()
+        });
+        assert!(
+            started.is_ok(),
+            "row save did not reach the driver: refresh_first={refresh_first}, elapsed={:?}, state={:?}, observed_writes={}, connections={:?}, alert={:?}",
+            began_waiting.elapsed(),
+            tracker.pending_state(),
+            connection.observed_cancels("write_batch").len(),
+            test.connector
+                .connections()
+                .iter()
+                .map(|connection| (connection.is_closed(), connection.observed_sql("write_batch")))
+                .collect::<Vec<_>>(),
+            visible_alert(&test.window).map(|alert| (alert.heading(), alert.body())),
+        );
+
+        if refresh_first {
+            assert!(answer(&test.window, "discard"));
+        } else {
+            workspace.with_model(|model| model.on_refresh_tab(id));
+            // A saving spinner keeps scheduling frames, so draining until idle can outlive the save's deadline.
+            after_next_frame(&test.window);
+            let alert = visible_alert(&test.window);
+            assert!(
+                alert.is_none(),
+                "refresh showed an alert during an active save: {:?}",
+                alert.map(|alert| (alert.heading(), alert.body()))
+            );
+        }
+        assert_eq!(tracker.pending_state(), crate::workspace::PendingState::Saving);
+        workspace.with_model(|model| model.workspace_handle.stop_saves(crate::workspace::CloseScope::Tab(id)));
+        wait_until(WAIT, || {
+            tracker.pending_state() == crate::workspace::PendingState::Unsaved
+        })
+        .expect("the cancelled save rolls back");
+        assert_eq!(tracker.pending_count(), 1, "refresh lost the rolled-back row draft");
+    }
+}
+
+#[gtk4::test]
+fn refreshing_unknown_rows_warns_that_the_save_may_have_changed_the_database() {
+    let test = TestWindow::connected_with("RefreshUnknownSave", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    let batch = tracker.begin_save().expect("a save").expect("the row draft");
+    let unknown = crate::workspace::SaveOutcome::Unknown(crate::workspace::UnknownCause::Interrupted);
+    let _ = tracker.settle_save(&unknown, batch.snapshot);
+
+    workspace.with_model(|model| model.on_refresh_tab(id));
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the refresh warning");
+    let dialog = visible_alert(&test.window).expect("the warning");
+    assert_eq!(
+        dialog.body(),
+        "The last save may have changed the database. Reload to read its current rows and discard these changes."
+    );
+    assert_eq!(dialog.default_response().as_deref(), Some("cancel"));
+    assert!(answer(&test.window, "cancel"));
+    assert!(matches!(
+        tracker.pending_state(),
+        crate::workspace::PendingState::OutcomeUnknown(_)
+    ));
+
+    workspace.with_model(|model| model.on_refresh_tab(id));
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the warning again");
+    assert!(answer(&test.window, "discard"));
+    wait_until(WAIT, || {
+        tracker.pending_state() == crate::workspace::PendingState::Clean
+    })
+    .expect("the confirmed reload discards the uncertain draft");
+}
+
+#[gtk4::test]
+fn workspace_refresh_commits_an_open_cell_before_asking_to_discard_it() {
+    let test = TestWindow::connected_with("RefreshOpenCell", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    let cell = type_a_name(&tab);
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    assert_eq!(tracker.pending_count(), 0);
+
+    workspace.with_model(|model| model.on_refresh_tab(id));
+
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the open edit needs confirmation");
+    assert_eq!(tracker.pending_count(), 1);
+    assert!(!cell.is_editing());
+    assert!(answer(&test.window, "cancel"));
+    assert_eq!(tracker.pending_count(), 1);
+}
+
+#[gtk4::test]
+fn a_refresh_answer_cannot_silently_discard_a_new_unknown_outcome() {
+    let test = TestWindow::connected_with("RefreshBecomesUnknown", serving_tables);
+    let workspace = test.workspace();
+    let (id, tab) = open_table(&test, "users");
+    type_a_name(&tab);
+    tab.commit_cell_edit();
+    let tracker = super::row_tracker(&workspace, id).expect("row changes");
+    workspace.with_model(|model| model.on_refresh_tab(id));
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the discard question");
+    let original = visible_alert(&test.window).expect("the ordinary discard question");
+    let batch = tracker.begin_save().expect("a save").expect("the row draft");
+    let _ = tracker.settle_save(
+        &crate::workspace::SaveOutcome::Unknown(crate::workspace::UnknownCause::Interrupted),
+        batch.snapshot,
+    );
+
+    assert!(answer(&test.window, "discard"));
+
+    wait_until(WAIT, || {
+        visible_alert(&test.window).is_some_and(|dialog| dialog != original)
+    })
+    .expect("a warning about the new unknown outcome");
+    assert!(
+        visible_alert(&test.window)
+            .expect("the warning")
+            .body()
+            .contains("may have changed the database")
+    );
+    assert!(matches!(
+        tracker.pending_state(),
+        crate::workspace::PendingState::OutcomeUnknown(_)
+    ));
+    assert!(answer(&test.window, "cancel"));
+}
+
+#[gtk4::test]
+fn header_refresh_commits_the_inline_edit_before_asking_to_discard() {
+    let test = TestWindow::connected_with("HeaderRefreshEdit", serving_tables);
+    let (_, tab) = open_table(&test, "users");
+    let cell = type_a_name(&tab);
+    let button = shell_of(&test.workspace()).imp().refresh_page_button.get();
+    wait_until(WAIT, || button.is_sensitive()).expect("table refresh enabled");
+    let before = test.connection().observed_sql("query_bound").len();
+
+    button.emit_clicked();
+    wait_until(WAIT, || crate::workspace::visible_alert(&test.window).is_some()).expect("discard confirmation");
+    assert!(!cell.is_editing());
+    assert_eq!(test.connection().observed_sql("query_bound").len(), before);
+    assert!(crate::workspace::answer(&test.window, "cancel"));
+    crate::test_support::drain_main_context();
+    assert_eq!(test.connection().observed_sql("query_bound").len(), before);
+
+    button.emit_clicked();
+    wait_until(WAIT, || crate::workspace::visible_alert(&test.window).is_some()).expect("discard confirmation again");
+    assert!(crate::workspace::answer(&test.window, "discard"));
+    wait_until(WAIT, || test.connection().observed_sql("query_bound").len() > before).expect("table reloaded");
+}
+
+#[gtk4::test]
+fn header_refresh_keeps_the_tab_clicked_before_selection_moves() {
+    let test = TestWindow::connected_with("HeaderRefreshTarget", serving_tables);
+    let (_, first) = open_table(&test, "users");
+    let (_, second) = open_table(&test, "orders");
+    wait_until(WAIT, || first.grid().row_count() == 2 && second.grid().row_count() == 2).expect("both tables loaded");
+    let shell = shell_of(&test.workspace());
+    let view = shell.tab_view();
+    let first_page = view.page(&first);
+    let second_page = view.page(&second);
+    view.set_selected_page(&first_page);
+    let button = shell.imp().refresh_page_button.get();
+    wait_until(WAIT, || button.is_sensitive()).expect("refresh enabled");
+    let before = test.connection().observed_sql("query_bound").len();
+    button.emit_clicked();
+    view.set_selected_page(&second_page);
+    wait_until(WAIT, || test.connection().observed_sql("query_bound").len() > before).expect("refresh read");
+    assert!(
+        test.connection()
+            .observed_sql("query_bound")
+            .last()
+            .and_then(Option::as_deref)
+            .is_some_and(|sql| sql.contains("users"))
+    );
 }

@@ -27,13 +27,18 @@ internal struct AlwaysAllowGate: ExecutionGate {
 
 internal struct AlwaysDenyGate: ExecutionGate {
     internal let reason: String
+    internal let cause: OperationDenialCause
 
-    internal init(reason: String = "Read-Only connection") {
+    internal init(reason: String = "Read-Only connection", cause: OperationDenialCause = .policy) {
         self.reason = reason
+        self.cause = cause
     }
 
+    // The user answering Cancel in the gate's confirmation.
+    internal static let cancelling = AlwaysDenyGate(reason: "Operation cancelled by user", cause: .cancelledByUser)
+
     internal func authorize(_ request: OperationRequest) async -> OperationDecision {
-        .denied(reason: reason)
+        .denied(reason: reason, cause: cause)
     }
 }
 
@@ -88,7 +93,7 @@ extension DatabaseAccessBridge {
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
-        maskingTable: String? = nil
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> StatementOutcome {
         let statement = try await plannedStatement(scope: scope, query: query, maxRows: maxRows)
         let databaseType = try await ensureConnected(scope.connectionId)
@@ -98,7 +103,7 @@ extension DatabaseAccessBridge {
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            maskingTable: maskingTable
+            masking: masking
         )
     }
 

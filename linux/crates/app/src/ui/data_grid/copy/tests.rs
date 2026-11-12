@@ -25,6 +25,7 @@ use crate::ui::data_grid::{DataGrid, GridCell, GridRequest};
 use crate::ui::export::ExportSource;
 
 const BEFORE: &str = "nothing copied yet";
+const TWO_TEXT_ROWS_JSON: &str = "[\n{\"id\":1,\"name\":\"A\"},\n{\"id\":2,\"name\":\"B\"}\n]";
 
 /// What a copy test drives: a grid and the requests it made.
 trait Copies {
@@ -216,8 +217,6 @@ fn copy_is_off_once_a_page_takes_the_selection_away() {
     assert!(!grid.is_enabled("copy-rows"));
 }
 
-/// The rows leave as the user arranged them: a dragged column where it
-/// was dropped, a hidden one left out, pending edits in.
 #[gtk4::test]
 fn copies_and_exports_follow_a_moved_and_a_hidden_column() {
     let grid = Grid::open(people(), people_rows());
@@ -241,6 +240,13 @@ fn copies_and_exports_follow_a_moved_and_a_hidden_column() {
         GridRequest::Export(ExportSource::Rows { columns, rows }) => Some((columns, rows)),
         _ => None,
     });
+
+    let preview = super::json_preview(&grid.grid).render().unwrap();
+    assert_eq!((preview.shown, preview.total, preview.deleted), (2, 2, 0));
+    assert_eq!(
+        preview.text,
+        "[\n{\"name\":\"Ada\",\"id\":1},\n{\"name\":\"Grace Hopper\",\"id\":2}\n]"
+    );
 
     assert_eq!(grid.grid.shown_columns(), [1, 0]);
     assert_eq!(rows, "name\tid\nAda\t1\nGrace Hopper\t2\n");
@@ -300,6 +306,11 @@ fn copy_after_a_sort_takes_the_row_on_screen() {
     });
 
     assert_eq!(text, "a");
+    let preview = super::json_preview(&grid.grid).render().unwrap();
+    let json: serde_json::Value = serde_json::from_str(&preview.text).unwrap();
+    assert_eq!(json[0]["id"], 1);
+    assert_eq!(json[1]["id"], 2);
+    assert_eq!(json[2]["id"], 3);
 }
 
 /// The rule names the value the cell holds, never the text it draws: a
@@ -540,6 +551,25 @@ fn copy_as_insert_writes_the_columns_on_screen_with_pending_edits() {
 }
 
 #[gtk4::test]
+fn renaming_the_table_keeps_edits_and_selection_in_insert_copies() {
+    let grid = sql_grid(people(), people_rows(), Arc::new(FakeDialect));
+    grid.grid.set_column_visible(2, false);
+    grid.grid
+        .apply_delta(&rename(&grid.tracker, 2, "Grace", "Grace Hopper"));
+    select_all(&grid);
+
+    grid.grid.rename_table("members");
+    let text = copied(&grid, || activate(&grid.grid, "copy-insert"));
+
+    assert_eq!(grid.tracker.pending_count(), 1);
+    assert_eq!(
+        text,
+        "INSERT INTO \"members\" (\"id\", \"name\") VALUES (1, 'Ada');\n\
+         INSERT INTO \"members\" (\"id\", \"name\") VALUES (2, 'Grace Hopper');"
+    );
+}
+
+#[gtk4::test]
 fn copy_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     let mut id = named("id", "integer", true);
     id.is_auto_increment = true;
@@ -727,4 +757,66 @@ fn the_text_copies_take_the_columns_on_screen() {
     );
     assert_eq!(lines, "{\"id\":1,\"name\":\"Ada\"}\n{\"id\":2,\"name\":\"Grace\"}\n");
     assert_eq!(one_row, "1, 'Ada', 2, 'Grace'");
+}
+
+#[gtk4::test]
+fn json_preview_names_rows_held_back_for_deletion() {
+    let values = people_rows();
+    let grid = Grid::open(people(), values.clone());
+    let delta = grid.tracker.apply(TrackerEdit::DeleteRows {
+        persisted: vec![(key(1), values[0].clone().into())],
+        drafts: Vec::new(),
+    });
+    grid.grid.apply_delta(&delta);
+    let preview = super::json_preview(&grid.grid).render().unwrap();
+    assert_eq!((preview.shown, preview.total, preview.deleted), (1, 1, 1));
+    let json: serde_json::Value = serde_json::from_str(&preview.text).unwrap();
+    assert_eq!(json[0]["name"], "Grace");
+    assert_eq!(json.as_array().unwrap().len(), 1);
+}
+
+#[gtk4::test]
+fn copy_writes_several_rows_in_the_preferred_format() {
+    use tablepro_linux_platform::settings::RowCopyFormat;
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    select_all(&grid);
+    let settings = &grid.grid.config().expect("a configured grid").settings;
+    for format in RowCopyFormat::ALL {
+        settings.set_row_copy_format(format.nick()).expect("store the format");
+
+        let text = copied(&grid, || activate(&grid.grid, "copy"));
+
+        match format {
+            RowCopyFormat::Rows => assert_eq!(text, "1\tA\n2\tB\n"),
+            RowCopyFormat::RowsWithHeaders => assert_eq!(text, "id\tname\n1\tA\n2\tB\n"),
+            RowCopyFormat::Csv => assert_eq!(text, "1,A\n2,B\n"),
+            RowCopyFormat::CsvWithHeaders => assert_eq!(text, "id,name\n1,A\n2,B\n"),
+            RowCopyFormat::Markdown => assert_eq!(text, "| id | name |\n| --- | --- |\n| 1 | A |\n| 2 | B |"),
+            RowCopyFormat::Json => assert_eq!(text, TWO_TEXT_ROWS_JSON),
+        }
+    }
+}
+
+#[gtk4::test]
+fn preferred_row_format_preserves_single_cell_copy_and_explicit_formats() {
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    grid.grid
+        .config()
+        .expect("a configured grid")
+        .settings
+        .set_row_copy_format("json")
+        .expect("store the format");
+    grid.grid.selection().select_item(0, true);
+    grid.focus(0, 1);
+
+    assert_eq!(copied(&grid, || activate(&grid.grid, "copy")), "A");
+
+    select_all(&grid);
+    assert_eq!(
+        copied(&grid, || activate(&grid.grid, "copy-csv-headers")),
+        "id,name\n1,A\n2,B\n"
+    );
+    let text = copied(&grid, || activate(&grid.grid, "copy"));
+    assert_eq!(text, TWO_TEXT_ROWS_JSON);
 }

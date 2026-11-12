@@ -105,9 +105,7 @@ struct EditSequenceSheet: View {
                     TextField(String(localized: "Cache"), text: field(\.cacheSize))
                     Toggle(String(localized: "Cycle"), isOn: cycles)
                     if let message = problem ?? saveError {
-                        Text(message)
-                            .foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
+                        NoticeLabel(message, severity: .error)
                             .textSelection(.enabled)
                     }
                 }
@@ -190,7 +188,7 @@ struct EditSequenceSheet: View {
             try await SequenceEditing.alter(details, to: settings, target: target, connection: connection)
             dismiss()
         } catch {
-            saveError = error.localizedDescription
+            saveError = GatedOperationFailure(error).message
             phase = .editing(details)
         }
     }

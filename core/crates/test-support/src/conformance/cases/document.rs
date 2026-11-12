@@ -12,22 +12,24 @@ use tablepro_core::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterV
 use tablepro_core::meta::{ObjectKind, ObjectScope, PagePosition, RowIdentity, TableRef};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{
-    ColumnInfo, Connection, DataModel, DriverError, EditorSession, EditorSessionOptions, EditorSessionState,
-    ErrorCategory, LinkState, ReadStatement, RowLimit, RunEnd, RunOptions, Truncation, UserSql, Value,
-    WorkspaceSettings,
+    CallOptions, ColumnInfo, Connection, DataModel, DriverError, EditorSession, EditorSessionOptions,
+    EditorSessionState, ErrorCategory, LinkState, ReadStatement, RowLimit, RunEnd, RunOptions, StatementOutcome,
+    Truncation, UserSql, Value, WorkspaceSettings, WriteAtomicity, WriteReport,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::conformance::support::{
-    CALL_DEADLINE, Collected, SCHEDULING_SLACK, dial, expect, run_completed, run_editor, run_options, unexpected,
-    unique, within, writable,
+    CALL_DEADLINE, Collected, SCHEDULING_SLACK, dial, expect, run_completed, run_editor, run_options, statement,
+    unexpected, unique, within, writable,
 };
 use crate::conformance::{ConformanceFailure, DocumentEngine, test_liveness};
 
 /// Long enough for a statement to reach the server before the case stops
 /// it, so the stop is tested rather than a race with sending.
 const SETTLE: Duration = Duration::from_millis(500);
+
+const SEEN_LIMIT: Duration = Duration::from_secs(10);
 
 /// More documents than two pages hold, so paging reads a third.
 const MANY: u32 = 1_234;
@@ -106,7 +108,7 @@ fn ids(read: &PageRead) -> Vec<i64> {
         .rows
         .iter()
         .filter_map(|row| match row.first() {
-            Some(Value::Int(id)) => Some(*id),
+            Some(Value::Int32(id)) => Some(i64::from(*id)),
             _ => None,
         })
         .collect()
@@ -275,7 +277,7 @@ async fn save(
     connection: &dyn Connection,
     table: &TableRef,
     changes: Vec<RowChange>,
-) -> Result<Result<tablepro_core::WriteReport, DriverError>, ConformanceFailure> {
+) -> Result<Result<WriteReport, DriverError>, ConformanceFailure> {
     let (columns, identity) = shape(connection, table).await?;
     let plan = plan_save(
         &*connection.dialect(),
@@ -292,7 +294,7 @@ async fn label_of(
     case: &'static str,
     connection: &dyn Connection,
     table: &TableRef,
-    id: i64,
+    id: i32,
 ) -> Result<Option<Value>, ConformanceFailure> {
     let read = page(
         case,
@@ -307,7 +309,7 @@ async fn label_of(
         .result
         .rows
         .iter()
-        .find(|row| row.first() == Some(&Value::Int(id)))
+        .find(|row| row.first() == Some(&Value::Int32(id)))
         .and_then(|row| row.get(1).cloned()))
 }
 
@@ -322,8 +324,9 @@ pub async fn a_field_edit_saves_and_reads_back<E: DocumentEngine>(engine: E) -> 
         connection.as_ref(),
         &table,
         vec![RowChange::Update(RowUpdate {
-            key: vec![Value::Int(7)],
+            key: vec![Value::Int32(7)],
             assignments: vec![(1, CellInput::Value(Value::Text("renamed".to_owned())))],
+            read: Vec::new(),
         })],
     )
     .await??;
@@ -352,7 +355,7 @@ pub async fn a_save_on_a_document_that_is_gone_changes_nothing<E: DocumentEngine
         connection.as_ref(),
         &table,
         vec![RowChange::Delete {
-            key: vec![Value::Int(2)],
+            key: vec![Value::Int32(2)],
         }],
     )
     .await??;
@@ -361,8 +364,9 @@ pub async fn a_save_on_a_document_that_is_gone_changes_nothing<E: DocumentEngine
         connection.as_ref(),
         &table,
         vec![RowChange::Update(RowUpdate {
-            key: vec![Value::Int(2)],
+            key: vec![Value::Int32(2)],
             assignments: vec![(1, CellInput::Value(Value::Text("ghost".to_owned())))],
+            read: Vec::new(),
         })],
     )
     .await?;
@@ -400,7 +404,7 @@ pub async fn an_insert_and_a_delete_land<E: DocumentEngine>(engine: E) -> Result
                 ],
             },
             RowChange::Delete {
-                key: vec![Value::Int(1)],
+                key: vec![Value::Int32(1)],
             },
         ],
     )
@@ -416,6 +420,122 @@ pub async fn an_insert_and_a_delete_land<E: DocumentEngine>(engine: E) -> Result
     })?;
     expect(INSERT_CASE, deleted.is_none(), || {
         format!("the deleted document reads {deleted:?}")
+    })?;
+    connection.close().await?;
+    Ok(())
+}
+
+/// Whether the first step of a save that failed at its second step for
+/// the reason `cause` matches was kept, as the engine's atomicity says it
+/// must be, or `None` when the outcome is not what that atomicity gives.
+fn first_step_kept(
+    atomicity: WriteAtomicity,
+    outcome: &Result<WriteReport, DriverError>,
+    cause: impl Fn(&DriverError) -> bool,
+) -> Option<bool> {
+    match (atomicity, outcome) {
+        (
+            WriteAtomicity::StatementByStatement,
+            Err(DriverError::PartiallyApplied {
+                applied: 1,
+                statement_index: 1,
+                failed_outcome: StatementOutcome::Failed,
+                source,
+            }),
+        ) if cause(source) => Some(true),
+        (
+            WriteAtomicity::Transactional,
+            Err(DriverError::RolledBack {
+                statement_index: 1,
+                source,
+            }),
+        ) if cause(source) => Some(false),
+        // With nothing applied, a guard mismatch is its own outcome.
+        (WriteAtomicity::Transactional, Err(error @ DriverError::RowGuardFailed { .. })) if cause(error) => Some(false),
+        _ => None,
+    }
+}
+
+const SECOND_STEP_CASE: &str = "a_save_that_fails_at_its_second_step_keeps_the_first";
+
+/// A save whose second step the server refuses, or finds its document
+/// gone, ends as the engine's atomicity says: where each step lands on
+/// its own, the first step stays and the outcome says one step applied
+/// and the second failed; on a transactional engine nothing stays.
+pub async fn a_save_that_fails_at_its_second_step_keeps_the_first<E: DocumentEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
+    let atomicity = E::driver().capabilities().dml_writes;
+    let connection = connect(SECOND_STEP_CASE, &engine, writable()).await?;
+    let table = filled(SECOND_STEP_CASE, &engine, connection.as_ref(), 3).await?;
+    let insert = |id: i64, label: &str| RowChange::Insert {
+        cells: vec![
+            CellInput::Value(Value::Int(id)),
+            CellInput::Value(Value::Text(label.to_owned())),
+            CellInput::Default,
+        ],
+    };
+    let rename = |id: i64, label: &str| {
+        RowChange::Update(RowUpdate {
+            key: vec![Value::Int(id)],
+            assignments: vec![(1, CellInput::Value(Value::Text(label.to_owned())))],
+            read: Vec::new(),
+        })
+    };
+
+    let refused = save(
+        connection.as_ref(),
+        &table,
+        vec![insert(100, "first"), insert(1, "taken")],
+    )
+    .await?;
+    let Some(kept) = first_step_kept(atomicity, &refused, |error: &DriverError| {
+        error.category() == ErrorCategory::Server
+    }) else {
+        return Err(unexpected(
+            SECOND_STEP_CASE,
+            format!("a {atomicity:?} engine answered a save whose second insert takes a used key with {refused:?}"),
+        ));
+    };
+    let first = label_of(SECOND_STEP_CASE, connection.as_ref(), &table, 100).await?;
+    expect(SECOND_STEP_CASE, first.is_some() == kept, || {
+        format!("the first insert reads {first:?} after the save failed at the second")
+    })?;
+    let taken = label_of(SECOND_STEP_CASE, connection.as_ref(), &table, 1).await?;
+    expect(SECOND_STEP_CASE, taken == Some(Value::Text("row 1".to_owned())), || {
+        format!("the document whose key the second insert took reads {taken:?}")
+    })?;
+
+    save(
+        connection.as_ref(),
+        &table,
+        vec![RowChange::Delete {
+            key: vec![Value::Int(3)],
+        }],
+    )
+    .await??;
+    let gone = save(
+        connection.as_ref(),
+        &table,
+        vec![rename(2, "edited"), rename(3, "ghost")],
+    )
+    .await?;
+    let Some(kept) = first_step_kept(atomicity, &gone, |error: &DriverError| {
+        matches!(error, DriverError::RowGuardFailed { statement_index: 1, .. })
+    }) else {
+        return Err(unexpected(
+            SECOND_STEP_CASE,
+            format!("a {atomicity:?} engine answered a save whose second edit finds no document with {gone:?}"),
+        ));
+    };
+    let edited = label_of(SECOND_STEP_CASE, connection.as_ref(), &table, 2).await?;
+    let expected = Value::Text(if kept { "edited" } else { "row 2" }.to_owned());
+    expect(SECOND_STEP_CASE, edited.as_ref() == Some(&expected), || {
+        format!("the first edit reads {edited:?} after the save failed at the second, not {expected:?}")
+    })?;
+    let ghost = label_of(SECOND_STEP_CASE, connection.as_ref(), &table, 3).await?;
+    expect(SECOND_STEP_CASE, ghost.is_none(), || {
+        format!("the deleted document came back as {ghost:?}")
     })?;
     connection.close().await?;
     Ok(())
@@ -439,7 +559,7 @@ pub async fn a_read_only_connection_refuses_writes_before_sending<E: DocumentEng
         read_only.as_ref(),
         &table,
         vec![RowChange::Delete {
-            key: vec![Value::Int(1)],
+            key: vec![Value::Int32(1)],
         }],
     )
     .await?;
@@ -490,28 +610,38 @@ pub async fn a_read_only_connection_refuses_writes_before_sending<E: DocumentEng
     Ok(())
 }
 
-/// Wait until the server runs no operation tagged with `marker`, or
-/// `bound` passes.
+/// Wait until the number of operations tagged with `marker` the server
+/// runs satisfies `done`, or `bound` passes.
+async fn until_running<E: DocumentEngine>(
+    case: &'static str,
+    engine: &E,
+    marker: &str,
+    done: impl Fn(u64) -> bool,
+    bound: Duration,
+) -> Result<(), ConformanceFailure> {
+    let give_up = Instant::now() + bound;
+    loop {
+        let running = engine.running_operations(marker).await?;
+        if done(running) {
+            return Ok(());
+        }
+        if Instant::now() >= give_up {
+            return Err(unexpected(
+                case,
+                format!("{running} operations were running after {bound:?}"),
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 async fn until_stopped<E: DocumentEngine>(
     case: &'static str,
     engine: &E,
     marker: &str,
     bound: Duration,
 ) -> Result<(), ConformanceFailure> {
-    let give_up = Instant::now() + bound;
-    loop {
-        let running = engine.running_operations(marker).await?;
-        if running == 0 {
-            return Ok(());
-        }
-        if Instant::now() >= give_up {
-            return Err(unexpected(
-                case,
-                format!("{running} operations were still running after {bound:?}"),
-            ));
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    until_running(case, engine, marker, |running| running == 0, bound).await
 }
 
 const STOPPED_CASE: &str = "a_stopped_statement_ends_and_the_session_runs_again";
@@ -627,6 +757,72 @@ pub async fn a_timed_out_statement_is_stopped_by_the_server<E: DocumentEngine>(
         format!("the session is {:?} after a timeout", session.state())
     })?;
     session.close().await;
+    connection.close().await?;
+    Ok(())
+}
+
+const WORKSPACE_STOP_CASE: &str = "a_stopped_workspace_read_ends_and_the_connection_reads_again";
+
+/// A generated read the server is running ends as cancelled within the
+/// cancel grace, the server lets it go, and the link stays live for the
+/// next page.
+pub async fn a_stopped_workspace_read_ends_and_the_connection_reads_again<E: DocumentEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
+    let grace = test_liveness().cancel_grace + SCHEDULING_SLACK;
+    let connection = connect(WORKSPACE_STOP_CASE, &engine, writable()).await?;
+    let table = filled(WORKSPACE_STOP_CASE, &engine, connection.as_ref(), 50).await?;
+    let marker = unique("workspace_stop");
+    let unbounded = statement(&engine.unbounded_statement(&table.name, &marker));
+    let cancel = CancellationToken::new();
+    let options = CallOptions::new(Some(Instant::now() + CALL_DEADLINE), cancel.clone());
+
+    let running = async {
+        let outcome = connection
+            .query_bound(&unbounded, RowLimit::EDITOR_DEFAULT, options)
+            .await;
+        (outcome, Instant::now())
+    };
+    let cancelling = async {
+        let seen = until_running(
+            WORKSPACE_STOP_CASE,
+            &engine,
+            &marker,
+            |running| running >= 1,
+            SEEN_LIMIT,
+        )
+        .await;
+        cancel.cancel();
+        (seen, Instant::now())
+    };
+    let ((outcome, finished), (seen, cancelled)) = tokio::join!(running, cancelling);
+    seen?;
+    let after_cancel = finished.saturating_duration_since(cancelled);
+
+    expect(
+        WORKSPACE_STOP_CASE,
+        matches!(&outcome, Err(DriverError::Cancelled)),
+        || format!("the stopped read gave {outcome:?}"),
+    )?;
+    expect(WORKSPACE_STOP_CASE, after_cancel <= grace, || {
+        format!("the read ended {after_cancel:?} after its cancel, past the {grace:?} grace")
+    })?;
+    until_stopped(WORKSPACE_STOP_CASE, &engine, &marker, grace).await?;
+    expect(WORKSPACE_STOP_CASE, connection.link_state() == LinkState::Live, || {
+        format!("the link is {:?} after a stop", connection.link_state())
+    })?;
+    let next = page(
+        WORKSPACE_STOP_CASE,
+        connection.as_ref(),
+        &table,
+        &FilterSet::default(),
+        &[],
+        &PagePosition::First,
+    )
+    .await?;
+    expect(WORKSPACE_STOP_CASE, ids(&next).len() == 50, || {
+        format!("the page after the stop read {} documents, not 50", ids(&next).len())
+    })?;
     connection.close().await?;
     Ok(())
 }

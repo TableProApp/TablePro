@@ -6,6 +6,7 @@ use libadwaita as adw;
 use super::result_item::ResultItem;
 use super::run_log::{EntryKind, RunLogEntry};
 use super::sidebar_policy::{self, SidebarState};
+use crate::ui::browse_tab::PendingChangesBar;
 use crate::ui::data_grid::DataGrid;
 
 /// How many results keep their page once shown, so going back to one
@@ -53,6 +54,10 @@ mod imp {
         #[template_child]
         pub details_toggle: TemplateChild<gtk4::ToggleButton>,
         #[template_child]
+        pub highlight_button: TemplateChild<gtk4::Button>,
+        #[template_child]
+        pub columns_button: TemplateChild<gtk4::Button>,
+        #[template_child]
         pub transaction_bar: TemplateChild<gtk4::Box>,
         #[template_child]
         pub transaction_label: TemplateChild<gtk4::Label>,
@@ -66,12 +71,15 @@ mod imp {
         pub list_view: TemplateChild<gtk4::ListView>,
         #[template_child]
         pub stack: TemplateChild<gtk4::Stack>,
+        #[template_child]
+        pub pending_bar: TemplateChild<PendingChangesBar>,
         pub items: std::cell::OnceCell<gio::ListStore>,
         pub selection: std::cell::OnceCell<gtk4::SingleSelection>,
         pub sidebar: Cell<SidebarState>,
         pub page_builder: RefCell<Option<PageBuilder>>,
         /// The lines whose page is built, most recently shown first.
         pub(super) built: RefCell<VecDeque<KeptPage>>,
+        pub(super) highlights: RefCell<std::collections::HashMap<u32, Vec<crate::services::grid::HighlightRule>>>,
     }
 
     #[glib::object_subclass]
@@ -81,6 +89,7 @@ mod imp {
         type ParentType = adw::Bin;
 
         fn class_init(klass: &mut Self::Class) {
+            PendingChangesBar::ensure_type();
             klass.bind_template();
         }
 
@@ -166,6 +175,7 @@ impl ResultsPane {
                 imp.stack.remove(&page);
             }
         }
+        imp.highlights.borrow_mut().clear();
         imp.stack.set_visible_child_name("empty");
         self.show_grid(None);
         imp.sidebar.set(SidebarState::default());
@@ -178,6 +188,43 @@ impl ResultsPane {
     /// thousands of statements builds one, not thousands.
     pub fn set_page_builder(&self, builder: impl Fn(u32) -> Option<ResultPage> + 'static) {
         self.imp().page_builder.replace(Some(Box::new(builder)));
+    }
+
+    pub(crate) fn pending_bar(&self) -> PendingChangesBar {
+        self.imp().pending_bar.get()
+    }
+
+    pub fn forget_pages(&self, forget: impl Fn(u32) -> bool) {
+        let imp = self.imp();
+        let forgotten: std::collections::VecDeque<KeptPage> = {
+            let mut built = imp.built.borrow_mut();
+            let (forgotten, kept) = built.drain(..).partition(|page| forget(page.index));
+            *built = kept;
+            forgotten
+        };
+        for page in forgotten {
+            self.remember_highlights(&page);
+            if let Some(widget) = imp.stack.child_by_name(&page_name(page.index)) {
+                imp.stack.remove(&widget);
+            }
+        }
+    }
+
+    pub fn rebuild_page(&self, index: u32) {
+        self.forget_pages(|page| page == index);
+        if self.selected() == Some(index) {
+            self.show_page(index);
+        }
+    }
+
+    // The grid of line `index` while its page is kept, shown or not.
+    pub fn kept_grid(&self, index: u32) -> Option<DataGrid> {
+        self.imp()
+            .built
+            .borrow()
+            .iter()
+            .find(|page| page.index == index)
+            .and_then(|page| page.grid.clone())
     }
 
     pub fn set_running(&self, running: bool) {
@@ -267,10 +314,20 @@ impl ResultsPane {
         let actions = grid.map(DataGrid::actions);
         self.insert_action_group("grid", actions.as_ref());
         self.imp().details_toggle.set_visible(grid.is_some());
+        self.imp().highlight_button.set_visible(grid.is_some());
+        self.imp().columns_button.set_visible(grid.is_some());
     }
 
-    /// Put the page of line `index` first among the kept ones, building
-    /// it when it is not kept.
+    fn remember_highlights(&self, page: &KeptPage) {
+        let rules = page.grid.as_ref().map(DataGrid::highlight_rules).unwrap_or_default();
+        let mut saved = self.imp().highlights.borrow_mut();
+        if rules.is_empty() {
+            saved.remove(&page.index);
+        } else {
+            saved.insert(page.index, rules);
+        }
+    }
+
     fn keep_page(&self, index: u32) -> bool {
         let imp = self.imp();
         {
@@ -286,6 +343,10 @@ impl ResultsPane {
         let Some(ResultPage { widget, grid }) = page else {
             return false;
         };
+        if let Some(grid) = &grid {
+            let rules = imp.highlights.borrow_mut().remove(&index).unwrap_or_default();
+            grid.set_highlight_rules(rules);
+        }
         imp.stack.add_named(&widget, Some(&page_name(index)));
         let evicted: Vec<KeptPage> = {
             let mut built = imp.built.borrow_mut();
@@ -294,6 +355,7 @@ impl ResultsPane {
             built.drain(keep..).collect()
         };
         for oldest in evicted {
+            self.remember_highlights(&oldest);
             if let Some(page) = imp.stack.child_by_name(&page_name(oldest.index)) {
                 imp.stack.remove(&page);
             }
@@ -317,7 +379,7 @@ pub fn entry_title(index: usize, entry: &RunLogEntry) -> (String, &'static str) 
             crate::i18n::ngettext_f(
                 "{n} Row Affected",
                 "{n} Rows Affected",
-                u32::try_from(*rows).unwrap_or(u32::MAX),
+                *rows,
                 &[("n", &rows.to_string())],
             ),
             icons::SUCCESS,
@@ -522,6 +584,10 @@ mod tests {
                 gtk4::AccessibleProperty::Label
             ));
         }
+        assert!(gtk4::test_accessible_has_property(
+            &pane.imp().columns_button.get(),
+            gtk4::AccessibleProperty::Label
+        ));
     }
 
     #[gtk4::test]
@@ -532,9 +598,54 @@ mod tests {
 
         assert!(!pane.imp().details_toggle.is_visible());
         assert!(
+            !pane.imp().columns_button.is_visible(),
+            "Columns without a grid to choose from"
+        );
+        assert!(
             pane.activate_action("grid.show-details", None).is_err(),
             "the pane reaches a grid it does not show"
         );
+    }
+
+    #[gtk4::test]
+    fn columns_follows_the_shown_result_and_clears_with_the_run() {
+        use crate::ui::data_grid::test_grid::{Grid, named};
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        let grid = Grid::open(vec![named("id", "int", true)], vec![]);
+        grid.window.set_child(None::<&gtk4::Widget>);
+        let pane = pane();
+        let result_grid = grid.grid.clone();
+        pane.set_page_builder(move |index| {
+            Some(if index == 0 {
+                ResultPage {
+                    widget: result_grid.clone().upcast(),
+                    grid: Some(result_grid.clone()),
+                }
+            } else {
+                ResultPage::plain(gtk4::Label::new(Some("Done")).upcast())
+            })
+        });
+        grid.window.set_child(Some(&pane));
+        let activated = Rc::new(Cell::new(0));
+        let count = activated.clone();
+        let action = gio::SimpleAction::new("columns", None);
+        action.connect_activate(move |_, _| count.set(count.get() + 1));
+        grid.grid.actions().add_action(&action);
+        pane.append(&[command(), command()]);
+        assert!(pane.imp().columns_button.is_visible());
+        pane.imp().columns_button.emit_clicked();
+        assert_eq!(activated.get(), 1);
+        pane.select(1);
+        assert!(!pane.imp().columns_button.is_visible());
+        assert!(pane.activate_action("grid.columns", None).is_err());
+        pane.select(0);
+        pane.imp().columns_button.emit_clicked();
+        assert_eq!(activated.get(), 2);
+        pane.clear();
+        assert!(!pane.imp().columns_button.is_visible());
+        assert!(pane.activate_action("grid.columns", None).is_err());
     }
 
     #[gtk4::test]
@@ -565,6 +676,63 @@ mod tests {
             pane.imp().stack.child_by_name("entry-0").is_none(),
             "the oldest page was kept"
         );
+    }
+
+    #[gtk4::test]
+    fn a_page_the_host_changed_is_built_again() {
+        let pane = pane();
+        pane.append(&[command(), command()]);
+        let first = pane.imp().stack.visible_child().expect("the first page");
+
+        pane.rebuild_page(0);
+
+        let rebuilt = pane.imp().stack.visible_child().expect("the first page again");
+        assert_ne!(rebuilt, first, "the page was not built again");
+        assert_eq!(built_pages(&pane), 1);
+        pane.select(1);
+        pane.forget_pages(|index| index == 0);
+        assert_eq!(built_pages(&pane), 1, "a forgotten page stayed");
+        assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-1"));
+    }
+
+    #[gtk4::test]
+    fn highlight_rules_survive_result_eviction_and_rebuild_but_not_a_new_run() {
+        use crate::services::grid::HighlightRule;
+        use crate::ui::data_grid::test_grid::{Grid, GridSpec, named, results};
+        use tablepro_core::Value;
+
+        let pane = pane();
+        pane.set_page_builder(|_| {
+            let fixture = Grid::build(
+                GridSpec::results(vec![named("status", "text", false)]),
+                results(&[vec![Value::Text("open".to_owned())]]),
+            );
+            fixture.window.set_child(None::<&gtk4::Widget>);
+            let grid = fixture.grid.clone();
+            Some(ResultPage {
+                widget: grid.clone().upcast(),
+                grid: Some(grid),
+            })
+        });
+        pane.append(&vec![command(); 10]);
+        let rule = HighlightRule::new("status");
+        pane.kept_grid(0)
+            .expect("first result")
+            .set_highlight_rules(vec![rule.clone()]);
+        for index in 1..10 {
+            pane.select(index);
+        }
+        assert!(pane.kept_grid(0).is_none());
+        pane.select(0);
+        assert_eq!(
+            pane.kept_grid(0).expect("restored result").highlight_rules(),
+            std::slice::from_ref(&rule)
+        );
+        pane.rebuild_page(0);
+        assert_eq!(pane.kept_grid(0).expect("rebuilt result").highlight_rules(), [rule]);
+        pane.clear();
+        pane.append(&[command()]);
+        assert!(pane.kept_grid(0).expect("new run").highlight_rules().is_empty());
     }
 
     #[gtk4::test]

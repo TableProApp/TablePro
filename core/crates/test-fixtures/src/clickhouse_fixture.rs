@@ -18,6 +18,9 @@ const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
 const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
 const PASSWORD_USER: &str = "tablepro";
 const LIMITED_USER: &str = "tablepro_limited";
+const READONLY_USER: &str = "tablepro_readonly";
+const LENIENT_READONLY_USER: &str = "tablepro_readonly_lenient";
+const UNSYNCED_USER: &str = "tablepro_unsynced";
 const DATABASE: &str = "tablepro";
 const SERVICE: &str = "clickhouse";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
@@ -43,21 +46,27 @@ impl ClickHouseFixture {
     pub const HTTPS_PORT: u16 = 8443;
 
     pub async fn start() -> Result<Self, FixtureError> {
-        Self::launch(None, Vec::new(), READY_TIMEOUT).await
+        Self::launch(TestPki::generate()?, None, Vec::new(), READY_TIMEOUT).await
     }
 
     pub async fn start_in(network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(Some(network), Vec::new(), READY_TIMEOUT).await
+        Self::launch(TestPki::generate()?, Some(network), Vec::new(), READY_TIMEOUT).await
+    }
+
+    /// A server whose HTTPS certificate is self-signed, which a client
+    /// accepts only by trusting that certificate itself.
+    pub async fn start_self_signed() -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate_self_signed()?, None, Vec::new(), READY_TIMEOUT).await
     }
 
     // No CLICKHOUSE_DB: the image would start, stop and restart the server
     // to create it. One HTTP CREATE DATABASE is both that and the readiness check.
     async fn launch(
+        pki: TestPki,
         network: Option<&TestNetwork>,
         extra_files: Vec<ContainerFile>,
         ready_timeout: Duration,
     ) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
         let version = ClickHouseVersion::selected()?;
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
@@ -112,8 +121,30 @@ impl ClickHouseFixture {
              </server></openSSL>\n\
              </clickhouse>\n"
         );
+        // The stock config turns on `settings_constraints_replace_previous`, without which a profile cannot name a
+        // setting `changeable_in_readonly`.
+        let profiles = format!(
+            "<profiles>\n\
+             <{READONLY_USER}><profile>default</profile><readonly>1</readonly></{READONLY_USER}>\n\
+             <{LENIENT_READONLY_USER}><profile>default</profile><readonly>1</readonly><constraints>\
+             <output_format_json_quote_denormals><changeable_in_readonly/></output_format_json_quote_denormals>\
+             <readonly><changeable_in_readonly/></readonly>\
+             </constraints></{LENIENT_READONLY_USER}>\n\
+             <{UNSYNCED_USER}><profile>default</profile><mutations_sync>0</mutations_sync><constraints>\
+             <mutations_sync><readonly/></mutations_sync>\
+             </constraints></{UNSYNCED_USER}>\n\
+             </profiles>\n"
+        );
+        let own_profile = [READONLY_USER, LENIENT_READONLY_USER, UNSYNCED_USER].map(|name| {
+            format!(
+                "<{name}><password>{password}</password><networks><ip>::/0</ip></networks>\
+                 <profile>{name}</profile><quota>default</quota></{name}>\n"
+            )
+        });
+        let own_profile = own_profile.concat();
         let users = format!(
-            "<clickhouse><users>\n\
+            "<clickhouse>{profiles}<users>\n\
+             {own_profile}\
              <{PASSWORD_USER}>\n\
              <password>{password}</password>\n\
              <networks><ip>::/0</ip></networks>\n\
@@ -183,6 +214,21 @@ impl ClickHouseFixture {
     /// stock server config holds back without a grant.
     pub fn limited_credentials(&self) -> FixtureCredentials {
         FixtureCredentials::new(LIMITED_USER, &self.password)
+    }
+
+    // A login whose profile sets `readonly=1` and lets it change no setting.
+    pub fn readonly_credentials(&self) -> FixtureCredentials {
+        FixtureCredentials::new(READONLY_USER, &self.password)
+    }
+
+    // A login at `readonly=1` whose profile lets it change `output_format_json_quote_denormals` and `readonly` itself.
+    pub fn lenient_readonly_credentials(&self) -> FixtureCredentials {
+        FixtureCredentials::new(LENIENT_READONLY_USER, &self.password)
+    }
+
+    // A login that may write, whose profile holds `mutations_sync` at 0.
+    pub fn unsynced_credentials(&self) -> FixtureCredentials {
+        FixtureCredentials::new(UNSYNCED_USER, &self.password)
     }
 
     pub fn certificate_credentials(&self) -> FixtureCredentials {
@@ -350,9 +396,10 @@ mod tests {
     #[ignore = "requires docker"]
     async fn a_server_that_exits_is_reported_at_once_with_its_state_and_logs() {
         let broken = config_file("zz-broken.xml", "<timezone>Nowhere/Invalid</timezone>");
+        let pki = TestPki::generate().unwrap();
         let started = Instant::now();
 
-        let error = ClickHouseFixture::launch(None, vec![broken], READY_TIMEOUT)
+        let error = ClickHouseFixture::launch(pki, None, vec![broken], READY_TIMEOUT)
             .await
             .err()
             .unwrap();
@@ -373,8 +420,9 @@ mod tests {
     #[ignore = "requires docker"]
     async fn a_server_that_never_answers_is_reported_with_its_state_and_logs() {
         let elsewhere = config_file("zz-elsewhere.xml", "<http_port>8124</http_port>");
+        let pki = TestPki::generate().unwrap();
 
-        let error = ClickHouseFixture::launch(None, vec![elsewhere], Duration::from_secs(8))
+        let error = ClickHouseFixture::launch(pki, None, vec![elsewhere], Duration::from_secs(8))
             .await
             .err()
             .unwrap();

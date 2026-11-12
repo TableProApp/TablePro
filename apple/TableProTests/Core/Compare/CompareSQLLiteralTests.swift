@@ -44,6 +44,41 @@ struct CompareSQLLiteralTests {
         #expect(literal == #"'x\'"#)
     }
 
+    // Quoted, MySQL stores and compares a BIT value as its characters' bytes, so a synced 5 lands as 53.
+    @Test
+    func mysqlBitIsWrittenAsItsNumber() {
+        let driver = NoBackslashEscapesDriver()
+        let bits = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "BIT(8)")
+        #expect(bits == .integer(rawType: "BIT(8)"))
+        for type in [DatabaseType.mysql, .mariadb] {
+            #expect(CompareSQLLiteral.textLiteral("5", columnType: bits, databaseType: type, driver: driver) == "5")
+            #expect(CompareSQLLiteral.literal(
+                for: .text("170"), columnType: bits, databaseType: type, driver: driver, keptInScript: false
+            ) == "170")
+        }
+        #expect(CompareSQLLiteral.textLiteral("abc", columnType: bits, databaseType: .mysql, driver: driver) == "'abc'")
+        #expect(CompareSQLLiteral.textLiteral("+5", columnType: bits, databaseType: .mysql, driver: driver) == "'+5'")
+        #expect(CompareSQLLiteral.textLiteral("-1", columnType: bits, databaseType: .mysql, driver: driver) == "-1")
+    }
+
+    @Test
+    func mysqlOneBitFlagIsWrittenAsItsNumber() {
+        let driver = NoBackslashEscapesDriver()
+        let flag = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "BIT")
+        #expect(flag.isBooleanType)
+        #expect(CompareSQLLiteral.textLiteral("1", columnType: flag, databaseType: .mysql, driver: driver) == "1")
+        #expect(CompareSQLLiteral.textLiteral("-1", columnType: flag, databaseType: .mysql, driver: driver) == "'-1'")
+    }
+
+    @Test
+    func otherBooleansAndBitStringsStayQuoted() {
+        let driver = NoBackslashEscapesDriver()
+        let tinyint = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "TINYINT(1)")
+        #expect(CompareSQLLiteral.textLiteral("1", columnType: tinyint, databaseType: .mysql, driver: driver) == "'1'")
+        let bit = ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "bit(8)")
+        #expect(CompareSQLLiteral.textLiteral("5", columnType: bit, databaseType: .postgresql, driver: driver) != "5")
+    }
+
     @Test
     func bitStringEnginesKeepTheDefaultSpelling() throws {
         for type in [DatabaseType.mysql, .mariadb, .tidb, .databend, .oceanbase, .sqlite, .clickhouse, .libsql, .turso, .cloudflareD1] {
@@ -75,12 +110,25 @@ struct CompareSQLLiteralTests {
         #expect(CompareSQLLiteral.prefixed("0x89504E47", databaseType: .mssql) == "0x89504E47")
     }
 
+    // `'\x…'::bytea` reads its backslash by `standard_conforming_strings`, and with that off a sync stored other bytes.
     @Test
-    func postgresFamilyUsesAByteaCast() throws {
-        for type in [DatabaseType.postgresql, .cockroachdb, .redshift, .pglite, .kingbasees] {
+    func postgresFamilyDecodesHex() throws {
+        for type in [DatabaseType.postgresql, .cockroachdb, .pglite] {
             let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
-            #expect(literal == "'\\x89504e47'::bytea", "\(type.rawValue) uses a bytea literal")
+            #expect(literal == "decode('89504E47', 'hex')", "\(type.rawValue) decodes hex")
         }
+    }
+
+    // KingbaseES documents `decode` only as Oracle's DECODE; its bytea decoder is not the PostgreSQL one.
+    @Test
+    func kingbaseKeepsTheByteaLiteral() {
+        #expect(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .kingbasees) == "'\\x89504E47'::bytea")
+    }
+
+    // Redshift has no bytea, and its DECODE is the CASE-like one; a binary column there is VARBYTE.
+    @Test
+    func redshiftReadsHexIntoVarbyte() {
+        #expect(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .redshift) == "from_hex('89504E47')")
     }
 
     @Test
@@ -97,6 +145,12 @@ struct CompareSQLLiteralTests {
         #expect(literal == "HEXTORAW('89504E47')")
     }
 
+    // `HEXTORAW('')` stores NULL, and a `BLOB NOT NULL` refuses it.
+    @Test
+    func oracleWritesAnEmptyValueAsAnEmptyBlob() {
+        #expect(CompareSQLLiteral.binaryLiteral(for: Data(), databaseType: .oracle) == "EMPTY_BLOB()")
+    }
+
     /// An engine this build does not name falls back to the driver's own spelling rather than
     /// guessing at one, which is why the helper returns nil instead of a default.
     @Test
@@ -108,6 +162,6 @@ struct CompareSQLLiteralTests {
     func emptyDataStillProducesAValidLiteral() throws {
         let literal = try #require(CompareSQLLiteral.binaryLiteral(for: Data(), databaseType: .postgresql))
 
-        #expect(literal == "'\\x'::bytea")
+        #expect(literal == "decode('', 'hex')")
     }
 }

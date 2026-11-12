@@ -14,44 +14,61 @@ extension MainContentCoordinator {
         Logger(subsystem: "com.TablePro", category: "Rewind")
     }
 
-    /// Whether the selected tab is one a save could be restored on. Says nothing about whether
-    /// there is a save to restore, which costs a read to find out, and nothing about the licence.
-    ///
-    /// Deliberately not gated on the licence. Someone who has just saved the wrong thing has to be
-    /// able to find this, and a dimmed control they never notice tells them nothing about what the
-    /// licence is for. The gate is at the point of use instead, where it can explain itself.
+    // Not gated on the license: someone who just saved the wrong thing must find this. The gate
+    // is at the point of use, where it can say what the license is for.
     var canRewindSelectedTab: Bool {
+        guard let target = selectedRewindTarget else { return false }
+        return services.queryHistoryManager.rewindAvailability.hasSnapshot(for: target)
+    }
+
+    // The drawer's save names its own target, so the selected table need not have one kept.
+    func canRestoreSave(historyId: UUID) -> Bool {
+        isSelectedTabRewindable && services.queryHistoryManager.rewindAvailability.hasSnapshot(forHistoryId: historyId)
+    }
+
+    private var isSelectedTabRewindable: Bool {
         guard let tab = tabManager.selectedTab, tab.tabType == .table else { return false }
         return tab.tableContext.tableName != nil && !safeModeLevel.blocksAllWrites
     }
 
+    private var selectedRewindTarget: RewindAvailability.Target? {
+        guard isSelectedTabRewindable,
+              let tableName = tabManager.selectedTab?.tableContext.tableName,
+              let tabScope = selectedTabScope
+        else { return nil }
+        return RewindAvailability.Target(
+            connectionId: connection.id,
+            database: tabScope.database,
+            schema: tabScope.schema,
+            table: tableName
+        )
+    }
+
     private var isDataRewindLicensed: Bool {
-        services.licenseManager.isFeatureAvailable(.dataRewind)
+        services.featureAccess.isAvailable(.dataRewind)
     }
 
     func rewindLastSave() {
-        guard presentUpsellUnlessLicensed() else { return }
-        guard canRewindSelectedTab,
-              let tab = tabManager.selectedTab,
-              let tableName = tab.tableContext.tableName,
-              let tabScope = selectedTabScope
-        else { return }
+        guard admitsSheetCommand(), presentUpsellUnlessLicensed() else { return }
+        guard canRewindSelectedTab, let target = selectedRewindTarget else { return }
 
         Task { [weak self] in
             guard let self else { return }
             let records = await services.queryHistoryManager.rewindSnapshots(
-                connectionId: connection.id,
-                database: tabScope.database,
-                schema: tabScope.schema,
-                table: tableName,
+                connectionId: target.connectionId,
+                database: target.database,
+                schema: target.schema,
+                table: target.table,
                 limit: 1
             )
+            guard admitsSheetCommand() else { return }
+            // Enabled from the last publish; the save can be pruned or unreadable by the time this reads it.
             guard let record = records.first else {
                 AlertHelper.showInfoSheet(
                     title: String(localized: "Nothing to Restore"),
                     message: String(
                         format: String(localized: "No saved changes to '%@' are being kept."),
-                        tableName
+                        target.table
                     ),
                     window: contentWindow
                 )
@@ -61,19 +78,18 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Reached from the history drawer, where the row the user clicked is the save itself.
-    ///
-    /// The drawer can be scoped to every connection, so the record may belong to another one. A
-    /// rewind planned against the window's current scope would then read and write a same-named
-    /// table in the wrong database, which is why the record's own target decides where it runs.
+    // The record's own target decides where it runs: a rewind planned against the window's scope
+    // would write a same-named table in the wrong database.
     func rewindSave(historyId: UUID) {
-        guard presentUpsellUnlessLicensed(), canRewindSelectedTab else { return }
+        guard admitsSheetCommand(), presentUpsellUnlessLicensed(), canRestoreSave(historyId: historyId) else { return }
         Task { [weak self] in
             guard let self else { return }
             let manager = services.queryHistoryManager
+            // Enabled from the last publish; the save can be pruned or unreadable by the time this reads it.
             guard let recordId = await manager.rewindSnapshotId(forHistoryId: historyId),
                   let record = await manager.rewindSnapshot(id: recordId)
             else {
+                guard admitsSheetCommand() else { return }
                 AlertHelper.showInfoSheet(
                     title: String(localized: "Nothing to Restore"),
                     message: String(localized: "The values this save replaced are no longer being kept."),
@@ -81,44 +97,23 @@ extension MainContentCoordinator {
                 )
                 return
             }
+            // The drawer disables another connection's saves; this keeps a stray call off the wrong database.
             guard record.connectionId == connection.id else {
-                AlertHelper.showInfoSheet(
-                    title: String(localized: "Another Connection"),
-                    message: String(
-                        localized: "This save was made on a different connection. Open that connection to restore it."
-                    ),
-                    window: contentWindow
-                )
+                Self.rewindLogger.error("Refused a rewind of another connection's save")
                 return
             }
             await presentRewind(for: record, scope: scope(for: record))
         }
     }
 
-    /// Returns false, having explained itself, when the licence does not cover this.
-    ///
-    /// The control is reachable without a licence on purpose, so this is the moment the feature
-    /// gets described to the person who just discovered they want it.
+    // The control is reachable without a license on purpose, so this is where the gate explains itself.
     private func presentUpsellUnlessLicensed() -> Bool {
         guard !isDataRewindLicensed else { return true }
-        Task { @MainActor in
-            let alert = NSAlert()
-            alert.messageText = String(localized: "Data Rewind needs a Pro license")
-            alert.informativeText = String(
-                localized: "Restore the previous values of rows you already saved. Saves are kept on this Mac for 7 days, encrypted, and never leave it."
-            )
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: String(localized: "Purchase License"))
-            AlertHelper.addCancelButton(to: alert, title: String(localized: "Not Now"))
-            AlertHelper.present(alert, in: contentWindow) { response in
-                guard response == .alertFirstButtonReturn else { return }
-                NSWorkspace.shared.open(SupportLinks.pricing(.featureGate(.dataRewind)))
-            }
-        }
+        LicenseGateAlert.present(for: .dataRewind, in: contentWindow, access: services.featureAccess)
         return false
     }
 
-    /// Where the record's own rows live, which is not necessarily where the window is pointing.
+    // Where the record's own rows live, not necessarily where the window points.
     private func scope(for record: RewindRecord) -> DatabaseScope {
         DatabaseScope(
             connectionId: connection.id,
@@ -128,6 +123,7 @@ extension MainContentCoordinator {
     }
 
     private func presentRewind(for record: RewindRecord, scope: DatabaseScope) async {
+        guard admitsSheetCommand() else { return }
         if let refusal = record.blanketRefusal {
             AlertHelper.showInfoSheet(
                 title: String(localized: "This Save Cannot Be Restored"),
@@ -147,10 +143,12 @@ extension MainContentCoordinator {
                 factory: rewindStatementFactory(for: record),
                 browseBuilder: services.databaseManager.driver(for: connectionId)?.queryBuildingPluginDriver
             )
+            guard admitsSheetCommand() else { return }
             rewindPlan = plan
             activeSheet = .rewind
         } catch {
             Self.rewindLogger.error("Could not plan a rewind: \(error.publicLogShape, privacy: .public)")
+            guard admitsSheetCommand() else { return }
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could Not Prepare the Restore"),
                 message: error.localizedDescription,
@@ -180,12 +178,10 @@ extension MainContentCoordinator {
         }
     }
 
-    /// A factory shaped by the record rather than by the live tab: the columns, keys and computed
-    /// columns that matter are the ones the save ran against, and the tab may be on another table
-    /// by now.
+    // Shaped by the record, not the live tab: the save's columns and keys matter, and the tab may have moved on.
     private func rewindStatementFactory(for record: RewindRecord) -> RowChangeStatementFactory {
         let operation = record.operations.first
-        return RowChangeStatementFactory(
+        var factory = RowChangeStatementFactory(
             tableName: record.target.table,
             schemaName: record.target.schema,
             columns: operation?.columns ?? [],
@@ -196,5 +192,7 @@ extension MainContentCoordinator {
             pluginDriver: changeManager.pluginDriver,
             identityColumns: record.identityColumns.map(Set.init)
         )
+        factory.database = record.target.database.isEmpty ? nil : record.target.database
+        return factory
     }
 }

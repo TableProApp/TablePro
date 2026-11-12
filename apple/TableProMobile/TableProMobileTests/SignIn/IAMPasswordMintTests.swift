@@ -146,7 +146,8 @@ struct IAMPasswordMintTests {
             fields: [IAMSignIn.Field.rdsEndpoint: "\(Self.rdsHost):5432"]
         )
 
-        await #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: "db.internal.example.com")) {
+        let refusal = AWSAuthError.rdsEndpointNotDialed(endpoint: Self.rdsHost, host: "db.internal.example.com")
+        await #expect(throws: refusal) {
             try await mint.password(for: connection, method: .awsAccessKey, secureStore: store)
         }
     }

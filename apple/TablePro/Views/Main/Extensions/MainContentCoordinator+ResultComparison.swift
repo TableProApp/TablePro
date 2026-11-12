@@ -24,9 +24,10 @@ extension MainContentCoordinator {
               let left = comparisonSide(of: resultSet, in: tab) else { return }
         let leftId = resultSet.id
         let tabId = tab.id
+        let activeId = tab.display.activeResultSet?.id
         let partner = Self.defaultComparisonPartner(
             of: leftId,
-            among: tab.display.resultSets.filter { isComparable($0, in: tab) }.map(\.id)
+            among: tab.display.resultSets.filter { isComparable($0, in: tab, activeResultSetId: activeId) }.map(\.id)
         )
         let model = ResultComparisonModel(left: left, preferredRightId: partner) {
             Self.comparisonCandidates(excluding: leftId, homeTabId: tabId)
@@ -55,13 +56,15 @@ extension MainContentCoordinator {
             for tab in coordinator.tabManager.tabs where tab.tabType == .query {
                 let isHome = tab.id == homeTabId
                 let tabId = tab.id
-                for resultSet in tab.display.resultSets
+                let activeId = tab.display.activeResultSet?.id
+                let titles = ResultSetMenuModel.displayLabels(for: tab.display.resultSets.map(\.label))
+                for (index, resultSet) in tab.display.resultSets.enumerated()
                     where resultSet.id != leftId && (isHome || resultSet.isPinned)
-                    && coordinator.isComparable(resultSet, in: tab) {
+                    && coordinator.isComparable(resultSet, in: tab, activeResultSetId: activeId) {
                     let resultId = resultSet.id
                     let candidate = ResultComparisonCandidate(
                         id: resultId,
-                        title: comparisonTitle(of: resultSet, in: tab.display),
+                        title: titles[index],
                         group: isHome ? String(localized: "This Tab") : coordinator.comparisonDetail(for: tab),
                         isPinned: resultSet.isPinned,
                         read: { [weak coordinator] in
@@ -87,7 +90,7 @@ extension MainContentCoordinator {
 
     func comparisonSide(of resultSet: ResultSet, in tab: QueryTab) -> ResultComparisonSide? {
         guard !resultSet.isExplainResult else { return nil }
-        let rows = comparisonRows(of: resultSet, in: tab)
+        let rows = comparisonRows(of: resultSet, in: tab, activeResultSetId: tab.display.activeResultSet?.id)
         guard !rows.columns.isEmpty else { return nil }
         let primaryKey: [String]
         if let origin = resultSet.origin, origin.keysResolved, origin.tableName?.isEmpty == false {
@@ -111,12 +114,18 @@ extension MainContentCoordinator {
     }
 
     func isComparable(_ resultSet: ResultSet, in tab: QueryTab) -> Bool {
-        !resultSet.isExplainResult && !comparisonRows(of: resultSet, in: tab).columns.isEmpty
+        isComparable(resultSet, in: tab, activeResultSetId: tab.display.activeResultSet?.id)
+    }
+
+    // A pass over every result reads the active id once: finding it per result made the pass quadratic.
+    func isComparable(_ resultSet: ResultSet, in tab: QueryTab, activeResultSetId: UUID?) -> Bool {
+        !resultSet.isExplainResult
+            && !comparisonRows(of: resultSet, in: tab, activeResultSetId: activeResultSetId).columns.isEmpty
     }
 
     // The active result's rows live in the tab's shared buffer, which page loads and Fetch All write to.
-    private func comparisonRows(of resultSet: ResultSet, in tab: QueryTab) -> TableRows {
-        guard tab.display.activeResultSet?.id == resultSet.id else { return resultSet.tableRows }
+    private func comparisonRows(of resultSet: ResultSet, in tab: QueryTab, activeResultSetId: UUID?) -> TableRows {
+        guard activeResultSetId == resultSet.id else { return resultSet.tableRows }
         return tabSessionRegistry.tableRows(for: tab.id)
     }
 }

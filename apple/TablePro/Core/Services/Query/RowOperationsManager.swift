@@ -49,10 +49,12 @@ final class RowOperationsManager {
     func addNewRow(tableRows: inout TableRows, uuidKeyForms: [Int: UUIDCellForm] = [:]) -> AddNewRowResult? {
         var newRowValues: [PluginCellValue] = []
         var absentColumns: Set<Int> = []
+        var defaultColumns: Set<Int> = []
         var prefilled: Set<Int> = []
         for (index, column) in tableRows.columns.enumerated() {
             if tableRows.generatedColumns.contains(column) || tableRows.serverAssignsValue(forColumn: column) {
-                newRowValues.append(.text("__DEFAULT__"))
+                newRowValues.append(.columnDefault)
+                defaultColumns.insert(index)
             } else if let form = uuidKeyForms[index] {
                 newRowValues.append(Self.freshUUID(form))
                 prefilled.insert(index)
@@ -62,7 +64,11 @@ final class RowOperationsManager {
             }
         }
         return appendInsertedRow(
-            values: newRowValues, absentColumns: absentColumns, prefilledColumns: prefilled, to: &tableRows
+            values: newRowValues,
+            absentColumns: absentColumns,
+            expressionColumns: defaultColumns,
+            prefilledColumns: prefilled,
+            to: &tableRows
         )
     }
 
@@ -86,14 +92,15 @@ final class RowOperationsManager {
             + Array(tableRows.columnIdentity.keys)
         for resetColumn in resetColumns {
             if let index = tableRows.columns.firstIndex(of: resetColumn), index < newValues.count {
+                absentColumns.remove(index)
                 if let form = uuidKeyForms[index] {
                     newValues[index] = Self.freshUUID(form)
                     prefilled.insert(index)
+                    expressionColumns.remove(index)
                 } else {
-                    newValues[index] = .text("__DEFAULT__")
+                    newValues[index] = .columnDefault
+                    expressionColumns.insert(index)
                 }
-                absentColumns.remove(index)
-                expressionColumns.remove(index)
             }
         }
         return appendInsertedRow(
@@ -366,8 +373,10 @@ final class RowOperationsManager {
 
         switch parseResult {
         case .success(let parsedRows):
+            let unfilled = Self.unfilledCellValues(columns: columns, tableRows: tableRows)
+            let filled = parsedRows.map { Self.fillingBlankCells($0, with: unfilled) }
             return insertParsedRows(
-                keepsMissingFields ? parsedRows.map(Self.nullsAsMissingFields) : parsedRows,
+                keepsMissingFields ? filled.map(Self.nullsAsMissingFields) : filled,
                 uuidKeyForms: uuidKeyForms,
                 into: &tableRows
             )
@@ -404,9 +413,9 @@ final class RowOperationsManager {
             }
 
             if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
-                values[pkIndex] = .text("__DEFAULT__")
+                values[pkIndex] = .columnDefault
                 absentColumns.remove(pkIndex)
-                expressionColumns.remove(pkIndex)
+                expressionColumns.insert(pkIndex)
             }
 
             return ParsedRow(
@@ -436,11 +445,49 @@ final class RowOperationsManager {
                 return .entered(text, columnType: tableRows.editingColumnType(at: column))
             }
             if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
-                values[pkIndex] = .text("__DEFAULT__")
-                expressionColumns.remove(pkIndex)
+                values[pkIndex] = .columnDefault
+                expressionColumns.insert(pkIndex)
             }
             return ParsedRow(values: values, sourceLineNumber: index + 1, expressionColumns: expressionColumns)
         }
+    }
+
+    // A blank cell of pasted text was left unfilled, so it takes what a new row's cell does: the server's value where
+    // the column has a default, else NULL. A NOT NULL text column with no default takes the empty string it can hold.
+    private static func unfilledCellValues(
+        columns: [String],
+        tableRows: TableRows
+    ) -> (values: [PluginCellValue], defaults: Set<Int>) {
+        var defaults: Set<Int> = []
+        let values = columns.enumerated().map { position, name -> PluginCellValue in
+            guard let index = tableRows.columns.firstIndex(of: name) else { return .null }
+            if tableRows.generatedColumns.contains(name) || tableRows.serverAssignsValue(forColumn: name) {
+                defaults.insert(position)
+                return .columnDefault
+            }
+            if tableRows.refusesNull(columnAt: index), tableRows.editingColumnType(at: index)?.hasEmptyValue == true {
+                return .text("")
+            }
+            return .null
+        }
+        return (values, defaults)
+    }
+
+    private static func fillingBlankCells(
+        _ row: ParsedRow,
+        with unfilled: (values: [PluginCellValue], defaults: Set<Int>)
+    ) -> ParsedRow {
+        guard !row.blankColumns.isEmpty else { return row }
+        var values = row.values
+        var expressionColumns = row.expressionColumns
+        for index in row.blankColumns where index < values.count && index < unfilled.values.count {
+            values[index] = unfilled.values[index]
+            if unfilled.defaults.contains(index) { expressionColumns.insert(index) }
+        }
+        var filled = ParsedRow(values: values, sourceLineNumber: row.sourceLineNumber)
+        filled.absentColumns = row.absentColumns
+        filled.expressionColumns = expressionColumns
+        return filled
     }
 
     // Text can't say which fields a row lacks, so a pasted NULL leaves the field out, as a new row does.
@@ -480,14 +527,17 @@ final class RowOperationsManager {
         return containsComma ? CSVRowParser() : TSVRowParser()
     }
 
-    // Every paste path resets the key to __DEFAULT__ first; an unfilled UUID key then takes a fresh UUID per row.
+    // Every paste path resets the key to its default first; an unfilled UUID key then takes a fresh UUID per row.
     private func insertParsedRows(
         _ parsedRows: [ParsedRow],
         uuidKeyForms: [Int: UUIDCellForm],
         into tableRows: inout TableRows
     ) -> PasteRowsResult {
         var pastedRowInfo: [PastedRowInfo] = []
-        var insertedIndices = IndexSet()
+        var recorded: [DataChangeManager.InsertedRow] = []
+        pastedRowInfo.reserveCapacity(parsedRows.count)
+        recorded.reserveCapacity(parsedRows.count)
+        let firstIndex = tableRows.count
 
         // Pasted server-owned values skip the cell-edit check and the generator drops them, so the grid showed unsaved values.
         let serverOwned = tableRows.columns.enumerated().filter { _, name in
@@ -499,23 +549,28 @@ final class RowOperationsManager {
             var absentColumns = parsedRow.absentColumns
             var expressionColumns = parsedRow.expressionColumns.filter { $0 < rowValues.count }
             for index in serverOwned where index < rowValues.count {
-                rowValues[index] = .text("__DEFAULT__")
+                rowValues[index] = .columnDefault
                 absentColumns.remove(index)
-                expressionColumns.remove(index)
+                expressionColumns.insert(index)
             }
-            for (index, form) in uuidKeyForms where index < rowValues.count && rowValues[index] == .text("__DEFAULT__") {
+            for (index, form) in uuidKeyForms where index < rowValues.count
+                && rowValues[index].isColumnDefault(isExpression: expressionColumns.contains(index)) {
                 rowValues[index] = Self.freshUUID(form)
                 absentColumns.remove(index)
                 expressionColumns.remove(index)
             }
-            insertedIndices.insert(tableRows.count)
-            let inserted = appendInsertedRow(
-                values: rowValues, absentColumns: absentColumns, expressionColumns: expressionColumns, to: &tableRows
-            )
-            pastedRowInfo.append(PastedRowInfo(rowID: inserted.rowID, values: rowValues))
+            let rowID = RowID.inserted(UUID())
+            let storageIndex = tableRows.count
+            tableRows.appendInsertedRow(id: rowID, values: rowValues, absentColumns: absentColumns)
+            recorded.append(DataChangeManager.InsertedRow(
+                location: InsertedRowLocation(rowID: rowID, storageIndex: storageIndex),
+                values: rowValues, absentColumns: absentColumns, expressionColumns: expressionColumns
+            ))
+            pastedRowInfo.append(PastedRowInfo(rowID: rowID, values: rowValues))
         }
+        changeManager.recordBatchRowInsertion(rows: recorded)
 
-        let delta: Delta = insertedIndices.isEmpty ? .none : .rowsInserted(insertedIndices)
+        let delta: Delta = recorded.isEmpty ? .none : .rowsInserted(IndexSet(integersIn: firstIndex..<tableRows.count))
         return PasteRowsResult(pastedRows: pastedRowInfo, delta: delta)
     }
 }

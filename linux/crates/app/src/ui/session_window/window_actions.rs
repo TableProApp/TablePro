@@ -5,6 +5,7 @@
 //! exports as `win`: a second group inserted under that name would hide
 //! it from the application's accelerators and from D-Bus.
 
+use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
@@ -14,7 +15,7 @@ use tablepro_session::SessionKey;
 
 use super::session_page::SessionPage;
 use super::session_window_command::ConnectFailure;
-use super::{SessionWindow, SessionWindowInput};
+use super::{LibraryEdit, SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 
 /// Builds the input an action sends.
@@ -28,7 +29,7 @@ const SAFE_MODE: &str = "safe-mode";
 /// The window's actions and the input each one sends. A closure holds
 /// only the window's input sender, so an action that outlives the window
 /// drops its input rather than reaching a window that is gone.
-const ACTIONS: [(&str, ActionInput); 11] = [
+const ACTIONS: [(&str, ActionInput); 12] = [
     ("new-connection", || SessionWindowInput::OpenConnectDialog),
     ("close-current", || SessionWindowInput::CloseCurrent),
     ("disconnect", || SessionWindowInput::Disconnect),
@@ -39,18 +40,23 @@ const ACTIONS: [(&str, ActionInput); 11] = [
     ("reset-workspace-layout", || SessionWindowInput::ResetWorkspaceLayout),
     ("export-connections", || SessionWindowInput::ExportConnections),
     ("import-connections", || SessionWindowInput::ImportConnections),
+    ("import-from-app", || SessionWindowInput::ImportFromApp),
     ("manage-tags", || SessionWindowInput::ManageTags),
 ];
 
 /// The actions a connection tree row or a toast fires for its own
 /// session, which take the session as their target (`session_target`).
-const SESSION_ACTIONS: [(&str, SessionInput); 8] = [
+const SESSION_ACTIONS: [(&str, SessionInput); 12] = [
     ("show-session", SessionWindowInput::ShowSession),
     ("disconnect-session", SessionWindowInput::DisconnectSession),
     ("stop-connecting", SessionWindowInput::StopConnecting),
     ("new-query-in", SessionWindowInput::NewQueryIn),
     ("refresh-in", SessionWindowInput::RefreshIn),
     ("open-database-in", SessionWindowInput::ChooseDatabaseIn),
+    ("new-table-in", SessionWindowInput::NewTableIn),
+    ("new-database-in", SessionWindowInput::NewDatabaseIn),
+    ("new-schema-in", SessionWindowInput::NewSchemaIn),
+    ("drop-database-in", SessionWindowInput::DropDatabaseIn),
     ("show-connect-failure", SessionWindowInput::ShowConnectFailure),
     ("forget-connect-failure", SessionWindowInput::ForgetConnectFailure),
 ];
@@ -64,7 +70,37 @@ pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<Sessi
     });
     window.add_action_entries(entries);
     window.add_action_entries(SESSION_ACTIONS.map(|(name, message)| session_action(name, message, input.clone())));
-    window.add_action_entries([retry_with_new_secret(input.clone()), safe_mode(input.clone())]);
+    window.add_action_entries([
+        retry_with_new_secret(input.clone()),
+        safe_mode(input.clone()),
+        new_group(input.clone()),
+    ]);
+}
+
+// The main menu's New Group…, which always makes a group at the top level, as macOS does.
+fn new_group(input: InputSender<SessionWindowInput>) -> gio::ActionEntry<adw::ApplicationWindow> {
+    gio::ActionEntry::builder("new-group")
+        .activate(move |window: &adw::ApplicationWindow, _, _| {
+            let Some(list) = window
+                .downcast_ref::<SessionWindow>()
+                .and_then(SessionWindow::state)
+                .map(|state| state.services.saved_connections.clone())
+            else {
+                return;
+            };
+            let (parent, input) = (window.clone().upcast::<gtk::Widget>(), input.clone());
+            glib::spawn_future_local(async move {
+                let outline = list.outline();
+                if let Some(name) = crate::ui::picker::ask_group_name(&parent, &outline, None).await {
+                    input.deliver(SessionWindowInput::Library(LibraryEdit::CreateGroup {
+                        parent: None,
+                        name,
+                        with: None,
+                    }));
+                }
+            });
+        })
+        .build()
 }
 
 /// A target that names no session does nothing.
@@ -115,6 +151,9 @@ pub(super) fn show_safe_mode(window: &adw::ApplicationWindow, level: Option<Safe
         return;
     };
     action.set_enabled(level.is_some());
+    if let Some(shell) = window.downcast_ref::<SessionWindow>().and_then(SessionWindow::shell) {
+        shell.show_safe_mode(level);
+    }
     if let Some(level) = level {
         action.set_state(&crate::ui::safe_mode::action_target(level).to_variant());
     }
@@ -162,6 +201,8 @@ pub(super) fn sync(window: &adw::ApplicationWindow, page: SessionPage, failed: O
 
 #[cfg(test)]
 mod tests {
+    use libadwaita::prelude::*;
+
     use super::*;
     use crate::runtime::Delivery;
     use crate::test_support::wait_until;
@@ -230,7 +271,7 @@ mod tests {
         );
         action.activate(None);
         assert_eq!(
-            input.try_deliver(crate::ui::workspace::WorkspaceInput::RefreshPage),
+            input.try_deliver(crate::ui::workspace::WorkspaceInput::RefreshPage(None)),
             Delivery::ReceiverGone
         );
     }
@@ -252,6 +293,36 @@ mod tests {
             };
             assert!(found, "{} has an accelerator and no action", entry.action);
         }
+    }
+
+    #[gtk4::test]
+    fn new_group_asks_for_a_name_and_makes_a_top_level_group() {
+        let test = TestWindow::picker("NewGroupFromTheMenu");
+
+        WidgetExt::activate_action(&test.window, "win.new-group", None).expect("win.new-group");
+        let mut dialog = None;
+        wait_until(WAIT, || {
+            dialog = crate::workspace::visible_alert(&test.window);
+            dialog.is_some()
+        })
+        .expect("the New Group dialog");
+        let dialog = dialog.expect("the New Group dialog");
+        assert_eq!(dialog.heading().as_deref(), Some("New Group"));
+        crate::test_support::descendants(&dialog)
+            .into_iter()
+            .find_map(|widget| widget.downcast::<adw::EntryRow>().ok())
+            .expect("the name row")
+            .set_text("Archive");
+        crate::test_support::respond(&dialog, "create");
+
+        wait_until(WAIT, || {
+            test.services.storage.connections().list_blocking().is_ok_and(|list| {
+                list.groups
+                    .iter()
+                    .any(|group| group.name.as_str() == "Archive" && group.parent_id.is_none())
+            })
+        })
+        .expect("the group saved at the top level");
     }
 
     #[gtk4::test]

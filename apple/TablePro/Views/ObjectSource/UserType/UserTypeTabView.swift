@@ -79,9 +79,8 @@ struct UserTypeTabView: View {
             Text(model.objectRef.kindDisplayName)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color(nsColor: .quaternaryLabelColor), in: Capsule())
+                .lineLimit(1)
+                .fixedSize()
             Spacer()
             if model.isSaving {
                 ProgressView().controlSize(.small)

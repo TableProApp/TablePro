@@ -423,4 +423,32 @@ fn a_module_type_is_named_and_left_to_the_editor() {
     assert_eq!(tab.type_text(), "Other");
     assert_eq!(tab.summary_text(), "No expiry");
     assert!(!tab.offers_more());
+    assert!(!tab.export_shown(), "a value the tab does not read offered rows");
+}
+
+#[gtk4::test]
+fn export_shown_offers_the_entries_on_screen() {
+    let mut script = ConnectionScript::default();
+    script.read_key.always(FakeReply::ok(Some(list_page(0, 2, None))));
+    let (tab, _fake, _runtime) = opened(script);
+    let offers: Rc<RefCell<Vec<ExportOffer>>> = Rc::default();
+    let sink = offers.clone();
+    tab.connect_events(move |event| {
+        if let KeyTabEvent::Export(offer) = event {
+            sink.borrow_mut().push(*offer);
+        }
+    });
+    wait_until(WAIT, || tab.rows() == 2).expect("the first window");
+
+    assert!(tab.export_shown());
+
+    let offers = offers.take();
+    let [offer] = offers.as_slice() else {
+        panic!("one offer, not {}", offers.len());
+    };
+    let ExportOrigin::Shown { rows } = &offer.origin else {
+        panic!("not the rows shown: {:?}", offer.origin);
+    };
+    assert_eq!(rows.row_count(), Some(2));
+    assert_eq!(offer.name, "queue");
 }

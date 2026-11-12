@@ -40,7 +40,7 @@ struct QueryInsightsSummaryBar: View {
                     format: String(localized: "%@ slowest", comment: "Slowest single run, %@ is a duration"),
                     QueryDurationFormatter.string(from: totals.maxDuration)
                 ),
-                systemImage: "gauge.with.needle",
+                systemImage: Self.averageSymbol,
                 tint: .secondary
             )
             metric(
@@ -55,6 +55,11 @@ struct QueryInsightsSummaryBar: View {
         .padding(.vertical, 12)
     }
 
+    private static var averageSymbol: String {
+        if #available(macOS 14.0, *) { return "gauge.with.needle" }
+        return "gauge"
+    }
+
     private func metric(
         label: String,
         value: String,
@@ -62,28 +67,32 @@ struct QueryInsightsSummaryBar: View {
         systemImage: String,
         tint: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(label, systemImage: systemImage)
+        GroupBox {
+            VStack(alignment: .leading, spacing: 4) {
+                Label {
+                    Text(label)
+                } icon: {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(tint)
+                }
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .labelStyle(.titleAndIcon)
 
-            Text(value)
-                .font(.title2)
-                .fontWeight(.medium)
-                .monospacedDigit()
-                .foregroundStyle(tint == .secondary ? Color.primary : tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                Text(value)
+                    .font(.title2)
+                    .fontWeight(.medium)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
 
-            Text(detail)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value), \(detail)")
     }

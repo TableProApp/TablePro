@@ -113,6 +113,7 @@ async fn strict_table_round_trip() {
                 (3, CellInput::Value(Value::Text("ü'".to_owned()))),
                 (4, CellInput::Value(Value::Bytes(vec![1, 2, 3]))),
             ],
+            read: Vec::new(),
         })],
     };
     let dialect = connection.dialect();

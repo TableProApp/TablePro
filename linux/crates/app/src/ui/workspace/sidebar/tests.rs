@@ -11,7 +11,10 @@ use libadwaita as adw;
 use tablepro_core::meta::{KeyKind, ObjectInfo, ObjectKind, ObjectScope, SchemaInfo, TableRef};
 use tablepro_core::{DriverError, DriverRegistry};
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionStore, ConnectionTagName, SavedConnection, StoragePaths};
+use tablepro_storage::{
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTagName, SavedConnection,
+    StorageError, StoragePaths,
+};
 use tablepro_test_support::FakeReply;
 use uuid::Uuid;
 
@@ -19,12 +22,16 @@ use super::connection_tree::{Pane, TreeInner, Which};
 use super::object_key::ObjectKey;
 use super::object_target::ObjectTarget;
 use super::sidebar_event::SidebarEvent;
+use super::sidebar_menu::{object_menu, schema_menu};
 use super::sidebar_object::SidebarObject;
+use super::sidebar_view::Holds;
 use super::tree_node::TreeNode;
 use super::tree_row::TreeRow;
 use super::*;
+use crate::services::library_outline::{LibraryItem, LibraryMove, LibraryOutline, LibrarySection};
 use crate::services::saved_connection_list::SavedConnectionList;
-use crate::test_support::{descendants, drain_main_context, test_runtime, wait_until};
+use crate::test_support::{NestedLibrary, descendants, drain_main_context, test_runtime, wait_until};
+use crate::ui::library_drag::LibraryDragItem;
 use crate::ui::session_window::tests::{TestWindow, WAIT};
 use crate::ui::workspace::WorkspaceTab;
 use crate::ui::workspace::tab_spec::{TabSpec, TablePage};
@@ -74,6 +81,9 @@ type Events = Rc<RefCell<Vec<SidebarEvent>>>;
 /// The window and picker actions the tree fired, with their targets.
 type Fired = Rc<RefCell<Vec<(String, Option<String>)>>>;
 
+// What reached picker.change-library, None for a target that is not a move.
+type Moves = Rc<RefCell<Vec<Option<LibraryMove>>>>;
+
 fn object(schema: &str, name: &str) -> ObjectInfo {
     ObjectInfo {
         schema: Some(schema.to_owned()),
@@ -106,6 +116,24 @@ fn every_affordance() -> SidebarAffordances {
         can_edit_structure: true,
         speaks_sql: true,
         opens_databases: true,
+        ..SidebarAffordances::default()
+    }
+}
+
+/// `every_affordance`, on an engine that also empties tables and makes
+/// and drops schemas and databases, as PostgreSQL does.
+fn catalog_affordance() -> SidebarAffordances {
+    SidebarAffordances {
+        catalog: tablepro_core::ddl::CatalogCapabilities {
+            truncate_table: true,
+            create_schema: true,
+            drop_schema: true,
+            create_database: true,
+            drop_database: true,
+            ..tablepro_core::ddl::CatalogCapabilities::default()
+        },
+        own_database_droppable: true,
+        ..every_affordance()
     }
 }
 
@@ -141,16 +169,32 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
 
 /// A session's sidebar listing `objects`, with what it sent.
 fn session(objects: &[ObjectInfo], affordances: SidebarAffordances) -> (SidebarView, Events) {
-    let events = Events::default();
-    let sink = events.clone();
-    let view = SidebarView::new(move |event| sink.borrow_mut().push(event), affordances, None);
-    view.show(SidebarIndex::build(objects, &public()));
-    (view, events)
+    session_of(objects, &["public"], affordances)
 }
 
 fn tables(view: &SidebarView, names: &[&str]) {
     let objects: Vec<ObjectInfo> = names.iter().map(|name| object("public", name)).collect();
     view.show(SidebarIndex::build(&objects, &public()));
+}
+
+/// Show a list of no object under no schema at all.
+fn nothing(view: &SidebarView) {
+    view.show(SidebarIndex::build(&[], &[]));
+}
+
+/// A session's sidebar listing `objects` under `schemas`, the first the
+/// default, with what it sent.
+fn session_of(objects: &[ObjectInfo], schemas: &[&str], affordances: SidebarAffordances) -> (SidebarView, Events) {
+    let events = Events::default();
+    let sink = events.clone();
+    let view = SidebarView::new(move |event| sink.borrow_mut().push(event), affordances, None);
+    let listed: Vec<SchemaInfo> = schemas
+        .iter()
+        .enumerate()
+        .map(|(at, name)| schema(name, at == 0))
+        .collect();
+    view.show(SidebarIndex::build(objects, &listed));
+    (view, events)
 }
 
 /// The tree in a window of its own, over a store of saved connections,
@@ -164,18 +208,32 @@ struct Shown {
     entry: gtk::SearchEntry,
     window: gtk::ApplicationWindow,
     fired: Fired,
+    moves: Moves,
 }
 
 impl Shown {
     fn new(connections: &[SavedConnection]) -> Self {
+        Self::seeded(connections.len(), |paths| {
+            crate::test_support::seed_library(paths, connections)
+        })
+    }
+
+    fn nested(library: &NestedLibrary) -> Self {
+        Self::seeded(library.list().connections.len(), |paths| library.seed(paths))
+    }
+
+    fn seeded(count: usize, seed: impl FnOnce(&StoragePaths)) -> Self {
         adw::init().expect("libadwaita initialises under the test backend");
         let dir = tempfile::tempdir().expect("a temporary directory");
         let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
-        crate::test_support::seed_library(&paths, connections);
+        seed(&paths);
         let store = ConnectionStore::new(&paths);
         let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         store.load_blocking().expect("the saved connections");
-        wait_until(WAIT, || list.model().n_items() as usize == connections.len()).expect("the list to have them");
+        wait_until(WAIT, || {
+            list.library().is_some_and(|library| library.connections.len() == count)
+        })
+        .expect("the list to have them");
         let tree = ConnectionTree::new(list.clone());
         let entry = gtk::SearchEntry::new();
         entry.set_search_delay(0);
@@ -191,6 +249,8 @@ impl Shown {
             "stop-connecting",
             "new-query-in",
             "refresh-in",
+            "new-database-in",
+            "drop-database-in",
             "show-connect-failure",
             "forget-connect-failure",
         ] {
@@ -198,6 +258,8 @@ impl Shown {
         }
         let picker = gio::SimpleActionGroup::new();
         picker.add_action(&recording("connect", &fired, "picker"));
+        let moves = Moves::default();
+        picker.add_action(&recording_moves(&moves));
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.insert_action_group("picker", Some(&picker));
         content.append(&entry);
@@ -213,6 +275,7 @@ impl Shown {
             entry,
             window,
             fired,
+            moves,
         }
     }
 
@@ -335,6 +398,22 @@ impl Shown {
         .expect("the list to publish it");
         drain_main_context();
     }
+
+    // A write another window makes, through the store.
+    fn change<T>(
+        &self,
+        write: impl FnOnce(&ConnectionStore) -> Result<T, StorageError>,
+        published: impl Fn(&LibraryOutline) -> bool,
+    ) -> T {
+        let written = write(&self.store).expect("the write");
+        wait_until(WAIT, || published(&self.list.outline())).expect("the list to publish it");
+        drain_main_context();
+        written
+    }
+
+    fn moves(&self) -> Vec<Option<LibraryMove>> {
+        self.moves.take()
+    }
 }
 
 impl Drop for Shown {
@@ -355,6 +434,59 @@ fn recording(name: &'static str, fired: &Fired, group: &'static str) -> gio::Sim
         ));
     });
     action
+}
+
+fn recording_moves(moves: &Moves) -> gio::SimpleAction {
+    let shape = LibraryMove::Favourites {
+        ids: Vec::new(),
+        before: None,
+    }
+    .to_variant();
+    let action = gio::SimpleAction::new("change-library", Some(shape.type_()));
+    let sink = moves.clone();
+    action.connect_activate(move |_, target| sink.borrow_mut().push(target.and_then(LibraryMove::from_variant)));
+    action
+}
+
+fn group_name(name: &str) -> ConnectionGroupName {
+    ConnectionGroupName::new(name).expect("a group name")
+}
+
+fn expander_of(row: &TreeRow) -> gtk::TreeExpander {
+    row.parent()
+        .and_downcast::<gtk::TreeExpander>()
+        .expect("the row's expander")
+}
+
+fn controller<T: IsA<glib::Object>>(widget: &impl IsA<gtk::Widget>) -> T {
+    let controllers = widget.observe_controllers();
+    (0..controllers.n_items())
+        .find_map(|at| controllers.item(at).and_downcast::<T>())
+        .expect("the controller")
+}
+
+// What a drop from the tree carries, emitted as GTK does once the drag ends over `target`.
+fn drop_on(target: &gtk::DropTarget, item: LibraryItem, y: f64) -> bool {
+    let value = LibraryDragItem::new((LibrarySection::Tree, item)).to_value();
+    target.emit_by_name::<bool>("drop", &[&glib::BoxedValue(value), &0.0_f64, &y])
+}
+
+// The test backend records the value, and only the variadic check reads it.
+fn expanded_state_is(expander: &gtk::TreeExpander, expanded: bool) -> bool {
+    // SAFETY: a live widget; the call reads one boolean and returns null or a message it allocated.
+    let message = unsafe {
+        gtk::ffi::gtk_test_accessible_check_state(
+            glib::translate::ToGlibPtr::to_glib_none(expander.upcast_ref::<gtk::Accessible>()).0,
+            gtk::ffi::GTK_ACCESSIBLE_STATE_EXPANDED,
+            glib::ffi::gboolean::from(expanded),
+        )
+    };
+    if message.is_null() {
+        return true;
+    }
+    // SAFETY: GTK hands the message over to the caller.
+    unsafe { glib::ffi::g_free(message.cast()) };
+    false
 }
 
 /// The name of a row's table or node, under the tree's row or as the
@@ -382,7 +514,7 @@ fn target(key: &SessionKey) -> Option<String> {
 }
 
 /// Each menu item's action and target, sections and submenus flattened.
-fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
+pub(crate) fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
     let mut found = Vec::new();
     for index in 0..menu.n_items() {
         if let Some(action) = menu
@@ -398,6 +530,34 @@ fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
         }
     }
     found
+}
+
+/// Each menu item's label, sections and submenus flattened.
+fn menu_labels(menu: &gio::MenuModel) -> Vec<String> {
+    let mut found = Vec::new();
+    for index in 0..menu.n_items() {
+        if let Some(label) = menu
+            .item_attribute_value(index, "label", None)
+            .and_then(|value| value.get::<String>())
+        {
+            found.push(label);
+        }
+        for link in ["section", "submenu"] {
+            if let Some(linked) = menu.item_link(index, link) {
+                found.extend(menu_labels(&linked));
+            }
+        }
+    }
+    found
+}
+
+/// Each schema's title, in the order the session's sidebar lists them.
+fn schema_titles(view: &SidebarView) -> Vec<String> {
+    let schemas = view.schemas();
+    (0..schemas.n_items())
+        .filter_map(|at| schemas.item(at).and_downcast::<TreeNode>())
+        .map(|node| node.title())
+        .collect()
 }
 
 fn menu_actions(popover: &gtk::PopoverMenu) -> Vec<String> {
@@ -426,9 +586,10 @@ fn the_tree_lists_connections_as_the_picker_groups_them() {
         connection("Delta", Some("work")),
     ]);
 
-    assert_eq!(shown.rows(), ["Beta", "zeta", "Home", "Work", "work"]);
+    // Groups first, then the connections, each in the library's order.
+    assert_eq!(shown.rows(), ["Work", "Home", "work", "zeta", "Beta"]);
     shown.activate("Work");
-    assert_eq!(shown.rows(), ["Beta", "zeta", "Home", "Work", "Alpha", "work"]);
+    assert_eq!(shown.rows(), ["Work", "Alpha", "Home", "work", "zeta", "Beta"]);
     assert!(
         !shown.row("Beta").is_expandable(),
         "a closed connection has an expander"
@@ -463,14 +624,309 @@ fn a_store_write_keeps_the_other_open_connections_open() {
     let mut renamed = beta.clone();
     renamed.name = "Zulu".to_owned();
     shown.write(&renamed);
+    let zulu: Vec<String> = before
+        .iter()
+        .map(|name| {
+            if name == "Beta" {
+                "Zulu".to_owned()
+            } else {
+                name.clone()
+            }
+        })
+        .collect();
+    assert_eq!(shown.rows(), zulu, "the rename moved or folded a row");
+
+    let office = shown
+        .change(
+            |store| store.create_group_blocking(ConnectionGroup::new(group_name("Office"), None)),
+            |outline| outline.groups().iter().any(|(_, label, _)| label == "Office"),
+        )
+        .id;
+    shown.row("Office").set_expanded(true);
+    shown.change(
+        |store| store.move_connections_blocking(&[beta.id], Some(office), None),
+        |outline| outline.parent_of(LibraryItem::Connection(beta.id)) == Some(Some(office)),
+    );
     let after = shown.rows();
-    assert_eq!(after.first().map(String::as_str), Some("Alpha"));
-    let zulu = after.iter().position(|name| name == "Zulu").expect("the renamed row");
+    let moved = after.iter().position(|name| name == "Zulu").expect("the moved row");
     assert_eq!(
-        after[zulu..],
-        ["Zulu", "public", "orders", "sales", "leads"],
+        after[moved - 1..moved + 5],
+        ["Office", "Zulu", "public", "orders", "sales", "leads"],
         "the moved row came back folded"
     );
+}
+
+#[gtk4::test]
+fn nested_and_empty_groups_show_in_the_librarys_order() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    library.group("Archive", None);
+    library.group("Old", Some(staging));
+    library.connection("Shop", Some(staging));
+    library.connection("Intranet", Some(work));
+    library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+
+    assert_eq!(shown.rows(), ["Work", "Archive", "Laptop"]);
+    shown.row("Work").set_expanded(true);
+    shown.row("Staging").set_expanded(true);
+    assert_eq!(
+        shown.rows(),
+        ["Work", "Staging", "Old", "Shop", "Intranet", "Archive", "Laptop"]
+    );
+}
+
+#[gtk4::test]
+fn a_connection_in_a_nested_group_is_revealed_and_selected_when_its_session_opens() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let shop = library.connection("Shop", Some(staging));
+    library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+    let saved = shown.list.get(shop).expect("Shop in the list");
+    let (view, _) = session(
+        &[object("public", "orders"), object("sales", "leads")],
+        every_affordance(),
+    );
+
+    let key = shown.open(&saved, &view);
+
+    assert!(
+        shown.row("Work").is_expanded() && shown.row("Staging").is_expanded(),
+        "the groups above the connection stayed folded: {:?}",
+        shown.rows()
+    );
+    shown.tree.select(Some(&key), Some(&table("orders")));
+    assert_eq!(shown.selected().as_deref(), Some("orders"));
+    shown.row("Work").set_expanded(false);
+    shown.tree.select(Some(&key), None);
+    assert_eq!(
+        shown.selected().as_deref(),
+        Some("Shop"),
+        "the groups were not opened to the connection"
+    );
+}
+
+#[gtk4::test]
+fn a_groups_menu_offers_subgroup_rename_order_move_and_delete() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let archive = library.group("Archive", None);
+    library.connection("Shop", Some(work));
+    let shown = Shown::nested(&library);
+    let popover = shown.popover();
+
+    shown.menu("Work");
+
+    assert!(popover.is_visible(), "a group's row has no menu");
+    let items: Vec<(String, Option<String>)> = popover
+        .menu_model()
+        .map(|menu| menu_items(&menu))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+        .collect();
+    let id = Some(work.to_string());
+    assert_eq!(
+        items,
+        [
+            ("picker.new-group".to_owned(), id.clone()),
+            ("picker.rename-group".to_owned(), id.clone()),
+            ("picker-row.move-up".to_owned(), None),
+            ("picker-row.move-down".to_owned(), None),
+            ("picker-row.parent".to_owned(), Some(String::new())),
+            ("picker-row.parent".to_owned(), Some(archive.to_string())),
+            ("picker.delete-group".to_owned(), id),
+        ]
+    );
+    WidgetExt::activate_action(&popover, "picker-row.move-up", None).expect("Move Up in the menu");
+    WidgetExt::activate_action(&popover, "picker-row.move-down", None).expect("Move Down in the menu");
+    popover.popdown();
+    assert_eq!(
+        shown.moves(),
+        [Some(LibraryMove::Groups {
+            ids: vec![work],
+            parent: None,
+            before: None,
+        })],
+        "the first group moved up, or not down"
+    );
+}
+
+#[gtk4::test]
+fn a_renamed_group_stays_open() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    library.connection("Shop", Some(work));
+    library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+    shown.row("Work").set_expanded(true);
+
+    shown.change(
+        |store| store.rename_group_blocking(work, group_name("Office")),
+        |outline| outline.label(work).as_deref() == Some("Office"),
+    );
+
+    assert_eq!(shown.rows(), ["Office", "Shop", "Laptop"]);
+    assert!(shown.row("Office").is_expanded(), "the renamed group folded");
+}
+
+#[gtk4::test]
+fn a_group_moved_under_another_parent_stays_open() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let archive = library.group("Archive", None);
+    library.connection("Shop", Some(staging));
+    library.connection("Box", Some(archive));
+    let shown = Shown::nested(&library);
+    for name in ["Work", "Staging", "Archive"] {
+        shown.row(name).set_expanded(true);
+    }
+    assert_eq!(shown.rows(), ["Work", "Staging", "Shop", "Archive", "Box"]);
+
+    shown.change(
+        |store| store.move_groups_blocking(&[staging], Some(archive), None),
+        |outline| outline.parent_of(LibraryItem::Group(staging)) == Some(Some(archive)),
+    );
+
+    assert_eq!(shown.rows(), ["Work", "Archive", "Staging", "Shop", "Box"]);
+    assert!(shown.row("Staging").is_expanded(), "the moved group came back folded");
+}
+
+#[gtk4::test]
+fn a_drop_on_the_tree_reaches_change_library() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let shop = library.connection("Shop", Some(work));
+    let laptop = library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+    shown.row("Work").set_expanded(true);
+    let expander = expander_of(&shown.row_widget("Work"));
+    let list_view = shown.inner().tree.list_view.clone();
+    wait_until(WAIT, || expander.height() > 0 && list_view.height() > 0).expect("the rows laid out");
+    let middle = f64::from(expander.height()) / 2.0;
+    let under = f64::from(list_view.height()) - 1.0;
+
+    assert!(drop_on(&controller(&expander), LibraryItem::Connection(laptop), middle));
+    assert!(drop_on(&controller(&list_view), LibraryItem::Connection(shop), under));
+    assert!(
+        !drop_on(&controller(&list_view), LibraryItem::Connection(shop), 1.0),
+        "the list took a drop over a row"
+    );
+
+    assert_eq!(
+        shown.moves(),
+        [
+            Some(LibraryMove::Connections {
+                ids: vec![laptop],
+                group: Some(work),
+                before: None,
+            }),
+            Some(LibraryMove::Connections {
+                ids: vec![shop],
+                group: None,
+                before: None,
+            }),
+        ]
+    );
+}
+
+#[gtk4::test]
+fn only_groups_and_saved_connections_start_a_drag() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let shop = library.connection("Shop", Some(work));
+    let shown = Shown::nested(&library);
+    let saved = shown.list.get(shop).expect("Shop in the list");
+    let (view, _) = session(
+        &[object("public", "orders"), object("sales", "leads")],
+        every_affordance(),
+    );
+    shown.open(&saved, &view);
+    let carried = |name: &str| {
+        let source: gtk::DragSource = controller(&expander_of(&shown.row_widget(name)));
+        source
+            .emit_by_name::<Option<gdk::ContentProvider>>("prepare", &[&4.0_f64, &2.0_f64])
+            .and_then(|content| content.value(LibraryDragItem::static_type()).ok())
+            .and_then(|value| value.get::<LibraryDragItem>().ok())
+            .and_then(|item| item.dragged())
+    };
+
+    assert_eq!(carried("Work"), Some((LibrarySection::Tree, LibraryItem::Group(work))));
+    assert_eq!(
+        carried("Shop"),
+        Some((LibrarySection::Tree, LibraryItem::Connection(shop)))
+    );
+    assert_eq!(carried("public"), None, "a schema started a drag");
+}
+
+#[gtk4::test]
+fn a_group_row_tells_a_screen_reader_its_connections_and_whether_it_is_open() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let archive = library.group("Archive", None);
+    library.connection("Shop", Some(staging));
+    let intranet = library.connection("Intranet", Some(work));
+    let shown = Shown::nested(&library);
+    let description = |name: &str| {
+        let item = shown.row_widget(name).imp().item.upgrade().expect("the row's item");
+        item.property::<Option<String>>("accessible-description")
+    };
+    assert_eq!(description("Work").as_deref(), Some("Group, 2 connections"));
+    assert_eq!(description("Archive").as_deref(), Some("Group, 0 connections"));
+
+    shown.change(
+        |store| store.move_connections_blocking(&[intranet], Some(archive), None),
+        |outline| outline.parent_of(LibraryItem::Connection(intranet)) == Some(Some(archive)),
+    );
+    assert_eq!(description("Work").as_deref(), Some("Group, 1 connection"));
+    assert_eq!(description("Archive").as_deref(), Some("Group, 1 connection"));
+
+    let expander = expander_of(&shown.row_widget("Work"));
+    assert!(expanded_state_is(&expander, false));
+    shown.row("Work").set_expanded(true);
+    assert!(
+        expanded_state_is(&expander, true),
+        "the row opened, its expander says folded"
+    );
+    shown.row("Work").set_expanded(false);
+    assert!(
+        expanded_state_is(&expander, false),
+        "the row folded, its expander says open"
+    );
+}
+
+#[gtk4::test]
+fn a_secondary_click_under_the_rows_offers_a_new_group() {
+    let shown = Shown::new(&[connection("Alpha", None)]);
+    let list_view = shown.inner().tree.list_view.clone();
+    wait_until(WAIT, || list_view.height() > 0).expect("the list laid out");
+    let controllers = list_view.observe_controllers();
+    let gesture = (0..controllers.n_items())
+        .filter_map(|at| controllers.item(at).and_downcast::<gtk::GestureClick>())
+        .rfind(|gesture| gesture.button() == gdk::BUTTON_SECONDARY)
+        .expect("the list's secondary click");
+    let popover = shown.popover();
+
+    gesture.emit_by_name::<()>("pressed", &[&1_i32, &4.0_f64, &1.0_f64]);
+    assert!(!popover.is_visible(), "a click on a row offered a new group");
+    let under = f64::from(list_view.height()) - 1.0;
+    gesture.emit_by_name::<()>("pressed", &[&1_i32, &4.0_f64, &under]);
+
+    assert!(popover.is_visible(), "the empty space has no menu");
+    let items: Vec<(String, Option<String>)> = popover
+        .menu_model()
+        .map(|menu| menu_items(&menu))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+        .collect();
+    assert_eq!(items, [("picker.new-group".to_owned(), Some(String::new()))]);
+    popover.popdown();
 }
 
 #[gtk4::test]
@@ -694,6 +1150,7 @@ fn an_open_connection_with_nothing_to_list_says_so() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(std::slice::from_ref(&alpha));
     let (view, _) = session(&[], every_affordance());
+    nothing(&view);
 
     shown.open(&alpha, &view);
 
@@ -735,7 +1192,7 @@ fn clearing_a_search_over_an_emptied_list_says_there_are_no_tables() {
 
     shown.search("alp");
     assert_eq!(shown.rows(), ["Alpha"]);
-    tables(&view, &[]);
+    nothing(&view);
     shown.search("");
 
     assert_eq!(shown.rows(), ["Alpha", "No Tables"]);
@@ -749,13 +1206,13 @@ fn a_list_of_collections_or_keys_says_so_when_it_is_empty() {
     collections.hold_collections();
     let (listing, _) = session(&[], every_affordance());
     listing.hold_keys(|| {});
-    tables(&collections, &[]);
+    nothing(&collections);
     listing.show_keys(SidebarIndex::keys(&[], "Database 0".to_owned()), false);
 
     shown.open(&documents, &collections);
     shown.open(&keys, &listing);
 
-    assert_eq!(shown.rows(), ["Cache", "No Keys", "Docs", "No Collections"]);
+    assert_eq!(shown.rows(), ["Docs", "No Collections", "Cache", "No Keys"]);
 }
 
 #[gtk4::test]
@@ -807,6 +1264,7 @@ fn a_row_tells_a_screen_reader_its_kind() {
     );
     shown.open(&alpha, &view);
     shown.row("public").set_expanded(true);
+    shown.row("Views").set_expanded(true);
 
     let description = |name: &str| {
         let row = shown.row_widget(name);
@@ -816,8 +1274,52 @@ fn a_row_tells_a_screen_reader_its_kind() {
     assert_eq!(description("orders").as_deref(), Some("Table"));
     assert_eq!(description("totals").as_deref(), Some("View"));
     assert_eq!(description("public").as_deref(), Some("Schema"));
+    assert_eq!(description("Views").as_deref(), Some("1 object"));
     assert_eq!(description("Alpha").as_deref(), Some("Connection, connected"));
     assert_eq!(description("Beta").as_deref(), Some("Connection"));
+
+    let view_named = |name: &str| ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", name)
+    };
+    view.show(SidebarIndex::build(
+        &[object("public", "orders"), view_named("totals"), view_named("weekly")],
+        &public(),
+    ));
+    assert_eq!(
+        description("Views").as_deref(),
+        Some("2 objects"),
+        "a new list recounts the group"
+    );
+}
+
+#[gtk4::test]
+fn other_kinds_sit_in_groups_that_open_reveal_their_objects_and_offer_no_menu() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let totals = ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", "totals")
+    };
+    let (view, _) = session(&[object("public", "orders"), totals], every_affordance());
+    let key = shown.open(&alpha, &view);
+    shown.row("Alpha").set_expanded(true);
+    shown.row("public").set_expanded(true);
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "orders"]);
+
+    shown.activate("Views");
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "totals", "orders"]);
+    shown.menu("Views");
+    assert!(!shown.popover().is_visible(), "a group has a menu");
+    shown.activate("Views");
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "orders"]);
+
+    shown.tree.select(Some(&key), Some(&table("totals")));
+    assert_eq!(
+        shown.selected().as_deref(),
+        Some("totals"),
+        "the view's group stayed folded"
+    );
 }
 
 #[gtk4::test]
@@ -1127,7 +1629,7 @@ fn a_closed_session_lists_nothing_and_leaves_the_others_open() {
 fn a_file_no_saved_connection_names_has_a_row_of_its_own() {
     let shown = Shown::new(&[connection("Alpha", None)]);
     let key = SessionKey::File("file:///home/me/sales.db".to_owned());
-    let (view, _) = session(&[object("main", "orders")], every_affordance());
+    let (view, _) = session_of(&[object("main", "orders")], &["main"], every_affordance());
 
     shown.tree.add_session(&key, "sales.db", &view);
 
@@ -1204,6 +1706,38 @@ fn the_selection_follows_the_tab_and_survives_a_new_list() {
 
     shown.tree.select(None, None);
     assert_eq!(shown.selected(), None, "no tab, yet a row selected");
+}
+
+#[gtk4::test]
+fn a_rows_menu_opens_beside_the_pointer_so_a_long_one_slides_instead_of_shrinking() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(&[object("public", "a")], every_affordance());
+    shown.open(&alpha, &view);
+    let pointer = gdk::Rectangle::new(40, 60, 1, 1);
+
+    shown.inner().pressed(
+        Which::Tree,
+        shown.position("a"),
+        gdk::BUTTON_SECONDARY,
+        gdk::ModifierType::empty(),
+        Some(pointer),
+    );
+
+    let popover = shown.popover();
+    assert!(popover.is_visible(), "the menu did not open");
+    assert!(
+        matches!(popover.position(), gtk::PositionType::Left | gtk::PositionType::Right),
+        "opened above or below, a long menu cannot slide"
+    );
+    assert_eq!(
+        popover.valign(),
+        gtk::Align::Start,
+        "the menu does not start at the pointer"
+    );
+    assert!(!popover.has_arrow(), "a context menu has no arrow");
+    assert_eq!(popover.pointing_to(), (true, pointer));
+    popover.popdown();
 }
 
 #[gtk4::test]
@@ -1316,12 +1850,16 @@ fn the_connection_menu_holds_the_pickers_items() {
     popover.popdown();
     shown.menu("Alpha");
     let open = menu_actions(&popover);
+    let work = crate::test_support::group_id("Work").to_string();
     let group = popover
         .menu_model()
         .map(|menu| menu_items(&menu))
         .unwrap_or_default()
         .into_iter()
-        .find(|(action, _)| action == "picker-row.group");
+        .find(|(action, target)| {
+            action == "picker-row.group"
+                && target.as_ref().and_then(|target| target.get::<String>()).as_deref() == Some(work.as_str())
+        });
     popover.popdown();
 
     let actions: Vec<&str> = closed.iter().map(|(action, _)| action.as_str()).collect();
@@ -1329,22 +1867,25 @@ fn the_connection_menu_holds_the_pickers_items() {
         "picker.connect",
         "picker.edit",
         "picker.duplicate",
+        "picker.set-favourite",
         "picker-row.color",
         "picker-row.group",
-        "picker.new-group",
+        "picker.new-group-for",
         "picker.delete",
     ] {
         assert!(actions.contains(&action), "{action} missing from {actions:?}");
     }
     let id = beta.id.to_string();
-    assert!(
-        closed
-            .iter()
-            .filter(|(action, _)| action.starts_with("picker."))
-            .all(
-                |(_, target)| target.as_ref().and_then(|target| target.get::<String>()).as_deref() == Some(id.as_str())
-            )
-    );
+    for (action, target) in closed.iter().filter(|(action, _)| action.starts_with("picker.")) {
+        let named = if action == "picker.set-favourite" {
+            let favourite = target.as_ref().and_then(|target| target.get::<(String, bool)>());
+            assert_eq!(favourite, Some((id.clone(), true)), "Add to Favourites");
+            favourite.map(|(named, _)| named)
+        } else {
+            target.as_ref().and_then(|target| target.get::<String>())
+        };
+        assert_eq!(named.as_deref(), Some(id.as_str()), "{action}");
+    }
     assert_eq!(
         open[..4],
         [
@@ -1357,8 +1898,8 @@ fn the_connection_menu_holds_the_pickers_items() {
     );
     assert!(!open.contains(&"picker.connect".to_owned()));
     assert!(open.contains(&"picker.delete".to_owned()));
-    assert!(group.is_some(), "Move to Group has no choices");
-    let state = WidgetExt::activate_action(&popover, "picker-row.group", Some(&"Work".to_variant()));
+    assert!(group.is_some(), "Move to Group does not offer Work by its id");
+    let state = WidgetExt::activate_action(&popover, "picker-row.group", Some(&work.to_variant()));
     assert!(state.is_ok(), "the menu's choices reach no action");
 }
 
@@ -1484,8 +2025,13 @@ fn context_menu_action_carries_object_key() {
     ] {
         actions.activate_action(action, Some(&key));
     }
-    actions.activate_action("drop-table", Some(&(None::<String>, String::new()).to_variant()));
+    // GIO refuses a target of another shape with a critical, which this makes abort the test, so the
+    // empty name reaches the action.
+    let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
+    let empty_name = (None::<String>, String::new(), "rows", None::<String>).to_variant();
+    actions.activate_action("drop-table", Some(&empty_name));
     actions.activate_action("drop-table", Some(&ObjectKey::rows(table("gone")).to_variant()));
+    glib::log_set_always_fatal(previous);
 
     assert_eq!(
         events.take(),
@@ -1859,4 +2405,409 @@ fn a_reconnect_names_tabs_by_its_schemas_when_the_list_fails() {
     wait_until(WAIT, || naming() == Some(TableNaming::SchemaQualified))
         .expect("the reconnect's schemas never named the tabs");
     assert_eq!(shown_tables(&workspace), Some(1), "the failure emptied the list");
+}
+
+#[gtk4::test]
+fn an_empty_schema_has_its_row_and_a_menu_that_works() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, events) = session_of(
+        &[object("public", "orders")],
+        &["public", "sales"],
+        catalog_affordance(),
+    );
+    shown.open(&alpha, &view);
+    let popover = shown.popover();
+
+    assert_eq!(shown.rows(), ["Alpha", "public", "sales"]);
+    shown.menu("sales");
+    assert_eq!(
+        menu_actions(&popover),
+        [
+            "sidebar.new-table",
+            "sidebar.new-schema",
+            "sidebar.show-schema-diagram",
+            "sidebar.drop-schema"
+        ]
+    );
+    WidgetExt::activate_action(&popover, "sidebar.new-table", Some(&Some("sales").to_variant()))
+        .expect("sidebar.new-table");
+    WidgetExt::activate_action(&popover, "sidebar.new-schema", None).expect("sidebar.new-schema");
+    WidgetExt::activate_action(&popover, "sidebar.drop-schema", Some(&"sales".to_variant()))
+        .expect("sidebar.drop-schema");
+    popover.popdown();
+    assert_eq!(
+        events.take(),
+        [
+            SidebarEvent::NewTable(Some("sales".to_owned())),
+            SidebarEvent::NewSchema,
+            SidebarEvent::DropSchema("sales".to_owned()),
+        ]
+    );
+
+    shown.menu("public");
+    let offered = menu_actions(&popover);
+    popover.popdown();
+    assert!(
+        !offered.contains(&"sidebar.drop-schema".to_owned()),
+        "the default schema: {offered:?}"
+    );
+}
+
+#[gtk4::test]
+fn a_database_listed_as_a_schema_is_dropped_as_a_database_but_never_the_sessions_own() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let databases = SidebarAffordances {
+        opens_databases: false,
+        lists_databases: true,
+        ..catalog_affordance()
+    };
+    let (view, events) = session_of(&[object("shop", "orders")], &["shop", "archive"], databases);
+    shown.open(&alpha, &view);
+    let popover = shown.popover();
+
+    shown.menu("archive");
+    let offered = menu_actions(&popover);
+    let labels = popover.menu_model().map(|menu| menu_labels(&menu)).unwrap_or_default();
+    WidgetExt::activate_action(&popover, "sidebar.drop-database", Some(&"archive".to_variant()))
+        .expect("sidebar.drop-database");
+    popover.popdown();
+    shown.menu("shop");
+    let own = menu_actions(&popover);
+    popover.popdown();
+    view.actions()
+        .activate_action("drop-schema", Some(&"archive".to_variant()));
+
+    assert_eq!(
+        offered,
+        [
+            "sidebar.new-table",
+            "sidebar.show-schema-diagram",
+            "sidebar.drop-database"
+        ]
+    );
+    assert!(labels.contains(&"Drop Data_base…".to_owned()), "{labels:?}");
+    assert!(!own.contains(&"sidebar.drop-database".to_owned()), "{own:?}");
+    assert_eq!(events.take(), [SidebarEvent::DropDatabase("archive".to_owned())]);
+}
+
+/// The menu was built for a list the session has since read again: a
+/// drop or a new schema it no longer offers does nothing, as a stale
+/// table menu does.
+#[gtk4::test]
+fn a_stale_schema_menu_does_nothing() {
+    let (view, events) = session_of(
+        &[object("public", "orders")],
+        &["public", "sales"],
+        catalog_affordance(),
+    );
+    assert!(view.droppable("sales"));
+
+    view.show(SidebarIndex::build(&[object("public", "orders")], &public()));
+    let actions = view.actions();
+    actions.activate_action("drop-schema", Some(&"sales".to_variant()));
+    actions.activate_action("drop-schema", Some(&String::new().to_variant()));
+    actions.activate_action("drop-schema", Some(&"public".to_variant()));
+    actions.activate_action("drop-database", Some(&"public".to_variant()));
+    view.show(SidebarIndex::build(
+        &[],
+        &[schema("public", true), schema("sales", false)],
+    ));
+    view.set_affordances(SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    });
+    actions.activate_action("drop-schema", Some(&"sales".to_variant()));
+    actions.activate_action("new-schema", None);
+
+    assert!(events.take().is_empty());
+}
+
+#[gtk4::test]
+fn truncate_reaches_the_workspace_for_a_table_never_a_view_or_a_read_only_connection() {
+    let active = ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", "active")
+    };
+    let (view, events) = session(&[object("public", "orders"), active], catalog_affordance());
+    let truncate = |name: &str| {
+        view.actions()
+            .activate_action("truncate-table", Some(&ObjectKey::rows(table(name)).to_variant()));
+    };
+
+    truncate("orders");
+    truncate("active");
+    truncate("gone");
+    view.set_affordances(SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    });
+    truncate("orders");
+
+    assert_eq!(events.take(), [SidebarEvent::TruncateTable(table("orders"))]);
+}
+
+#[gtk4::test]
+fn a_collection_is_emptied_by_deleting_its_documents() {
+    let docs = connection("Docs", None);
+    let shown = Shown::new(std::slice::from_ref(&docs));
+    let mongo = SidebarAffordances::of(false, Some(&tablepro_driver_mongodb::MongoDialect), Some("shop"));
+    let (collections, events) = session_of(&[object("shop", "orders")], &["shop"], mongo);
+    collections.hold_collections();
+    shown.open(&docs, &collections);
+    let popover = shown.popover();
+
+    shown.menu("orders");
+    let labels = popover.menu_model().map(|menu| menu_labels(&menu)).unwrap_or_default();
+    WidgetExt::activate_action(&popover, "sidebar.truncate-table", Some(&rows_target("shop", "orders")))
+        .expect("sidebar.truncate-table");
+    popover.popdown();
+
+    assert!(labels.contains(&"Delete All _Documents…".to_owned()), "{labels:?}");
+    assert!(!labels.contains(&"Tr_uncate Table…".to_owned()), "{labels:?}");
+    assert_eq!(
+        events.take(),
+        [SidebarEvent::TruncateTable(TableRef::new(
+            Some("shop".to_owned()),
+            "orders"
+        ))]
+    );
+}
+
+/// The menus and the actions they name are kept apart by hand, so every
+/// item a menu can offer must name an action the view installed, with
+/// the target that action takes.
+#[gtk4::test]
+fn every_item_a_sidebar_menu_offers_names_an_action_of_the_view() {
+    let (view, _) = session_of(
+        &[object("public", "orders")],
+        &["public", "sales"],
+        catalog_affordance(),
+    );
+    let databases = SidebarAffordances {
+        lists_databases: true,
+        ..catalog_affordance()
+    };
+    let key = ObjectKey::rows(table("orders"));
+    let mut menus = vec![object_menu(
+        &key,
+        ObjectKind::Table,
+        catalog_affordance(),
+        Holds::Tables,
+    )];
+    menus.extend(schema_menu(Some("sales"), true, catalog_affordance(), Holds::Tables));
+    menus.extend(schema_menu(Some("sales"), true, databases, Holds::Tables));
+
+    for menu in menus {
+        for (action, target) in menu_items(menu.upcast_ref()) {
+            let name = action.strip_prefix("sidebar.").unwrap_or_else(|| panic!("{action}"));
+            let installed = view
+                .actions()
+                .lookup_action(name)
+                .unwrap_or_else(|| panic!("{action} is not installed"));
+            assert_eq!(
+                installed.parameter_type().as_deref(),
+                target.as_ref().map(glib::Variant::type_),
+                "{action}"
+            );
+        }
+    }
+}
+
+#[gtk4::test]
+fn a_search_finds_tables_under_their_schema_past_an_empty_one() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session_of(
+        &[object("public", "users"), object("sales", "leads")],
+        &["public", "archive", "sales"],
+        every_affordance(),
+    );
+    shown.open(&alpha, &view);
+    assert_eq!(shown.rows(), ["Alpha", "public", "archive", "sales"]);
+
+    shown.search("lead");
+
+    wait_until(WAIT, || shown.rows() == ["leads"]).expect("only the table it finds");
+    wait_until(WAIT, || shown.headings() == ["sales (Alpha)"]).expect("the table's own schema");
+}
+
+#[gtk4::test]
+fn the_add_menu_offers_what_the_engine_makes_for_its_own_session() {
+    let key = SessionKey::Saved(Uuid::new_v4());
+    let offered = |affordances| {
+        let menu = creation_menu(&key, affordances).upcast::<gio::MenuModel>();
+        crate::test_support::assert_access_keys(&menu);
+        let targets = menu_items(&menu)
+            .into_iter()
+            .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+            .collect::<Vec<_>>();
+        (menu_labels(&menu), targets)
+    };
+
+    let (labels, targets) = offered(catalog_affordance());
+    assert_eq!(labels, ["New _Table…", "New _Schema…", "New _Database…"]);
+    assert_eq!(
+        targets,
+        [
+            ("win.new-table-in".to_owned(), target(&key)),
+            ("win.new-schema-in".to_owned(), target(&key)),
+            ("win.new-database-in".to_owned(), target(&key)),
+        ]
+    );
+
+    let mut keyspaces = catalog_affordance();
+    keyspaces.catalog.database_noun = tablepro_core::ddl::DatabaseNoun::Keyspace;
+    keyspaces.lists_databases = true;
+    assert_eq!(offered(keyspaces).0, ["New _Table…", "New _Keyspace…"]);
+
+    let read_only = SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    };
+    assert!(offered(read_only).0.is_empty(), "a read-only connection makes nothing");
+}
+
+#[gtk4::test]
+fn a_connections_row_makes_and_drops_databases_and_a_databases_row_drops_its_own() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(&[object("public", "orders")], catalog_affordance());
+    let key = shown.open(&alpha, &view);
+    let (beside, _) = session(&[object("public", "carts")], catalog_affordance());
+    let sibling = SessionKey::SavedIn {
+        id: alpha.id,
+        database: "shop".to_owned(),
+    };
+    shown.tree.add_session(&sibling, "Alpha · shop", &beside);
+    let popover = shown.popover();
+    let offered = |name: &str| {
+        shown.menu(name);
+        let items = popover.menu_model().map(|menu| menu_items(&menu)).unwrap_or_default();
+        popover.popdown();
+        items
+            .into_iter()
+            .filter(|(action, _)| ["win.new-database-in", "win.drop-database-in"].contains(&action.as_str()))
+            .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        offered("Alpha"),
+        [
+            ("win.new-database-in".to_owned(), target(&key)),
+            ("win.drop-database-in".to_owned(), target(&key)),
+        ]
+    );
+    assert_eq!(
+        offered("Alpha · shop"),
+        [
+            ("win.new-database-in".to_owned(), target(&sibling)),
+            ("win.drop-database-in".to_owned(), target(&sibling)),
+        ]
+    );
+    view.set_affordances(SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    });
+    assert!(offered("Alpha").is_empty(), "a read-only connection");
+}
+
+/// Whether the sidebar withholds a drop, as `list_catalog` asks of each
+/// schema it lists.
+#[test]
+fn a_drop_is_withheld_for_the_sessions_own_database_and_what_the_engine_keeps() {
+    let mongo = tablepro_driver_mongodb::MongoDialect;
+
+    assert!(kept(Some(&mongo), Some("shop"), "shop"), "the session's own database");
+    assert!(kept(Some(&mongo), Some("shop"), "admin"), "the server keeps it");
+    assert!(!kept(Some(&mongo), Some("shop"), "archive"));
+    assert!(kept(None, Some("shop"), "archive"), "no connection, no drop");
+    let clickhouse = tablepro_driver_clickhouse::ClickHouseDialect::new(&tablepro_core::ServerInfo::new(
+        "ClickHouse",
+        "25.8",
+        25,
+        8,
+        0,
+    ));
+    assert!(
+        kept(Some(&clickhouse), Some("default"), "default"),
+        "a server whose databases are its schemas keeps the session's own"
+    );
+    assert!(!kept(Some(&clickhouse), Some("default"), "sales"));
+    let mut index = SidebarIndex::build(
+        &[],
+        &[
+            SchemaInfo {
+                name: "shop".to_owned(),
+                is_default: false,
+                is_system: false,
+            },
+            schema("admin", false),
+            schema("archive", false),
+            SchemaInfo {
+                name: "local".to_owned(),
+                is_default: false,
+                is_system: true,
+            },
+        ],
+    );
+    index.withhold_drops(|name| kept(Some(&mongo), Some("shop"), name));
+    let offered: Vec<&str> = ["shop", "admin", "archive", "local"]
+        .into_iter()
+        .filter(|name| index.droppable(name))
+        .collect();
+    assert_eq!(offered, ["archive"]);
+}
+
+/// A schema is not a database where each database holds schemas of its
+/// own, so neither the database's name nor a database the server keeps
+/// withholds a schema of that name.
+#[test]
+fn a_schema_named_like_a_database_is_dropped_where_schemas_are_not_databases() {
+    let postgres =
+        tablepro_driver_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+
+    assert!(!kept(Some(&postgres), Some("shop"), "shop"), "named like its database");
+    assert!(
+        !kept(Some(&postgres), Some("shop"), "template1"),
+        "named like a database the server keeps"
+    );
+    let mut index = SidebarIndex::build(
+        &[],
+        &[
+            schema("public", true),
+            schema("shop", false),
+            schema("template1", false),
+        ],
+    );
+    index.withhold_drops(|name| kept(Some(&postgres), Some("shop"), name));
+    assert!(index.droppable("shop") && index.droppable("template1"));
+    assert!(!index.droppable("public"), "the default schema");
+}
+
+#[gtk4::test]
+fn a_new_schema_shows_once_the_schemas_are_read_again() {
+    let test = TestWindow::connected_with("SidebarSchemaShape", |script| {
+        // The connect lists none of these: the first is what
+        // catalog_shape_changed reads, the second what Refresh reads.
+        script
+            .list_schemas
+            .once(FakeReply::ok(vec![schema("public", true), schema("sales", false)]));
+        script.list_schemas.once(FakeReply::ok(vec![schema("public", true)]));
+        script
+            .list_objects
+            .always(FakeReply::ok(vec![object("public", "users")]));
+    });
+    let workspace = test.workspace();
+    let titles = || workspace.read(|model| schema_titles(&model.sidebar));
+    wait_until(WAIT, || titles() == Some(vec!["public".to_owned()])).expect("the connect's schema");
+
+    workspace.with_model(|model| model.catalog_shape_changed());
+
+    wait_until(WAIT, || titles() == Some(vec!["public".to_owned(), "sales".to_owned()]))
+        .expect("the new schema, which holds nothing yet");
+    WidgetExt::activate_action(&test.window, "win.refresh-tables", None).expect("win.refresh-tables");
+    wait_until(WAIT, || titles() == Some(vec!["public".to_owned()])).expect("the dropped schema gone on Refresh");
 }

@@ -1,0 +1,2541 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="FileMenu.Title" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="FileMenu.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="MenuNewConnection.Text" xml:space="preserve">
+    <value>New connection...</value>
+  </data>
+  <data name="MenuNewConnection.AccessKey" xml:space="preserve">
+    <value>N</value>
+  </data>
+  <data name="MenuOpenFile.Text" xml:space="preserve">
+    <value>Open database file...</value>
+  </data>
+  <data name="MenuOpenFile.AccessKey" xml:space="preserve">
+    <value>O</value>
+  </data>
+  <data name="MenuImport.Text" xml:space="preserve">
+    <value>Import connections...</value>
+  </data>
+  <data name="MenuImport.AccessKey" xml:space="preserve">
+    <value>I</value>
+  </data>
+  <data name="MenuNewQueryTab.Text" xml:space="preserve">
+    <value>New query tab</value>
+  </data>
+  <data name="MenuNewQueryTab.AccessKey" xml:space="preserve">
+    <value>T</value>
+  </data>
+  <data name="MenuCloseTab.Text" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="MenuCloseTab.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuSettings.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="MenuSettings.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MenuExit.Text" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+  <data name="MenuExit.AccessKey" xml:space="preserve">
+    <value>X</value>
+  </data>
+  <data name="EditMenu.Title" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="EditMenu.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuUndo.Text" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="MenuUndo.AccessKey" xml:space="preserve">
+    <value>U</value>
+  </data>
+  <data name="MenuRedo.Text" xml:space="preserve">
+    <value>Redo</value>
+  </data>
+  <data name="MenuRedo.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuCut.Text" xml:space="preserve">
+    <value>Cut</value>
+  </data>
+  <data name="MenuCut.AccessKey" xml:space="preserve">
+    <value>T</value>
+  </data>
+  <data name="MenuCopy.Text" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="MenuCopy.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuPaste.Text" xml:space="preserve">
+    <value>Paste</value>
+  </data>
+  <data name="MenuPaste.AccessKey" xml:space="preserve">
+    <value>P</value>
+  </data>
+  <data name="MenuSelectAll.Text" xml:space="preserve">
+    <value>Select all</value>
+  </data>
+  <data name="MenuSelectAll.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="MenuFind.Text" xml:space="preserve">
+    <value>Find</value>
+  </data>
+  <data name="MenuFind.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="ViewMenu.Title" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="ViewMenu.AccessKey" xml:space="preserve">
+    <value>V</value>
+  </data>
+  <data name="MenuShowConnections.Text" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="MenuShowConnections.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuShowObjects.Text" xml:space="preserve">
+    <value>Object tree</value>
+  </data>
+  <data name="MenuShowObjects.AccessKey" xml:space="preserve">
+    <value>O</value>
+  </data>
+  <data name="MenuFilterObjects.Text" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="MenuFilterObjects.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="DatabaseMenu.Title" xml:space="preserve">
+    <value>Database</value>
+  </data>
+  <data name="DatabaseMenu.AccessKey" xml:space="preserve">
+    <value>D</value>
+  </data>
+  <data name="MenuRefresh.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="MenuRefresh.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuEditConnection.Text" xml:space="preserve">
+    <value>Edit connection...</value>
+  </data>
+  <data name="MenuEditConnection.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuReconnect.Text" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="MenuReconnect.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuDisconnect.Text" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="MenuDisconnect.AccessKey" xml:space="preserve">
+    <value>D</value>
+  </data>
+  <data name="QueryMenu.Title" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="QueryMenu.AccessKey" xml:space="preserve">
+    <value>Q</value>
+  </data>
+  <data name="MenuRun.Text" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="MenuRun.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuRunStatement.Text" xml:space="preserve">
+    <value>Run statement at cursor</value>
+  </data>
+  <data name="MenuRunStatement.AccessKey" xml:space="preserve">
+    <value>T</value>
+  </data>
+  <data name="MenuStop.Text" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="MenuStop.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="HelpMenu.Title" xml:space="preserve">
+    <value>Help</value>
+  </data>
+  <data name="HelpMenu.AccessKey" xml:space="preserve">
+    <value>H</value>
+  </data>
+  <data name="MenuDocumentation.Text" xml:space="preserve">
+    <value>Documentation</value>
+  </data>
+  <data name="MenuDocumentation.AccessKey" xml:space="preserve">
+    <value>D</value>
+  </data>
+  <data name="MenuReportIssue.Text" xml:space="preserve">
+    <value>Report an issue</value>
+  </data>
+  <data name="MenuReportIssue.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuSample.Text" xml:space="preserve">
+    <value>Open the sample database</value>
+  </data>
+  <data name="MenuSample.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MenuAbout.Text" xml:space="preserve">
+    <value>About TablePro</value>
+  </data>
+  <data name="MenuAbout.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="HomeItem.Content" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="CancelConnectButton.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="RetryButton.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="EditConnectionButton.Content" xml:space="preserve">
+    <value>Edit connection</value>
+  </data>
+  <data name="CopyDetailsButton.Content" xml:space="preserve">
+    <value>Copy details</value>
+  </data>
+  <data name="ObjectFilter.PlaceholderText" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="ObjectFilter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="BackToTreeButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Back to the object tree</value>
+  </data>
+  <data name="BackToTreeButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Back to the object tree</value>
+  </data>
+  <data name="ObjectTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Objects</value>
+  </data>
+  <data name="ObjectList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Matching objects</value>
+  </data>
+  <data name="Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Tabs</value>
+  </data>
+  <data name="QueryCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query commands</value>
+  </data>
+  <data name="RunButton.Label" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run (Ctrl+Enter)</value>
+  </data>
+  <data name="StopButton.Label" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Stop (Shift+F5)</value>
+  </data>
+  <data name="TableCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Table commands</value>
+  </data>
+  <data name="RefreshTableButton.Label" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ResultsGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="ResultsViews.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Results or messages</value>
+  </data>
+  <data name="ResultsViewItem.Text" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="MessagesViewItem.Text" xml:space="preserve">
+    <value>Messages</value>
+  </data>
+  <data name="ResultsMessages.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Messages</value>
+  </data>
+  <data name="HomeTitle.Text" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="HomeCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Connection commands</value>
+  </data>
+  <data name="NewConnectionButton.Label" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="OpenFileButton.Label" xml:space="preserve">
+    <value>Open file</value>
+  </data>
+  <data name="ImportButton.Label" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="NewGroupButton.Label" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="SettingsButton.Label" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="LibrarySearch.PlaceholderText" xml:space="preserve">
+    <value>Search connections</value>
+  </data>
+  <data name="LibrarySearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search connections</value>
+  </data>
+  <data name="GetStartedHeader.Text" xml:space="preserve">
+    <value>Get started</value>
+  </data>
+  <data name="NewConnectionCard.Header" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="NewConnectionCard.Description" xml:space="preserve">
+    <value>Connect to PostgreSQL, MySQL, SQL Server, MongoDB, Redis and more</value>
+  </data>
+  <data name="OpenFileCard.Header" xml:space="preserve">
+    <value>Open a database file</value>
+  </data>
+  <data name="OpenFileCard.Description" xml:space="preserve">
+    <value>SQLite and DuckDB files on this PC</value>
+  </data>
+  <data name="ImportCard.Header" xml:space="preserve">
+    <value>Import a connections file</value>
+  </data>
+  <data name="ImportCard.Description" xml:space="preserve">
+    <value>Connections exported from TablePro. Passwords are not in the file, so each one asks on its first connect.</value>
+  </data>
+  <data name="SampleCard.Header" xml:space="preserve">
+    <value>Try the sample database</value>
+  </data>
+  <data name="SampleCard.Description" xml:space="preserve">
+    <value>Chinook, a small music store in SQLite</value>
+  </data>
+  <data name="ConnectionTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Saved connections</value>
+  </data>
+  <data name="NoResultsText.Text" xml:space="preserve">
+    <value>No connection matches the search</value>
+  </data>
+  <data name="SettingsTitle.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="AppearanceHeader.Text" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="ThemeCard.Header" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="ThemeCard.Description" xml:space="preserve">
+    <value>Select which app theme to display</value>
+  </data>
+  <data name="ThemeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="ThemeLight.Content" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="ThemeDark.Content" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="ThemeSystem.Content" xml:space="preserve">
+    <value>Use system setting</value>
+  </data>
+  <data name="WindowsColorSettings.Content" xml:space="preserve">
+    <value>Windows color settings</value>
+  </data>
+  <data name="StartupHeader.Text" xml:space="preserve">
+    <value>Startup</value>
+  </data>
+  <data name="ReopenCard.Header" xml:space="preserve">
+    <value>Reopen the previous session</value>
+  </data>
+  <data name="ReopenCard.Description" xml:space="preserve">
+    <value>Open the connections and tabs you had open. Only the one in front connects.</value>
+  </data>
+  <data name="ReopenSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reopen the previous session</value>
+  </data>
+  <data name="EditorHeader.Text" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="FontSizeCard.Header" xml:space="preserve">
+    <value>Font size</value>
+  </data>
+  <data name="FontSizeCard.Description" xml:space="preserve">
+    <value>The size of the text in the SQL editor</value>
+  </data>
+  <data name="FontSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Font size</value>
+  </data>
+  <data name="QueriesHeader.Text" xml:space="preserve">
+    <value>Queries</value>
+  </data>
+  <data name="RowLimitCard.Header" xml:space="preserve">
+    <value>Row limit</value>
+  </data>
+  <data name="RowLimitCard.Description" xml:space="preserve">
+    <value>The most rows each result keeps</value>
+  </data>
+  <data name="RowLimitBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Row limit</value>
+  </data>
+  <data name="TimeoutCard.Header" xml:space="preserve">
+    <value>Query timeout</value>
+  </data>
+  <data name="TimeoutCard.Description" xml:space="preserve">
+    <value>Seconds a statement may run. 0 leaves it to the connection.</value>
+  </data>
+  <data name="TimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query timeout in seconds</value>
+  </data>
+  <data name="AboutHeader.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="AboutExpander.Header" xml:space="preserve">
+    <value>TablePro</value>
+  </data>
+  <data name="AboutExpander.Description" xml:space="preserve">
+    <value>A native database client</value>
+  </data>
+  <data name="DocumentationCard.Header" xml:space="preserve">
+    <value>Documentation</value>
+  </data>
+  <data name="ReportIssueCard.Header" xml:space="preserve">
+    <value>Report an issue</value>
+  </data>
+  <data name="DataFolderCard.Header" xml:space="preserve">
+    <value>Open the data folder</value>
+  </data>
+  <data name="EngineSearch.PlaceholderText" xml:space="preserve">
+    <value>Search engines</value>
+  </data>
+  <data name="EngineSearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search engines</value>
+  </data>
+  <data name="FromUrlButton.Content" xml:space="preserve">
+    <value>From connection URL...</value>
+  </data>
+  <data name="UrlBox.Header" xml:space="preserve">
+    <value>Connection URL</value>
+  </data>
+  <data name="UrlBox.PlaceholderText" xml:space="preserve">
+    <value>postgresql://user@host:5432/database</value>
+  </data>
+  <data name="UrlContinueButton.Content" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="EngineGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Database engines</value>
+  </data>
+  <data name="ChangeEngineButton.Content" xml:space="preserve">
+    <value>Change engine</value>
+  </data>
+  <data name="NameBox.Header" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="HostBox.Header" xml:space="preserve">
+    <value>Host</value>
+  </data>
+  <data name="PortBox.Header" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="UserBox.Header" xml:space="preserve">
+    <value>User name</value>
+  </data>
+  <data name="PasswordInput.Header" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="DatabaseBox.Header" xml:space="preserve">
+    <value>Database</value>
+  </data>
+  <data name="DatabaseBox.PlaceholderText" xml:space="preserve">
+    <value>Optional</value>
+  </data>
+  <data name="FileBox.Header" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="FileBox.PlaceholderText" xml:space="preserve">
+    <value>The full path of the database file</value>
+  </data>
+  <data name="BrowseButton.Content" xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="NewFileButton.Content" xml:space="preserve">
+    <value>New file...</value>
+  </data>
+  <data name="SshExpander.Header" xml:space="preserve">
+    <value>SSH tunnel</value>
+  </data>
+  <data name="SshSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Connect through SSH</value>
+  </data>
+  <data name="SshHostCard.Header" xml:space="preserve">
+    <value>SSH host</value>
+  </data>
+  <data name="SshHostBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH host</value>
+  </data>
+  <data name="SshPortCard.Header" xml:space="preserve">
+    <value>SSH port</value>
+  </data>
+  <data name="SshPortBox.PlaceholderText" xml:space="preserve">
+    <value>22</value>
+  </data>
+  <data name="SshPortBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH port</value>
+  </data>
+  <data name="SshUserCard.Header" xml:space="preserve">
+    <value>SSH user name</value>
+  </data>
+  <data name="SshUserBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH user name</value>
+  </data>
+  <data name="SshAuthCard.Header" xml:space="preserve">
+    <value>Authentication</value>
+  </data>
+  <data name="SshAuthBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH authentication</value>
+  </data>
+  <data name="SshAuthAgent.Content" xml:space="preserve">
+    <value>SSH agent</value>
+  </data>
+  <data name="SshAuthKey.Content" xml:space="preserve">
+    <value>Private key</value>
+  </data>
+  <data name="SshAuthPassword.Content" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="SshAuthKeyboard.Content" xml:space="preserve">
+    <value>Keyboard interactive</value>
+  </data>
+  <data name="SshKeyCard.Header" xml:space="preserve">
+    <value>Private key file</value>
+  </data>
+  <data name="SshKeyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Private key file</value>
+  </data>
+  <data name="SshPasswordCard.Header" xml:space="preserve">
+    <value>SSH password</value>
+  </data>
+  <data name="SshPasswordInput.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH password</value>
+  </data>
+  <data name="TlsExpander.Header" xml:space="preserve">
+    <value>SSL/TLS</value>
+  </data>
+  <data name="TlsModeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Encryption</value>
+  </data>
+  <data name="TlsMode_Disable" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="TlsMode_Prefer" xml:space="preserve">
+    <value>Preferred, any certificate</value>
+  </data>
+  <data name="TlsMode_Require" xml:space="preserve">
+    <value>Required, any certificate</value>
+  </data>
+  <data name="TlsMode_VerifyFull" xml:space="preserve">
+    <value>Required, verify the certificate and host</value>
+  </data>
+  <data name="TlsMode_Strict" xml:space="preserve">
+    <value>Strict (TDS 8.0), verify the certificate and host</value>
+  </data>
+  <data name="CaFileCard.Header" xml:space="preserve">
+    <value>CA certificate</value>
+  </data>
+  <data name="CaFileBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>CA certificate</value>
+  </data>
+  <data name="ClientCertificateCard.Header" xml:space="preserve">
+    <value>Client certificate</value>
+  </data>
+  <data name="ClientCertificateBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Client certificate</value>
+  </data>
+  <data name="ClientKeyCard.Header" xml:space="preserve">
+    <value>Client key</value>
+  </data>
+  <data name="ClientKeyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Client key</value>
+  </data>
+  <data name="OptionsExpander.Header" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="SafeModeCard.Header" xml:space="preserve">
+    <value>Safe Mode</value>
+  </data>
+  <data name="SafeModeCard.Description" xml:space="preserve">
+    <value>Ask before writes, or block them</value>
+  </data>
+  <data name="SafeModeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Safe Mode</value>
+  </data>
+  <data name="SafeModeOff.Content" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="SafeModeConfirm.Content" xml:space="preserve">
+    <value>Confirm writes</value>
+  </data>
+  <data name="SafeModeReadOnly.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="ConnectionTimeoutCard.Header" xml:space="preserve">
+    <value>Query timeout</value>
+  </data>
+  <data name="ConnectionTimeoutCard.Description" xml:space="preserve">
+    <value>Seconds. Empty follows Settings.</value>
+  </data>
+  <data name="ConnectionTimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query timeout in seconds</value>
+  </data>
+  <data name="AppearanceExpander.Header" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="ColorCard.Header" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="ColorBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="GroupCard.Header" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="GroupBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="TestButton.Content" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="ConnectButton.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="SaveButton.Content" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="CancelButton.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="StatusConnecting" xml:space="preserve">
+    <value>Connecting</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>Couldn't connect</value>
+  </data>
+  <data name="StatusNotConnected" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>Connecting to {0}...</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>Couldn't connect to {0}</value>
+  </data>
+  <data name="QueryTabTitle" xml:space="preserve">
+    <value>Query {0}</value>
+  </data>
+  <data name="Folder_Tables" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="Folder_Views" xml:space="preserve">
+    <value>Views</value>
+  </data>
+  <data name="Folder_MaterializedViews" xml:space="preserve">
+    <value>Materialized views</value>
+  </data>
+  <data name="Folder_ForeignTables" xml:space="preserve">
+    <value>Foreign tables</value>
+  </data>
+  <data name="Folder_Sequences" xml:space="preserve">
+    <value>Sequences</value>
+  </data>
+  <data name="Folder_Functions" xml:space="preserve">
+    <value>Functions</value>
+  </data>
+  <data name="Folder_Procedures" xml:space="preserve">
+    <value>Procedures</value>
+  </data>
+  <data name="Folder_Triggers" xml:space="preserve">
+    <value>Triggers</value>
+  </data>
+  <data name="Folder_Dictionaries" xml:space="preserve">
+    <value>Dictionaries</value>
+  </data>
+  <data name="Folder_Keys" xml:space="preserve">
+    <value>Keys</value>
+  </data>
+  <data name="Folder_Other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="ShowAllObjects" xml:space="preserve">
+    <value>Show all {0:N0}</value>
+  </data>
+  <data name="TypeToFilter" xml:space="preserve">
+    <value>Type in the filter box to find the rest</value>
+  </data>
+  <data name="FolderListHeader" xml:space="preserve">
+    <value>{0}: {1:N0}</value>
+  </data>
+  <data name="FilterMatches" xml:space="preserve">
+    <value>Matches: {0:N0}</value>
+  </data>
+  <data name="NoMatches" xml:space="preserve">
+    <value>No object matches</value>
+  </data>
+  <data name="EditorName" xml:space="preserve">
+    <value>SQL editor, {0}</value>
+  </data>
+  <data name="ResultsEmpty" xml:space="preserve">
+    <value>Run a statement to see its results</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>Running...</value>
+  </data>
+  <data name="StatusRows" xml:space="preserve">
+    <value>Rows: {0:N0} · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsLimited" xml:space="preserve">
+    <value>Rows: {0:N0}, the row limit · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsStopped" xml:space="preserve">
+    <value>Rows: {0:N0}, the server stopped the statement at the row limit, before its end · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsSizeLimited" xml:space="preserve">
+    <value>Rows: {0:N0}, a run stops keeping rows past {2:N0} MB · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsSizeLimitedStopped" xml:space="preserve">
+    <value>Rows: {0:N0}, a run stops keeping rows past {2:N0} MB, and the server stopped the statement at the row limit, before its end · {1:N0} ms</value>
+  </data>
+  <data name="StatusNoStatement" xml:space="preserve">
+    <value>No statement at the cursor</value>
+  </data>
+  <data name="StatusDone" xml:space="preserve">
+    <value>Done · {0:N0} ms</value>
+  </data>
+  <data name="StatusTimedOut" xml:space="preserve">
+    <value>The statement ran past its timeout.</value>
+  </data>
+  <data name="StatusCancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="StatusRunFailed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="ResultsAffected" xml:space="preserve">
+    <value>Rows affected: {0:N0}</value>
+  </data>
+  <data name="ResultsNoRows" xml:space="preserve">
+    <value>The statement returned no rows</value>
+  </data>
+  <data name="MessagesCutShort" xml:space="preserve">
+    <value>The output was cut short.</value>
+  </data>
+  <data name="StatusSortedHeld" xml:space="preserve">
+    <value>Rows: {0:N0} · sorted the rows shown</value>
+  </data>
+  <data name="GridSortedAscending" xml:space="preserve">
+    <value>Sorted ascending</value>
+  </data>
+  <data name="GridSortedDescending" xml:space="preserve">
+    <value>Sorted descending</value>
+  </data>
+  <data name="SectionFavorites" xml:space="preserve">
+    <value>Favorites</value>
+  </data>
+  <data name="SectionRecent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="SectionConnections" xml:space="preserve">
+    <value>All connections</value>
+  </data>
+  <data name="MenuConnect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="MenuEdit" xml:space="preserve">
+    <value>Edit...</value>
+  </data>
+  <data name="MenuAddFavorite" xml:space="preserve">
+    <value>Add to Favorites</value>
+  </data>
+  <data name="MenuRemoveFavorite" xml:space="preserve">
+    <value>Remove from Favorites</value>
+  </data>
+  <data name="MenuMoveToGroup" xml:space="preserve">
+    <value>Move to group</value>
+  </data>
+  <data name="MenuNoGroup" xml:space="preserve">
+    <value>No group</value>
+  </data>
+  <data name="MenuDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="MenuNewSubgroup" xml:space="preserve">
+    <value>New group inside...</value>
+  </data>
+  <data name="MenuRename" xml:space="preserve">
+    <value>Rename...</value>
+  </data>
+  <data name="DeleteConnectionTitle" xml:space="preserve">
+    <value>Delete {0}?</value>
+  </data>
+  <data name="DeleteConnectionMessage" xml:space="preserve">
+    <value>The connection and its saved passwords leave this PC. This can't be undone.</value>
+  </data>
+  <data name="DeleteGroupTitle" xml:space="preserve">
+    <value>Delete the group {0}?</value>
+  </data>
+  <data name="DeleteGroupMessage" xml:space="preserve">
+    <value>Its subgroups go with it, and its connections move to the top level.</value>
+  </data>
+  <data name="DeleteButton" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="RenameGroupTitle" xml:space="preserve">
+    <value>Rename group</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Create</value>
+  </data>
+  <data name="RenameButton" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="GroupNameHeader" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="VersionText" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="NewConnectionTitle" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="EditConnectionTitle" xml:space="preserve">
+    <value>Edit connection</value>
+  </data>
+  <data name="EngineGroup_Relational" xml:space="preserve">
+    <value>Relational</value>
+  </data>
+  <data name="EngineGroup_Document" xml:space="preserve">
+    <value>Document</value>
+  </data>
+  <data name="EngineGroup_KeyValue" xml:space="preserve">
+    <value>Key-value</value>
+  </data>
+  <data name="EngineGroup_Analytical" xml:space="preserve">
+    <value>Analytical</value>
+  </data>
+  <data name="EngineGroup_WideColumn" xml:space="preserve">
+    <value>Wide-column</value>
+  </data>
+  <data name="EngineDefaultPort" xml:space="preserve">
+    <value>Port {0}</value>
+  </data>
+  <data name="ColorNone" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="Color_blue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="Color_teal" xml:space="preserve">
+    <value>Teal</value>
+  </data>
+  <data name="Color_green" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="Color_yellow" xml:space="preserve">
+    <value>Yellow</value>
+  </data>
+  <data name="Color_orange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="Color_red" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="Color_pink" xml:space="preserve">
+    <value>Pink</value>
+  </data>
+  <data name="Color_purple" xml:space="preserve">
+    <value>Purple</value>
+  </data>
+  <data name="Color_slate" xml:space="preserve">
+    <value>Slate</value>
+  </data>
+  <data name="GroupNone" xml:space="preserve">
+    <value>No group</value>
+  </data>
+  <data name="PasswordKeptPlaceholder" xml:space="preserve">
+    <value>Saved. Type to replace it.</value>
+  </data>
+  <data name="FormHasErrors" xml:space="preserve">
+    <value>Fix the marked fields</value>
+  </data>
+  <data name="FieldRequired" xml:space="preserve">
+    <value>Required</value>
+  </data>
+  <data name="FieldNotANumber" xml:space="preserve">
+    <value>Enter a number</value>
+  </data>
+  <data name="FieldNotAbsolute" xml:space="preserve">
+    <value>Enter the full path, starting with a drive letter</value>
+  </data>
+  <data name="FieldTimeoutRange" xml:space="preserve">
+    <value>Enter at most 86,400 seconds</value>
+  </data>
+  <data name="FieldPortRange" xml:space="preserve">
+    <value>Enter a port from 1 to 65535</value>
+  </data>
+  <data name="FieldClientPair" xml:space="preserve">
+    <value>A client certificate needs its key, and a key its certificate</value>
+  </data>
+  <data name="SshOnSummary" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="SshOffSummary" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="OptionsSummary" xml:space="preserve">
+    <value>Safe Mode: {0}</value>
+  </data>
+  <data name="OptionsSummaryTimeout" xml:space="preserve">
+    <value>Safe Mode: {0}, timeout {1} s</value>
+  </data>
+  <data name="AppearanceSummary" xml:space="preserve">
+    <value>Color: {0}, group: {1}</value>
+  </data>
+  <data name="NewDatabaseFileName" xml:space="preserve">
+    <value>database</value>
+  </data>
+  <data name="NewFileOnConnect" xml:space="preserve">
+    <value>The file is made when you connect</value>
+  </data>
+  <data name="Testing" xml:space="preserve">
+    <value>Testing...</value>
+  </data>
+  <data name="TestSucceeded" xml:space="preserve">
+    <value>Connected. These settings work.</value>
+  </data>
+  <data name="FileCreated" xml:space="preserve">
+    <value>Created {0}</value>
+  </data>
+  <data name="ImportDone" xml:space="preserve">
+    <value>Imported. Added: {0}, updated: {1}.</value>
+  </data>
+  <data name="SampleConnectionName" xml:space="preserve">
+    <value>Chinook (Sample)</value>
+  </data>
+  <data name="Error_Unknown" xml:space="preserve">
+    <value>Something went wrong ({0}).</value>
+  </data>
+  <data name="Error_driver_file_not_found" xml:space="preserve">
+    <value>The database file isn't there.</value>
+  </data>
+  <data name="Error_driver_file_access_denied" xml:space="preserve">
+    <value>Windows refused access to the file.</value>
+  </data>
+  <data name="Error_driver_file_io" xml:space="preserve">
+    <value>The file couldn't be read.</value>
+  </data>
+  <data name="Error_driver_not_a_database" xml:space="preserve">
+    <value>This file isn't a database TablePro can open.</value>
+  </data>
+  <data name="Error_driver_database_not_found" xml:space="preserve">
+    <value>This database doesn't exist on the server:</value>
+  </data>
+  <data name="Error_driver_auth" xml:space="preserve">
+    <value>The server refused the user name or password.</value>
+  </data>
+  <data name="Error_driver_login_refused" xml:space="preserve">
+    <value>The server refused the login.</value>
+  </data>
+  <data name="Error_driver_timeout" xml:space="preserve">
+    <value>The server didn't answer in time.</value>
+  </data>
+  <data name="Error_driver_tls" xml:space="preserve">
+    <value>The encrypted connection couldn't be set up.</value>
+  </data>
+  <data name="Error_driver_connection_lost" xml:space="preserve">
+    <value>The connection was lost.</value>
+  </data>
+  <data name="Error_driver_server" xml:space="preserve">
+    <value>The server returned an error.</value>
+  </data>
+  <data name="Error_driver_read_only" xml:space="preserve">
+    <value>This connection is read only.</value>
+  </data>
+  <data name="Error_transport_name_resolution" xml:space="preserve">
+    <value>The host name couldn't be found.</value>
+  </data>
+  <data name="Error_transport_refused" xml:space="preserve">
+    <value>The server refused the connection. Check the host and port.</value>
+  </data>
+  <data name="Error_transport_timeout" xml:space="preserve">
+    <value>The server didn't answer in time.</value>
+  </data>
+  <data name="Error_transport_unreachable" xml:space="preserve">
+    <value>The server can't be reached from this PC.</value>
+  </data>
+  <data name="Error_transport_ssh" xml:space="preserve">
+    <value>The SSH tunnel couldn't be opened.</value>
+  </data>
+  <data name="Error_ssh_open_ssh_client_missing" xml:space="preserve">
+    <value>SSH tunnels aren't available in this build of TablePro for Windows yet.</value>
+  </data>
+  <data name="Error_config_relative_path" xml:space="preserve">
+    <value>Enter the full path of the file.</value>
+  </data>
+  <data name="Error_config_empty_host" xml:space="preserve">
+    <value>Enter a host.</value>
+  </data>
+  <data name="Error_config_invalid_host" xml:space="preserve">
+    <value>The host isn't valid.</value>
+  </data>
+  <data name="Error_config_invalid_port" xml:space="preserve">
+    <value>The port isn't valid.</value>
+  </data>
+  <data name="Error_config_database_required" xml:space="preserve">
+    <value>This engine needs a database name.</value>
+  </data>
+  <data name="Error_connect_unknown_driver" xml:space="preserve">
+    <value>This build of TablePro has no engine for this connection.</value>
+  </data>
+  <data name="Error_keyring_secret_not_stored" xml:space="preserve">
+    <value>No password is saved for this connection. Edit it to enter one.</value>
+  </data>
+  <data name="Error_keyring_secret" xml:space="preserve">
+    <value>Credential Manager couldn't read the saved password.</value>
+  </data>
+  <data name="Error_secret_service_unavailable" xml:space="preserve">
+    <value>Credential Manager isn't available.</value>
+  </data>
+  <data name="Error_ffi_no_file_engine" xml:space="preserve">
+    <value>No engine opens this file.</value>
+  </data>
+  <data name="Error_ffi_no_storage" xml:space="preserve">
+    <value>The saved connections couldn't be opened.</value>
+  </data>
+  <data name="Error_url_unknown_scheme" xml:space="preserve">
+    <value>TablePro doesn't know this kind of URL.</value>
+  </data>
+  <data name="Error_url_invalid" xml:space="preserve">
+    <value>This isn't a connection URL.</value>
+  </data>
+  <data name="Error_url_no_host" xml:space="preserve">
+    <value>The URL names no host.</value>
+  </data>
+  <data name="Error_url_several_hosts" xml:space="preserve">
+    <value>The URL lists several hosts, which only a MongoDB connection takes.</value>
+  </data>
+  <data name="Error_url_invalid_port" xml:space="preserve">
+    <value>The URL's port isn't a number from 1 to 65535.</value>
+  </data>
+  <data name="Error_url_seed_list_host" xml:space="preserve">
+    <value>A mongodb+srv URL names one host and no port.</value>
+  </data>
+  <data name="Error_url_database_number" xml:space="preserve">
+    <value>A Redis URL ends with the database's number, such as /0.</value>
+  </data>
+  <data name="Error_url_relative_path" xml:space="preserve">
+    <value>A path in the URL must be a full path.</value>
+  </data>
+  <data name="Error_url_instance_name" xml:space="preserve">
+    <value>SQL Server instance names aren't supported. Put the instance's port in the URL instead.</value>
+  </data>
+  <data name="Error_url_auth_mechanism" xml:space="preserve">
+    <value>The URL logs in to MongoDB another way than with a password, which TablePro doesn't support.</value>
+  </data>
+  <data name="Error_url_direct_connection" xml:space="preserve">
+    <value>directConnection=true takes one host and no DNS seed list, and false takes a replicaSet or several hosts.</value>
+  </data>
+  <data name="Error_url_unsupported_parameter" xml:space="preserve">
+    <value>The URL asks for a protection TablePro can't enforce, such as requirepeer or require_auth.</value>
+  </data>
+  <data name="Error_url_settings_unsupported" xml:space="preserve">
+    <value>The URL needs a setting a connection here can't keep yet: a local socket, a DNS seed list, several hosts, an authentication database, required channel binding or read-only access.</value>
+  </data>
+  <data name="Error_library_name_required" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_library_import_unreadable" xml:space="preserve">
+    <value>The file couldn't be read.</value>
+  </data>
+  <data name="Error_storage_document_unavailable" xml:space="preserve">
+    <value>The file isn't a TablePro connections file.</value>
+  </data>
+  <data name="Error_storage_group_name_taken" xml:space="preserve">
+    <value>Another group here has this name.</value>
+  </data>
+  <data name="Error_storage_group_too_deep" xml:space="preserve">
+    <value>Groups go at most three levels deep.</value>
+  </data>
+  <data name="Error_storage_group_cycle" xml:space="preserve">
+    <value>A group can't go inside itself.</value>
+  </data>
+  <data name="Error_storage_group_not_found" xml:space="preserve">
+    <value>The group is gone.</value>
+  </data>
+  <data name="Error_storage_connection_not_found" xml:space="preserve">
+    <value>The connection is gone. It may have been deleted.</value>
+  </data>
+  <data name="Error_group_name_empty" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_group_name_too_long" xml:space="preserve">
+    <value>The name is too long.</value>
+  </data>
+  <data name="Error_group_name_control_character" xml:space="preserve">
+    <value>The name has a character that can't be shown.</value>
+  </data>
+  <data name="MenuReopenTab.Text" xml:space="preserve">
+    <value>Reopen closed tab</value>
+  </data>
+  <data name="MenuReopenTab.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="TagsButton.Label" xml:space="preserve">
+    <value>Tags</value>
+  </data>
+  <data name="SelectButton.Label" xml:space="preserve">
+    <value>Select</value>
+  </data>
+  <data name="SelectionConnectButton.Label" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="SelectionFavoriteButton.Label" xml:space="preserve">
+    <value>Add to Favorites</value>
+  </data>
+  <data name="SelectionMoveButton.Label" xml:space="preserve">
+    <value>Move to group</value>
+  </data>
+  <data name="SelectionDeleteButton.Label" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="RenameBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="MenuTags" xml:space="preserve">
+    <value>Tags</value>
+  </data>
+  <data name="MenuNewTag" xml:space="preserve">
+    <value>New tag...</value>
+  </data>
+  <data name="MenuTagColor" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="NewTagTitle" xml:space="preserve">
+    <value>New tag</value>
+  </data>
+  <data name="RenameTagTitle" xml:space="preserve">
+    <value>Rename tag</value>
+  </data>
+  <data name="DeleteTagTitle" xml:space="preserve">
+    <value>Delete the tag {0}?</value>
+  </data>
+  <data name="DeleteTagMessage" xml:space="preserve">
+    <value>It comes off every connection that has it.</value>
+  </data>
+  <data name="DeleteConnectionsTitle" xml:space="preserve">
+    <value>Delete {0} connections?</value>
+  </data>
+  <data name="DeleteConnectionsMessage" xml:space="preserve">
+    <value>The connections and their saved passwords leave this PC. This can't be undone.</value>
+  </data>
+  <data name="DropAddFavorites" xml:space="preserve">
+    <value>Add to Favorites</value>
+  </data>
+  <data name="DropBefore" xml:space="preserve">
+    <value>Move before {0}</value>
+  </data>
+  <data name="DropInto" xml:space="preserve">
+    <value>Move to {0}</value>
+  </data>
+  <data name="Error_storage_tag_name_taken" xml:space="preserve">
+    <value>Another tag has that name.</value>
+  </data>
+  <data name="Error_tag_name_empty" xml:space="preserve">
+    <value>A tag needs a name.</value>
+  </data>
+  <data name="Error_tag_name_too_long" xml:space="preserve">
+    <value>That name is too long for a tag.</value>
+  </data>
+  <data name="Error_tag_name_control_character" xml:space="preserve">
+    <value>The name has a character that can't be shown.</value>
+  </data>
+  <data name="Error_library_unknown_color" xml:space="preserve">
+    <value>That color isn't one a tag can have.</value>
+  </data>
+  <data name="Error_library_tag_not_found" xml:space="preserve">
+    <value>That tag is gone. The list shows the tags there are now.</value>
+  </data>
+  <data name="Error_ffi_page_unsupported" xml:space="preserve">
+    <value>This engine reads a table only from its start, so it has no later pages.</value>
+  </data>
+  <data name="Secret_DatabasePassword" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="Secret_SshPassword" xml:space="preserve">
+    <value>SSH password</value>
+  </data>
+  <data name="Secret_SshPassphrase" xml:space="preserve">
+    <value>Key passphrase</value>
+  </data>
+  <data name="SaveSecret" xml:space="preserve">
+    <value>Save it in Credential Manager</value>
+  </data>
+  <data name="SecretRequiredTitle" xml:space="preserve">
+    <value>Password required</value>
+  </data>
+  <data name="SecretRequiredMessage" xml:space="preserve">
+    <value>Nothing is saved for {0}. Enter it to connect.</value>
+  </data>
+  <data name="ConnectButtonText" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="CommitButton.Content" xml:space="preserve">
+    <value>Commit</value>
+  </data>
+  <data name="RollBackButton.Content" xml:space="preserve">
+    <value>Roll back</value>
+  </data>
+  <data name="TransactionOpenTitle" xml:space="preserve">
+    <value>Transaction open</value>
+  </data>
+  <data name="TransactionOpenMessage" xml:space="preserve">
+    <value>Its changes stay on this tab's connection until you commit or roll back.</value>
+  </data>
+  <data name="TransactionFailedTitle" xml:space="preserve">
+    <value>Transaction failed</value>
+  </data>
+  <data name="TransactionFailedMessage" xml:space="preserve">
+    <value>Roll it back to continue.</value>
+  </data>
+  <data name="RollBackTitle" xml:space="preserve">
+    <value>Roll back the transaction?</value>
+  </data>
+  <data name="RollBackMessage" xml:space="preserve">
+    <value>Its uncommitted changes are discarded.</value>
+  </data>
+  <data name="RollBackButtonText" xml:space="preserve">
+    <value>Roll back</value>
+  </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>The connection was lost, and its open transaction with it. The next run opens a new connection.</value>
+  </data>
+  <data name="ReconnectButton.Content" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="ShowTransactionTabButton.Content" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="TransactionElsewhere" xml:space="preserve">
+    <value>{0} has an open transaction.</value>
+  </data>
+  <data name="TransactionElsewhereFailed" xml:space="preserve">
+    <value>{0} has a failed transaction.</value>
+  </data>
+  <data name="TransactionElsewhereMany" xml:space="preserve">
+    <value>{0} tabs have open transactions.</value>
+  </data>
+  <data name="CloseHeldTabTitle" xml:space="preserve">
+    <value>Close {0}?</value>
+  </data>
+  <data name="CloseHeldTabMessage" xml:space="preserve">
+    <value>Its transaction is still open. Closing the tab rolls it back.</value>
+  </data>
+  <data name="CloseHeldTabButton" xml:space="preserve">
+    <value>Close and roll back</value>
+  </data>
+  <data name="ConfirmRunTitleOne" xml:space="preserve">
+    <value>Run this statement?</value>
+  </data>
+  <data name="ConfirmRunTitleMany" xml:space="preserve">
+    <value>Run these {0} statements?</value>
+  </data>
+  <data name="ConfirmRunWriteOne" xml:space="preserve">
+    <value>It changes the database on {0}, which asks before every write.</value>
+  </data>
+  <data name="ConfirmRunWriteMany" xml:space="preserve">
+    <value>They change the database on {0}, which asks before every write.</value>
+  </data>
+  <data name="ConfirmRunDestructiveOne" xml:space="preserve">
+    <value>It drops or empties a table, or changes every row of one, on {0}.</value>
+  </data>
+  <data name="ConfirmRunDestructiveMany" xml:space="preserve">
+    <value>Some of them drop or empty a table, or change every row of one, on {0}.</value>
+  </data>
+  <data name="ConfirmRunButton" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="ConnectCancelledKeepsTabs" xml:space="preserve">
+    <value>Connecting was cancelled. Retry opens the tabs again.</value>
+  </data>
+  <data name="ChangesOnConnectTitle" xml:space="preserve">
+    <value>Changes apply the next time you connect</value>
+  </data>
+  <data name="ChangesOnConnectAsks" xml:space="preserve">
+    <value>Until then, this connection asks before every write.</value>
+  </data>
+  <data name="HealthReconnecting" xml:space="preserve">
+    <value>Connection lost. Reconnecting, attempt {0}...</value>
+  </data>
+  <data name="HealthOffline" xml:space="preserve">
+    <value>The server can't be reached. TablePro keeps trying.</value>
+  </data>
+  <data name="HealthFailed" xml:space="preserve">
+    <value>The connection was lost and needs you to reconnect.</value>
+  </data>
+  <data name="ObjectsSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Object pane width</value>
+  </data>
+  <data name="FirstPageButton.Label" xml:space="preserve">
+    <value>First page</value>
+  </data>
+  <data name="PreviousPageButton.Label" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+  <data name="NextPageButton.Label" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+  <data name="LastPageButton.Label" xml:space="preserve">
+    <value>Last page</value>
+  </data>
+  <data name="StatusPage" xml:space="preserve">
+    <value>Rows {0:N0}-{1:N0} · {2:N0} ms</value>
+  </data>
+  <data name="StatusPageOf" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
+  </data>
+  <data name="MenuMoveTab.Text" xml:space="preserve">
+    <value>Move tab to new window</value>
+  </data>
+  <data name="MenuMoveTab.AccessKey" xml:space="preserve">
+    <value>M</value>
+  </data>
+  <data name="MenuMoveToNewWindow" xml:space="preserve">
+    <value>Move to new window</value>
+  </data>
+  <data name="MenuCloseThisTab" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="TabWindowTitle" xml:space="preserve">
+    <value>{0} - TablePro</value>
+  </data>
+  <data name="PageSizeButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>Rows per page</value>
+  </data>
+  <data name="GoToPageButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>Go to page</value>
+  </data>
+  <data name="PageSizeLabel" xml:space="preserve">
+    <value>{0:N0} rows</value>
+  </data>
+  <data name="PageSizeOption" xml:space="preserve">
+    <value>{0:N0} rows</value>
+  </data>
+  <data name="PageSizeAll" xml:space="preserve">
+    <value>All rows...</value>
+  </data>
+  <data name="PageSizeCustom" xml:space="preserve">
+    <value>Custom...</value>
+  </data>
+  <data name="PageSizeCaption" xml:space="preserve">
+    <value>Rows per page</value>
+  </data>
+  <data name="PageSizeApply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="AllRowsTitle" xml:space="preserve">
+    <value>Show all rows</value>
+  </data>
+  <data name="AllRowsMessage" xml:space="preserve">
+    <value>This loads all {0:N0} rows on one page. A large table uses a lot of memory.</value>
+  </data>
+  <data name="AllRowsButton" xml:space="preserve">
+    <value>Show all</value>
+  </data>
+  <data name="PageOf" xml:space="preserve">
+    <value>Page {0:N0} of {1:N0}</value>
+  </data>
+  <data name="PageNumber" xml:space="preserve">
+    <value>Page {0:N0}</value>
+  </data>
+  <data name="GoToPageCaption" xml:space="preserve">
+    <value>Go to page</value>
+  </data>
+  <data name="GoToPageAction" xml:space="preserve">
+    <value>Go</value>
+  </data>
+  <data name="NumberRange" xml:space="preserve">
+    <value>Between {0:N0} and {1:N0}</value>
+  </data>
+  <data name="PaginationHeader.Text" xml:space="preserve">
+    <value>Pagination</value>
+  </data>
+  <data name="PageSizeCard.Header" xml:space="preserve">
+    <value>Default page size</value>
+  </data>
+  <data name="PageSizeCard.Description" xml:space="preserve">
+    <value>Rows a new table tab shows on each page</value>
+  </data>
+  <data name="PageSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Default page size</value>
+  </data>
+  <data name="SshTrustTitle" xml:space="preserve">
+    <value>Trust this SSH server?</value>
+  </data>
+  <data name="SshTrustButton" xml:space="preserve">
+    <value>Trust and connect</value>
+  </data>
+  <data name="SshTrustMessage" xml:space="preserve">
+    <value>The identity of {0} is not known. Verify this fingerprint with your administrator before trusting it.
+
+Algorithm: {1}
+Fingerprint: {2}</value>
+  </data>
+  <data name="SshPassphraseMessage" xml:space="preserve">
+    <value>Enter the passphrase for {0} to connect to {1}.</value>
+  </data>
+  <data name="Error_ssh_host_key_unknown" xml:space="preserve">
+    <value>The SSH server is not trusted. Connect again and verify its fingerprint before trusting it.</value>
+  </data>
+  <data name="Error_ssh_host_key_changed" xml:space="preserve">
+    <value>The SSH server identity has changed. Verify the new fingerprint with your administrator before replacing the saved key.</value>
+  </data>
+  <data name="Error_ssh_host_key_revoked" xml:space="preserve">
+    <value>The SSH server key has been revoked. Contact your administrator.</value>
+  </data>
+  <data name="Error_ssh_no_common_algorithm" xml:space="preserve">
+    <value>The SSH server and TablePro do not support a common secure algorithm. Update the server configuration.</value>
+  </data>
+  <data name="Error_ssh_channel_open_failed" xml:space="preserve">
+    <value>The SSH server could not reach the database. Check the database host and port and the server’s forwarding permissions.</value>
+  </data>
+  <data name="Error_ssh_protocol" xml:space="preserve">
+    <value>The SSH connection failed. Check the server and try again.</value>
+  </data>
+  <data name="Error_ssh_config_rejected" xml:space="preserve">
+    <value>This SSH configuration is not supported. Check the SSH settings.</value>
+  </data>
+  <data name="Error_ssh_authentication_rejected" xml:space="preserve">
+    <value>The SSH server rejected the login. Check the SSH user and authentication settings.</value>
+  </data>
+  <data name="Error_ssh_agent_unavailable" xml:space="preserve">
+    <value>The SSH agent is not available. Start the OpenSSH Authentication Agent service or choose a private key.</value>
+  </data>
+  <data name="Error_ssh_identity_file_unreadable" xml:space="preserve">
+    <value>The SSH private key could not be read. Check the file and its permissions.</value>
+  </data>
+  <data name="Error_ssh_identity_file_invalid" xml:space="preserve">
+    <value>The SSH private key is invalid or uses an unsupported format.</value>
+  </data>
+  <data name="Error_ssh_interaction_cancelled" xml:space="preserve">
+    <value>The SSH login was cancelled.</value>
+  </data>
+  <data name="Error_ssh_known_hosts_unwritable" xml:space="preserve">
+    <value>The trusted SSH server key could not be saved. Check permissions on your SSH known_hosts file.</value>
+  </data>
+  <data name="Error_ssh_too_many_authentication_failures" xml:space="preserve">
+    <value>The SSH server refused further login attempts. Choose the specific private key for this server and try again.</value>
+  </data>
+  <data name="Error_ssh_master_exited" xml:space="preserve">
+    <value>The SSH connection closed. Check the server and connect again.</value>
+  </data>
+  <data name="SshChangedKeyTitle" xml:space="preserve">
+    <value>SSH server identity changed</value>
+  </data>
+  <data name="SshForgetKeyButton" xml:space="preserve">
+    <value>Forget saved key</value>
+  </data>
+  <data name="SshChangedKeyMessage" xml:space="preserve">
+    <value>The saved key for {0} differs from the server’s key. This could mean someone is intercepting the connection. Contact your administrator to verify this fingerprint before forgetting the saved key. You will be asked to trust the server again.
+
+Algorithm: {1}
+New fingerprint: {2}</value>
+  </data>
+  <data name="Error_ssh_host_key_not_this_connection" xml:space="preserve">
+    <value>This SSH key does not belong to the connection. Check the SSH settings and try again.</value>
+  </data>
+  <data name="Error_ssh_config_unreadable" xml:space="preserve">
+    <value>The SSH configuration file could not be read. Check its permissions.</value>
+  </data>
+  <data name="Error_ssh_invalid_destination" xml:space="preserve">
+    <value>The SSH host or user is invalid. Check the SSH settings.</value>
+  </data>
+  <data name="Error_ssh_forward_rejected" xml:space="preserve">
+    <value>The SSH server refused forwarding to the database. Check the server’s forwarding permissions.</value>
+  </data>
+  <data name="Error_ssh_internal" xml:space="preserve">
+    <value>The SSH connection could not be completed. Try connecting again.</value>
+  </data>
+  <data name="Error_config_server_name_override_unsupported" xml:space="preserve">
+    <value>This driver cannot verify the database server name through this connection route. Use a direct connection for full TLS verification.</value>
+  </data>
+  <data name="AuthBox.Header" xml:space="preserve">
+    <value>Authentication</value>
+  </data>
+  <data name="AuthBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Authentication</value>
+  </data>
+  <data name="AuthPassword.Content" xml:space="preserve">
+    <value>User name and password</value>
+  </data>
+  <data name="AuthIntegrated.Content" xml:space="preserve">
+    <value>Windows authentication</value>
+  </data>
+  <data name="ServerNameCard.Header" xml:space="preserve">
+    <value>Certificate host name</value>
+  </data>
+  <data name="ServerNameCard.Description" xml:space="preserve">
+    <value>Leave blank to verify the connection host.</value>
+  </data>
+  <data name="ServerNameBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Certificate host name</value>
+  </data>
+  <data name="TlsRemedy_ChangeEncryption" xml:space="preserve">
+    <value>Change encryption</value>
+  </data>
+  <data name="TlsRemedy_ChooseCaCertificate" xml:space="preserve">
+    <value>Choose CA certificate</value>
+  </data>
+  <data name="TlsRemedy_SetServerName" xml:space="preserve">
+    <value>Set TLS server name</value>
+  </data>
+  <data name="TlsFailure_ServerRequiresStrict" xml:space="preserve">
+    <value>This server requires Strict encryption. Choose Strict to connect.</value>
+  </data>
+  <data name="TlsFailure_ServerRefusedStrict" xml:space="preserve">
+    <value>This server refused Strict encryption. Check its certificate or choose another encryption mode.</value>
+  </data>
+  <data name="TlsFailure_ServerRequiresTls" xml:space="preserve">
+    <value>This server requires encryption. Choose an encryption mode to connect.</value>
+  </data>
+  <data name="TlsFailure_UnknownIssuer" xml:space="preserve">
+    <value>The server certificate is not trusted. Choose its CA certificate.</value>
+  </data>
+  <data name="TlsFailure_NameMismatch" xml:space="preserve">
+    <value>The server certificate does not match the host name. Check the host and certificate host name.</value>
+  </data>
+  <data name="TlsFailure_Expired" xml:space="preserve">
+    <value>The server certificate has expired. Ask the server administrator to renew it.</value>
+  </data>
+  <data name="TlsFailure_NotYetValid" xml:space="preserve">
+    <value>The server certificate is not valid yet. Check the system clock.</value>
+  </data>
+  <data name="TlsFailure_Revoked" xml:space="preserve">
+    <value>The server certificate has been revoked. Ask the server administrator to replace it.</value>
+  </data>
+  <data name="TlsFailure_ServerRefusedTls" xml:space="preserve">
+    <value>This server does not accept encryption on this port. Choose another encryption mode, or its TLS port.</value>
+  </data>
+  <data name="TlsFailure_HandshakeRejected" xml:space="preserve">
+    <value>The server rejected the TLS handshake. Check its TLS configuration and client certificate.</value>
+  </data>
+  <data name="TlsFailure_CaFileInvalid" xml:space="preserve">
+    <value>The CA certificate file could not be read. Choose a valid certificate file.</value>
+  </data>
+  <data name="TlsFailure_ClientIdentityInvalid" xml:space="preserve">
+    <value>The client certificate or key could not be read. Check both files.</value>
+  </data>
+  <data name="ResultSetItem" xml:space="preserve">
+    <value>Result {0:N0} ({1:N0})</value>
+  </data>
+  <data name="ResultSetItemMore" xml:space="preserve">
+    <value>Result {0:N0} ({1:N0}+)</value>
+  </data>
+  <data name="ResultPicker.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Result set</value>
+  </data>
+  <data name="CloseRunningTitleOne" xml:space="preserve">
+    <value>Stop the running query?</value>
+  </data>
+  <data name="CloseRunningTitleMany" xml:space="preserve">
+    <value>Stop {0} running queries?</value>
+  </data>
+  <data name="CloseRunningRollsBackOne" xml:space="preserve">
+    <value>Closing stops it before it finishes, and rolls back any transaction it has open.</value>
+  </data>
+  <data name="CloseRunningRollsBackMany" xml:space="preserve">
+    <value>Closing stops them before they finish, and rolls back any transaction they have open.</value>
+  </data>
+  <data name="CloseRunningTab" xml:space="preserve">
+    <value>{0} on {1}</value>
+  </data>
+  <data name="CloseRunningButton" xml:space="preserve">
+    <value>Stop and close</value>
+  </data>
+  <data name="Error_config_client_identity_incomplete" xml:space="preserve">
+    <value>A client certificate needs both a certificate file and a key file.</value>
+  </data>
+  <data name="AddRowButton.Label" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="AddRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add row (Ctrl+Shift+N)</value>
+  </data>
+  <data name="DuplicateRowButton.Label" xml:space="preserve">
+    <value>Duplicate row</value>
+  </data>
+  <data name="DuplicateRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Duplicate row (Ctrl+Shift+D)</value>
+  </data>
+  <data name="DeleteRowsButton.Label" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="DeleteRowsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Delete (Delete)</value>
+  </data>
+  <data name="SaveChangesButton.Label" xml:space="preserve">
+    <value>Save changes</value>
+  </data>
+  <data name="SaveChangesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save changes (Ctrl+S)</value>
+  </data>
+  <data name="DiscardChangesButton.Label" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
+  <data name="PreviewSqlButton.Label" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="PreviewSqlButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Preview SQL (Ctrl+Shift+P)</value>
+  </data>
+  <data name="MenuSaveChanges.Text" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="MenuDiscardChanges.Text" xml:space="preserve">
+    <value>Discard changes...</value>
+  </data>
+  <data name="MenuPreviewSql.Text" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="MenuAddRow.Text" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="MenuDuplicateRow.Text" xml:space="preserve">
+    <value>Duplicate row</value>
+  </data>
+  <data name="MenuDeleteRows.Text" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="GridMenuSetValue" xml:space="preserve">
+    <value>Set value</value>
+  </data>
+  <data name="GridMenuEmpty" xml:space="preserve">
+    <value>Empty</value>
+  </data>
+  <data name="GridMenuNull" xml:space="preserve">
+    <value>NULL</value>
+  </data>
+  <data name="GridMenuDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="GridMenuAddRow" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="GridMenuDuplicate" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="GridMenuDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="GridMenuUndoDelete" xml:space="preserve">
+    <value>Undo delete</value>
+  </data>
+  <data name="GridMenuCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="GridDefaultText" xml:space="preserve">
+    <value>DEFAULT</value>
+  </data>
+  <data name="GridEditedStatus" xml:space="preserve">
+    <value>edited</value>
+  </data>
+  <data name="GridNewRowStatus" xml:space="preserve">
+    <value>new row</value>
+  </data>
+  <data name="GridDeletedStatus" xml:space="preserve">
+    <value>marked for deletion</value>
+  </data>
+  <data name="DiscardChangesTitle" xml:space="preserve">
+    <value>Discard changes?</value>
+  </data>
+  <data name="DiscardChangesMessage" xml:space="preserve">
+    <value>The changes you have not saved will be lost.</value>
+  </data>
+  <data name="DiscardChangesAction" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
+  <data name="ReloadDiscardTitle" xml:space="preserve">
+    <value>Discard unsaved changes?</value>
+  </data>
+  <data name="ReloadDiscardRefresh" xml:space="preserve">
+    <value>Refreshing will discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardSort" xml:space="preserve">
+    <value>Sorting will reload data and discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardPage" xml:space="preserve">
+    <value>Navigating to another page will discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardAction" xml:space="preserve">
+    <value>Discard</value>
+  </data>
+  <data name="SaveBeforeCloseTitle" xml:space="preserve">
+    <value>Do you want to save changes?</value>
+  </data>
+  <data name="SaveBeforeCloseMessage" xml:space="preserve">
+    <value>Your changes will be lost if you don't save them.</value>
+  </data>
+  <data name="SaveBeforeCloseSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SaveBeforeCloseDontSave" xml:space="preserve">
+    <value>Don't save</value>
+  </data>
+  <data name="SaveBeforeCloseTab" xml:space="preserve">
+    <value>Do you want to save changes to {0}?</value>
+  </data>
+  <data name="DeleteRowsTitleOne" xml:space="preserve">
+    <value>Delete this row from {0}?</value>
+  </data>
+  <data name="DeleteRowsTitleMany" xml:space="preserve">
+    <value>Delete {0} rows from {1}?</value>
+  </data>
+  <data name="DeleteRowsMessage" xml:space="preserve">
+    <value>This permanently deletes the selected rows from the database and can't be undone.</value>
+  </data>
+  <data name="DeleteRowsAction" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SaveReviewTitle" xml:space="preserve">
+    <value>Save changes</value>
+  </data>
+  <data name="SaveReviewRunsOn" xml:space="preserve">
+    <value>Runs on {0}, which asks before every change to the database.</value>
+  </data>
+  <data name="SaveReviewAction" xml:space="preserve">
+    <value>Execute</value>
+  </data>
+  <data name="StatementCountOne" xml:space="preserve">
+    <value>1 statement</value>
+  </data>
+  <data name="StatementCountMany" xml:space="preserve">
+    <value>{0} statements</value>
+  </data>
+  <data name="CopyAllButton" xml:space="preserve">
+    <value>Copy all</value>
+  </data>
+  <data name="PreviewSqlTitle" xml:space="preserve">
+    <value>SQL preview</value>
+  </data>
+  <data name="PreviewSqlEmpty" xml:space="preserve">
+    <value>No pending changes</value>
+  </data>
+  <data name="PreviewSqlDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="PreviewSqlValues" xml:space="preserve">
+    <value>Values: {0}</value>
+  </data>
+  <data name="SaveFailedTitle" xml:space="preserve">
+    <value>Save failed</value>
+  </data>
+  <data name="SaveIncompleteTitle" xml:space="preserve">
+    <value>Save incomplete</value>
+  </data>
+  <data name="SaveFailedPending" xml:space="preserve">
+    <value>Nothing was saved, and every change is still pending.</value>
+  </data>
+  <data name="SaveUnknownMessage" xml:space="preserve">
+    <value>The save may have been written. Refresh the table to see what is there before you save again.</value>
+  </data>
+  <data name="SaveUnknownBlocked" xml:space="preserve">
+    <value>The last save may have been written. Refresh the table before you save again.</value>
+  </data>
+  <data name="SaveCancelled" xml:space="preserve">
+    <value>Operation cancelled by user</value>
+  </data>
+  <data name="StatusSaving" xml:space="preserve">
+    <value>Saving changes...</value>
+  </data>
+  <data name="EditLockNoPrimaryKey" xml:space="preserve">
+    <value>{0} has no primary key, so its rows cannot be told apart. Edit the rows with a query.</value>
+  </data>
+  <data name="EditLockKeyUnreadable" xml:space="preserve">
+    <value>Rows of {0} cannot be edited here, because their key cannot be read back exactly. Edit them with a query.</value>
+  </data>
+  <data name="EditLockColumnsChanged" xml:space="preserve">
+    <value>The table's columns changed. Refresh the table to edit it.</value>
+  </data>
+  <data name="EditLockReadOnly" xml:space="preserve">
+    <value>This connection is read only.</value>
+  </data>
+  <data name="EditCellReadOnly" xml:space="preserve">
+    <value>This value cannot be edited here.</value>
+  </data>
+  <data name="Error_edit_required" xml:space="preserve">
+    <value>This column needs a value.</value>
+  </data>
+  <data name="Error_edit_invalid_integer" xml:space="preserve">
+    <value>Enter a whole number.</value>
+  </data>
+  <data name="Error_edit_integer_out_of_range" xml:space="preserve">
+    <value>This number is outside the range the column holds.</value>
+  </data>
+  <data name="Error_edit_invalid_float" xml:space="preserve">
+    <value>Enter a number.</value>
+  </data>
+  <data name="Error_edit_invalid_decimal" xml:space="preserve">
+    <value>Enter a number.</value>
+  </data>
+  <data name="Error_edit_precision_exceeded" xml:space="preserve">
+    <value>This column keeps fewer digits.</value>
+  </data>
+  <data name="Error_edit_scale_exceeded" xml:space="preserve">
+    <value>This column keeps fewer decimal places.</value>
+  </data>
+  <data name="Error_edit_invalid_boolean" xml:space="preserve">
+    <value>Enter true or false.</value>
+  </data>
+  <data name="Error_edit_invalid_uuid" xml:space="preserve">
+    <value>Enter a UUID.</value>
+  </data>
+  <data name="Error_edit_invalid_json" xml:space="preserve">
+    <value>Enter valid JSON.</value>
+  </data>
+  <data name="Error_edit_invalid_date" xml:space="preserve">
+    <value>Enter a date as YYYY-MM-DD.</value>
+  </data>
+  <data name="Error_edit_invalid_time" xml:space="preserve">
+    <value>Enter a time as HH:MM:SS.</value>
+  </data>
+  <data name="Error_edit_time_out_of_range" xml:space="preserve">
+    <value>This time is outside the range the column can hold.</value>
+  </data>
+  <data name="Error_edit_invalid_timestamp" xml:space="preserve">
+    <value>Enter a date and time as YYYY-MM-DD HH:MM:SS.</value>
+  </data>
+  <data name="Error_edit_offset_required" xml:space="preserve">
+    <value>This column needs a time zone offset.</value>
+  </data>
+  <data name="Error_edit_invalid_interval" xml:space="preserve">
+    <value>Enter an interval.</value>
+  </data>
+  <data name="Error_edit_invalid_bits" xml:space="preserve">
+    <value>Enter a bit string of 0 and 1.</value>
+  </data>
+  <data name="Error_edit_invalid_bytes" xml:space="preserve">
+    <value>Enter bytes as 0x and hex digits.</value>
+  </data>
+  <data name="Error_edit_bit_length_mismatch" xml:space="preserve">
+    <value>This column holds a different number of bits.</value>
+  </data>
+  <data name="Error_edit_unknown_enum_label" xml:space="preserve">
+    <value>This is not one of the values this column allows.</value>
+  </data>
+  <data name="Error_edit_not_editable" xml:space="preserve">
+    <value>This value cannot be edited here.</value>
+  </data>
+  <data name="Error_edit_read_only_connection" xml:space="preserve">
+    <value>This connection is read only.</value>
+  </data>
+  <data name="Error_edit_no_primary_key" xml:space="preserve">
+    <value>This table has no primary key, so its rows cannot be told apart.</value>
+  </data>
+  <data name="Error_edit_key_unreadable" xml:space="preserve">
+    <value>A row's key cannot be read back exactly, so the row cannot be changed here.</value>
+  </data>
+  <data name="Error_edit_columns_changed" xml:space="preserve">
+    <value>The table's columns changed since the rows were read. Refresh the table and edit again.</value>
+  </data>
+  <data name="Error_edit_safe_mode_changed" xml:space="preserve">
+    <value>The connection's Safe Mode changed. Save again to see what it asks.</value>
+  </data>
+  <data name="Error_edit_not_as_planned" xml:space="preserve">
+    <value>The connection would save other statements than the ones planned. Save again.</value>
+  </data>
+  <data name="Error_edit_not_confirmed" xml:space="preserve">
+    <value>Safe Mode asks before this save. Save again to answer it.</value>
+  </data>
+  <data name="Error_edit_no_default" xml:space="preserve">
+    <value>This column has no default a saved row can be set to.</value>
+  </data>
+  <data name="Error_edit_already_saved" xml:space="preserve">
+    <value>This save already ran.</value>
+  </data>
+  <data name="Error_edit_out_of_range" xml:space="preserve">
+    <value>The rows changed since they were read. Refresh the table and edit again.</value>
+  </data>
+  <data name="Error_build_no_row_identity" xml:space="preserve">
+    <value>This table has no way to name a single row.</value>
+  </data>
+  <data name="Error_build_read_only_rows" xml:space="preserve">
+    <value>Rows of this table cannot be edited, because nothing identifies one.</value>
+  </data>
+  <data name="Error_build_nothing_to_update" xml:space="preserve">
+    <value>There is nothing to save.</value>
+  </data>
+  <data name="Error_build_no_insert_values" xml:space="preserve">
+    <value>This database has no statement for a new row that sets no column. Enter a value in at least one column, or insert the row with a query.</value>
+  </data>
+  <data name="Error_build_undecodable_key" xml:space="preserve">
+    <value>Part of this row's key could not be read from the server, so the row cannot be changed.</value>
+  </data>
+  <data name="Error_build_server_computed_value" xml:space="preserve">
+    <value>A column here cannot be set to a value the server computes.</value>
+  </data>
+  <data name="Error_build_bind" xml:space="preserve">
+    <value>A value here cannot be sent to this database.</value>
+  </data>
+  <data name="Error_build_unknown_key_column" xml:space="preserve">
+    <value>The row key names a column this table no longer has.</value>
+  </data>
+  <data name="Error_build_length_mismatch" xml:space="preserve">
+    <value>The row key does not fit the table's key.</value>
+  </data>
+  <data name="Error_build_unaddressable_field" xml:space="preserve">
+    <value>A field here has a name an update cannot write.</value>
+  </data>
+  <data name="Error_driver_rolled_back" xml:space="preserve">
+    <value>Nothing was saved.</value>
+  </data>
+  <data name="Error_driver_row_guard_failed" xml:space="preserve">
+    <value>A row changed or went away since it was read, so nothing was saved.</value>
+  </data>
+  <data name="Error_driver_guard_unsupported" xml:space="preserve">
+    <value>This database cannot report how many rows a change touched, so nothing was saved.</value>
+  </data>
+  <data name="Error_driver_partially_applied" xml:space="preserve">
+    <value>Part of the save was written before it stopped.</value>
+  </data>
+  <data name="Error_driver_commit_outcome_unknown" xml:space="preserve">
+    <value>The save was sent and no answer came back, so it may have been written.</value>
+  </data>
+  <data name="MenuExportResults.Text" xml:space="preserve">
+    <value>Export results...</value>
+  </data>
+  <data name="MenuExportResults.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuShowHistory.Text" xml:space="preserve">
+    <value>Show query history</value>
+  </data>
+  <data name="MenuShowHistory.AccessKey" xml:space="preserve">
+    <value>H</value>
+  </data>
+  <data name="MenuFilterRows.Text" xml:space="preserve">
+    <value>Filter rows</value>
+  </data>
+  <data name="MenuFilterRows.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="ObjectMenuOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="ObjectMenuShowStructure" xml:space="preserve">
+    <value>Show structure</value>
+  </data>
+  <data name="ObjectMenuShowDdl" xml:space="preserve">
+    <value>Show DDL</value>
+  </data>
+  <data name="ObjectMenuCopyName" xml:space="preserve">
+    <value>Copy name</value>
+  </data>
+  <data name="DefinitionTitle_Function" xml:space="preserve">
+    <value>Function: {0}</value>
+  </data>
+  <data name="DefinitionTitle_Procedure" xml:space="preserve">
+    <value>Procedure: {0}</value>
+  </data>
+  <data name="DefinitionTitle_Trigger" xml:space="preserve">
+    <value>Trigger: {0}</value>
+  </data>
+  <data name="DefinitionTitle_Sequence" xml:space="preserve">
+    <value>Sequence: {0}</value>
+  </data>
+  <data name="DefinitionCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Definition commands</value>
+  </data>
+  <data name="DefinitionReadOnly.Text" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="OpenInEditorButton.Label" xml:space="preserve">
+    <value>Open in editor</value>
+  </data>
+  <data name="OpenInEditorButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open the text in a new query tab</value>
+  </data>
+  <data name="CopyDefinitionButton.Label" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="CopyDefinitionButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy the definition</value>
+  </data>
+  <data name="ReloadDefinitionButton.Label" xml:space="preserve">
+    <value>Reload</value>
+  </data>
+  <data name="ReloadDefinitionButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Reload from the database</value>
+  </data>
+  <data name="EditorRefusalBar.Message" xml:space="preserve">
+    <value>Run in an editor, this text would not make the object as it is, so it does not open in one.</value>
+  </data>
+  <data name="DefinitionText.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="DefinitionLoading.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the definition</value>
+  </data>
+  <data name="SourceUnavailableTitle.Text" xml:space="preserve">
+    <value>Source unavailable</value>
+  </data>
+  <data name="SourceUnavailableGone" xml:space="preserve">
+    <value>The object is gone, or this login cannot read its definition.</value>
+  </data>
+  <data name="TryAgainButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="HistoryCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query history commands</value>
+  </data>
+  <data name="HistoryHeader.Text" xml:space="preserve">
+    <value>Query history</value>
+  </data>
+  <data name="ClearHistoryButton.Label" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="ClearHistoryButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Clear the query history of every connection</value>
+  </data>
+  <data name="CloseHistoryButton.Label" xml:space="preserve">
+    <value>Close query history</value>
+  </data>
+  <data name="CloseHistoryButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close query history</value>
+  </data>
+  <data name="HistorySearch.PlaceholderText" xml:space="preserve">
+    <value>Search history</value>
+  </data>
+  <data name="HistorySearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search query history</value>
+  </data>
+  <data name="HistoryList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Queries run on this connection</value>
+  </data>
+  <data name="HistoryEmpty" xml:space="preserve">
+    <value>No queries yet</value>
+  </data>
+  <data name="HistoryNoMatches" xml:space="preserve">
+    <value>No matches</value>
+  </data>
+  <data name="HistoryUnavailableTitle" xml:space="preserve">
+    <value>Query history is unavailable</value>
+  </data>
+  <data name="HistoryUnavailableMessage" xml:space="preserve">
+    <value>The history database couldn't be opened, so queries aren't recorded.</value>
+  </data>
+  <data name="HistoryFailedTitle" xml:space="preserve">
+    <value>The history couldn't be read</value>
+  </data>
+  <data name="ClearHistoryTitle" xml:space="preserve">
+    <value>Clear the query history of every connection?</value>
+  </data>
+  <data name="ClearHistoryMessage" xml:space="preserve">
+    <value>Every query run on any connection is removed from the history. This can't be undone.</value>
+  </data>
+  <data name="ClearHistoryAction" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="HistoryMenuOpen" xml:space="preserve">
+    <value>Open in new tab</value>
+  </data>
+  <data name="HistoryMenuCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="HistoryMenuDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="HistoryDetail" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="HistoryDurationMilliseconds" xml:space="preserve">
+    <value>{0:N0} ms</value>
+  </data>
+  <data name="HistoryDurationSeconds" xml:space="preserve">
+    <value>{0:N2} s</value>
+  </data>
+  <data name="HistoryFailed" xml:space="preserve">
+    <value>Failed: {0}</value>
+  </data>
+  <data name="HistoryCancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Export results</value>
+  </data>
+  <data name="ExportFormatHeader" xml:space="preserve">
+    <value>Format</value>
+  </data>
+  <data name="ExportScopeHeader" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="ExportAction" xml:space="preserve">
+    <value>Export...</value>
+  </data>
+  <data name="ExportFormat_Csv" xml:space="preserve">
+    <value>CSV</value>
+  </data>
+  <data name="ExportFormat_Json" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="ExportFormat_Excel" xml:space="preserve">
+    <value>Excel</value>
+  </data>
+  <data name="ExportFormat_Markdown" xml:space="preserve">
+    <value>Markdown</value>
+  </data>
+  <data name="ExportFormat_Html" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="ExportFormat_Xml" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="ExportFormat_SqlInsert" xml:space="preserve">
+    <value>SQL INSERT</value>
+  </data>
+  <data name="ExportScope_ShownRows" xml:space="preserve">
+    <value>Rows shown</value>
+  </data>
+  <data name="ExportScope_CurrentPage" xml:space="preserve">
+    <value>Current page</value>
+  </data>
+  <data name="ExportScope_EntireTable" xml:space="preserve">
+    <value>Entire table</value>
+  </data>
+  <data name="ExportResultsName" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="ExportRunning" xml:space="preserve">
+    <value>Exporting to {0}...</value>
+  </data>
+  <data name="ExportDoneOne" xml:space="preserve">
+    <value>Exported {0:N0} row to {1}</value>
+  </data>
+  <data name="ExportDoneMany" xml:space="preserve">
+    <value>Exported {0:N0} rows to {1}</value>
+  </data>
+  <data name="ExportCancelled" xml:space="preserve">
+    <value>The export was cancelled. No file was written.</value>
+  </data>
+  <data name="ExportRowsGone" xml:space="preserve">
+    <value>The rows changed before they were exported. Export them again.</value>
+  </data>
+  <data name="CancelExportButton.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ExportProgress.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Exporting</value>
+  </data>
+  <data name="Error_ffi_export_bad_path" xml:space="preserve">
+    <value>The export needs a full path to a file.</value>
+  </data>
+  <data name="Error_ffi_export_needs_table" xml:space="preserve">
+    <value>SQL INSERT needs the table the rows came from.</value>
+  </data>
+  <data name="Error_ffi_export_io" xml:space="preserve">
+    <value>The file couldn't be written.</value>
+  </data>
+  <data name="Error_ffi_export_sheet_full" xml:space="preserve">
+    <value>These rows don't fit on one Excel sheet, which holds 1,048,575 rows under its header.</value>
+  </data>
+  <data name="Error_ffi_export_sheet_too_wide" xml:space="preserve">
+    <value>These columns don't fit on one Excel sheet, which holds 16,384 columns.</value>
+  </data>
+  <data name="Error_ffi_export_cell_too_long" xml:space="preserve">
+    <value>A value is longer than the 32,767 characters an Excel cell holds.</value>
+  </data>
+  <data name="Error_ffi_export_undecodable" xml:space="preserve">
+    <value>A value couldn't be read from the server, so it can't be written to the file.</value>
+  </data>
+  <data name="Error_ffi_export_not_xml_text" xml:space="preserve">
+    <value>A value holds characters XML can't carry.</value>
+  </data>
+  <data name="Error_ffi_export_several_results" xml:space="preserve">
+    <value>The export read more than one result.</value>
+  </data>
+  <data name="Error_ffi_export_no_result" xml:space="preserve">
+    <value>The read ended before its rows did, so no file was written.</value>
+  </data>
+  <data name="Error_ffi_export_failed" xml:space="preserve">
+    <value>The export stopped on an internal error. No file was written.</value>
+  </data>
+  <data name="Error_ffi_not_connected" xml:space="preserve">
+    <value>The connection is offline.</value>
+  </data>
+  <data name="Error_operation_browse" xml:space="preserve">
+    <value>The table's rows couldn't be read with this filter or sort.</value>
+  </data>
+  <data name="Error_ffi_no_definition" xml:space="preserve">
+    <value>This object has no definition to show.</value>
+  </data>
+  <data name="Error_driver_unsupported" xml:space="preserve">
+    <value>This database doesn't support that.</value>
+  </data>
+  <data name="TableViews.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Data or structure</value>
+  </data>
+  <data name="TableDataItem.Text" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="TableStructureItem.Text" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="FilterButton.Label" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="FilterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Filter rows (Ctrl+Shift+F)</value>
+  </data>
+  <data name="ReloadDiscardFilter" xml:space="preserve">
+    <value>Applying or clearing filters will reload data and discard all unsaved changes.</value>
+  </data>
+  <data name="FilterPanel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter rows</value>
+  </data>
+  <data name="FilterRetryButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="FilterLoadingRing.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the columns</value>
+  </data>
+  <data name="FilterRawSqlLabel.Text" xml:space="preserve">
+    <value>Raw SQL</value>
+  </data>
+  <data name="FilterRawSql.PlaceholderText" xml:space="preserve">
+    <value>WHERE clause</value>
+  </data>
+  <data name="FilterRawSql.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WHERE clause</value>
+  </data>
+  <data name="AddFilterRaw.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Add filter</value>
+  </data>
+  <data name="AddFilterRaw.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add filter</value>
+  </data>
+  <data name="FilterMatch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter logic mode</value>
+  </data>
+  <data name="FilterMatchAll.Content" xml:space="preserve">
+    <value>Match all</value>
+  </data>
+  <data name="FilterMatchAny.Content" xml:space="preserve">
+    <value>Match any</value>
+  </data>
+  <data name="ClearFilterButton.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="ApplyFilterButton.Content" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="FilterOp_Equal" xml:space="preserve">
+    <value>equals</value>
+  </data>
+  <data name="FilterOp_NotEqual" xml:space="preserve">
+    <value>not equals</value>
+  </data>
+  <data name="FilterOp_Less" xml:space="preserve">
+    <value>less than</value>
+  </data>
+  <data name="FilterOp_LessOrEqual" xml:space="preserve">
+    <value>less or equal</value>
+  </data>
+  <data name="FilterOp_Greater" xml:space="preserve">
+    <value>greater than</value>
+  </data>
+  <data name="FilterOp_GreaterOrEqual" xml:space="preserve">
+    <value>greater or equal</value>
+  </data>
+  <data name="FilterOp_Contains" xml:space="preserve">
+    <value>contains</value>
+  </data>
+  <data name="FilterOp_StartsWith" xml:space="preserve">
+    <value>starts with</value>
+  </data>
+  <data name="FilterOp_EndsWith" xml:space="preserve">
+    <value>ends with</value>
+  </data>
+  <data name="FilterOp_Like" xml:space="preserve">
+    <value>like</value>
+  </data>
+  <data name="FilterOp_NotLike" xml:space="preserve">
+    <value>not like</value>
+  </data>
+  <data name="FilterOp_ILike" xml:space="preserve">
+    <value>like, any case</value>
+  </data>
+  <data name="FilterOp_IsNull" xml:space="preserve">
+    <value>is NULL</value>
+  </data>
+  <data name="FilterOp_IsNotNull" xml:space="preserve">
+    <value>is not NULL</value>
+  </data>
+  <data name="FilterOp_In" xml:space="preserve">
+    <value>in list</value>
+  </data>
+  <data name="FilterOp_NotIn" xml:space="preserve">
+    <value>not in list</value>
+  </data>
+  <data name="FilterOp_Between" xml:space="preserve">
+    <value>between</value>
+  </data>
+  <data name="FilterColumnName" xml:space="preserve">
+    <value>Filter {0} column</value>
+  </data>
+  <data name="FilterOperatorName" xml:space="preserve">
+    <value>Filter {0} operator</value>
+  </data>
+  <data name="FilterValueName" xml:space="preserve">
+    <value>Filter {0} value</value>
+  </data>
+  <data name="FilterSecondValueName" xml:space="preserve">
+    <value>Filter {0} second value</value>
+  </data>
+  <data name="FilterAnd" xml:space="preserve">
+    <value>and</value>
+  </data>
+  <data name="FilterValuePlaceholder" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="FilterListPlaceholder" xml:space="preserve">
+    <value>a, b, c</value>
+  </data>
+  <data name="FilterAdd" xml:space="preserve">
+    <value>Add filter</value>
+  </data>
+  <data name="FilterRemove" xml:space="preserve">
+    <value>Remove filter</value>
+  </data>
+  <data name="FilterRemoveName" xml:space="preserve">
+    <value>Remove filter {0}</value>
+  </data>
+  <data name="FilterNoColumn" xml:space="preserve">
+    <value>Select a column.</value>
+  </data>
+  <data name="FilterNoValue" xml:space="preserve">
+    <value>Value is required.</value>
+  </data>
+  <data name="FilterNoSecondValue" xml:space="preserve">
+    <value>Second value is required for between.</value>
+  </data>
+  <data name="StructureSections.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Structure sections</value>
+  </data>
+  <data name="StructureColumnsItem.Text" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="StructureIndexesItem.Text" xml:space="preserve">
+    <value>Indexes</value>
+  </data>
+  <data name="StructureForeignKeysItem.Text" xml:space="preserve">
+    <value>Foreign keys</value>
+  </data>
+  <data name="StructureDdlItem.Text" xml:space="preserve">
+    <value>DDL</value>
+  </data>
+  <data name="CopyDdlButton.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="StructureRefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Refresh structure</value>
+  </data>
+  <data name="StructureRefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Refresh structure</value>
+  </data>
+  <data name="StructureRetryButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="StructureLoadingRing.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the structure</value>
+  </data>
+  <data name="StructureGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="StructureDdl.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>DDL</value>
+  </data>
+  <data name="StructureHeaderName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="StructureHeaderType" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="StructureHeaderNullable" xml:space="preserve">
+    <value>Nullable</value>
+  </data>
+  <data name="StructureHeaderDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="StructureHeaderPrimaryKey" xml:space="preserve">
+    <value>Primary key</value>
+  </data>
+  <data name="StructureHeaderAutoIncrement" xml:space="preserve">
+    <value>Auto increment</value>
+  </data>
+  <data name="StructureHeaderComment" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="StructureHeaderColumns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="StructureHeaderUnique" xml:space="preserve">
+    <value>Unique</value>
+  </data>
+  <data name="StructureHeaderCondition" xml:space="preserve">
+    <value>Condition</value>
+  </data>
+  <data name="StructureHeaderRefTable" xml:space="preserve">
+    <value>Ref table</value>
+  </data>
+  <data name="StructureHeaderRefColumns" xml:space="preserve">
+    <value>Ref columns</value>
+  </data>
+  <data name="StructureHeaderRefSchema" xml:space="preserve">
+    <value>Ref schema</value>
+  </data>
+  <data name="StructureHeaderOnDelete" xml:space="preserve">
+    <value>On delete</value>
+  </data>
+  <data name="StructureHeaderOnUpdate" xml:space="preserve">
+    <value>On update</value>
+  </data>
+  <data name="StructureYes" xml:space="preserve">
+    <value>YES</value>
+  </data>
+  <data name="StructureNo" xml:space="preserve">
+    <value>NO</value>
+  </data>
+  <data name="StructureNoColumns" xml:space="preserve">
+    <value>No columns</value>
+  </data>
+  <data name="StructureNoIndexes" xml:space="preserve">
+    <value>No indexes</value>
+  </data>
+  <data name="StructureNoForeignKeys" xml:space="preserve">
+    <value>No foreign keys</value>
+  </data>
+  <data name="StructureNoDdl" xml:space="preserve">
+    <value>No CREATE statement for this object</value>
+  </data>
+  <data name="Error_filter_unknown_column" xml:space="preserve">
+    <value>The filter names a column this table doesn't have.</value>
+  </data>
+  <data name="Error_filter_missing_value" xml:space="preserve">
+    <value>A filter rule needs a value.</value>
+  </data>
+  <data name="Error_filter_between_missing_bound" xml:space="preserve">
+    <value>Between needs both values.</value>
+  </data>
+  <data name="Error_filter_empty_in_list" xml:space="preserve">
+    <value>In list needs at least one value.</value>
+  </data>
+  <data name="Error_filter_wrong_value_shape" xml:space="preserve">
+    <value>This operator takes a different number of values.</value>
+  </data>
+  <data name="Error_filter_bind" xml:space="preserve">
+    <value>A filter value can't be sent as its column's type.</value>
+  </data>
+  <data name="Error_filter_operator_not_allowed" xml:space="preserve">
+    <value>This operator doesn't apply to the column's type.</value>
+  </data>
+  <data name="Error_filter_combinator_not_allowed" xml:space="preserve">
+    <value>This engine can't use Match any. Use Match all.</value>
+  </data>
+  <data name="Error_filter_raw_predicate" xml:space="preserve">
+    <value>The Raw SQL filter must be one condition, such as age &gt; 30.</value>
+  </data>
+  <data name="Error_filter_raw_document" xml:space="preserve">
+    <value>The filter doesn't read as a document.</value>
+  </data>
+  <data name="Error_filter_raw_not_document" xml:space="preserve">
+    <value>The filter must be a document, such as { qty: { $gt: 1 } }.</value>
+  </data>
+  <data name="Error_filter_unaddressable_field" xml:space="preserve">
+    <value>A filter can't name a field with a dot in its name or one that starts with $.</value>
+  </data>
+  <data name="Error_browse_sort_unsupported" xml:space="preserve">
+    <value>This engine reads a table only in its own order, so it can't be sorted.</value>
+  </data>
+  <data name="Error_ffi_export_unfinished" xml:space="preserve">
+    <value>The rows are still arriving. Export them once the run ends.</value>
+  </data>
+  <data name="Error_filter_raw_unsupported" xml:space="preserve">
+    <value>This engine takes no Raw SQL filter. Clear the filter and add rules instead.</value>
+  </data>
+  <data name="StatusRunsIn" xml:space="preserve">
+    <value>Runs in {0}</value>
+  </data>
+  <data name="HistoryListEvery" xml:space="preserve">
+    <value>Queries run on every connection</value>
+  </data>
+  <data name="HistoryDetailConnection" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+</root>

@@ -2,10 +2,6 @@
 //  JSONImportParsing.swift
 //  JSONImportPlugin
 //
-//  Pure JSON parsing, row extraction, and field inference. Kept free of the
-//  plugin's loadable-bundle and SwiftUI surface so it can be compiled into the
-//  test target directly (a loadable .tableplugin cannot be linked by tests).
-//
 
 import Foundation
 import TableProNumberFormatting
@@ -33,19 +29,93 @@ enum JSONImportParsing {
         line.allSatisfy { $0 == 0x20 || $0 == 0x09 || $0 == 0x0D }
     }
 
-    static func parseRows(at url: URL, targetTable: String?) throws -> [NSDictionary] {
+    static var unexpectedShapeError: PluginImportError {
+        .importFailed("Expected a JSON array of objects or a table-keyed object")
+    }
+
+    static var noMatchingTableError: PluginImportError {
+        .importFailed("The file contains multiple tables and none matches the target table")
+    }
+
+    // The values of a `.json` file that become rows, and how many there are. The file is read one
+    // element at a time after a pass that finds its rows and checks its structure, so a broken file
+    // fails before the first row is imported.
+    static func rowElements(
+        at url: URL,
+        targetTable: String?,
+        checkCancellation: @escaping () throws -> Void
+    ) throws -> (elements: any JSONElementSequence, count: Int) {
+        var reader = try JSONDocumentReader(url: url, checkCancellation: checkCancellation)
+        do {
+            let rows = try JSONDocumentOutline.rows(in: &reader, targetTable: targetTable) { reader, _ in
+                try reader.skipValue()
+            }
+            switch rows {
+            case .array(let offset, let count, _):
+                return (try JSONStreamedElements(reader: reader, arrayAt: offset), count)
+            case .singleObject(let offset):
+                defer { reader.close() }
+                var row: [String: PluginCellValue] = [:]
+                try members(ofObjectAt: offset, in: &reader) { name, value in
+                    row[name] = cellValue(from: value)
+                }
+                return (JSONSingleRow(row), 1)
+            }
+        } catch {
+            reader.close()
+            throw error
+        }
+    }
+
+    // Each member of the object at `offset`, parsed one at a time. A parsed object keeps the first
+    // of two members that share a name, so the later one is passed over.
+    static func members(
+        ofObjectAt offset: Int,
+        in reader: inout JSONDocumentReader,
+        _ body: (String, Any) throws -> Void
+    ) throws {
+        try reader.seek(to: offset)
+        guard try reader.enterObject() else { return }
+        var names: Set<String> = []
+        repeat {
+            let name = try reader.memberName()
+            let value = try reader.readValue()
+            guard names.insert(name).inserted else { continue }
+            try autoreleasepool {
+                try body(name, try JSONSerialization.jsonObject(with: value, options: .fragmentsAllowed))
+            }
+        } while try reader.continueObject()
+    }
+
+    static func row(from element: Any) throws -> [String: PluginCellValue] {
+        if let row = element as? [String: PluginCellValue] {
+            return row
+        }
+        guard let object = element as? NSDictionary else {
+            throw PluginImportError.importFailed(String(localized: "Each array element must be a JSON object"))
+        }
+        return convertRow(object)
+    }
+
+    static func parseElements(at url: URL, targetTable: String?) throws -> [Any] {
         let data = try Data(contentsOf: url)
         let object = try JSONSerialization.jsonObject(with: data)
-        return try extractRows(from: object, targetTable: targetTable)
+        return try extractElements(from: object, targetTable: targetTable)
     }
 
     static func extractRows(from object: Any, targetTable: String?) throws -> [NSDictionary] {
+        try extractElements(from: object, targetTable: targetTable).compactMap { $0 as? NSDictionary }
+    }
+
+    // A top-level array's elements come back whatever they are, so the import can report each one
+    // that is not an object instead of leaving it out unseen.
+    static func extractElements(from object: Any, targetTable: String?) throws -> [Any] {
         if let array = object as? [Any] {
-            return array.compactMap { $0 as? NSDictionary }
+            return array
         }
 
         guard let dict = object as? [String: Any] else {
-            throw PluginImportError.importFailed("Expected a JSON array of objects or a table-keyed object")
+            throw unexpectedShapeError
         }
 
         let tables = dict.compactMapValues { value -> [Any]? in
@@ -59,12 +129,12 @@ enum JSONImportParsing {
         }
 
         if let targetTable, let match = matchTable(in: tables, to: targetTable) {
-            return match.compactMap { $0 as? NSDictionary }
+            return match
         }
         if tables.count == 1, let only = tables.values.first {
-            return only.compactMap { $0 as? NSDictionary }
+            return only
         }
-        throw PluginImportError.importFailed("The file contains multiple tables and none matches the target table")
+        throw noMatchingTableError
     }
 
     private static func matchTable(in tables: [String: [Any]], to target: String) -> [Any]? {
@@ -112,9 +182,36 @@ enum JSONImportParsing {
     static func detectFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
         try Task.checkCancellation()
         guard isLineDelimited(url) else {
-            return try detectFields(in: try parseRows(at: url, targetTable: targetTable))
+            return try detectFields(inDocumentAt: url, targetTable: targetTable)
         }
         return try detectFields(inLinesAt: url)
+    }
+
+    // Every value is parsed once, one at a time, and each array keeps a survey of its own, so the
+    // target table's fields are known when the pass ends. A value that does not parse fails the
+    // detection, as it fails a whole-file parse.
+    static func detectFields(inDocumentAt url: URL, targetTable: String?) throws -> [PluginImportField] {
+        var reader = try JSONDocumentReader(url: url)
+        defer { reader.close() }
+        var surveys: [Int: JSONFieldSurvey] = [:]
+        let rows = try JSONDocumentOutline.rows(in: &reader, targetTable: targetTable) { reader, slot in
+            let value = try reader.readValue()
+            try autoreleasepool {
+                let object = try JSONSerialization.jsonObject(with: value, options: .fragmentsAllowed)
+                guard let slot, let row = object as? NSDictionary else { return }
+                surveys[slot, default: JSONFieldSurvey()].add(row)
+            }
+        }
+        switch rows {
+        case .array(_, _, let slot):
+            return surveys[slot]?.fields ?? []
+        case .singleObject(let offset):
+            var survey = JSONFieldSurvey()
+            try members(ofObjectAt: offset, in: &reader) { name, value in
+                survey.add(value, named: name)
+            }
+            return survey.fields
+        }
     }
 
     static func detectFields(inLinesAt url: URL) throws -> [PluginImportField] {

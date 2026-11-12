@@ -22,17 +22,13 @@ struct RowImportSheet: View {
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
     let fileURL: URL
-    /// What the sheet, the proposed table name, the error report and history call the source.
-    /// It differs from `fileURL` when the rows arrive through a snapshot the app wrote.
     let sourceName: String
     let formatId: String
 
-    /// Set when the sheet edits one file of several: it hands its choices back on Done and imports nothing.
     let edit: RowImportSheetEdit?
 
     private typealias Destination = RowImportDestination
 
-    /// The identity of a read. `.task(id:)` cancels the read in flight when it changes.
     private struct SourceRead: Hashable {
         let destination: Destination
         let scope: DatabaseScope?
@@ -54,55 +50,29 @@ struct RowImportSheet: View {
     @State private var writeMode: ImportWriteMode = .insert
     @State private var chosenMatchKey: ImportMatchKey?
 
-    /// The database and schema every read and write of this sheet goes to: where the connection was
-    /// browsing when the sheet opened. The sheet is modal to its window, but another window on the
-    /// same connection, or an MCP client, can move the browse database while it is open. Resolving
-    /// it again at each step listed one database's tables and mapped one table's columns, then
-    /// created, cleared and filled tables in another. Nil only while the connection has no session,
-    /// and taken once one exists.
     @State private var scope: DatabaseScope?
 
-    /// Every object the connection holds, not just the tables the destination picker offers. A
-    /// `CREATE TABLE` collides with a view, a materialized view or a foreign table under the same
-    /// name as surely as with a table, so the name check has to see all of them.
     @State private var databaseObjects: [TableInfo] = []
 
-    /// Those names folded for comparison, and `nil` while the catalog is unknown. A read that
-    /// failed leaves an empty list, and taking that for "nothing is in the way" would propose a
-    /// name that already exists and then report it as free. Stored rather than computed because the
-    /// name check runs on every keystroke, and `body` would otherwise rebuild the set each time.
     @State private var catalogNameKeys: Set<String>?
     @State private var tableListError: String?
 
-    /// `loadTables()` is `@MainActor` but reentrant across its `await`, so two Try Again presses
-    /// would interleave and a late failure could clear the keys while the picker kept its rows.
-    /// Concurrent callers wait for the one in flight, per the schema-loading invariant.
     @State private var isLoadingTables = false
     @State private var selectedTargetTable: String?
     @StateObject private var mapping = RowImportMapping()
     @State private var newTableName: String = ""
 
-    /// The last name this sheet proposed, so a second pass can tell its own guess from what
-    /// the user typed over it.
     @State private var proposedTableName: String = ""
     @State private var newTable = NewTableDraft()
     @State private var isLoadingContext = false
 
-    /// Copied from the plugin, whose options are edited in its own view that this sheet does not observe.
     @State private var detectionSignature = ""
     @State private var readAttempts: [Destination: Int] = [:]
     @State private var lastNewColumnsRead: SourceRead?
     @State private var loadError: String?
 
-    /// Moving focus here also selects the whole proposed name, measured rather than assumed:
-    /// SwiftUI hands the field editor a full selection when `@FocusState` lands on text already in
-    /// place, both on appear and when the field is revealed by the destination picker. So the first
-    /// keystroke replaces the proposal instead of appending to it, and no AppKit detour is needed.
     @FocusState private var newTableNameFocused: Bool
 
-    /// The plugin's own options are persistent and shared, and this sheet edits them in place.
-    /// Without a snapshot, Cancel kept every change, so `Delete existing rows` stayed armed for
-    /// the next import from anywhere in the app.
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
 
@@ -116,14 +86,8 @@ struct RowImportSheet: View {
     @State private var showErrorDialog = false
     @State private var importTask: Task<Void, Never>?
 
-    /// Knows the tables this sheet created. A failed import leaves its table behind, so a retry has to
-    /// know it already owns that table rather than trying to create it a second time and failing on
-    /// the name.
     @State private var newTablePlanner = NewTableImportPlanner()
 
-    /// The window this sheet is hosted in, used for presenting its alerts.
-    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
-    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
     @State private var hostWindow: NSWindow?
 
     init(
@@ -159,16 +123,10 @@ struct RowImportSheet: View {
 
     // MARK: - Derived catalog state
 
-    /// Tables alone, because they are the only objects the existing-table branch can insert into.
-    /// A partitioned table is one of them: the server routes an INSERT to the right partition.
     private var availableTables: [TableInfo] {
         databaseObjects.filter(\.type.acceptsImportedRows)
     }
 
-    /// A table this sheet created is not in the way of this sheet: a failed import leaves its table
-    /// behind, and `NewTableImportPlanner` exists to reuse that one on the retry, so reporting the
-    /// name as taken would block the very attempt that mechanism exists to allow. Asked of the
-    /// planner rather than folded into `catalogNameKeys`, which is rebuilt only when the catalog is.
     private var newTableNameProblem: NewTableNameProblem? {
         let trimmed = newTableName.trimmingCharacters(in: .whitespaces)
         if let edit, !trimmed.isEmpty, edit.takenTableNames.contains(trimmed.lowercased()) {
@@ -246,8 +204,7 @@ struct RowImportSheet: View {
         }
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
-                ImportProgressView(service: service) { service.cancelImport() }
-                    .interactiveDismissDisabled()
+                ImportProgressView(service: service)
             }
         }
         .onChange(of: showSuccessDialog) { isShowing in
@@ -255,6 +212,7 @@ struct RowImportSheet: View {
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
                 rowTally: importTally,
+                runResult: importService?.stopResult,
                 window: hostWindow,
                 sourceFileName: sourceName,
                 targetTable: selectedTargetTable
@@ -268,7 +226,7 @@ struct RowImportSheet: View {
         }
         .onChange(of: showErrorDialog) { isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
+            TransferResultAlert.presentImportFailure(error: importError, result: importService?.stopResult, window: hostWindow) {
                 showErrorDialog = false
             }
         }
@@ -374,8 +332,6 @@ struct RowImportSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The list is what both destinations are chosen against, so a failure to read it is worth
-    /// saying and worth being able to retry without losing the options already set in this sheet.
     private func tableListErrorRow(_ message: String) -> some View {
         HStack(spacing: 6) {
             Label(
@@ -411,9 +367,8 @@ struct RowImportSheet: View {
     private var footerView: some View {
         DialogFooter {
             if let message = validationMessage {
-                Text(message)
+                NoticeLabel(message, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(2)
             }
         } actions: {
@@ -452,14 +407,10 @@ struct RowImportSheet: View {
         }
     }
 
-    /// A read takes seconds on a large file, and until it lands the list is empty, which the other
-    /// placeholders would report as a file with nothing in it.
     private var readingPlaceholder: String {
         String(localized: "Reading the file…")
     }
 
-    /// A file the plugin could not read is a failure, not an empty result. Showing the parser's
-    /// message as grey placeholder text left the sheet with nothing to press but Cancel.
     private func unreadableFile(reason: String) -> some View {
         UnavailableStateView {
             Label(String(localized: "Cannot read this file"), systemImage: "exclamationmark.triangle")
@@ -472,7 +423,6 @@ struct RowImportSheet: View {
         }
     }
 
-    /// Per destination, so Try Again for one never reads the other again over its edits.
     @MainActor
     private func retryLoad() async {
         loadError = nil
@@ -732,9 +682,6 @@ struct RowImportSheet: View {
             .sorted()
     }
 
-    /// The selection has to be one of the options by exact spelling or the menu draws blank, and
-    /// `typeOptions` suppresses its insert on a case-insensitive match. The getter resolves through
-    /// the same comparison so a differently-cased stored type still selects its own row.
     private func typeBinding(_ row: NewTableColumn) -> Binding<String> {
         let type = row.settings.type
         let options = typeOptions(including: type)
@@ -770,14 +717,11 @@ struct RowImportSheet: View {
         }
     }
 
-    /// Import runs only what the rows show: a read of the file with the current options, into the current
-    /// table and database, that finished without an error.
     private var currentReadIsReady: Bool {
         guard !isLoadingContext, loadError == nil else { return false }
         return currentReadHasLanded
     }
 
-    /// The rows on screen answer the read for the current destination, table, database and options.
     private var currentReadHasLanded: Bool {
         switch destination {
         case .existingTable:
@@ -789,14 +733,6 @@ struct RowImportSheet: View {
 
     // MARK: - Loading
 
-    /// Both failures used to leave an empty list and say nothing, so the destination picker offered
-    /// "Select a table…" and nothing else with no way to tell an empty database from an unreachable
-    /// one, and no way to ask again.
-    ///
-    /// Read through the sheet's own scope, the browse scope it took on opening, which is what the
-    /// import writes to. The shared session driver is wherever a tab's execution last pinned it and
-    /// nothing puts it back, so reading from it listed one database's tables and mapped their columns
-    /// while the rows went to another's.
     @MainActor
     private func loadTables() async {
         guard !isLoadingTables else { return }
@@ -824,14 +760,6 @@ struct RowImportSheet: View {
         }
     }
 
-    /// Proposes a name straight away and again once the catalog arrives, because only the part that
-    /// avoids a name already in use needs the catalog. Waiting for it would leave the field empty
-    /// under a "name this table" warning while the list loaded, and empty for good if it failed.
-    ///
-    /// The second pass replaces this sheet's own earlier guess and nothing else: anything the user
-    /// typed differs from `proposedTableName` and is left alone. A table this sheet already created
-    /// is left out of the avoid-set for the same reason it is left out of the name check: a retry
-    /// is meant to land back on it, and stepping the name to `_2` would strand the first one.
     @MainActor
     private func suggestNewTableName() {
         guard newTableName.isEmpty || newTableName == proposedTableName else { return }
@@ -856,8 +784,6 @@ struct RowImportSheet: View {
         )
     }
 
-    /// A read that succeeded is not repeated when switching back to its destination, and it clears an
-    /// error the other destination left on screen.
     @MainActor
     private func read(_ request: SourceRead) async {
         switch request.destination {
@@ -997,8 +923,6 @@ struct RowImportSheet: View {
         }
     }
 
-    /// Hands the choices back only when they answer a read of the current table and options, the same readiness
-    /// Import asks for.
     private func finishEdit(_ edit: RowImportSheetEdit) {
         guard currentReadIsReady else { return }
         var target = RowImportTarget(
@@ -1034,7 +958,8 @@ struct RowImportSheet: View {
                     authorization = try await RowImportTableMaker(connection: connection).prepare(
                         [newTable],
                         scope: scope,
-                        planner: newTablePlanner
+                        planner: newTablePlanner,
+                        importRun: service.run
                     ) { table, sql in
                         newTablePlanner.recordCreated(table, createTableSQL: sql)
                     }
@@ -1074,8 +999,7 @@ struct RowImportSheet: View {
                 await MainActor.run {
                     showProgressDialog = false
                     TransferResultAlert.presentImportCancelled(
-                        executedStatements: service.state.processedStatements,
-                        transaction: service.state.transactionOutcome,
+                        result: service.stopResult,
                         window: hostWindow
                     ) {}
                 }

@@ -3,17 +3,19 @@
 //! editor sessions on the server's own defaults.
 //!
 //! sqlx dials the route itself, so a direct route is a TCP endpoint and
-//! an SSH forward is the Unix socket OpenSSH listens on; nothing relays
-//! bytes in between.
+//! an SSH forward is the Unix socket OpenSSH listens on. A route only
+//! `Transport::open` reaches is dialled through a relay of the driver's.
 
 mod cancel;
 mod capabilities;
 mod catalog;
+mod column_origins;
 mod connection;
 mod ddl;
 mod decode;
 mod dialect;
 mod driver;
+mod dump;
 mod editor_run;
 mod editor_session;
 mod encode;
@@ -26,6 +28,7 @@ mod mysql_temporal;
 mod mysql_timestamp_mode;
 mod mysql_wire_format;
 mod physical;
+mod relay;
 mod script_split;
 mod server_zone;
 mod session_statements;

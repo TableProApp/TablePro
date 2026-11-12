@@ -1,0 +1,490 @@
+name: Release Windows
+
+# A windows-vX.Y.Z tag publishes the Windows release: the x64 and Arm64 MSIX in one signed
+# .msixbundle on GitHub Releases, then, once a reviewer approves, the winget manifest as a pull
+# request to microsoft/winget-pkgs. Run by dispatch, it builds, checks, installs and starts the
+# packages as a tag does and publishes nothing. windows/RELEASING.md has the steps.
+#
+# Signing uses Azure Artifact Signing through OpenID Connect, in the windows-release environment.
+# It runs once these repository variables are set, and the packages stay unsigned without them:
+# WINDOWS_SIGNING_ENDPOINT: the signing account's regional endpoint, https://<region>.codesigning.azure.net/.
+# WINDOWS_SIGNING_ACCOUNT and WINDOWS_SIGNING_PROFILE: the signing account and its certificate profile.
+# WINDOWS_PUBLISHER: the certificate profile's subject, which the package's Publisher has to match.
+# The windows-release environment, deploying from windows-v* tags with a required reviewer, holds
+# AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID:
+# an app registration with the Artifact Signing Certificate Profile Signer role and a federated
+# credential for that environment.
+# The windows-winget environment, deploying from windows-v* tags with a required reviewer, holds
+# WINGET_TOKEN: a classic token with the public_repo scope, from an account outside TableProApp whose
+# only use is its fork of winget-pkgs.
+
+on:
+  push:
+    tags: ["windows-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to build, such as 0.1.0
+        required: true
+        type: string
+      sign:
+        description: Sign the bundle; the windows-release environment has to allow main
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  version:
+    name: Version and signing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      sign: ${{ steps.check.outputs.sign }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The version, its tag on main, and whether signing is set up
+        id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SIGN: ${{ inputs.sign }}
+          WINDOWS_SIGNING_ENDPOINT: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          WINDOWS_SIGNING_ACCOUNT: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          WINDOWS_SIGNING_PROFILE: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            version="${TAG#windows-v}"
+            if ! git merge-base --is-ancestor HEAD origin/main; then
+              echo "::error::$TAG is not on main"
+              exit 1
+            fi
+          else
+            version="$INPUT_VERSION"
+          fi
+          # An MSIX version is four numbers of at most 65535; the fourth stays 0 (windows/RELEASING.md, Versions).
+          if ! [[ "$version" =~ ^(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})$ ]]; then
+            echo "::error::'$version' is not X.Y.Z"
+            exit 1
+          fi
+          for part in ${version//./ }; do
+            if [ "$part" -gt 65535 ]; then
+              echo "::error::$version has a number above 65535"
+              exit 1
+            fi
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          missing=()
+          for name in WINDOWS_SIGNING_ENDPOINT WINDOWS_SIGNING_ACCOUNT WINDOWS_SIGNING_PROFILE WINDOWS_PUBLISHER; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          sign=false
+          if [ ${#missing[@]} -eq 4 ]; then
+            echo "::notice::Signing is not set up, so the packages stay unsigned and nothing is published (windows/RELEASING.md, Setup)"
+          elif [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Signing is half set up: set ${missing[*]}"
+            exit 1
+          elif [ "$EVENT" = push ] || [ "$INPUT_SIGN" = true ]; then
+            sign=true
+          fi
+          echo "sign=$sign" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: MSIX (${{ matrix.name }})
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            rid: win-x64
+            platform: x64
+            architecture: x64
+          - name: Arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            rid: win-arm64
+            platform: ARM64
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
+    # The core's release profile builds DuckDB's C++ with fat LTO, from a cold Cargo cache: a release restores no cache.
+    timeout-minutes: 180
+    env:
+      RUSTFLAGS: -D warnings
+      # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks; its prebuilt objects stand in.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+      VERSION: ${{ needs.version.outputs.version }}
+      ARCHITECTURE: ${{ matrix.architecture }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: ${{ matrix.target }}
+      # windows/global.json takes the newest 10.0 SDK.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      # As Microsoft's desktop app workflows do: the committed manifest keeps the development identity.
+      - name: Set the package's version and publisher
+        env:
+          PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+        run: |
+          $path = Resolve-Path windows/src/TablePro.App/Package.appxmanifest
+          [xml]$manifest = Get-Content -Raw $path
+          $manifest.Package.Identity.Version = "$env:VERSION.0"
+          if ($env:PUBLISHER) { $manifest.Package.Identity.Publisher = $env:PUBLISHER }
+          $manifest.Save($path)
+      - name: Build the MSIX
+        working-directory: windows
+        run: >-
+          dotnet publish src/TablePro.App -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }}
+          "-p:Version=$env:VERSION" -p:WindowsPackageType=MSIX -p:GenerateAppxPackageOnBuild=true
+          "-p:AppxPackageDir=$env:RUNNER_TEMP/packages/"
+      - name: The package's identity, floor and dependencies
+        run: |
+          $msix = @(Get-ChildItem -Recurse -Filter *.msix "$env:RUNNER_TEMP/packages")
+          if ($msix.Count -ne 1) { throw "Expected one .msix, found $($msix.Count): $($msix.FullName -join ', ')" }
+          $layout = Join-Path $env:RUNNER_TEMP layout
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::ExtractToDirectory($msix[0].FullName, $layout)
+          [xml]$manifest = Get-Content -Raw (Join-Path $layout AppxManifest.xml)
+          $identity = $manifest.Package.Identity
+          "$($msix[0].Name): $('{0:N1}' -f ($msix[0].Length / 1MB)) MB, $($identity.Name) $($identity.Version) $($identity.ProcessorArchitecture), $($identity.Publisher)" |
+            Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          if ($identity.Version -ne "$env:VERSION.0") { throw "Version $($identity.Version), not $env:VERSION.0" }
+          if ($identity.ProcessorArchitecture -ne $env:ARCHITECTURE) { throw "Architecture $($identity.ProcessorArchitecture)" }
+          foreach ($family in $manifest.Package.Dependencies.TargetDeviceFamily) {
+            "$($family.Name): $($family.MinVersion) to $($family.MaxVersionTested)" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+            if ($family.MinVersion -ne '10.0.17763.0') { throw "$($family.Name) starts at $($family.MinVersion), not Windows 10 1809" }
+          }
+          # Native AOT leaves no IL assembly beside the executable.
+          if (Test-Path (Join-Path $layout TablePro.dll)) { throw 'TablePro.dll is in the package: the app was not compiled ahead of time' }
+          # Self-contained: no Windows App SDK or VCLibs framework package to install first.
+          $frameworks = @($manifest.Package.Dependencies.PackageDependency | ForEach-Object Name)
+          if ($frameworks) { throw "The package depends on $($frameworks -join ', ')" }
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\bin\Host*\*\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { throw 'vswhere found no dumpbin.exe' }
+          $redistributable = '^(msvcp|vcruntime|vccorlib|concrt|vcomp|vcamp|mfcm?)\d+.*\.dll$'
+          $needs = foreach ($binary in Get-ChildItem -Recurse -Path $layout -Include *.exe, *.dll) {
+            foreach ($line in & $dumpbin /nologo /dependents $binary.FullName) {
+              if ($line.Trim() -match $redistributable) { "$($binary.Name) imports $($line.Trim())" }
+            }
+          }
+          if ($needs) { $needs; throw 'A binary needs the VC++ redistributable, which a self-contained package cannot rely on' }
+          Copy-Item $msix[0].FullName $env:RUNNER_TEMP
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-msix-${{ matrix.name }}
+          path: ${{ runner.temp }}/*.msix
+          if-no-files-found: error
+
+  bundle:
+    name: Bundle and sign
+    needs: [version, package]
+    runs-on: windows-2025
+    timeout-minutes: 30
+    environment: ${{ needs.version.outputs.sign == 'true' && 'windows-release' || '' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: windows-msix-*
+          merge-multiple: true
+          path: packages
+      - name: Bundle the packages
+        run: |
+          $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.26100.0\x64"
+          New-Item -ItemType Directory release | Out-Null
+          & "$sdk\makeappx.exe" bundle /d packages /p "release\TablePro_$($env:VERSION).0_x64_arm64.msixbundle" /bv "$env:VERSION.0" /o
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Sign in to Azure
+        if: needs.version.outputs.sign == 'true'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # Signing the bundle signs the packages in it (MSIX docs, Sign an app package using SignTool).
+      - name: Sign the bundle
+        if: needs.version.outputs.sign == 'true'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\release
+          files-folder-filter: msixbundle
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          cache-dependencies: false
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+      - name: The signature holds
+        if: needs.version.outputs.sign == 'true'
+        run: |
+          $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.26100.0\x64"
+          & "$sdk\signtool.exe" verify /pa /v (Get-ChildItem release\*.msixbundle).FullName
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-bundle
+          path: release/*.msixbundle
+          if-no-files-found: error
+
+  # Windows Server 2022 (build 20348) is the oldest Windows a hosted runner has; the app's floor is 1809 (17763).
+  install:
+    name: Install and start (${{ matrix.name }})
+    needs: [version, bundle]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows Server 2022, x64
+            runner: windows-2022
+            architecture: X64
+          - name: Windows 11, Arm64
+            runner: windows-11-arm
+            architecture: Arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    outputs:
+      family: ${{ steps.install.outputs.family }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-bundle
+          path: release
+      # An unsigned bundle gets a test certificate with its publisher, as the MSIX docs create one.
+      - name: Sign with a test certificate
+        if: needs.version.outputs.sign != 'true'
+        shell: powershell
+        run: |
+          $bundle = (Get-ChildItem release\*.msixbundle).FullName
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead($bundle)
+          try {
+            $reader = New-Object IO.StreamReader($zip.GetEntry('AppxMetadata/AppxBundleManifest.xml').Open())
+            [xml]$manifest = $reader.ReadToEnd()
+            $reader.Dispose()
+          } finally { $zip.Dispose() }
+          $publisher = $manifest.Bundle.Identity.Publisher
+          $certificate = New-SelfSignedCertificate -Type Custom -Subject $publisher -KeyUsage DigitalSignature `
+            -FriendlyName 'TablePro release test' -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.*\x64\signtool.exe" |
+            Sort-Object FullName | Select-Object -Last 1
+          & $signtool.FullName sign /fd SHA256 /sha1 $certificate.Thumbprint $bundle
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Export-Certificate -Cert $certificate -FilePath "$env:RUNNER_TEMP\test.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\test.cer" -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+      - name: Install the bundle
+        id: install
+        shell: powershell
+        run: |
+          $build = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild
+          Add-AppxPackage -Path (Get-ChildItem release\*.msixbundle).FullName
+          $package = Get-AppxPackage -Name TablePro
+          "$($package.PackageFullName) on $((Get-CimInstance Win32_OperatingSystem).Caption), build $build"
+          if ("$($package.Architecture)" -ne '${{ matrix.architecture }}') { throw "Installed $($package.Architecture)" }
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "family=$($package.PackageFamilyName)`n")
+      # The Arm64 image opens its privacy settings window over the desktop, where it takes the tests' clicks.
+      - name: Prepare the desktop
+        shell: pwsh
+        run: |
+          . windows/ci/desktop.ps1
+          Clear-FirstLogon
+          Block-Wsl
+          Set-Display 1920 1080
+      - name: The package starts and keeps its files in LocalState
+        working-directory: windows
+        shell: bash
+        env:
+          TABLEPRO_PACKAGE: ${{ steps.install.outputs.family }}
+          TABLEPRO_PACKAGE_VERSION: ${{ needs.version.outputs.version }}
+          TABLEPRO_UI_SCREENSHOTS: ${{ github.workspace }}/screenshots
+        run: dotnet test --project tests/TablePro.App.UITests --filter-method "*TheInstalledPackageStarts*"
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-package-screenshots-${{ matrix.architecture }}
+          path: screenshots
+          if-no-files-found: ignore
+
+  winget:
+    name: winget manifest
+    needs: [version, bundle, install]
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      # The App Installer release whose winget validates the manifest, and its assets' SHA-256.
+      WINGET_RELEASE: https://github.com/microsoft/winget-cli/releases/download/v1.29.380
+      WINGET_BUNDLE_SHA256: 65dea9c01ce08ee7b763366b27c0e651f97db857c11ca9b9c301826c10092f2e
+      WINGET_DEPENDENCIES_SHA256: ba875afe9d190f61218985ac0292a99d1db710bf93e13c68944ca9d89f0d82d1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-bundle
+          path: release
+      - name: Write the manifest
+        shell: bash
+        env:
+          FAMILY: ${{ needs.install.outputs.family }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          bundle="$(basename release/*.msixbundle)"
+          python -I windows/ci/winget-manifest.py --version "$VERSION" --bundle "release/$bundle" \
+            --url "https://github.com/$REPOSITORY/releases/download/windows-v$VERSION/$bundle" \
+            --family "$FAMILY" --out winget
+      # The image has no winget; App Installer and its dependencies come from the pinned winget release.
+      - name: Install winget
+        shell: powershell
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $folder = Join-Path $env:RUNNER_TEMP winget
+          New-Item -ItemType Directory $folder | Out-Null
+          $files = @{
+            'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' = $env:WINGET_BUNDLE_SHA256
+            'DesktopAppInstaller_Dependencies.zip' = $env:WINGET_DEPENDENCIES_SHA256
+          }
+          foreach ($name in $files.Keys) {
+            Invoke-WebRequest "$env:WINGET_RELEASE/$name" -OutFile (Join-Path $folder $name)
+            $hash = (Get-FileHash (Join-Path $folder $name) -Algorithm SHA256).Hash
+            if ($hash -ne $files[$name]) { throw "$name has SHA-256 $hash" }
+          }
+          Expand-Archive (Join-Path $folder 'DesktopAppInstaller_Dependencies.zip') (Join-Path $folder dependencies)
+          $dependencies = Get-ChildItem -Recurse (Join-Path $folder dependencies) -Include *.appx, *.msix |
+            Where-Object { $_.Directory.Name -eq 'x64' }
+          Add-AppxPackage -Path (Join-Path $folder 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle') `
+            -DependencyPath $dependencies.FullName
+      - name: winget validates the manifest
+        shell: pwsh
+        run: |
+          $winget = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'
+          & $winget --version
+          & $winget validate --manifest "winget/manifests/t/TablePro/TablePro/$env:VERSION"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-winget
+          path: winget
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub release
+    needs: [version, bundle, install, winget]
+    if: github.event_name == 'push' && needs.version.outputs.sign == 'true'
+    runs-on: ubuntu-24.04
+    environment: windows-release
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-bundle
+          path: release
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          (cd release && sha256sum -- * > SHA256SUMS)
+          cat > notes.md <<EOF
+          TablePro for Windows $VERSION, for Windows 10 1809 and later and Windows 11, on x64 and Arm64.
+
+          Open the .msixbundle to install it, or run \`winget install TablePro.TablePro\` once winget lists this version.
+          EOF
+          # The repository's latest release stays the macOS one.
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+            --title "TablePro for Windows $VERSION" --notes-file notes.md
+
+  winget-submit:
+    name: Submit to winget
+    needs: [version, winget, github-release]
+    runs-on: windows-2025
+    environment: windows-winget
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      WINGETCREATE: https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe
+      WINGETCREATE_SHA256: 24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-winget
+          path: winget
+      - name: Open the winget-pkgs pull request
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_CREATE_GITHUB_TOKEN) {
+            "::notice::WINGET_TOKEN is not set in the windows-winget environment, so nothing was submitted (windows/RELEASING.md, Setup)"
+            exit 0
+          }
+          $exe = Join-Path $env:RUNNER_TEMP wingetcreate.exe
+          Invoke-WebRequest $env:WINGETCREATE -OutFile $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          if ($hash -ne $env:WINGETCREATE_SHA256) { throw "wingetcreate.exe has SHA-256 $hash" }
+          & $exe submit --no-open --prtitle "New version: TablePro.TablePro version $env:VERSION" `
+            "winget/manifests/t/TablePro/TablePro/$env:VERSION"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

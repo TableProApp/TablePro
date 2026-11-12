@@ -25,6 +25,7 @@ enum DiscardAction {
     case navigation
     case displayOrder
     case columnVisibility
+    case run
 }
 
 struct DisplayFormatsCacheEntry {
@@ -56,6 +57,8 @@ enum ActiveSheet: Identifiable {
     // The files are in `importBatch`, each imported into its own table.
     case rowImportBatch
     case exportQueryResults
+    // Carries its rows: Table Health exports the findings it lists, not a result set.
+    case exportDataSource(DataSourceExportRequest)
     // Carries the right-clicked tables: the object browser may point elsewhere by the time the sheet appears.
     case transferTables(tables: Set<String>, schema: String?)
     // Carries the right-clicked databases, not the object browser's current one. Empty means the browse database.
@@ -95,6 +98,7 @@ enum ActiveSheet: Identifiable {
         case .rowImport(let formatId): "rowImport-\(formatId)"
         case .rowImportBatch: "rowImportBatch"
         case .exportQueryResults: "exportQueryResults"
+        case .exportDataSource: "exportDataSource"
         case .transferTables(let tables, let schema):
             "transferTables-\(schema ?? "")-\(tables.sorted().joined(separator: ","))"
         case .backupDatabase: "backupDatabase"
@@ -202,11 +206,13 @@ final class MainContentCoordinator: ObservableObject {
     @Published var userTypeEditors: [UUID: UserTypeEditorModel] = [:]
     // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
     @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
+    // Held here so Refresh, File > Export and a tab close reach the model; a close cancels its report.
+    @Published var tableHealthModels: [UUID: TableHealthViewModel] = [:]
 
     // The cached view model keeps staged work after `usersRolesActions` is nilled; without this a background tab closes silently.
     internal var tabsWithStagedPrincipals: Set<UUID> = []
 
-    // `saveCompletionContinuation` is one slot: a second close gesture would overwrite it and strand the first task forever.
+    // A second close gesture on a tab whose save-then-close is still running is dropped.
     internal var tabClosesInFlight: Set<UUID> = []
 
     // Bumped when a published schema row changes, so the inspector re-reads it.
@@ -227,6 +233,10 @@ final class MainContentCoordinator: ObservableObject {
     var dataGridEntries: [UUID: DataTabGridEntry] = [:]
     // Set while a tab switch still has the outgoing tab's edits in the change manager.
     var tabSwitchOutgoingTabId: UUID?
+    // Tabs given a result while off screen, with the tab selected at that moment. One still listed when the switch
+    // handler parks its edits on the way to that same tab got the result before the handler ran, so the edits in
+    // the change manager are the old result's.
+    var tabsGivenResultOffScreen: [UUID: UUID?] = [:]
     private(set) lazy var gridChangeState = AnyChangeManager(changeManager)
     let gridCellsEdited = PassthroughSubject<Void, Never>()
 
@@ -260,6 +270,8 @@ final class MainContentCoordinator: ObservableObject {
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
+    // Export and transfer started from these sheets stop with `teardown()`, never with the pane.
+    private(set) lazy var sheetWork = SheetWorkScope { [weak self] in self?.windowId }
     // Commands present through this, not a flag: the toolbar view is gone when its item is in overflow or removed.
     var switcherPresenter: ToolbarSwitcherPresenter? {
         splitViewController?.switcherPresenter
@@ -359,14 +371,19 @@ final class MainContentCoordinator: ObservableObject {
     // Guards re-entrant confirm dialogs (nested run loop during runModal).
     internal var isShowingConfirmAlert = false
 
-    internal var isShowingSafeModePrompt = false
+    // Lowered by whichever run raised it, so a table load it turned away is retried whatever path asked.
+    internal var isShowingSafeModePrompt = false {
+        didSet { safeModePromptDidChange(wasShowing: oldValue) }
+    }
+
+    var tableLoadTurnedAwayByPrompt: ParkedTableLoad?
 
     @Published internal var rewindPlan: RewindPlan?
 
     // The rebuild a column drag asked for, held while the user reviews it.
     @Published internal var tableRebuildRequest: TableRebuildReviewRequest?
 
-    // For save-then-close callers. Set before `saveChanges`, resumed by `executeCommitStatements`.
+    // A handoff for save-then-close callers: set right before `saveChanges`, which takes it and resumes it when that save ends.
     internal var saveCompletionContinuation: CheckedContinuation<Bool, Never>?
 
     // MARK: - Window Lifecycle (driven by TabWindowController NSWindowDelegate)
@@ -416,6 +433,26 @@ final class MainContentCoordinator: ObservableObject {
 
     var isActivated: Bool {
         _didActivate.withLock { $0 }
+    }
+
+    // Also for a workspace that closes while it has no session, and so no coordinator to tear down.
+    // A workspace that lost its session has no coordinator and still reconnects into the tab set, so it holds the gate.
+    static func endTabSessionIfUnhosted(
+        for connectionId: UUID,
+        closing: ConnectionWorkspace? = nil,
+        hosted: [ConnectionWorkspace]? = nil
+    ) {
+        let workspaces = hosted ?? WindowManager.shared.workspaces(for: connectionId)
+        guard !workspaces.contains(where: { $0 !== closing }), !hostsLiveSession(for: connectionId) else { return }
+        TabPersistenceCoordinator.forConnection(connectionId).endSession()
+    }
+
+    // Leaves out the throwaway instances SwiftUI builds while re-evaluating a body.
+    private static func hostsLiveSession(for connectionId: UUID) -> Bool {
+        activeCoordinators.values.contains { coordinator in
+            coordinator.connectionId == connectionId && !coordinator.isTearingDown
+                && (coordinator.isActivated || coordinator.hasRestoredTabs)
+        }
     }
 
     // Union across windows: saving one window's tabs erased torn-off ones. Deduped, since SwiftUI's throwaway coordinators repeat tabs.
@@ -826,14 +863,21 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     // Never from `onDisappear`: a workspace switch unparents panes the connection comes back to. Releases synchronously, not via deinit.
-    func teardown() {
+    // `endsTabSession` is false when only the session went: the workspace stays and reconnects into the same tab set.
+    func teardown(endsTabSession: Bool = true) {
         let start = Date()
         Self.lifecycleLogger.info(
             "[close] MainContentCoordinator.teardown start connId=\(self.connection.id, privacy: .public) tabs=\(self.tabManager.tabs.count) windowId=\(self.windowId?.uuidString ?? "nil", privacy: .public)"
         )
         _didTeardown.withLock { $0 = true }
 
+        sheetWork.stopAll()
         unregisterFromPersistence()
+        if endsTabSession {
+            Self.endTabSessionIfUnhosted(
+                for: connectionId, closing: splitViewController?.workspaces.workspace(for: connectionId)
+            )
+        }
         dropMovesAwaitingRestore(reason: "coordinator torn down")
         SessionRecoveryTracker.sync()
         if let observer = terminationObserver {
@@ -875,6 +919,7 @@ final class MainContentCoordinator: ObservableObject {
         createTableDrafts.removeAll()
         userTypeEditors.removeAll()
         erDiagramModels.removeAll()
+        discardTableHealthModels(Array(tableHealthModels.keys))
         displayFormatsCache.removeAll()
         tableMetadataCache.removeAll()
         schemaColumns.removeAll()
@@ -960,37 +1005,48 @@ final class MainContentCoordinator: ObservableObject {
         viewport: GridReloadIntent, trigger: TableLoadTrigger = .userInitiated,
         bypassRowLimit: Bool = false, extraCapabilities: CallerCapabilities = []
     ) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+        guard let tab = tabManager.selectedTabAndIndex?.tab else { return }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runQuery")
             return
         }
-        commitActiveGridEdit()
 
         if tab.tabType == .table {
+            commitActiveGridEdit()
             executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
             return
         }
 
-        // The offset lets each result point back at its statement. Both paths pass untrimmed text and let the scanner trim.
-        let target = selectionOrStatementAtCursor(in: tab.content.query)
-        executeResolvedSQL(
-            target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit,
-            sourceOffset: target.offset, extraCapabilities: extraCapabilities
-        )
+        let tabId = tab.id
+        confirmRunDiscard(onTab: tabId) { [weak self] in
+            guard let self else { return }
+            flushEditorText(forTab: tabId)
+            guard let (tab, index) = executionTab(tabId) else { return }
+            // The offset lets each result point back at its statement. Both paths pass untrimmed text and let the scanner trim.
+            let target = selectionOrStatementAtCursor(in: tab.content.query)
+            executeResolvedSQL(
+                target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit,
+                sourceOffset: target.offset, extraCapabilities: extraCapabilities
+            )
+        }
     }
 
     // Takes SQL, not a range: the editor text and the tab binding can briefly differ, and a range on the wrong one truncates silently.
     @discardableResult
     func runStatement(_ sql: String, sourceOffset: Int? = nil) -> Bool {
-        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
+        guard let tab = tabManager.selectedTabAndIndex?.tab, tab.tabType == .query else { return false }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runStatement")
             return false
         }
-        commitActiveGridEdit()
 
-        return executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false, sourceOffset: sourceOffset)
+        // False when the discard prompt has to ask first: the run follows the answer, the caret stays.
+        var started = false
+        confirmRunDiscard(onTab: tab.id) { [weak self] in
+            guard let self, let (_, index) = executionTab(tab.id) else { return }
+            started = executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false, sourceOffset: sourceOffset)
+        }
+        return started
     }
 
     // Returns false when a parameter panel opens instead, so callers don't advance the caret on a run that didn't happen.
@@ -1008,7 +1064,7 @@ final class MainContentCoordinator: ObservableObject {
 
         if services.appSettings.editor.queryParametersEnabled, bindsNamedParameters {
             let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
-            let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
+            let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL, grammar: lexicalGrammar)
 
             if !detectedNames.isEmpty {
                 let reconciled = detectAndReconcileParameters(
@@ -1059,7 +1115,7 @@ final class MainContentCoordinator: ObservableObject {
            tab.execution.lastExecutedAt == nil
         {
             guard !isShowingSafeModePrompt else {
-                traceNavigationAbandoned(tabId: tab.id, outcome: .safeModePromptAlreadyOpen)
+                turnAwayTableLoad(tabId: tab.id, trigger: trigger)
                 return nil
             }
             isShowingSafeModePrompt = true
@@ -1094,7 +1150,9 @@ final class MainContentCoordinator: ObservableObject {
                 }
                 switch decision {
                 case .authorized:
-                    executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
+                    executeQueryInternal(
+                        sql, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource, onTab: tabId
+                    )
                 case .denied(let reason, _):
                     traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
                     queryExecutionCoordinator.presentTabFailure(reason, announcing: reason, onTab: tabId)
@@ -1171,9 +1229,10 @@ final class MainContentCoordinator: ObservableObject {
         bypassRowLimit: Bool = false,
         anchor: StatementAnchor? = nil,
         viewport: GridReloadIntent = .firstRow,
-        source: ResultSourceChange = .newSource
+        source: ResultSourceChange = .newSource,
+        onTab target: UUID? = nil
     ) {
-        guard let (selectedTab, index) = tabManager.selectedTabAndIndex else { return }
+        guard let (selectedTab, index) = executionTab(target) else { return }
 
         let (claim, lease) = beginTabExecution(for: selectedTab.id)
 
@@ -1233,7 +1292,9 @@ final class MainContentCoordinator: ObservableObject {
                     scope: scope,
                     isTableTab: isTableTab,
                     lease: lease
-                ) { [queryExecutor] driver in
+                ) { [queryExecutor, manager = services.databaseManager] driver in
+                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                    if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
                     let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,
@@ -1261,6 +1322,7 @@ final class MainContentCoordinator: ObservableObject {
                     : nil
                 // Rows and definition commit together after a definition change, so new columns never sit under old keys or defaults.
                 let definition = needsDefinition ? try? await schemaTask?.value : nil
+                let prepared = await preparedPhase1Rows(fetchResult, tabId: tabId, tableName: tableName, isTableTab: isTableTab)
 
                 let applied = await MainActor.run { [weak self] () -> Bool in
                     guard let self else { return false }
@@ -1303,21 +1365,15 @@ final class MainContentCoordinator: ObservableObject {
                         source: source,
                         serverOutput: fetchResult.serverOutput,
                         rowLocators: isTableTab ? fetchResult.rowLocators : nil,
+                        exportDocuments: fetchResult.exportDocuments,
                         absentCells: fetchResult.absentCells,
-                        unloadedCells: fetchResult.unloadedCells
+                        unloadedCells: fetchResult.unloadedCells,
+                        columnOrigins: fetchResult.columnOrigins,
+                        prepared: prepared
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
-                    reportQueryOperation(
-                        claim: claim,
-                        trigger: trigger,
-                        outcome: .succeeded(
-                            OperationSummary(
-                                rowsReturned: fetchResult.rows.count,
-                                rowsAffected: fetchResult.rowsAffected
-                            )
-                        )
-                    )
+                    reportFetchedQuery(claim: claim, trigger: trigger, result: fetchResult)
                     return true
                 }
                 // Phase 2 writes onto whatever the tab holds, so only the execution that applied its rows may start it.
@@ -1409,17 +1465,6 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         return result
-    }
-
-    // MARK: - SQL Parsing
-
-    func extractTableName(from sql: String) -> String? {
-        QuerySqlParser.extractTableName(
-            from: sql,
-            dialect: sqlDialect,
-            readings: connection.type.lexicalReadings,
-            browseSchema: services.databaseManager.session(for: connectionId)?.browseSchema
-        )
     }
 
     // MARK: - Sorting

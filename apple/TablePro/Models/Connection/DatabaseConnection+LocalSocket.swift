@@ -76,6 +76,6 @@ extension DatabaseConnection {
     }
 
     var timeoutEndpointName: String {
-        localSocketFile ?? host.nilIfEmpty ?? name
+        localSocketFile ?? serverEndpoint.host.nilIfEmpty ?? name
     }
 }

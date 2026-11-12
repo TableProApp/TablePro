@@ -6,7 +6,7 @@ use tablepro_core::meta::RowIdentity;
 
 use super::GridRow;
 use crate::services::change_tracker::{CellState, RowKey, RowState};
-use crate::services::grid::{CellLock, GridColumn, GridRowId, RowSnapshot, cell_editability};
+use crate::services::grid::{CellLock, GridColumn, GridRowId, ResultRefusal, RowSnapshot, cell_editability};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::icons;
 
@@ -92,6 +92,7 @@ pub struct TrackedValues {
     tracker: Option<TabTrackerHandle>,
     identity: RowIdentity,
     read_only: bool,
+    result_lock: Option<ResultRefusal>,
 }
 
 impl Default for TrackedValues {
@@ -106,6 +107,7 @@ impl TrackedValues {
             tracker: None,
             identity: RowIdentity::Unordered,
             read_only: true,
+            result_lock: None,
         }
     }
 
@@ -114,7 +116,13 @@ impl TrackedValues {
             tracker: Some(tracker),
             identity,
             read_only: false,
+            result_lock: None,
         }
+    }
+
+    pub fn locked_by(mut self, result_lock: Option<ResultRefusal>) -> Self {
+        self.result_lock = result_lock;
+        self
     }
 
     /// On a read-only connection every cell is locked, and says why.
@@ -147,6 +155,9 @@ impl TrackedValues {
 
     /// `lock` for a cell whose mark the caller already read.
     pub fn lock_marked(&self, column: &GridColumn, row: &GridRow, row_deleted: bool) -> Option<CellLock> {
+        if let (Some(refusal), GridRowId::Result) = (self.result_lock, row.id()) {
+            return Some(CellLock::Result(refusal));
+        }
         if let Err(lock) = cell_editability(column, &row.id(), &self.identity, self.read_only, row_deleted) {
             return Some(lock);
         }
@@ -231,17 +242,23 @@ impl TrackedValues {
         RowSnapshot::new(cells, pending.into_iter().collect())
     }
 
-    /// Like `snapshot`, except a draft's cell left to the server stays
-    /// `Default`.
+    /// Like `snapshot`, except a cell left to the server stays `Default`,
+    /// a draft's or a saved row's pending one.
     pub fn inputs(&self, row: &GridRow) -> Vec<CellInput> {
         if let (GridRowId::Draft(draft_id), Some(tracker)) = (row.id(), self.tracker.as_ref()) {
             return tracker.draft_inputs(draft_id).unwrap_or_default();
         }
-        self.snapshot(row)
-            .to_values()
-            .into_iter()
-            .map(CellInput::Value)
-            .collect()
+        let width = row.cells().map_or(0, |cells| cells.len());
+        (0..width).map(|column| self.edit_input(row, column)).collect()
+    }
+
+    /// Whether the cell shows the value as it was read, with no edit over
+    /// it.
+    pub fn shows_read_value(&self, row: &GridRow, column: usize) -> bool {
+        !matches!(row.id(), GridRowId::Draft(_))
+            && self
+                .tracked_key(row)
+                .is_none_or(|(tracker, key)| tracker.cell_overlay(&key, column).pending.is_none())
     }
 }
 

@@ -136,6 +136,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case lastPage
     case refresh
     case export
+    case exportResults
     case importData
     case jumpToColumn
 
@@ -211,7 +212,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .restorePreviousValues,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
-             .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
+             .nextPage, .firstPage, .lastPage, .refresh, .export, .exportResults, .importData, .jumpToColumn:
             return .dataGrid
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
@@ -332,7 +333,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .findNext: return String(localized: "Find Next")
         case .findPrevious: return String(localized: "Find Previous")
         case .useSelectionForFind: return String(localized: "Use Selection for Find")
-        case .export: return String(localized: "Export")
+        case .export: return String(localized: "Export Tables")
+        case .exportResults: return String(localized: "Export Results")
         case .importData: return String(localized: "Import")
         case .jumpToColumn: return String(localized: "Jump to Column")
         case .quickSwitcher: return String(localized: "Open Quickly")
@@ -696,6 +698,7 @@ struct KeyboardSettings: Codable, Equatable {
         .aiExplainQuery: .character("l", command: true),
         .aiOptimizeQuery: .character("l", command: true, option: true),
         .export: .character("e", command: true, shift: true),
+        .exportResults: .character("e", command: true, shift: true, option: true),
         .importData: .character("i", command: true, shift: true),
 
         // Data Grid

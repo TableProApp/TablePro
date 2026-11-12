@@ -13,7 +13,8 @@ const DEBUG_INFO_FILENAME: &str = "tablepro-debug-info.txt";
 /// The name, icon, developer, links and license come from the metainfo
 /// the GResource embeds, so the dialog and the software centre agree.
 pub fn build_about_dialog(drivers: &DriverRegistry) -> adw::AboutDialog {
-    let dialog = adw::AboutDialog::from_appdata(&metainfo_resource(), release_notes_version(config::profile()));
+    let release = release_notes_version(config::profile()).map(metainfo_version);
+    let dialog = adw::AboutDialog::from_appdata(&metainfo_resource(), release.as_deref());
     // The metainfo gives the latest release, which a development build is
     // not: its version carries the commit.
     dialog.set_version(config::VERSION);
@@ -43,9 +44,14 @@ pub(super) fn release_notes_version(profile: Profile) -> Option<&'static str> {
 
 // Read the way the About dialog reads them, so the update toast never points to a What's New page it lacks.
 pub(super) fn has_release_notes(version: &str) -> bool {
-    !adw::AboutDialog::from_appdata(&metainfo_resource(), Some(version))
+    !adw::AboutDialog::from_appdata(&metainfo_resource(), Some(metainfo_version(version).as_str()))
         .release_notes()
         .is_empty()
+}
+
+// AppStream sorts 0.1.0-beta.1 above 0.1.0, so the metainfo lists that beta as 0.1.0~beta.1.
+fn metainfo_version(version: &str) -> String {
+    version.replacen('-', "~", 1)
 }
 
 #[cfg(test)]
@@ -61,7 +67,7 @@ mod tests {
     use gtk4 as gtk;
 
     use super::*;
-    use crate::application::metainfo_release::newest_release;
+    use crate::application::metainfo_release::{newest_release, screenshots_ref, tag_version};
 
     /// The text between the element `open` starts and the next `close`.
     fn metainfo_text<'a>(xml: &'a str, open: &str, close: &str) -> &'a str {
@@ -118,10 +124,17 @@ mod tests {
     #[test]
     fn embedded_metainfo_pins_project_links_to_the_release_tag() {
         let xml = embedded_metainfo();
-        let version = newest_release(&xml).expect("the metainfo lists a release");
+        let release = newest_release(&xml).expect("the metainfo lists a release");
+        let version = tag_version(release);
         let tree = format!("https://github.com/TableProApp/TablePro/blob/linux-v{version}/linux");
-        let screenshots =
-            format!("https://raw.githubusercontent.com/TableProApp/TablePro/linux-v{version}/linux/data/screenshots/");
+        let source_commit = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../build-aux/source-commit"),
+        )
+        .expect("build-aux/source-commit is in the source tree");
+        let screenshots = format!(
+            "https://raw.githubusercontent.com/TableProApp/TablePro/{}/linux/data/screenshots/",
+            screenshots_ref(&source_commit, release)
+        );
         let releases = metainfo_text(&xml, "<releases", "</releases>");
 
         assert_eq!(
@@ -202,9 +215,15 @@ mod tests {
     fn the_newest_release_has_notes_for_whats_new() {
         adw::init().expect("libadwaita initialises under the test backend");
         let xml = embedded_metainfo();
-        let version = newest_release(&xml).expect("the metainfo lists a release");
+        let version = tag_version(newest_release(&xml).expect("the metainfo lists a release"));
 
-        assert!(has_release_notes(version));
+        assert!(has_release_notes(&version));
+    }
+
+    #[test]
+    fn a_beta_reads_its_release_by_the_metainfo_spelling() {
+        assert_eq!(metainfo_version("0.1.0-beta.1"), "0.1.0~beta.1");
+        assert_eq!(metainfo_version("0.1.0"), "0.1.0");
     }
 
     #[test]

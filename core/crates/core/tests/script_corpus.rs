@@ -6,10 +6,10 @@ use sqlparser::dialect::{
     SQLiteDialect,
 };
 use sqlparser::tokenizer::{Token, Tokenizer, TokenizerError};
-use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{
     BatchErrorPolicy, LexicalSettings, OpenConstruct, ScriptDiagnostic, ScriptPlan, ScriptTokenKind, text_offsets,
 };
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 
 fn plan(grammar: SqlGrammar, text: &str) -> ScriptPlan {
     ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar))
@@ -74,32 +74,31 @@ fn escape_string_backslash_quote() {
 }
 
 /// A string that follows `E'...'` after a line break continues it, and
-/// the server reads it with backslash escapes on, so `\'` does not end it.
+/// PostgreSQL reads it with backslash escapes on, so `\'` does not end it.
 #[test]
 fn escape_string_continues_past_a_line_break() {
-    for grammar in [SqlGrammar::PostgreSql, SqlGrammar::DuckDb] {
-        for continued in [
-            "SELECT E'a'\n'\\'; b'",
-            "SELECT E'a'\r'\\'; b'",
-            "SELECT E'a' \t\x0c-- note\n\x0b -- note\r\n '\\'; b'",
-            "SELECT E'a'\n'b'\n'\\'; c'",
-        ] {
-            let text = format!("{continued}; SELECT 2;");
-            assert_eq!(
-                statements(grammar, &text),
-                [continued, "SELECT 2"],
-                "{grammar:?}: {continued:?}"
-            );
-        }
+    for continued in [
+        "SELECT E'a'\n'\\'; b'",
+        "SELECT E'a'\r'\\'; b'",
+        "SELECT E'a' \t\x0c-- note\n\x0b -- note\r\n '\\'; b'",
+        "SELECT E'a'\n'b'\n'\\'; c'",
+        "SELECT E'a'\x0b\n'\\'; b'",
+        "SELECT E'a' \x0b-- note\n'\\'; b'",
+    ] {
+        let text = format!("{continued}; SELECT 2;");
+        assert_eq!(
+            statements(SqlGrammar::PostgreSql, &text),
+            [continued, "SELECT 2"],
+            "{continued:?}"
+        );
     }
-    // Without a line break, past a block comment, past anything but a
-    // blank or a `--` comment, or after a vertical tab before the line
-    // break, the server ends the string and so must the lexer.
+    // Without a line break, past a block comment, or past anything but a
+    // blank or a `--` comment, the server ends the string and so must the
+    // lexer.
     for apart in [
         "SELECT E'a' '\\'",
         "SELECT E'a' /* note */\n'\\'",
         "SELECT E'a'\n, '\\'",
-        "SELECT E'a'\x0b\n'\\'",
     ] {
         let text = format!("{apart}; SELECT 2;");
         assert_eq!(
@@ -109,12 +108,29 @@ fn escape_string_continues_past_a_line_break() {
         );
     }
     assert_eq!(
+        statements(
+            SqlGrammar::PostgreSql,
+            "SELECT E'x'\x0b\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'"
+        ),
+        ["SELECT E'x'\x0b\n'\\' || ' || '\\'", "COMMIT", "DELETE FROM orders"]
+    );
+    assert_eq!(
         plan(SqlGrammar::PostgreSql, "SELECT E'a'\n'b").diagnostics(),
         [ScriptDiagnostic::Unterminated {
             construct: OpenConstruct::StringLiteral,
             start: 7,
         }]
     );
+}
+
+#[test]
+fn duckdb_ends_an_escape_string_at_its_quote_whatever_follows() {
+    let text = "SELECT E'x'\n'\\'; DELETE FROM orders; --'";
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, text),
+        ["SELECT E'x'\n'\\'", "DELETE FROM orders"]
+    );
+    assert_eq!(statements(SqlGrammar::PostgreSql, text), [text]);
 }
 
 #[test]
@@ -614,9 +630,19 @@ fn duckdb_nests_comments_and_quotes_with_dollar_tags() {
 }
 
 #[test]
-fn duckdb_reads_a_backtick_as_no_quote() {
-    let text = "SELECT `a;b` FROM t;";
-    assert_eq!(statements(SqlGrammar::DuckDb, text), ["SELECT `a", "b` FROM t"]);
+fn duckdb_quotes_a_name_in_backticks() {
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, "SELECT `a;b` FROM t;"),
+        ["SELECT `a;b` FROM t"]
+    );
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, "SELECT 1 AS `a``b`; SELECT 2;"),
+        ["SELECT 1 AS `a``b`", "SELECT 2"]
+    );
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, "SELECT 1 AS `'`; DROP TABLE orders; --'"),
+        ["SELECT 1 AS `'`", "DROP TABLE orders"]
+    );
 }
 
 #[test]
@@ -810,6 +836,130 @@ fn mongo_each_statement_is_its_own_batch_and_a_failure_stops_the_script() {
 
     assert_eq!(batch_texts(&plan, text), ["db.a.find()", "db.b.find()"]);
     assert_eq!(plan.batch_error_policy(), BatchErrorPolicy::StopScript);
+}
+
+fn mongo_access(text: &str) -> StatementAccess {
+    statement_access(text, SqlGrammar::Mongo)
+}
+
+#[test]
+fn mongo_a_rename_that_drops_its_target_is_destructive() {
+    for text in [
+        "db.orders_new.renameCollection('orders', true)",
+        "db.orders_new.renameCollection('orders', {dropTarget: true})",
+        "db.adminCommand({renameCollection: 'shop.orders_new', to: 'shop.orders', dropTarget: true})",
+        "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: false, dropTarget: true})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.orders_new.renameCollection('orders')",
+        "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: true, dropTarget: false})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_dropping_an_index_is_destructive() {
+    for text in [
+        "db.orders.dropIndex('qty_1')",
+        "db.orders.dropIndexes()",
+        "db.orders.dropSearchIndex('default')",
+        "db.runCommand({dropIndexes: 'orders', index: '*'})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+}
+
+#[test]
+fn mongo_dropping_a_user_or_a_role_is_destructive() {
+    for text in [
+        "db.dropUser('ann')",
+        "db.dropRole('auditor')",
+        "db.dropAllUsers()",
+        "db.dropAllRoles()",
+        "db.runCommand({dropUser: 'ann'})",
+        "db.runCommand({dropRole: 'auditor'})",
+        "db.runCommand({dropAllUsersFromDatabase: 1})",
+        "db.adminCommand({dropAllRolesFromDatabase: 1})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_validate_that_repairs_is_a_write() {
+    for text in [
+        "db.runCommand({validate: 'orders', repair: true})",
+        "db.runCommand({validate: 'orders', repair: true, fixMultikey: true})",
+        "db.runCommand({validate: 'orders', fixMultikey: 1})",
+        "db.runCommand({validate: 'orders', repair: false, repair: true})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+    for text in [
+        "db.runCommand({validate: 'orders', full: true})",
+        "db.runCommand({validate: 'orders', repair: true, repair: false})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Read, "{text}");
+    }
+}
+
+#[test]
+fn mongo_what_replaces_a_collection_is_destructive() {
+    for text in [
+        "db.orders.aggregate([{$match: {}}, {$out: 'orders_copy'}])",
+        "db.runCommand({aggregate: 'orders', pipeline: [{$out: 'orders_copy'}], cursor: {}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: 'totals'})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {replace: 'totals'}})",
+        "db.adminCommand({applyOps: [{op: 'd', ns: 'shop.orders', o: {_id: 1}}]})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.orders.aggregate([{$merge: {into: 'totals'}}])",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {merge: 'totals'}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {reduce: 'totals'}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {inline: 1}})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_merge_into_its_own_collection_is_destructive() {
+    for text in [
+        "db.users.aggregate([{$match: {}}, {$merge: {into: 'users', whenMatched: 'replace'}}])",
+        "db.users.aggregate([{$merge: 'users'}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'shop', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.users.aggregate([{$merge: {into: 'users_archive', whenMatched: 'replace'}}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'archive', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_bulk_write_that_reaches_every_document_is_destructive() {
+    for ops in [
+        "{delete: 0, filter: {}, multi: true}",
+        "{update: 0, filter: {}, updateMods: {$set: {a: 1}}, multi: true}",
+    ] {
+        let text = format!("db.adminCommand({{bulkWrite: 1, ops: [{ops}], nsInfo: [{{ns: 'shop.orders'}}]}})");
+        assert_eq!(mongo_access(&text), StatementAccess::Destructive, "{text}");
+    }
+    for ops in [
+        "{delete: 0, filter: {}}",
+        "{update: 0, filter: {_id: 1}, updateMods: {$set: {a: 1}}, multi: true}",
+    ] {
+        let text = format!("db.adminCommand({{bulkWrite: 1, ops: [{ops}], nsInfo: [{{ns: 'shop.orders'}}]}})");
+        assert_eq!(mongo_access(&text), StatementAccess::Write, "{text}");
+    }
 }
 
 const AGREED_CASES: &[(SqlGrammar, &str)] = &[

@@ -342,6 +342,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         addSplitViewItem(detailSplitItem)
 
         inspectorPaneHost = WorkspacePaneHost()
+        inspectorPaneHost.installBackdrop(SplitItemBackdrop.makeView())
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorPaneHost)
         inspectorSplitItem.canCollapse = true
         inspectorSplitItem.minimumThickness = Self.inspectorMinThickness
@@ -632,7 +633,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// the coordinator itself rather than which workspace is on screen keeps this exact when a
         /// background workspace loses its session.
         let releasedCoordinator = workspace.sessionState?.coordinator
-        workspace.sessionState?.coordinator.teardown()
+        workspace.sessionState?.coordinator.teardown(endsTabSession: false)
         workspace.sessionState = nil
         workspace.session = nil
         if let releasedCoordinator, toolbarOwner?.coordinator === releasedCoordinator {
@@ -825,10 +826,10 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// `teardown()` needs only because its panes are never parented again: here it would mount every
     /// intermediate value instead of letting one run-loop turn settle on the final one.
     private func refreshPanes(of workspace: ConnectionWorkspace) {
-        workspace.panes.sidebar.rootView = AnyView(buildSidebarView(for: workspace))
+        workspace.panes.sidebar.rootView = AnyView(buildSidebarView(for: workspace).onSplitItem())
         workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace))
-        workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace))
-        workspace.panes.assistant.rootView = AnyView(buildAssistantView(for: workspace))
+        workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace).onSplitItem())
+        workspace.panes.assistant.rootView = AnyView(buildAssistantView(for: workspace).onSplitItem())
         refreshAgentPanes(of: workspace)
         refreshTabStripPane(of: workspace)
         workspace.panes.markRendered(workspace.paneRenderKey)
@@ -858,17 +859,22 @@ internal final class MainSplitViewController: NSSplitViewController {
         if let selected = workspaces.selected { bindSidebarChrome(to: selected) }
     }
 
-    /// Parents the sidebar and detail trees the selected connection's mode draws, and does nothing
-    /// else, so a mode toggle is the same view swap a workspace switch is.
-    ///
-    /// Parenting happens here and in no builder, so a connection put into Agent mode while another
-    /// is on screen has its panes built for the mode at once and parented only when it is selected:
-    /// `applySelectedWorkspace` calls through here after its sync, which is the same repair a
-    /// background connect relies on (#2545).
+    // The only place panes are parented, so a mode toggle is the same view swap a workspace switch is (#2545).
     func showSelectedContentPanes() {
         let selected = workspaces.selected
         navigationSidebar?.objectBrowser.show(selected.map { $0.panes.sidebarPane(for: $0.resolvedContentMode) })
         detailPaneHost?.show(selected.map { $0.panes.detailPane(for: $0.detailMode) })
+        if let selected { clearShownTabMark(of: selected) }
+    }
+
+    // A result that finished behind Agent mode or another connection marked the selected tab; it is in view now.
+    private func clearShownTabMark(of workspace: ConnectionWorkspace) {
+        guard workspace.resolvedPane == .content,
+              workspace.detailMode == .browse,
+              let tabManager = workspace.sessionState?.tabManager,
+              let tabId = tabManager.selectedTabId
+        else { return }
+        OperationUnseenMarker.clear(tabId: tabId, in: tabManager)
     }
 
     /// The scope control and the filter field live above the object list and belong to the window,
@@ -1060,8 +1066,8 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// publishes those actions.
     func rebuildTrailingPanes() {
         guard let selected = workspaces.selected else { return }
-        selected.panes.inspector.rootView = AnyView(buildInspectorView(for: selected))
-        selected.panes.assistant.rootView = AnyView(buildAssistantView(for: selected))
+        selected.panes.inspector.rootView = AnyView(buildInspectorView(for: selected).onSplitItem())
+        selected.panes.assistant.rootView = AnyView(buildAssistantView(for: selected).onSplitItem())
     }
 
     // MARK: - Session Bindings
@@ -1401,7 +1407,9 @@ internal final class MainSplitViewController: NSSplitViewController {
         switch tabType {
         case .usersRoles:
             return UsersRolesLayoutMetrics.tabMinimumWidth
-        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .tableHealth, .objectSource,
+        case .tableHealth:
+            return TableHealthLayoutMetrics.tabMinimumWidth
+        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource,
              .versionHistory, .tableListing, .routineDebug, .liveMessages:
             return defaultDetailMinThickness
         }

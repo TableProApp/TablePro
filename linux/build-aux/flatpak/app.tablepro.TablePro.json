@@ -1,0 +1,83 @@
+{
+    "id": "app.tablepro.TablePro",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "51",
+    "sdk": "org.gnome.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable",
+        "org.freedesktop.Sdk.Extension.llvm22"
+    ],
+    "command": "tablepro",
+    "separate-locales": false,
+    "finish-args": [
+        "--share=ipc",
+        "--share=network",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--socket=ssh-auth",
+        "--device=dri",
+        "--filesystem=home",
+        "--filesystem=/media",
+        "--filesystem=/run/media",
+        "--filesystem=/mnt",
+        "--filesystem=/run/.heim_org.h5l.kcm-socket",
+        "--filesystem=/run/postgresql:ro",
+        "--filesystem=/run/mysqld:ro",
+        "--env=KRB5_CONFIG=/app/etc/krb5.conf"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin",
+        "prepend-ld-library-path": "/usr/lib/sdk/llvm22/lib",
+        "cxxflags": "-g0",
+        "env": {
+            "LIBCLANG_PATH": "/usr/lib/sdk/llvm22/lib",
+            "CARGO_NET_OFFLINE": "true",
+            "CARGO_PROFILE_RELEASE_LTO": "thin",
+            "CARGO_PROFILE_RELEASE_DEBUG": "line-tables-only"
+        },
+        "test-args": [
+            "--socket=x11",
+            "--share=network"
+        ],
+        "arch": {
+            "aarch64": {
+                "env": {
+                    "CARGO_ENCODED_RUSTFLAGS": "-Clink-arg=-fuse-ld=lld"
+                }
+            }
+        }
+    },
+    "cleanup": [
+        "/share/man"
+    ],
+    "modules": [
+        {
+            "name": "tablepro",
+            "buildsystem": "meson",
+            "subdir": "linux",
+            "run-tests": true,
+            "config-opts": [
+                "-Dprofile=default",
+                "-Dflatpak=true"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "path": "tablepro.tar.xz"
+                },
+                {
+                    "type": "archive",
+                    "path": "tablepro-vendor.tar.xz",
+                    "strip-components": 0
+                },
+                {
+                    "type": "shell",
+                    "commands": [
+                        "mkdir -p .cargo",
+                        "cp vendor/cargo-config.toml .cargo/config.toml"
+                    ]
+                }
+            ]
+        }
+    ]
+}

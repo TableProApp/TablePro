@@ -15,6 +15,17 @@ import TableProSQLGrammar
 extension MainContentCoordinator {
     @discardableResult
     func runExplain(variant: ExplainVariant? = nil) -> Task<Void, Never>? {
+        guard let tabId = tabManager.selectedTabId else { return nil }
+        // Nil when the discard prompt has to ask first: the plan follows the answer.
+        var started: Task<Void, Never>?
+        confirmRunDiscard(onTab: tabId) { [weak self] in
+            started = self?.startExplain(variant: variant)
+        }
+        return started
+    }
+
+    private func startExplain(variant: ExplainVariant?) -> Task<Void, Never>? {
+        if let tabId = tabManager.selectedTabId { flushEditorText(forTab: tabId) }
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return nil }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runExplain")
@@ -109,6 +120,7 @@ extension MainContentCoordinator {
 
         // EXPLAIN ANALYZE and an actual plan run the statement, and a CREATE TABLE AS among them changes the catalog.
         let ranWrite = request.operationKind(databaseType: conn.type).declaresWrite
+        let failureOutput = ServerOutputBox()
         let explainTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -117,14 +129,16 @@ extension MainContentCoordinator {
                     route: services.databaseManager.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
                 ) { [queryExecutor] driver in
-                    if let step = request.driverStep {
-                        return try await QueryExecutor.fetchExplainPlan(
-                            driver: driver, statement: request.subjectSQL, variantId: step.variantId
+                    try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) { () async throws -> QueryFetchResult in
+                        if let step = request.driverStep {
+                            return try await QueryExecutor.fetchExplainPlan(
+                                driver: driver, statement: request.subjectSQL, variantId: step.variantId
+                            )
+                        }
+                        return try await queryExecutor.executeQuery(
+                            driver: driver, sql: request.sql, parameters: nil, rowCap: nil
                         )
                     }
-                    return try await queryExecutor.executeQuery(
-                        driver: driver, sql: request.sql, parameters: nil, rowCap: nil
-                    )
                 }
                 if ranWrite { Self.postStatementRan(request.subjectSQL, on: conn) }
                 let rawText = ExplainPlanTextFlattener.flatten(rows: fetchResult.rows)
@@ -185,7 +199,8 @@ extension MainContentCoordinator {
                                 sql: request.replayableSQL,
                                 executionTime: fetchResult.executionTime,
                                 anchor: anchor,
-                                planContext: captured.context
+                                planContext: captured.context,
+                                serverOutput: fetchResult.serverOutput
                             )]
                         )
                         if tab.display.isResultsCollapsed {
@@ -193,6 +208,7 @@ extension MainContentCoordinator {
                         }
                     }
                     seedBufferFromActiveResult(tabId: tabId)
+                    dropParkedEdits(ofBackgroundTab: tabId)
                     toolbarState.isResultsCollapsed = false
 
                     recordHistory(
@@ -235,7 +251,9 @@ extension MainContentCoordinator {
                     )
 
                     tabManager.mutate(tabId: tabId) { tab in
-                        tab.execution.errorMessage = error.localizedDescription
+                        tab.execution.errorMessage = ServerOutputCapture.failureMessage(
+                            error.localizedDescription, output: failureOutput.output
+                        )
                         tab.execution.lastExecutedAt = Date()
                         if tab.display.isResultsCollapsed {
                             tab.display.isResultsCollapsed = false

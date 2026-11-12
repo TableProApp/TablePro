@@ -7,6 +7,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
     LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
@@ -177,6 +178,10 @@ impl SqlDialect for ClickHouseDialect {
         Some(self)
     }
 
+    fn dump(&self) -> Option<&dyn DumpDialect> {
+        Some(self)
+    }
+
     /// The column alone: the FROM names the table as `db.table`, which a
     /// `table.column` sort would not match.
     fn sort_expression(&self, _table: &TableRef, column: &ColumnInfo) -> String {
@@ -310,6 +315,7 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
     Ok(match value {
         Value::Null => "NULL".to_owned(),
         Value::Bool(flag) => flag.to_string(),
+        Value::Int32(int) => int.to_string(),
         Value::Int(int) => int.to_string(),
         Value::UInt(int) => int.to_string(),
         Value::WideInt(int) => int.to_string(),
@@ -435,6 +441,8 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "hudi",
         "hudiCluster",
         "url",
+        "urlCluster",
+        "ytsaurus",
         "odbc",
         "jdbc",
         "encrypt",
@@ -689,6 +697,8 @@ mod tests {
             "RESTORE TABLE t FROM Disk('backups', 'b.zip') SETTINGS password = 'x'",
             "SELECT * FROM url('http://u:p@h/f.csv', CSV)",
             "CREATE TABLE t (id Int32) ENGINE = URL('http://u:p@h/f.csv', CSV)",
+            "SELECT * FROM urlCluster('c', 'http://u:p@h/f.csv', CSV)",
+            "SELECT * FROM ytsaurus('http://h:80', '//tmp/t', 'oauth-token', 'JSONEachRow')",
             "SELECT * FROM odbc('DSN=d;UID=u;PWD=p', 't')",
             "SELECT * FROM jdbc('jdbc:mysql://h/?user=u&password=p', 's', 't')",
             "SELECT encrypt('aes-256-gcm', 'text', 'key', 'iv')",

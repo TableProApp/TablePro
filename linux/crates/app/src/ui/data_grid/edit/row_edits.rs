@@ -2,10 +2,10 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::Value;
 use tablepro_core::column::{BoolStorage, ColumnKind};
-use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text};
+use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text, read_cell};
 
 use super::{EditController, edit_start};
-use crate::i18n::gettext;
+use crate::i18n::{gettext, ngettext_f};
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::{
     CellPreset, CommitResult, EditStart, GridColumn, cell_presets, commit_input, edit_context,
@@ -38,37 +38,90 @@ impl EditController {
         }
     }
 
-    /// Set to Empty, NULL or DEFAULT on the cell an action names. The
-    /// menu offers only what the cell takes; a column that refuses the
-    /// value says why, as committing an empty cell would.
     pub(super) fn set_preset(&self, grid: &DataGrid, preset: CellPreset) {
-        let Some((row, column)) = grid.target().and_then(|target| target.cell) else {
+        self.set_values(grid, |row, column| self.preset_input(grid, row, column, preset));
+    }
+
+    pub(super) fn set_values(
+        &self,
+        grid: &DataGrid,
+        mut input: impl FnMut(&GridRow, usize) -> Result<Option<(GridColumn, CellInput)>, String>,
+    ) {
+        grid.commit_editors();
+        let Some(target) = grid.target() else {
             return;
         };
-        let Some(grid_column) = self.unlocked_column(grid, &row, column) else {
+        let Some((_, column)) = target.cell else {
             return;
+        };
+        let tracked = self.tracked();
+        let mut edits = Vec::new();
+        let mut skipped = 0;
+        let mut refusal = None;
+        for row in &target.rows {
+            let outcome = match input(row, column) {
+                Ok(Some((grid_column, input))) => {
+                    let start = edit_start(&tracked, row, column);
+                    match commit_input(&grid_column, &start, input) {
+                        CommitResult::Edit(edit) => {
+                            edits.push(edit);
+                            Ok(())
+                        }
+                        CommitResult::Unchanged => Ok(()),
+                        CommitResult::Rejected(error) => Err(Some(edit_parse_message(&error))),
+                    }
+                }
+                Ok(None) => Err(None),
+                Err(message) => Err(Some(message)),
+            };
+            if let Err(message) = outcome {
+                skipped += 1;
+                refusal = refusal.or(message);
+            }
+        }
+        if !edits.is_empty() {
+            self.apply_edits(grid, edits);
+        }
+        if skipped == target.rows.len()
+            && let Some(message) = refusal
+        {
+            grid.toast(message);
+            return;
+        }
+        if skipped > 0 {
+            grid.toast(ngettext_f(
+                "{count} row can't take this value and was left as it was",
+                "{count} rows can't take this value and were left as they were",
+                skipped as u32,
+                &[("count", &skipped.to_string())],
+            ));
+        }
+    }
+
+    fn preset_input(
+        &self,
+        grid: &DataGrid,
+        row: &GridRow,
+        column: usize,
+        preset: CellPreset,
+    ) -> Result<Option<(GridColumn, CellInput)>, String> {
+        let Some(grid_column) = self.unlocked_column(grid, row, column) else {
+            return Ok(None);
         };
         let Some(catalog) = grid_column.catalog.as_ref() else {
-            return;
+            return Ok(None);
         };
         let presets = cell_presets(&grid_column, &row.id(), grid.sql_dialect().as_deref());
         let input = match preset {
             CellPreset::Empty => {
-                parse_edit_text("", catalog, edit_context(&row.id())).map_err(|error| edit_parse_message(&error))
+                parse_edit_text("", catalog, edit_context(&row.id()), None).map_err(|error| edit_parse_message(&error))
             }
             CellPreset::Null if presets.null => Ok(CellInput::Value(Value::Null)),
             CellPreset::Null => Err(edit_parse_message(&EditParseError::Required)),
             CellPreset::Default if presets.default => Ok(CellInput::Default),
             CellPreset::Default => Err(gettext("This cell can't take the column's default")),
-        };
-        match input {
-            Ok(input) => {
-                grid.commit_editors();
-                let start = edit_start(&self.tracked(), &row, column);
-                self.commit_input(grid, &grid_column, &start, input);
-            }
-            Err(message) => grid.toast(message),
-        }
+        }?;
+        Ok(Some((grid_column, input)))
     }
 
     /// Only a table whose rows can be saved takes a new one (D1).
@@ -95,7 +148,8 @@ impl EditController {
     }
 
     /// Copies of the rows as the user sees them, pending edits included.
-    /// What the database owns (key, identity, generated) is left to it.
+    /// What the database owns (key, identity, generated) is left to it,
+    /// and so is a NULL read where it can stand for a missing value.
     pub(super) fn duplicate_rows(&self, grid: &DataGrid) {
         if self.policy().is_none_or(|policy| policy.duplicate.is_err()) {
             return;
@@ -105,6 +159,7 @@ impl EditController {
         };
         let columns = grid.grid_columns();
         let tracked = self.tracked();
+        let dialect = grid.dialect();
         let copies = target
             .rows
             .iter()
@@ -112,14 +167,24 @@ impl EditController {
                 let source = tracked.inputs(row);
                 columns
                     .iter()
-                    .map(|column| match &column.catalog {
-                        Some(catalog) if catalog.primary_key || catalog.is_auto_increment || catalog.is_generated => {
-                            new_draft_cell(catalog)
-                        }
-                        Some(_) | None => source
+                    .map(|column| {
+                        let input = source
                             .get(column.index)
                             .cloned()
-                            .unwrap_or(CellInput::Value(Value::Null)),
+                            .unwrap_or(CellInput::Value(Value::Null));
+                        match (&column.catalog, input, dialect.as_deref()) {
+                            (Some(catalog), _, _)
+                                if catalog.primary_key || catalog.is_auto_increment || catalog.is_generated =>
+                            {
+                                new_draft_cell(catalog)
+                            }
+                            (Some(catalog), CellInput::Value(value), Some(dialect))
+                                if tracked.shows_read_value(row, column.index) =>
+                            {
+                                read_cell(value, catalog, dialect)
+                            }
+                            (_, input, _) => input,
+                        }
                     })
                     .collect()
             })
@@ -229,8 +294,8 @@ pub(super) fn toggled(value: &Value, default: bool, storage: BoolStorage) -> Val
     let truth = match (default, value) {
         (true, _) => None,
         (false, Value::Bool(flag)) => Some(*flag),
-        (false, Value::Int(0) | Value::UInt(0)) => Some(false),
-        (false, Value::Int(1) | Value::UInt(1)) => Some(true),
+        (false, Value::Int(0) | Value::Int32(0) | Value::UInt(0)) => Some(false),
+        (false, Value::Int(1) | Value::Int32(1) | Value::UInt(1)) => Some(true),
         (false, _) => None,
     };
     let next = truth.is_none_or(|truth| !truth);

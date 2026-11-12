@@ -67,19 +67,23 @@ pub(crate) fn insert_many(
 }
 
 /// The fields changed on one document, with `$set`. Only the fields named
-/// change; one the document lacked is added.
+/// change; one the document lacked is added. A field given back to the
+/// server is removed with `$unset`, which a key cannot be.
 pub(crate) fn update(
     table: &TableRef,
     columns: &[ColumnInfo],
     identity: &RowIdentity,
     key: &[Value],
     assignments: &[(usize, CellInput)],
+    read: &[(usize, Value)],
 ) -> Result<Statement, BuildSqlError> {
     if assignments.is_empty() {
         return Err(BuildSqlError::NothingToUpdate);
     }
+    let names = key_names(identity)?;
     let mut params = ShellParams::new();
     let mut set = Vec::with_capacity(assignments.len());
+    let mut unset = Vec::new();
     for (index, input) in assignments {
         let column = columns.get(*index).ok_or(BuildSqlError::UnknownKeyColumn {
             name: index.to_string(),
@@ -89,18 +93,31 @@ pub(crate) fn update(
                 name: column.name.clone(),
             });
         }
-        let Some(value) = input.value() else {
-            return Err(BuildSqlError::ServerComputedValue {
-                name: column.name.clone(),
-            });
-        };
-        set.push((column.name.clone(), params.bind(value.clone(), Some(column))?));
+        match input {
+            CellInput::Value(value) => {
+                let read = read.iter().find(|(at, _)| at == index).map(|(_, value)| value);
+                set.push((column.name.clone(), params.bind_edit(value.clone(), column, read)?));
+            }
+            CellInput::Default if !names.contains(&column.name) => {
+                unset.push((column.name.clone(), ShellValue::string("")));
+            }
+            CellInput::Default | CellInput::Expression(_) => {
+                return Err(BuildSqlError::ServerComputedValue {
+                    name: column.name.clone(),
+                });
+            }
+        }
     }
     let filter = key_filter(columns, identity, key, &mut params)?;
+    let operators = [("$set", set), ("$unset", unset)]
+        .into_iter()
+        .filter(|(_, fields)| !fields.is_empty())
+        .map(|(name, fields)| (name.to_owned(), ShellValue::Object(fields)))
+        .collect();
     let mut call = collection(table);
     call.methods.push(ShellMethod::new(
         "updateOne",
-        vec![filter, field("$set", ShellValue::Object(set))],
+        vec![filter, ShellValue::Object(operators)],
     ));
     Ok(params.statement(&call))
 }
@@ -142,12 +159,7 @@ fn key_filter(
     key: &[Value],
     params: &mut ShellParams,
 ) -> Result<ShellValue, BuildSqlError> {
-    let names = match identity {
-        RowIdentity::UniqueKey { columns } => columns,
-        RowIdentity::SortingKey { expressions } => expressions,
-        RowIdentity::EngineRowId(_) => return Err(BuildSqlError::NoRowIdentity),
-        RowIdentity::Unordered => return Err(BuildSqlError::ReadOnlyRows),
-    };
+    let names = key_names(identity)?;
     if names.len() != key.len() {
         return Err(BuildSqlError::LengthMismatch {
             expected: names.len(),
@@ -166,4 +178,13 @@ fn key_filter(
         fields.push((name.clone(), params.bind(value.clone(), Some(column))?));
     }
     Ok(ShellValue::Object(fields))
+}
+
+fn key_names(identity: &RowIdentity) -> Result<&[String], BuildSqlError> {
+    match identity {
+        RowIdentity::UniqueKey { columns } => Ok(columns),
+        RowIdentity::SortingKey { expressions } => Ok(expressions),
+        RowIdentity::EngineRowId(_) => Err(BuildSqlError::NoRowIdentity),
+        RowIdentity::Unordered => Err(BuildSqlError::ReadOnlyRows),
+    }
 }

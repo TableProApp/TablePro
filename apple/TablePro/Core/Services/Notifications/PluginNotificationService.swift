@@ -9,60 +9,142 @@ final class PluginNotificationService {
 
     static let identifierPrefix = "com.TablePro.plugin."
     static let openPluginSettingsActionId = "openPluginSettings"
+    static let pluginIdKey = "pluginId"
     private static let updateFailedCategoryId = "com.TablePro.pluginUpdateFailed"
-    private static let failedIdentifierPrefix = identifierPrefix + "failed."
+    private static let rejectedIdentifierPrefix = identifierPrefix + "failed."
+    private static let updateFailedIdentifierPrefix = identifierPrefix + "updateFailed."
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "PluginNotifications")
 
-    private var cancellables: Set<AnyCancellable> = []
-    private var deliveredFailureIdentifiers: Set<String> = []
+    private let presenter: any UserNotificationPresenting
+    private let authorization: NotificationAuthorization
+    private let categories: NotificationCategoryRegistry
+    private let tracker: PluginInstallTracker
+    private let settings: () -> NotificationSettings
 
-    private init() {}
+    private var cancellables: Set<AnyCancellable> = []
+    private var deliveredRejectedIdentifiers: Set<String> = []
+    private var deliveredUpdateFailures: Set<String> = []
+    private var handledFailureGenerations: Set<UUID> = []
+
+    init(
+        presenter: any UserNotificationPresenting = SystemNotificationPresenter.shared,
+        authorization: NotificationAuthorization = .shared,
+        categories: NotificationCategoryRegistry = .shared,
+        tracker: PluginInstallTracker = .shared,
+        settings: (() -> NotificationSettings)? = nil
+    ) {
+        self.presenter = presenter
+        self.authorization = authorization
+        self.categories = categories
+        self.tracker = tracker
+        self.settings = settings ?? { AppSettingsManager.shared.notifications }
+    }
 
     func setUp() {
         registerCategories()
         NotificationRouter.shared.register(self, forCategory: Self.updateFailedCategoryId)
-        subscribeToEvents()
+        AppEvents.shared.pluginsRejected
+            .receive(on: RunLoop.main)
+            .sink { [weak self] rejected in
+                guard let self else { return }
+                Task { await self.notifyRejected(rejected) }
+            }
+            .store(in: &cancellables)
+        observeInstalls()
     }
 
-    func notifyAutoUpdateFailed(plugins: [RejectedPlugin]) async {
-        guard !plugins.isEmpty else { return }
-        guard await NotificationAuthorization.shared.ensureAuthorized() else { return }
+    func observeInstalls() {
+        tracker.$entries
+            .sink { [weak self] entries in self?.render(entries) }
+            .store(in: &cancellables)
+    }
 
-        let center = UNUserNotificationCenter.current()
-        let incomingIdentifiers = Set(plugins.map(Self.failureIdentifier))
-        let staleIdentifiers = deliveredFailureIdentifiers.subtracting(incomingIdentifiers)
-        if !staleIdentifiers.isEmpty {
-            center.removeDeliveredNotifications(withIdentifiers: Array(staleIdentifiers))
-            deliveredFailureIdentifiers.subtract(staleIdentifiers)
+    // A plugin already notified stays quiet until it leaves the rejected list, so each connect does not post it again.
+    func notifyRejected(_ plugins: [RejectedPlugin]) async {
+        let incoming = Set(plugins.map(Self.rejectedIdentifier))
+        let stale = deliveredRejectedIdentifiers.subtracting(incoming)
+        if !stale.isEmpty {
+            presenter.removeDelivered(identifiers: Array(stale))
+            deliveredRejectedIdentifiers.subtract(stale)
         }
 
-        for plugin in plugins {
-            let content = UNMutableNotificationContent()
-            content.title = String(format: String(localized: "%@ could not be loaded"), plugin.name)
-            content.body = plugin.reason
-            content.categoryIdentifier = Self.updateFailedCategoryId
+        let fresh = plugins.filter { !deliveredRejectedIdentifiers.contains(Self.rejectedIdentifier(for: $0)) }
+        guard !fresh.isEmpty, settings().isEnabled else { return }
+        deliveredRejectedIdentifiers.formUnion(fresh.map(Self.rejectedIdentifier))
+        guard await authorization.ensureAuthorized() else { return }
 
-            let identifier = Self.failureIdentifier(for: plugin)
-            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-            do {
-                try await center.add(request)
-                deliveredFailureIdentifiers.insert(identifier)
-            } catch {
-                Self.logger.error("Failed to post notification for '\(plugin.name)': \(error.localizedDescription)")
+        for plugin in fresh {
+            await post(
+                identifier: Self.rejectedIdentifier(for: plugin),
+                title: String(format: String(localized: "%@ could not be loaded"), plugin.name),
+                body: plugin.reason,
+                pluginId: plugin.registryId ?? plugin.bundleId
+            )
+        }
+    }
+
+    private func render(_ entries: [String: PluginInstallTracker.Entry]) {
+        for entry in entries.values {
+            switch entry.phase {
+            case .failed(let reason):
+                guard entry.trigger == .update, handledFailureGenerations.insert(entry.generation).inserted else { continue }
+                notifyUpdateFailed(entry, reason: reason)
+            case .completed:
+                clearFailures(forPluginId: entry.pluginId)
+            case .downloading, .installing:
+                if entry.trigger == .user {
+                    clearFailures(forPluginId: entry.pluginId)
+                }
             }
         }
     }
 
-    func clearPluginNotifications() async {
-        let center = UNUserNotificationCenter.current()
-        guard !deliveredFailureIdentifiers.isEmpty else { return }
-        center.removeDeliveredNotifications(withIdentifiers: Array(deliveredFailureIdentifiers))
-        deliveredFailureIdentifiers.removeAll()
+    private func notifyUpdateFailed(_ entry: PluginInstallTracker.Entry, reason: String) {
+        guard !deliveredUpdateFailures.contains(entry.pluginId), settings().isEnabled else { return }
+        deliveredUpdateFailures.insert(entry.pluginId)
+        Task {
+            guard await authorization.ensureAuthorized() else { return }
+            // A manual retry or a later install may have cleared it during the permission prompt.
+            guard deliveredUpdateFailures.contains(entry.pluginId) else { return }
+            await post(
+                identifier: Self.updateFailedIdentifierPrefix + entry.pluginId,
+                title: String(format: String(localized: "%@ could not be updated"), entry.displayName),
+                body: reason,
+                pluginId: entry.pluginId
+            )
+        }
     }
 
-    private static func failureIdentifier(for plugin: RejectedPlugin) -> String {
-        let key = plugin.bundleId ?? plugin.registryId ?? plugin.name
-        return failedIdentifierPrefix + key
+    private func clearFailures(forPluginId pluginId: String) {
+        var identifiers: [String] = []
+        if deliveredUpdateFailures.remove(pluginId) != nil {
+            identifiers.append(Self.updateFailedIdentifierPrefix + pluginId)
+        }
+        let rejected = Self.rejectedIdentifierPrefix + pluginId
+        if deliveredRejectedIdentifiers.remove(rejected) != nil {
+            identifiers.append(rejected)
+        }
+        guard !identifiers.isEmpty else { return }
+        presenter.removeDelivered(identifiers: identifiers)
+    }
+
+    private func post(identifier: String, title: String, body: String, pluginId: String?) async {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.categoryIdentifier = Self.updateFailedCategoryId
+        if let pluginId {
+            content.userInfo = [Self.pluginIdKey: pluginId]
+        }
+        do {
+            try await presenter.post(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        } catch {
+            Self.logger.error("Failed to post a plugin notification: \(error.publicLogShape, privacy: .public)")
+        }
+    }
+
+    private static func rejectedIdentifier(for plugin: RejectedPlugin) -> String {
+        rejectedIdentifierPrefix + (plugin.bundleId ?? plugin.registryId ?? plugin.name)
     }
 
     private func registerCategories() {
@@ -77,23 +159,7 @@ final class PluginNotificationService {
             intentIdentifiers: [],
             options: []
         )
-        NotificationCategoryRegistry.shared.register([failedCategory], owner: "plugins")
-    }
-
-    private func subscribeToEvents() {
-        AppEvents.shared.pluginsRejected
-            .receive(on: RunLoop.main)
-            .sink { [weak self] rejected in
-                guard let self else { return }
-                Task {
-                    if rejected.isEmpty {
-                        await self.clearPluginNotifications()
-                    } else {
-                        await self.notifyAutoUpdateFailed(plugins: rejected)
-                    }
-                }
-            }
-            .store(in: &cancellables)
+        categories.register([failedCategory], owner: "plugins")
     }
 }
 
@@ -106,6 +172,8 @@ extension PluginNotificationService: NotificationHandling {
         let action = response.actionIdentifier
         guard action == Self.openPluginSettingsActionId || action == UNNotificationDefaultActionIdentifier
         else { return }
+        let pluginId = response.notification.request.content.userInfo[Self.pluginIdKey] as? String
+        PluginsSettingsNavigation.shared.reveal(pluginId: pluginId)
         WindowOpener.shared.openSettings(tab: .plugins)
     }
 }

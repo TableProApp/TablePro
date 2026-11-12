@@ -22,7 +22,6 @@ use crate::ui::workspace::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 
 use super::structure_target::StructureTarget;
 use super::tab_spec::{TabSpec, TablePage};
-use crate::workspace::run_schema_plan;
 
 /// The drop the prompt shows is the drop that runs.
 const DROP_OPTIONS: DropTableOptions = DropTableOptions {
@@ -69,6 +68,20 @@ impl WorkspaceModel {
         self.open_tab(TabSpec::Structure {
             target: StructureTarget::Existing(TableRef::new(schema, table)),
         });
+    }
+
+    pub(super) fn on_show_table_structure(&self, id: Uuid) {
+        let target = match self.workspace_tabs.borrow().get(&id) {
+            Some(WorkspaceTab::Table(slot)) => Some((slot.schema.clone(), slot.table.clone())),
+            _ => None,
+        };
+        let Some(structure) = target.and_then(|(schema, table)| self.factory.table_structure(id, schema, table)) else {
+            return;
+        };
+        if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
+            slot.browse.set_structure(&structure);
+            slot.structure = Some(structure);
+        }
     }
 
     /// Right-click → "Drop Table…", or in-tab destructive button. The
@@ -156,64 +169,39 @@ impl WorkspaceModel {
         Some((session.metadata().name.clone(), plan.preview()))
     }
 
-    /// User confirmed the drop. Run DROP TABLE async; only close any
-    /// open Browse / Structure tabs for the table after the DROP
-    /// returns Ok. Tabs stay open if DROP fails (FK violation,
-    /// privileges) so the user doesn't lose their state on a failed
-    /// destructive action.
-    ///
-    /// The drop runs as a save of its own: a window close waits for it
-    /// or stops it, and a quit keeps the process until it answers.
+    /// The table's tabs close only once the DROP lands, so a failed drop
+    /// (a foreign key, privileges) leaves the user's state where it was.
     pub(super) fn on_drop_table_confirmed(&mut self, schema: Option<String>, table: String) {
-        let Some(session) = self.context.active.get() else {
-            self.show_error_alert(
-                &crate::i18n::gettext("Cannot Drop Table"),
-                &crate::i18n::gettext("No active connection."),
-            );
-            return;
-        };
-        let handle = self.workspace_handle.clone();
-        let Some(ticket) = handle
-            .ledger()
-            .begin(&*self.context.hold, Uuid::new_v4(), WriteKind::SchemaChanges)
-        else {
-            return;
-        };
         let dropped = TableRef::new(schema, table);
         let options = DROP_OPTIONS;
-        let table = dropped.clone();
-        let cancel = ticket.cancel.clone();
-        let work = async move {
-            run_schema_plan(session, table, DdlOperation::DropTable, &cancel, move |ddl, table| {
-                ddl.plan_drop_table(table, options)
-            })
-            .await
-        };
-        // The answer goes through the workspace's input, so one that
-        // lands after a disconnect is dropped with the workspace.
-        let input = self.input.clone();
-        crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
-            match settled(result).and_then(|(_, written)| written) {
-                Ok(_) => input.deliver(WorkspaceInput::DropTableSucceeded(dropped)),
+        let answered = dropped.clone();
+        self.start_catalog_change(
+            WriteKind::SchemaChanges,
+            dropped,
+            move |dialect, table| {
+                dialect
+                    .ddl()
+                    .ok_or(BuildDdlError::Unsupported(DdlOperation::DropTable))?
+                    .plan_drop_table(table, options)
+            },
+            move |result| match result {
+                Ok(()) => WorkspaceInput::DropTableSucceeded(answered),
                 // The only guard a drop plan carries is SQLite's count of
                 // the keys pointing at the table, which one added since
                 // the prompt read them fails.
-                Err(OperationError::Driver(DriverError::RowGuardFailed { .. })) => {
-                    input.deliver(WorkspaceInput::ShowAlert {
-                        title: crate::i18n::gettext("Drop Failed"),
-                        body: crate::i18n::gettext_f(
-                            "A foreign key on another table points at {table}, so it was not dropped. Drop that foreign key first.",
-                            &[("table", &display_name(&dropped))],
-                        ),
-                    })
-                }
-                Err(error) => input.deliver(WorkspaceInput::ShowAlert {
+                Err(OperationError::Driver(DriverError::RowGuardFailed { .. })) => WorkspaceInput::ShowAlert {
+                    title: crate::i18n::gettext("Drop Failed"),
+                    body: crate::i18n::gettext_f(
+                        "A foreign key on another table points at {table}, so it was not dropped. Drop that foreign key first.",
+                        &[("table", &display_name(&answered))],
+                    ),
+                },
+                Err(error) => WorkspaceInput::ShowAlert {
                     title: crate::i18n::gettext("Drop Failed"),
                     body: error_text::operation_error_message(&error),
-                }),
-            }
-            handle.ledger().settle(ticket.id);
-        });
+                },
+            },
+        );
     }
 
     pub(super) fn on_drop_table_succeeded(&mut self, table: TableRef) {
@@ -224,21 +212,28 @@ impl WorkspaceModel {
         });
     }
 
-    /// Walk the tab map and force-close any Browse / Structure tabs
-    /// pointing at `(schema, table)`. Skips the per-tab pending-changes
-    /// dialog because the underlying table is gone.
+    /// Close the Browse and Structure tabs on `(schema, table)` without
+    /// asking about their pending changes: the table is gone, and so is
+    /// any way to reopen them.
     pub(super) fn close_tabs_for_table(&mut self, schema: Option<&str>, table: &str) {
+        let targets: Vec<Uuid> = self
+            .workspace_tabs
+            .borrow()
+            .iter()
+            .filter(|(_, tab)| match tab {
+                WorkspaceTab::Structure(s) => s.schema.as_deref() == schema && s.table == table,
+                WorkspaceTab::Table(s) => s.schema.as_deref() == schema && s.table == table,
+                _ => false,
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        self.forget_tabs(targets);
+    }
+
+    pub(super) fn forget_tabs(&mut self, targets: Vec<Uuid>) {
         let tab_view = self.tab_view.clone();
-        let mut targets: Vec<Uuid> = Vec::new();
-        for (id, tab) in self.workspace_tabs.borrow().iter() {
-            match tab {
-                WorkspaceTab::Structure(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
-                WorkspaceTab::Table(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
-                _ => {}
-            }
-        }
         for id in targets {
-            self.finish_close_workspace_tab(id, &tab_view);
+            self.forget_workspace_tab(id, &tab_view);
         }
     }
 
@@ -272,6 +267,12 @@ impl WorkspaceModel {
                         SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone())
                     }
                 },
+                Some(WorkspaceTab::Table(slot)) => {
+                    if let Some(name) = new_table_name.as_ref() {
+                        slot.table.clone_from(name);
+                    }
+                    SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone())
+                }
                 _ => SaveKind::Skip,
             }
         };
@@ -293,8 +294,18 @@ impl WorkspaceModel {
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
-                if new_table_name.is_some() {
+                if let Some(name) = new_table_name.as_ref() {
+                    let browse = self
+                        .workspace_tabs
+                        .borrow()
+                        .get(&tab_id)
+                        .and_then(|tab| tab.browse_tab())
+                        .cloned();
+                    if let Some(browse) = browse {
+                        browse.rename_table(name);
+                    }
                     self.retitle_tab(tab_id);
+                    self.persist_workspace_state();
                 }
                 self.send_to_structure_tab(tab_id, SaveInput::SaveCompleted { new_table_name });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
@@ -363,27 +374,7 @@ impl WorkspaceModel {
         };
         self.diagrams_out_of_date(schema.as_deref(), table.is_some());
         if let Some(table) = table {
-            session.invalidate_table(&TableRef::new(schema.clone(), table.clone()));
-            let (browse_tabs, structure_tabs): (Vec<_>, Vec<_>) = self
-                .workspace_tabs
-                .borrow()
-                .values()
-                .filter_map(|tab| match tab {
-                    WorkspaceTab::Table(slot) if slot.schema == schema && slot.table == table => {
-                        Some((Some(slot.browse.clone()), None))
-                    }
-                    WorkspaceTab::Structure(slot) if slot.schema == schema && slot.table == table => {
-                        Some((None, Some(slot.structure.clone())))
-                    }
-                    _ => None,
-                })
-                .unzip();
-            for browse in browse_tabs.into_iter().flatten() {
-                browse.send(crate::ui::browse_tab::DataInput::SchemaChanged);
-            }
-            for structure in structure_tabs.into_iter().flatten() {
-                structure.send(LoadInput::SchemaChanged);
-            }
+            self.reload_table_tabs(&session, &TableRef::new(schema, table));
         }
         // The catalog watch takes the new list to the sidebar, and a
         // failure to it as a toast. The default schema's list, which the
@@ -395,9 +386,38 @@ impl WorkspaceModel {
     }
 }
 
+impl WorkspaceModel {
+    /// The catalog forgets the table's columns, and every tab open on the
+    /// table reads it again through its own requests, which share the
+    /// catalog's one column fetch.
+    pub(super) fn reload_table_tabs(&self, session: &Session, table: &TableRef) {
+        session.invalidate_table(table);
+        let (browse_tabs, structure_tabs): (Vec<_>, Vec<_>) = self
+            .workspace_tabs
+            .borrow()
+            .values()
+            .filter_map(|tab| match tab {
+                WorkspaceTab::Table(slot) if slot.schema == table.schema && slot.table == table.name => {
+                    Some((Some(slot.browse.clone()), slot.structure.clone()))
+                }
+                WorkspaceTab::Structure(slot) if slot.schema == table.schema && slot.table == table.name => {
+                    Some((None, Some(slot.structure.clone())))
+                }
+                _ => None,
+            })
+            .unzip();
+        for browse in browse_tabs.into_iter().flatten() {
+            browse.send(crate::ui::browse_tab::DataInput::SchemaChanged);
+        }
+        for structure in structure_tabs.into_iter().flatten() {
+            structure.send(LoadInput::SchemaChanged);
+        }
+    }
+}
+
 /// The table's definition and the dialect of the connection that read
 /// it, so the DDL built from it is spelled for that same server.
-async fn read_definition(
+pub(super) async fn read_definition(
     session: Arc<Session>,
     table: TableRef,
 ) -> Result<(TableDefinition, Arc<dyn SqlDialect>), OperationError> {
@@ -413,7 +433,7 @@ async fn read_definition(
 }
 
 /// The sidebar lists every schema, so two tables can share a name.
-fn display_name(table: &TableRef) -> String {
+pub(super) fn display_name(table: &TableRef) -> String {
     match &table.schema {
         Some(schema) => format!("{schema}.{}", table.name),
         None => table.name.clone(),
@@ -422,7 +442,7 @@ fn display_name(table: &TableRef) -> String {
 
 /// The keys of other tables that point at the table. A table's key on
 /// itself goes with it, so it does not stop a drop.
-fn referencing_keys(definition: &TableDefinition) -> Vec<InboundForeignKey> {
+pub(super) fn referencing_keys(definition: &TableDefinition) -> Vec<InboundForeignKey> {
     definition
         .inbound_foreign_keys
         .iter()
@@ -433,7 +453,7 @@ fn referencing_keys(definition: &TableDefinition) -> Vec<InboundForeignKey> {
 
 /// Each key as its table and columns, the table qualified only where it
 /// sits in another schema than the dropped one.
-fn key_list(dropped: &TableRef, keys: &[InboundForeignKey]) -> String {
+pub(super) fn key_list(dropped: &TableRef, keys: &[InboundForeignKey]) -> String {
     keys.iter()
         .map(|key| {
             let table = match key.table.schema == dropped.schema {
@@ -462,7 +482,7 @@ fn create_table_sql(definition: &TableDefinition, dialect: &dyn SqlDialect) -> R
 
 /// A task that never answered is reported like the operation it ran: a
 /// panic as the bug it is, an abort as the app stopping the work.
-fn settled<T>(result: Result<Result<T, OperationError>, TaskFailure>) -> Result<T, OperationError> {
+pub(super) fn settled<T>(result: Result<Result<T, OperationError>, TaskFailure>) -> Result<T, OperationError> {
     result.unwrap_or_else(|failure| {
         if failure.is_panic() {
             tracing::error!(%failure, "a structure task panicked");

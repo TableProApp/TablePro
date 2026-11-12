@@ -76,10 +76,8 @@ internal struct GroupEditorSheet: View {
             }
 
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(errorMessage, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 

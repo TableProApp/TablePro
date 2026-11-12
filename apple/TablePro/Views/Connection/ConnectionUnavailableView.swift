@@ -81,7 +81,8 @@ internal struct ConnectionUnavailableView: View {
         case .disconnected:
             return "bolt.slash"
         case .disconnectedByUser:
-            return "cable.connector.slash"
+            if #available(macOS 14.0, *) { return "cable.connector.slash" }
+            return "bolt.horizontal.circle"
         case .failed:
             return "exclamationmark.triangle"
         case .actionRequired(_, let action):

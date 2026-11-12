@@ -55,6 +55,10 @@ struct ExportState {
     // False for an export that writes no rows, which then reports its progress in objects.
     var readsRows = true
 
+    // Set when the row total came from statistics, or when some tables could not be counted.
+    var rowTotalIsEstimate = false
+    var estimateNote: String?
+
     /// What the export wrote, as opposed to what went wrong with it. Kept apart from `warnings`
     /// because the success alert reads a non-empty `warnings` as a problem: it retitles itself,
     /// takes the caution icon, and drops its "Do not show this again" checkbox.
@@ -146,11 +150,20 @@ final class ExportService: ObservableObject {
 
     // MARK: - Cancellation
 
+    // Latched, so a Stop during the row count or before the plugin starts is not lost.
     func cancelExport() {
+        isStopRequested = true
         currentProgress?.cancel()
     }
 
     @Published private var currentProgress: PluginExportProgress?
+    private var isStopRequested = false
+
+    private func throwIfStopped() throws {
+        if isStopRequested || Task.isCancelled {
+            throw PluginExportCancellationError()
+        }
+    }
 
     /// The status line a plugin writes with `PluginExportProgress.setStatus`. Nothing observed it,
     /// so "Compressing..." never reached a user in any export. The empty guard sits outside the hop
@@ -185,13 +198,14 @@ final class ExportService: ObservableObject {
 
         defer {
             state.isExporting = false
-                state.statusMessage = ""
+            state.statusMessage = ""
             currentProgress = nil
         }
 
         guard let driver, let databaseType else {
             throw ExportError.notConnected
         }
+        try throwIfStopped()
 
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
 
@@ -203,6 +217,7 @@ final class ExportService: ObservableObject {
             databaseType: databaseType,
             dataSource: dataSource
         )
+        try throwIfStopped()
 
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -322,14 +337,16 @@ final class ExportService: ObservableObject {
         }
 
         let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
+        state = ExportState(isExporting: true, totalTables: 1)
         let totalRows = await Self.approximateRowCount(of: exportTable, in: dataSource)
-        state = ExportState(isExporting: true, totalTables: 1, totalRows: totalRows)
+        state.totalRows = totalRows
 
         defer {
             state.isExporting = false
             state.statusMessage = ""
             currentProgress = nil
         }
+        try throwIfStopped()
 
         let nsProgress = Progress(totalUnitCount: Int64(totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -408,9 +425,10 @@ final class ExportService: ObservableObject {
 
         defer {
             state.isExporting = false
-                state.statusMessage = ""
+            state.statusMessage = ""
             currentProgress = nil
         }
+        try throwIfStopped()
 
         let dataSource = StreamingQueryExportDataSource(
             query: LeadingRowsStatement.resolve(query, rowCap: nil, databaseType: databaseType).sql,
@@ -457,16 +475,21 @@ final class ExportService: ObservableObject {
 
         let capWarning = Self.leadingRowsCapWarning(
             exportedRows: progress.processedRows,
-            pagination: PaginationCapability.of(databaseType)
+            pagination: PaginationCapability.of(databaseType),
+            driverCut: dataSource.driverRowCut
         )
         state.warnings = result.warnings + [capWarning].compactMap { $0 }
         state.notes = result.notes
     }
 
-    /// A query result exported from an engine that returns only its leading rows stops at the
-    /// engine's ceiling, so a file that reached it is named as partial rather than passing as whole.
-    static func leadingRowsCapWarning(exportedRows: Int, pagination: PaginationCapability) -> String? {
-        guard let maximum = pagination.maximumRows, exportedRows >= maximum else { return nil }
+    // A file that reached the engine's ceiling, or the limit the driver cut its stream at, is named as partial.
+    static func leadingRowsCapWarning(
+        exportedRows: Int,
+        pagination: PaginationCapability,
+        driverCut: Int? = nil
+    ) -> String? {
+        let engineCut = pagination.maximumRows.flatMap { exportedRows >= $0 ? $0 : nil }
+        guard let maximum = engineCut ?? driverCut else { return nil }
         return String(
             format: String(localized: "Only the first %lld rows were exported, the most this database returns from one query."),
             maximum
@@ -501,7 +524,9 @@ final class ExportService: ObservableObject {
         var failedCount = 0
 
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
+            state.rowTotalIsEstimate = true
             for table in tables {
+                guard !isStopRequested else { return total }
                 do {
                     let count = try await dataSource.fetchApproximateRowCount(
                         table: table.name, databaseName: table.databaseName
@@ -516,7 +541,7 @@ final class ExportService: ObservableObject {
             }
             if failedCount > 0 {
                 Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
-                state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
+                state.estimateNote = Self.estimatedProgressMessage(uncountedTables: failedCount)
             }
             return total
         }
@@ -524,6 +549,7 @@ final class ExportService: ObservableObject {
         let chunkSize = 50
 
         for chunkStart in stride(from: 0, to: tables.count, by: chunkSize) {
+            guard !isStopRequested else { return total }
             let end = min(chunkStart + chunkSize, tables.count)
             let batch = tables[chunkStart ..< end]
 
@@ -542,6 +568,7 @@ final class ExportService: ObservableObject {
                 }
             } catch {
                 for table in batch {
+                    guard !isStopRequested else { return total }
                     do {
                         let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
                         let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
@@ -558,7 +585,8 @@ final class ExportService: ObservableObject {
 
         if failedCount > 0 {
             Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
-            state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
+            state.rowTotalIsEstimate = true
+            state.estimateNote = Self.estimatedProgressMessage(uncountedTables: failedCount)
         }
         return total
     }

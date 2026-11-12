@@ -11,6 +11,7 @@ internal struct ResultsJsonView: View {
     let selectedRowIDs: Set<RowID>
     let displayIDs: [RowID]?
     let deletedRowIDs: Set<RowID>
+    let defaultedCells: [RowID: Set<Int>]
     let valueFilter: GridValueFilterState
     let dataRevision: Int
     let displayRevision: Int
@@ -26,14 +27,13 @@ internal struct ResultsJsonView: View {
     @State private var heldBackDeletionCount = 0
     @State private var hasRendered = false
     @State private var renderedKey: RenderKey?
-    @State private var copied = false
-    @State private var copyCooldownTask: Task<Void, Never>?
 
     init(
         tableRows: TableRows,
         selectedRowIDs: Set<RowID>,
         displayIDs: [RowID]?,
         deletedRowIDs: Set<RowID>,
+        defaultedCells: [RowID: Set<Int>] = [:],
         valueFilter: GridValueFilterState,
         dataRevision: Int,
         displayRevision: Int,
@@ -43,6 +43,7 @@ internal struct ResultsJsonView: View {
         self.selectedRowIDs = selectedRowIDs
         self.displayIDs = displayIDs
         self.deletedRowIDs = deletedRowIDs
+        self.defaultedCells = defaultedCells
         self.valueFilter = valueFilter
         self.dataRevision = dataRevision
         self.displayRevision = displayRevision
@@ -60,6 +61,7 @@ internal struct ResultsJsonView: View {
         let displayRevision: Int
         let selectedRowIDs: Set<RowID>
         let deletedRowIDs: Set<RowID>
+        let defaultedCells: [RowID: Set<Int>]
         let valueFilter: GridValueFilterState
         let hiddenColumns: Set<String>
         let columnOrder: [String]?
@@ -71,6 +73,7 @@ internal struct ResultsJsonView: View {
             displayRevision: displayRevision,
             selectedRowIDs: selectedRowIDs,
             deletedRowIDs: deletedRowIDs,
+            defaultedCells: defaultedCells,
             valueFilter: valueFilter,
             hiddenColumns: columnLayout.hiddenColumns,
             columnOrder: columnLayout.columnOrder
@@ -132,21 +135,9 @@ internal struct ResultsJsonView: View {
 
             Button {
                 ClipboardService.shared.writeText(cachedJson)
-                copied = true
-                copyCooldownTask?.cancel()
-                copyCooldownTask = Task { @MainActor in
-                    do {
-                        try await Task.sleep(for: .milliseconds(1_500))
-                        copied = false
-                    } catch {
-                        // cancelled by next press
-                    }
-                }
+                AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
             } label: {
-                Label(
-                    copied ? String(localized: "Copied!") : String(localized: "Copy JSON"),
-                    systemImage: copied ? "checkmark" : "doc.on.doc"
-                )
+                Label(String(localized: "Copy JSON"), systemImage: "doc.on.doc")
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
@@ -216,6 +207,7 @@ internal struct ResultsJsonView: View {
         let ids = displayIDs
         let selectedIndices = Set(DataGridRowOrder(filteredIDs: ids, revision: 0).displayIndexes(of: selectedRowIDs, in: snapshot))
         let deletedIDs = deletedRowIDs
+        let defaulted = defaultedCells
         let layout = columnLayout
 
         let result = await Task.detached(priority: .userInitiated) {
@@ -224,6 +216,7 @@ internal struct ResultsJsonView: View {
                 displayIDs: ids,
                 selectedIndices: selectedIndices,
                 deletedRowIDs: deletedIDs,
+                defaultedCells: defaulted,
                 columnLayout: layout
             )
         }.value
@@ -259,6 +252,7 @@ internal struct ResultsJsonView: View {
         displayIDs: [RowID]?,
         selectedIndices: Set<Int>,
         deletedRowIDs: Set<RowID> = [],
+        defaultedCells: [RowID: Set<Int>] = [:],
         columnLayout: ColumnLayoutState
     ) -> RenderedJson {
         let output = ResultJsonSerializer.serialize(
@@ -266,6 +260,7 @@ internal struct ResultsJsonView: View {
             displayIDs: displayIDs,
             selectedDisplayIndices: selectedIndices,
             deletedRowIDs: deletedRowIDs,
+            defaultedCells: defaultedCells,
             columns: .fromColumnLayout(columnLayout, columns: tableRows.columns)
         )
         return RenderedJson(

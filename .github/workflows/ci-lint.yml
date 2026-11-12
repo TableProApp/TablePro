@@ -1,0 +1,244 @@
+name: Lint
+
+# The checks that need no Mac: workflows, shell, release tooling, changelog and repo invariants, and SwiftLint in its
+# Linux image. Ubuntu minutes are free on a public repo, so CI runs the lint job on every change.
+
+on:
+  workflow_call:
+    inputs:
+      swiftlint:
+        description: Also run SwiftLint.
+        type: boolean
+        required: true
+      hana:
+        description: Also check the SAP HANA helper.
+        type: boolean
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+  ZIZMOR_VERSION: 1.30.1
+  SWIFTLINT_IMAGE: ghcr.io/realm/swiftlint:0.65.1@sha256:f47e083201e47a136cda5ae847595bfe00226c444ca226fa74fa5dc648a9b057
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install shellcheck, PyYAML and actionlint
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck python3-yaml
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
+      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: zizmor@${{ env.ZIZMOR_VERSION }}
+
+      # actionlint runs shellcheck over every inline run: block, which nothing else sees.
+      - name: Lint workflows
+        env:
+          SHELLCHECK_OPTS: --severity=warning
+        run: actionlint -color
+
+      # Offline, so the verdict depends on these files alone and not on where a branch a pin names has moved since.
+      - name: Audit the workflows, actions and Dependabot settings
+        run: zizmor --offline --format=github --min-severity=medium .github
+
+      - name: Lint scripts
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t SCRIPTS < <(git ls-files -z '*.sh')
+          shellcheck --severity=warning "${SCRIPTS[@]}"
+
+      - name: Test the CI and release tooling
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+          python3 -m unittest discover -s apple/scripts/ci -p 'test_*.py'
+          python3 -m unittest discover -s apple/scripts/lib -p 'test_*.py'
+          python3 -m unittest discover -s apple/scripts -p 'test_localization.py'
+          bash apple/scripts/ci/test_libs_release.sh
+
+      # 3.9 is the macOS /usr/bin/python3 that runs notes.py in the build. The other steps keep the
+      # runner's Python, which has PyYAML.
+      - name: Set up Python 3.9 for the release tooling
+        id: python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.9"
+          update-environment: false
+
+      - name: Install the release tooling
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "$PYTHON" -m venv "$RUNNER_TEMP/release-venv"
+          "$RUNNER_TEMP/release-venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes \
+            -r scripts/release/requirements.txt
+
+      - name: Test the release tooling
+        run: '"$RUNNER_TEMP/release-venv/bin/python" -m unittest discover -s apple/scripts/release -p "test_*.py"'
+
+      # towncrier refuses a fragment name it cannot parse once its config sets ignore.
+      - name: Render the changelog fragments
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir apple --version 0.0.0
+          "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version 0.0.0
+
+      # pr-title.yml runs the same check on a title edit, which starts no CI run. The title is read now, not from the
+      # event, so a re-run after a retitle sees the current one.
+      - name: Check only a release pull request edits a CHANGELOG.md
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq .title)"
+          scripts/ci/check-changelog-edits.sh "$(git rev-parse HEAD^1)" "$title"
+
+      # shellcheck cannot tell a library function from a command, so a missing source is exit 127
+      # at release time (v0.67.1).
+      - name: Check every script sources the libraries it calls into
+        run: python3 apple/scripts/ci/check-lib-sourcing.py
+
+      - name: Check plugin-registry.json against the project.yml plugin aggregates
+        run: python3 apple/scripts/ci/check-plugin-manifest.py
+
+      # The app registers a plugin from these keys without loading it, and loads one without them at launch.
+      - name: Check every plugin Info.plist declares the ids its class provides
+        run: python3 apple/scripts/ci/check-plugin-provides.py
+
+      # The curated entry answers until the plugin loads, then the plugin's static replaces it (#2700).
+      - name: Check curated driver capabilities match their plugins
+        run: python3 apple/scripts/ci/check-capability-parity.py
+
+      # Import, export and sync drop a field the trust catalog does not classify.
+      - name: Check every connection field has a trust class
+        run: python3 apple/scripts/ci/check-connection-field-trust.py
+
+      - name: Check no build script hardcodes the deployment target
+        run: bash apple/scripts/ci/check-deployment-target.sh
+
+      # A plugin's or package's String(localized:) resolves against the host app's bundle, so its
+      # strings live in each app's catalog by hand.
+      - name: Check plugin and package strings reach the string catalogs
+        working-directory: apple
+        run: |
+          set -euo pipefail
+          python3 scripts/localization.py plugins
+          python3 scripts/localization.py plugins --target ios
+
+      # xcstringstool accepts a %lld retyped as %@ or a dropped argument, and String(format:) then
+      # formats the wrong value at run time.
+      - name: Check the string catalogs
+        run: python3 apple/scripts/ci/check-string-catalogs.py
+
+      - name: Check the license inventory against what the build ships
+        run: python3 apple/scripts/ci/check-license-inventory.py
+
+      - name: Check both apps pin the Production CloudKit environment
+        run: python3 apple/scripts/ci/check-entitlements.py
+
+      - name: Check every test target is in its test plan
+        run: python3 apple/scripts/ci/check-test-plans.py
+
+      # Oracle reads a bare dictionary name from the current schema before the SYS synonym.
+      - name: Check Oracle SQL names dictionary objects through OracleDictionary
+        run: python3 apple/scripts/ci/check-oracle-dictionary-names.py
+
+      # Only ProcessLauncher makes a Process, and only the files that run what a user wrote may name a shell.
+      - name: Check child processes start only through ProcessLauncher
+        run: python3 apple/scripts/ci/check-process-launches.py
+
+      # PostgreSQL takes an exact match from any schema on search_path over a pg_catalog built-in that needs a cast.
+      - name: Check PostgreSQL SQL calls built-ins through pg_catalog
+        run: python3 apple/scripts/ci/check-postgresql-qualified-calls.py
+
+      - name: Check the statement classifiers read words through the grammar's tokens
+        run: python3 apple/scripts/ci/check-classifier-text-matching.py
+
+      # The corpora run by hand against servers (scripts/probes/check-column-type-corpus.sh), so a type a driver
+      # starts listing is caught here.
+      - name: Check every listed column type has a corpus column
+        run: python3 apple/scripts/ci/check-column-type-corpus.py
+
+      - name: Set up Go
+        if: inputs.hana
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apple/Native/HanaBridge/go.mod
+          cache: false
+
+      # The helper is pure Go, so Linux analyses it as well as the Mac that builds it.
+      - name: Check the SAP HANA helper
+        if: inputs.hana
+        working-directory: apple/Native/HanaBridge
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite: $unformatted"
+            exit 1
+          fi
+          go mod verify
+          go mod tidy -diff
+          GOOS=darwin go vet ./...
+          go test ./...
+          # go tool would build staticcheck for GOOS too, and Linux cannot run a darwin binary.
+          go build -modfile=tools.mod -o "$RUNNER_TEMP/staticcheck" honnef.co/go/tools/cmd/staticcheck
+          GOOS=darwin "$RUNNER_TEMP/staticcheck" ./...
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          GOOS=darwin "$RUNNER_TEMP/bin/govulncheck" ./...
+
+  swiftlint:
+    name: SwiftLint
+    if: inputs.swiftlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The image's entrypoint is swiftlint itself, so a second "swiftlint" would lint everything
+      # twice. SwiftLint drops a custom rule whose regex does not compile with only a warning and
+      # still exits 0, so the warning fails the step here. No --quiet: "Done linting" carries the
+      # file count.
+      - name: Run SwiftLint
+        run: |
+          status=0
+          docker run --rm -v "$PWD:/work" -w /work/apple "$SWIFTLINT_IMAGE" \
+            lint --strict --reporter github-actions-logging > swiftlint.out 2> swiftlint.err || status=$?
+          # SwiftLint names each file from apple/; an annotation lands on the diff only with the repo path.
+          sed 's#^\(::[a-z]* file=\)#\1apple/#' swiftlint.out
+          grep -v "^Linting '" swiftlint.err >&2 || true
+          if grep -E "Invalid configuration|is not a valid rule identifier" swiftlint.err; then
+            echo "::error::A SwiftLint config has a rule SwiftLint could not load."
+            exit 1
+          fi
+          exit "$status"

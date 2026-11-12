@@ -14,8 +14,8 @@ import TableProPluginKit
 internal struct SQLRowToStatementConverter {
     /// One row of the grid, as it is shown and as the server has it.
     ///
-    /// `defaultedColumns` names the cells the grid staged as left to the server's default. The grid spells that as the
-    /// text `__DEFAULT__`, which a stored value can also be, so only a cell named here is read as the marker.
+    /// `defaultedColumns` names the cells the grid staged as left to the server's default. The grid stages that as the
+    /// keyword DEFAULT marked as SQL, and a stored value can read the same, so only a cell named here is the default.
     /// `expressionColumns` names the cells staged as SQL, which go out unquoted; text anywhere else is a literal.
     internal struct SourceRow {
         internal let values: [PluginCellValue]
@@ -228,18 +228,6 @@ internal struct SQLRowToStatementConverter {
     }
 
     private func formatBinaryLiteral(_ data: Data) -> String {
-        var hex = ""
-        hex.reserveCapacity(data.count * 2)
-        for byte in data {
-            hex += String(format: "%02X", byte)
-        }
-        switch databaseType {
-        case .postgresql, .redshift, .cockroachdb, .pglite, .kingbasees:
-            return "'\\x\(hex)'::bytea"
-        case .mssql:
-            return "0x\(hex)"
-        default:
-            return "X'\(hex)'"
-        }
+        CompareSQLLiteral.binaryLiteral(for: data, databaseType: databaseType) ?? "X'\(data.uppercaseHex())'"
     }
 }

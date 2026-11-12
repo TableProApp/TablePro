@@ -9,6 +9,361 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.86.0](https://github.com/TableProApp/TablePro/releases/tag/v0.86.0) - 2026-11-09 [CRITICAL]
+
+Sign in with a TablePro account to use your plan, see your devices and sync a team library. A license key from an earlier version moves into your account the first time the app opens.
+A dropped connection keeps its rows while it reconnects, with Cancel, and every surface shows the same connection state.
+Imports, exports, backups, restores and transfers share one progress sheet, and Quit, Close and Disconnect ask once about work still running.
+Remote DuckDB connections can go through an SSH tunnel, Cloudflare Tunnel, SOCKS proxy or tunnel command, and now require the Token instead of secrets in ~/.duckdb.
+A raw SQL filter can no longer run a second statement, and a DuckDB token no longer reaches another server that a later ATTACH names.
+Sending feedback from inside the app is no longer available.
+
+### Added
+
+- A dropped connection keeps its rows and shows a reconnecting bar with Cancel, then Reconnect after 10 tries. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- Settings > MCP offers Try Again when the server fails to start, and says when the port you set was in use. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Plugin installs and updates show their progress with Cancel, and a failed update stays in Settings with Try Again. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Quit, Close and Disconnect ask once, in one alert listing the restores, imports, exports and queries still running. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Downloading cloud-sql-proxy shows its progress with Cancel, and connecting says when it downloads. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Linked folders show what each scan found, and Settings > License > Team shows the team library's last refresh. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A notification when an agent session waits for your answer or its reply fails while you are elsewhere. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Remote DuckDB connections can go through an SSH tunnel, Cloudflare Tunnel, SOCKS proxy or tunnel command. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Sign in with a TablePro account to unlock paid features, see your devices and sync a team library. ([#4045](https://github.com/TableProApp/TablePro/pull/4045))
+
+### Changed
+
+- The connections strip, Welcome, the switcher, menus and the iOS app show one connection state, only when it needs you. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- The welcome window shows a license that needs attention and iCloud sync problems, each linking to the fix. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Plugins that could not load are listed in Settings > Extensions with the reason, Update, Try Again and Remove. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Notices, warnings and errors use the standard macOS look: color only on the symbol, with no tinted boxes, dots or chips. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Connection tags are edited in a token field: type a name to add or create a tag, and press Delete to remove one. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- On iOS, a saved row no longer shows a toast, and NULL, Default and column types use standard buttons and text. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Imports, exports, backups, restores, transfers and copies share one progress sheet, and Escape asks before stopping. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A finished tab shows a checkmark and a failed one a red triangle, where both showed the same dot. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- The MCP disconnect tool refuses while the connection has running work, unsaved changes or an open transaction. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- Remote DuckDB connections now require the Token and no longer read secrets saved in ~/.duckdb. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- etcd keys and values that are not UTF-8 show as hex, and a quoted `\xHH` in an etcd command writes that byte. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- A license key from an earlier version moves into your TablePro account the first time the app opens. ([#4045](https://github.com/TableProApp/TablePro/pull/4045))
+
+### Removed
+
+- Sending feedback from inside the app is no longer available. ([#4045](https://github.com/TableProApp/TablePro/pull/4045))
+
+### Fixed
+
+- A failed connect showed as disconnected on the connections strip, and a lost connection as failed. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- The toolbar lost the connection's name after a disconnect. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- On iOS, a lost connection stopped reconnecting after one failed try. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- Cancelling a reconnect after an SSH tunnel dropped did not stop it, and the connection could come back on its own. ([#4001](https://github.com/TableProApp/TablePro/pull/4001))
+- Sync Now showed for iCloud problems that trying again cannot clear, such as a restricted account. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Try Again on a license check showed nothing when the check failed. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Pro features asked a license that could not be checked for 30 days, or was suspended, to buy a license. ([#4005](https://github.com/TableProApp/TablePro/pull/4005))
+- Notes from MySQL and SQLite maintenance, such as an OPTIMIZE note or an integrity check problem, were never shown. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Settings > Notifications kept showing an old permission after it was changed in System Settings. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- The MCP status said the port was in use whenever the failure text happened to contain 48. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- A GitHub Copilot error showed only inside its provider sheet while the provider row said Not signed in. ([#4007](https://github.com/TableProApp/TablePro/pull/4007))
+- Quitting left a restore or backup tool running in the background. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A team library pull kept connection settings it should have removed until TablePro restarted. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- A restore's progress bar never moved. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Restores, comparisons and sync scripts never notified when they finished out of sight. ([#4009](https://github.com/TableProApp/TablePro/pull/4009))
+- Importing from another app now keeps the TLS, key passphrases and extra connection files that app saved. ([#4015](https://github.com/TableProApp/TablePro/pull/4015))
+- On iOS, the NULL button moved across the field when turned on while editing a row. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- An export or table transfer kept running with no window after a disconnect that did not ask first. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- The selected connection in the sidebar showed a blank white badge when it was lost or failed. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- Restore Previous Values stayed enabled with nothing to restore, then only showed an alert. ([#4018](https://github.com/TableProApp/TablePro/pull/4018))
+- The cell Filter menu added a second copy of a filter that was already running. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Changing a filter's operator kept the old Match Case setting, and Search All Rows matched case. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- A filter that could not run, such as raw SQL with a comment, loaded every row while showing as applied. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Raw filter rows were offered on etcd, DynamoDB, Memcached, Weaviate, InfluxDB and Kafka, which cannot run them. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Loading a filter preset turned its same element rows into any element rows. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Raw SQL filters on SQL Server and Oracle failed with an invalid column error. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- A page turn, sort or refresh ran filter edits that had not been applied. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Duplicate Filter dropped Match Case and the element scope, and put the cursor in the wrong row. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- Switching a filter row between Raw SQL and a column hid the text you had typed. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- MongoDB exports cut nested values at 10,000 characters. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- MQL exports changed mixed-type fields, nested BSON values and stored nulls. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- MQL exports lost special field names and changed numeric field order. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- MQL exports lost empty collections and skipped some index and validator values. ([#4020](https://github.com/TableProApp/TablePro/pull/4020))
+- A copied connection URL misread IPv6 hosts and dropped the settings after a database name holding # or ?. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Beancount and Memcached showed Database instead of Ledger or Server once their driver loaded. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Remote DuckDB connections ignored the SSL settings shown and could not trust a private CA or self-signed certificate. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- Drop offered to ignore foreign key checks on DuckDB, ClickHouse, SQL Server, SurrealDB, Teradata and Beancount. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- A remote DuckDB connection that could not download the Quack extension showed a misleading error. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+- etcd keys starting with `--` could not be saved or deleted from the grid. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- An etcd range query with invalid page bounds could crash the app. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- etcd `get`, `del` and `watch` with `--prefix` could reach keys outside the prefix when it ended in some non-ASCII text. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- Saving an etcd key that ends in a zero width space or starts with a byte order mark changed a different key. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- etcd commands could run without the read-only or delete limits set by the app. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- Editing or deleting a non-UTF-8 etcd key changed a key named `<b64:…>`, and a rename saved a binary value as text. ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- etcd `get "" --prefix`, and exporting the root of a connection with no key prefix, failed with "key is not provided". ([#4023](https://github.com/TableProApp/TablePro/pull/4023))
+- SQLite, libSQL, DuckDB and Beancount cut text at a NUL character when reading or saving it. ([#4024](https://github.com/TableProApp/TablePro/pull/4024))
+- MongoDB edits and deletes could target the wrong document after reconnecting or switching databases. ([#4028](https://github.com/TableProApp/TablePro/pull/4028))
+- MCP and AI chat could not confirm a DELETE without WHERE, leaving it blocked or routed through the wrong tool. ([#4029](https://github.com/TableProApp/TablePro/pull/4029))
+- Stopping an import could misreport rollback, and opening another dialog could hide a running transfer. ([#4031](https://github.com/TableProApp/TablePro/pull/4031))
+- The iPad app on a Mac crashing when you open a connection, or add or edit one. ([#4032](https://github.com/TableProApp/TablePro/pull/4032))
+- Data dictionary exports could render names and comments as markup when Unicode characters joined punctuation. ([#4034](https://github.com/TableProApp/TablePro/pull/4034))
+- SQL Server edits could target the wrong text key, and filters or SQL exports could change Unicode or line endings. ([#4035](https://github.com/TableProApp/TablePro/pull/4035))
+- SQL Server edits on a char or varchar key could also change a row whose key differs only by characters like ß and ss. ([#4039](https://github.com/TableProApp/TablePro/pull/4039))
+- Deleting or editing a Firebase node or collection whose name starts with a combining mark changed the name without it. ([#4040](https://github.com/TableProApp/TablePro/pull/4040))
+- A value bound into a Databend query behind some comments or hints could land outside its quotes. ([#4041](https://github.com/TableProApp/TablePro/pull/4041))
+- A Databend table with a backtick in its name opened, edited and exported as another table. ([#4041](https://github.com/TableProApp/TablePro/pull/4041))
+- Editing or deleting a Databend row whose text held a NUL before digits could change a different row. ([#4041](https://github.com/TableProApp/TablePro/pull/4041))
+- Read-Only and Safe Mode treated pg_background, pg_cron and TimescaleDB calls, drop_chunks included, as reads. ([#4043](https://github.com/TableProApp/TablePro/pull/4043))
+- Safe Mode on Databend missed a DROP or other write hidden behind an optimizer hint, a comment or SETTINGS. ([#4044](https://github.com/TableProApp/TablePro/pull/4044))
+- A StarRocks query parameter stored a form feed as the letter f, or failed after a comment ending in a carriage return. ([#4044](https://github.com/TableProApp/TablePro/pull/4044))
+
+### Security
+
+- A raw SQL filter could close its own parentheses and run a second statement, such as a DELETE. ([#4019](https://github.com/TableProApp/TablePro/pull/4019))
+- A remote DuckDB token could reach another Quack server that a later ATTACH in the same session named. ([#4021](https://github.com/TableProApp/TablePro/pull/4021))
+
+
+## [0.85.0](https://github.com/TableProApp/TablePro/releases/tag/v0.85.0) - 2026-11-04 [CRITICAL]
+
+Neo4j, InfluxDB 2 and 3, Qdrant, Memcached and StarRocks connections, and KingbaseES with a downloadable driver.
+Two to six query results show as tabs, and the Structure tab shows columns, indexes, foreign keys and checks on one page.
+Masking rules hide column values in the grid, copies, exports, the AI assistant and MCP. Table Health finds bloat and unused indexes.
+Routine Debugger steps through PL/pgSQL and PL/SQL, and Live Messages watches PostgreSQL notifications, Redis channels and Kafka topics.
+Imported and synced connections ask before using cloud or Kerberos sign-ins, and PostgreSQL reads ~/.pgpass only when you turn it on.
+Settings > Plugins is now Settings > Extensions. A .sql-formatter.json saved by 0.83 needs exporting again with sql-formatter's key names.
+
+### Added
+
+- Formatter settings for clause items, AND and OR position, and data type case. ([#3854](https://github.com/TableProApp/TablePro/pull/3854))
+- Vim mode switches tabs with gt, gT, :tabnext and :tabprevious. ([#3854](https://github.com/TableProApp/TablePro/pull/3854))
+- Connect to KingbaseES in PostgreSQL and Oracle compatibility modes with a downloadable driver. ([#3855](https://github.com/TableProApp/TablePro/pull/3855))
+- In the export dialog, a database, schema or group row now sets Structure, Drop or Data for every object beneath it. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- Copy To can stop and keep what ran, or skip a failing object and continue by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Routine Debugger in Settings > Extensions: step through PL/pgSQL and Oracle PL/SQL routines with breakpoints. ([#3860](https://github.com/TableProApp/TablePro/pull/3860))
+- Pick a column's character set and collation from the server's own list in Structure and Create Table. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- Change a MySQL or MariaDB table's character set, collation and next AUTO_INCREMENT value in Structure > Options. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- File > Discard Changes… discards staged structure or data edits after asking. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- After 30 days of use without a license, a sheet asks once whether you would buy one, then at most every 90 days. ([#3922](https://github.com/TableProApp/TablePro/pull/3922))
+- Two to six query results show as tabs above the grid, so switching takes one click. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- Neo4j connections, with labels and relationship types in the sidebar and Cypher in the editor. ([#3925](https://github.com/TableProApp/TablePro/pull/3925))
+- Connect to StarRocks with a downloadable driver, and browse its external catalogs, such as Iceberg, alongside default_catalog by @vbabenkoru. ([#3939](https://github.com/TableProApp/TablePro/pull/3939))
+- Server Dashboard and Query Insights open with ⌥⇧⌘D and ⌥⇧⌘I, or from a connection's menu on the connections strip. ([#3957](https://github.com/TableProApp/TablePro/pull/3957))
+- Table Health lists bloated tables, unused and redundant indexes, and missing keys in a PostgreSQL or MySQL database. ([#3958](https://github.com/TableProApp/TablePro/pull/3958))
+- Rows of updatable PostgreSQL, MySQL, MariaDB and SQL Server views that show their table's primary key are editable. ([#3961](https://github.com/TableProApp/TablePro/pull/3961))
+- Display As decodes igbinary and Avro values in binary columns, Avro with a schema file chosen for the column. ([#3962](https://github.com/TableProApp/TablePro/pull/3962))
+- iPhone and iPad show table rows and query results in a grid with a pinned header and key column, beside the cards. ([#3963](https://github.com/TableProApp/TablePro/pull/3963))
+- Qdrant support: browse collections, filter and sort points, edit payloads and vectors, and run REST requests. ([#3972](https://github.com/TableProApp/TablePro/pull/3972))
+- InfluxDB 2 and 3 connections, with SQL, InfluxQL and Flux in the editor. ([#3976](https://github.com/TableProApp/TablePro/pull/3976))
+- Masking rules hide matching column values in the grid, copies, exports, the AI assistant and MCP. ([#3978](https://github.com/TableProApp/TablePro/pull/3978))
+- Display As decodes Protobuf with a .proto file chosen for the column, and Kafka values with a Schema Registry. ([#3979](https://github.com/TableProApp/TablePro/pull/3979))
+- Memcached support: browse keys with values and TTLs, edit them in the grid, and run text protocol commands. ([#3980](https://github.com/TableProApp/TablePro/pull/3980))
+- Live Messages module: watch PostgreSQL notifications, Redis channels and Kafka topics as messages arrive. ([#3981](https://github.com/TableProApp/TablePro/pull/3981))
+- Connection windows show Relaunch to Update in the title bar when an update or plugin update is ready. ([#3993](https://github.com/TableProApp/TablePro/pull/3993))
+- People without a license see a Black Friday offer on the Welcome window: 40% off Pro until December 1. ([#3995](https://github.com/TableProApp/TablePro/pull/3995))
+- iPhone and iPad open Cloudflare D1 connections, with the database picked from your account's list. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+
+### Changed
+
+- .sql-formatter.json uses the npm sql-formatter key names, so export a rules file saved by 0.83 again. ([#3854](https://github.com/TableProApp/TablePro/pull/3854))
+- Each export option is now its own column with a heading, and a table's checkbox only includes or excludes it. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- Copy To's Stop and roll back now takes back the rows of every table, not only the one that failed by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Settings > Plugins is now Settings > Extensions. ([#3860](https://github.com/TableProApp/TablePro/pull/3860))
+- The Structure tab shows columns, indexes, foreign keys and checks on one page, with the inspector editing them. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- DuckDB connections run DuckDB 2.0, and a .duckdb file TablePro creates stays readable by DuckDB 1.x. ([#3928](https://github.com/TableProApp/TablePro/pull/3928))
+- A dragged field in the row inspector keeps its height per column, not for every field of its kind by @vbabenkoru. ([#3975](https://github.com/TableProApp/TablePro/pull/3975))
+- The paid plan is now called Pro across the app, matching the pricing page. ([#3989](https://github.com/TableProApp/TablePro/pull/3989))
+- The disk image opens to a window with TablePro beside the Applications folder, ready to drag. ([#3990](https://github.com/TableProApp/TablePro/pull/3990))
+- Importing an Excel file reads date and time cells as dates and times, as the Data Files window shows them. ([#3991](https://github.com/TableProApp/TablePro/pull/3991))
+- Settings picks the update channel from a Stable or Beta menu, and the Welcome window always shows the version. ([#3993](https://github.com/TableProApp/TablePro/pull/3993))
+- An imported Google service account key must be the key itself; a path to a key file is left for you to choose again.
+- Imported and synced connections ask once before signing in with AWS, Microsoft, Google or Kerberos logins on this Mac.
+- PostgreSQL reads ~/.pgpass only when Use ~/.pgpass is on.
+- Through a tunnel, Verify CA and Verify Identity now check the certificate and need its CA file.
+- Through a tunnel, an SSL mode the driver cannot check there is refused before connecting, naming the modes it can use.
+
+### Fixed
+
+- The sidebar no longer freezes the window for a moment when a very large table list first loads. ([#3849](https://github.com/TableProApp/TablePro/pull/3849))
+- The Vim "_ register overwriting the clipboard and the other registers. ([#3854](https://github.com/TableProApp/TablePro/pull/3854))
+- Format Query changing SQL with brackets, dollar bodies, GO or DELIMITER lines, operators like @> or window ORDER BY. ([#3854](https://github.com/TableProApp/TablePro/pull/3854))
+- Format Query doing nothing on a statement too large to format, without saying why. ([#3854](https://github.com/TableProApp/TablePro/pull/3854))
+- The "is not empty" filter found no rows on Oracle, and both empty filters failed on a CLOB column. ([#3855](https://github.com/TableProApp/TablePro/pull/3855))
+- Space over a database and its rows in the export or backup list toggled the rows twice. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- Switching an SQL export to CSV and back dropped routines, triggers, sequences and types from the list. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- An MQL export with Data off showed its progress stuck at 0 rows. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- A saved export selection made under another format came back with every option turned on. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- The export dialog's Structure, Drop and Data headings sat off their checkboxes and were never translated. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- Opening a query tab, or loading a query, from a query tab left the keyboard in the grid or sidebar. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- A format change that reloaded the export list dropped each table's row filter. ([#3857](https://github.com/TableProApp/TablePro/pull/3857))
+- SQL import and Ignore foreign key checks left a SQLite connection enforcing foreign keys afterwards by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- After a Copy To into PostgreSQL failed creating a schema, the next Copy To or Compare on that database could fail by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Copy To read a whole database one table at a time before showing the review by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Copy To stopped with a foreign key error on MySQL tables that reference each other or themselves by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Duplicating a PostgreSQL database failed when a table referenced one in another schema by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Compare & Sync on MySQL and PostgreSQL wrote tables in name order instead of parents first by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Disabling foreign key checks on PostgreSQL without superuser failed the import or aborted the open transaction by @MrWeb. ([#3859](https://github.com/TableProApp/TablePro/pull/3859))
+- Create Table on MySQL wrote utf8mb4_unicode_ci instead of the database's own default collation. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- The MariaDB table list showed no character set for tables on a uca1400 collation. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- Changing a column's character set saved without asking first, though characters can be lost. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- Changing a MySQL text column to a numeric type failed with a syntax error about CHARACTER SET. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- New Database and Duplicate Database on MariaDB 10.10 and later did not offer the uca1400 collations. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- Editing a column on MariaDB removed its CHECK constraint, the JSON validity check included. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- Create Table offered MySQL storage engines the server does not have. ([#3866](https://github.com/TableProApp/TablePro/pull/3866))
+- Refreshing the Structure tab, or saving in it, did not read check constraints again. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- Making a column part of the primary key in the Structure tab did not change the table's key. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- Create Table read foreign key targets from the sidebar's database instead of the tab's. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- Edit > Undo in the Structure tab did not name the change and stayed enabled with nothing to undo. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- The selection in the Structure tab moved to another column after a reload or a sort. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- Switching a table from Structure to Data dimmed Save Changes while structure edits were still staged. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- One failed read blanked every Structure tab, and a failed Triggers read showed No Triggers. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- Undo Delete on an edited column in the Structure tab dropped the edit made before the delete. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- MySQL and MariaDB indexes offered a Condition the server drops. ([#3872](https://github.com/TableProApp/TablePro/pull/3872))
+- The Welcome window offering What’s New after opening an older version, and again after going back to the newer one by @sedax90. ([#3878](https://github.com/TableProApp/TablePro/pull/3878))
+- What’s New opening on iPhone and iPad after installing an older TestFlight build by @sedax90. ([#3878](https://github.com/TableProApp/TablePro/pull/3878))
+- A script's error banner stayed over the results of the statements that succeeded. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- Closing or clearing a result dropped its unsaved cell edits without asking. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- Closing a result jumped to the last result instead of the one beside it. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- Long result names were cut through an emoji. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- Close Result Tab emptied a table tab, and Previous Result and Next Result stayed enabled with nowhere to go. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- A new run numbered its results from 1 even when pinned results already used those numbers. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- Dismissing a failed statement's error turned its result into a success message. ([#3924](https://github.com/TableProApp/TablePro/pull/3924))
+- Backing up or restoring a DuckDB database with foreign keys as a .duckdb file failed. ([#3928](https://github.com/TableProApp/TablePro/pull/3928))
+- Undo in the AI chat composer undid a Structure, Users & Roles or ER diagram edit instead of the typing. ([#3957](https://github.com/TableProApp/TablePro/pull/3957))
+- Close Connection with Save closed over unsaved edits in tabs other than the one in front. ([#3957](https://github.com/TableProApp/TablePro/pull/3957))
+- Save at the close prompt closed before inspector edits were written, so a failed write went unreported. ([#3957](https://github.com/TableProApp/TablePro/pull/3957))
+- In Agent mode, menu commands and shortcuts acted on the hidden browse tabs, grid and sidebar. ([#3957](https://github.com/TableProApp/TablePro/pull/3957))
+- Refresh did nothing on the Server Dashboard, Query Insights, Users & Roles and object source tabs. ([#3958](https://github.com/TableProApp/TablePro/pull/3958))
+- An expanded field in the row inspector collapsed when another row was selected by @vbabenkoru. ([#3975](https://github.com/TableProApp/TablePro/pull/3975))
+- Dragging a field's resize handle in the row inspector snapped back a few points into the drag by @vbabenkoru. ([#3975](https://github.com/TableProApp/TablePro/pull/3975))
+- The SQLite restore confirmation said existing objects get the dump's data, though the restore stops at the first error. ([#3984](https://github.com/TableProApp/TablePro/pull/3984))
+- A crafted Excel, CSV or compressed file could hang TablePro or fill memory and disk. ([#3991](https://github.com/TableProApp/TablePro/pull/3991))
+- Malformed replies from Kafka, Teradata, Redis, Neo4j, Trino and other servers could crash TablePro. ([#3991](https://github.com/TableProApp/TablePro/pull/3991))
+- An update downloaded in the background gave no sign until TablePro quit. ([#3993](https://github.com/TableProApp/TablePro/pull/3993))
+- Relaunching from Settings could leave two copies of TablePro running when the quit was cancelled. ([#3993](https://github.com/TableProApp/TablePro/pull/3993))
+- A Snowflake connect that fails on the network no longer forgets the cached SSO or MFA token. ([#3996](https://github.com/TableProApp/TablePro/pull/3996))
+- A connection switched to SQLite or DuckDB on iPhone and iPad still dialing the SSH tunnel it had before. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- Cloudflare D1 queries with no LIMIT downloading every row, which fails once the result passes 50 MB. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- Cloudflare D1 connection failures reading "Failed to connect" instead of the cause, such as an expired token. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- Truncate Table on a SQLite connection on iPhone and iPad failing with a syntax error. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- Saving a binary value to Cloudflare D1 storing its base64 text instead of the bytes. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- A Cloudflare D1 database past the first 1,000 in an account not found by name or missing from the switcher. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- Cloudflare D1 values sent as arrays, such as BLOBs, showing as NULL. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- Filtering a Cloudflare D1 table by a long text value failing with "LIKE or GLOB pattern too complex". ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- A query on a table or column named fetch skipping the row limit. ([#3998](https://github.com/TableProApp/TablePro/pull/3998))
+- A keyless save matched no row when a PostGIS coordinate had more than 15 decimal places.
+- An enum or other new type column could read as plain text for the rest of the session after a cancelled query.
+- Geometry and geography values showed as hex after CREATE EXTENSION postgis until you reconnected.
+- New Kafka connections showing Verify Identity while connecting without TLS.
+
+### Security
+
+- A Beancount BQL query starting with a dash could read any local file, including from MCP and AI tools.
+- A Cassandra function body holding $$ or a crafted type name could add a statement to its definition.
+- A DuckDB macro name, or a MySQL routine made under another sql_mode, could add statements to Copy To and sync.
+- A DuckDB name quoted in backticks hiding a statement from Safe Mode and read-only external clients.
+- A Kafka DROP TOPIC behind a comma or a Greek question mark skipping the confirmation MCP clients need.
+- A MongoDB statement from an MCP client could drop data or run server-side JavaScript without the confirmation it needs.
+- A MySQL value ending in a backslash could end its literal early in a saved sync script, MCP export or copied INSERT.
+- A NUL character in an imported connection value could quit the app when it started a backup, tunnel or other tool.
+- A PostgreSQL E'' string continued on the next line hiding a statement from Safe Mode and read-only external clients.
+- A SELECT INTO written right after a number passing as a read in Safe Mode and for external clients.
+- A SQL Server batch opening with SHOW, HELP, INFO, EXPLAIN or DESCRIBE, which runs a procedure, passing as a read.
+- A SQL Server column name holding ] could end its quoting in the table DDL and run the rest as SQL.
+- A SQL file or a functional index read under NO_BACKSLASH_ESCAPES could run text from inside a string.
+- A Snowflake account written as an address sending a cached sign-in token to another server.
+- A Snowflake or Vault server opening a file or another app's link during browser sign-in.
+- A Trino or Presto query parameter after a ? in a comment or a quoted name could run as SQL.
+- A Weaviate DELETE with a tab or other space after the verb skipping the destructive prompt.
+- A column default or type a SQL Server, MySQL 5.7, SAP HANA or Trino server reported could run as SQL in copied DDL.
+- A comment in a SQLite, libSQL or D1 table definition could add statements to a SQL export.
+- A connection file imported with Replace sending a saved password to a server the file named.
+- A connection file or synced password naming a Google key file on this Mac signing in with that key.
+- A connection from a file, link or team library signing in with this Mac's AWS, Microsoft, Google or Kerberos login.
+- A question mark in a quoted name could bind a value as SQL on Teradata, and in backtick or bracket names.
+- A read from an MCP client, AppleScript or the assistant writing data on PostgreSQL, MySQL, SQLite, DuckDB or ClickHouse.
+- A shared connection sending values of TablePro's environment variables to its server without asking.
+- A tampered plugin registry replacing an installed plugin with an older release.
+- AWS, Microsoft, AI provider and license requests following a redirect to another server with their keys.
+- An ALTER that drops a column after a line break, tab, comma or parenthesis running without the destructive prompt.
+- An SSH host or user with a Greek question mark or varia could run commands through a Match exec line in ~/.ssh/config.
+- An imported or shared connection carrying settings TablePro sets itself, or fields this version does not know.
+- Another account on the Mac could answer the MCP bridge after TablePro quit.
+- CockroachDB connections could run a version() or count() function another user planted in a schema on the path.
+- Deleting or editing a MongoDB row whose _id held a toEJSON field could change a different document.
+- MCP browse_table and count_rows reading rows without the confirmation Safe Mode asks for.
+- MCP confirmations not naming the database a statement runs in, or the values insert_rows writes.
+- MongoDB on iPhone and iPad not checking the server's name through SSH with Verify Identity.
+- Oracle EXPLAIN PLAN INTO a table, which inserts the plan, passing as a read for read-only external clients.
+- PostgreSQL crosstab, connectby, xpath_table and pg_import_system_collations, and DuckDB query(), passing as reads.
+- Safe Mode on iPhone and iPad passing server file reads, such as pg_read_file and LOAD_FILE, as reads.
+- Setting a PostgreSQL sequence past its column could run an operator the database owner planted ahead of pg_catalog.
+- Shortcuts listing tables and adding rows on iPhone and iPad while TablePro was locked.
+- Shortening DynamoDB point-in-time recovery, or an UpdateTable setting the app does not know, passing as a plain write.
+- SurrealDB REMOVE TABLE, Snowflake REMOVE, and MySQL or Oracle PURGE or RESET MASTER skipping the destructive prompt.
+- Table Health, a primary key change in Structure or a backup could run a function planted in a PostgreSQL schema as you.
+- Table names, Copilot tool results and iPhone server errors reaching the system log in clear.
+- The assistant's confirm_destructive_operation running statements that read server files or run server code.
+- Verify CA and Verify Identity checking no certificate when connecting through an SSH, Cloudflare or other tunnel.
+- With Python Beancount, a ledger could run code with Run Ledger Plugins off, through a bundled plugin or a nearby file.
+
+
+## [0.84.0](https://github.com/TableProApp/TablePro/releases/tag/v0.84.0) - 2026-11-03
+
+Find and Replace work in every data grid, with Match Case, Whole Words, regular expressions and a column scope.
+Click a sorted header to reverse it or Option-click to add a sort key. Frozen columns sort, resize and reorder from their own headers.
+A cell value with a line break or over 256 characters opens in an editor anchored to the cell.
+The sidebar, Open Quickly, autocomplete and AI chat no longer stall on databases with tens of thousands of tables.
+Procedures and Functions load on MySQL 5.x and MariaDB servers with many routines, and MariaDB packages open.
+Save Changes has its own toolbar section, and panes switch views with native tabs.
+
+### Changed
+
+- The AI chat Tables menu lists the first 100 tables; type @ in the message to find any other. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- MCP list_indexes reads a whole schema's indexes in one query where the database supports it. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Find works in every data grid, with Match Case, Whole Words, Regular Expression, a column scope and Replace. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A cell value with a line break or over 256 characters opens in an editor anchored to the cell. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Clicking a sorted column header reverses the sort; Option-click adds a sort key and Don't Sort is in the header menu. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Right-clicking a cell outside the selection acts on that cell and leaves the selection where it was. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Frozen columns sort, resize and reorder from their own headers at any scroll position. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A theme that leaves out the data grid header or selected text colors uses the macOS colors instead of its grid colors. ([#3837](https://github.com/TableProApp/TablePro/pull/3837))
+- Connecting with a downloaded driver such as Oracle no longer freezes the window while the driver loads. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Filtering the sidebar on a database with many schemas or tables responds faster. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Opening a connection on saved tabs and filtering a large sidebar pause the window less. ([#3846](https://github.com/TableProApp/TablePro/pull/3846))
+- Save Changes sits in its own toolbar section, and panes switch views with native tabs across the app. ([#3851](https://github.com/TableProApp/TablePro/pull/3851))
+- Typing in the sidebar filter no longer redraws the editor and results on every keystroke. ([#3876](https://github.com/TableProApp/TablePro/pull/3876))
+- Open Quickly no longer redraws the whole sidebar when it finishes listing the tables of every schema. ([#3888](https://github.com/TableProApp/TablePro/pull/3888))
+- Open Quickly opens faster after the first time in a window. ([#3888](https://github.com/TableProApp/TablePro/pull/3888))
+- Open Quickly opens faster the first time after launch. ([#3889](https://github.com/TableProApp/TablePro/pull/3889))
+- The sidebar search responds faster on a database with many schemas. ([#3889](https://github.com/TableProApp/TablePro/pull/3889))
+
+### Fixed
+
+- Test Connection and Retry on iPhone and iPad hanging when their screen closed before the SSH server asked. ([#3813](https://github.com/TableProApp/TablePro/pull/3813))
+- Autocomplete offered nothing after a database name and a dot on MySQL, MariaDB and other engines without schemas. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- The sidebar, Open Quickly and autocomplete stalled on databases with tens of thousands of tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Sending an AI chat message froze the app on a database with thousands of tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Oracle and other one-row-per-schema sidebars could not select a schema row, so the keyboard could not open one. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Autocomplete could leave the best matching table name out on databases with more than 400 tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Searching the sidebar on Oracle waited seconds for other schemas' tables, longer over a slow network. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Autocomplete offered nothing after a schema name and a dot typed in another case. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Opening a connection or a query tab paused while every editor built a find bar nobody had opened yet. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- The sidebar's List layout said No Results while the other schemas' tables were still loading. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- Open Quickly said No results for a table in another schema while the sidebar was still loading the tables. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- On Oracle with many schemas, the first sidebar search and Open Quickly waited up to two seconds for the table list. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- A sidebar search read a table list that had failed to load again on every keystroke. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- VoiceOver numbered rows from 1 on every page and did not name the column of the cell being edited. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Find Next selected the matching row but left the cell cursor in the previous column. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- An edit, delete or paste under a value filter could land on a different row. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Copy Rows, Copy with Headers and Copy as JSON did nothing in a data file window. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- After rows reloaded, the grid could show no selection while Delete and the inspector still acted on the old rows. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Switching tabs or Structure sub-tabs with a cell open could save the edit into the other tab. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A temporary table or the Structure tab could change a table's saved column widths and order. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Display As on a query result went back to the default format after Load More or a switch to another view. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- The first search in a large Oracle or PostgreSQL sidebar waited for every schema's tables to load after the keystroke. ([#3834](https://github.com/TableProApp/TablePro/pull/3834))
+- Opening a connection on a saved query tab froze the window while the tab's editor was built. ([#3834](https://github.com/TableProApp/TablePro/pull/3834))
+- On MySQL 5.7 and earlier and MariaDB, a database listed the routines and events of one named in other letter case. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- MariaDB packages showed under Functions and could not be opened. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Procedures and Functions failed to load on MySQL 5.x and MariaDB servers holding many routines. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Routine signatures longer than 1,024 bytes were cut off in the sidebar on MySQL. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Open Quickly and Jump to Column kept their results in memory after they closed. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Autocomplete after a schema name and a dot could list a same-named table's columns, or time out on Oracle. ([#3874](https://github.com/TableProApp/TablePro/pull/3874))
+
+
 ## [0.83.1](https://github.com/TableProApp/TablePro/releases/tag/v0.83.1) - 2026-11-01 [CRITICAL]
 
 ### Changed

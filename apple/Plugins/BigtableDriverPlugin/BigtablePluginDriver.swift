@@ -22,7 +22,7 @@ internal final class BigtablePluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     var serverVersion: String? { "Google Cloud Bigtable" }
-    var capabilities: PluginCapabilities { [.cancelQuery] }
+    var capabilities: PluginCapabilities { [.cancelQuery, .columnDefaultMarks] }
     var supportsTransactions: Bool { false }
     var parameterStyle: ParameterStyle { .questionMark }
 

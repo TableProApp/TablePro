@@ -10,24 +10,20 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use sqlx::sqlite::{SqliteColumn, SqliteConnection as SqlxConnection};
 use sqlx::{AssertSqlSafe, Column, Executor, SqlSafeStr, Statement as _, TypeInfo};
-use tablepro_core::column::{ColumnType, ResultColumn};
+use tablepro_core::column::{ColumnOrigin, ColumnType, ResultColumn};
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{
     LexicalSettings, OpenConstruct, ScriptDiagnostic, ScriptPlan, ScriptTokenKind,
 };
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
+use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowBatch, RowLimit, SinkFlow, Truncation};
 
 use crate::catalog::{result_column_type, storage_class_type};
+use crate::column_origins::column_origins;
 use crate::decode::decode_row;
 use crate::encode::bind_all;
 use crate::errors::map_error;
-
-/// How many rows travel in one `Rows` event: enough that a large read
-/// is not one await per row, few enough that the first rows show at
-/// once.
-const ROWS_PER_EVENT: usize = 256;
 
 /// What a run of statements did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -77,10 +73,7 @@ pub(crate) async fn count(connection: &mut SqlxConnection, statement: &Statement
     }
 }
 
-/// Run SQL the user wrote, one statement after another, until one fails,
-/// the sink stops reading or `halt` says a stop came. The interrupt
-/// reaches a statement only every thousand instructions, so a short one
-/// would otherwise run after the stop.
+// `halt` is read before each statement: the interrupt reaches one only every thousand instructions, so a short one would otherwise run after the stop.
 pub(crate) async fn run_script(
     connection: &mut SqlxConnection,
     sql: &str,
@@ -88,6 +81,7 @@ pub(crate) async fn run_script(
     sink: &mut dyn ResultSink,
     halt: impl Fn() -> bool,
 ) -> Result<StreamOutcome, DriverError> {
+    refuse_nul(sql)?;
     let mut outcome = StreamOutcome::default();
     for statement in split_statements(sql) {
         if halt() {
@@ -105,7 +99,16 @@ pub(crate) async fn run_script(
             outcome.halted = true;
             break;
         }
-        run_statement(connection, statement, &[], limit, sink, &mut outcome).await?;
+        let mut columns = prepare(connection, statement).await?;
+        if !columns.is_empty()
+            && let Some(origins) = column_origins(connection, statement).await
+            && origins.len() == columns.len()
+        {
+            for (column, origin) in columns.iter_mut().zip(origins) {
+                column.origin = origin;
+            }
+        }
+        run_statement(connection, statement, &[], columns, limit, sink, &mut outcome).await?;
         if outcome.consumer_gone {
             break;
         }
@@ -113,17 +116,30 @@ pub(crate) async fn run_script(
     Ok(outcome)
 }
 
-/// Run a read the app built, every row of it.
+/// SQLite takes a NUL as the end of the text, and sqlx then prepares
+/// what follows it again and again without moving on, so such text is
+/// refused before sqlx sees it.
+pub(crate) fn refuse_nul(sql: &str) -> Result<(), DriverError> {
+    match sql.contains('\0') {
+        true => Err(DriverError::Protocol(
+            "the statement holds a NUL character, where SQLite stops reading".to_owned(),
+        )),
+        false => Ok(()),
+    }
+}
+
 pub(crate) async fn run_bound(
     connection: &mut SqlxConnection,
     statement: &Statement,
     sink: &mut dyn ResultSink,
 ) -> Result<StreamOutcome, DriverError> {
     let mut outcome = StreamOutcome::default();
+    let columns = prepare(connection, statement.sql()).await?;
     run_statement(
         connection,
         statement.sql(),
         statement.params(),
+        columns,
         None,
         sink,
         &mut outcome,
@@ -200,11 +216,11 @@ async fn run_statement(
     connection: &mut SqlxConnection,
     sql: &str,
     params: &[BoundParam],
+    mut columns: Vec<PendingColumn>,
     limit: Option<RowLimit>,
     sink: &mut dyn ResultSink,
     outcome: &mut StreamOutcome,
 ) -> Result<(), DriverError> {
-    let mut columns = prepare(connection, sql).await?;
     let query = bind_all(sqlx::query(AssertSqlSafe(sql.to_owned())), params)?;
     if columns.is_empty() {
         let done = query.execute(&mut *connection).await.map_err(map_error)?;
@@ -224,7 +240,7 @@ async fn run_statement(
     }
 
     let mut stream = query.fetch(&mut *connection);
-    let mut batch: Vec<Vec<Value>> = Vec::with_capacity(ROWS_PER_EVENT);
+    let mut batch = RowBatch::new();
     let mut retained = 0u64;
     let mut truncation = Truncation::Complete;
     while let Some(row) = stream.try_next().await.map_err(map_error)? {
@@ -244,9 +260,9 @@ async fn run_statement(
                 return Ok(());
             }
         }
-        batch.push(values);
+        let full = batch.push(values);
         retained += 1;
-        if batch.len() == ROWS_PER_EVENT && gone(sink.accept(ResultEvent::Rows(std::mem::take(&mut batch))).await) {
+        if full && gone(sink.accept(ResultEvent::Rows(batch.take())).await) {
             outcome.rows += retained;
             outcome.consumer_gone = true;
             return Ok(());
@@ -259,7 +275,7 @@ async fn run_statement(
 
     let mut closing = Vec::new();
     if !batch.is_empty() {
-        closing.push(ResultEvent::Rows(batch));
+        closing.push(ResultEvent::Rows(batch.take()));
     }
     if truncation == Truncation::ReadPastLimit {
         closing.push(ResultEvent::RowLimitReached { retained });
@@ -282,11 +298,12 @@ fn gone(flow: SinkFlow) -> bool {
     flow == SinkFlow::ConsumerGone
 }
 
-/// A result column whose type may wait for the first row.
+// The type may wait for the first row.
 #[derive(Debug, Clone)]
 struct PendingColumn {
     name: String,
     column_type: Option<ColumnType>,
+    origin: Option<ColumnOrigin>,
 }
 
 async fn prepare(connection: &mut SqlxConnection, sql: &str) -> Result<Vec<PendingColumn>, DriverError> {
@@ -301,6 +318,7 @@ fn pending(column: &SqliteColumn) -> PendingColumn {
     PendingColumn {
         name: column.name().to_owned(),
         column_type: result_column_type(column.type_info().name()),
+        origin: None,
     }
 }
 
@@ -319,7 +337,7 @@ fn finish(columns: Vec<PendingColumn>) -> Vec<ResultColumn> {
         .into_iter()
         .map(|column| {
             let column_type = column.column_type.unwrap_or_else(|| storage_class_type(&Value::Null));
-            ResultColumn::new(column.name, column_type)
+            ResultColumn::new(column.name, column_type).with_origin(column.origin)
         })
         .collect()
 }

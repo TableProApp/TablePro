@@ -146,11 +146,13 @@ internal enum ConnectionActionsMenuResolver {
                 )
             )
         }
-        if context.tabKind == .table || context.tabKind == .query {
+        // A Table Health tab exports its findings through the same command.
+        if context.tabKind == .table || context.tabKind == .query || context.tabKind == .tableHealth {
             entries.append(
                 ActionsMenuEntry(
                     title: String(localized: "Export Results…"),
-                    selector: NSSelectorFromString("exportQueryResults:")
+                    selector: NSSelectorFromString("exportQueryResults:"),
+                    shortcut: .exportResults
                 )
             )
         }

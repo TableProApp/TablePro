@@ -12,7 +12,7 @@ struct RowWriteRoutingTests {
         ColumnInfo(name: "name", typeName: "String", ordinalPosition: 1)
     ]
 
-    private func loadedBrowser(_ plugin: StubPluginDriver) async -> DataBrowserViewModel {
+    private func loadedBrowser(_ plugin: StubPluginDriver, rowLocators: [String?]? = nil) async -> DataBrowserViewModel {
         plugin.scriptedColumns = [
             PluginColumnInfo(name: "id", dataType: "UInt64", isNullable: false, isPrimaryKey: true),
             PluginColumnInfo(name: "name", dataType: "String")
@@ -21,6 +21,7 @@ struct RowWriteRoutingTests {
             columns: ["id", "name"], columnTypeNames: ["UInt64", "String"], rows: [["1", nil]],
             rowsAffected: 0, timing: PluginQueryTiming(total: 0)
         )
+        plugin.scriptedResult.rowLocators = rowLocators
         let vm = DataBrowserViewModel()
         vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
         await vm.load(isInitial: true)
@@ -129,6 +130,49 @@ struct RowWriteRoutingTests {
         #expect(change.originalRow == ["1", "signup"])
     }
 
+    @Test("A delete reaches the writer with the locator its page was read with")
+    func browserDeleteCarriesTheRowLocator() async throws {
+        let plugin = StubPluginDriver()
+        let vm = await loadedBrowser(plugin, rowLocators: ["L0"])
+
+        let locator = try #require(vm.rowLocator(forRowAt: 0))
+        let deleted = await vm.deleteRow(locator)
+
+        #expect(deleted)
+        #expect(plugin.generatedChanges.map { $0.type } == [.delete])
+        #expect(plugin.writeContexts.map { $0.rowLocators } == [[0: "L0"]])
+    }
+
+    @Test("A row-detail save reaches the writer with the row's locator, and a second save on the same screen does too")
+    func rowDetailSavesCarryTheRowLocator() async throws {
+        let plugin = StubPluginDriver()
+        let browser = await loadedBrowser(plugin, rowLocators: ["L0"])
+        plugin.rowCounts = [1, 1, 1, 1]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: browser.window.rows,
+            initialIndex: 0,
+            table: TableInfo(name: "events"),
+            session: session(plugin),
+            columnDetails: columns
+        )
+
+        vm.startEditing()
+        vm.setEditedValue("signup", at: 1)
+        let first = await vm.saveChanges()
+        let firstContexts = plugin.writeContexts
+        vm.startEditing()
+        vm.setEditedValue("purchase", at: 1)
+        let second = await vm.saveChanges()
+        let secondContexts = plugin.writeContexts.dropFirst(firstContexts.count)
+
+        #expect(first)
+        #expect(second)
+        #expect(!firstContexts.isEmpty)
+        #expect(!secondContexts.isEmpty)
+        #expect(plugin.writeContexts.allSatisfy { $0.rowLocators == [0: "L0"] })
+    }
+
     @Test("A row matched on every value is looked up with the writer's own predicates before it changes")
     func identityIsLookedUpFirst() async throws {
         let plugin = StubPluginDriver()
@@ -147,7 +191,7 @@ struct RowWriteRoutingTests {
         plugin.rowCounts = [1]
         let driver = PluginRowWritingDriver(plugin: plugin, dialedHosts: [], rowIdentity: .everyColumn, readsOnly: { _ in true })
         let writes = try driver.updateWrites(
-            table: "events", schema: nil, columns: ["id", "name"], originalRow: ["1", "signup"],
+            table: "events", schema: nil, columns: ["id", "name"], originalRow: ["1", "signup"], documentLocator: nil,
             changes: [(column: "name", value: "purchase")]
         )
 

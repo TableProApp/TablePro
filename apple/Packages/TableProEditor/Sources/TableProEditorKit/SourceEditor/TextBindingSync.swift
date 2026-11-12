@@ -60,8 +60,34 @@ final class TextBindingSync {
             guard case .binding(let currentBinding) = self.text else { return }
             let newText = textView.string
             self.lastSyncedText = newText
+            self.writebackTask = nil
             currentBinding.wrappedValue = newText
         }
+    }
+
+    // A run or save reads the binding, which trails the editor by the debounce on a large document.
+    func flushPendingWriteback(from textView: TextView) {
+        guard writebackTask != nil else { return }
+        let newText = endPendingWriteback(from: textView)
+        guard case .binding(let binding) = text else { return }
+        binding.wrappedValue = newText
+    }
+
+    // For an owner about to point the binding at another document, or to drop the editor: the debounced edit goes
+    // to the caller, and the edit latch is released so the next document's text is applied.
+    func takePendingWriteback(from textView: TextView) -> String? {
+        guard writebackTask != nil else { return nil }
+        let newText = endPendingWriteback(from: textView)
+        phase.consumePendingEditorChange()
+        return newText
+    }
+
+    private func endPendingWriteback(from textView: TextView) -> String {
+        writebackTask?.cancel()
+        writebackTask = nil
+        let newText = textView.string
+        lastSyncedText = newText
+        return newText
     }
 
     /// Pushes an external binding change down into the text view. The editor's
@@ -82,9 +108,21 @@ final class TextBindingSync {
         if let lastSyncedText, (newValue as NSString).isEqual(to: lastSyncedText) { return }
 
         writebackTask?.cancel()
+        writebackTask = nil
         phase.applyRepresentableValue {
             controller.setText(newValue)
         }
         lastSyncedText = newValue
+    }
+}
+
+public extension TextViewController {
+    static let flushTextWritebackNotification = Notification.Name(
+        "TableProEditorKit.flushTextWritebackNotification"
+    )
+
+    func flushPendingTextWriteback() {
+        guard let textView else { return }
+        NotificationCenter.default.post(name: Self.flushTextWritebackNotification, object: textView)
     }
 }

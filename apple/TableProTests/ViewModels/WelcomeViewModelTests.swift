@@ -97,7 +97,7 @@ final class WelcomeViewModelTests {
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
-            licenseManager: live.licenseManager,
+            featureAccess: live.featureAccess,
             syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
@@ -106,7 +106,8 @@ final class WelcomeViewModelTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: live.syncTracker,
-            welcomeRouter: welcomeRouter
+            welcomeRouter: welcomeRouter,
+            telemetry: live.telemetry
         )
     }
 
@@ -331,6 +332,42 @@ final class WelcomeViewModelTests {
         #expect(viewModel.listState == .noFilterMatch)
     }
 
+    @Test func testExcludingFromSyncAsksFirst() throws {
+        let prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        save([prod])
+        viewModel.loadConnections()
+
+        viewModel.perform(.setIncludedInSync([prod.id], false))
+
+        #expect(viewModel.showExcludeFromSyncConfirmation)
+        #expect(viewModel.connectionsToExcludeFromSync.map(\.id) == [prod.id])
+        #expect(try #require(connectionStorage.loadConnection(id: prod.id)).localOnly == false)
+    }
+
+    @Test func testConfirmingExcludeFromSyncMarksTheConnectionLocalOnly() throws {
+        let prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        save([prod])
+        viewModel.loadConnections()
+        viewModel.perform(.setIncludedInSync([prod.id], false))
+
+        viewModel.confirmExcludeFromSync()
+
+        #expect(viewModel.connectionsToExcludeFromSync.isEmpty)
+        #expect(try #require(connectionStorage.loadConnection(id: prod.id)).localOnly)
+    }
+
+    @Test func testIncludingInSyncNeedsNoConfirmation() throws {
+        var prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        prod.localOnly = true
+        save([prod])
+        viewModel.loadConnections()
+
+        viewModel.perform(.setIncludedInSync([prod.id], true))
+
+        #expect(!viewModel.showExcludeFromSyncConfirmation)
+        #expect(try #require(connectionStorage.loadConnection(id: prod.id)).localOnly == false)
+    }
+
     @Test func testDeletingTheLastConnectionClearsTheSearchItCanNoLongerRun() {
         let only = DatabaseConnection(name: "Only", type: .mysql, sortOrder: 0)
         save([only])
@@ -408,7 +445,7 @@ final class WelcomeViewModelTests {
     @Test func testTheHelpMenuRequestLeavesAnOpenSheetAlone() {
         AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
         viewModel.setUp()
-        viewModel.activeSheet = .activation
+        viewModel.activeSheet = .importFromApp
 
         viewModel.handle(.showWelcomeSheet)
 

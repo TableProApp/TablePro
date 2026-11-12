@@ -112,9 +112,7 @@ struct SetSequenceValueSheet: View {
                     .disabled(source != .value)
                     .accessibilityIdentifier("sequence-next-value")
                 if let saveError {
-                    Text(saveError)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
+                    NoticeLabel(saveError, severity: .error)
                         .textSelection(.enabled)
                 }
             }
@@ -178,7 +176,7 @@ struct SetSequenceValueSheet: View {
             try await SequenceEditing.setNextValue(nextValue, of: details, target: target, connection: connection)
             dismiss()
         } catch {
-            saveError = error.localizedDescription
+            saveError = GatedOperationFailure(error).message
             phase = .editing(details)
         }
     }

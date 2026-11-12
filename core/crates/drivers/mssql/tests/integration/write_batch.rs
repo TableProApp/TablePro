@@ -23,6 +23,7 @@ async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableR
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(label, CellInput::Value(Value::Text("changed".to_owned())))],
+            read: Vec::new(),
         })],
     };
     plan_save(connection.dialect().as_ref(), table, &columns, &identity, &changes)
@@ -54,6 +55,7 @@ async fn edited_xml_cell_saves() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, CellInput::Value(edited))],
+            read: Vec::new(),
         })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
@@ -94,6 +96,7 @@ async fn datetime_key_with_a_third_of_a_millisecond_saves() {
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(1, CellInput::Value(Value::Text("changed".to_owned())))],
+            read: Vec::new(),
         })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
@@ -172,6 +175,41 @@ async fn after_update_trigger_saves_without_false_conflict() {
     assert_eq!(
         scalar(connection.as_ref(), "SELECT COUNT_BIG(*) FROM dbo.audit").await,
         Value::Int(2)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn trigger_results_are_drained_and_their_counts_are_kept() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.items (id int PRIMARY KEY, label nvarchar(50) NOT NULL)",
+            "INSERT INTO dbo.items VALUES (1, N'kept')",
+            "CREATE TRIGGER dbo.items_rows ON dbo.items AFTER UPDATE AS \
+             SELECT REPLICATE(N'x', 4000) FROM \
+             (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) a(n) CROSS JOIN \
+             (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) b(n) CROSS JOIN \
+             (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) c(n)",
+        ],
+    )
+    .await;
+    let save = update_label(connection.as_ref(), &dbo("items"), Value::Int(1)).await;
+
+    let report = connection.write_batch(&save, within(CALL)).await.expect("the save");
+
+    assert_eq!(report.rows_affected, vec![Some(1001)]);
+    let unparameterized = batch(&["UPDATE dbo.items SET label = N'changed again' WHERE id = 1"]);
+    let report = connection
+        .write_batch(&unparameterized, within(CALL))
+        .await
+        .expect("the unparameterized save");
+    assert_eq!(report.rows_affected, vec![Some(1001)]);
+    assert_eq!(
+        scalar(connection.as_ref(), "SELECT label FROM dbo.items WHERE id = 1").await,
+        Value::Text("changed again".to_owned())
     );
 }
 
