@@ -9,6 +9,7 @@ public enum ReloadReason
     Sort,
     Page,
     PageSize,
+    Filter,
 }
 
 public enum SaveBeforeClose
@@ -106,14 +107,17 @@ public interface ITableTabView
     Task ShowPreviewAsync(IReadOnlyList<PlannedStatement> statements, CoreError? failure);
 
     Task ShowSaveFailedAsync(CoreError failure, bool incomplete);
+
+    // The rows and their edits stay as they are.
+    void ShowStructureFailed(CoreError failure);
+
+    // Without the columns and their operators the filter bar has nothing to offer.
+    void ShowFilterChoicesFailed(CoreError failure);
 }
 
-// A sort is an ORDER BY in the page's statement, so it orders the whole table, not the rows already read.
+// A sort and a filter are the page's ORDER BY and WHERE, so they order and pick from the whole table.
 public sealed class TableTab : IWorkspaceTab
 {
-    // A page is bounded by its size, and the pager reads a short page as the last, so no byte limit cuts one.
-    private const long PageByteLimit = long.MaxValue;
-
     // The refusals the core makes before it sends anything, so a save after one cannot write twice.
     private static readonly HashSet<string> NothingSent = new(StringComparer.Ordinal)
     {
@@ -130,13 +134,17 @@ public sealed class TableTab : IWorkspaceTab
     private readonly IResultsView _results;
     private readonly Func<AppSettings> _settings;
     private readonly TabWork _work = new();
-    private ITabEditor? _editor;
+    private readonly KeptRead<TableStructure> _structure;
+    private readonly KeptRead<FilterChoices> _choices;
     private ITableEditor? _tableEditor;
     private bool _reopenTableEditor;
     private Task? _closing;
     private ITabRun? _run;
     private GridSort _sort = GridSort.None;
     private GridSort _shownSort = GridSort.None;
+
+    // The filter the rows shown were read with, which a refused filter goes back to.
+    private TableFilter? _shownFilter;
     private TablePage _page;
 
     // The size this tab was given, as macOS keeps one per table tab; without one, Settings decides.
@@ -154,6 +162,7 @@ public sealed class TableTab : IWorkspaceTab
         ITableTabView view,
         IResultsView results,
         TableName table,
+        ObjectKind kind,
         Func<AppSettings> settings,
         SessionTab? restore = null)
     {
@@ -167,9 +176,21 @@ public sealed class TableTab : IWorkspaceTab
         _results = results;
         _settings = settings;
         Table = table;
+        ObjectKind = kind;
         _chosenSize = restore?.PageSize is { } size ? Math.Clamp(size, 1, TablePage.LargestSize) : null;
         var first = TablePage.First(PageSize);
         _page = first.At((restore?.Offset ?? 0) / first.Size * first.Size);
+        // A restored filter stays until the user changes it, even when the first read refuses it.
+        Filter = restore?.Filter?.ToFilter();
+        _shownFilter = Filter;
+        _structure = new KeptRead<TableStructure>(
+            _work,
+            token => _session.GetStructureAsync(Table, ObjectKind, token),
+            _view.ShowStructureFailed);
+        _choices = new KeptRead<FilterChoices>(
+            _work,
+            token => _session.GetFilterChoicesAsync(Table, token),
+            _view.ShowFilterChoicesFailed);
         _results.ShownSetChanged += OnShownSetChanged;
     }
 
@@ -180,6 +201,9 @@ public sealed class TableTab : IWorkspaceTab
 
     public TableName Table { get; }
 
+    // What the structure is read as: a table, a view or another object with rows.
+    public ObjectKind ObjectKind { get; }
+
     public string Title => Table.Name;
 
     public TabKind Kind => TabKind.Table;
@@ -188,8 +212,17 @@ public sealed class TableTab : IWorkspaceTab
 
     public bool IsSaving { get; private set; }
 
-    // A table tab only reads on its own connection; a save commits on the session's before it returns.
+    // A page is read on one of the session's pooled connections, and a save commits before it returns.
     public TransactionState Transaction => TransactionState.Idle;
+
+    // The filter the rows shown were read with; null reads the whole table.
+    public TableFilter? Filter { get; private set; }
+
+    // Null until LoadFilterChoicesAsync has read them.
+    public FilterChoices? FilterChoices => _choices.Value;
+
+    // Null until LoadStructureAsync has read it.
+    public TableStructure? Structure => _structure.Value;
 
     public TablePage Page => _page;
 
@@ -255,8 +288,10 @@ public sealed class TableTab : IWorkspaceTab
         Title = Title,
         Schema = Table.Schema,
         Table = Table.Name,
+        ObjectKind = Enum.GetName(ObjectKind),
         PageSize = _chosenSize,
         Offset = _page.Offset > 0 ? _page.Offset : null,
+        Filter = Filter is { } filter ? SavedFilter.From(filter) : null,
     };
 
     // The edits name rows of the page shown, so a reload asks first while any is pending, as macOS asks.
@@ -292,16 +327,36 @@ public sealed class TableTab : IWorkspaceTab
         }
     }
 
-    // A refresh counts the table again and reads its columns again.
+    // A refresh counts the table again and reads its columns again; its structure and filter choices go stale.
     public async Task RefreshAsync()
     {
         if (await MayReloadNowAsync(ReloadReason.Refresh).ConfigureAwait(true))
         {
             _page = _page with { Total = null };
             _reopenTableEditor = true;
-            await LoadAsync(_page.Offset).ConfigureAwait(true);
+            _structure.MarkStale();
+            _choices.MarkStale();
+            await LoadAsync(_page.Offset, recount: true).ConfigureAwait(true);
         }
     }
+
+    // From the first page, counting the rows the filter picks; a filter the core refuses leaves the one shown.
+    public async Task ApplyFilterAsync(TableFilter? filter)
+    {
+        if (!await MayReloadNowAsync(ReloadReason.Filter).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        Filter = filter is { Rules.Count: 0 } && string.IsNullOrWhiteSpace(filter.RawSql) ? null : filter;
+        await LoadAsync(0, recount: true).ConfigureAwait(true);
+    }
+
+    // Read once per tab, and again after a refresh, since the table's columns can change.
+    public Task<FilterChoices?> LoadFilterChoicesAsync() => _choices.LoadAsync(refresh: false);
+
+    // Read beside the page, never in its way, and kept until a refresh of the tab or of the structure.
+    public Task<TableStructure?> LoadStructureAsync(bool refresh) => _structure.LoadAsync(refresh);
 
     public async Task SortAsync(GridSort sort)
     {
@@ -561,7 +616,7 @@ public sealed class TableTab : IWorkspaceTab
         return save;
     }
 
-    // The page in flight, its count and a save stop or end before what they use is let go.
+    // The page in flight, its count, a structure read and a save stop or end before what they use is let go.
     private async Task CloseOnceAsync()
     {
         _run?.Cancel();
@@ -572,12 +627,6 @@ public sealed class TableTab : IWorkspaceTab
         SetEdits(null, null);
         _tableEditor?.Dispose();
         _tableEditor = null;
-        if (_editor is not null)
-        {
-            await _editor.DisposeAsync().ConfigureAwait(true);
-            _editor = null;
-        }
-
         await _session.ReleaseAsync().ConfigureAwait(true);
     }
 
@@ -620,15 +669,16 @@ public sealed class TableTab : IWorkspaceTab
         }
     }
 
-    private async Task LoadAsync(long offset)
+    // Recount after a filter, a refresh or a save, which can change the total; it is counted once the page is read.
+    private async Task LoadAsync(long offset, bool recount = false)
     {
         if (!IsRunning)
         {
-            await _work.RunAsync(token => LoadPageAsync(offset, token)).ConfigureAwait(true);
+            await _work.RunAsync(token => LoadPageAsync(offset, recount, token)).ConfigureAwait(true);
         }
     }
 
-    private async Task LoadPageAsync(long offset, CancellationToken cancellationToken)
+    private async Task LoadPageAsync(long offset, bool recount, CancellationToken cancellationToken)
     {
         Finished = null;
         // Every reload asked first or saved, so nothing pending is lost here.
@@ -636,14 +686,6 @@ public sealed class TableTab : IWorkspaceTab
         SetRunning(true);
         try
         {
-            if (_editor is { IsLost: true } lost)
-            {
-                _editor = null;
-                await lost.DisposeAsync().ConfigureAwait(true);
-            }
-
-            // An editor that opens as the tab closes stays in _editor, which the close disposes.
-            _editor ??= await _session.OpenEditorAsync(cancellationToken).ConfigureAwait(true);
             await OpenTableEditorAsync(cancellationToken).ConfigureAwait(true);
             var page = _page.At(offset);
             // A default changed in Settings applies from the page holding the first row shown.
@@ -655,24 +697,49 @@ public sealed class TableTab : IWorkspaceTab
             var sort = _sort.Direction == SortDirection.None
                 ? null
                 : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
-            var query = await _session.GetTableQueryAsync(Table, sort, page.Size, page.Offset, cancellationToken)
+            var filter = Filter;
+            // The core binds the filter's values and stops the read at the page's size.
+            var read = await _session.ReadTablePageAsync(Table, sort, filter, page.Size, page.Offset, cancellationToken)
                 .ConfigureAwait(true);
+            if (_work.IsClosed)
+            {
+                // The read started as the tab closed, so nothing else will stop it.
+                read.Run.Cancel();
+                read.Run.Dispose();
+                return;
+            }
+
+            if (recount)
+            {
+                // A count of what was read before would land as this page's total.
+                _counting?.Cancel();
+                _counting = null;
+            }
+
+            _run?.Dispose();
+            _run = read.Run;
+            var shownPage = _page;
+            _page = page with { CanSeek = read.CanSeek, Total = recount ? null : _page.Total };
+            await _results.ShowRunAsync(_run, _sort, read.VisibleColumns, cancellationToken).ConfigureAwait(true);
             if (_work.IsClosed)
             {
                 return;
             }
 
-            _run?.Dispose();
-            _page = page with { CanSeek = query.CanSeek };
-            // The statement holds the page; a run limit one past it keeps a full page from reading as cut short.
-            _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1, ByteLimit: PageByteLimit), cancellationToken);
-            await _results.ShowRunAsync(_run, _sort, query.VisibleColumns, cancellationToken).ConfigureAwait(true);
-            if (_work.IsClosed)
+            // A read that brought no page back (refused, timed out or stopped) leaves the tab on what last read.
+            if (_results.Outcome is not QueryOutcome.Completed)
             {
+                _sort = _shownSort;
+                Filter = _shownFilter;
+                _results.Sort = _shownSort;
+                _page = shownPage with { Rows = _results.RowCount };
+                BindEdits();
+                _view.UpdatePager();
                 return;
             }
 
             _shownSort = _sort;
+            _shownFilter = filter;
             _page = _page with { Rows = _results.RowCount };
             // The server's rows are read again, so a save whose outcome was unknown may be judged by them now.
             _saveBlocked = false;
@@ -683,8 +750,9 @@ public sealed class TableTab : IWorkspaceTab
         {
             if (!_work.IsClosed)
             {
-                // An engine that reads a table only in its own order refuses the sort; the rows shown keep theirs.
+                // A sort the engine cannot run or a filter the core cannot build; the rows shown keep theirs.
                 _sort = _shownSort;
+                Filter = _shownFilter;
                 _results.Sort = _shownSort;
                 _results.ShowError(exception.Error);
                 BindEdits();
@@ -990,7 +1058,7 @@ public sealed class TableTab : IWorkspaceTab
                 {
                     // Rows came and went, so the page is read again and the table counted again, without asking.
                     _page = _page with { Total = null };
-                    await LoadAsync(_page.Offset).ConfigureAwait(true);
+                    await LoadAsync(_page.Offset, recount: true).ConfigureAwait(true);
                 }
 
                 return true;
@@ -1053,9 +1121,9 @@ public sealed class TableTab : IWorkspaceTab
         _counting = counting;
         try
         {
-            var total = await _session.CountRowsAsync(Table, counting.Token).ConfigureAwait(true);
-            // A count that lands as the tab closes is not shown.
-            if (_work.IsClosed)
+            var total = await _session.CountRowsAsync(Table, _shownFilter, counting.Token).ConfigureAwait(true);
+            // A count that lands as the tab closes, or once a read that counts again took its place, is not shown.
+            if (_work.IsClosed || !ReferenceEquals(_counting, counting))
             {
                 return;
             }
@@ -1081,5 +1149,81 @@ public sealed class TableTab : IWorkspaceTab
         IsRunning = running;
         _view.ShowRunning(running);
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+}
+
+// A read a tab keeps until a refresh makes it stale. Asked for again while it runs, it is waited for, not run twice.
+internal sealed class KeptRead<T>(TabWork work, Func<CancellationToken, Task<T>> read, Action<CoreError> failed)
+    where T : class
+{
+    private int _version;
+    private int _keptVersion = -1;
+    private Task<T?>? _reading;
+    private int _readingVersion;
+
+    public T? Value { get; private set; }
+
+    public void MarkStale() => _version++;
+
+    public async Task<T?> LoadAsync(bool refresh)
+    {
+        if (refresh)
+        {
+            _version++;
+        }
+
+        if (Value is { } kept && _keptVersion == _version)
+        {
+            return kept;
+        }
+
+        // A read that started before the refresh runs on, but only a newer one replaces what it keeps.
+        if (_reading is null || _readingVersion != _version)
+        {
+            _readingVersion = _version;
+            _reading = ReadAsync(_version);
+        }
+
+        var reading = _reading;
+        try
+        {
+            return await reading.ConfigureAwait(true);
+        }
+        finally
+        {
+            if (ReferenceEquals(_reading, reading))
+            {
+                _reading = null;
+            }
+        }
+    }
+
+    // In the tab's work, so a close stops it and waits for it before the session is let go.
+    private async Task<T?> ReadAsync(int version)
+    {
+        T? value = null;
+        await work.RunAsync(async token =>
+        {
+            try
+            {
+                value = await read(token).ConfigureAwait(true);
+            }
+            catch (TableProException exception)
+            {
+                if (!work.IsClosed)
+                {
+                    failed(exception.Error);
+                }
+
+                return;
+            }
+
+            if (!work.IsClosed && version > _keptVersion)
+            {
+                Value = value;
+                _keptVersion = version;
+            }
+        }).ConfigureAwait(true);
+        return work.IsClosed ? null : value;
     }
 }

@@ -14,6 +14,8 @@ struct QueryBatchResult {
     let errors: [PluginBatchError]
     let discardedResultSetCount: Int
     let executionTime: TimeInterval
+    // Earlier result sets `followedKeepingLatest(by:)` let go to keep later ones.
+    var supersededResultSetCount = 0
 
     static let empty = QueryBatchResult(
         resultSets: [],
@@ -47,6 +49,30 @@ struct QueryBatchResult {
             discardedResultSetCount: discardedResultSetCount + next.discardedResultSetCount
                 + max(next.resultSets.count - room, 0),
             executionTime: executionTime + next.executionTime
+        )
+    }
+
+    // The editor shows the last results of a run, so past the same ceiling it keeps the newest result sets.
+    func followedKeepingLatest(by next: QueryBatchResult) -> QueryBatchResult {
+        let combined = resultSets + next.resultSets
+        let superseded = max(combined.count - Self.keptResultSetLimit, 0)
+        let shifted = { (error: PluginBatchError, preceding: Int) in
+            PluginBatchError(
+                message: error.message,
+                code: error.code,
+                line: error.line,
+                procedure: error.procedure,
+                precedingResultSetCount: max(preceding - superseded, 0)
+            )
+        }
+        return QueryBatchResult(
+            resultSets: Array(combined.suffix(Self.keptResultSetLimit)),
+            rowsAffected: rowsAffected + next.rowsAffected,
+            errors: errors.map { shifted($0, $0.precedingResultSetCount) }
+                + next.errors.map { shifted($0, resultSets.count + $0.precedingResultSetCount) },
+            discardedResultSetCount: discardedResultSetCount + next.discardedResultSetCount,
+            executionTime: executionTime + next.executionTime,
+            supersededResultSetCount: supersededResultSetCount + next.supersededResultSetCount + superseded
         )
     }
 }

@@ -21,6 +21,13 @@ public sealed class QueryEditor : IAsyncDisposable
         return new QueryRun(_editor.Run(sql, settings, wake), wake, cancellationToken);
     }
 
+    // An engine that binds a connection's database when it connects refuses it.
+    public Task UseDatabaseAsync(string database, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(database);
+        return CoreCall.RunAsync(token => _editor.UseDatabase(database, token), cancellationToken);
+    }
+
     // The connection is gone, and is never opened again by itself since its transaction would not come back with it.
     public bool IsLost => _editor.IsLost();
 

@@ -70,6 +70,21 @@ struct SessionLocalStatementsTests {
         )
     }
 
+    @Test("Only a USE moves the session's database, so only it makes the app read where the session went")
+    func onlyUseMovesTheDatabase() {
+        #expect(SessionLocalStatements.effect(of: ["USE archive"], databaseType: .mysql).usesDatabase)
+        #expect(SessionLocalStatements.effect(of: ["/*!40000 USE archive */"], databaseType: .mysql).usesDatabase)
+        #expect(
+            SessionLocalStatements.effect(of: ["SELECT 1\nUSE [archive]\nSELECT 2"], databaseType: .mssql).usesDatabase
+        )
+        for statement in ["CALL make_scratch()", "EXECUTE stmt", "SET ROLE admin", "/*!40101 SET NAMES utf8 */"] {
+            let effect = SessionLocalStatements.effect(of: [statement], databaseType: .mysql)
+            #expect(effect.leavesCatalog, "\(statement)")
+            #expect(!effect.usesDatabase, "\(statement)")
+        }
+        #expect(!SessionLocalStatements.effect(of: ["SELECT * FROM t USE INDEX (i)"], databaseType: .mysql).usesDatabase)
+    }
+
     @Test("A procedure call, dynamic SQL or an anonymous block may make a table only the session sees")
     func opaqueStatementsLeaveTheCatalog() {
         #expect(SessionLocalStatements.effect(of: ["CALL make_scratch()"], databaseType: .mysql).leavesCatalog)

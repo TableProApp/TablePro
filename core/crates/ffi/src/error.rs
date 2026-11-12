@@ -271,6 +271,14 @@ impl From<&OperationError> for CoreError {
             OperationError::Driver(driver) => Self::Failed {
                 info: ErrorInfo::wrapping(&[error.code()], driver, error.to_string()).into(),
             },
+            // The filter's own code says which rule the app has to word, down to a value the column cannot take.
+            OperationError::Browse(browse) => {
+                let mut codes = vec![error.code()];
+                codes.extend(browse.codes());
+                Self::Failed {
+                    info: ErrorInfo::plain(&codes, error.to_string()).into(),
+                }
+            }
             other => Self::Failed {
                 info: ErrorInfo::plain(&[other.code()], other.to_string()).into(),
             },
@@ -358,6 +366,21 @@ mod tests {
             assert_eq!(info.code, "driver.tls");
             assert_eq!(info.tls_failure, Some(failure.into()));
         }
+    }
+
+    #[test]
+    fn a_refused_filter_names_the_rule_the_app_words() {
+        let error = OperationError::Browse(tablepro_core::browse::BrowseSqlError::Filter(
+            tablepro_core::filter::BuildFilterError::UnknownColumn("ghost".to_owned()),
+        ));
+
+        let info = info(error.into());
+
+        assert_eq!(
+            info.codes,
+            ["operation.browse", "browse.filter", "filter.unknown_column"]
+        );
+        assert_eq!(info.code, "filter.unknown_column");
     }
 
     #[test]
