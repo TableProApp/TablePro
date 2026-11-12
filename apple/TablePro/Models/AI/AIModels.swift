@@ -257,7 +257,7 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
         case .ask:
             return String(localized: "Ask: read-only schema lookups. AI can browse but not run queries.")
         case .edit:
-            return String(localized: "Edit: read-only tools plus running queries. Destructive DDL stays blocked.")
+            return String(localized: "Edit: read-only tools plus queries and data changes. On SQL databases, schema, privilege and session statements need Agent mode.")
         case .agent:
             return String(localized: "Agent: full tool access including destructive DDL. Safe mode still gates execution.")
         }
@@ -269,9 +269,10 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
             return "You are in Ask mode. Tools are read-only: schema lookups only. You cannot run queries or modify data."
         case .edit:
             return """
-                You are in Edit mode. You can read schema and run SELECT/INSERT/UPDATE/DELETE via execute_query. \
-                Leave schema, privilege and session changes, such as CREATE, ALTER, GRANT or SET, to Agent mode. \
-                Destructive statements, such as DROP, TRUNCATE or a DELETE with no WHERE, are blocked.
+                You are in Edit mode. You can read schema and run queries and data changes, such as \
+                SELECT, INSERT, UPDATE, DELETE and MERGE, via execute_query. On a SQL database, execute_query refuses \
+                schema, privilege, session and transaction statements, such as CREATE, ALTER, GRANT, SET or BEGIN: \
+                they need Agent mode. Destructive statements, such as DROP, TRUNCATE or a DELETE with no WHERE, are blocked.
                 """
         case .agent:
             return """

@@ -173,7 +173,7 @@ final class PaginationCoordinator: ObservableObject {
             columns: queryColumns.columns, columnTypes: queryColumns.columnTypes
         )
         let safeModeIsReadOnly = parent.runsAtReadOnly
-        let gate = browseFilters == nil && parent.rawFilterNeedsReadOnlyGate(filters, tabId: tabId)
+        let gate = browseFilters == nil && parent.rawFilterNeedsReadOnlyGate(filters)
             ? countSQL.map { parent.rawFilterRequest(sql: $0, canPrompt: true) }
             : nil
 
@@ -190,7 +190,6 @@ final class PaginationCoordinator: ObservableObject {
             var refusal: ExecutionGateError?
             if let gate {
                 refusal = await parent.executionGate.authorize(gate).denialError
-                if refusal == nil { parent.approveReadOnlyRawFilter(filters, tabId: tabId) }
             }
             let outcome: Result<Int?, Error>
             if case .cancelledByUser? = refusal {
@@ -345,6 +344,25 @@ final class PaginationCoordinator: ObservableObject {
             guard let self, !parent.isTearingDown else { return }
 
             do {
+                // The level may have changed since the statement first ran, so the gate reads it again, as a sort's rerun does.
+                let decision = await parent.executionGate.authorize(OperationRequest(
+                    connectionId: scope.connectionId,
+                    databaseType: parent.connection.type,
+                    sql: baseQuery,
+                    kind: .readQuery,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: String(localized: "Fetch All"),
+                    scope: scope
+                ))
+                if case .cancelledByUser? = decision.denialError {
+                    await MainActor.run { [weak self] in
+                        self?.parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
+                    }
+                    return
+                }
+                if let denial = decision.denialError { throw denial }
+
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .private)")
                 let result = try await parent.withExecutionDriver(

@@ -21,6 +21,7 @@ struct ChatToolTargetTests {
             connectionId: connectionId,
             bridge: MCPConnectionBridge(),
             authPolicy: MCPAuthPolicy(),
+            chatMode: .agent,
             approvalWasExplicit: approvalWasExplicit
         )
     }

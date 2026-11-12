@@ -53,6 +53,15 @@ struct SQLStatementClassifierTests {
         #expect(Self.classify("SELECT * FROM `payroll.csv`", "DuckDB").reachesFilesystemOrExecutesCode)
     }
 
+    @Test("INSERT OVERWRITE empties the table before it inserts, and into a directory writes files")
+    func insertOverwriteIsDestructive() {
+        #expect(Self.tier("INSERT OVERWRITE INTO orders SELECT * FROM staged", "Snowflake") == .destructive)
+        #expect(Self.tier("INSERT OVERWRITE TABLE orders SELECT * FROM staged", "Snowflake") == .destructive)
+        #expect(Self.classify("INSERT OVERWRITE DIRECTORY '/tmp/out' SELECT * FROM orders", "Snowflake")
+            .reachesFilesystemOrExecutesCode)
+        #expect(Self.tier("INSERT INTO orders (overwrite) VALUES (1)", "Snowflake") == .write)
+    }
+
     @Test("T-SQL calls the procedure a batch opens with when no statement begins with that word", arguments: [
         "SHOW 'x'", "HELP 'x'", "INFO 'x'", "show tables", "EXPLAIN SELECT 1", "DESCRIBE orders",
     ])

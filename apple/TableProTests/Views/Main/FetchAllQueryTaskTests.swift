@@ -54,6 +54,42 @@ struct FetchAllQueryTaskTests {
         #expect(tabManager.tabs.first { $0.id == tab.id }?.pagination.isLoadingMore == false)
     }
 
+    @Test("Fetch All asks the gate again, and a refusal reaches no driver")
+    func refusedFetchAllRunsNothing() async {
+        let connection = TestFixtures.makeConnection()
+        let driver = GatedQueryDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        session.browseDatabase = connection.database
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        coordinator.executionGate = AlwaysDenyGate()
+        // Open, so a fetch that skipped the gate would finish and be counted rather than hang.
+        await driver.release()
+        let tab = QueryTab(title: "Query", query: "SELECT purge_orders()", tabType: .query)
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+
+        coordinator.paginationCoordinator.performFetchAll(
+            tabId: tab.id,
+            baseQuery: "SELECT purge_orders()",
+            scope: DatabaseScope(connectionId: connection.id, database: connection.database, schema: nil)
+        )
+        await coordinator.queryTasks.task(for: tab.id)?.value
+
+        #expect(driver.queryCount == 0)
+        #expect(tabManager.tabs.first { $0.id == tab.id }?.execution.errorMessage != nil)
+        #expect(tabManager.tabs.first { $0.id == tab.id }?.pagination.isLoadingMore == false)
+    }
+
     @Test("Fetch All on a query tab shows what its own run printed, not the first run's or anything before it")
     func fetchAllReplacesTheOutput() async {
         let firstRun = PluginServerOutput(lines: ["NOTICE:  page 1"], isTruncated: false)
@@ -107,6 +143,12 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
 
     private let answer = AsyncGate()
     var serverOutputs: [PluginServerOutput] = []
+    private let lock = NSLock()
+    private var queries = 0
+
+    var queryCount: Int {
+        lock.withLock { queries }
+    }
 
     init(connection: DatabaseConnection) {
         self.connection = connection
@@ -123,6 +165,7 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
 
     /// The gate ignores cancellation, so the answer still comes back after the task is cancelled.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        lock.withLock { queries += 1 }
         await answer.wait()
         return Self.emptyResult
     }

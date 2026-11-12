@@ -151,19 +151,26 @@ extension AIChatViewModel {
             return .pending
         }
 
+        // Read-Only comes first: an Always Allow grant is consent to the tool, not to a level that refuses writes.
+        if let connection, liveSafeModeLevel(for: connection).blocksAllWrites {
+            guard let level = SafeModeFloor.levelThatWrites(above: AgentModeSafeModeFloor.effectiveFloor(for: connection)?.level)
+            else {
+                return .denied(reason: String(
+                    localized: "TablePro's Safe Mode is held at Read-Only for this connection, so this tool cannot run."
+                ))
+            }
+            return .denied(reason: String(
+                format: String(
+                    localized: "TablePro's Safe Mode is set to Read-Only for this connection. Switch it to %@ to allow this tool."
+                ),
+                level.displayName
+            ))
+        }
         if let connection, alwaysAllowedTools(for: connection).contains(toolName) {
             return .approved
         }
-        if let connection {
-            let safeModeLevel = liveSafeModeLevel(for: connection)
-            if safeModeLevel.blocksAllWrites {
-                return .denied(reason: String(
-                    localized: "TablePro's Safe Mode is set to read-only for this connection. Set it to Confirm Writes or higher to allow this tool."
-                ))
-            }
-            if !safeModeLevel.requiresConfirmation {
-                return .approved
-            }
+        if let connection, !liveSafeModeLevel(for: connection).requiresConfirmation {
+            return .approved
         }
         return .pending
     }
@@ -249,6 +256,7 @@ extension AIChatViewModel {
             connectionId: connection?.id,
             bridge: ChatToolBootstrap.bridge,
             authPolicy: ChatToolBootstrap.authPolicy,
+            chatMode: mode,
             sessionId: sessionId
         )
         await handleCopilotToolInvocation(
