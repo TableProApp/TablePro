@@ -367,8 +367,32 @@ fn texts(values: &[&str]) -> Vec<Option<String>> {
     values.iter().map(|value| Some((*value).to_owned())).collect()
 }
 
+// The width of a table's page and the texts of one of its columns, once the read has finished.
+async fn page_texts(
+    session: &DatabaseSession,
+    table: TableName,
+    sort: Option<ColumnSort>,
+    limit: u64,
+    offset: u64,
+    column: u32,
+) -> (u32, bool, u32, Vec<Option<String>>) {
+    let page = session
+        .read_table_page(table, sort, None, limit, offset, Box::new(Wakes::default()), None)
+        .await
+        .unwrap();
+    let run = page.run();
+    let outcome = run.outcome().await.unwrap();
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    let set = run.result_set(0).unwrap();
+    let width = u32::try_from(set.columns().len()).unwrap();
+    let texts = (0..set.row_count())
+        .map(|row| set.cell_text(row, column).unwrap())
+        .collect();
+    (page.visible_columns(), page.can_seek(), width, texts)
+}
+
 #[tokio::test]
-async fn a_table_query_sorts_on_the_server_and_names_the_columns_a_grid_shows() {
+async fn a_table_page_sorts_on_the_server_and_names_the_columns_a_grid_shows() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session, editor) = fixture(dir.path()).await;
     let (outcome, _, _) = run(
@@ -391,34 +415,21 @@ async fn a_table_query_sorts_on_the_server_and_names_the_columns_a_grid_shows() 
         ascending: false,
     });
 
-    let by_name = session
-        .table_query(people.clone(), descending, 100, 0, None)
-        .await
-        .unwrap();
-    let first_two = session.table_query(people, descending, 2, 0, None).await.unwrap();
-    let by_body = session
-        .table_query(
-            notes,
-            Some(ColumnSort {
-                column: 0,
-                ascending: true,
-            }),
-            100,
-            0,
-            None,
-        )
-        .await
-        .unwrap();
-    let (_, names) = column_texts(&editor, &by_name.sql, 1).await;
-    let (_, limited) = column_texts(&editor, &first_two.sql, 1).await;
-    let (width, bodies) = column_texts(&editor, &by_body.sql, 0).await;
+    let by_body = Some(ColumnSort {
+        column: 0,
+        ascending: true,
+    });
 
-    assert_eq!(by_name.visible_columns, 3);
+    let (visible, _, _, names) = page_texts(&session, people.clone(), descending, 100, 0, 1).await;
+    let (_, _, _, limited) = page_texts(&session, people, descending, 2, 0, 1).await;
+    let (body_visible, _, width, bodies) = page_texts(&session, notes, by_body, 100, 0, 0).await;
+
+    assert_eq!(visible, 3);
     assert_eq!(names, texts(&["Zoë 👋", "Grace", "Ada"]));
     assert_eq!(limited, texts(&["Zoë 👋", "Grace"]));
     assert_eq!(bodies, texts(&["a", "b"]));
     // A table without a key pages by its rowid, which follows the visible column.
-    assert_eq!((by_body.visible_columns, width), (1, 2));
+    assert_eq!((body_visible, width), (1, 2));
 }
 
 #[tokio::test]
@@ -501,7 +512,7 @@ async fn a_result_that_cannot_run_again_sorts_the_rows_it_holds() {
 #[tokio::test]
 async fn a_table_pages_past_its_first_rows_and_counts_them_all() {
     let dir = tempfile::tempdir().unwrap();
-    let (_core, session, editor) = fixture(dir.path()).await;
+    let (_core, session, _editor) = fixture(dir.path()).await;
     let people = TableName {
         schema: None,
         name: "people".to_owned(),
@@ -511,13 +522,11 @@ async fn a_table_pages_past_its_first_rows_and_counts_them_all() {
         ascending: true,
     });
 
-    let second = session.table_query(people.clone(), None, 2, 2, None).await.unwrap();
-    let sorted_second = session.table_query(people.clone(), by_name, 2, 1, None).await.unwrap();
-    let count = session.table_row_count(people, None).await.unwrap();
-    let (_, ids) = column_texts(&editor, &second.sql, 0).await;
-    let (_, names) = column_texts(&editor, &sorted_second.sql, 1).await;
+    let (_, can_seek, _, ids) = page_texts(&session, people.clone(), None, 2, 2, 0).await;
+    let (_, _, _, names) = page_texts(&session, people.clone(), by_name, 2, 1, 1).await;
+    let count = session.table_row_count(people, None, None).await.unwrap();
 
-    assert!(second.can_seek);
+    assert!(can_seek);
     assert_eq!(ids, texts(&["3"]));
     assert_eq!(names, texts(&["Grace", "Zoë 👋"]));
     assert_eq!(count, 3);

@@ -6,7 +6,7 @@ public sealed record TablePage(long Offset, int Size, long Rows, long? Total, bo
     // Past this a typed size is a mistake, not an intent, as macOS caps its Custom size.
     public const int MaximumSize = 1_000_000;
 
-    // All rows can go further; a run's limit is one past the page, so the page stays under int.MaxValue.
+    // All rows can go further, short of int.MaxValue, which the grid counts rows in.
     public const int LargestSize = int.MaxValue - 1;
 
     // The sizes the macOS page size menu offers.

@@ -68,6 +68,13 @@
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuDiscardChanges" x:Name="MenuDiscardChanges" Click="OnDiscardChanges" IsEnabled="False" />
                 <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuExportResults" x:Name="MenuExportResults" Click="OnExportResults" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Download" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="E" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuSettings" x:Name="MenuSettings" Click="OnShowSettings">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Setting" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
@@ -133,6 +140,7 @@
                         <KeyboardAccelerator Modifiers="Control" Key="P" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
+                <ToggleMenuFlyoutItem x:Uid="MenuShowHistory" x:Name="MenuShowHistory" Click="OnToggleHistory" IsEnabled="False" />
             </MenuBarItem>
 
             <MenuBarItem x:Uid="DatabaseMenu" x:Name="DatabaseMenu">
@@ -169,6 +177,12 @@
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Filter" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="F" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuPreviewSql" x:Name="MenuPreviewSql" Click="OnPreviewSql" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Preview" /></MenuFlyoutItem.Icon>
                     <MenuFlyoutItem.KeyboardAccelerators>
