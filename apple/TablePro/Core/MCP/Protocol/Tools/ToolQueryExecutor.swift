@@ -120,6 +120,7 @@ enum ToolQueryExecutor {
             services: services,
             approved: operation,
             principal: context.principal,
+            client: MCPAuditLogger.clientName(for: context.meta),
             secrets: secrets,
             source: historySource(for: context)
         ) {
