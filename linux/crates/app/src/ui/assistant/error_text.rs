@@ -83,9 +83,11 @@ fn with_server_words(sentence: String, server: Option<&str>) -> String {
 /// assistant cannot do without it.
 fn keyring_text(error: &SecretError) -> String {
     match error {
-        SecretError::Locked | SecretError::UnlockDismissed => {
-            crate::i18n::gettext("The keyring is locked, so the API key cannot be read. Unlock it and try again.")
-        }
+        SecretError::Locked | SecretError::UnlockDismissed => format!(
+            "{} {}",
+            crate::i18n::gettext("The keyring is locked, so the API key cannot be read."),
+            crate::services::secret_save_report::keyring_locked_recovery(),
+        ),
         SecretError::ServiceUnavailable { .. } => crate::i18n::gettext(
             "No keyring is running, so the API key cannot be read or kept. Start a keyring and try again.",
         ),
@@ -166,5 +168,21 @@ mod tests {
         let text = setup_error_text(&AiSetupError::Ai(AiError::MissingKey(AiProvider::OpenAi)));
 
         assert_eq!(text, "Add your OpenAI API key in Preferences.");
+    }
+
+    #[test]
+    fn a_locked_key_explains_default_keyring_recovery() {
+        for error in [SecretError::Locked, SecretError::UnlockDismissed] {
+            let text = setup_error_text(&AiSetupError::Keyring(error));
+
+            assert!(
+                text.starts_with("The keyring is locked, so the API key cannot be read."),
+                "{text}"
+            );
+            assert!(
+                text.contains("create one in Passwords and Keys and make it the default."),
+                "{text}"
+            );
+        }
     }
 }
