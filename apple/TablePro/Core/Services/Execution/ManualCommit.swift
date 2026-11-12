@@ -298,11 +298,14 @@ internal enum ManualCommit {
         grammar: SQLLexicalGrammar
     ) -> Bool {
         if startsTransaction(statements, databaseType: databaseType, grammar: grammar) { return true }
+        let isTeradata = TransactionEngineFamily.of(databaseType) == .teradata
         return statements.contains { statement in
             if CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar).endsTransaction {
                 return true
             }
-            return transactionControlKeywords.contains(QueryClassifier.leadingKeyword(of: statement, grammar: grammar))
+            let keyword = QueryClassifier.leadingKeyword(of: statement, grammar: grammar)
+            // Teradata's short form of END TRANSACTION.
+            return transactionControlKeywords.contains(keyword) || (isTeradata && keyword == "ET")
         }
     }
 
@@ -324,6 +327,12 @@ internal enum ManualCommit {
 
     internal static var transactionEndedNotice: String {
         String(localized: "The open transaction on this connection ended while this statement ran.")
+    }
+
+    internal static var statementOpenedNotice: String {
+        String(
+            localized: "This change is pending in a transaction the statement opened. Other statements are refused until it is committed or rolled back."
+        )
     }
 
     internal static var pendingNotice: String {
