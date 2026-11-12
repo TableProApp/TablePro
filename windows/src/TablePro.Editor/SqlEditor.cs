@@ -237,6 +237,8 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         }
 
         _loaded = true;
+        // A tab moved to another window can load there before its old window unloads it, still bound to the old one.
+        Unhook();
         Hook();
         PrepareDevice();
         AttachSwapChain();

@@ -224,13 +224,25 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         NativeCom.Release(ref _dwrite);
     }
 
+    // A device removed while no editor drew is not handed to a new one; editors still holding it find it no longer current.
     private static RenderDevice Shared(bool forceSoftware)
     {
+        var device = forceSoftware ? s_software : s_hardware;
+        if (device is { IsLost: true })
+        {
+            device.Dispose();
+            device = null;
+        }
+        device ??= new RenderDevice(forceSoftware);
         if (forceSoftware)
         {
-            return s_software ??= new RenderDevice(forceSoftware: true);
+            s_software = device;
         }
-        return s_hardware ??= new RenderDevice(forceSoftware: false);
+        else
+        {
+            s_hardware = device;
+        }
+        return device;
     }
 
     private static ID2D1DeviceContext* CreateContext(RenderDevice device)
