@@ -322,8 +322,9 @@ impl Connection for PgConnection {
             let quick: Timeouts = probe_timeouts(self.liveness());
             match self.pool.timeout_get(&quick).await {
                 Ok(object) => match Asking(Some(object)).answer().await {
-                    // Only this member may have gone stale; a login of its own says whether the route has.
-                    Err(error) if suspects_link(&error) => self.probe_standalone(deadline).await,
+                    // Only this member may have gone stale; a login of its own clears the route, and otherwise the
+                    // member's answer stands.
+                    Err(error) if suspects_link(&error) => self.probe_standalone(deadline).await.map_err(|_| error),
                     answered => answered,
                 },
                 // Every slot is busy, which is not the server being gone.
