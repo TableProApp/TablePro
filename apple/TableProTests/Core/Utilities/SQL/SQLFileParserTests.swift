@@ -74,6 +74,39 @@ struct SQLFileParserTests {
         #expect(stmts[1] == "SELECT 3")
     }
 
+    @Test("Postgres: an e glued to a name by $ or a non-ASCII unit starts a plain string, as the scanner reads it")
+    func postgresPrefixGluedToAName() async throws {
+        for glue in ["$", "\u{00A0}", "\u{2019}"] {
+            let sql = "SELECT x\(glue)e'\\'; DROP TABLE t; SELECT 'x';"
+            let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
+            #expect(stmts == ["SELECT x\(glue)e'\\'", "DROP TABLE t", "SELECT 'x'"], "\(glue)")
+        }
+    }
+
+    @Test("DuckDB: an E after a non-ASCII space DuckDB blanks starts an escape string")
+    func duckDBPrefixAfterABlank() async throws {
+        let sql = "SELECT varchar\u{200B}E'\\''; DROP TABLE t; SELECT 'x';"
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.duckdb)
+        #expect(stmts == ["SELECT varchar\u{200B}E'\\''", "DROP TABLE t", "SELECT 'x'"])
+        let dollar = try await Self.parse("SELECT 1 AS a,\u{200B}$$'$$; DROP TABLE t; SELECT 'x';", grammar: TestGrammar.duckdb)
+        #expect(dollar == ["SELECT 1 AS a,\u{200B}$$'$$", "DROP TABLE t", "SELECT 'x'"])
+    }
+
+    @Test("MySQL: a begin column in a one-statement procedure leaves the next statements their own")
+    func mysqlBeginColumnInAOneStatementBody() async throws {
+        let sql = """
+        CREATE PROCEDURE latest_shift() SELECT id FROM shifts ORDER BY begin DESC LIMIT 1;
+        CALL latest_shift();
+        UPDATE shifts SET closed = 1 WHERE id = 7;
+        """
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.mysql)
+        #expect(stmts == [
+            "CREATE PROCEDURE latest_shift() SELECT id FROM shifts ORDER BY begin DESC LIMIT 1",
+            "CALL latest_shift()",
+            "UPDATE shifts SET closed = 1 WHERE id = 7",
+        ])
+    }
+
     @Test("CockroachDB byte literal: backslash escape active")
     func cockroach_byte_literal_backslash_escape() async throws {
         let sql = """

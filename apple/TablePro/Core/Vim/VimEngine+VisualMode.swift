@@ -53,8 +53,8 @@ extension VimEngine {
             let cursorPos = visualCursorEnd(buffer: buffer)
             let newPos: Int
             switch char {
-            case "h": newPos = max(0, cursorPos - 1)
-            case "l": newPos = min(buffer.length, cursorPos + 1)
+            case "h": newPos = characterOffset(before: cursorPos, count: 1, limit: 0, in: buffer)
+            case "l": newPos = characterOffset(after: cursorPos, count: 1, limit: buffer.length, in: buffer)
             case "j":
                 let (line, col) = buffer.lineAndColumn(forOffset: cursorPos)
                 let targetLine = min(buffer.lineCount - 1, line + 1)
@@ -205,12 +205,17 @@ extension VimEngine {
     func visualCursorEnd(buffer: VimTextBuffer) -> Int {
         let sel = buffer.selectedRange()
         if sel.location == visualAnchor {
-            return sel.location + max(sel.length, 1) - 1
+            return lastSelectedCharacter(sel, in: buffer)
         }
         return sel.location
     }
 
-    func updateVisualSelection(cursorPos: Int, linewise: Bool, in buffer: VimTextBuffer) {
+    private func lastSelectedCharacter(_ sel: NSRange, in buffer: VimTextBuffer) -> Int {
+        sel.length > 0 ? characterStart(at: NSMaxRange(sel) - 1, in: buffer) : sel.location
+    }
+
+    func updateVisualSelection(cursorPos proposedCursor: Int, linewise: Bool, in buffer: VimTextBuffer) {
+        let cursorPos = characterStart(at: proposedCursor, in: buffer)
         cursorOffset = cursorPos
         let start = min(visualAnchor, cursorPos)
         let end = max(visualAnchor, cursorPos)
@@ -222,17 +227,15 @@ extension VimEngine {
             let lineEnd = endLineRange.location + endLineRange.length
             buffer.setSelectedRange(NSRange(location: lineStart, length: lineEnd - lineStart))
         } else {
-            let length = end - start + (end < buffer.length ? 1 : 0)
-            buffer.setSelectedRange(NSRange(location: start, length: length))
+            let selectionEnd = end < buffer.length ? characterEnd(at: end, in: buffer) : end
+            buffer.setSelectedRange(NSRange(location: start, length: selectionEnd - start))
         }
     }
 
     func swapVisualAnchorAndCursor(in buffer: VimTextBuffer, linewise: Bool) {
         let sel = buffer.selectedRange()
         let cursor = visualCursorEnd(buffer: buffer)
-        let otherEnd = cursor == sel.location
-            ? sel.location + max(0, sel.length - 1)
-            : sel.location
+        let otherEnd = cursor == sel.location ? lastSelectedCharacter(sel, in: buffer) : sel.location
         visualAnchor = cursor
         cursorOffset = otherEnd
         updateVisualSelection(cursorPos: otherEnd, linewise: linewise, in: buffer)
@@ -259,13 +262,14 @@ extension VimEngine {
         guard sel.length > 0 else { setMode(.normal); return }
         var replacement = ""
         replacement.reserveCapacity(sel.length)
-        for i in 0..<sel.length {
-            let original = buffer.character(at: sel.location + i)
-            if original == 0x0A {
+        var offset = sel.location
+        while offset < min(NSMaxRange(sel), buffer.length) {
+            if buffer.character(at: offset) == 0x0A {
                 replacement.append("\n")
             } else {
                 replacement.append(char)
             }
+            offset = characterEnd(at: offset, in: buffer)
         }
         buffer.replaceCharacters(in: sel, with: replacement)
         buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
