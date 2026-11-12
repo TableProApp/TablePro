@@ -905,7 +905,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     #if canImport(CLibMongoc)
     // The cursor, its collection and the stream's session live and end inside one block on the connection's queue, so
     // none of them can outlast the client that `disconnect` destroys behind it. A paced stream holds that queue while
-    // its reader waits, as every blocking driver does, which is why bulk reads run on their own pooled connection.
+    // its reader waits, as every blocking driver does.
     private func cursorStream(
         database: String,
         collection: String,
