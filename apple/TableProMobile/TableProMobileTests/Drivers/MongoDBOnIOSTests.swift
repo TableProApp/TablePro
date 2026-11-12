@@ -73,7 +73,7 @@ struct MongoDBOnIOSTests {
             offset: 100
         )
 
-        #expect(query == #"db.users.find({"$and": [{"name": "ann"}, {"$or": [{"name": {"$regex": "x", "$options": "i"}}, {"email": {"$regex": "x", "$options": "i"}}]}]}).sort({"name": 1}).skip(100).limit(50)"#)
+        #expect(query == #"db.users.find({"$and": [{"name": "ann"}, {"$or": [{"name": {"$regex": "x", "$options": "i"}}, {"email": {"$regex": "x", "$options": "i"}}]}]}).sort({"name": 1, "_id": 1}).skip(100).limit(50)"#)
     }
 
     @Test("From MongoDB 4.2, search matches a number, a date or an ObjectId by its text as well")

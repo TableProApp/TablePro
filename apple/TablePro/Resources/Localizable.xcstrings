@@ -146205,6 +146205,10 @@
         }
       }
     },
+    "Refresh before changing this item, so the save can check that it has not changed since it was loaded." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Refresh concurrently" : {
       "localizations" : {
         "fr" : {
@@ -189410,6 +189414,10 @@
     "The global_instrumentation consumer is disabled, so the server records no index reads." : {
 
     },
+    "The grid shows only the start of this value, so it cannot be edited here. Change it with a command in the query editor." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the group coordinator is not available" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -189611,6 +189619,14 @@
           }
         }
       }
+    },
+    "The item changed since its CAS value was read, so nothing was saved. Refresh to see its current value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The item does not exist, so nothing was saved. Refresh to see the current keys." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The JSON array must contain only objects." : {
 
@@ -196172,6 +196188,10 @@
     "The value ends early, at byte %lld." : {
 
     },
+    "The value in %@ expired after the grid read it. Refresh, then edit the row again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -201703,6 +201723,14 @@
         }
       }
     },
+    "This record cannot be found again from what was read. Refresh and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This record's id reads like a UUID, array or object id, so its text does not say which record it is. Open the table to edit it, or use a query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This replaces %@ on this Mac." : {
 
     },
@@ -201760,6 +201788,10 @@
     "This routine takes no arguments." : {
 
     },
+    "This row cannot be found again from what was read. Reload the table." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This row does not name a stored document." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -201797,6 +201829,10 @@
     },
     "This row has no value for this field." : {
 
+    },
+    "This row holds only the part of a value the grid shows, so adding it would store that part. Add the key with a command in the query editor." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names." : {
       "extractionState" : "manual",
