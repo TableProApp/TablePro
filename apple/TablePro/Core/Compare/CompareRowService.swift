@@ -228,7 +228,9 @@ internal struct CompareRowService {
                     ),
                     targetDriver: targetPlugin
                 )
-                return try await body(engine, sides)
+                return try await BulkReadTimeout.lifted(on: [sourceDriver, targetDriver]) {
+                    try await body(engine, sides)
+                }
             }
         }
     }

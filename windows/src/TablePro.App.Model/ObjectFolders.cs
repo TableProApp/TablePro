@@ -1,3 +1,4 @@
+using System.Globalization;
 using TablePro.Interop;
 
 namespace TablePro.App.Model;
@@ -24,17 +25,18 @@ public static class ObjectFolders
 {
     public const int PageSize = 500;
 
-    public static IReadOnlyList<ObjectFolder> Group(IEnumerable<ObjectEntry> objects)
+    // The culture is passed in, since a schema's objects are sorted off the UI thread.
+    public static IReadOnlyList<ObjectFolder> Group(IEnumerable<ObjectEntry> objects, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(objects);
+        ArgumentNullException.ThrowIfNull(culture);
+        var names = StringComparer.Create(culture, ignoreCase: true);
         return
         [
             .. objects
                 .GroupBy(entry => Folder(entry.Kind))
                 .OrderBy(group => group.Key)
-                .Select(group => new ObjectFolder(
-                    group.Key,
-                    [.. group.OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase)])),
+                .Select(group => new ObjectFolder(group.Key, [.. group.OrderBy(entry => entry.Name, names)])),
         ];
     }
 
@@ -59,23 +61,55 @@ public static class ObjectFolders
     // As the core's ObjectKind::has_definition: it opens as SQL to read rather than rows to page.
     public static bool HasDefinition(ObjectKind kind) => kind is ObjectKind.Function or ObjectKind.Procedure
         or ObjectKind.Sequence or ObjectKind.Trigger;
+}
 
-    public static IReadOnlyList<ObjectEntry> Filter(IEnumerable<ObjectEntry> objects, string text)
+// Every object of a connection in the filter's order, sorted once so that a keystroke only scans it.
+public sealed class ObjectCatalog
+{
+    private const int CancelCheckInterval = 1024;
+
+    private readonly ObjectEntry[] _sorted;
+    private readonly CompareInfo _compare;
+
+    public ObjectCatalog(IEnumerable<ObjectEntry> objects, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(objects);
+        ArgumentNullException.ThrowIfNull(culture);
+        var names = StringComparer.Create(culture, ignoreCase: true);
+        _compare = culture.CompareInfo;
+        _sorted = [.. objects.OrderBy(entry => entry.Name, names).ThenBy(entry => entry.Schema, names)];
+    }
+
+    public int Count => _sorted.Length;
+
+    // Names that start with the text come first; both parts keep the catalog's order, so the list reads by name.
+    public IReadOnlyList<ObjectEntry> Filter(string text, CancellationToken cancellationToken = default)
+    {
         var needle = text?.Trim() ?? string.Empty;
         if (needle.Length == 0)
         {
             return [];
         }
 
-        return
-        [
-            .. objects
-                .Where(entry => entry.Name.Contains(needle, StringComparison.CurrentCultureIgnoreCase))
-                .OrderBy(entry => entry.Name.StartsWith(needle, StringComparison.CurrentCultureIgnoreCase) ? 0 : 1)
-                .ThenBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase)
-                .ThenBy(entry => entry.Schema, StringComparer.CurrentCultureIgnoreCase),
-        ];
+        var starting = new List<ObjectEntry>();
+        var containing = new List<ObjectEntry>();
+        for (var index = 0; index < _sorted.Length; index++)
+        {
+            if (index % CancelCheckInterval == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            var entry = _sorted[index];
+            if (_compare.IndexOf(entry.Name, needle, CompareOptions.IgnoreCase) < 0)
+            {
+                continue;
+            }
+
+            (_compare.IsPrefix(entry.Name, needle, CompareOptions.IgnoreCase) ? starting : containing).Add(entry);
+        }
+
+        starting.AddRange(containing);
+        return starting;
     }
 }

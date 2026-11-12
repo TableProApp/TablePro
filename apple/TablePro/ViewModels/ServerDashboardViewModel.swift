@@ -26,10 +26,7 @@ final class ServerDashboardViewModel: ObservableObject {
     @Published var refreshInterval: DashboardRefreshInterval = .fiveSeconds {
         didSet {
             guard oldValue != refreshInterval else { return }
-            if refreshTask != nil || refreshInterval != .off {
-                startAutoRefresh()
-            }
-            updateTileActivity()
+            restartRefreshLoop()
         }
     }
 
@@ -67,6 +64,7 @@ final class ServerDashboardViewModel: ObservableObject {
 
     nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
     private var isOnScreen = false
+    private var isWindowVisible = true
     private let services: AppServices
     private var providerServerVersion: String?
     private var hasAdoptedServerVersion = false
@@ -123,14 +121,28 @@ final class ServerDashboardViewModel: ObservableObject {
     // MARK: - Auto Refresh
 
     func startAutoRefresh() {
-        refreshTask?.cancel()
         isOnScreen = true
-        updateTileActivity()
+        restartRefreshLoop()
+    }
 
-        guard refreshInterval != .off else {
-            refreshTask = nil
-            return
-        }
+    func stopAutoRefresh() {
+        isOnScreen = false
+        restartRefreshLoop()
+        isRefreshing = false
+    }
+
+    // A hidden, minimized or fully covered window shows nothing, so the server is not asked; coming back refreshes at once.
+    func windowVisibilityChanged(_ isVisible: Bool) {
+        guard isWindowVisible != isVisible else { return }
+        isWindowVisible = isVisible
+        restartRefreshLoop()
+    }
+
+    private func restartRefreshLoop() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        updateTileActivity()
+        guard isOnScreen, isWindowVisible, refreshInterval != .off else { return }
 
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -145,16 +157,12 @@ final class ServerDashboardViewModel: ObservableObject {
         }
     }
 
-    func stopAutoRefresh() {
-        refreshTask?.cancel()
-        refreshTask = nil
-        isRefreshing = false
-        isOnScreen = false
-        updateTileActivity()
+    var isPolling: Bool {
+        refreshTask != nil
     }
 
     private func updateTileActivity() {
-        tileBoard.isActive = isOnScreen && !isPaused && refreshInterval != .off
+        tileBoard.isActive = isOnScreen && isWindowVisible && !isPaused && refreshInterval != .off
     }
 
     // MARK: - Data Fetching
@@ -233,8 +241,11 @@ final class ServerDashboardViewModel: ObservableObject {
 
         if provider.supportedPanels.contains(.activeSessions) {
             do {
-                sessions = try await provider.fetchSessions(execute: execute)
-                sessions.sort(using: sessionSortOrder)
+                var fetched = try await provider.fetchSessions(execute: execute)
+                fetched.sort(using: sessionSortOrder)
+                if fetched != sessions {
+                    sessions = fetched
+                }
             } catch {
                 Self.logger.warning("Failed to fetch sessions: \(error.localizedDescription)")
                 newPanelErrors[.activeSessions] = error.localizedDescription
@@ -243,7 +254,10 @@ final class ServerDashboardViewModel: ObservableObject {
 
         if provider.supportedPanels.contains(.serverMetrics) {
             do {
-                metrics = try await provider.fetchMetrics(execute: execute)
+                let fetched = try await provider.fetchMetrics(execute: execute)
+                if fetched != metrics {
+                    metrics = fetched
+                }
             } catch {
                 Self.logger.warning("Failed to fetch metrics: \(error.localizedDescription)")
                 newPanelErrors[.serverMetrics] = error.localizedDescription
@@ -252,14 +266,19 @@ final class ServerDashboardViewModel: ObservableObject {
 
         if provider.supportedPanels.contains(.slowQueries) {
             do {
-                slowQueries = try await provider.fetchSlowQueries(execute: execute)
+                let fetched = try await provider.fetchSlowQueries(execute: execute)
+                if !fetched.elementsEqual(slowQueries, by: { $0.hasSameContent(as: $1) }) {
+                    slowQueries = fetched
+                }
             } catch {
                 Self.logger.warning("Failed to fetch slow queries: \(error.localizedDescription)")
                 newPanelErrors[.slowQueries] = error.localizedDescription
             }
         }
 
-        panelErrors = newPanelErrors
+        if panelErrors != newPanelErrors {
+            panelErrors = newPanelErrors
+        }
         await tileBoard.refresh(force: forcingTiles)
         lastRefreshDate = Date()
     }

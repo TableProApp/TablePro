@@ -238,6 +238,33 @@ struct BatchTransactionPolicyTests {
         #expect(Self.plan(["INSERT INTO t VALUES (1)", "CHECKPOINT"], .postgresql) == .appTransaction)
     }
 
+    // Inside BT a statement after DDL fails with 3932 and rolls the batch back, so a Teradata batch holding DDL runs
+    // each statement as its own request.
+    @Test(
+        "A Teradata batch holding DDL runs in autocommit",
+        arguments: [
+            ["CREATE MULTISET TABLE t (id INTEGER) PRIMARY INDEX (id)", "INSERT INTO t VALUES (1)"],
+            ["DATABASE sales", "SELECT * FROM t"],
+            ["INSERT INTO t VALUES (1)", "COLLECT STATISTICS COLUMN (id) ON t"],
+            ["SET SESSION DATEFORM = ANSIDATE", "SELECT CURRENT_DATE"],
+            ["GRANT SELECT ON sales TO u", "UPDATE t SET id = 2"],
+        ]
+    )
+    func teradataDefinitionBatchIsNotWrapped(statements: [String]) {
+        #expect(Self.plan(statements, .teradata) == .autocommit)
+    }
+
+    @Test("A Teradata batch of data statements stays wrapped")
+    func teradataDataBatchIsWrapped() {
+        #expect(Self.plan(["INSERT INTO t VALUES (1)", "UPDATE t SET id = 2", "SEL * FROM t"], .teradata) == .appTransaction)
+        #expect(Self.plan(["DELETE FROM t", "DELETE t ALL"], .teradata) == .appTransaction)
+    }
+
+    @Test("A Teradata script that begins its own transaction runs as written")
+    func teradataBeginTransactionIsNotWrapped() {
+        #expect(Self.plan(["BEGIN TRANSACTION", "INSERT INTO t VALUES (1)", "END TRANSACTION"], .teradata) == .scriptTransaction)
+    }
+
     @Test("A SQLite savepoint opens a transaction, so the script owns it after all")
     func savepointAfterAnUnwrappingStatement() {
         #expect(Self.plan(["VACUUM", "SAVEPOINT a", "INSERT INTO t VALUES (1)"], .sqlite) == .scriptTransaction)

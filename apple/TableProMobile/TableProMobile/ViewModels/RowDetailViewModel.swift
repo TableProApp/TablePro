@@ -11,7 +11,9 @@ final class RowDetailViewModel {
 
     let columns: [ColumnInfo]
     let columnDetails: [ColumnInfo]
-    let foreignKeys: [ForeignKeyInfo]
+    // Read when shown: the browser reads the keys after its rows appear, so a row opened first gets them too.
+    @ObservationIgnored private let readForeignKeys: () -> [ForeignKeyInfo]
+    var foreignKeys: [ForeignKeyInfo] { readForeignKeys() }
     let table: TableInfo?
     // Decides what the row is and how it is located; writes go to `session`, which follows a redial.
     private let openedSession: ConnectionSession?
@@ -47,7 +49,7 @@ final class RowDetailViewModel {
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
-        foreignKeys: [ForeignKeyInfo] = [],
+        foreignKeys: @escaping @autoclosure () -> [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
         loadFullValue: ((CellRef) async throws -> String?)? = nil,
         liveSession: (() -> Result<ConnectionSession, AppError>)? = nil
@@ -62,7 +64,7 @@ final class RowDetailViewModel {
         self.databaseType = databaseType
         self.schema = schema
         self.readSafeModeLevel = safeModeLevel
-        self.foreignKeys = foreignKeys
+        self.readForeignKeys = foreignKeys
         self.onSaved = onSaved
         self.loadFullValueProvider = loadFullValue
     }

@@ -629,10 +629,14 @@ extension QueryExecutionCoordinator {
                     let endState: PluginSessionTransactionState = asksEndState
                         ? await driver.heldSessionTransactionState()
                         : .unknown
+                    // An unwrapped run can still leave a transaction open: a Teradata ANSI session holds its DDL in one.
+                    let failedState: PluginSessionTransactionState = sessionPlan == .autocommit && !outcome.isCompleted
+                        ? (asksEndState ? endState : await driver.heldSessionTransactionState())
+                        : .idle
                     return MultiStatementRun(
                         outcome: outcome,
                         plan: sessionPlan,
-                        sessionState: .idle,
+                        sessionState: failedState,
                         startState: startState,
                         endState: endState
                     )

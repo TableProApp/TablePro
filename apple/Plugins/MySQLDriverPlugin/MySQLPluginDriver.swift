@@ -1036,7 +1036,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         readOnly: MySQLReadOnlyTransaction.Scope?
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream { continuation in
+        // Bounded like the connection's own stream, or this relay would read it dry into an unbounded buffer.
+        AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
             let task = Task {
                 do {
                     try await retryingAfterStop {
@@ -1044,7 +1045,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         defer { self.endOperation(on: conn) }
                         noteActivity(query)
                         for try await element in conn.streamQuery(query, readOnly: readOnly) {
-                            continuation.yield(element)
+                            guard await PluginRowStream.deliver(element, to: continuation) else { break }
                         }
                     }
                     continuation.finish()

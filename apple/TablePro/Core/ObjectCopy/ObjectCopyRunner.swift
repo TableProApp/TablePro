@@ -717,8 +717,10 @@ internal struct ObjectCopyRunner {
                         throw ObjectCopyError.refused(noSourceDriver)
                     }
                     let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
-                    return try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
-                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                    return try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                        try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
+                            progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                        }
                     }
                 }
                 guard !outcome.cancelled else {
@@ -821,8 +823,10 @@ internal struct ObjectCopyRunner {
                     throw ObjectCopyError.refused(Self.noSourceDriver)
                 }
                 let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
-                let outcome = try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
-                    progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                let outcome = try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                    try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
+                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                    }
                 }
                 return CopiedRows(outcome: outcome, joinedSessionTransaction: owner == .session)
             }

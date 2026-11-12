@@ -244,8 +244,9 @@ internal struct JSONViewerView: View {
         commitAndClose(displayText)
     }
 
+    // Committed as shown: the caller knows the stored value, whose layout decides what is staged.
     private func commitAndClose(_ value: String) {
-        onCommit?(JsonReindenter.normalize(value))
+        onCommit?(value)
         onDismiss?()
     }
 }

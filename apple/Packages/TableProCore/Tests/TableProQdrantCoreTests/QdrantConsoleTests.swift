@@ -1,4 +1,5 @@
 import Foundation
+@testable import TableProQdrantClient
 @testable import TableProQdrantCore
 import Testing
 

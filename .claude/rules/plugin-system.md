@@ -37,7 +37,7 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 ## One PluginKit per process
 
 - R1 (the rule is in `apple/AGENTS.md`, Invariants that apply everywhere): a plugin that linked a package product depending on the `TableProPluginKit` package would carry its own copy of PluginKit's types, and the host's casts across that boundary fail. Products a plugin and the iOS app share stay PluginKit-free for that reason.
-- The R1 check runs per binary (each plugin, each plugin test bundle, the app) and must print nothing:
+- The R1 check runs per binary (each plugin, each plugin test bundle, the app) and must print nothing. A Release binary keeps no symbols, so run it on a Debug build, or on the dSYM's `Contents/Resources/DWARF/<name>` for a Release one:
 
   ```bash
   nm -m "$BIN" | grep -v undefined | grep -E '_\$s17TableProPluginKit[0-9A-Za-z_]*Mn$' \

@@ -26,6 +26,12 @@ public sealed partial class SqlEditor
         {
             return;
         }
+        // Another editor on this thread found the shared device lost, or the driver removed it.
+        if (_device.NeedsRecovery)
+        {
+            RecoverDevice(lost: false);
+            return;
+        }
         if (!_device.TryBeginFrame())
         {
             RenderOnNextTick();
@@ -107,7 +113,7 @@ public sealed partial class SqlEditor
         var matches = FindMatchesIn(first, last);
         var spanIndex = 0;
         var primaryLine = Document.GetLineFromOffset(_model.Primary.Active);
-        var caretOn = _focused && _caretOn;
+        var caretOn = _blink.CaretVisible;
         var caretWidth = CaretWidth();
         for (var line = first; line <= last; line++)
         {
@@ -207,8 +213,7 @@ public sealed partial class SqlEditor
         var created = _layouts.CreatedThisFrame;
         if (!_device.EndDrawAndPresent())
         {
-            ReleaseDevice();
-            CreateDevice();
+            RecoverDevice(lost: true);
             return;
         }
         _layouts.EndFrame();
@@ -252,6 +257,21 @@ public sealed partial class SqlEditor
         Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRenderingTick;
         _waitingForTick = false;
         Invalidate();
+    }
+
+    // The frame's map points at layouts the cache owns, so it goes whenever they do.
+    private void ForgetLayouts()
+    {
+        _layouts?.Clear();
+        _frameLayouts.Clear();
+        _frameVersion = -1;
+    }
+
+    private void ConfigureLayouts()
+    {
+        _layouts?.Configure(_fontSize * _zoom, _model.Options.TabSize);
+        _frameLayouts.Clear();
+        _frameVersion = -1;
     }
 
     private LineLayout LayoutFor(int line, string text)

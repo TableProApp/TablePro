@@ -36,6 +36,10 @@ public struct PluginStatementContext: Sendable, Equatable {
     // `.decimal` as numbers, `.boolean` as TRUE or FALSE. Nil, or a nil entry, where none was given.
     public var parameterKinds: [PluginColumnKind?]?
 
+    // The type of the column each parameter is written to or compared with, by position, as the target's driver names
+    // it. Nil, or a nil entry, where the host does not know it.
+    public var parameterTypeNames: [String?]?
+
     // Safe Mode is Read-Only for the connection. A driver that declares `PluginCapabilities.enforcesReadOnlyMode` runs
     // the statement in the engine's read-only mode whatever the origin, or throws.
     public var enforcesReadOnly = false

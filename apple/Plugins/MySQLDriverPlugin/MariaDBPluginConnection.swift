@@ -148,6 +148,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private var baselineSelectLimit: UInt64?
     private var hasCapturedBaselineSelectLimit = false
 
+    // Whether this session already waits long enough for a streaming reader. Only touched from `queue`.
+    private var hasStreamingWriteTimeout = false
+
     /// Whether the connection that actually succeeded negotiated TLS. `.preferred` falls back to
     /// plaintext, so the configured mode does not say what the transport ended up being, and the
     /// `KILL` connection has to repeat what worked rather than what was asked for.
@@ -401,6 +404,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.appliedSelectLimit = nil
             self.baselineSelectLimit = nil
             self.hasCapturedBaselineSelectLimit = false
+            self.hasStreamingWriteTimeout = false
 
             let threadId = mysql_thread_id(handle)
             self.stateLock.lock()
@@ -1487,7 +1491,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         /// The drain belongs to the producer. Enqueued from `onTermination` it would sit behind the
         /// producer on this one serial queue and run only after the whole result had been read,
         /// which is why the abort is a polled flag instead.
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             self.queue.async { [self] in
                 do {
                     let stream = {
@@ -1531,6 +1535,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard !abort.isAborted else { return }
 
         try reconcileSelectLimit(rowCap: nil, statement: queryToRun, on: mysql)
+        raiseStreamingWriteTimeout(on: mysql)
 
         let queryStatus = queryToRun.withCString { queryPtr in
             mysql_real_query(mysql, queryPtr, UInt(queryToRun.utf8.count))
@@ -1557,11 +1562,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             binaryStringsAreText: binaryStringsAreText(in: queryToRun, flavor: sessionFlavor)
         )
 
-        continuation.yield(.header(PluginStreamHeader(
+        let stops = { self.cancellationGate.isCancelled(generation) }
+        _ = PluginRowStream.deliverBlocking(.header(PluginStreamHeader(
             columns: columns.names,
             columnTypeNames: columns.typeNames,
             estimatedRowCount: nil
-        )))
+        )), to: continuation, stops: stops)
 
         let batchSize = 5_000
         var batch: [PluginRow] = []
@@ -1578,14 +1584,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
 
             batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
-            if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
+            // A reader that left or a Stop is handled at the top of the loop.
+            if batch.count >= batchSize,
+               PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops) {
                 batch.removeAll(keepingCapacity: true)
             }
         }
-        if !batch.isEmpty {
-            continuation.yield(.rows(batch))
-        }
+        let delivered = batch.isEmpty || PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops)
 
         if mysql_errno(mysql) != 0 {
             let error = noting(getError(), generation: generation)
@@ -1595,6 +1600,24 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         mysql_free_result(resultPtr)
         try consumeTrailingResults(on: mysql, generation: generation)
+        guard delivered else { throw CancellationError() }
+    }
+
+    // While the stream waits for its reader the server waits on the socket, and gives up after `net_write_timeout`,
+    // 60 seconds by default. 600 is the value MySQL Connector/J sets for a streaming result
+    // (`netTimeoutForStreamingResults`). Asked once per session: a server that refuses it keeps its own.
+    private func raiseStreamingWriteTimeout(on mysql: UnsafeMutablePointer<MYSQL>) {
+        guard !hasStreamingWriteTimeout else { return }
+        hasStreamingWriteTimeout = true
+        let statement = "SET SESSION net_write_timeout = GREATEST(@@SESSION.net_write_timeout, 600)"
+        let status = statement.withCString { mysql_real_query(mysql, $0, UInt(statement.utf8.count)) }
+        if let discarded = mysql_store_result(mysql) {
+            mysql_free_result(discarded)
+        }
+        guard status == 0 else {
+            logger.warning("net_write_timeout not raised for a stream: \(self.errorMessage(from: mysql))")
+            return
+        }
     }
 
     // MARK: - Trailing Results

@@ -16253,6 +16253,10 @@
     "A label cannot be removed or moved once it exists." : {
 
     },
+    "A large object value is longer than the 64 MiB TablePro reads from SAP HANA, so it cannot be copied or exported whole." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
 
     },
@@ -44142,6 +44146,14 @@
         }
       }
     },
+    "Column \"%1$@\" has Teradata type %2$@, which TablePro cannot read yet. CAST it to DECIMAL or VARCHAR in the query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Column \"%1$@\" has Teradata type %2$@, which TablePro cannot read yet. CAST it to VARCHAR in the query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "column %@ first appears in a later chunk" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -45641,6 +45653,10 @@
     },
     "Commit Message" : {
 
+    },
+    "Commit or roll back the open transaction before switching database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Commit the transaction" : {
 
@@ -120711,6 +120727,9 @@
         }
       }
     },
+    "No row took the change. Another client may have changed or deleted it, or a security policy or trigger skipped it." : {
+
+    },
     "No rows" : {
       "localizations" : {
         "fr" : {
@@ -151683,6 +151702,12 @@
           }
         }
       }
+    },
+    "Restore Row" : {
+
+    },
+    "Restore Rows" : {
+
     },
     "Restore the previous values of a save" : {
       "localizations" : {
@@ -187381,6 +187406,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The condition of check constraint %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The condition of index %@ cannot be written as SQL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -192321,6 +192350,10 @@
       "generatesSymbol" : false
     },
     "the reference “%@” is used more than once" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The referential action of foreign key %@ is not one SQL Server has: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

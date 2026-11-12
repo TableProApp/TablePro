@@ -22,16 +22,16 @@ struct RowPasteForeignTextTests {
         let rows = try parse("\tAnn\tann@x.com\n\tBob\tbob@x.com")
 
         #expect(rows == [
-            [.columnDefault, .text("Ann"), .text("ann@x.com")],
-            [.columnDefault, .text("Bob"), .text("bob@x.com")]
+            [.null, .text("Ann"), .text("ann@x.com")],
+            [.null, .text("Bob"), .text("bob@x.com")]
         ])
     }
 
-    @Test("An empty first cell reads as NULL when the table has no key to reset")
-    func leadingEmptyFieldIsNullWithoutAKey() throws {
-        let rows = try parse("\tAnn\tann@x.com", primaryKey: [])
+    @Test("The parser keeps a pasted key; only the paste knows whether the server fills it")
+    func parserKeepsTheKey() throws {
+        let rows = try parse("7\tAnn\tann@x.com")
 
-        #expect(rows == [[.null, .text("Ann"), .text("ann@x.com")]])
+        #expect(rows == [[.text("7"), .text("Ann"), .text("ann@x.com")]])
     }
 
     @Test("Trailing empty cells stay NULL and blank lines are not rows")
@@ -67,7 +67,8 @@ struct RowPasteForeignTextTests {
         var rows = TableRows.from(
             queryRows: [],
             columns: Self.columns,
-            columnTypes: Array(repeating: .text(rawType: nil), count: Self.columns.count)
+            columnTypes: Array(repeating: .text(rawType: nil), count: Self.columns.count),
+            columnIdentity: ["id": .byDefault]
         )
 
         let result = manager.pasteRowsFromClipboard(
@@ -101,6 +102,7 @@ struct RowPasteForeignTextTests {
             ],
             columnDefaults: ["status": "'active'"],
             columnNullable: ["name": false, "status": false, "note": false, "born": false, "nickname": true],
+            columnIdentity: ["id": .byDefault],
             hasAuthoritativeSchema: true
         )
 
@@ -131,6 +133,7 @@ struct RowPasteForeignTextTests {
             columns: columns,
             columnTypes: [.integer(rawType: "INT"), .text(rawType: "VARCHAR")],
             columnDefaults: ["status": "'active'"],
+            columnIdentity: ["id": .byDefault],
             hasAuthoritativeSchema: true
         )
 
