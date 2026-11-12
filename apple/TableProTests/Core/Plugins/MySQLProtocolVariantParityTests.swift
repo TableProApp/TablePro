@@ -47,7 +47,7 @@ struct MySQLProtocolVariantParityTests {
 
     @Test("A variant whose driver reads mysql_affected_rows holds a keyless save to its row count", arguments: variants)
     func rowCountsAgree(type: DatabaseType) {
-        #expect(DataWriteRowCounts.areMeaningful(for: type) == !Self.outsideMySQLDialect.contains(type))
+        #expect(DataWriteRowCounts.countsMatchedRows(for: type) == !Self.outsideMySQLDialect.contains(type))
     }
 
     /// The app classifies a database list by the connection type's registry entry and the driver flags metadata by

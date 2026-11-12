@@ -11,16 +11,16 @@
 //  affected count against the count the plan expected is what catches it, and inside a transaction
 //  it is caught before it lands.
 //
-//  For a keyed write the comparison is `actual > expected`. MySQL reports zero affected rows for an
-//  UPDATE that writes a value a row already holds, which is a normal save, not a fault. Where the
-//  count is the rows the UPDATE matched, a short one means the row was not written: deleted or
+//  For a keyed write the comparison is `actual > expected`, and for a keyed UPDATE also `actual <
+//  expected` where the count is the rows it matched (`DataWriteRowCounts`, or a driver's own
+//  `PluginRowWrite.expectedRowCount`): a short one means the row was not written, deleted or
 //  rekeyed since it was read, kept out by row-level security, or skipped by a trigger.
 //
 //  A keyless write is held to both ends. It finds its row by matching every column against the text
 //  the grid read, and that match can simply find nothing: measured on MySQL 8.4.11 and OceanBase
 //  4.4.2.1, a row holding a FLOAT or a JSON column matched zero rows, the statement wrote nothing,
 //  and the save reported success while the edit disappeared on the next reload. Only the engines
-//  whose drivers report a real count can be held to it, which `reportsRowsAffected` decides.
+//  whose drivers report a real count can be held to it, which `DataWriteRowCounts` decides.
 //
 
 import Foundation
@@ -170,8 +170,7 @@ enum DataWriteExecutor {
             commitMode: commitMode
         )
         var results: [DataWriteStepResult] = []
-        // Through a view the count is whatever its trigger or rule reports.
-        let countsKeyedUpdates = DataWriteRowCounts.countsMatchedRows(for: plan.databaseType) && plan.viewTarget == nil
+        let engineCountsMatchedRows = DataWriteRowCounts.countsMatchedRows(for: plan.databaseType)
         // A delete earlier in the save can cascade to a row a later update edits, which then matches nothing.
         var ranDelete = false
 
@@ -212,12 +211,14 @@ enum DataWriteExecutor {
                     )
                 }
 
+                let countsMatchedRows = engineCountsMatchedRows || step.countsMatchedRows
                 try verify(
                     step,
                     rowsAffected: result.rowsAffected,
                     owner: owner,
-                    countsAreMeaningful: DataWriteRowCounts.areMeaningful(for: plan.databaseType),
-                    holdsKeyedUpdates: countsKeyedUpdates && !ranDelete
+                    countsAreMeaningful: countsMatchedRows,
+                    // Through a view the count is whatever its trigger or rule reports.
+                    holdsKeyedUpdates: countsMatchedRows && plan.viewTarget == nil && !ranDelete
                 )
                 ranDelete = ranDelete || step.rowKind == .delete || step.kind == .tableOperation
                 results.append(
