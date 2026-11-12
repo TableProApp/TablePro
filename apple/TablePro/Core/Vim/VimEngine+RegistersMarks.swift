@@ -5,7 +5,41 @@
 
 import Foundation
 
+// What Vim remembers about one document, by offset into its text.
+struct VimDocumentMarks {
+    var marks: [Character: Int] = [:]
+    var lastVisualStart: Int?
+    var lastVisualEnd: Int?
+    var lastVisualLinewise = false
+    var lastJumpOrigin: Int?
+    var lastInsertOffset: Int?
+
+    var isEmpty: Bool {
+        marks.isEmpty && lastVisualStart == nil && lastVisualEnd == nil && lastJumpOrigin == nil && lastInsertOffset == nil
+    }
+}
+
 extension VimEngine {
+    var documentMarks: VimDocumentMarks {
+        VimDocumentMarks(
+            marks: marks,
+            lastVisualStart: lastVisualStart,
+            lastVisualEnd: lastVisualEnd,
+            lastVisualLinewise: lastVisualLinewise,
+            lastJumpOrigin: lastJumpOrigin,
+            lastInsertOffset: lastInsertOffset
+        )
+    }
+
+    func restoreDocumentMarks(_ saved: VimDocumentMarks) {
+        marks = saved.marks
+        lastVisualStart = saved.lastVisualStart
+        lastVisualEnd = saved.lastVisualEnd
+        lastVisualLinewise = saved.lastVisualLinewise
+        lastJumpOrigin = saved.lastJumpOrigin
+        lastInsertOffset = saved.lastInsertOffset
+    }
+
     func writeToActiveRegister(text: String, linewise: Bool, asDelete: Bool) {
         if selectedRegister == "_" {
             selectedRegister = nil

@@ -215,9 +215,12 @@ final class MainContentCommandActions: ObservableObject {
         let rowIDs = selectedDataRowIDs
         if !rowIDs.isEmpty {
             coordinator?.deleteRows(rowIDs)
-        } else if !selectedTables.wrappedValue.isEmpty {
-            // Through the sidebar's own path, which asks before it queues a drop.
-            coordinator?.sidebarViewModel?.batchToggleDelete(refs: Array(selectedTables.wrappedValue))
+        } else if !selectedTables.wrappedValue.isEmpty, let coordinator {
+            // Through the sidebar's own path, which asks this window before it queues a drop.
+            coordinator.sidebarViewModel?.batchToggleDelete(
+                refs: Array(selectedTables.wrappedValue),
+                from: coordinator.windowSidebarState
+            )
         }
     }
 
@@ -814,13 +817,16 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func copyTableNames() {
-        coordinator?.sidebarViewModel?.copySelectedTableNames()
+        SidebarViewModel.copyTableNames(of: selectedTables.wrappedValue)
     }
 
     func truncateTables() {
         guard coordinator?.admitsSheetCommand() == true else { return }
-        guard canTruncateSelectedTables else { return }
-        coordinator?.sidebarViewModel?.batchToggleTruncate()
+        guard canTruncateSelectedTables, let coordinator else { return }
+        coordinator.sidebarViewModel?.batchToggleTruncate(
+            refs: Array(selectedTables.wrappedValue),
+            from: coordinator.windowSidebarState
+        )
     }
 
     // MARK: - Filter Operations (Group A: Called Directly)

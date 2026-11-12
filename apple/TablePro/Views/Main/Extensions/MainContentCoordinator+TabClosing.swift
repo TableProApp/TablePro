@@ -76,6 +76,8 @@ extension MainContentCoordinator {
         prune(&erDiagramModels, keeping: openTabIds)
         discardTableHealthModels(tableHealthModels.keys.filter { !openTabIds.contains($0) })
         prune(&navigationHistories, keeping: openTabIds)
+        // The editor stores the outgoing tab's history on its next update, after the close forgot it.
+        editorUndoHistories.forgetAll(except: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
             session.releaseViewWiring()
@@ -112,6 +114,7 @@ extension MainContentCoordinator {
         erDiagramModels.removeValue(forKey: tab.id)
         discardTableHealthModels([tab.id])
         navigationHistories.removeValue(forKey: tab.id)
+        editorUndoHistories.forget(tab.id)
         releaseGridModel(forTab: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }

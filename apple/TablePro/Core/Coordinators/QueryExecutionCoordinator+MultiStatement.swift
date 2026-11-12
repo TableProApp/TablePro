@@ -294,8 +294,8 @@ extension QueryExecutionCoordinator {
 
         parent.tabManager.mutate(at: idx) { tab in
             if tab.tabType == .query {
+                // The schema stays: on a query tab it is the picker's binding, and a run summary has no origin to give.
                 tab.tableContext.tableName = activeOrigin?.tableName
-                tab.tableContext.schemaName = activeOrigin?.schemaName
                 tab.tableContext.primaryKeyColumns = activeOrigin?.primaryKeyColumns ?? []
                 tab.tableContext.isEditable = activeOrigin?.isEditable ?? false
             } else if activeOrigin?.tableName == nil {
