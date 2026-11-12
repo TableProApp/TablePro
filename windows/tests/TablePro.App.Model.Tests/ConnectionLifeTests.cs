@@ -100,6 +100,123 @@ public sealed class ConnectionLifeTests
     }
 
     [Fact]
+    public async Task ASessionThatArrivesAfterADisconnectIsClosedAndNeverShown()
+    {
+        var life = New();
+        var cancelled = 0;
+        life.Cancelled += (_, _) => cancelled++;
+        // The core checks for a cancel only until the server answers, so its session can still come back.
+        var arriving = new Gate(honorsCancel: false);
+        _connector.Connecting = arriving;
+
+        var connect = life.ConnectAsync();
+        await arriving.Reached;
+        await life.DisconnectAsync();
+        arriving.Open();
+        await connect;
+
+        Assert.Equal(1, Assert.Single(_connector.Opened).Disposals);
+        Assert.Null(life.Session);
+        Assert.Equal(ConnectionState.NotConnected, life.State);
+        Assert.DoesNotContain("connected", _view.Shown);
+        Assert.Equal(1, cancelled);
+    }
+
+    [Fact]
+    public async Task ASaveDuringAConnectStartsItOverAndOnlyTheNewSessionShows()
+    {
+        var life = New();
+        var cancelled = 0;
+        life.Cancelled += (_, _) => cancelled++;
+        var first = new Gate(honorsCancel: false);
+        _connector.Connecting = first;
+
+        var connect = life.ConnectAsync();
+        await first.Reached;
+        _connector.Connecting = null;
+        await life.RestartConnectAsync();
+        first.Open();
+        await connect;
+
+        Assert.Equal(2, _connector.Attempts.Count);
+        Assert.Equal(2, _connector.Opened.Count);
+        Assert.Same(_connector.Opened[0], life.Session);
+        Assert.Equal(0, _connector.Opened[0].Disposals);
+        Assert.Equal(1, _connector.Opened[1].Disposals);
+        Assert.Equal(ConnectionState.Connected, life.State);
+        Assert.Single(_view.Shown, shown => shown == "connected");
+        Assert.Equal(0, cancelled);
+        Assert.Equal(1, _view.RecoveriesCancelled);
+    }
+
+    [Fact]
+    public async Task AConnectStartedOverKeepsTheConnectionWhenTheOldOneEndsCancelled()
+    {
+        var life = New();
+        var cancelled = 0;
+        life.Cancelled += (_, _) => cancelled++;
+        var first = new Gate();
+        _connector.Connecting = first;
+
+        var connect = life.ConnectAsync();
+        await first.Reached;
+        var second = new Gate();
+        _connector.Connecting = second;
+        var restart = life.RestartConnectAsync();
+        await second.Reached;
+        await connect;
+
+        Assert.Equal(ConnectionState.Connecting, life.State);
+        Assert.Equal(0, cancelled);
+        Assert.DoesNotContain("cancelled, tabs kept", _view.Shown);
+
+        second.Open();
+        await restart;
+
+        Assert.Equal(ConnectionState.Connected, life.State);
+        Assert.Same(Assert.Single(_connector.Opened), life.Session);
+    }
+
+    [Fact]
+    public async Task ASaveAfterTheUserCancelledLeavesTheConnectCancelled()
+    {
+        var life = New();
+        var cancelled = 0;
+        life.Cancelled += (_, _) => cancelled++;
+        var arriving = new Gate(honorsCancel: false);
+        _connector.Connecting = arriving;
+
+        var connect = life.ConnectAsync();
+        await arriving.Reached;
+        life.CancelConnect();
+        await life.RestartConnectAsync();
+        arriving.Open();
+        await connect;
+
+        Assert.Single(_connector.Attempts);
+        Assert.Equal(1, Assert.Single(_connector.Opened).Disposals);
+        Assert.Equal(ConnectionState.NotConnected, life.State);
+        Assert.Equal(1, cancelled);
+    }
+
+    [Fact]
+    public async Task OnlyAConnectUnderWayStartsOver()
+    {
+        var life = New();
+
+        await life.RestartConnectAsync();
+
+        Assert.Equal(ConnectionState.NotConnected, life.State);
+        Assert.Empty(_connector.Attempts);
+
+        await life.ConnectAsync();
+        await life.RestartConnectAsync();
+
+        Assert.Single(_connector.Attempts);
+        Assert.Equal(0, Assert.Single(_connector.Opened).Disposals);
+    }
+
+    [Fact]
     public async Task DisconnectingTwiceLetsTheSessionGoOnce()
     {
         var life = New();
@@ -150,7 +267,7 @@ public sealed class ConnectionLifeTests
     }
 
     [Fact]
-    public async Task ASecretWithNoneSavedIsAskedForAndSavedOnceTheConnectWorks()
+    public async Task ASecretWithNoneSavedIsAskedForAndKeptByTheConnectThatLogsInWithIt()
     {
         _connector.Failures.Enqueue(Errors.Of("keyring.secret_not_stored", SecretKind.SshPassword));
         _view.Answer = _ => new SecretAnswer("typed", Save: true);
@@ -162,7 +279,9 @@ public sealed class ConnectionLifeTests
         Assert.Equal<ConnectionSecrets>(
             [ConnectionSecrets.None, new ConnectionSecrets(SshPassword: "typed")],
             _connector.Attempts);
-        Assert.Equal(new ConnectionSecrets(SshPassword: "typed"), Assert.Single(_connector.Saved));
+        Assert.Equal<ConnectionSecrets>(
+            [ConnectionSecrets.None, new ConnectionSecrets(SshPassword: "typed")],
+            _connector.Kept);
         Assert.Contains("asked SshPassword", _view.Shown);
     }
 
@@ -180,7 +299,8 @@ public sealed class ConnectionLifeTests
 
         Assert.Equal(ConnectionState.Failed, life.State);
         Assert.Contains("failed keyring.secret_not_stored", _view.Shown);
-        Assert.Empty(_connector.Saved);
+        // The core stores a secret to keep only once it logs in, so the refused one is never stored.
+        Assert.Equal(new ConnectionSecrets(DatabasePassword: "wrong"), _connector.Kept[^1]);
 
         _view.Answer = _ => null;
         _connector.Failures.Enqueue(Errors.Of("keyring.secret_not_stored"));

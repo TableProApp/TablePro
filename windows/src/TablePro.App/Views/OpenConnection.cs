@@ -84,6 +84,8 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
 
     public Task ConnectAsync() => _life.ConnectAsync();
 
+    public Task RestartConnectAsync() => _life.RestartConnectAsync();
+
     public void CancelConnect() => _life.CancelConnect();
 
     // The same connection in another window, on the same session, ready for the tab moved into it.

@@ -316,6 +316,26 @@ public sealed class ConnectionDraft
             LastOpened: LastOpened);
     }
 
+    // A rename, a colour or a group is nothing a connect reads, so a connect under way goes on without them.
+    public static bool ChangesConnect(SavedConnection before, SavedConnection after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        var ssh = after.Ssh is { } now && before.Ssh is { } was
+            && now.JumpHosts.SequenceEqual(was.JumpHosts, StringComparer.Ordinal)
+            ? now with { JumpHosts = was.JumpHosts }
+            : after.Ssh;
+        return after with
+        {
+            Name = before.Name,
+            Color = before.Color,
+            GroupId = before.GroupId,
+            LastOpened = before.LastOpened,
+            Tags = before.Tags,
+            Ssh = ssh,
+        } != before;
+    }
+
     // A new connection saves even an empty password, for a server that takes none; an edit keeps the stored one.
     public ConnectionSecrets Secrets()
     {
