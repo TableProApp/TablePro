@@ -48,16 +48,9 @@ public final class PluginStreamAbort: @unchecked Sendable {
 }
 
 public enum PluginRowStream {
-    /// Builds a row stream whose abort signal is already wired to its termination.
-    ///
-    /// The handler is installed before `build` runs and sets the flag synchronously on whichever
-    /// thread terminated the stream, so a producer that has not started yet still sees it and can
-    /// decline to send the query at all. A producer that hops the signal onto its own serial queue
-    /// instead sees it only after it has finished, which is the defect this exists to make
-    /// unrepeatable.
-    ///
-    /// Termination follows the lifetime of the stream, not the consumer's `break`: a consumer that
-    /// stops reading but holds the stream in scope has not terminated it.
+    // The handler is installed before `build` runs and sets the flag on whichever thread ended the stream, so a
+    // producer that has not started yet still sees it and can decline to send the query. Termination follows the
+    // stream's lifetime, not the consumer's `break`: a consumer that stops reading but holds the stream has not ended it.
     public static func make(
         bufferingPolicy: AsyncThrowingStream<PluginStreamElement, Error>.Continuation.BufferingPolicy = .unbounded,
         _ build: @escaping @Sendable (
@@ -67,7 +60,11 @@ public enum PluginRowStream {
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let abort = PluginStreamAbort()
         return AsyncThrowingStream(bufferingPolicy: bufferingPolicy) { continuation in
-            continuation.onTermination = { @Sendable _ in abort.abort() }
+            // Only the consumer ends a stream as `.cancelled`, by cancelling its task or letting the stream go. A
+            // producer's own `finish` is `.finished`, and aborting then ran its cancel actions after every whole read.
+            continuation.onTermination = { @Sendable termination in
+                if case .cancelled = termination { abort.abort() }
+            }
             build(continuation, abort)
         }
     }

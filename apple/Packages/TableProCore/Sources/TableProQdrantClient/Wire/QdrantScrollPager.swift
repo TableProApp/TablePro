@@ -53,36 +53,17 @@ public extension QdrantClient {
         ).points
     }
 
-    // Without vectors this reads payloads only, which is how an export learns every key before its header.
+    // Without vectors this reads payloads only, which is how an export learns every key before its header. A page is
+    // read only when the reader asks for the next one.
     func pointPages(
         collection: String,
         pageSize: Int,
         withVector: Bool = true
     ) -> AsyncThrowingStream<[QdrantPoint], Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    var cursor: Any?
-                    repeat {
-                        try Task.checkCancellation()
-                        let page = try await self.scroll(
-                            collection: collection,
-                            body: Self.scrollBody(
-                                filter: nil, limit: max(pageSize, 1), cursor: cursor, withData: true, withVector: withVector
-                            )
-                        )
-                        if !page.points.isEmpty {
-                            continuation.yield(page.points)
-                        }
-                        cursor = page.nextCursor
-                    } while cursor != nil
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
-        }
+        let pager = QdrantPointPager(
+            client: self, collection: collection, pageSize: max(pageSize, 1), withVector: withVector
+        )
+        return AsyncThrowingStream(unfolding: { try await pager.next() })
     }
 
     static func scrollBody(
@@ -104,5 +85,40 @@ public extension QdrantClient {
             body["offset"] = cursor
         }
         return body
+    }
+}
+
+// One reader pulls the pages, so one call at a time reaches the cursor.
+private final class QdrantPointPager: @unchecked Sendable {
+    private let client: QdrantClient
+    private let collection: String
+    private let pageSize: Int
+    private let withVector: Bool
+    private var cursor: Any?
+    private var isDone = false
+
+    init(client: QdrantClient, collection: String, pageSize: Int, withVector: Bool) {
+        self.client = client
+        self.collection = collection
+        self.pageSize = pageSize
+        self.withVector = withVector
+    }
+
+    func next() async throws -> [QdrantPoint]? {
+        while !isDone {
+            try Task.checkCancellation()
+            let page = try await client.scroll(
+                collection: collection,
+                body: QdrantClient.scrollBody(
+                    filter: nil, limit: pageSize, cursor: cursor, withData: true, withVector: withVector
+                )
+            )
+            cursor = page.nextCursor
+            isDone = cursor == nil
+            if !page.points.isEmpty {
+                return page.points
+            }
+        }
+        return nil
     }
 }

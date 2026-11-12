@@ -130,9 +130,80 @@ struct SQLRoutineBodyNameTests {
         "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' BEGIN SELECT 1; END; SELECT 2; END",
         "CREATE PROCEDURE p() BEGIN inner_block: BEGIN SELECT 1; END inner_block; SELECT 2; END",
         "CREATE PROCEDURE db.p() outer_block: BEGIN SELECT (CASE WHEN 1 THEN 2 END); SELECT 2; END outer_block",
+        "CREATE FUNCTION f() RETURNS VARCHAR(10) CHARACTER SET utf8mb4 DETERMINISTIC BEGIN SET @a = 1; RETURN 'x'; END",
+        "CREATE TRIGGER tr AFTER DELETE ON t FOR EACH ROW BEGIN DELETE FROM log; INSERT INTO log VALUES (1); END",
+        "CREATE TRIGGER tr BEFORE UPDATE ON t FOR EACH ROW FOLLOWS other BEGIN UPDATE log SET n = 1; SELECT 1; END",
     ])
     func routineHeaders(routine: String) {
         #expect(sent(routine + ";\nSELECT 3", "MySQL") == [routine, "SELECT 3"])
+    }
+
+    @Test("A trigger's events are its header, so the BEGIN after them still opens its body", arguments: [
+        "CREATE TRIGGER tr AFTER INSERT OR UPDATE ON t FOR EACH ROW BEGIN SELECT 1; SELECT 2; END",
+        "CREATE TRIGGER tr INSTEAD OF DELETE ON v FOR EACH ROW BEGIN SELECT 1; SELECT 2; END",
+        "CREATE TRIGGER tr ON t FOR INSERT, UPDATE AS BEGIN SELECT 1; SELECT 2; END",
+        "CREATE TRIGGER tr DELETE ON t BEGIN DELETE FROM log; INSERT INTO log VALUES (1); END",
+        "CREATE TRIGGER tr ON t AFTER INSERT AS IF UPDATE(c) BEGIN SELECT 1; SELECT 2; END",
+    ])
+    func triggerEventsAreHeader(trigger: String) {
+        #expect(sent(trigger + ";\nSELECT 3", "Nonesuch") == [trigger, "SELECT 3"])
+    }
+
+    @Test("A begin column in a routine whose body is one statement opens no block", arguments: [
+        "CREATE PROCEDURE latest_shift() SELECT id FROM shifts ORDER BY begin DESC LIMIT 1",
+        "CREATE EVENT purge ON SCHEDULE EVERY 1 DAY DO DELETE FROM sessions ORDER BY begin LIMIT 1000",
+        "CREATE PROCEDURE p() UPDATE shifts SET closed = 1 WHERE begin IS NULL",
+        "CREATE PROCEDURE p() INSERT INTO log SELECT begin FROM shifts",
+        "CREATE PROCEDURE p() REPLACE INTO log SELECT begin AS b FROM shifts",
+        "CREATE DEFINER=root@localhost PROCEDURE p() COMMENT 'x' READS SQL DATA SELECT begin end_at FROM shifts",
+        "CREATE TRIGGER tr AFTER INSERT ON shifts FOR EACH ROW INSERT INTO log SELECT begin FROM shifts ORDER BY begin DESC",
+        "CREATE FUNCTION open_since(begin DATETIME) RETURNS BOOL DETERMINISTIC RETURN begin IS NULL",
+        "CREATE PROCEDURE p() SELECT CASE WHEN closed THEN begin ELSE NULL END AS s FROM shifts",
+        "CREATE PROCEDURE p() UPDATE (shifts s JOIN x ON x.id = s.id) SET s.closed = 1 WHERE begin IS NULL",
+    ])
+    func singleStatementBodies(routine: String) {
+        for typeId in ["MySQL", "MariaDB", "Nonesuch"] {
+            #expect(
+                sent(routine + ";\nCALL latest_shift();\nDROP TABLE users", typeId)
+                    == [routine, "CALL latest_shift()", "DROP TABLE users"],
+                "\(typeId)"
+            )
+        }
+    }
+
+    @Test("A body that is a control statement keeps the blocks in it, and header clauses stay header", arguments: [
+        "CREATE PROCEDURE p AS IF @x = 1 DELETE FROM t ELSE BEGIN SELECT 1; SELECT 2; END",
+        "CREATE PROCEDURE p() LANGUAGE SQL SET OPTION DBGVIEW = *SOURCE BEGIN SELECT 1; SELECT 2; END",
+        "CREATE PROCEDURE p() LANGUAGE SQL COMMIT ON RETURN NO BEGIN SELECT 1; SELECT 2; END",
+        "CREATE PROCEDURE p AS SET NOCOUNT ON BEGIN SELECT 1; SELECT 2; END",
+    ])
+    func controlStatementBodies(routine: String) {
+        #expect(sent(routine + ";\nSELECT 3", "Nonesuch") == [routine, "SELECT 3"])
+    }
+
+    @Test("A RETURN body's CASE holds no block, so the statements after the function stay their own")
+    func returnBodyWithACase() {
+        let function = "CREATE FUNCTION f(begin int) RETURNS int RETURN CASE WHEN begin > 0 THEN begin ELSE 0 END"
+        #expect(sent(function + "; DROP TABLE users; END", "Nonesuch") == [function, "DROP TABLE users", "END"])
+    }
+
+    @Test("A RETURN that names the type before AS or IS still opens the block after it", arguments: [
+        "CREATE FUNCTION f RETURN INT AS BEGIN SELECT 1; RETURN 2; END",
+        "CREATE OR REPLACE FUNCTION f(a INT) RETURN INT DETERMINISTIC IS BEGIN SELECT 1; RETURN a; END",
+        "CREATE FUNCTION f RETURN INT AS BEGIN IF a THEN BEGIN SELECT 1; END; END IF; RETURN 1; END",
+    ])
+    func returnTypeHeaders(function: String) {
+        for typeId in ["MariaDB", "Nonesuch"] {
+            #expect(sent(function + ";\nSELECT 3", typeId) == [function, "SELECT 3"], "\(typeId)")
+        }
+    }
+
+    @Test("A one-statement event body with a begin column no longer hides the DROP after it from the gate")
+    func singleStatementBodyTiersTheNextStatement() {
+        let sql = "CREATE EVENT purge ON SCHEDULE EVERY 1 DAY DO DELETE FROM sessions ORDER BY begin LIMIT 1000;\n"
+            + "DROP TABLE audit_tmp;"
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "MySQL", declared: nil, session: nil)
+        #expect(SQLStatementClassifier.classify(sql, databaseTypeId: "MySQL", readings: readings).tier == .destructive)
     }
 
     @Test("A block keyword glued to a name character is part of the name", arguments: [

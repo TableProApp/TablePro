@@ -741,7 +741,8 @@ final class SnowflakeConnection: @unchecked Sendable {
         let columns: [SnowflakeColumnMeta]
         let inlineRows: [[PluginCellValueBox]]
         let estimatedRowCount: Int
-        let batches: AsyncThrowingStream<[[PluginCellValueBox]], Error>
+        let chunkURLs: [URL]
+        let chunkHeaders: [String: String]
     }
 
     func queryStreamed(
@@ -758,58 +759,56 @@ final class SnowflakeConnection: @unchecked Sendable {
         let headers = Self.chunkRequestHeaders(from: data)
         let urls = try Self.chunkURLs(chunks)
 
-        let stream = AsyncThrowingStream<[[PluginCellValueBox]], Error> { continuation in
-            guard !urls.isEmpty else {
-                continuation.finish()
-                return
-            }
-            let task = Task { [sessions] in
-                do {
-                    var buffer: [Int: [[PluginCellValueBox]]] = [:]
-                    var nextToYield = 0
-                    try await withThrowingTaskGroup(of: (Int, [[PluginCellValueBox]]).self) { group in
-                        var nextIndex = 0
-                        while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
-                            let index = nextIndex
-                            group.addTask {
-                                (index, try await Self.downloadChunk(
-                                    urls[index], headers: headers, session: sessions.query, columns: columns
-                                ))
-                            }
-                            nextIndex += 1
-                        }
-                        while let (index, rows) = try await group.next() {
-                            buffer[index] = rows
-                            while let ready = buffer[nextToYield] {
-                                buffer[nextToYield] = nil
-                                continuation.yield(ready)
-                                nextToYield += 1
-                            }
-                            if nextIndex < urls.count {
-                                let next = nextIndex
-                                group.addTask {
-                                    (next, try await Self.downloadChunk(
-                                        urls[next], headers: headers, session: sessions.query, columns: columns
-                                    ))
-                                }
-                                nextIndex += 1
-                            }
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
-        }
-
         return StreamedResult(
             columns: columns,
             inlineRows: inlineRows,
             estimatedRowCount: inlineRows.count + chunkRowCount,
-            batches: stream
+            chunkURLs: urls,
+            chunkHeaders: headers
         )
+    }
+
+    // Chunks reach `body` in order. A download starts only as a chunk is handed on, so the chunks downloading or
+    // waiting for one that lags never number more than `chunkDownloadWorkers`.
+    func forEachChunk(
+        of result: StreamedResult,
+        _ body: ([[PluginCellValueBox]]) async throws -> Void
+    ) async throws {
+        let urls = result.chunkURLs
+        guard !urls.isEmpty else { return }
+        let headers = result.chunkHeaders
+        let columns = result.columns
+        let session = self.session
+        try await withThrowingTaskGroup(of: (Int, [[PluginCellValueBox]]).self) { group in
+            var nextIndex = 0
+            while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
+                let index = nextIndex
+                group.addTask {
+                    (index, try await Self.downloadChunk(
+                        urls[index], headers: headers, session: session, columns: columns
+                    ))
+                }
+                nextIndex += 1
+            }
+            var held: [Int: [[PluginCellValueBox]]] = [:]
+            var nextToHandOn = 0
+            while let (index, rows) = try await group.next() {
+                held[index] = rows
+                while let ready = held.removeValue(forKey: nextToHandOn) {
+                    try await body(ready)
+                    nextToHandOn += 1
+                    if nextIndex < urls.count {
+                        let next = nextIndex
+                        group.addTask {
+                            (next, try await Self.downloadChunk(
+                                urls[next], headers: headers, session: session, columns: columns
+                            ))
+                        }
+                        nextIndex += 1
+                    }
+                }
+            }
+        }
     }
 
     private static let chunkDownloadWorkers = 4

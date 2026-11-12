@@ -83,6 +83,13 @@ final class VimTextBufferAdapter: VimTextBuffer {
         return text.character(at: offset)
     }
 
+    func characterRange(at offset: Int) -> NSRange {
+        guard let text, offset >= 0, offset < text.length else {
+            return NSRange(location: min(max(0, offset), length), length: 0)
+        }
+        return text.rangeOfComposedCharacterSequence(at: offset)
+    }
+
     func wordBoundary(forward: Bool, from offset: Int) -> Int {
         guard let text else { return offset }
         guard text.length > 0 else { return 0 }
@@ -153,13 +160,21 @@ final class VimTextBufferAdapter: VimTextBuffer {
         let documentLength = length
         let clampedLocation = max(0, min(range.location, documentLength))
         let clampedLength = max(0, min(range.length, documentLength - clampedLocation))
-        let clampedRange = NSRange(location: clampedLocation, length: clampedLength)
+        let wholeRange = wholeCharacters(NSRange(location: clampedLocation, length: clampedLength))
 
         let currentRange = textView.selectedRange()
-        guard clampedRange != currentRange else { return }
+        guard wholeRange != currentRange else { return }
 
-        textView.selectionManager.setSelectedRange(clampedRange)
-        textView.scrollToRange(clampedRange)
+        textView.selectionManager.setSelectedRange(wholeRange)
+        textView.scrollToRange(wholeRange)
+    }
+
+    // A caret or selection never splits a composed character sequence.
+    private func wholeCharacters(_ range: NSRange) -> NSRange {
+        guard range.length > 0, let text else {
+            return NSRange(location: characterRange(at: range.location).location, length: 0)
+        }
+        return text.rangeOfComposedCharacterSequences(for: range)
     }
 
     func replaceCharacters(in range: NSRange, with string: String) {

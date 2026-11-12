@@ -22,13 +22,18 @@ struct PasswordSourceTestModelTests {
     @Test("A refused test reports why and never runs the source")
     func refusalSkipsTheRun() async {
         let runs = RunCounter()
-        let model = PasswordSourceTestModel { _, _ in
+        let model = PasswordSourceTestModel { _, _, _ in
             runs.increment()
             return "secret"
         }
         let source = PasswordSource.command(shell: "echo secret")
 
-        await model.run(source, context: context, refusal: PasswordSourceResolver.ResolutionError.storeNotTrusted)
+        await model.run(
+            source,
+            context: context,
+            leaseOwner: context.connectionId,
+            refusal: PasswordSourceResolver.ResolutionError.storeNotTrusted
+        )
 
         #expect(runs.value == 0)
         #expect(model.outcome(for: source, context: context) == .failed(
@@ -41,7 +46,7 @@ struct PasswordSourceTestModelTests {
         let model = PasswordSourceTestModel()
         let source = PasswordSource.command(shell: "echo hunter2")
 
-        await model.run(source, context: context, refusal: nil)
+        await model.run(source, context: context, leaseOwner: context.connectionId, refusal: nil)
 
         #expect(model.outcome(for: source, context: context) == .returned("hunter2"))
         #expect(!model.isRunning)
@@ -52,7 +57,7 @@ struct PasswordSourceTestModelTests {
         let model = PasswordSourceTestModel()
         let source = PasswordSource.command(shell: "echo 'op: not signed in' >&2; exit 3")
 
-        await model.run(source, context: context, refusal: nil)
+        await model.run(source, context: context, leaseOwner: context.connectionId, refusal: nil)
 
         guard case .failed(let message) = model.outcome(for: source, context: context) else {
             Issue.record("Expected a failure")
@@ -64,10 +69,10 @@ struct PasswordSourceTestModelTests {
 
     @Test("A result is shown only for the source that produced it")
     func outcomeBelongsToItsSource() async {
-        let model = PasswordSourceTestModel { _, _ in "secret" }
+        let model = PasswordSourceTestModel { _, _, _ in "secret" }
         let tested = PasswordSource.env(variable: "A")
 
-        await model.run(tested, context: context, refusal: nil)
+        await model.run(tested, context: context, leaseOwner: context.connectionId, refusal: nil)
 
         #expect(model.outcome(for: tested, context: context) == .returned("secret"))
         #expect(model.outcome(for: .env(variable: "B"), context: context) == nil)
@@ -75,13 +80,13 @@ struct PasswordSourceTestModelTests {
 
     @Test("Editing the connection's details hides a result that used the old ones")
     func outcomeBelongsToItsConnectionDetails() async {
-        let model = PasswordSourceTestModel { _, context in context.host }
+        let model = PasswordSourceTestModel { _, context, _ in context.host }
         let source = PasswordSource.command(shell: "echo {host}")
         let moved = ConnectionScriptContext(
             connectionId: context.connectionId, connectionName: "c", host: "other", port: 1, user: "u", database: "d"
         )
 
-        await model.run(source, context: context, refusal: nil)
+        await model.run(source, context: context, leaseOwner: context.connectionId, refusal: nil)
 
         #expect(model.outcome(for: source, context: context) == .returned("h"))
         #expect(model.outcome(for: source, context: moved) == nil)
@@ -89,13 +94,13 @@ struct PasswordSourceTestModelTests {
 
     @Test("A new connection's details match from one render to the next")
     func outcomeIgnoresTheThrowawayId() async {
-        let model = PasswordSourceTestModel { _, _ in "secret" }
+        let model = PasswordSourceTestModel { _, _, _ in "secret" }
         let source = PasswordSource.env(variable: "A")
         let rerendered = ConnectionScriptContext(
             connectionId: UUID(), connectionName: "c", host: "h", port: 1, user: "u", database: "d"
         )
 
-        await model.run(source, context: context, refusal: nil)
+        await model.run(source, context: context, leaseOwner: context.connectionId, refusal: nil)
 
         #expect(model.outcome(for: source, context: rerendered) == .returned("secret"))
     }

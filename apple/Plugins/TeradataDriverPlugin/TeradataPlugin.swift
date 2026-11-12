@@ -229,14 +229,14 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let connection = self.connection
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 guard let connection else {
                     continuation.finish(throwing: TeradataWireError.connectionFailed("not connected"))
                     return
                 }
                 do {
-                    // Each reply's rows go out as it arrives, before the next one is asked for.
+                    // Each reply's rows go out as it arrives, and the next one is asked for once the reader has room.
                     try await connection.stream(
                         query,
                         onColumns: { columns in
@@ -247,8 +247,11 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         },
                         onRows: { rows in
                             guard !abort.isAborted else { return false }
-                            continuation.yield(.rows(rows.map { row in row.map { $0.asPluginCell } }))
-                            return true
+                            let delivered = PluginRowStream.deliverBlocking(
+                                .rows(rows.map { row in row.map { $0.asPluginCell } }),
+                                to: continuation
+                            )
+                            return delivered && !abort.isAborted
                         }
                     )
                     continuation.finish()

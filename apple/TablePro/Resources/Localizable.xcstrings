@@ -49971,6 +49971,9 @@
         }
       }
     },
+    "Connections on this profile share one database user. TablePro renews its lease while in use, revokes it once the last connection disconnects or after 10 minutes unused, and never saves the generated password." : {
+
+    },
     "Connections the client may use, ordered by name" : {
       "localizations" : {
         "fr" : {
@@ -188634,6 +188637,9 @@
         }
       }
     },
+    "The database refused the new user Vault created for it for %lld seconds. Some databases load new users on a timer, so try again in a moment." : {
+
+    },
     "The database server enforced this, not TablePro's Safe Mode. You are most likely connected to a read replica, or the server sets new transactions to read-only. Connect to the primary server to write.\n\nServer response: %@" : {
       "localizations" : {
         "fr" : {
@@ -214243,6 +214249,9 @@
     "Vault Address" : {
 
     },
+    "Vault could not complete the request: %@" : {
+
+    },
     "Vault could not issue credentials from %@: %@" : {
       "localizations" : {
         "en" : {
@@ -215478,6 +215487,9 @@
       }
     },
     "Waiting for a compatible build" : {
+
+    },
+    "Waiting for the database to accept the new Vault user" : {
 
     },
     "Waiting for the tunnel" : {

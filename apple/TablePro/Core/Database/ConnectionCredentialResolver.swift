@@ -29,12 +29,14 @@ enum ConnectionCredentialResolver {
     }
 
     // A nil username keeps the connection's own; Redshift IAM and a Vault database role hand back another.
-    // A sign-in that carries a lease belongs to whoever uses it, which releases it when done.
+    // A sign-in that carries a lease belongs to whoever uses it, which releases it when done. `leaseOwner` replaces
+    // `credentialOwner(for:)`, for a Vault user that must not be shared.
     static func resolveSignIn(
         for connection: DatabaseConnection,
         fields: [String: String],
         override: String? = nil,
-        deadline: ConnectionDeadline? = nil
+        deadline: ConnectionDeadline? = nil,
+        leaseOwner: UUID? = nil
     ) async throws -> ResolvedSignIn {
         if let minter = iamPasswordMinter(for: connection, fields: fields) {
             return try await minter.mint(deadline: deadline)
@@ -43,7 +45,11 @@ enum ConnectionCredentialResolver {
         if KerberosAuthFields.isSelected(in: connection.additionalFields) {
             return ResolvedSignIn(username: nil, password: "")
         }
-        return try await resolveStoredSignIn(for: connection, override: override)
+        return try await resolveStoredSignIn(
+            for: connection,
+            override: override,
+            leaseOwner: leaseOwner ?? credentialOwner(for: connection)
+        )
     }
 
     // A lease is a database user Vault creates, so a caller that only wants to know whether a password exists asks this.
@@ -60,17 +66,21 @@ enum ConnectionCredentialResolver {
         return connection.passwordSource
     }
 
-    private static func resolveStoredSignIn(for connection: DatabaseConnection, override: String?) async throws -> ResolvedSignIn {
+    private static func resolveStoredSignIn(
+        for connection: DatabaseConnection,
+        override: String?,
+        leaseOwner: UUID
+    ) async throws -> ResolvedSignIn {
         if let override { return ResolvedSignIn(username: nil, password: override) }
         if case .profile(let profileId) = connection.credentialMode,
            let profile = CredentialProfileStorage.shared.profile(for: profileId) {
-            return try await resolveProfileSignIn(profile, for: connection)
+            return try await resolveProfileSignIn(profile, for: connection, leaseOwner: leaseOwner)
         }
         if let passwordSource = connection.passwordSource {
             guard ConnectionStorage.shared.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.storeNotTrusted
             }
-            return try await resolveSource(passwordSource, for: connection)
+            return try await resolveSource(passwordSource, for: connection, leaseOwner: leaseOwner)
         }
         if connection.usePgpass, readsPgpass(connection) {
             return ResolvedSignIn(username: nil, password: pgpassPassword(for: connection, username: resolveUsername(for: connection)))
@@ -78,9 +88,18 @@ enum ConnectionCredentialResolver {
         return ResolvedSignIn(username: nil, password: ConnectionStorage.shared.loadPassword(for: connection.id) ?? "")
     }
 
-    private static func resolveSource(_ source: PasswordSource, for connection: DatabaseConnection) async throws -> ResolvedSignIn {
+    private static func resolveSource(
+        _ source: PasswordSource,
+        for connection: DatabaseConnection,
+        leaseOwner: UUID
+    ) async throws -> ResolvedSignIn {
         if case .vaultDatabaseRole(let role) = source {
-            return try await VaultDatabaseCredentials.shared.signIn(role, interactive: false)
+            return try await VaultDatabaseCredentials.shared.signIn(
+                role,
+                owner: leaseOwner,
+                for: connection.id,
+                interactive: false
+            )
         }
         let password = try await PasswordSourceResolver.resolve(source, for: ConnectionScriptContext(connection: connection))
         return ResolvedSignIn(username: nil, password: password)
@@ -99,10 +118,8 @@ enum ConnectionCredentialResolver {
         return profile.username
     }
 
-    /// Which record a prompted password is remembered against. A profile answers for every
-    /// connection linked to it, so one profile in "ask every time" mode asks once per launch
-    /// rather than once per connection.
-    static func promptCacheKey(for connection: DatabaseConnection) -> UUID {
+    // A profile answers for every connection linked to it: one prompt per launch, one Vault user while its lease lives.
+    static func credentialOwner(for connection: DatabaseConnection) -> UUID {
         connection.credentialMode.profileId ?? connection.id
     }
 
@@ -125,7 +142,8 @@ enum ConnectionCredentialResolver {
 
     private static func resolveProfileSignIn(
         _ profile: CredentialProfile,
-        for connection: DatabaseConnection
+        for connection: DatabaseConnection,
+        leaseOwner: UUID
     ) async throws -> ResolvedSignIn {
         switch profile.passwordMode {
         case .stored:
@@ -141,7 +159,7 @@ enum ConnectionCredentialResolver {
             guard CredentialProfileStorage.shared.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.profileStoreNotTrusted
             }
-            return try await resolveSource(source, for: connection)
+            return try await resolveSource(source, for: connection, leaseOwner: leaseOwner)
         }
     }
 
@@ -214,9 +232,9 @@ enum ConnectionCredentialResolver {
 struct ResolvedSignIn: Equatable, Sendable {
     let username: String?
     let password: String
-    let lease: VaultLease?
+    let lease: VaultLeaseHold?
 
-    init(username: String?, password: String, lease: VaultLease? = nil) {
+    init(username: String?, password: String, lease: VaultLeaseHold? = nil) {
         self.username = username
         self.password = password
         self.lease = lease

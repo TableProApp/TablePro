@@ -127,10 +127,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// quotes a name and a `'...'` after a line break is a string of its own, not part of an `E'...'`. 1.5.4 continues
     /// the `E'...'` as PostgreSQL does, a registry plugin built before 2.0 links 1.5, and `enable_legacy_parser` brings
     /// 1.5's parser back on 2.0, so a gate reads both. It has no `BEGIN ... END` body, so it takes PostgreSQL's
-    /// narrower fact.
+    /// narrower fact. Both versions turn the non-ASCII spaces into blanks before they lex, outside the quotes their
+    /// pre-lexing pass sees.
     static let duckDB: SQLLexicalGrammar = [
         .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .backtickQuotes,
-        .carriageReturnEndsLineComments, .atomicRoutineBodies,
+        .carriageReturnEndsLineComments, .atomicRoutineBodies, .nonASCIISpacesEndNames,
     ]
 
     /// Oracle 23.26, measured: a backslash is literal, block comments do not nest, `q'[...]'` is a literal, `$` and
@@ -295,7 +296,13 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "libSQL": sqliteFamily,
             "Turso": sqliteFamily,
             "Cloudflare D1": sqliteFamily,
-            "DuckDB": SQLLexicalProfile(grammar: duckDB, undetermined: [.escapeStringContinuations]),
+            // DuckDB blanks a non-ASCII space only where its own pre-lexing pass is outside a quote, and that pass reads
+            // quotes its own way: after `a$$`, `E'\''` or `/* ' */` it keeps the space, a name character again
+            // (measured by hand on 1.5.4 and 2.0.0; the probe checks the execution reading only). So a gate reads both.
+            "DuckDB": SQLLexicalProfile(
+                grammar: duckDB,
+                undetermined: [.escapeStringContinuations, .nonASCIISpacesEndNames]
+            ),
             "Oracle": SQLLexicalProfile(grammar: oracle),
             "Dameng": SQLLexicalProfile(
                 grammar: dameng,
