@@ -438,6 +438,15 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 }
 
+// The sign-in went through and the server refused the database the handshake named, with the code a `USE` there gets:
+// 1044 (no grant, or missing to a user without global privileges) or 1049 (missing). A failed sign-in is 1045
+// whatever the database. Measured with scripts/probes/check-mysql-dial-database-refusal.sh.
+nonisolated enum MySQLDatabaseRefusal {
+    static func isRefusal(code: UInt32) -> Bool {
+        code == 1_044 || code == 1_049
+    }
+}
+
 nonisolated enum MySQLTokenSignIn {
     // A token session refuses a server without TLS before the token is sent; this names that refusal.
     static func connectFailure(
@@ -727,6 +736,8 @@ private actor MySQLActor {
             }
         } catch let failure as AttemptFailure where MySQLPlaintextPassword.isRefusal(code: failure.code) {
             throw MySQLError.connectionFailed(MySQLPlaintextPassword.refusalMessage)
+        } catch let failure as AttemptFailure where MySQLDatabaseRefusal.isRefusal(code: failure.code) {
+            throw MySQLError.databaseRefused(failure.message)
         } catch let failure as AttemptFailure {
             if let tokenFailure = MySQLTokenSignIn.connectFailure(
                 signsInWithToken: signsInWithToken,
@@ -1258,13 +1269,15 @@ nonisolated private struct RawMySQLResult: Sendable {
 
 nonisolated enum MySQLError: Error, LocalizedError {
     case connectionFailed(String)
+    // Reads as any failed connect; the open tells it apart to fall back to the saved database.
+    case databaseRefused(String)
     case notConnected
     case queryFailed(String)
     case unsupported(String)
 
     var errorDescription: String? {
         switch self {
-        case .connectionFailed(let msg): return "MySQL connection failed: \(msg)"
+        case .connectionFailed(let msg), .databaseRefused(let msg): return "MySQL connection failed: \(msg)"
         case .notConnected: return "Not connected to MySQL database"
         case .queryFailed(let msg): return "MySQL query failed: \(msg)"
         case .unsupported(let msg): return msg

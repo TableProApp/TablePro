@@ -136,6 +136,13 @@ final class ConnectionSessionModel {
         record.type == .postgresql || record.type == .redshift
     }
 
+    // MySQL, MariaDB and TiDB sign in by user and host alone, and refuse the database a handshake names with the code a
+    // `USE` there gets. SQL Server signs a contained user in against the database the login names, so a dial there
+    // can fail the sign-in or sign in as another principal; it and the others dial the saved database and move after.
+    private var dialsRememberedDatabase: Bool {
+        redialsToSwitchDatabase || record.type == .mysql || record.type == .mariadb || record.type == .tidb
+    }
+
     func adopt(_ record: DatabaseConnection) {
         guard record.id == self.record.id, record != self.record else { return }
         self.record = record
@@ -338,7 +345,7 @@ final class ConnectionSessionModel {
                 }
                 // A sign-in is the connection's, not the database's: the saved database would fail the same way.
                 guard target.database != saved.database, isCurrent(attempt),
-                      listRefused != nil || Self.mayBlameDatabase(error),
+                      listRefused != nil || blamesDatabase(error),
                       SignInOffer.method(for: error, connection: saved, secureStore: appState.secureStore) == nil
                 else { throw error }
                 Self.logger.warning("Failed to open remembered database \(target.database, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -346,8 +353,11 @@ final class ConnectionSessionModel {
                 await appState.connectionManager.disconnect(connectionId)
                 guard isCurrent(attempt) else { return }
                 landed = try await dialForOpen(saved, schema: nil, by: attempt, joining: false)
-                restoring.database = saved.database
-                refused = RefusedDatabase(name: target.database, error: error)
+                // A USE engine still moves there with USE, as its open always did, and that USE says why it fails.
+                if redialsToSwitchDatabase {
+                    restoring.database = saved.database
+                }
+                refused = RefusedDatabase(name: target.database, error: error, reportedBySwitch: !redialsToSwitchDatabase)
             }
             guard isCurrent(attempt) else { return }
             let newSession = landed.outcome.session
@@ -391,11 +401,9 @@ final class ConnectionSessionModel {
         }
     }
 
-    // Where the connection was, so the first table list is already the right one. Only PostgreSQL and Redshift, which
-    // need a second connection to change database. The others dial the saved one and move with USE, as before, so their
-    // refusals, which the app cannot always tell apart from a failed sign-in, never decide between two dials.
+    // Where the connection was, so the first table list is already the right one.
     private func openTarget(restoring wanted: Placement) -> DatabaseConnection {
-        guard redialsToSwitchDatabase, !wanted.database.isEmpty else { return record }
+        guard dialsRememberedDatabase, !wanted.database.isEmpty else { return record }
         var target = record
         target.database = wanted.database
         return target
@@ -419,6 +427,8 @@ final class ConnectionSessionModel {
     private struct RefusedDatabase {
         let name: String
         let error: any Error
+        // The open's own USE tried it again and said why that failed.
+        let reportedBySwitch: Bool
     }
 
     nonisolated private struct TableListRefused: Error {
@@ -438,6 +448,13 @@ final class ConnectionSessionModel {
         if case PostgreSQLError.unreachable = error { return false }
         let message = error.localizedDescription.lowercased()
         return !notAboutTheDatabase.contains { message.contains($0) }
+    }
+
+    // A MySQL-family refusal comes typed by its code; any other would fail the saved database the same way.
+    private func blamesDatabase(_ error: any Error) -> Bool {
+        if redialsToSwitchDatabase { return Self.mayBlameDatabase(error) }
+        if case MySQLError.databaseRefused = error { return true }
+        return false
     }
 
     private nonisolated static let notAboutTheDatabase = [
@@ -502,6 +519,7 @@ final class ConnectionSessionModel {
         reportingTo scene: ConnectionCoordinator?
     ) {
         guard let listed, !listed.contains(refused.name) else {
+            guard !refused.reportedBySwitch else { return }
             scene?.presentFailure(
                 title: ConnectionCoordinator.switchDatabaseFailedTitle,
                 message: classify(refused.error, operation: "switchDatabase").message
