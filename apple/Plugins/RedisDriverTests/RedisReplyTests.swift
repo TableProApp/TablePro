@@ -58,6 +58,35 @@ struct RedisReplyStringValueTests {
         let reply = RedisReply.array([.string("a")])
         #expect(reply.stringValue == nil)
     }
+
+    @Test("data that starts with a byte order mark keeps it in stringValue and displayText")
+    func dataKeepsByteOrderMark() {
+        let reply = RedisReply.data(Data([0xEF, 0xBB, 0xBF] + Array("user:1".utf8)))
+        #expect(reply.stringValue?.unicodeScalars.first == "\u{FEFF}")
+        #expect(reply.displayText.unicodeScalars.first == "\u{FEFF}")
+    }
+}
+
+// MARK: - SCAN reply
+
+struct RedisScanReplyTests {
+    private static let markedKey = Data([0xEF, 0xBB, 0xBF] + Array("user:1".utf8))
+
+    @Test("A key that starts with a byte order mark is listed with it")
+    func keyKeepsByteOrderMark() throws {
+        let page = RedisScanReply.parse(.array([.string("0"), .array([.data(Self.markedKey), .string("user:1")])]))
+        #expect(page.keys.count == 2)
+        let first = try #require(page.keys.first)
+        #expect(Data(first.utf8) == Self.markedKey)
+        #expect(page.keys.last == "user:1")
+    }
+
+    @Test("A key that is not UTF-8 is still left out")
+    func binaryKeyLeftOut() {
+        let page = RedisScanReply.parse(.array([.string("7"), .array([.data(Data([0xFF, 0xFE])), .string("a")])]))
+        #expect(page.cursor == "7")
+        #expect(page.keys == ["a"])
+    }
 }
 
 // MARK: - intValue

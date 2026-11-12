@@ -29,8 +29,7 @@ struct TableMentionIndex: Sendable {
         TableMentionIndex(tables: tables)
     }
 
-    // The names are already sorted, so the first `limit` matches are the ones a sort of every match
-    // would keep.
+    // The names are already sorted, so the first `limit` matches are the ones a full sort would keep.
     func names(matching query: String, limit: Int) -> [String] {
         guard limit > 0 else { return [] }
         guard !query.isEmpty else { return Array(names.prefix(limit)) }
@@ -49,8 +48,7 @@ struct TableMentionIndex: Sendable {
         return matches
     }
 
-    // Only ASCII folds to ASCII one character for one, which is where a byte search finds what
-    // `localizedCaseInsensitiveContains` finds; `ß` folds to `ss` and would match `weis`.
+    // Only ASCII folds one character for one; `ß` folds to `ss` and a byte search would match `weis`.
     private static func asciiFolded(_ text: String) -> [UInt8]? {
         guard text.utf8.allSatisfy({ $0 < 0x80 }) else { return nil }
         let folded = Array(text.folding(options: .caseInsensitive, locale: .current).utf8)
@@ -82,12 +80,15 @@ extension AIChatViewModel {
         tableMentions.names.count > Self.mentionMenuTableLimit
     }
 
-    // Started by the panel, so a session whose assistant is never shown never indexes its catalog.
+    // A schema load on another connection leaves this session's tables as they were.
     func trackTableMentions() {
         if tableMentionObservation == nil {
             tableMentionObservation = services.schemaService.$generations
-                .map { _ in () }
-                .merge(with: $connection.map { _ in () })
+                .combineLatest($connection.map { $0?.id })
+                .map { generations, connectionId in
+                    CatalogGeneration(connectionId: connectionId, generation: connectionId.flatMap { generations[$0] })
+                }
+                .removeDuplicates()
                 .receive(on: RunLoop.main)
                 .sink { [weak self] _ in self?.refreshTableMentions() }
         }
@@ -111,4 +112,9 @@ extension AIChatViewModel {
     private static func sameNames(_ lhs: [TableInfo], _ rhs: [TableInfo]) -> Bool {
         lhs.count == rhs.count && lhs.indices.allSatisfy { lhs[$0].name == rhs[$0].name }
     }
+}
+
+private struct CatalogGeneration: Equatable {
+    let connectionId: UUID?
+    let generation: Int?
 }

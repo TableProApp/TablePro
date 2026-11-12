@@ -56,12 +56,7 @@ struct PairingApprovalSheet: View {
                 expirySection
             }
             .formStyle(.grouped)
-            /// The one greedy child, and the reason the sheet needs a bound at all. A grouped
-            /// `Form` is a scroll container, so it answers any proposal with the whole proposed
-            /// height: unbounded, it measured `CGFloat.greatestFiniteMagnitude`, and the window
-            /// sized from that raised. Capping it here rather than fixing the sheet's own height
-            /// keeps the rest of the sheet free to grow with the text size. The sections scroll
-            /// inside the cap. (#2930)
+            // A grouped Form answers any proposal with the whole height, so it alone is capped (#2930).
             .frame(maxHeight: 420)
 
             Divider()
@@ -81,8 +76,7 @@ struct PairingApprovalSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            /// The name is whatever the request asked to be called, so it is bounded here rather
-            /// than trusted to be short enough to lay out.
+            // The name is whatever the request asked to be called, so its length is bounded here.
             Text(String(format: String(localized: "Allow %@ to access TablePro?"), request.clientName))
                 .font(.headline)
                 .lineLimit(2)
@@ -97,10 +91,7 @@ struct PairingApprovalSheet: View {
         .padding()
     }
 
-    /// Where the one-time code is delivered, which is the only part of the request that says who
-    /// actually receives the grant. The client name above is a label the request chose for itself,
-    /// so approving on that alone approves a destination nobody was shown. Truncated in the middle
-    /// rather than the tail, because the scheme and the host are what a reader checks.
+    // The client name is the request's own label; this says who receives the grant, so it keeps the scheme and host.
     private var destinationLabel: some View {
         HStack(spacing: 6) {
             Image(systemName: "arrow.up.forward.app")
@@ -122,7 +113,7 @@ struct PairingApprovalSheet: View {
                 .foregroundStyle(isExpired ? .red : Color(nsColor: .secondaryLabelColor))
                 .imageScale(.small)
                 .accessibilityHidden(true)
-            Text(countdownText)
+            countdownText
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -139,11 +130,11 @@ struct PairingApprovalSheet: View {
         remainingSeconds <= 0
     }
 
-    private var countdownText: String {
+    private var countdownText: Text {
         if isExpired {
-            return String(localized: "Code expired")
+            return Text(String(localized: "Code expired"))
         }
-        return String(format: String(localized: "Code expires in %d seconds"), remainingSeconds)
+        return Text("Code expires in ^[\(remainingSeconds) second](inflect: true)")
     }
 
     private var permissionsSection: some View {
@@ -234,8 +225,7 @@ struct PairingApprovalSheet: View {
         request.scopeRequest.optionalGrants.contains(.connectionsDisplay)
     }
 
-    /// Starts off even when the setting allows it: an agent with a shell can open a pairing link to
-    /// its own loopback redirect, and one click on Approve must not hand it these connections.
+    // Off even when allowed: an agent with a shell can pair to its own redirect, and one Approve must not hand it these.
     private var hiddenConnectionsSection: some View {
         Section(String(localized: "Connections Hidden from AI")) {
             if allowsHiddenConnectionListing {

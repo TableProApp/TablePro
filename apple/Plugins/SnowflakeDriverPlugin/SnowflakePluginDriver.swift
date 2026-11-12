@@ -90,9 +90,15 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         lock.withLock { _connection = conn }
 
+        if let known = conn.serverVersion {
+            lock.withLock { _serverVersion = known }
+            return
+        }
         if let result = try? await conn.query("SELECT CURRENT_VERSION()", owner: queryOwner),
            let first = result.rows.first?.first, case .text(let version) = first {
-            lock.withLock { _serverVersion = "Snowflake \(version)" }
+            let serverVersion = "Snowflake \(version)"
+            conn.serverVersion = serverVersion
+            lock.withLock { _serverVersion = serverVersion }
         } else {
             lock.withLock { _serverVersion = "Snowflake" }
         }
@@ -311,6 +317,8 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }.sorted { $0.name < $1.name }
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let database = connection?.currentDatabase
@@ -619,29 +627,29 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     guard let conn = self.connection else { throw SnowflakeError.notConnected }
                     let trimmed = query.replacingOccurrences(of: ";\\s*\\z", with: "", options: .regularExpression)
-                    let streamed = try await conn.queryStreamed(trimmed, owner: queryOwner)
+                    let streamed = try await conn.queryStreamed(trimmed, owner: self.queryOwner)
                     continuation.yield(.header(PluginStreamHeader(
                         columns: streamed.columns.map(\.name),
                         columnTypeNames: streamed.columns.map(SnowflakeTypeMapper.displayType),
                         estimatedRowCount: streamed.estimatedRowCount
                     )))
                     if !streamed.inlineRows.isEmpty {
-                        continuation.yield(.rows(streamed.inlineRows.map { row in row.map(Self.cellValue) }))
+                        _ = await PluginRowStream.deliver(.rows(streamed.inlineRows.map { row in row.map(Self.cellValue) }), to: continuation)
                     }
-                    for try await batch in streamed.batches {
-                        continuation.yield(.rows(batch.map { row in row.map(Self.cellValue) }))
+                    try await conn.forEachChunk(of: streamed) { batch in
+                        _ = await PluginRowStream.deliver(.rows(batch.map { row in row.map(Self.cellValue) }), to: continuation)
                     }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 

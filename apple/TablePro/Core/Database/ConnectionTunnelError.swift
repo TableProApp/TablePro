@@ -5,6 +5,7 @@ enum ConnectionTunnelError: Error, LocalizedError, Equatable {
     case remoteFileUnsupported(String)
     case remoteFilePathMissing
     case srvLookupBehindTunnel
+    case sshProfileMoved
 
     static func refusal(for connection: DatabaseConnection) -> ConnectionTunnelError? {
         guard connection.enabledTunnelKinds.contains(where: { $0 != .remoteFile && $0 != .remoteDatabaseSession })
@@ -36,6 +37,8 @@ enum ConnectionTunnelError: Error, LocalizedError, Equatable {
                 An SRV record names servers the tunnel cannot reach, so the connection would go around it. Turn the tunnel \
                 off, or list the servers under Hosts and turn off Use SRV Record.
                 """)
+        case .sshProfileMoved:
+            return String(localized: "The SSH profile this connection uses now points to another server. Click Reconnect in its window to use it.")
         }
     }
 }

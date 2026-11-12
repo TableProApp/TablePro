@@ -35,12 +35,14 @@ struct ConnectionFormEdits: Equatable {
     var queryTimeoutSeconds: Int?
     var binaryInlineLimitKilobytes: Int?
     var completionIdentifierCase: SQLIdentifierCase = .default
+    var commitMode: ConnectionCommitMode = .automatic
     var redisDatabase: Int?
     var startupCommands: String?
     var localOnly: Bool
     var additionalFields: [String: String]
     var ownedAdditionalFieldIDs: Set<String>
     var maskingRules: [MaskingRule] = []
+    var revokedAIAlwaysAllowedTools: Set<String> = []
 
     static let appManagedAdditionalFieldIDs: Set<String> = [
         "preConnectScript",
@@ -51,6 +53,7 @@ struct ConnectionFormEdits: Equatable {
         DatabaseConnection.queryTimeoutSecondsKey,
         DatabaseConnection.binaryInlineLimitKilobytesKey,
         DatabaseConnection.completionIdentifierCaseKey,
+        DatabaseConnection.commitModeKey,
         DatabaseConnection.maskingRulesKey,
         DatabaseConnection.sshForwardUnixSocketPathKey,
         MySQLLocalSocket.fieldKey
@@ -89,7 +92,10 @@ struct ConnectionFormEdits: Equatable {
         result.queryTimeoutSeconds = queryTimeoutSeconds
         result.binaryInlineLimitKilobytes = binaryInlineLimitKilobytes
         result.completionIdentifierCase = completionIdentifierCase
+        result.commitMode = commitMode
         result.maskingRules = maskingRules
+        // Subtract, never assign: a grant recorded while the form was open stays.
+        result.aiAlwaysAllowedTools.subtract(revokedAIAlwaysAllowedTools)
         return result
     }
 

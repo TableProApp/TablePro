@@ -116,12 +116,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
     // Whether this driver runs a statement marked read-only in the engine's read-only mode.
     var runsReadOnlyStatements: Bool { get }
 
+    // Whether this driver runs a statement whose context `enforcesReadOnly` in the engine's read-only mode, or refuses
+    // it, from every call that takes a context.
+    var enforcesReadOnlyMode: Bool { get }
+
     /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
     /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
     ///
     /// Call this only for a statement already classified as a read. Bounding means abandoning the
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
+
+    // Nil also when the driver cannot honor `context` on a bounded read: the caller then runs `executeUserQuery` with the
+    // same context and cap.
+    func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult?
 
     /// Runs a statement the app wrote to read, telling the driver it may only read. A driver that
     /// evaluates statements in a scripting engine with state refuses any write the script reaches,
@@ -174,8 +182,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
-    // False when `fetchAllColumns` degrades to one round trip per table.
+    // One query that also reports every column `fetchColumns` does, so Compare can trust it.
     var providesBulkColumnFetch: Bool { get }
+
+    // Only whether `fetchAllColumns` reads every table in one request, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { get }
 
     /// Dotted field paths a document store exposes for a collection, for query authoring.
     /// Default implementation returns nothing, which is correct for every SQL driver.
@@ -347,6 +358,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch the source of one trigger.
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
+
+    // Mirrors `PluginDatabaseDriver.serverObjectKinds`: asked of the live driver, never of the type.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo]
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -549,6 +565,24 @@ extension DatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    // A driver without its own overload ignores every field, so a read-only mode, a statement policy or a catalog pin
+    // it was asked for would silently not happen.
+    func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult? {
+        guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+              context.allowsDestructive, context.allowsServerCode
+        else { return nil }
+        return try await executeBoundedQuery(query: query, rowCap: rowCap)
+    }
+
+    var enforcesReadOnlyMode: Bool { false }
+
+    // What a run carries when Safe Mode is Read-Only and this driver can hold the engine to it. Nil otherwise, so the run
+    // keeps the calls it always made.
+    func readOnlyRunContext(safeModeIsReadOnly: Bool) -> PluginStatementContext? {
+        guard safeModeIsReadOnly, enforcesReadOnlyMode else { return nil }
+        return PluginStatementContext(enforcesReadOnly: true)
+    }
 
     func executeRead(query: String) async throws -> QueryResult {
         try await execute(query: query)
@@ -832,6 +866,8 @@ extension DatabaseDriver {
 
     var providesBulkColumnFetch: Bool { false }
 
+    var fetchesAllColumnsInOneRequest: Bool { false }
+
     var providesBulkForeignKeyFetch: Bool { false }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]] {
@@ -1030,6 +1066,17 @@ extension DatabaseDriver {
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         throw PluginObjectSourceError.unsupported(trigger.name)
+    }
+
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
     }
 
     var supportsTransactions: Bool { true }

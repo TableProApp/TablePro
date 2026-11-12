@@ -10,10 +10,16 @@ pub(super) fn secret_message(error: &tablepro_core::credentials::SecretError) ->
         SecretError::PortalUnavailable { .. } => crate::i18n::gettext(
             "The secret portal is unavailable, so saved passwords cannot be read inside the sandbox. Check that xdg-desktop-portal and a keyring are running, or enter the password by hand.",
         ),
-        SecretError::Locked => crate::i18n::gettext("The keyring is locked. Unlock it and try again."),
-        SecretError::UnlockDismissed => {
-            crate::i18n::gettext("The keyring stayed locked because the unlock prompt was dismissed.")
-        }
+        SecretError::Locked => format!(
+            "{} {}",
+            crate::i18n::gettext("The keyring is locked."),
+            crate::services::secret_save_report::keyring_locked_recovery(),
+        ),
+        SecretError::UnlockDismissed => format!(
+            "{} {}",
+            crate::i18n::gettext("The keyring stayed locked because the unlock prompt was dismissed."),
+            crate::services::secret_save_report::keyring_locked_recovery(),
+        ),
         SecretError::InvalidEncoding => {
             crate::i18n::gettext("The stored password is not readable text. Enter it again to replace it.")
         }

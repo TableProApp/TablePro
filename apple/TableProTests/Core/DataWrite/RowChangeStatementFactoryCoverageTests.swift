@@ -319,7 +319,42 @@ struct RowChangeStatementFactoryCoverageTests {
         let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
 
         #expect(build.steps.map(\.statement.sql) == ["updateOne(0)"])
-        #expect(build.steps.allSatisfy { $0.expectedRowCount == nil })
+        #expect(build.steps.allSatisfy { $0.expectedRowCount == nil && !$0.countsMatchedRows })
+    }
+
+    @Test("A driver's own matched-row count reaches the save plan as the count the step is held to")
+    func buildRowWritesTakesTheDriversMatchedRowCount() throws {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "items", columns: columns, primaryKeyColumns: ["_id"],
+            databaseType: .snowflake, generatedColumns: []
+        )
+        manager.pluginDriver = RowWriteStubDriver { changes, _, _, _ in
+            changes.map { PluginRowWrite(statement: "updateOne(\($0.rowIndex))", rowIndices: [$0.rowIndex], expectedRowCount: 1) }
+        }
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "a", newValue: "z", originalRow: ["0", "a"]
+        )
+
+        let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
+
+        #expect(build.steps.map(\.expectedRowCount) == [1])
+        #expect(build.steps.allSatisfy { $0.countsMatchedRows && !$0.matchesRowsWithoutKey })
+    }
+
+    @Test("A driver's count never raises the one row the host holds a keyless statement to")
+    func driverCountNeverLoosensTheKeylessHold() throws {
+        let driver = RowWriteStubDriver { changes, _, _, _ in
+            changes.map { PluginRowWrite(statement: "updateOne(\($0.rowIndex))", rowIndices: [$0.rowIndex], expectedRowCount: 3) }
+        }
+        let written = try factory(primaryKeyColumns: [], databaseType: .mssql, driver: driver)
+            .rowWriteStatements(for: [nameEdit()])
+
+        let steps = DataWriteStep.rowWrites(written, tableName: "items", primaryKeyColumns: [])
+
+        #expect(steps.map(\.expectedRowCount) == [1])
+        #expect(steps.allSatisfy { $0.matchesRowsWithoutKey && $0.countsMatchedRows })
     }
 
     @Test("A driver's keyed statement through a view is held to its one row")

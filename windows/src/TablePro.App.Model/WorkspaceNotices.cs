@@ -7,6 +7,18 @@ public sealed record HeldTab(string Title, TransactionState Transaction, bool Se
 // The shown tab has its own bar above its results, so this one names another tab holding a transaction.
 public sealed record TransactionElsewhere(int Target, string Title, TransactionState Transaction, int Count);
 
+// What ending the tabs without their questions would lose, which a sign-out waits on.
+public sealed record PendingWork(bool UnsavedChanges, bool HeldTransaction)
+{
+    public static PendingWork None { get; } = new(false, false);
+
+    public PendingWork Combine(PendingWork other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return new(UnsavedChanges || other.UnsavedChanges, HeldTransaction || other.HeldTransaction);
+    }
+}
+
 public enum HealthNoticeKind
 {
     Reconnecting,

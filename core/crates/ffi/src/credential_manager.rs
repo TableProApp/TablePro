@@ -8,10 +8,22 @@ use tablepro_storage::english_item_label;
 use uuid::Uuid;
 use windows_sys::Win32::Foundation::{ERROR_NOT_FOUND, GetLastError};
 use windows_sys::Win32::Security::Credentials::{
-    CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW, CredWriteW,
+    CRED_MAX_CREDENTIAL_BLOB_SIZE, CRED_MAX_STRING_LENGTH, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
+    CREDENTIAL_ATTRIBUTEW, CREDENTIALW, CredDeleteW, CredFree, CredReadW, CredWriteW,
 };
 
+use crate::credential_parts::{self, Layout, PartStore, Stored};
+
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+// CredWriteW refuses a larger blob, which an Entra or RDS IAM token passes.
+const PART_SIZE: usize = CRED_MAX_CREDENTIAL_BLOB_SIZE as usize;
+
+// One unit short of CRED_MAX_STRING_LENGTH leaves room for the NUL whether or not CredWriteW counts it.
+const COMMENT_UNITS: usize = CRED_MAX_STRING_LENGTH as usize - 1;
+
+// An attribute keyword of the form CREDENTIAL_ATTRIBUTEW asks for, <Company>_<Name>.
+const LAYOUT_KEYWORD: &str = "TablePro_Parts";
 
 // Generic credentials under one prefix, so Credential Manager lists TablePro's together and a test keeps to its own.
 pub(crate) struct CredentialManager {
@@ -113,79 +125,143 @@ fn decode(blob: &[u8]) -> Result<SecretString, SecretError> {
     Ok(SecretString::from(text))
 }
 
-fn read(target: &str) -> Result<Option<SecretString>, SecretError> {
-    let name = wide(target);
-    let mut found: *mut CREDENTIALW = std::ptr::null_mut();
-    // SAFETY: `name` is NUL-terminated and outlives the call; `found` receives a buffer CredFree releases.
-    let ok = unsafe { CredReadW(name.as_ptr(), CRED_TYPE_GENERIC, 0, &raw mut found) };
-    if ok == 0 {
-        // SAFETY: reads the last error CredReadW set.
-        if unsafe { GetLastError() } == ERROR_NOT_FOUND {
-            return Ok(None);
+struct Credentials;
+
+impl PartStore for Credentials {
+    type Error = SecretError;
+
+    fn read(&self, target: &str) -> Result<Option<Stored>, SecretError> {
+        let name = wide(target);
+        let mut found: *mut CREDENTIALW = std::ptr::null_mut();
+        // SAFETY: `name` is NUL-terminated and outlives the call; `found` receives a buffer CredFree releases.
+        let ok = unsafe { CredReadW(name.as_ptr(), CRED_TYPE_GENERIC, 0, &raw mut found) };
+        if ok == 0 {
+            // SAFETY: reads the last error CredReadW set.
+            if unsafe { GetLastError() } == ERROR_NOT_FOUND {
+                return Ok(None);
+            }
+            return Err(failure("read"));
         }
-        return Err(failure("read"));
+        let keyword = wide(LAYOUT_KEYWORD);
+        // SAFETY: CredReadW succeeded: `found`, its blob and its attributes are live and sized as given until CredFree.
+        let stored = unsafe {
+            let credential = &*found;
+            let size = credential.CredentialBlobSize as usize;
+            let blob = if credential.CredentialBlob.is_null() || size == 0 {
+                Zeroizing::new(Vec::new())
+            } else {
+                let blob = std::slice::from_raw_parts_mut(credential.CredentialBlob, size);
+                let copied = Zeroizing::new(blob.to_vec());
+                // CredFree releases the block as it is, so the decrypted text would stay in freed memory.
+                blob.zeroize();
+                copied
+            };
+            let attributes = if credential.Attributes.is_null() {
+                &[][..]
+            } else {
+                std::slice::from_raw_parts(credential.Attributes, credential.AttributeCount as usize)
+            };
+            let layout = attributes
+                .iter()
+                .find(|attribute| names(attribute.Keyword, &keyword))
+                .filter(|attribute| !attribute.Value.is_null())
+                .and_then(|attribute| {
+                    Layout::from_bytes(std::slice::from_raw_parts(
+                        attribute.Value,
+                        attribute.ValueSize as usize,
+                    ))
+                });
+            Stored { blob, layout }
+        };
+        // SAFETY: `found` came from CredReadW and is freed once.
+        unsafe { CredFree(found.cast_const().cast()) };
+        Ok(Some(stored))
     }
-    // SAFETY: CredReadW succeeded, so `found` is live until CredFree, the process owns it, and a non-null blob
-    // holds its size.
-    let decoded = unsafe {
-        let credential = &*found;
-        let size = credential.CredentialBlobSize as usize;
-        if credential.CredentialBlob.is_null() || size == 0 {
-            decode(&[])
+
+    fn write(&self, target: &str, blob: &[u8], label: &str, layout: Option<Layout>) -> Result<(), SecretError> {
+        let name = wide(target);
+        let mut comment = wide(credential_parts::fitted(label, COMMENT_UNITS));
+        let mut user = wide("TablePro");
+        let size = u32::try_from(blob.len()).map_err(|_| SecretError::Backend {
+            detail: "a part of the secret is too long for Credential Manager".to_owned(),
+            service_message: None,
+        })?;
+        // SAFETY: every field of CREDENTIALW is a number or a pointer, for which zero is valid.
+        let mut credential: CREDENTIALW = unsafe { std::mem::zeroed() };
+        credential.Type = CRED_TYPE_GENERIC;
+        credential.TargetName = name.as_ptr().cast_mut();
+        credential.Comment = comment.as_mut_ptr();
+        credential.CredentialBlobSize = size;
+        // CredWriteW reads the blob and never writes through the pointer.
+        credential.CredentialBlob = if blob.is_empty() {
+            std::ptr::null_mut()
         } else {
-            let blob = std::slice::from_raw_parts_mut(credential.CredentialBlob, size);
-            let decoded = decode(blob);
-            // CredFree releases the block as it is, so the decrypted text would stay in freed memory.
-            blob.zeroize();
-            decoded
+            blob.as_ptr().cast_mut()
+        };
+        credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+        credential.UserName = user.as_mut_ptr();
+        let mut keyword = wide(LAYOUT_KEYWORD);
+        let mut value = layout.map(Layout::to_bytes);
+        let mut attribute = CREDENTIAL_ATTRIBUTEW::default();
+        if let Some(value) = value.as_mut() {
+            attribute.Keyword = keyword.as_mut_ptr();
+            attribute.ValueSize = Layout::SIZE as u32;
+            attribute.Value = value.as_mut_ptr();
+            credential.AttributeCount = 1;
+            credential.Attributes = &raw mut attribute;
         }
-    };
-    // SAFETY: `found` came from CredReadW and is freed once.
-    unsafe { CredFree(found.cast_const().cast()) };
-    decoded.map(Some)
+        // SAFETY: every pointer in `credential` points into a buffer that outlives the call.
+        let ok = unsafe { CredWriteW(&raw const credential, 0) };
+        if ok == 0 {
+            return Err(failure("write"));
+        }
+        Ok(())
+    }
+
+    fn delete(&self, target: &str) -> Result<bool, SecretError> {
+        let name = wide(target);
+        // SAFETY: `name` is NUL-terminated and outlives the call.
+        if unsafe { CredDeleteW(name.as_ptr(), CRED_TYPE_GENERIC, 0) } != 0 {
+            return Ok(true);
+        }
+        // SAFETY: reads the last error CredDeleteW set.
+        if unsafe { GetLastError() } == ERROR_NOT_FOUND {
+            return Ok(false);
+        }
+        Err(failure("delete"))
+    }
+}
+
+// The keyword is NUL-terminated, and a shorter one differs at its NUL before anything past it is read.
+unsafe fn names(keyword: *const u16, expected: &[u16]) -> bool {
+    if keyword.is_null() {
+        return false;
+    }
+    for (index, unit) in expected.iter().enumerate() {
+        // SAFETY: every unit before `index` matched one of `expected`'s, none of which is the NUL before its last.
+        if unsafe { *keyword.add(index) } != *unit {
+            return false;
+        }
+    }
+    true
+}
+
+fn read(target: &str) -> Result<Option<SecretString>, SecretError> {
+    match credential_parts::read_secret(&Credentials, target)? {
+        Some(blob) => decode(&blob).map(Some),
+        None => Ok(None),
+    }
 }
 
 fn write(target: &str, secret: &str, label: &str) -> Result<(), SecretError> {
-    let name = wide(target);
-    let mut comment = wide(label);
-    let mut user = wide("TablePro");
     // Sized up front: a collect that grew would leave parts of the secret in the buffers it gave up.
     let mut blob: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(secret.encode_utf16().count() * 2));
     blob.extend(secret.encode_utf16().flat_map(u16::to_le_bytes));
-    let size = u32::try_from(blob.len()).map_err(|_| SecretError::Backend {
-        detail: "the secret is too long for Credential Manager".to_owned(),
-        service_message: None,
-    })?;
-    // SAFETY: every field of CREDENTIALW is a number or a pointer, for which zero is valid.
-    let mut credential: CREDENTIALW = unsafe { std::mem::zeroed() };
-    credential.Type = CRED_TYPE_GENERIC;
-    credential.TargetName = name.as_ptr().cast_mut();
-    credential.Comment = comment.as_mut_ptr();
-    credential.CredentialBlobSize = size;
-    credential.CredentialBlob = if blob.is_empty() {
-        std::ptr::null_mut()
-    } else {
-        blob.as_mut_ptr()
-    };
-    credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-    credential.UserName = user.as_mut_ptr();
-    // SAFETY: every pointer in `credential` points into a buffer that outlives the call.
-    let ok = unsafe { CredWriteW(&raw const credential, 0) };
-    if ok == 0 {
-        return Err(failure("write"));
-    }
-    Ok(())
+    credential_parts::write_secret(&Credentials, target, &blob, label, PART_SIZE)
 }
 
 fn delete(target: &str) -> Result<(), SecretError> {
-    let name = wide(target);
-    // SAFETY: `name` is NUL-terminated and outlives the call.
-    let ok = unsafe { CredDeleteW(name.as_ptr(), CRED_TYPE_GENERIC, 0) };
-    // SAFETY: reads the last error CredDeleteW set.
-    if ok == 0 && unsafe { GetLastError() } != ERROR_NOT_FOUND {
-        return Err(failure("delete"));
-    }
-    Ok(())
+    credential_parts::delete_secret(&Credentials, target)
 }
 
 #[async_trait]
@@ -299,6 +375,74 @@ mod tests {
             found.found().map(|secret| secret.expose_secret().to_owned()),
             Some(String::new())
         );
+    }
+
+    #[tokio::test]
+    async fn a_token_longer_than_one_credential_holds_is_kept_whole_under_a_long_label() {
+        let manager = manager();
+        let id = Uuid::new_v4();
+        // The key's two UTF-16 units straddle the first credential's last byte.
+        let token = format!("{}\u{1f511}{}", "a".repeat(PART_SIZE / 2 - 1), "b".repeat(2000));
+        let label = "l".repeat(1000);
+
+        manager
+            .store(
+                id,
+                SecretKind::DatabasePassword,
+                &SecretString::from(token.clone()),
+                &label,
+            )
+            .await
+            .unwrap();
+        let found = manager.load(id, SecretKind::DatabasePassword).await.unwrap();
+        manager
+            .store(id, SecretKind::DatabasePassword, &SecretString::from("short"), &label)
+            .await
+            .unwrap();
+        let shortened = manager.load(id, SecretKind::DatabasePassword).await.unwrap();
+        let continued = Credentials
+            .read(&format!(
+                "{}/1",
+                manager.connection_target(id, SecretKind::DatabasePassword)
+            ))
+            .unwrap();
+        manager.delete_connection(id).await.unwrap();
+
+        assert_eq!(
+            found.found().map(|secret| secret.expose_secret().to_owned()),
+            Some(token)
+        );
+        assert_eq!(
+            shortened.found().map(|secret| secret.expose_secret().to_owned()),
+            Some("short".to_owned())
+        );
+        assert!(continued.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_secret_that_fills_a_credential_exactly_reads_back() {
+        let manager = manager();
+        let id = Uuid::new_v4();
+        let secret = "x".repeat(PART_SIZE);
+
+        manager
+            .store(
+                id,
+                SecretKind::SshPassphrase,
+                &SecretString::from(secret.clone()),
+                "label",
+            )
+            .await
+            .unwrap();
+        let found = manager.load(id, SecretKind::SshPassphrase).await.unwrap();
+        manager.delete_connection(id).await.unwrap();
+        let gone = manager.load(id, SecretKind::SshPassphrase).await.unwrap();
+
+        assert_eq!(
+            found.found().map(|secret| secret.expose_secret().to_owned()),
+            Some(secret)
+        );
+        assert!(!gone.is_stored());
     }
 
     #[tokio::test]

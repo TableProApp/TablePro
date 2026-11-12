@@ -5,11 +5,11 @@
 //  Feeds the merge join from a driver's row stream. It holds one batch of rows
 //  at a time, and hands them out one row at a time.
 //
-//  It is not what bounds a comparison's memory. A driver's stream buffers
-//  `.unbounded` and its producer starts at the moment the stream is built, not
-//  at the first read, so a side the walk consumes slowly runs ahead inside the
-//  stream's own buffer. The row limit, the filter, and the key order the two
-//  sides share are what keep a comparison's footprint down.
+//  It is not what bounds a comparison's memory. Most drivers' streams hold a
+//  few batches and wait for the walk; ClickHouse, Elasticsearch, Trino, MongoDB,
+//  Spanner and SQLite over SSH run ahead of a side the walk consumes slowly,
+//  inside the stream's own buffer. The row limit, the filter, and the key order
+//  the two sides share are what keep a comparison's footprint down there.
 //
 
 import Foundation

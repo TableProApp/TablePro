@@ -9,7 +9,8 @@ import Foundation
 /// `BEGIN`, `CASE` and `END` count only where a keyword can stand: an engine that does not reserve them takes them as
 /// names, and a block a name opened would never close. T-SQL reserves all three, so there a block also opens outside
 /// a routine, as in `IF @x = 1 BEGIN ... END` and `BEGIN TRY ... END TRY BEGIN CATCH ... END CATCH`. A text left
-/// inside one is refused by the external gate.
+/// inside one is refused by the external gate. T-SQL also lets a `;` end an `IF`'s body before its `ELSE`, as in
+/// `IF @x = 1 SELECT 1; ELSE SELECT 2;`, so that `;` ends the statement only once the next token is not the `ELSE`.
 ///
 /// A `;` inside parentheses ends the statement, so a stray `(` cannot swallow what follows it, except in a PostgreSQL
 /// rule's action list, `DO ALSO (INSERT ...; INSERT ...)`, which holds its commands together.
@@ -20,6 +21,16 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         case header
         case afterDo
         case list(depth: Int)
+    }
+
+    // How a routine's body began outside a block. A statement never holds a block. After a `RETURN` a block opens
+    // only behind `AS` or `IS`, as the header `RETURN INT AS BEGIN` writes it. A control statement such as `IF` may
+    // hold blocks, and statement words inside it begin nothing.
+    private enum RoutineBody {
+        case unknown
+        case statement
+        case returnValue
+        case controlStatement
     }
 
     private enum Header {
@@ -33,19 +44,43 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     private static let dot = UInt16(UnicodeScalar(".").value)
     private static let colon = UInt16(UnicodeScalar(":").value)
+    private static let comma = UInt16(UnicodeScalar(",").value)
 
     /// The words a statement inside a body can follow without a `;`, as in `IF x THEN BEGIN ... END; END IF`.
     private static let statementIntroducers: Set<String> = ["THEN", "ELSE", "DO", "LOOP", "REPEAT"]
+
+    /// The words that open a routine body written as one statement, as in MySQL's
+    /// `CREATE PROCEDURE p() SELECT ... ORDER BY begin DESC`, where `begin` is a column.
+    private static let singleStatementBodyOpeners: Set<String> = [
+        "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE", "MERGE",
+    ]
+
+    /// A trigger's event follows these, as in `BEFORE INSERT`, `INSTEAD OF DELETE` and `INSERT OR UPDATE`, so the
+    /// word after one is part of the header rather than the body.
+    private static let triggerEventLeaders: Set<String> = ["BEFORE", "AFTER", "OF", "OR", "FOR"]
+
+    private static let controlStatementOpeners: Set<String> = ["IF", "WHILE", "LOOP", "REPEAT"]
 
     private let grammar: SQLLexicalGrammar
     private let readsBlocksEverywhere: Bool
     // T-SQL outside a routine: where a block's `BEGIN` can stand, as the statement's first word, after `IF`, `WHILE`
     // or `ELSE`, or after a block the statement already opened. Anywhere else `begin` is in a name's place.
     private var followsControlFlow = false
+    // The statement's own `IF`s still waiting for an `ELSE`, which may follow the `;` that ends the `IF`'s body.
+    private var conditionalsAwaitingElse = 0
+    private var endedBeforeElse = false
     private var pendingBeginMayOpen = false
     private var header = Header.opener
     private var definesRoutine = false
     private var openedBlockBody = false
+    private var routineBody = RoutineBody.unknown
+    private var previousWord: String?
+    // A trigger's events stand before its table, as in SQLite's `CREATE TRIGGER tr DELETE ON t`.
+    private var readsTriggerEvents = false
+    // A trigger's event list goes on after a word in `triggerEventLeaders`, or after a `,` that follows an event, as
+    // in `FOR INSERT, UPDATE`.
+    private var expectsTriggerEvent = false
+    private var followsTriggerEvent = false
     private var depth = 0
 
     /// The open `CASE`s that have held no `;`, which only a `CASE` statement can. The next `END` closes one of them,
@@ -98,6 +133,11 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     public mutating func observeWord(_ word: String) {
         merge?.observeWord(word)
+        let previous = previousWord
+        previousWord = word
+        let isTriggerEvent = expectsTriggerEvent && Self.singleStatementBodyOpeners.contains(word)
+        expectsTriggerEvent = Self.triggerEventLeaders.contains(word)
+        followsTriggerEvent = isTriggerEvent
         let isMember = followsDot
         followsName = true
         followsDot = false
@@ -120,17 +160,34 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
             observeRuleWord(word)
         }
         guard parenDepth == 0, readsBlocksEverywhere || (pastHeader && definesRoutine) else { return }
+        if !readsBlocksEverywhere, depth == 0 {
+            observeBodyStart(word, after: previous, isTriggerEvent: isTriggerEvent)
+        }
         switch word {
         case "BEGIN" where readsBlocksEverywhere:
             pendingBegin = true
-            pendingBeginMayOpen = opensNestedBlock(atStatementPosition: statementPosition, isFirstWord: isFirstWord)
-        case "BEGIN" where opensNestedBlock(atStatementPosition: statementPosition, isFirstWord: isFirstWord):
-            pendingBegin = true
-            pendingBeginMayOpen = true
-        case "IF" where readsBlocksEverywhere, "WHILE" where readsBlocksEverywhere:
+            pendingBeginMayOpen = opensNestedBlock(
+                atStatementPosition: statementPosition,
+                isFirstWord: isFirstWord,
+                after: previous
+            )
+        case "BEGIN":
+            if opensNestedBlock(atStatementPosition: statementPosition, isFirstWord: isFirstWord, after: previous) {
+                pendingBegin = true
+                pendingBeginMayOpen = true
+            }
+        case "IF" where readsBlocksEverywhere:
+            followsControlFlow = true
+            if depth == 0 {
+                conditionalsAwaitingElse += 1
+            }
+        case "WHILE" where readsBlocksEverywhere:
             followsControlFlow = true
         case "ELSE" where readsBlocksEverywhere && openCaseExpressions == 0:
             followsControlFlow = true
+            if depth == 0 {
+                conditionalsAwaitingElse = max(0, conditionalsAwaitingElse - 1)
+            }
         case "CASE" where !grammar.hasSingleBodyForm:
             depth += 1
             openCaseExpressions += 1
@@ -143,6 +200,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     public mutating func observeSymbol(_ symbol: UInt16) {
         merge?.observeSymbol(symbol)
+        previousWord = nil
+        expectsTriggerEvent = symbol == Self.comma && followsTriggerEvent
+        followsTriggerEvent = false
         if ruleAction == .afterDo, symbol != SqlLexer.openParen {
             ruleAction = .none
         }
@@ -172,6 +232,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     public mutating func observeOpaqueToken() {
         merge?.observeOpaqueToken()
+        previousWord = nil
+        expectsTriggerEvent = false
+        followsTriggerEvent = false
         if ruleAction == .afterDo {
             ruleAction = .none
         }
@@ -189,6 +252,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
 
     public mutating func observeSemicolon() -> Bool {
         pendingBegin = false
+        previousWord = nil
+        expectsTriggerEvent = false
+        followsTriggerEvent = false
         if pendingEnd {
             pendingEnd = false
             closeBlock()
@@ -218,7 +284,21 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         inDeclaration = false
         inHandlerDeclaration = false
         merge?.observeSemicolon(endsStatement: endsStatement)
+        endedBeforeElse = endsStatement && readsBlocksEverywhere && conditionalsAwaitingElse > 0
         return endsStatement
+    }
+
+    public var awaitsContinuation: Bool {
+        endedBeforeElse
+    }
+
+    // T-SQL writes `IF c SELECT 1; ELSE SELECT 2;`, so the `;` ended the `IF`'s body rather than the `IF`.
+    public mutating func continuesStatement(with word: String?) -> Bool {
+        guard endedBeforeElse else { return false }
+        endedBeforeElse = false
+        guard word == "ELSE" else { return false }
+        merge?.observeSemicolon(endsStatement: false)
+        return true
     }
 
     public mutating func reset() {
@@ -247,6 +327,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
             }
             if SqlBlockStructure.isRoutineKind(word, grammar: grammar) {
                 definesRoutine = true
+                readsTriggerEvents = word == "TRIGGER"
                 header = .name
             } else if word == "DEFINER" {
                 header = .kind(accountWords: 2)
@@ -277,12 +358,36 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         }
     }
 
-    private func opensNestedBlock(atStatementPosition: Bool, isFirstWord: Bool) -> Bool {
+    private func opensNestedBlock(atStatementPosition: Bool, isFirstWord: Bool, after previous: String?) -> Bool {
         if readsBlocksEverywhere {
             return depth > 0 || definesRoutine || isFirstWord || followsControlFlow || openedBlockBody
         }
-        guard depth > 0, !grammar.hasSingleBodyForm else { return true }
-        return atStatementPosition || inHandlerDeclaration
+        if grammar.hasSingleBodyForm { return true }
+        switch routineBody {
+        case .statement:
+            return false
+        case .returnValue:
+            return depth == 0 && (previous == "AS" || previous == "IS")
+        case .unknown, .controlStatement:
+            guard depth > 0 else { return true }
+            return atStatementPosition || inHandlerDeclaration
+        }
+    }
+
+    // Where a routine's body is one statement, the word that starts it.
+    private mutating func observeBodyStart(_ word: String, after previous: String?, isTriggerEvent: Bool) {
+        if word == "ON" {
+            readsTriggerEvents = false
+        }
+        guard routineBody == .unknown else { return }
+        if Self.controlStatementOpeners.contains(word) {
+            routineBody = .controlStatement
+        } else if word == "RETURN", previous != "ON" {
+            // DB2's `COMMIT ON RETURN NO` is a header clause.
+            routineBody = .returnValue
+        } else if Self.singleStatementBodyOpeners.contains(word), !isTriggerEvent, !readsTriggerEvents {
+            routineBody = .statement
+        }
     }
 
     private mutating func observeRuleWord(_ word: String) {
@@ -362,6 +467,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     // A trigger body holds no other; `BEGIN ATOMIC` is never a name, so a routine defined inside one nests.
     private mutating func openBlockBody() {
         guard !grammar.contains(.triggerBodies) || depth == 0 else { return }
+        if routineBody == .returnValue {
+            routineBody = .unknown
+        }
         depth += 1
         openedBlockBody = true
         startsBodyStatement = true

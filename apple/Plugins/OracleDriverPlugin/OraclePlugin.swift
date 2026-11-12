@@ -378,11 +378,25 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return pluginResult(of: query, result, executionTime: Date().timeIntervalSince(startTime))
     }
 
-    /// Values a literal can carry stay literals, so the host's statements read as they always have; only bytes and
-    /// text over the literal limit are bound. See ``OracleBindPlaceholders``.
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        try await executeParameterized(query: query, parameters: parameters, context: PluginStatementContext())
+    }
+
+    // Values a literal can carry stay literals; only bytes and text over the literal limit are bound. The context
+    // says the type of each value's column, or the kind the user gave it (`OracleBindPlaceholders`).
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else { return try await execute(query: query) }
-        let statement = OracleBindPlaceholders.substituting(query, parameters: parameters)
+        let statement = try OracleBindPlaceholders.substituting(
+            query,
+            parameters: parameters,
+            kinds: context.parameterKinds,
+            typeNames: context.parameterTypeNames,
+            writesBooleans: core?.serverRelease?.hasBooleanType ?? false
+        )
         guard !statement.binds.isEmpty else { return try await execute(query: statement.sql) }
         guard let core else { throw OraclePluginError(core: .notConnected) }
         let startTime = Date()
@@ -394,6 +408,37 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         try await reportCompilationErrors(of: query)
         return pluginResult(of: query, result, executionTime: Date().timeIntervalSince(startTime))
+    }
+
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
+    }
+
+    // Overridden so the kinds the user gave the parameters reach the binder; the PluginKit default drops the context.
+    // A capped result keeps its column hints, so a DATE column still reads with its time.
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        let raw: PluginQueryResult
+        if let parameters {
+            raw = try await executeParameterized(query: query, parameters: parameters, context: context)
+        } else {
+            raw = try await execute(query: query, context: context)
+        }
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
+        return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            timing: raw.timing,
+            isTruncated: true,
+            statusMessage: raw.statusMessage,
+            columnMeta: raw.columnMeta
+        )
     }
 
     /// An anonymous block reports no row count of its own; whatever oracle-nio counted belongs to the statements
@@ -468,22 +513,11 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let batching = OracleRowBatcher(rowsPerBatch: OracleRowBatcher.batchRows, rowBudget: rowBudget)
 
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
+            // A plain `Task {}` is not a child of this one, so only the explicit cancel on abort stops oracle-nio.
             let streamTask = Task {
-                // A plain `Task {}` is not a child of this one, so only the explicit cancel on abort stops oracle-nio.
-                let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
-                    let coreTask = Task {
-                        do {
-                            try await core.streamQuery(query, batching: batching, continuation: coreContinuation)
-                        } catch {
-                            coreContinuation.finish(throwing: error)
-                        }
-                    }
-                    abort.onAbort { coreTask.cancel() }
-                    coreContinuation.onTermination = { @Sendable _ in coreTask.cancel() }
-                }
                 do {
-                    for try await element in coreStream {
+                    try await core.streamQuery(query, batching: batching, onElement: { element in
                         switch element {
                         case .header(let columns):
                             continuation.yield(.header(PluginStreamHeader(
@@ -491,13 +525,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                                 columnTypeNames: columns.map(\.typeName)
                             )))
                         case .rows(let batch):
-                            continuation.yield(.rows(batch.map { $0.map(\.asPluginCell) }))
+                            _ = await PluginRowStream.deliver(.rows(batch.map { $0.map(\.asPluginCell) }), to: continuation)
                         case .affectedRows:
                             // The plugin stream carries rows only. The app sends writes and DDL through
                             // `execute`, which reports the count, and bounds only reads through this stream.
                             break
                         }
-                    }
+                    })
                     continuation.finish()
                 } catch let error as OracleCoreError {
                     continuation.finish(throwing: error.asPluginError)
@@ -586,11 +620,19 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
         let owner = effectiveSchema(schema)
         let result = try await rawQuery(OracleIndexStatements.query(schema: owner, table: table))
-        return OracleIndexStatements.render(
+        let indexes = OracleIndexStatements.render(
             rows: result.rows.map { row in row.map { $0.stringValue } },
             schema: owner,
             table: table,
             quote: quoteIdentifier)
+        let constraints = try await rawQuery(
+            OracleSchemaQueries.tableConstraints(schema: owner, table: table, release: serverRelease())
+        )
+        return indexes + (try OracleTableDDL.afterRowsStatements(
+            qualifiedTable: "\(quoteIdentifier(owner)).\(quoteIdentifier(table))",
+            constraints: OracleSchemaQueries.parseTableConstraints(constraints.rows),
+            quote: quoteIdentifier
+        ))
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
@@ -634,6 +676,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
         OracleObjectQueries.dropTrigger(name: name, schema: schema, currentSchema: _currentSchema)
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let result = try await rawQuery(
@@ -706,9 +750,14 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !view.rows.isEmpty {
             return try await viewStatement(from: view, schema: owner, view: table)
         }
+        let columns = try await fetchColumns(table: table, schema: schema)
+        let constraints = try await rawQuery(
+            OracleSchemaQueries.tableConstraints(schema: owner, table: table, release: serverRelease())
+        )
         return try OracleTableDDL.createTable(
             qualifiedTable: "\(quoteIdentifier(owner)).\(quoteIdentifier(table))",
-            columns: try await fetchColumns(table: table, schema: schema),
+            columns: columns,
+            constraints: OracleSchemaQueries.parseTableConstraints(constraints.rows),
             quote: quoteIdentifier
         )
     }

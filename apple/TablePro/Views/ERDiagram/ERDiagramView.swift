@@ -71,7 +71,7 @@ struct ERDiagramView: View {
                 draft: draft,
                 tables: viewModel.referenceableTables,
                 columns: { viewModel.columnNames(of: $0) },
-                defaultReferencedColumn: { viewModel.defaultReferencedColumn(in: $0) },
+                referencedKeyColumns: { viewModel.referencedKeyColumns(in: $0) },
                 isNameTaken: { viewModel.isForeignKeyNameTaken($0) },
                 dialect: ForeignKeyDialect.forType(viewModel.editingConnection?.type ?? .mysql),
                 onAdd: { draft in
@@ -210,7 +210,11 @@ struct ERDiagramView: View {
     private func exportData(_ format: ERDiagramExportFormat) -> Data? {
         switch format {
         case .png:
-            return DiagramExporter.pngData(exportImage())
+            return ERDiagramSceneRenderer.pngData(
+                scene,
+                appearance: viewport.effectiveAppearance,
+                scale: DiagramExporter.renderScale
+            )
         case .svg:
             let svg = ERDiagramSceneRenderer.svgDocument(scene, appearance: viewport.effectiveAppearance, title: exportTitle)
             return Data(svg.utf8)

@@ -231,7 +231,7 @@ pub fn statement_access(sql: &str, grammar: SqlGrammar) -> StatementAccess {
 
 // SQL Server ends a word at a control character, a non-ASCII space or a zero-width character, so
 // `NEXT\u{1}VALUE FOR` takes a number from a sequence; the lexer reads them as punctuation or letters.
-fn may_be_space(character: char) -> bool {
+pub(super) fn may_be_space(character: char) -> bool {
     !character.is_ascii_whitespace()
         && (character.is_whitespace()
             || character.is_control()
@@ -478,13 +478,13 @@ fn runs_duckdb_call(token: &Code<'_>, grammar: SqlGrammar) -> bool {
 }
 
 /// The grammars whose scanner is PostgreSQL's, which reads `U&"…"`.
-fn decodes_unicode_names(grammar: SqlGrammar) -> bool {
+pub(super) fn decodes_unicode_names(grammar: SqlGrammar) -> bool {
     matches!(grammar, SqlGrammar::PostgreSql | SqlGrammar::DuckDb)
 }
 
 /// A `U&"…"` name, whose prefix the lexer reads as the word `U` and `&`,
 /// written with nothing between them, since `u & "f"(1)` is an AND.
-fn spelled_in_escapes(part: &[Code<'_>], index: usize) -> bool {
+pub(super) fn spelled_in_escapes(part: &[Code<'_>], index: usize) -> bool {
     part[index].kind == Kind::Quoted
         && index >= 2
         && part[index - 1].kind == Kind::Other
@@ -524,7 +524,7 @@ fn opens_as_read(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
+pub(super) enum Kind {
     Word,
     Open,
     Close,
@@ -542,19 +542,19 @@ enum Kind {
 /// A significant token and the parenthesis depth it sits at. A close
 /// sits at the depth of its open.
 #[derive(Debug, Clone, Copy)]
-struct Code<'a> {
-    kind: Kind,
-    text: &'a str,
-    depth: usize,
+pub(super) struct Code<'a> {
+    pub(super) kind: Kind,
+    pub(super) text: &'a str,
+    pub(super) depth: usize,
 }
 
 impl Code<'_> {
-    fn is_word(&self, set: &[&str]) -> bool {
+    pub(super) fn is_word(&self, set: &[&str]) -> bool {
         self.kind == Kind::Word && is(self.text, set)
     }
 }
 
-fn code_of<'a>(sql: &'a str, tokens: &[ScriptToken]) -> Vec<Code<'a>> {
+pub(super) fn code_of<'a>(sql: &'a str, tokens: &[ScriptToken]) -> Vec<Code<'a>> {
     let mut depth = 0usize;
     tokens
         .iter()
@@ -599,7 +599,7 @@ fn code_of<'a>(sql: &'a str, tokens: &[ScriptToken]) -> Vec<Code<'a>> {
 }
 
 /// `code` with each word cut where it holds a Unicode blank.
-fn split_at_blanks<'a>(code: &[Code<'a>]) -> Vec<Code<'a>> {
+pub(super) fn split_at_blanks<'a>(code: &[Code<'a>]) -> Vec<Code<'a>> {
     code.iter()
         .flat_map(|token| {
             let pieces: Vec<Code<'a>> = match token.kind {
@@ -772,7 +772,7 @@ pub fn sqlite_pragma_reports(name: &str) -> bool {
     is(name, &REPORTING_PRAGMAS)
 }
 
-fn is(word: &str, set: &[&str]) -> bool {
+pub(super) fn is(word: &str, set: &[&str]) -> bool {
     set.iter().any(|known| word.eq_ignore_ascii_case(known))
 }
 
@@ -1421,6 +1421,31 @@ mod tests {
         ] {
             assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Destructive, "{sql:?}");
         }
+    }
+
+    #[test]
+    fn duckdb_is_read_with_and_without_the_spaces_it_blanks_before_lexing() {
+        // Measured on DuckDB 2.0.0: each ran the DROP. In the first it kept one U+200B, inside what its pass took
+        // for a `$$` quote, and blanked the other; the second ran it once its last statement went alone.
+        for sql in [
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$, varchar\u{200b}E'\\''; DROP TABLE t; --'x$$",
+            "/* ' */ SELECT 1; SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            "/* ' */ SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            "SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            "SELECT 1 AS a,\u{200b}$$'$$; DROP TABLE t; SELECT 'x'",
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$; DROP TABLE t; --$$",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Destructive, "{sql:?}");
+        }
+        // DuckDB blanks this space and reads one statement, but without its pass the text is two.
+        assert_eq!(
+            access("SELECT 1 AS x\u{200b}$$; DROP TABLE t; --$$", SqlGrammar::DuckDb),
+            StatementAccess::Destructive
+        );
+        assert_eq!(
+            access("SELECT 'a\u{200b}b' FROM t", SqlGrammar::DuckDb),
+            StatementAccess::Read
+        );
     }
 
     #[test]

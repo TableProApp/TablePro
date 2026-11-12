@@ -1,15 +1,18 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use rmcp::handler::server::common::schema_for_type;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, ListToolsResult,
-    PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool, ToolAnnotations,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, DiscoverResult, Implementation,
+    InitializeRequestParams, InitializeResult, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
+    ServerConfig, Tool, ToolAnnotations,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
+use crate::seen_clients::SeenClients;
 use crate::tool_args::{
     BrowseArgs, ConnectionArgs, CountArgs, DatabaseArgs, ExportArgs, NoArgs, QueryArgs, SchemaArgs, TableArgs,
 };
@@ -32,13 +35,24 @@ statement's or a browse's answer cuts a value longer than 64 KB; its notes say w
 pub struct ToolServer {
     context: ToolContext,
     version: Arc<str>,
+    seen: SeenClients,
 }
 
 impl ToolServer {
-    pub fn new(context: ToolContext, version: &str) -> Self {
+    pub(crate) fn new(context: ToolContext, version: &str, seen: SeenClients) -> Self {
         Self {
             context,
             version: Arc::from(version),
+            seen,
+        }
+    }
+
+    // A client on the 2026-07-28 protocol never sends `initialize`; it
+    // names itself in each request's `_meta`. Only that is read: rmcp's
+    // fallback for a stateless request is a placeholder, not the client.
+    fn note_client(&self, context: &RequestContext<RoleServer>) {
+        if let Some(client) = context.meta.client_info() {
+            self.seen.record_new(&client, SystemTime::now());
         }
     }
 
@@ -78,11 +92,30 @@ impl ServerHandler for ToolServer {
             .with_instructions(INSTRUCTIONS)
     }
 
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        self.seen.record(&request.client_info, SystemTime::now());
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+
+    async fn discover(&self, context: RequestContext<RoleServer>) -> Result<DiscoverResult, ErrorData> {
+        self.note_client(&context);
+        Ok(DiscoverResult::from_server_info(
+            self.supported_protocol_versions().into_owned(),
+            self.get_info(),
+        ))
+    }
+
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
+        self.note_client(&context);
         Ok(ListToolsResult::with_all_items(catalog()))
     }
 
@@ -95,6 +128,7 @@ impl ServerHandler for ToolServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        self.note_client(&context);
         let name = request.name.clone();
         let result = match self.dispatch(request, &context).await {
             Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),

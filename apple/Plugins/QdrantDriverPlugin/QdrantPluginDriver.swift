@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProQdrantClient
 import TableProQdrantCore
 
 internal final class QdrantPluginDriver: PluginDatabaseDriver, @unchecked Sendable {

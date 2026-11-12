@@ -307,6 +307,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ]
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
         let columns = try await fetchColumns(table: "", schema: schema)
@@ -519,7 +521,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -527,9 +529,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -558,6 +558,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation: continuation
                 )
             }
+        case .keys(let pattern):
+            try await streamKeyRows(connection: conn, pattern: pattern, continuation: continuation)
         default:
             let startTime = Date()
             let result = try await executeOperation(operation, connection: conn, startTime: startTime)
@@ -589,7 +591,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )))
 
         var cursor = RedisClusterCursor.start
-        let batchSize = 200
+        let batchSize = Self.keySummaryBatchSize
 
         repeat {
             try Task.checkCancellation()
@@ -604,14 +606,37 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 try Task.checkCancellation()
                 let batchEnd = min(batchStart + batchSize, page.keys.count)
                 let batchKeys = Array(page.keys[batchStart ..< batchEnd])
-                let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn)
+                let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn, stringByteLimit: nil)
                 if !rowBatch.isEmpty {
-                    continuation.yield(.rows(rowBatch))
+                    _ = await PluginRowStream.deliver(.rows(rowBatch), to: continuation)
                 }
                 batchStart = batchEnd
             }
         } while cursor != RedisClusterCursor.start
 
+        continuation.finish()
+    }
+
+    // KEYS names every match at once; their values are read a batch at a time, each string whole.
+    private func streamKeyRows(
+        connection conn: any RedisCommandChannel,
+        pattern: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let keys = (try await conn.run(["KEYS", pattern]).arrayValue ?? []).map(\.displayText)
+        continuation.yield(.header(PluginStreamHeader(
+            columns: Self.keyBrowseColumns,
+            columnTypeNames: Self.keyBrowseColumnTypeNames,
+            estimatedRowCount: keys.count
+        )))
+        for start in stride(from: 0, to: keys.count, by: Self.keySummaryBatchSize) {
+            try Task.checkCancellation()
+            let batch = Array(keys[start ..< min(start + Self.keySummaryBatchSize, keys.count)])
+            let rows = try await buildKeySummaryRows(keys: batch, connection: conn, stringByteLimit: nil)
+            if !rows.isEmpty {
+                _ = await PluginRowStream.deliver(.rows(rows), to: continuation)
+            }
+        }
         continuation.finish()
     }
 

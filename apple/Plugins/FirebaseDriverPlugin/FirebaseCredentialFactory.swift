@@ -1,4 +1,5 @@
 import Foundation
+import TableProFirebaseClient
 import TableProFirebaseCore
 import TableProGoogleCloud
 import TableProPluginKit

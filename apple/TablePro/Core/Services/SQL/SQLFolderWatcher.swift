@@ -7,48 +7,86 @@ import Combine
 import CoreServices
 import Foundation
 import os
-import TableProUtilities
 
 @MainActor
 internal final class SQLFolderWatcher: ObservableObject {
     static let shared = SQLFolderWatcher()
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFolderWatcher")
 
     @Published private(set) var lastScanCompletedAt: Date?
 
-    private var eventStream: FSEventStreamRef?
+    private let eventWatcher = FileSystemEventWatcher(
+        latency: 1.0,
+        reportsFileEvents: true,
+        accepts: { events in
+            if SQLFolderWatcher.touchesGitState(events) {
+                SQLFolderWatcher.gitStateTouched.withLock { $0 = true }
+                return true
+            }
+            return SQLFolderWatcher.shouldRescan(after: events)
+        }
+    )
     private var debounceTask: Task<Void, Never>?
     private var hasStarted = false
 
-    nonisolated private static let eventCallback: FSEventStreamCallback = { _, info, _, eventPaths, _, _ in
-        guard let info else { return }
-        let paths = (Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue() as NSArray) as? [String] ?? []
-        guard !touchesOnlyRepositoryMetadata(paths) else { return }
-        let watcher = Unmanaged<SQLFolderWatcher>.fromOpaque(info).takeUnretainedValue()
-        Task { @MainActor in
-            watcher.scheduleDebouncedRescan()
-        }
-    }
+    // Flags after which the paths in the batch no longer tell what changed.
+    nonisolated private static let rescanFlags = FSEventStreamEventFlags(
+        kFSEventStreamEventFlagMustScanSubDirs
+            | kFSEventStreamEventFlagRootChanged
+            | kFSEventStreamEventFlagUserDropped
+            | kFSEventStreamEventFlagKernelDropped
+            | kFSEventStreamEventFlagEventIdsWrapped
+    )
 
     nonisolated static func touchesOnlyRepositoryMetadata(_ paths: [String]) -> Bool {
         guard !paths.isEmpty else { return false }
-        return paths.allSatisfy { path in
-            path.split(separator: "/").contains(".git")
+        return paths.allSatisfy(isRepositoryMetadata)
+    }
+
+    // A batch is skipped only when every path is inside `.git` or is a file that cannot be a linked query.
+    nonisolated static func shouldRescan(after events: [FileSystemEvent]) -> Bool {
+        guard !events.isEmpty else { return true }
+        if events.contains(where: { $0.flags & rescanFlags != 0 }) {
+            return true
+        }
+        return !events.allSatisfy { event in
+            if isRepositoryMetadata(event.path) {
+                return true
+            }
+            guard event.has(kFSEventStreamEventFlagItemIsFile) else { return false }
+            let pathExtension = (event.path as NSString).pathExtension.lowercased()
+            return !SQLFileService.supportedExtensions.contains(pathExtension)
         }
     }
 
-    private init() {}
+    // A repository created or removed here, or an ignore rule edited, changes Git status without touching
+    // a query, so the update is sent even when no row changed.
+    nonisolated private static let gitStateTouched = OSAllocatedUnfairLock(initialState: false)
+
+    nonisolated static func touchesGitState(_ events: [FileSystemEvent]) -> Bool {
+        events.contains { event in
+            let name = (event.path as NSString).lastPathComponent
+            return name == ".git" || name == ".gitignore"
+        }
+    }
+
+    nonisolated private static func isRepositoryMetadata(_ path: String) -> Bool {
+        path.split(separator: "/").contains(".git")
+    }
+
+    private init() {
+        eventWatcher.onChange = { [weak self] in self?.scheduleDebouncedRescan() }
+    }
 
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
         let folders = LinkedSQLFolderStorage.shared.loadFolders().filter(\.isEnabled)
         scheduleFullRescan(folders: folders)
-        setupEventStream(for: folders)
+        eventWatcher.watch(Set(folders.map(\.expandedURL.path)))
     }
 
     func stop() {
-        cancelEventStream()
+        eventWatcher.cancel()
         debounceTask?.cancel()
         debounceTask = nil
         hasStarted = false
@@ -59,60 +97,12 @@ internal final class SQLFolderWatcher: ObservableObject {
         start()
     }
 
-    // MARK: - Event stream
-
-    private func setupEventStream(for folders: [LinkedSQLFolder]) {
-        cancelEventStream()
-        guard !folders.isEmpty else { return }
-
-        let paths = folders.map(\.expandedURL.path) as CFArray
-        var context = FSEventStreamContext(
-            version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
-            retain: nil,
-            release: nil,
-            copyDescription: nil
-        )
-
-        let flags = UInt32(
-            kFSEventStreamCreateFlagFileEvents
-            | kFSEventStreamCreateFlagNoDefer
-            | kFSEventStreamCreateFlagWatchRoot
-            | kFSEventStreamCreateFlagUseCFTypes
-        )
-
-        guard let stream = FSEventStreamCreate(
-            kCFAllocatorDefault,
-            Self.eventCallback,
-            &context,
-            paths,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            1.0,
-            flags
-        ) else {
-            Self.logger.error("Failed to create FSEventStream")
-            return
-        }
-
-        FSEventStreamSetDispatchQueue(stream, .global(qos: .utility))
-        FSEventStreamStart(stream)
-        eventStream = stream
-    }
-
-    private func cancelEventStream() {
-        guard let stream = eventStream else { return }
-        FSEventStreamStop(stream)
-        FSEventStreamInvalidate(stream)
-        FSEventStreamRelease(stream)
-        eventStream = nil
-    }
-
     // MARK: - Scan scheduling
 
     private func scheduleFullRescan(folders: [LinkedSQLFolder]) {
         debounceTask?.cancel()
         debounceTask = Task { @MainActor [weak self] in
-            await Self.rescan(folders: folders)
+            _ = await Self.rescan(folders: folders)
             self?.lastScanCompletedAt = Date()
             AppEvents.shared.linkedSQLFoldersDidUpdate.send(nil)
         }
@@ -127,100 +117,31 @@ internal final class SQLFolderWatcher: ObservableObject {
                 return
             }
             let folders = LinkedSQLFolderStorage.shared.loadFolders().filter(\.isEnabled)
-            await Self.rescan(folders: folders)
+            let changed = await Self.rescan(folders: folders)
+            let gitStateTouched = Self.gitStateTouched.withLock { touched in
+                defer { touched = false }
+                return touched
+            }
             self?.lastScanCompletedAt = Date()
+            guard changed || gitStateTouched else { return }
             AppEvents.shared.linkedSQLFoldersDidUpdate.send(nil)
         }
     }
 
-    private static func rescan(folders: [LinkedSQLFolder]) async {
-        await Task.detached(priority: .utility) {
-            for folder in folders {
-                await scanFolder(folder)
+    // Returns whether any folder's rows changed or a folder was dropped from the index.
+    @concurrent
+    nonisolated private static func rescan(folders: [LinkedSQLFolder]) async -> Bool {
+        let scanner = LinkedSQLFolderScanner()
+        var changed = false
+        for folder in folders {
+            if await scanner.scan(folderId: folder.id, at: folder.expandedURL) {
+                changed = true
             }
-            let allKnownIds = Set(LinkedSQLFolderStorage.shared.loadFolders().map(\.id))
-            await pruneRemovedFolders(stillKnownIds: allKnownIds)
-        }.value
-    }
-
-    // MARK: - Per-folder scan (background)
-
-    private static func scanFolder(_ folder: LinkedSQLFolder) async {
-        let folderURL = folder.expandedURL
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: folderURL.path) else {
-            await LinkedSQLIndex.shared.removeFolder(folderId: folder.id)
-            return
         }
-
-        var indexed: [LinkedSQLIndex.IndexedFile] = []
-
-        enumerateSQLFileURLs(in: folderURL, fileManager: fileManager) { url in
-            let resourceValues = try? url.resourceValues(forKeys: [
-                .isRegularFileKey, .contentModificationDateKey, .fileSizeKey
-            ])
-            guard resourceValues?.isRegularFile == true else { return }
-            let mtime = resourceValues?.contentModificationDate ?? Date()
-            let fileSize = Int64(resourceValues?.fileSize ?? 0)
-
-            guard let relativePath = relativePathFor(url: url, base: folderURL) else { return }
-            let header = FileTextLoader.loadHeader(url)
-            let metadata = header.map { SQLFrontmatter.parse($0.content) } ?? SQLFrontmatter.Metadata()
-            let encoding = header?.encoding ?? .utf8
-
-            let baseName = (url.lastPathComponent as NSString).deletingPathExtension
-            let displayName = metadata.name?.trimmingCharacters(in: .whitespaces).nonEmpty
-                ?? baseName
-
-            indexed.append(LinkedSQLIndex.IndexedFile(
-                relativePath: relativePath,
-                name: displayName,
-                keyword: metadata.keyword,
-                description: metadata.description,
-                mtime: mtime,
-                fileSize: fileSize,
-                encoding: encoding
-            ))
+        let known = Set(LinkedSQLFolderStorage.shared.loadFolders().map(\.id))
+        if await scanner.pruneFolders(keeping: known) {
+            changed = true
         }
-
-        await LinkedSQLIndex.shared.replaceAll(folderId: folder.id, files: indexed, folderURL: folderURL)
+        return changed
     }
-
-    private static func enumerateSQLFileURLs(
-        in folderURL: URL,
-        fileManager: FileManager,
-        handle: (URL) -> Void
-    ) {
-        guard let enumerator = fileManager.enumerator(
-            at: folderURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return
-        }
-
-        for case let url as URL in enumerator {
-            guard SQLFileService.supportedExtensions.contains(url.pathExtension.lowercased()) else { continue }
-            handle(url)
-        }
-    }
-
-    private static func pruneRemovedFolders(stillKnownIds: Set<UUID>) async {
-        let indexedIds = await LinkedSQLIndex.shared.allFolderIds()
-        let stale = indexedIds.subtracting(stillKnownIds)
-        for id in stale {
-            await LinkedSQLIndex.shared.removeFolder(folderId: id)
-        }
-    }
-
-    private static func relativePathFor(url: URL, base: URL) -> String? {
-        let urlPath = url.standardizedFileURL.path
-        let basePath = base.standardizedFileURL.path
-        guard urlPath.hasPrefix(basePath + "/") else { return nil }
-        return String(urlPath.dropFirst(basePath.count + 1))
-    }
-}
-
-private extension String {
-    var nonEmpty: String? { isEmpty ? nil : self }
 }

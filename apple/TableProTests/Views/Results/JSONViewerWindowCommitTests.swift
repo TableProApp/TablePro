@@ -15,7 +15,7 @@ struct JSONViewerWindowCommitTests {
     private let edited = #"{"qty":25,"sku":"A-1"}"#
 
     private func commit(saving displayText: String, baseline: String?) -> String? {
-        JSONViewerWindowController.valueToCommit(saved: JsonReindenter.normalize(displayText), baseline: baseline)
+        JSONViewerWindowController.valueToCommit(saved: displayText, baseline: baseline)
     }
 
     @Test("Save commits an edit the popover made before the window opened")
@@ -58,6 +58,16 @@ struct JSONViewerWindowCommitTests {
     @Test("text entered over a NULL cell is committed")
     func textOverNullIsCommitted() {
         #expect(commit(saving: "{}", baseline: nil) == "{}")
+    }
+
+    @Test("A document stored across lines keeps its lines when edited, one stored on one line stays compact")
+    func editKeepsTheStoredLayout() {
+        let formatted = JsonReindenter.reindent(stored)
+        let windowText = JsonReindenter.reindent(edited)
+
+        #expect(commit(saving: windowText, baseline: formatted) == windowText)
+        #expect(commit(saving: windowText, baseline: stored) == edited)
+        #expect(commit(saving: windowText, baseline: stored + "\n") == edited)
     }
 
     @Test("text that is not JSON is compared as written")

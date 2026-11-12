@@ -47,7 +47,6 @@ struct SyncCoordinatorThemeTests {
             catalog = ThemeCatalog(
                 userDirectory: themes,
                 bundleDirectory: nil,
-                notificationCenter: NotificationCenter(),
                 fileTrash: .folder(trash),
                 syncTracker: environment.tracker
             )

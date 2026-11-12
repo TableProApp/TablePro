@@ -36,7 +36,10 @@ final class DataTabSQLExporter: DataGridSQLExporting {
               let tableName = tab.tableContext.tableName else { return nil }
         return Target(
             tableName: tableName,
-            schemaName: tab.tableContext.schemaName,
+            // A query tab's schema is the picker's; the rows name the schema they were read in.
+            schemaName: tab.tabType == .query
+                ? tab.display.activeResultSet?.origin?.schemaName ?? tab.tableContext.schemaName
+                : tab.tableContext.schemaName,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: coordinator.connection.type,
             connectionId: coordinator.connectionId,
@@ -123,7 +126,9 @@ final class DataTabSQLExporter: DataGridSQLExporting {
             columnTypes: [column.type ?? .text(rawType: nil)],
             escapeStringLiteral: driver?.escapeStringLiteral,
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
-            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState)
+            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState),
+            booleanLiteralStyle: (try? resolveSQLDialect(for: databaseType))?.booleanLiteralStyle ?? .truefalse,
+            databaseType: databaseType
         )
         return converter.generateInClause(rows: values.map { [$0] })
     }

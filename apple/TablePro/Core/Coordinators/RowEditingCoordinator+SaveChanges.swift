@@ -52,10 +52,11 @@ extension RowEditingCoordinator {
             return
         }
 
+        let savingTabId = parent.tabManager.selectedTabId
         /// One change manager serves the whole window, so a second save cannot start while one is
         /// in flight. Say so: over the slow link this guard exists for, a Save that silently does
         /// nothing is indistinguishable from a Save that is broken.
-        guard beginSaveInFlight() else {
+        guard beginSaveInFlight(tabId: savingTabId) else {
             saveChangesLogger.debug("Save already in flight, refusing the repeat")
             if let index = parent.tabManager.selectedTabIndex {
                 parent.tabManager.mutate(at: index) {
@@ -66,7 +67,6 @@ extension RowEditingCoordinator {
             return
         }
 
-        let savingTabId = parent.tabManager.selectedTabId
         guard parent.selectedTabScope != nil else {
             failSave(message: String(localized: "Not connected to database"), tabId: savingTabId, waiter: waiter)
             return
@@ -260,6 +260,7 @@ extension RowEditingCoordinator {
         }
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
+        let commitMode = DatabaseManager.shared.commitMode(for: conn.id)
         let serverOwned = serverOwnedColumns(of: savingTabId)
         let columnTypeNames = parent.changeManager.columnTypeNames
 
@@ -277,7 +278,7 @@ extension RowEditingCoordinator {
                     route: route,
                     cancellation: .protectedWrite
                 ) { driver in
-                    try await DataWriteExecutor.run(plan, mode: .readWrite, on: driver)
+                    try await DataWriteExecutor.run(plan, mode: .readWrite, commitMode: commitMode, on: driver)
                 }
 
                 let history = recordSuccessHistory(

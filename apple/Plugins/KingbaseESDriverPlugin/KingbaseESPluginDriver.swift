@@ -14,6 +14,9 @@ final class KingbaseESPluginDriver: PostgreSQLPluginDriver, @unchecked Sendable 
         )
     }
 
+    // Not measured against a KingbaseES catalog yet, so no Extensions group.
+    override var serverObjectKinds: [PluginServerObjectKind] { [] }
+
     override func probeAfterConnect() async throws {
         let result = try await catalogRead(KingbaseESCompatibilityMode.probeQuery)
         let detected = try KingbaseESCompatibilityMode(setting: result.rows.first?.first?.asText)

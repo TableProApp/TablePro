@@ -80,6 +80,13 @@ extension DatabaseManager {
         }
 
         let tunnelManager = activeTunnelManager(for: connection)
+        // The form tests under a throwaway id, so a role of the connection's own leases a user no connect reuses.
+        defer {
+            let owner = ConnectionCredentialResolver.credentialOwner(for: connection)
+            if owner == connection.id, activeSessions[connection.id] == nil {
+                VaultDatabaseCredentials.shared.endUse(connection: connection.id, live: Set(activeSessions.keys))
+            }
+        }
 
         let result: ConnectionTestResult
         do {

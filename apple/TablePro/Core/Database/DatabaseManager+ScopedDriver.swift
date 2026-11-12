@@ -24,8 +24,8 @@ enum ScopedDriverRoute: Equatable {
 }
 
 /// What a table read's turn on the session driver came to.
-private enum TableReadTurn<T: Sendable>: Sendable {
-    case ran(T)
+private enum TableReadTurn: Sendable {
+    case ran(any Sendable)
     /// The route decided once the turn came, which is never the session driver.
     case moved(ScopedDriverRoute)
 }
@@ -115,8 +115,33 @@ extension DatabaseManager {
         workload: MetadataConnectionPool.Workload = .interactive,
         cancellation: DriverCancellationPolicy,
         ownsSessionState: Bool = true,
+        readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        try await Self.unboxed(
+            withBoxedScopedDriver(
+                scope: scope,
+                route: route,
+                workload: workload,
+                cancellation: cancellation,
+                ownsSessionState: ownsSessionState,
+                readsOnly: readsOnly
+            ) { driver in
+                try await body(driver)
+            }
+        )
+    }
+
+    // The lease chain under the generic entry points runs boxed, so it is compiled once, not once per result type.
+    private func withBoxedScopedDriver(
+        scope: DatabaseScope,
+        route: ScopedDriverRoute,
+        workload: MetadataConnectionPool.Workload,
+        cancellation: DriverCancellationPolicy,
+        ownsSessionState: Bool,
+        readsOnly: Bool,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> any Sendable {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
         switch route {
         case .unavailable(let message):
@@ -126,8 +151,17 @@ extension DatabaseManager {
                 scope: scope, workload: workload, leased
             )
         case .sessionDriver:
-            return try await withPinnedSessionDriver(scope: scope, ownsSessionState: ownsSessionState, leased)
+            return try await withPinnedSessionDriver(
+                scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly, leased
+            )
         }
+    }
+
+    nonisolated private static func unboxed<T: Sendable>(_ value: any Sendable) -> T {
+        guard let result = value as? T else {
+            preconditionFailure("A lease returned \(type(of: value)) where \(T.self) was expected")
+        }
+        return result
     }
 
     // A read that stops on the server once the task awaiting it is cancelled. It runs under a lease owner of its own,
@@ -137,17 +171,40 @@ extension DatabaseManager {
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
         ownsSessionState: Bool = true,
+        readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        try await Self.unboxed(
+            withBoxedCancellableRead(
+                scope: scope,
+                route: route,
+                workload: workload,
+                ownsSessionState: ownsSessionState,
+                readsOnly: readsOnly
+            ) { driver in
+                try await body(driver)
+            }
+        )
+    }
+
+    private func withBoxedCancellableRead(
+        scope: DatabaseScope,
+        route: ScopedDriverRoute,
+        workload: MetadataConnectionPool.Workload,
+        ownsSessionState: Bool,
+        readsOnly: Bool,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> any Sendable {
         let owner = DriverLeaseOwner()
         let connectionId = scope.connectionId
         return try await withTaskCancellationHandler {
-            try await withScopedDriver(
+            try await withBoxedScopedDriver(
                 scope: scope,
                 route: route,
                 workload: workload,
                 cancellation: .cancellableRead(owner),
                 ownsSessionState: ownsSessionState,
+                readsOnly: readsOnly,
                 body
             )
         } onCancel: {
@@ -172,7 +229,7 @@ extension DatabaseManager {
         guard rowCountRunsWithPage(scope, filtered: filtered) else {
             return try await withMetadataDriver(scope: scope, workload: .bulk, body)
         }
-        return try await withCancellableRead(scope: scope, route: tableReadRoute(for: scope), body)
+        return try await withCancellableRead(scope: scope, route: tableReadRoute(for: scope), readsOnly: true, body)
     }
 
     /// A table tab's read is a SELECT the app built from the tab's own table, so it depends on
@@ -191,6 +248,18 @@ extension DatabaseManager {
         cancellation: DriverCancellationPolicy,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        try await Self.unboxed(
+            withBoxedTableReadDriver(scope: scope, cancellation: cancellation) { driver in
+                try await body(driver)
+            }
+        )
+    }
+
+    private func withBoxedTableReadDriver(
+        scope: DatabaseScope,
+        cancellation: DriverCancellationPolicy,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> any Sendable {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
         var route = tableReadRoute(for: scope)
         while true {
@@ -371,9 +440,10 @@ extension DatabaseManager {
     private func withPinnedSessionDriver<T: Sendable>(
         scope: DatabaseScope,
         ownsSessionState: Bool,
+        readsOnly: Bool,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: ownsSessionState) { driver in
+        try await withSessionDriverTurn(scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly) { driver in
             try await pin(driver, to: scope)
             return try await body(driver)
         }
@@ -382,11 +452,11 @@ extension DatabaseManager {
     /// The route is asked again through `tableReadRoute` itself, so it reads the same inputs the
     /// caller's first answer did, the browsed database among them. The driver's own connection is no
     /// substitute: it carries the database name the connection resolved to, not the one browsed.
-    private func withTableReadSessionDriver<T: Sendable>(
+    private func withTableReadSessionDriver(
         scope: DatabaseScope,
-        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
-    ) async throws -> TableReadTurn<T> {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: false) { driver in
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> TableReadTurn {
+        try await withSessionDriverTurn(scope: scope, ownsSessionState: false, readsOnly: true) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
             try await pin(driver, to: scope)
@@ -400,6 +470,7 @@ extension DatabaseManager {
     private func withSessionDriverTurn<R>(
         scope: DatabaseScope,
         ownsSessionState: Bool,
+        readsOnly: Bool = false,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
         let connectionId = scope.connectionId
@@ -441,7 +512,9 @@ extension DatabaseManager {
                     if ownsSessionState, let lost = sessionLanes.takeAnyLoss(for: connectionId) {
                         throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lost.database, loss: lost.loss))
                     }
-                    return try await recordingTransaction(on: browsedDriver, for: .init(connectionId: connectionId, lane: nil)) {
+                    return try await recordingTransaction(
+                        on: browsedDriver, for: .init(connectionId: connectionId, lane: nil), readsOnly: readsOnly
+                    ) {
                         try await turn(browsedDriver)
                     }
                 }
@@ -463,7 +536,9 @@ extension DatabaseManager {
                 }
                 sessionLanes.noteOpenedUse(database: lane, for: connectionId)
                 defer { sessionLanes.noteOpenedUse(database: lane, for: connectionId) }
-                return try await recordingTransaction(on: laneDriver, for: .init(connectionId: connectionId, lane: lane)) {
+                return try await recordingTransaction(
+                    on: laneDriver, for: .init(connectionId: connectionId, lane: lane), readsOnly: readsOnly
+                ) {
                     try await turn(laneDriver)
                 }
             }
@@ -476,17 +551,20 @@ extension DatabaseManager {
     private func recordingTransaction<R>(
         on driver: DatabaseDriver,
         for key: SessionTransactionTracker.Key,
+        readsOnly: Bool,
         _ work: () async throws -> R
     ) async throws -> R {
         guard driver.supportsTransactions else { return try await work() }
+        let turnHold = ManualCommitTurnHold()
         let outcome: Result<R, any Error>
         do {
-            outcome = .success(try await work())
+            outcome = .success(try await ManualCommit.$turnHold.withValue(turnHold) { try await work() })
         } catch {
             outcome = .failure(error)
         }
-        let state = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
-        sessionTransactions.record(state, on: driver, for: key)
+        let read = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
+        let state = ManualCommit.recordedState(read: read, turnOpenedHold: turnHold.isHeld)
+        sessionTransactions.record(state, on: driver, for: key, readsOnly: readsOnly)
         return try outcome.get()
     }
 

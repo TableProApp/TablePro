@@ -54,5 +54,22 @@
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/statement-pending-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/document-modified-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/assistant-symbolic.svg</file>
+    <!-- MCP client marks: sources and licenses in data/licenses/THIRD-PARTY-NOTICE.md. -->
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/claude-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/claudecode-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/cline-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/cursor-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/githubcopilot-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/googlegemini-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/goose.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/jetbrains-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/kiro.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/lmstudio-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/openai-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/opencode-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/vscode.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/warp-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/windsurf-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/zed-symbolic.svg</file>
   </gresource>
 </gresources>

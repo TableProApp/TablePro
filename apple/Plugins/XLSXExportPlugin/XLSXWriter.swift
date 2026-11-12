@@ -130,7 +130,7 @@ final class XLSXWriter {
                     case .null:
                         return convertNullToEmpty ? .empty : .string("NULL")
                     case .bytes(let data):
-                        if data.isEmpty { return .empty }
+                        // Zero bytes are `0x`, as in CSV: an empty cell reads back as NULL.
                         let hex = data.map { String(format: "%02X", $0) }.joined()
                         return .string("0x" + hex)
                     case .text(let val):

@@ -35,6 +35,30 @@ struct ToolsListHandlerTests {
         #expect(Set(readOnly).isSubset(of: Set(readWrite)))
     }
 
+    @Test("A principal held to a tool allowlist sees only those tools, even with wider scopes")
+    func allowlistNarrowsTheListing() async throws {
+        let allowlist = MCPToolProfile.schemaLookup.toolNames
+        let principal = MCPPrincipal(
+            tokenFingerprint: "ask",
+            tokenId: UUID(),
+            scopes: [.toolsRead, .toolsWrite],
+            metadata: MCPPrincipalMetadata(label: "ask", issuedAt: .distantPast, expiresAt: nil),
+            toolAllowlist: allowlist
+        )
+        let context = await MCPProtocolHandlerTestSupport.makeContext(
+            method: ToolsListHandler.method,
+            principal: principal
+        )
+
+        let result = try await ToolsListHandler().handle(params: nil, context: context)
+        let names = try #require(result.payload["tools"]?.arrayValue).compactMap { $0["name"]?.stringValue }
+
+        #expect(Set(names) == allowlist)
+        #expect(names.count == allowlist.count)
+        #expect(!names.contains("execute_query"))
+        #expect(!names.contains("connect"))
+    }
+
     @Test("A principal with no scopes sees no tools at all")
     func noScopesListsNothing() async throws {
         let payload = try await runToolsList(scopes: [])

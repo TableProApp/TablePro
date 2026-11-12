@@ -149,4 +149,31 @@ struct BigtableRowWritesTests {
     func delete() {
         #expect(BigtableRowWrites.delete(table: "events", key: Data("a b".utf8)).text == #"DELETE events/"a b""#)
     }
+
+    @Test("A row's locator names its key over the _key text")
+    func locatorNamesTheKey() throws {
+        let real = Data([0xEF, 0xBB, 0xBF] + Array("abc".utf8))
+        let key = try #require(try BigtableRowWrites.originalKey(locator: real.base64EncodedString(), keyCell: .text("abc")))
+        #expect(key == real)
+        let written = try BigtableRequest.parse(BigtableRowWrites.delete(table: "events", key: key).text)
+        #expect(written.key == real)
+    }
+
+    @Test("Without a locator the key comes from the _key text")
+    func keyTextWithoutLocator() throws {
+        #expect(try BigtableRowWrites.originalKey(locator: nil, keyCell: .text("b64:/wA=")) == Data([0xFF, 0x00]))
+        #expect(try BigtableRowWrites.originalKey(locator: nil, keyCell: .text("k")) == Data("k".utf8))
+        #expect(try BigtableRowWrites.originalKey(locator: nil, keyCell: nil) == nil)
+        #expect(try BigtableRowWrites.originalKey(locator: nil, keyCell: .absent) == nil)
+    }
+
+    @Test("A locator that is not base64 is refused rather than read as some other key")
+    func damagedLocatorRefused() {
+        #expect(throws: BigtableError.self) {
+            try BigtableRowWrites.originalKey(locator: "***", keyCell: .text("k"))
+        }
+        #expect(throws: BigtableError.self) {
+            try BigtableRowWrites.originalKey(locator: "", keyCell: .text("k"))
+        }
+    }
 }

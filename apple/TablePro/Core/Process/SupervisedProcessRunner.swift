@@ -30,7 +30,7 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendabl
 
     private static let forcedTerminationGrace = Duration.seconds(2)
 
-    private var partialLine = ""
+    private var stderrSplitter = PipeLineSplitter()
     private var wasRequested = false
     private var terminationResult: SubprocessTermination?
     private var terminationContinuations: [CheckedContinuation<SubprocessTermination, Never>] = []
@@ -121,14 +121,8 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendabl
     }
 
     private func ingestStderr(_ chunk: Data) {
-        guard let text = String(data: chunk, encoding: .utf8) else { return }
         stateLock.lock()
-        partialLine += text
-        var lines: [String] = []
-        while let newlineIndex = partialLine.firstIndex(of: "\n") {
-            lines.append(String(partialLine[..<newlineIndex]))
-            partialLine.removeSubrange(...newlineIndex)
-        }
+        let lines = stderrSplitter.lines(appending: chunk)
         stateLock.unlock()
         for line in lines {
             stderrContinuation.yield(line)
@@ -144,15 +138,14 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendabl
             stateLock.unlock()
             return
         }
-        let trailing = partialLine
-        partialLine = ""
+        let trailing = stderrSplitter.finish()
         let result = SubprocessTermination(exitCode: exitCode, wasRequested: wasRequested)
         terminationResult = result
         let pending = terminationContinuations
         terminationContinuations.removeAll()
         stateLock.unlock()
 
-        if !trailing.isEmpty {
+        if let trailing {
             stderrContinuation.yield(trailing)
         }
         stderrContinuation.finish()

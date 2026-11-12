@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -26,10 +27,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private readonly WorkspaceTabs<TabViewItem> _tabs;
     private SessionShare<DatabaseSession>? _share;
     private DatabaseSession? _session;
-    private IReadOnlyList<ObjectEntry>? _everyObject;
+    private ObjectCatalog? _everyObject;
+
+    // Bumped as the catalog is dropped, so a read started before a refresh or a reconnect is not kept.
+    private int _catalogGeneration;
     private bool _singleSchema;
     private string _failureDetails = string.Empty;
     private int _filterGeneration;
+    private CancellationTokenSource? _filtering;
 
     // Schemas a refresh reads again, the next time each one opens.
     private readonly HashSet<string> _stale = [];
@@ -37,6 +42,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     // What each query tab's text read at its document's version, since the session is written every few seconds.
     private readonly Dictionary<ITabContent, (long Version, LineEnding Ending, SessionTab Tab)> _snapshots = [];
     private CancellationTokenSource? _watching;
+    private CancellationTokenSource? _loadingTree;
     private Windows.Foundation.Point _stripOrigin;
     private WindowId _tearOutWindow;
     private CancellationTokenSource? _recoveringHostKey;
@@ -178,7 +184,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     {
         _share = share;
         _session = share.Session;
-        _everyObject = null;
+        ForgetCatalog();
         ConnectingRing.IsActive = false;
         ConnectingPanel.Visibility = Visibility.Collapsed;
         FailedPanel.Visibility = Visibility.Collapsed;
@@ -266,6 +272,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     // A held transaction or unsaved changes the close has not been answered about.
     internal bool HasUnconfirmed(ISet<IWorkspaceTab> confirmed) => _tabs.HasUnconfirmed(confirmed);
 
+    internal PendingWork Pending() => _tabs.Pending();
+
     internal IReadOnlyList<IWorkspaceTab> RunningQueries() => _tabs.RunningQueries();
 
     internal void KeepClosed(IReadOnlyList<SessionTab> tabs)
@@ -289,6 +297,10 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         Tabs.CanTearOutTabs = false;
         _watching?.Cancel();
         _watching = null;
+        _loadingTree?.Cancel();
+        _loadingTree = null;
+        _filtering?.Cancel();
+        _filtering = null;
         HealthBar.IsOpen = false;
         ElsewhereBar.IsOpen = false;
         HideChangesOnConnect();
@@ -297,7 +309,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         _snapshots.Clear();
         Objects.Clear();
         ObjectList.ItemsSource = null;
-        _everyObject = null;
+        ForgetCatalog();
         WorkspaceGrid.Visibility = Visibility.Collapsed;
         CommandsChanged?.Invoke(this, EventArgs.Empty);
         SessionChanged?.Invoke(this, EventArgs.Empty);
@@ -339,9 +351,9 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return null;
         }
 
+        // Its first page is read when the tab first shows, so a restored session reads only the tab it shows.
         var table = new TableTabView(_workbench, _share, schema, name, kind, restore);
         AddTab(table, IconOf(kind), index);
-        table.Run();
         return table;
     }
 
@@ -616,7 +628,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
-        _everyObject = null;
+        ForgetCatalog();
         await LoadTreeAsync(refresh: true).ConfigureAwait(true);
     }
 
@@ -1120,9 +1132,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
+        // Each load clears the tree before it adds, so a refresh pressed again ends the load still running.
+        _loadingTree?.Cancel();
+        using var loading = new CancellationTokenSource();
+        _loadingTree = loading;
         try
         {
-            var schemas = await session.GetSchemasAsync().ConfigureAwait(true);
+            var schemas = await session.GetSchemasAsync(loading.Token).ConfigureAwait(true);
+            loading.Token.ThrowIfCancellationRequested();
             var shown = schemas.Where(schema => !schema.IsSystem).ToList();
             if (shown.Count == 0)
             {
@@ -1134,9 +1151,13 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             if (_singleSchema)
             {
                 var objects = refresh
-                    ? await session.RefreshObjectsAsync(ObjectScope.DefaultSchema).ConfigureAwait(true)
-                    : await session.GetObjectsAsync(ObjectScope.DefaultSchema).ConfigureAwait(true);
-                AddFolders(Objects, shown.FirstOrDefault()?.Name, objects);
+                    ? await session.RefreshObjectsAsync(ObjectScope.DefaultSchema, loading.Token).ConfigureAwait(true)
+                    : await session.GetObjectsAsync(ObjectScope.DefaultSchema, loading.Token).ConfigureAwait(true);
+                // The core may answer after the cancel, and its answer then is the replaced load's.
+                loading.Token.ThrowIfCancellationRequested();
+                var folders = await GroupAsync(objects).ConfigureAwait(true);
+                loading.Token.ThrowIfCancellationRequested();
+                AddFolders(Objects, shown.FirstOrDefault()?.Name, folders);
                 foreach (var folder in Objects.Where(node => node.Folder?.Kind == FolderKind.Tables))
                 {
                     RealizeFolder(folder);
@@ -1163,9 +1184,21 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 });
             }
         }
+        catch (Exception exception) when (loading.IsCancellationRequested
+            && exception is OperationCanceledException or TableProException)
+        {
+            // A newer load, or the session closing, took over the tree.
+        }
         catch (TableProException exception)
         {
             ShowListMessage(Strings.Error(exception.Error));
+        }
+        finally
+        {
+            if (ReferenceEquals(_loadingTree, loading))
+            {
+                _loadingTree = null;
+            }
         }
     }
 
@@ -1191,18 +1224,26 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         var objects = _stale.Remove(node.Schema)
             ? await _session.RefreshObjectsAsync(scope).ConfigureAwait(true)
             : await _session.GetObjectsAsync(scope).ConfigureAwait(true);
+        var folders = await GroupAsync(objects).ConfigureAwait(true);
         node.Children.Clear();
-        AddFolders(node.Children, node.Schema, objects);
+        AddFolders(node.Children, node.Schema, folders);
     }
 
-    private static void AddFolders(ObservableCollection<ObjectNode> target, string? schema, IReadOnlyList<ObjectEntry> objects)
+    // A schema can hold tens of thousands of objects, and a culture-aware sort of them would stall the UI thread.
+    private static Task<IReadOnlyList<ObjectFolder>> GroupAsync(IReadOnlyList<ObjectEntry> objects)
     {
-        foreach (var folder in ObjectFolders.Group(objects))
+        var culture = CultureInfo.CurrentCulture;
+        return Task.Run(() => ObjectFolders.Group(objects, culture));
+    }
+
+    private static void AddFolders(ObservableCollection<ObjectNode> target, string? schema, IReadOnlyList<ObjectFolder> folders)
+    {
+        foreach (var folder in folders)
         {
             target.Add(new ObjectNode(ObjectNodeKind.Folder, Strings.Get("Folder_" + folder.Kind))
             {
                 Icon = Symbol.Folder,
-                Detail = folder.Objects.Count.ToString(System.Globalization.CultureInfo.CurrentCulture),
+                Detail = folder.Objects.Count.ToString(CultureInfo.CurrentCulture),
                 Schema = schema,
                 Folder = folder,
                 HasUnrealizedChildren = folder.Objects.Count > 0,
@@ -1427,43 +1468,89 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
     }
 
+    // Each keystroke scans the catalog on the thread pool and stops the scan it replaces.
     private async void OnFilterChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
         var text = sender.Text;
         var generation = ++_filterGeneration;
+        _filtering?.Cancel();
+        _filtering = null;
         if (string.IsNullOrWhiteSpace(text))
         {
             ShowTree();
             return;
         }
 
-        if (_session is null)
+        if (_session is not { } session)
         {
             return;
         }
 
+        using var filtering = new CancellationTokenSource();
+        _filtering = filtering;
         try
         {
-            _everyObject ??= await _session
-                .GetObjectsAsync(_singleSchema ? ObjectScope.DefaultSchema : ObjectScope.AllSchemas)
+            var catalog = _everyObject;
+            while (catalog is null)
+            {
+                var reading = _catalogGeneration;
+                var objects = await session
+                    .GetObjectsAsync(_singleSchema ? ObjectScope.DefaultSchema : ObjectScope.AllSchemas)
+                    .ConfigureAwait(true);
+                var culture = CultureInfo.CurrentCulture;
+                var read = await Task.Run(() => new ObjectCatalog(objects, culture)).ConfigureAwait(true);
+                if (filtering.IsCancellationRequested || !ReferenceEquals(_session, session))
+                {
+                    return;
+                }
+
+                // A refresh during the read dropped the catalog, so the one it reads now is the one to keep.
+                if (reading == _catalogGeneration)
+                {
+                    catalog = _everyObject ??= read;
+                }
+            }
+
+            // Typing on while the catalog loads leaves only the newest text to show.
+            if (generation != _filterGeneration)
+            {
+                return;
+            }
+
+            var showSchema = !_singleSchema;
+            var token = filtering.Token;
+            var nodes = await Task.Run(
+                    () => catalog.Filter(text, token).Select(entry => EntryNode(entry, showSchema)).ToList(),
+                    token)
                 .ConfigureAwait(true);
+            if (generation != _filterGeneration || token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            ShowList(nodes, Strings.Format("FilterMatches", nodes.Count));
+        }
+        catch (OperationCanceledException) when (filtering.IsCancellationRequested)
+        {
+            // A newer keystroke took over the list.
         }
         catch (TableProException exception)
         {
             ShowListMessage(Strings.Error(exception.Error));
-            return;
         }
-
-        // Typing on while the catalog loads leaves only the newest text to show.
-        if (generation != _filterGeneration)
+        finally
         {
-            return;
+            if (ReferenceEquals(_filtering, filtering))
+            {
+                _filtering = null;
+            }
         }
+    }
 
-        var matches = ObjectFolders.Filter(_everyObject, text);
-        ShowList(
-            [.. matches.Select(entry => EntryNode(entry, showSchema: !_singleSchema))],
-            Strings.Format("FilterMatches", matches.Count));
+    private void ForgetCatalog()
+    {
+        _everyObject = null;
+        _catalogGeneration++;
     }
 
     private void OnBackToTree(object sender, RoutedEventArgs e)

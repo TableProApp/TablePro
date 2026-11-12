@@ -20,6 +20,12 @@ internal struct InClauseConverter {
     // The session's escapes, for when no driver escaper is passed.
     internal var stringEscapes: SQLStringEscapes = .standard
 
+    // SQL Server has no TRUE or FALSE: `flag IN (TRUE)` reads TRUE as a column name.
+    internal var booleanLiteralStyle: SQLDialectDescriptor.BooleanLiteralStyle = .truefalse
+
+    // Picks the binary literal's spelling; without one it is the standard X'...'.
+    internal var databaseType: DatabaseType?
+
     private static let maxRows = 50_000
 
     func generateInClause(rows: [[PluginCellValue]]) -> String {
@@ -39,21 +45,28 @@ internal struct InClauseConverter {
 
     private func format(cell: PluginCellValue, type: ColumnType) -> String? {
         switch cell {
-        case .null, .bytes:
+        case .null:
             return nil
+        case .bytes(let data):
+            return binaryLiteral(data)
         case .text(let value):
             return formatScalar(value, type: type)
         }
     }
 
+    private func binaryLiteral(_ data: Data) -> String {
+        databaseType.flatMap { CompareSQLLiteral.binaryLiteral(for: data, databaseType: $0) } ?? "X'\(data.uppercaseHex())'"
+    }
+
     private func formatScalar(_ value: String, type: ColumnType) -> String {
         if type.isBooleanType {
             guard let synonym = ColumnTypeSQLQuoting.booleanSynonym(for: value) else { return quoted(value) }
+            let isNumeric = booleanLiteralStyle == .numeric
             switch synonym {
             case .isTrue:
-                return "TRUE"
+                return isNumeric ? "1" : "TRUE"
             case .isFalse:
-                return "FALSE"
+                return isNumeric ? "0" : "FALSE"
             @unknown default:
                 return quoted(value)
             }

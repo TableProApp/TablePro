@@ -355,6 +355,8 @@ struct OptionsPaneView: View {
     private var safetySection: some View {
         Section {
             safeModeRow
+            Toggle(String(localized: "Manual Commit"), isOn: $coordinator.effectiveManualCommit)
+                .disabled(!coordinator.isManualCommitAvailable)
             if aiIsEnabled {
                 Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
                     Text(String(localized: "Use Default"))
@@ -363,6 +365,9 @@ struct OptionsPaneView: View {
                         Text(policy.displayName)
                             .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
                     }
+                }
+                ForEach(coordinator.advanced.aiAlwaysAllowedTools, id: \.self) { tool in
+                    alwaysAllowedRow(tool)
                 }
             }
             Picker(String(localized: "External Clients"), selection: $coordinator.advanced.externalAccess) {
@@ -375,6 +380,18 @@ struct OptionsPaneView: View {
             Text(String(localized: "Access"))
         } footer: {
             accessFooter
+        }
+    }
+
+    private func alwaysAllowedRow(_ tool: String) -> some View {
+        LabeledContent {
+            Button(String(localized: "Forget")) {
+                coordinator.advanced.forgetAlwaysAllowed(tool)
+            }
+            .accessibilityLabel(String(format: String(localized: "Forget %@"), tool))
+        } label: {
+            Text(verbatim: tool)
+            Text(String(localized: "Always allowed"))
         }
     }
 
@@ -398,9 +415,18 @@ struct OptionsPaneView: View {
             if let floor = coordinator.safeModeFloor {
                 Text(floor.explanation)
             }
+            if coordinator.isManualCommitAvailable {
+                // swiftlint:disable:next line_length
+                Text(String(localized: "Your first change opens a transaction, and nothing is saved until you commit. Structure changes, Users & Roles, Copy To, Generate Rows and Shortcuts actions still save at once."))
+            } else {
+                Text(ManualCommit.unavailableExplanation)
+            }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+                if !coordinator.advanced.aiAlwaysAllowedTools.isEmpty {
+                    Text(String(localized: "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again."))
+                }
             } else {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))

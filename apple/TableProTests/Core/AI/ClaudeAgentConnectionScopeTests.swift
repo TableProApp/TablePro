@@ -1,8 +1,3 @@
-//
-//  ClaudeAgentConnectionScopeTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProMCP
@@ -10,13 +5,31 @@ import Testing
 
 private actor RecordingToolBridge: ClaudeAgentMCPBridging {
     private(set) var requested: [UUID?] = []
+    private(set) var modes: [AIChatMode] = []
 
-    func makeGrant(connectionId: UUID?) async -> ClaudeAgentToolGrant? {
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async -> ClaudeAgentToolGrant? {
         requested.append(connectionId)
+        modes.append(mode)
         return nil
     }
 
     func release(_ grant: ClaudeAgentToolGrant?) async {}
+}
+
+private struct FailingToolBridge: ClaudeAgentMCPBridging {
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async throws -> ClaudeAgentToolGrant? {
+        throw ClaudeAgentToolGrantError.tokenNotSaved
+    }
+
+    func release(_ grant: ClaudeAgentToolGrant?) async {}
+}
+
+private struct RefusingCredentialStore: MCPTokenCredentialStoring {
+    func read() -> MCPTokenBlob { .found(Data("[]".utf8)) }
+
+    func write(_ data: Data) -> Bool { false }
+
+    func delete() {}
 }
 
 struct ClaudeAgentConnectionScopeTests {
@@ -31,14 +44,69 @@ struct ClaudeAgentConnectionScopeTests {
     }
 
     @Test("A conversation with no connection gets no token")
-    func noConnectionMeansNoToken() async {
+    func noConnectionMeansNoToken() async throws {
         #expect(ClaudeAgentMCPBridge.connectionAccess(for: nil) == nil)
-        #expect(await ClaudeAgentMCPBridge().makeGrant(connectionId: nil) == nil)
+        #expect(try await ClaudeAgentMCPBridge().makeGrant(connectionId: nil, mode: .agent) == nil)
+    }
+
+    @Test("A token the Keychain refused stops the grant with a reason instead of dropping the tools")
+    func unsavedTokenIsAnError() async throws {
+        let store = MCPTokenStore(credentialStore: RefusingCredentialStore())
+        let endpoint = try #require(URL(string: "http://127.0.0.1:1/mcp"))
+        let bridge = ClaudeAgentMCPBridge(endpoint: { endpoint }, tokenStore: { store })
+
+        await #expect(throws: ClaudeAgentToolGrantError.tokenNotSaved) {
+            _ = try await bridge.makeGrant(connectionId: UUID(), mode: .agent)
+        }
+        #expect(await store.list().isEmpty)
+        #expect(ClaudeAgentToolGrantError.tokenNotSaved.localizedDescription.contains("Keychain"))
+    }
+
+    @Test("The chat gets the grant's failure as the turn's error")
+    func grantFailureEndsTheTurn() async throws {
+        let provider = ClaudeAgentProvider(
+            model: "sonnet",
+            cli: ClaudeAgentCLI(executableOverride: "/usr/bin/true"),
+            toolBridge: FailingToolBridge()
+        )
+        let stream = provider.streamChat(
+            turns: [ChatTurnWire(role: .user, blocks: [.text("hi")])],
+            options: ChatTransportOptions(model: "sonnet", connectionId: UUID())
+        )
+
+        await #expect(throws: ClaudeAgentToolGrantError.tokenNotSaved) {
+            for try await _ in stream {}
+        }
     }
 
     @Test("Transport options carry no connection unless the caller names one")
     func optionsDefaultToNoConnection() {
         #expect(ChatTransportOptions(model: "sonnet").connectionId == nil)
+    }
+
+    @Test("Transport options that name no mode are Ask, the narrowest")
+    func optionsDefaultToAsk() {
+        #expect(ChatTransportOptions(model: "sonnet").chatMode == .ask)
+    }
+
+    @Test("The provider asks for a grant in the chat mode its options carry")
+    func providerPassesTheModeToTheBridge() async throws {
+        let bridge = RecordingToolBridge()
+        let provider = ClaudeAgentProvider(
+            model: "sonnet",
+            cli: ClaudeAgentCLI(executableOverride: "/usr/bin/true"),
+            toolBridge: bridge
+        )
+
+        for mode in AIChatMode.allCases {
+            let stream = provider.streamChat(
+                turns: [ChatTurnWire(role: .user, blocks: [.text("hi")])],
+                options: ChatTransportOptions(model: "sonnet", connectionId: UUID(), chatMode: mode)
+            )
+            for try await _ in stream {}
+        }
+
+        #expect(await bridge.modes == AIChatMode.allCases)
     }
 
     @Test("The provider asks for a grant on the connection in its options")

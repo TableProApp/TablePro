@@ -64,7 +64,7 @@ extension MSSQLPluginDriver {
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
         let schema = effectiveSchema(schema)
-        let factRows = try await viewCatalogRows(MSSQLViewSources.viewFactsQuery(schema: schema, view: view))
+        let factRows = try await catalogRows(MSSQLViewSources.viewFactsQuery(schema: schema, view: view))
         guard let facts = MSSQLViewSources.ViewFacts(rows: factRows) else { return nil }
         if let refusal = facts.refusal { return .readOnly(PluginViewReadOnlyReason(refusal)) }
         // Once the relation proved to be a view, a failed read must not let it pass for a table.
@@ -77,7 +77,7 @@ extension MSSQLPluginDriver {
 
     private func rowEditing(throughView view: String, schema: String) async throws -> PluginViewRowEditing {
         let browse = MSSQLViewSources.BrowseFacts(
-            rows: try await viewCatalogRows(MSSQLViewSources.browseQuery(schema: schema, view: view))
+            rows: try await catalogRows(MSSQLViewSources.browseQuery(schema: schema, view: view))
         )
         let baseTable: MSSQLViewSources.BaseTable
         switch browse.source {
@@ -87,7 +87,7 @@ extension MSSQLPluginDriver {
             baseTable = table
         }
 
-        let probeRows = try await viewCatalogRows(MSSQLViewSources.probesQuery(
+        let probeRows = try await catalogRows(MSSQLViewSources.probesQuery(
             schema: schema,
             view: view,
             writableColumns: browse.writableColumns
@@ -100,7 +100,7 @@ extension MSSQLPluginDriver {
             probeRows: probeRows
         )
         let base = MSSQLViewSources.BaseFacts(
-            rows: try await viewCatalogRows(MSSQLViewSources.baseColumnsQuery(baseTable))
+            rows: try await catalogRows(MSSQLViewSources.baseColumnsQuery(baseTable))
         )
 
         return PluginViewRowEditing.resolve(
@@ -126,7 +126,7 @@ extension MSSQLPluginDriver {
         )
     }
 
-    private func viewCatalogRows(_ query: String) async throws -> [[String?]] {
+    private func catalogRows(_ query: String) async throws -> [[String?]] {
         try await execute(query: query).rows.map { $0.map(\.asText) }
     }
 
@@ -175,31 +175,18 @@ extension MSSQLPluginDriver {
         }.sorted { $0.name < $1.name }
     }
 
-    // Only the primary key's index is left out: `fetchTableDDL` never declares a `UNIQUE` constraint, so its index comes here.
+    // The primary key and UNIQUE constraints are declared in `fetchTableDDL`, which builds their indexes. What runs
+    // after the rows also turns back on the checks the source enforced without having checked its rows.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        // SQL Server allows both `]` and `'` in a name, so it is bracket-quoted and then quoted as a literal.
-        let objectLiteral = MSSQLStringLiteral.quoted(
-            MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
-        let sql = """
-            SELECT i.name, i.type_desc, i.is_unique, i.filter_definition,
-                   c.name AS column_name, ic.is_included_column, ic.is_descending_key
-            FROM sys.indexes i
-            JOIN sys.index_columns ic
-                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c
-                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE i.object_id = OBJECT_ID(\(objectLiteral))
-              AND i.name IS NOT NULL
-              AND i.is_primary_key = 0
-              AND i.type IN (1, 2)
-            ORDER BY i.index_id, ic.is_included_column, ic.key_ordinal
-            """
-        let result = try await execute(query: sql)
+        let resolvedSchema = effectiveSchema(schema)
+        let rows = try await catalogRows(MSSQLSchemaQueries.indexDefinitions(schema: resolvedSchema, table: table))
+        let checks = try await catalogRows(MSSQLSchemaQueries.checkConstraints(schema: resolvedSchema, table: table))
+            .compactMap(MSSQLSchemaQueries.parseCheckConstraintRow)
         do {
-            return try MSSQLSchemaQueries.indexStatements(
-                rows: result.rows.map { row in row.map { $0.asText } },
-                schema: effectiveSchema(schema),
-                table: table)
+            return try MSSQLSchemaQueries.indexStatements(rows: rows, schema: resolvedSchema, table: table)
+                + MSSQLSchemaQueries.checkConstraintReenableStatements(
+                    schema: resolvedSchema, table: table, checkConstraints: checks
+                )
         } catch let refusal as MSSQLDefinitionRefusal {
             throw MSSQLPluginError(refusal)
         }
@@ -265,6 +252,8 @@ extension MSSQLPluginDriver {
         let resolved = effectiveSchema(schema)
         return "DROP TRIGGER \(quoteIdentifier(resolved)).\(quoteIdentifier(name))"
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let result = try await execute(query: MSSQLSchemaQueries.allColumns(schema: effectiveSchema(schema)))
@@ -345,19 +334,33 @@ extension MSSQLPluginDriver {
         }
 
         let columns = try await columnRows(table: table, schema: schema)
-        let indexes = try await fetchIndexes(table: table, schema: schema)
+        let keyConstraints = try await catalogRows(MSSQLSchemaQueries.keyConstraints(schema: resolvedSchema, table: table))
+            .compactMap(MSSQLSchemaQueries.parseKeyConstraintRow)
+        let checkConstraints = try await catalogRows(MSSQLSchemaQueries.checkConstraints(schema: resolvedSchema, table: table))
+            .compactMap(MSSQLSchemaQueries.parseCheckConstraintRow)
         let foreignKeys = try await foreignKeyRows(table: table, schema: schema)
+        let collation = await databaseCollation(forTable: table)
         do {
             return try MSSQLSchemaQueries.createTableStatement(
                 schema: resolvedSchema,
                 table: table,
                 columns: columns,
-                primaryKeyColumns: indexes.filter(\.isPrimary).flatMap(\.columns),
-                foreignKeys: foreignKeys
+                keyConstraints: keyConstraints,
+                checkConstraints: checkConstraints,
+                foreignKeys: foreignKeys,
+                databaseCollation: collation
             )
         } catch let refusal as MSSQLDefinitionRefusal {
             throw MSSQLPluginError(refusal)
         }
+    }
+
+    // Unread, every column states its collation, which keeps it rather than changing it.
+    private func databaseCollation(forTable table: String) async -> String? {
+        guard let result = try? await execute(query: MSSQLSchemaQueries.databaseCollation(forTable: table)) else {
+            return nil
+        }
+        return result.rows.first?[safe: 0]?.asText
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -493,6 +496,7 @@ extension MSSQLColumnRow {
             isPrimaryKey: isPrimaryKey,
             defaultValue: defaultValue,
             extra: isIdentity ? "IDENTITY" : nil,
+            collation: collation,
             identityKind: isIdentity ? .always : nil,
             isGenerated: isGenerated
         )

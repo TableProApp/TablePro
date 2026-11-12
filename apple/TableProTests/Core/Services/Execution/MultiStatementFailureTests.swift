@@ -107,7 +107,7 @@ struct MultiStatementFailureTests {
         )
         #expect(firstStatement.message == "Statement 1/3 failed: database is locked")
 
-        for plan in [BatchTransactionPlan.appTransaction, .scriptTransaction] {
+        for plan in [BatchTransactionPlan.appTransaction, .heldTransaction, .scriptTransaction] {
             let rolledBack = Self.report(
                 .statement(sql: "VACUUM"),
                 executed: 2,
@@ -228,7 +228,7 @@ struct MultiStatementFailureTests {
     /// `.appTransaction` and a script's own commit under `.scriptTransaction` are both unanswered.
     @Test(
         "The unknown-outcome wording does not change with the plan",
-        arguments: [BatchTransactionPlan.appTransaction, .scriptTransaction, .sessionTransaction, .autocommit]
+        arguments: [BatchTransactionPlan.appTransaction, .heldTransaction, .scriptTransaction, .sessionTransaction, .autocommit]
     )
     func unknownCommitOutcomeReadsTheSameUnderEveryPlan(plan: BatchTransactionPlan) {
         let report = Self.report(
@@ -303,6 +303,22 @@ struct MultiStatementFailureTests {
             plan: .autocommit,
             sessionState: .inTransaction,
             unit: .batch
+        )
+        #expect(report.message.contains("still open"))
+        #expect(!report.message.contains("stays applied"))
+    }
+
+    // A Teradata ANSI session holds an unwrapped DDL statement in a transaction it leaves open.
+    @Test("An unwrapped statement failure over a transaction left open says so")
+    func statementFailureReportsOpenTransaction() {
+        let report = Self.report(
+            .statement(sql: "INSERT INTO t VALUES (1)"),
+            executed: 1,
+            total: 2,
+            error: "Only a COMMIT WORK or null statement is legal after a DDL Statement.",
+            plan: .autocommit,
+            sessionState: .inTransaction,
+            unit: .statement
         )
         #expect(report.message.contains("still open"))
         #expect(!report.message.contains("stays applied"))

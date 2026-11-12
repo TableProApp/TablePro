@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::OnceLock;
 
-use tablepro_session::runtime::{TaskFailure, TaskResult, Tasks};
+use tablepro_session::runtime::{TaskFailure, TaskResult, Tasks, worker_count};
 use tokio::runtime::{Builder, Runtime};
 
 use crate::error::CoreError;
@@ -12,6 +12,7 @@ static RUNTIME: OnceLock<Result<Runtime, String>> = OnceLock::new();
 pub(crate) fn tasks() -> Result<Tasks, CoreError> {
     let built = RUNTIME.get_or_init(|| {
         Builder::new_multi_thread()
+            .worker_threads(worker_count())
             .enable_all()
             .thread_name("tablepro-core")
             .build()
@@ -48,5 +49,21 @@ struct AbortOnDrop<T>(TaskResult<T>);
 impl<T> Drop for AbortOnDrop<T> {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_runtime_keeps_the_worker_count_of_a_database_client() {
+        tasks().expect("the runtime");
+        let workers = RUNTIME
+            .get()
+            .and_then(|built| built.as_ref().ok())
+            .map(|runtime| runtime.metrics().num_workers());
+
+        assert_eq!(workers, Some(worker_count()));
     }
 }

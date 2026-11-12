@@ -295,6 +295,7 @@ struct RewindPlanner {
         var lookups: [RowLookup?] = []
         var prologue: [String] = []
         var epilogue: [String] = []
+        var checked: Set<Int> = []
         for entry in Self.runOrder(of: operations) {
             let operation = operations[entry.operation]
             let inverse: RestoreStatements
@@ -304,11 +305,53 @@ struct RewindPlanner {
                 inverse = try inverseStatements(for: operation)
             }
             statements.append(contentsOf: inverse.statements)
-            lookups.append(contentsOf: inverse.lookups)
+            // The operation's first statement to run finds the row as the save left it, so it is the one checked.
+            if checked.insert(entry.operation).inserted, let lookup = heldRowLookup(for: operation, inverse) {
+                lookups.append(lookup)
+            } else {
+                lookups.append(contentsOf: inverse.lookups)
+            }
             prologue.append(contentsOf: inverse.prologue.filter { !prologue.contains($0) })
             epilogue.append(contentsOf: inverse.epilogue.filter { !epilogue.contains($0) })
         }
         return RestoreStatements(statements: statements, lookups: lookups, prologue: prologue, epilogue: epilogue)
+    }
+
+    // A statement with no lookup of its own finds the row by its key alone, so the sheet's check runs again inside the
+    // write: a row another writer changed since the review refuses the restore instead of being overwritten.
+    private func heldRowLookup(for operation: RowWriteOperation, _ inverse: RestoreStatements) -> RowLookup? {
+        guard inverse.statements.count == 1, inverse.lookups.allSatisfy({ $0 == nil }),
+              operation.kind == .update || operation.kind == .insert,
+              operation.rowLocator == nil,
+              !PluginManager.shared.supportsFieldRemoval(for: record.databaseType),
+              let image = operation.postImage,
+              let query = keyedRead(of: image, for: operation)
+        else { return nil }
+        var held: [Int: PluginCellValue] = [:]
+        for column in operation.writtenColumns {
+            guard let index = operation.columns.firstIndex(of: column), index < image.count else { return nil }
+            held[index] = image[index]
+        }
+        return RowLookup(
+            query: ParameterizedStatement(sql: query, parameters: []), rowCount: 1, pinsRows: false, heldValues: held
+        )
+    }
+
+    private func keyedRead(of image: [PluginCellValue], for operation: RowWriteOperation) -> String? {
+        let filters = operation.primaryKeyColumns.compactMap { column -> TableFilter? in
+            guard let value = keyValue(in: image, of: operation, column: column) else { return nil }
+            return TableFilter(columnName: column, filterOperator: .equal, value: value)
+        }
+        guard !filters.isEmpty, filters.count == operation.primaryKeyColumns.count else { return nil }
+        return queryBuilder.buildFilteredQuery(
+            tableName: record.target.table,
+            schemaName: record.target.schema,
+            filters: filters,
+            logicMode: .and,
+            columns: operation.columns,
+            selectColumns: operation.columns,
+            limit: 1
+        )
     }
 
     // Sets the step's columns back, keyed on the row as that step left it.

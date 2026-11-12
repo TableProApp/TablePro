@@ -18,6 +18,7 @@ struct KeyboardSettingsView: View {
     @State private var systemReservedAlert: ShortcutAction?
     @State private var reservedAlert: ReservedAlertState?
     @State private var needsModifierAlert: ShortcutAction?
+    @State private var confirmsReset = false
 
     private var content: some View {
         VStack(spacing: 0) {
@@ -45,7 +46,7 @@ struct KeyboardSettingsView: View {
                     HStack {
                         Spacer()
                         Button(String(localized: "Reset to Defaults")) {
-                            settings = .default
+                            confirmsReset = true
                         }
                         .disabled(settings.shortcuts.isEmpty)
                     }
@@ -57,6 +58,14 @@ struct KeyboardSettingsView: View {
 
     var body: some View {
         content
+        .alert(String(localized: "Reset All Shortcuts?"), isPresented: $confirmsReset) {
+            Button(String(localized: "Reset"), role: .destructive) {
+                settings = .default
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "Every custom shortcut goes back to its default."))
+        }
         .alert(
             String(localized: "Shortcut Conflict"),
             isPresented: Binding(

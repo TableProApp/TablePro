@@ -52,6 +52,17 @@ internal sealed class FakeSession : ITabSession
 
     public Gate? Counting { get; set; }
 
+    public Gate? Estimating { get; set; }
+
+    // None by default, as an engine without statistics gives, so the server counts as it did before estimates.
+    public RowEstimate? Estimate { get; set; }
+
+    public CoreError? EstimateFailure { get; set; }
+
+    public CoreError? CountFailure { get; set; }
+
+    public int Estimates { get; private set; }
+
     // Waited at by the run of each page read.
     public Gate? PageReading { get; set; }
 
@@ -207,7 +218,18 @@ internal sealed class FakeSession : ITabSession
             await counting.PassAsync(cancellationToken);
         }
 
-        return RowsPicked(filter);
+        return CountFailure is { } failure ? throw new TableProException(failure) : RowsPicked(filter);
+    }
+
+    public async Task<RowEstimate?> EstimateRowsAsync(TableName table, CancellationToken cancellationToken)
+    {
+        Estimates++;
+        if (Estimating is { } estimating)
+        {
+            await estimating.PassAsync(cancellationToken);
+        }
+
+        return EstimateFailure is { } failure ? throw new TableProException(failure) : Estimate;
     }
 
     public Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken)

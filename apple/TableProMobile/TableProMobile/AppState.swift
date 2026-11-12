@@ -73,7 +73,7 @@ final class AppState {
         driverFactory injectedDriverFactory: (any DriverFactory)? = nil
     ) {
         self.sampleInstaller = sampleInstaller
-        self.libraryPublisher = libraryPublisher ?? .live()
+        self.libraryPublisher = libraryPublisher ?? .live(defaults: defaults)
         self.localDatabaseFiles = localDatabaseFiles
         localDatabaseFiles.container.recordCurrentContainer()
         onboarding = OnboardingPreferences(defaults: defaults)
@@ -118,14 +118,27 @@ final class AppState {
         guard !TestRuntime.isActive else { return }
 
         if loadStatus == .ready {
-            KeychainSecureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
-            CertificateMaterializer().releaseAll(except: Set(connections.map(\.id)))
+            removeWhatDeletedConnectionsLeft()
             Task {
                 publishLibrary()
             }
         }
 
         connectSync()
+    }
+
+    // The Keychain and certificate folder listings block, so they run off the main actor at utility
+    // priority, against the library as it stands once the Keychain listing returns, not at launch.
+    private func removeWhatDeletedConnectionsLeft() {
+        Task.detached(priority: .utility) { [self] in
+            await KeychainSecureStore.cleanOrphanedCredentials { self.loadedConnectionIds }
+            guard let kept = await loadedConnectionIds else { return }
+            CertificateMaterializer().releaseAll(except: kept)
+        }
+    }
+
+    private var loadedConnectionIds: Set<UUID>? {
+        loadStatus == .ready ? Set(connections.map(\.id)) : nil
     }
 
     // Separate from init, which skips it under tests, so a test can run the wiring the app runs.

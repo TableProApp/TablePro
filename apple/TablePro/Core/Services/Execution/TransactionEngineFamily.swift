@@ -27,6 +27,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
     case sqlServer
     case oracle
     case redis
+    case teradata
     case other
 
     internal static func of(_ type: DatabaseType) -> TransactionEngineFamily {
@@ -64,6 +65,23 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         self == .oracle
     }
 
+    // After a failed statement the block takes nothing but a rollback, so one error costs every pending change.
+    internal var failedStatementAbortsTransaction: Bool {
+        switch self {
+        case .postgres, .redshift, .cockroach, .duckdb:
+            return true
+        // Teradata mode rolls back the whole transaction on a failed request and ANSI mode only the request; the
+        // family cannot see the session's mode, so Teradata keeps the answer it had before it had a family.
+        case .mysql, .sqlite, .sqlServer, .oracle, .redis, .teradata, .other:
+            return false
+        }
+    }
+
+    // Redshift and DuckDB have no savepoint to take a failed statement back to.
+    internal var takesBackAFailedStatement: Bool {
+        self == .postgres || self == .cockroach
+    }
+
     private static let familiesByTypeId: [String: TransactionEngineFamily] = [
         "PostgreSQL": .postgres,
         "PGlite": .postgres,
@@ -83,6 +101,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         "DuckDB": .duckdb,
         "SQL Server": .sqlServer,
         "Oracle": .oracle,
-        "Redis": .redis
+        "Redis": .redis,
+        "Teradata": .teradata
     ]
 }

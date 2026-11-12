@@ -215,9 +215,12 @@ final class MainContentCommandActions: ObservableObject {
         let rowIDs = selectedDataRowIDs
         if !rowIDs.isEmpty {
             coordinator?.deleteRows(rowIDs)
-        } else if !selectedTables.wrappedValue.isEmpty {
-            // Through the sidebar's own path, which asks before it queues a drop.
-            coordinator?.sidebarViewModel?.batchToggleDelete(refs: Array(selectedTables.wrappedValue))
+        } else if !selectedTables.wrappedValue.isEmpty, let coordinator {
+            // Through the sidebar's own path, which asks this window before it queues a drop.
+            coordinator.sidebarViewModel?.batchToggleDelete(
+                refs: Array(selectedTables.wrappedValue),
+                from: coordinator.windowSidebarState
+            )
         }
     }
 
@@ -814,13 +817,16 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func copyTableNames() {
-        coordinator?.sidebarViewModel?.copySelectedTableNames()
+        SidebarViewModel.copyTableNames(of: selectedTables.wrappedValue)
     }
 
     func truncateTables() {
         guard coordinator?.admitsSheetCommand() == true else { return }
-        guard canTruncateSelectedTables else { return }
-        coordinator?.sidebarViewModel?.batchToggleTruncate()
+        guard canTruncateSelectedTables, let coordinator else { return }
+        coordinator.sidebarViewModel?.batchToggleTruncate(
+            refs: Array(selectedTables.wrappedValue),
+            from: coordinator.windowSidebarState
+        )
     }
 
     // MARK: - Filter Operations (Group A: Called Directly)
@@ -1131,14 +1137,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func clearQuery() {
-        guard let coordinator,
-              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex,
-              tab.tabType == .query else { return }
-        coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = "" }
-        coordinator.toolbarState.hasQueryText = false
-        coordinator.scheduleDraftSave()
-        // Emptying from a command bypasses the editor binding that recomputes the dirty indicator on each keystroke.
-        coordinator.refreshUnsavedIndicator()
+        coordinator?.clearSelectedQuery()
     }
 
     var canClearQuery: Bool {
@@ -1287,6 +1286,19 @@ final class MainContentCommandActions: ObservableObject {
             hasPendingTableOps: hasPendingTableOps,
             onDiscard: { [weak self] in self?.clearPendingTableOps() }
         )
+    }
+
+    // Nil off a table tab, which the Database menu's Auto Refresh items dim for.
+    var tableAutoRefreshInterval: TableAutoRefreshInterval? {
+        guard let tab = coordinator?.tabManager.selectedTab,
+              tab.tabType == .table,
+              tab.tableContext.tableName != nil else { return nil }
+        return tab.autoRefreshInterval
+    }
+
+    func setTableAutoRefreshInterval(_ interval: TableAutoRefreshInterval) {
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return }
+        coordinator.setAutoRefreshInterval(interval, forTab: tabId)
     }
 
     private var hasPendingTableOps: Bool {

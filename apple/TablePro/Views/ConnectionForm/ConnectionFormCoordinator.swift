@@ -376,6 +376,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             queryTimeoutSeconds: customization.queryTimeoutSeconds,
             binaryInlineLimitKilobytes: customization.binaryInlineLimitKilobytes,
             completionIdentifierCase: customization.completionIdentifierCase,
+            commitMode: customization.commitMode,
             redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
                 RedisDatabaseIndex.parse($0) ?? 0
             },
@@ -384,7 +385,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             localOnly: advanced.localOnly,
             additionalFields: fields,
             ownedAdditionalFieldIDs: ownedAdditionalFieldIDs(),
-            maskingRules: maskingRules.savedRules
+            maskingRules: maskingRules.savedRules,
+            revokedAIAlwaysAllowedTools: advanced.revokedAIAlwaysAllowedTools
         )
     }
 

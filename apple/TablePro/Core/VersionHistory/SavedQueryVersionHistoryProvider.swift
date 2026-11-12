@@ -38,7 +38,7 @@ internal struct SavedQueryVersionHistoryProvider: VersionHistoryProvider {
             return favorite.query
         case .savedQueryVersion(let id):
             return try await version(id: id).query
-        case .gitRevision:
+        case .gitRevision, .tabVersion:
             throw VersionHistoryError.versionNotFound
         }
     }

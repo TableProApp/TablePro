@@ -37,6 +37,19 @@ enum ChatToolCallRepair {
         return repaired
     }
 
+    // A stored card has nothing left to answer it, so storage and a loaded transcript never hold `.pending`.
+    static func settlingPendingApprovals(_ turns: [ChatTurnWire]) -> [ChatTurnWire] {
+        turns.map { turn in
+            var settled = turn
+            settled.blocks = turn.blocks.map { block in
+                guard case .toolUse(var call) = block.kind, case .pending = call.approvalState else { return block }
+                call.approvalState = .cancelled
+                return ChatContentBlockWire(id: block.id, kind: .toolUse(call))
+            }
+            return settled
+        }
+    }
+
     static func interruptedResults(for blocks: [ToolUseBlock]) -> [ToolResultBlock] {
         blocks.map { block in
             switch block.approvalState {
@@ -59,9 +72,21 @@ enum ChatToolCallRepair {
         for block in turn.blocks {
             guard case .toolUse(let call) = block.kind, !answered.contains(call.id) else { continue }
             answered.insert(call.id)
-            owed.append(ToolResultBlock(toolUseId: call.id, content: interruptedContent, isError: true))
+            owed.append(ToolResultBlock(toolUseId: call.id, content: unansweredContent(for: call), isError: true))
         }
         return owed
+    }
+
+    // An approved call with no result may have run; a cancelled or denied one never did.
+    private static func unansweredContent(for call: ToolUseBlock) -> String {
+        switch call.approvalState {
+        case .approved, .pending:
+            return interruptedContent
+        case .cancelled:
+            return stoppedBeforeRunContent
+        case .denied(let reason):
+            return reason
+        }
     }
 
     private static func toolResultIds(in turn: ChatTurnWire) -> Set<String> {

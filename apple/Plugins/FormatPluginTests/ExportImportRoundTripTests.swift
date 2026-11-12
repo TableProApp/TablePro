@@ -196,11 +196,12 @@ extension FormatLimits {
     // JSON has no binary type: a binary value is written as base64 text.
     static let json = FormatLimits(binary: { .text($0.base64EncodedString()) })
 
-    // An empty cell is not written, so '' reads back as NULL; a binary value is written as hex text,
-    // and XML 1.0 cannot hold a control character other than tab and the two line breaks.
+    // An empty cell is not written, so '' reads back as NULL; a binary value, zero bytes too, is
+    // written as hex text, and XML 1.0 cannot hold a control character other than tab and the two
+    // line breaks.
     static let xlsx = FormatLimits(
         emptyTextIsNull: true,
-        binary: { $0.isEmpty ? .null : .text(FormatLimits.hex($0)) },
+        binary: { .text(FormatLimits.hex($0)) },
         text: { text in
             String(String.UnicodeScalarView(text.unicodeScalars.filter { scalar in
                 scalar.value >= 0x20 || scalar == "\t" || scalar == "\n" || scalar == "\r"

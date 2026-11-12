@@ -74,6 +74,39 @@ struct SQLFileParserTests {
         #expect(stmts[1] == "SELECT 3")
     }
 
+    @Test("Postgres: an e glued to a name by $ or a non-ASCII unit starts a plain string, as the scanner reads it")
+    func postgresPrefixGluedToAName() async throws {
+        for glue in ["$", "\u{00A0}", "\u{2019}"] {
+            let sql = "SELECT x\(glue)e'\\'; DROP TABLE t; SELECT 'x';"
+            let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
+            #expect(stmts == ["SELECT x\(glue)e'\\'", "DROP TABLE t", "SELECT 'x'"], "\(glue)")
+        }
+    }
+
+    @Test("DuckDB: an E after a non-ASCII space DuckDB blanks starts an escape string")
+    func duckDBPrefixAfterABlank() async throws {
+        let sql = "SELECT varchar\u{200B}E'\\''; DROP TABLE t; SELECT 'x';"
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.duckdb)
+        #expect(stmts == ["SELECT varchar\u{200B}E'\\''", "DROP TABLE t", "SELECT 'x'"])
+        let dollar = try await Self.parse("SELECT 1 AS a,\u{200B}$$'$$; DROP TABLE t; SELECT 'x';", grammar: TestGrammar.duckdb)
+        #expect(dollar == ["SELECT 1 AS a,\u{200B}$$'$$", "DROP TABLE t", "SELECT 'x'"])
+    }
+
+    @Test("MySQL: a begin column in a one-statement procedure leaves the next statements their own")
+    func mysqlBeginColumnInAOneStatementBody() async throws {
+        let sql = """
+        CREATE PROCEDURE latest_shift() SELECT id FROM shifts ORDER BY begin DESC LIMIT 1;
+        CALL latest_shift();
+        UPDATE shifts SET closed = 1 WHERE id = 7;
+        """
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.mysql)
+        #expect(stmts == [
+            "CREATE PROCEDURE latest_shift() SELECT id FROM shifts ORDER BY begin DESC LIMIT 1",
+            "CALL latest_shift()",
+            "UPDATE shifts SET closed = 1 WHERE id = 7",
+        ])
+    }
+
     @Test("CockroachDB byte literal: backslash escape active")
     func cockroach_byte_literal_backslash_escape() async throws {
         let sql = """
@@ -517,6 +550,142 @@ struct SQLFileParserTests {
             let padding = "--" + String(repeating: "x", count: chunkSize - boundary - 3) + "\n"
             let statements = try await Self.parse(padding + Self.cqlScript, grammar: grammar)
             #expect(statements == Self.cqlStatements, "boundary at \(boundary)")
+        }
+    }
+
+    private static func parseWithLines(_ sql: String, grammar: SQLLexicalGrammar) async throws -> [ParsedLine] {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var statements: [ParsedLine] = []
+        for try await (statement, line) in SQLFileParser().parseFile(url: url, encoding: .utf8, grammar: grammar) {
+            statements.append(ParsedLine(statement: statement, line: line))
+        }
+        return statements
+    }
+
+    private struct ParsedLine: Equatable {
+        let statement: String
+        let line: Int
+    }
+
+    @Test("MySQL: a DELIMITER line is read as the mysql client reads it", arguments: [
+        ("DELIMITER\t//\nSELECT 1//\nDELIMITER ;\nSELECT 2;\n", ["SELECT 1", "SELECT 2"]),
+        ("DELIMITER // -- set\nSELECT 1//\nDELIMITER ;\nSELECT 2;\n", ["SELECT 1", "SELECT 2"]),
+        ("DELIMITER // SELECT 99\nSELECT 1//\n", ["SELECT 1"]),
+        ("DELIMITER\nSELECT 1;\n", ["SELECT 1"]),
+        ("  delimiter $$\nCREATE FUNCTION f() RETURNS INT BEGIN RETURN 1; END$$\ndelimiter ;\nSELECT f();\n", [
+            "CREATE FUNCTION f() RETURNS INT BEGIN RETURN 1; END", "SELECT f()",
+        ]),
+        ("SELECT 1; DELIMITER //\nSELECT 2;\n", ["SELECT 1", "DELIMITER //\nSELECT 2"]),
+    ])
+    func mysqlDelimiterLines(sql: String, expected: [String]) async throws {
+        #expect(try await Self.parse(sql, grammar: TestGrammar.mysql) == expected)
+    }
+
+    @Test("Import reads a line ending in a comment, a CockroachDB byte literal and a \\restrict line as the editor does")
+    func linesTheEditorReadsTheSameWay() async throws {
+        #expect(try await Self.parse("DELIMITER // -- set\nSELECT 1//\nSELECT 2//\n", grammar: TestGrammar.mysql) == [
+            "SELECT 1", "SELECT 2",
+        ])
+        let cockroach = DatabaseType.cockroachdb.lexicalGrammar
+        #expect(try await Self.parse("INSERT INTO t VALUES (b'\\''); DELETE FROM x; SELECT 'a';", grammar: cockroach) == [
+            "INSERT INTO t VALUES (b'\\'')", "DELETE FROM x", "SELECT 'a'",
+        ])
+        #expect(try await Self.parse("\\restrict k\rDROP TABLE t;\nSELECT 1;\n", grammar: TestGrammar.postgres) == ["SELECT 1"])
+    }
+
+    @Test("MySQL: the statement count reads DELIMITER lines as the import does")
+    func mysqlCountReadsDelimiterLines() async throws {
+        let sql = "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END//\nDELIMITER ;\nSELECT 3;\n"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let count = try await SQLFileParser().countStatements(url: url, encoding: .utf8, grammar: TestGrammar.mysql)
+        #expect(count == 2)
+        #expect(try await Self.parse(sql, grammar: TestGrammar.mysql).count == count)
+    }
+
+    @Test("Postgres: a plain pg_dump opens with \\restrict, which runs nothing")
+    func postgresRestrictLinesRunNothing() async throws {
+        let sql = "\\restrict abc123\n\nSET statement_timeout = 0;\nSELECT 1;\n\n\\unrestrict abc123\n"
+        #expect(try await Self.parseWithLines(sql, grammar: TestGrammar.postgres) == [
+            ParsedLine(statement: "SET statement_timeout = 0", line: 3),
+            ParsedLine(statement: "SELECT 1", line: 4),
+        ])
+    }
+
+    @Test("Postgres: COPY FROM STDIN stops the file at its line before the COPY or its rows are sent")
+    func postgresCopyFromStandardInputIsRefused() async throws {
+        let sql = """
+        CREATE TABLE t (a int, b text);
+        COPY public.t (a, b) FROM stdin;
+        1\tit's
+        2\tDROP TABLE users;
+        \\.
+        SELECT 1;
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var statements: [String] = []
+        await #expect(throws: SQLFileParseError.copyFromStandardInput(line: 2)) {
+            for try await (statement, _) in SQLFileParser().parseFile(url: url, encoding: .utf8, grammar: TestGrammar.postgres) {
+                statements.append(statement)
+            }
+        }
+        #expect(statements == ["CREATE TABLE t (a int, b text)"])
+        await #expect(throws: SQLFileParseError.copyFromStandardInput(line: 2)) {
+            _ = try await SQLFileParser().countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres)
+        }
+    }
+
+    @Test("Postgres: a COPY that reads a server file or writes rows out still runs", arguments: [
+        "COPY t FROM '/tmp/stdin';\nSELECT 1;",
+        "COPY (SELECT 1) TO STDOUT;\nSELECT 1;",
+    ])
+    func postgresCopyWithoutScriptRowsRuns(sql: String) async throws {
+        #expect(try await Self.parse(sql, grammar: TestGrammar.postgres).count == 2)
+    }
+
+    @Test("Postgres: a BEGIN ATOMIC body and a rule's action list arrive whole, as the editor reads them")
+    func postgresBodiesArriveWhole() async throws {
+        let function = "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1; SELECT 2; END"
+        let rule = "CREATE RULE r AS ON INSERT TO t DO ALSO (INSERT INTO a VALUES (1); INSERT INTO b VALUES (2))"
+        let sql = "\(function);\n\(rule);\nSELECT 3;\n"
+        #expect(try await Self.parse(sql, grammar: TestGrammar.postgres) == [function, rule, "SELECT 3"])
+    }
+
+    @Test("SQL Server: a ; before an IF's ELSE stays inside the IF, and the next statement keeps its line")
+    func sqlServerSemicolonBeforeElse() async throws {
+        let sql = """
+        IF DATENAME(weekday, GETDATE()) IN (N'Saturday', N'Sunday')
+               SELECT 'Weekend';
+        -- weekday
+        ELSE
+               SELECT 'Weekday';
+        IF @a = 1 SELECT 1;
+        SELECT 2;
+        """
+        #expect(try await Self.parseWithLines(sql, grammar: TestGrammar.sqlServer) == [
+            ParsedLine(
+                statement: "IF DATENAME(weekday, GETDATE()) IN (N'Saturday', N'Sunday')\n       SELECT 'Weekend';\n-- weekday\nELSE\n       SELECT 'Weekday'",
+                line: 1
+            ),
+            ParsedLine(statement: "IF @a = 1 SELECT 1", line: 6),
+            ParsedLine(statement: "SELECT 2", line: 7),
+        ])
+    }
+
+    @Test("SQL Server: a chunk boundary anywhere around a held ; changes nothing")
+    func sqlServerHeldSemicolonAcrossChunks() async throws {
+        let script = "IF @a = 1 SELECT 1;; ELSE SELECT 2;\nIF @b = 1 SELECT 3; SELECT 4;"
+        let expected = ["IF @a = 1 SELECT 1;; ELSE SELECT 2", "IF @b = 1 SELECT 3", "SELECT 4"]
+        let chunkSize = 65_536
+        for boundary in 0..<(script as NSString).length {
+            let padding = "--" + String(repeating: "x", count: chunkSize - boundary - 3) + "\n"
+            #expect(try await Self.parse(padding + script, grammar: TestGrammar.sqlServer) == expected, "boundary at \(boundary)")
         }
     }
 }

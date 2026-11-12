@@ -148,10 +148,12 @@ struct InstalledPluginsView: View {
 
                 HStack(spacing: 8) {
                     rejectedActionControl(for: plugin, action: action)
-                    Button(String(localized: "Remove")) {
-                        removeRejectedPlugin(plugin)
+                    if pluginManager.canRemoveRejectedPlugin(plugin) {
+                        Button(String(localized: "Remove")) {
+                            removeRejectedPlugin(plugin)
+                        }
+                        .accessibilityLabel(String(format: String(localized: "Remove %@"), plugin.name))
                     }
-                    .accessibilityLabel(String(format: String(localized: "Remove %@"), plugin.name))
                 }
             }
             .padding(20)
@@ -199,20 +201,24 @@ struct InstalledPluginsView: View {
     }
 
     private func removeRejectedPlugin(_ plugin: RejectedPlugin) {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: plugin.url.path) {
+        Task {
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(format: String(localized: "Move “%@” to the Trash?"), plugin.name),
+                message: String(localized: "The plugin can't be loaded. You can put it back from the Trash."),
+                confirmButton: String(localized: "Move to Trash"),
+                cancelButton: String(localized: "Cancel")
+            )
+            guard confirmed else { return }
             do {
-                try fm.removeItem(at: plugin.url)
-            } catch CocoaError.fileNoSuchFile {
+                try pluginManager.removeRejectedPlugin(plugin)
             } catch {
                 errorAlertTitle = String(localized: "Remove Failed")
                 errorAlertMessage = error.localizedDescription
                 showErrorAlert = true
                 return
             }
+            if selection == .rejected(plugin.url) { selection = nil }
         }
-        pluginManager.removeFromRejected(url: plugin.url)
-        if selection == .rejected(plugin.url) { selection = nil }
     }
 
     // MARK: - Plugin List

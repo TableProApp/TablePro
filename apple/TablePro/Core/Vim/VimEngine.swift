@@ -45,6 +45,7 @@ enum VimScreenPosition { case top, middle, bottom }
 struct VimReplaceModeEdit {
     let offset: Int
     let original: String?
+    let insertedLength: Int
 }
 
 @MainActor
@@ -136,6 +137,15 @@ final class VimEngine {
 
     func invalidateLineCache() {
         buffer?.invalidateLineCache()
+    }
+
+    // Offsets into the old text mean nothing in the new one. Registers, macros and the last search carry over, as
+    // they do between buffers in Vim.
+    func documentDidReplace() {
+        restoreDocumentMarks(VimDocumentMarks())
+        replaceModeEdits.removeAll()
+        editsOnCurrentLine = 0
+        lastEditedLine = nil
     }
 
     func reset() {

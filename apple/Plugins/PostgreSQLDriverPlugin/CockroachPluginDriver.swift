@@ -32,6 +32,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .readOnlyStatements,
+            .enforcesReadOnlyMode,
         ]
     }
 
@@ -78,6 +79,8 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let result = try await catalogRead(query)
         return result.rows.compactMap { Self.mapColumnRow($0, includesTableName: false) }
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let resolvedSchema = schema ?? core.currentSchema

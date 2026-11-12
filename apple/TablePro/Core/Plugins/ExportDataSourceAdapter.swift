@@ -27,8 +27,11 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     private let appliesRowScope: Bool
     private let commentableKinds: Set<PluginExportObjectKind>
     private let cappedTables = OSAllocatedUnfairLock<[(table: String, limit: Int)]>(initialState: [])
+    // The caller reads the connection's level on the main actor, where the gate reads it.
+    private let safeModeIsReadOnly: Bool
 
-    init(driver: DatabaseDriver, databaseType: DatabaseType) {
+    init(driver: DatabaseDriver, databaseType: DatabaseType, safeModeIsReadOnly: Bool = false) {
+        self.safeModeIsReadOnly = safeModeIsReadOnly
         let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType)
         self.supportsCascadeDrop = snapshot?.capabilities.supportsCascadeDrop ?? false
         self.lexicalFeatures = SQLLexicalResolver.executionFeatures(for: databaseType, session: driver.sessionLexicalState)
@@ -80,6 +83,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             // A table export only reads, whatever the statement the driver chose classifies as.
             var context = PluginStatementContext()
             context.readOnly = true
+            context.enforcesReadOnly = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) != nil
             // The driver's own export query is not the app's capped SELECT, so only a limit it declares applies.
             return reportingCut(
                 of: pluginDriver.streamExportRows(query: customQuery, context: context),
@@ -129,7 +133,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        return reportingCut(of: adapter.streamExportRows(query: query), table: table, engineCeiling: pagination.maximumRows)
+        let rows = adapter.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        return reportingCut(of: rows, table: table, engineCeiling: pagination.maximumRows)
     }
 
     private func reportingCut(
@@ -178,10 +183,20 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchTableDDL(table: table, schema: exportSchema(for: databaseName))
     }
 
+    // At Read-Only each read runs in a read-only transaction of its own, which an open one refuses, so a format's
+    // snapshot (`BEGIN`, `START TRANSACTION`, `COMMIT`) is not opened and the export reads table by table.
     func execute(query: String) async throws -> PluginQueryResult {
-        let result = try await driver.execute(query: query)
-        return mapToPluginResult(result)
+        guard let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) else {
+            return mapToPluginResult(try await driver.execute(query: query))
+        }
+        let keyword = QueryClassifier.leadingKeyword(of: query, grammar: dbType.lexicalGrammar)
+        guard !Self.transactionKeywords.contains(keyword) else {
+            return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+        }
+        return mapToPluginResult(try await driver.execute(query: query, context: context))
     }
+
+    private static let transactionKeywords: Set<String> = ["BEGIN", "START", "COMMIT", "END", "ROLLBACK"]
 
     func quoteIdentifier(_ identifier: String) -> String {
         driver.quoteIdentifier(identifier)

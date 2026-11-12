@@ -18,13 +18,15 @@ extension MainContentCoordinator {
             return
         }
 
-        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-           tab.tabType == .query {
-            let existing = tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines)
-            if existing.isEmpty {
-                tabManager.mutate(at: tabIndex) { $0.content.query = favorite.query }
+        if let selected = tabManager.selectedTab, selected.tabType == .query {
+            // Flushed first: on a large document the tab's text trails the editor, and the end must be the editor's.
+            flushEditorText(forTab: selected.id)
+            let existing = tabManager.selectedTab?.content.query ?? ""
+            if existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                replaceQueryText(inTab: selected.id, with: favorite.query)
             } else {
-                tabManager.mutate(at: tabIndex) { $0.content.query += "\n\n" + favorite.query }
+                let end = NSRange(location: (existing as NSString).length, length: 0)
+                replaceQueryText(inTab: selected.id, range: end, with: "\n\n" + favorite.query)
             }
         } else {
             runFavoriteInNewTab(favorite)
@@ -43,8 +45,7 @@ extension MainContentCoordinator {
     func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {
         guard let loaded = FileTextLoader.load(favorite.fileURL) else { return }
 
-        /// Any connection's tab, not only this window's selected one: the file can be open in a
-        /// workspace the window is not showing, and opening it here too made two buffers on one file.
+        // Any connection's tab: the file can be open in a workspace this window is not showing.
         if hostedTabRouting.revealTab(editing: favorite.fileURL) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             return

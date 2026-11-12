@@ -12,6 +12,7 @@ enum MemcachedError: Error, PluginDriverError {
     case server(MemcachedServerError)
     case command(MemcachedCommandError)
     case filter(MemcachedFilterRefusal)
+    case compareAndSwap(MemcachedCASRefusal)
     case refused(String)
     case unexpectedReply(String)
 
@@ -35,6 +36,10 @@ enum MemcachedError: Error, PluginDriverError {
             return Self.describe(error)
         case .filter(let refusal):
             return Self.describe(refusal)
+        case .compareAndSwap(.changed):
+            return String(localized: "The item changed since its CAS value was read, so nothing was saved. Refresh to see its current value.")
+        case .compareAndSwap(.notFound):
+            return String(localized: "The item does not exist, so nothing was saved. Refresh to see the current keys.")
         case .refused(let message):
             return message
         case .unexpectedReply(let line):

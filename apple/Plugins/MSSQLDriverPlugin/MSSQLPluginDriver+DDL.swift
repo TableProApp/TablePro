@@ -36,11 +36,12 @@ extension MSSQLPluginDriver {
         case .addColumn(let column):
             return MSSQLTableDefinitionSQL.refusal(for: column)
         case .modifyColumn(let old, let new):
-            let writesType = old.dataType != new.dataType || old.isNullable != new.isNullable
+            let alteration = Self.columnAlteration(from: old, to: new)
             return MSSQLTableDefinitionSQL.refusal(
                 for: new,
-                writesType: writesType,
-                writesDefault: writesType || old.defaultValue != new.defaultValue
+                writesType: alteration.writesType,
+                writesDefault: alteration.writesType || old.defaultValue != new.defaultValue,
+                collation: alteration.writesType ? alteration.collation : nil
             )
         default:
             return nil
@@ -60,7 +61,8 @@ extension MSSQLPluginDriver {
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
         let qt = mssqlQualifiedTable(table)
         var stmts: [String] = []
-        let needsTypeChange = oldColumn.dataType != newColumn.dataType || oldColumn.isNullable != newColumn.isNullable
+        let alteration = Self.columnAlteration(from: oldColumn, to: newColumn)
+        let needsTypeChange = alteration.writesType
         let defaultChanged = oldColumn.defaultValue != newColumn.defaultValue
 
         // Rename column first so subsequent statements reference the correct name
@@ -88,9 +90,14 @@ extension MSSQLPluginDriver {
         }
 
         if needsTypeChange {
-            guard MSSQLDefinitionText.isColumnType(newColumn.dataType) else { return nil }
-            let nullable = newColumn.isNullable ? "NULL" : "NOT NULL"
-            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) \(newColumn.dataType) \(nullable)")
+            guard let alter = try? MSSQLSchemaQueries.alterColumnStatement(
+                qualifiedTable: qt,
+                column: newColumn.name,
+                type: newColumn.dataType,
+                collation: alteration.collation,
+                isNullable: newColumn.isNullable
+            ) else { return nil }
+            stmts.append(alter)
         }
 
         // The re-add mirrors the drop above. A type or nullability change drops the constraint too,
@@ -102,6 +109,18 @@ extension MSSQLPluginDriver {
         }
 
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
+    }
+
+    // ALTER COLUMN also runs when only the collation changes, since it is the one statement that sets it.
+    private static func columnAlteration(
+        from old: PluginColumnDefinition,
+        to new: PluginColumnDefinition
+    ) -> (writesType: Bool, collation: String?) {
+        let collation = MSSQLSchemaQueries.alterColumnCollation(
+            type: new.dataType, collation: new.collation, previous: old.collation
+        )
+        let changesCollation = collation.map { $0 != old.collation } ?? false
+        return (old.dataType != new.dataType || old.isNullable != new.isNullable || changesCollation, collation)
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {

@@ -16,13 +16,23 @@ extension ConnectionFormCoordinator {
         )
     }
 
-    /// The level the connection will run at, which is what the form shows. Picking the level
-    /// already shown keeps the user's saved choice, which comes back once the floor lifts.
+    // Picking the level already shown keeps the saved choice, which comes back once the floor lifts.
     var effectiveSafeModeLevel: SafeModeLevel {
         get { safeModeFloor?.raising(customization.safeModeLevel) ?? customization.safeModeLevel }
         set {
             guard newValue != effectiveSafeModeLevel else { return }
             customization.safeModeLevel = newValue
+        }
+    }
+
+    var isManualCommitAvailable: Bool { ManualCommit.isAvailable(for: network.type) }
+
+    // Off where the engine can't hold, since a stored Manual Commit runs as automatic there.
+    var effectiveManualCommit: Bool {
+        get { isManualCommitAvailable && customization.commitMode == .manual }
+        set {
+            guard isManualCommitAvailable else { return }
+            customization.commitMode = newValue ? .manual : .automatic
         }
     }
 }

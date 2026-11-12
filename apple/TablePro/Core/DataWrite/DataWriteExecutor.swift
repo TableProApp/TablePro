@@ -11,15 +11,16 @@
 //  affected count against the count the plan expected is what catches it, and inside a transaction
 //  it is caught before it lands.
 //
-//  For a keyed write the comparison is `actual > expected`, never `actual != expected`. MySQL reports
-//  zero affected rows for an UPDATE that writes a value a row already holds, which is a normal save,
-//  not a fault.
+//  For a keyed write the comparison is `actual > expected`, and for a keyed UPDATE also `actual <
+//  expected` where the count is the rows it matched (`DataWriteRowCounts`, or a driver's own
+//  `PluginRowWrite.expectedRowCount`): a short one means the row was not written, deleted or
+//  rekeyed since it was read, kept out by row-level security, or skipped by a trigger.
 //
 //  A keyless write is held to both ends. It finds its row by matching every column against the text
 //  the grid read, and that match can simply find nothing: measured on MySQL 8.4.11 and OceanBase
 //  4.4.2.1, a row holding a FLOAT or a JSON column matched zero rows, the statement wrote nothing,
 //  and the save reported success while the edit disappeared on the next reload. Only the engines
-//  whose drivers report a real count can be held to it, which `reportsRowsAffected` decides.
+//  whose drivers report a real count can be held to it, which `DataWriteRowCounts` decides.
 //
 
 import Foundation
@@ -103,11 +104,19 @@ enum DataWriteExecutor {
     nonisolated static func run(
         _ plan: DataWritePlan,
         mode: PluginTransactionAccessMode = .readWrite,
+        commitMode: ConnectionCommitMode,
         on driver: DatabaseDriver,
         context: PluginStatementContext? = nil
     ) async throws -> DataWriteRun {
         let steps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !steps.isEmpty || !plan.prologue.isEmpty else { return DataWriteRun(results: [], sideStatements: []) }
+
+        // A write Manual Commit can't hold would commit with no Commit pressed, so it is refused before anything runs.
+        if commitMode == .manual {
+            guard plan.prologue.isEmpty, plan.epilogue.isEmpty else { throw ManualCommitSessionOptionsRefusal() }
+            let state = await driver.heldSessionTransactionState()
+            try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
+        }
 
         // A row a lookup cannot find on its own refuses the save before anything is written. Each step reads its
         // lookup again right before it runs, since the steps ahead of it can move or change its rows.
@@ -154,17 +163,21 @@ enum DataWriteExecutor {
             }
         }
 
-        /// Asked inside the same lease that runs the statements, so nothing can open a transaction
-        /// between the answer and the first write.
+        // Asked inside the lease that runs the statements, so nothing opens a transaction before the first write.
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: commitMode
         )
         var results: [DataWriteStepResult] = []
+        let engineCountsMatchedRows = DataWriteRowCounts.countsMatchedRows(for: plan.databaseType)
+        // A delete earlier in the save can cascade to a row a later update edits, which then matches nothing.
+        var ranDelete = false
 
         do {
-            if owner.opensTransaction {
+            if owner.sendsBegin {
                 try await driver.beginTransaction(mode: mode)
+                if owner == .held { ManualCommit.turnHold?.mark(true) }
             }
 
             for step in steps {
@@ -198,12 +211,16 @@ enum DataWriteExecutor {
                     )
                 }
 
+                let countsMatchedRows = engineCountsMatchedRows || step.countsMatchedRows
                 try verify(
                     step,
                     rowsAffected: result.rowsAffected,
                     owner: owner,
-                    countsAreMeaningful: DataWriteRowCounts.areMeaningful(for: plan.databaseType)
+                    countsAreMeaningful: countsMatchedRows,
+                    // Through a view the count is whatever its trigger or rule reports.
+                    holdsKeyedUpdates: countsMatchedRows && plan.viewTarget == nil && !ranDelete
                 )
+                ranDelete = ranDelete || step.rowKind == .delete || step.kind == .tableOperation
                 results.append(
                     DataWriteStepResult(
                         executionTime: Date().timeIntervalSince(start),
@@ -217,14 +234,15 @@ enum DataWriteExecutor {
                 }
             }
 
-            if owner.opensTransaction {
+            if owner.commitsAtEnd {
                 try await driver.commitTransaction()
             }
         } catch {
             var rollbackSucceeded = owner.canRollBack
-            if owner.opensTransaction {
+            if owner.canRollBack {
                 do {
                     try await driver.rollbackTransaction()
+                    if owner == .held { ManualCommit.turnHold?.mark(false) }
                 } catch {
                     rollbackSucceeded = false
                     logger.error("Rollback failed: \(error.publicLogShape, privacy: .public)")
@@ -242,7 +260,7 @@ enum DataWriteExecutor {
                     committed: results,
                     totalStatements: steps.count,
                     engine: plan.databaseType.rawValue,
-                    disposition: owner == .session ? .pendingInSessionTransaction : .written,
+                    disposition: owner == .session || owner == .held ? .pendingInSessionTransaction : .written,
                     underlying: error
                 )
             }
@@ -291,7 +309,13 @@ enum DataWriteExecutor {
                 )
             )
         }
-        guard rows.count != lookup.rowCount else { return rows }
+        guard rows.count != lookup.rowCount else {
+            guard let row = rows.first, lookup.rowCount == 1,
+                  !lookup.heldValues.allSatisfy({ row.indices.contains($0.key) && row[$0.key] == $0.value })
+            else { return rows }
+            logger.error("Lookup on '\(table, privacy: .private(mask: .hash))' found the row changed since it was read")
+            throw DataWriteError.changeRefused(table: table, kind: step.rowKind, reason: rowNotFoundReason)
+        }
         logger.error(
             "Lookup on '\(table, privacy: .private(mask: .hash))' found \(rows.count, privacy: .public) rows, expected \(lookup.rowCount, privacy: .public)"
         )
@@ -300,7 +324,7 @@ enum DataWriteExecutor {
             // A lookup that expects no row is an insert checking its key is free.
             reason = String(localized: "A row with this key already exists, so the insert would not add one.")
         } else if rows.count < lookup.rowCount {
-            reason = String(localized: "No row holds the values it was loaded with. Another client may have changed or deleted it.")
+            reason = rowNotFoundReason
         } else {
             reason = String(localized: "Other rows hold exactly the same values, so the change cannot reach this row alone.")
         }
@@ -324,6 +348,10 @@ enum DataWriteExecutor {
         )
     }
 
+    private static var rowNotFoundReason: String {
+        String(localized: "No row holds the values it was loaded with. Another client may have changed or deleted it.")
+    }
+
     private static func fetch(_ statement: ParameterizedStatement, on driver: DatabaseDriver) async throws -> QueryResult {
         statement.parameters.isEmpty
             ? try await driver.execute(query: statement.sql)
@@ -334,7 +362,8 @@ enum DataWriteExecutor {
         _ step: DataWriteStep,
         rowsAffected: Int,
         owner: WriteTransactionOwner,
-        countsAreMeaningful: Bool
+        countsAreMeaningful: Bool,
+        holdsKeyedUpdates: Bool
     ) throws {
         // A row inserted between a lookup without a pin and its write can still be reached, and a real count shows it.
         guard let expected = step.expectedRowCount ?? step.lookup?.rowCount else { return }
@@ -354,6 +383,18 @@ enum DataWriteExecutor {
             )
             throw DataWriteError.keyNoLongerMatchesOneRow(table: table, expected: expected, actual: rowsAffected)
         }
+        if holdsKeyedUpdates, step.rowKind == .update, !step.matchesRowsWithoutKey {
+            logger.error(
+                "Keyed update on '\(table, privacy: .private(mask: .hash))' matched \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
+            )
+            throw DataWriteError.changeRefused(
+                table: table,
+                kind: .update,
+                reason: String(
+                    localized: "No row took the change. Another client may have changed or deleted it, or a security policy or trigger skipped it."
+                )
+            )
+        }
         guard step.matchesRowsWithoutKey else { return }
         logger.error(
             "Keyless statement on '\(table, privacy: .private(mask: .hash))' affected \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
@@ -370,7 +411,7 @@ enum DataWriteExecutor {
         actual: Int
     ) -> DataWriteError {
         switch owner {
-        case .app:
+        case .app, .held:
             return .tooManyRowsAffected(table: table, expected: expected, actual: actual)
         case .session:
             return .tooManyRowsAffectedInSessionTransaction(table: table, expected: expected, actual: actual)

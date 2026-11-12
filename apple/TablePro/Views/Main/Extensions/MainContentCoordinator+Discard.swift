@@ -4,10 +4,11 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
-    func executeSidebarChanges(steps: [DataWriteStep]) async throws {
-        try await rowEditingCoordinator.executeSidebarChanges(steps: steps)
+    func executeSidebarChanges(steps: [DataWriteStep], viewTarget: PluginViewWriteTarget?) async throws {
+        try await rowEditingCoordinator.executeSidebarChanges(steps: steps, viewTarget: viewTarget)
     }
 
     func handleDiscard(

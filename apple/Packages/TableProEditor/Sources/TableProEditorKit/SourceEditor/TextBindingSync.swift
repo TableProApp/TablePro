@@ -20,12 +20,14 @@ final class TextBindingSync {
 
     var text: SourceEditor.TextAPI
     private(set) var lastSyncedText: String?
+    private(set) var documentID: AnyHashable?
 
     private let phase: RepresentableSyncPhase
     private(set) var writebackTask: Task<Void, Never>?
 
-    init(text: SourceEditor.TextAPI, phase: RepresentableSyncPhase) {
+    init(text: SourceEditor.TextAPI, documentID: AnyHashable? = nil, phase: RepresentableSyncPhase) {
         self.text = text
+        self.documentID = documentID
         self.phase = phase
         if case .binding(let binding) = text {
             lastSyncedText = binding.wrappedValue
@@ -90,27 +92,29 @@ final class TextBindingSync {
         return newText
     }
 
-    /// Pushes an external binding change down into the text view. The editor's
-    /// content wins while one of its own edits is still in flight, so user
-    /// typing is never clobbered by a stale binding snapshot.
-    ///
-    /// Routes through `TextViewController.setText` on purpose. The text-view
-    /// level `replaceCharacters` is the user-edit path: it is gated on
-    /// `isEditable`, runs mutation filters, and fires suggestion triggers,
-    /// none of which should happen for a programmatic whole-document
-    /// replacement. The controller-level call also rebuilds the highlighter
-    /// for the replacement storage; calling the text view directly leaves
-    /// tree-sitter state for the old document and highlighting never recovers.
-    func applyRepresentableText(_ newValue: String, controller: TextViewController) {
+    // The editor's content wins while one of its own edits is in flight. In the same named document a new value is one
+    // undoable edit; another document, or an owner that names none, gets `setText`: a new history and a highlighter
+    // rebuilt for the new storage, even when the text is the same.
+    func applyRepresentableText(
+        _ newValue: String,
+        documentID: AnyHashable? = nil,
+        controller: TextViewController
+    ) {
         guard !phase.isEditorChangePending else { return }
+        let isSameDocument = documentID == self.documentID
+        self.documentID = documentID
         // Compare with NSString literal equality. The text can be multiple megabytes and bridged from NSTextStorage,
         // so Swift's canonical `!=` walks the whole string through Unicode normalization on every representable update.
-        if let lastSyncedText, (newValue as NSString).isEqual(to: lastSyncedText) { return }
+        if isSameDocument, let lastSyncedText, (newValue as NSString).isEqual(to: lastSyncedText) { return }
 
         writebackTask?.cancel()
         writebackTask = nil
         phase.applyRepresentableValue {
-            controller.setText(newValue)
+            if isSameDocument, documentID != nil {
+                controller.replaceDocumentText(newValue)
+            } else {
+                controller.setText(newValue)
+            }
         }
         lastSyncedText = newValue
     }

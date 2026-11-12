@@ -30,6 +30,25 @@ struct PromptedPasswordKeyTests {
         #expect(DatabaseManager.promptCacheKey(for: linked) != DatabaseManager.promptCacheKey(for: moved))
     }
 
+    @Test("A connection on an SSH profile asks again once the profile moves to another server")
+    func movedProfileDoesNotReuseTheAnswer() {
+        let profiles = SSHProfileStorage.shared
+        let saved = profiles.loadProfiles()
+        var profile = SSHProfile(name: "Jump", host: "bastion-a.example", port: 22, username: "ops", authMethod: .password)
+        #expect(profiles.saveProfilesWithoutSync(saved + [profile]))
+        defer { profiles.saveProfilesWithoutSync(saved) }
+        var linked = DatabaseConnection(name: "Orders", host: "127.0.0.1", port: 5_432, type: .postgresql)
+        linked.sshTunnelMode = .profile(id: profile.id, snapshot: profile.toSSHConfiguration())
+        let before = DatabaseManager.promptCacheKey(for: linked)
+
+        profile.host = "bastion-b.example"
+        #expect(profiles.saveProfilesWithoutSync(saved + [profile]))
+
+        #expect(DatabaseManager.promptCacheKey(for: linked) != before)
+        #expect(LocalCredentialConsent.question(for: linked).destination.contains("bastion-b.example"))
+        #expect(EnvVarReferenceConsent.question(for: linked).destination.contains("bastion-b.example"))
+    }
+
     @Test("The prompt names the host the engine dials first, before a field it ignores")
     func summaryLeadsWithTheHost() {
         let connection = DatabaseConnection(

@@ -97,26 +97,95 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         )
     }
 
+    // Reads only the ends of the query: the Quick Switcher builds this for every history item it lists.
     var queryPreview: String {
-        var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmable = CharacterSet.whitespacesAndNewlines
+        let scalars = query.unicodeScalars
+        guard let first = scalars.firstIndex(where: { !trimmable.contains($0) }),
+              let last = scalars.lastIndex(where: { !trimmable.contains($0) }) else {
+            return ";"
+        }
+        var head = PreviewHead(limit: 100)
+        for scalar in scalars[first...last] {
+            head.append(scalar)
+            if head.isComplete { return head.preview }
+        }
+        var trimmed = head.text
         if !trimmed.hasSuffix(";") {
             trimmed += ";"
         }
-        if (trimmed as NSString).length > 100 {
-            return String(trimmed.prefix(100)) + "…"
-        }
-        return trimmed
+        return PreviewHead.shortened(trimmed, to: head.limit)
     }
 
+    // Stops reading once the cut is known: a history row builds this every time it renders.
     var singleLinePreview: String {
-        let collapsed = query
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        if (collapsed as NSString).length > 160 {
-            return String(collapsed.prefix(160)) + "…"
+        let newlines = CharacterSet.newlines
+        let whitespaces = CharacterSet.whitespaces
+        let scalars = query.unicodeScalars
+        var head = PreviewHead(limit: 160)
+        var lineHasText = false
+        var gapStart: String.UnicodeScalarView.Index?
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if newlines.contains(scalar) {
+                lineHasText = false
+                gapStart = nil
+            } else if whitespaces.contains(scalar) {
+                if lineHasText && gapStart == nil {
+                    gapStart = index
+                }
+            } else {
+                if !lineHasText {
+                    lineHasText = true
+                    if !head.text.isEmpty {
+                        head.append(" ")
+                    }
+                } else if let start = gapStart {
+                    gapStart = nil
+                    for gapScalar in scalars[start..<index] {
+                        head.append(gapScalar)
+                    }
+                }
+                head.append(scalar)
+                if head.isComplete { return head.preview }
+            }
+            scalars.formIndex(after: &index)
         }
-        return collapsed
+        return head.preview
+    }
+}
+
+// Appending to a string can change only its last Character, so once the head holds more than `limit` Characters its
+// first `limit` are those of the whole preview, and the rest of the query cannot change the result.
+private struct PreviewHead {
+    let limit: Int
+    private(set) var text = ""
+    private(set) var isComplete = false
+    private var scalarCount = 0
+    private var nextCount: Int
+
+    init(limit: Int) {
+        self.limit = limit
+        nextCount = limit + 1
+    }
+
+    var preview: String {
+        Self.shortened(text, to: limit)
+    }
+
+    mutating func append(_ scalar: Unicode.Scalar) {
+        text.unicodeScalars.append(scalar)
+        scalarCount += 1
+        // Counting Characters only when the scalar count doubles keeps the work linear.
+        guard scalarCount >= nextCount else { return }
+        nextCount = scalarCount * 2
+        isComplete = text.count > limit
+    }
+
+    // Tests the UTF-16 length but cuts at a Character count, as the previews always have.
+    static func shortened(_ text: String, to limit: Int) -> String {
+        guard (text as NSString).length > limit else { return text }
+        return String(text.prefix(limit)) + "…"
     }
 }

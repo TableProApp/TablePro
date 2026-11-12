@@ -1,8 +1,3 @@
-//
-//  LaunchIntentRouter.swift
-//  TablePro
-//
-
 import AppKit
 import Foundation
 import os
@@ -75,16 +70,31 @@ internal final class LaunchIntentRouter {
         }
     }
 
-    /// No alert on refusal: the bridge reads the refusal file and tells its client, and an alert
-    /// would greet every client that tries while MCP is off.
+    // No alert: the bridge reads the refusal file and tells its client, and an alert would greet every
+    // client that tries while MCP is off or broken.
     private func startMCPServer() async {
+        let quits = await Self.startMCPServerLeavesNothingToDo(
+            manager: MCPServerManager.shared,
+            isIdleMachineSession: { AppActivationPolicyController.shared.isIdleMachineSession }
+        )
+        guard quits else { return }
+        NSApp.terminate(nil)
+    }
+
+    // A launch made only to serve MCP has nothing left to do once the server is refused or fails to start.
+    internal static func startMCPServerLeavesNothingToDo(
+        manager: MCPServerManager,
+        isIdleMachineSession: () -> Bool
+    ) async -> Bool {
         do {
-            try await MCPServerManager.shared.lazyStart()
+            try await manager.lazyStart()
         } catch {
-            Self.logger.info("start-mcp refused: \(error.publicLogShape, privacy: .public)")
-            guard AppActivationPolicyController.shared.isIdleMachineSession else { return }
-            NSApp.terminate(nil)
+            logger.info("start-mcp refused: \(error.publicLogShape, privacy: .public)")
+            return isIdleMachineSession()
         }
+        guard case .failed = manager.state else { return false }
+        logger.error("start-mcp failed: the MCP server did not start")
+        return isIdleMachineSession()
     }
 
     private func installPlugin(_ url: URL) async throws {

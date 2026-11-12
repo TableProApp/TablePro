@@ -153,6 +153,17 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// since no other fact here says that a hint's body is tokens or that a stage name keeps a quote. Curated only.
     public static let databendTokens = SQLLexicalGrammar(rawValue: 1 << 40)
 
+    /// A script reads as psql reads it: `COPY ... FROM STDIN` takes the lines after its own as rows, up to a line
+    /// holding only `\.`, and pg_dump's `\restrict` and `\unrestrict` lines run nothing, as no meta-command runs here.
+    /// See ``SQLPsqlScript``. Curated only.
+    public static let psqlScripts = SQLLexicalGrammar(rawValue: 1 << 41)
+
+    /// The non-ASCII spaces ``SQLNonCodeSpan/spacesBeforeLexing`` lists end a name, as DuckDB turns them into spaces
+    /// before it lexes where its pre-lexing pass sees no quote, so `x` + U+200B + `E'...'` is a name and an escape
+    /// string. PostgreSQL reads every byte from 0x80 up as part of a name. Measured on DuckDB 1.5.4 and 2.0.0 and
+    /// PostgreSQL 17.11. That pass reads quotes its own way, so DuckDB's profile also doubts this fact. Curated only.
+    public static let nonASCIISpacesEndNames = SQLLexicalGrammar(rawValue: 1 << 42)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

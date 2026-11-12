@@ -1083,6 +1083,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1200,7 +1202,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_core_connect_saved(ulong @ptr,RustBuffer @id,RustBuffer @secrets,RustBuffer @prompter,RustBuffer @cancel
+     ulong uniffi_tablepro_ffi_fn_method_core_connect_saved(ulong @ptr,RustBuffer @id,RustBuffer @secrets,RustBuffer @keep,RustBuffer @prompter,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -2235,6 +2237,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_databasesession_table_row_count(ulong @ptr,RustBuffer @table,RustBuffer @filter,RustBuffer @cancel
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_databasesession_table_row_estimate(ulong @ptr,RustBuffer @table,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -3829,6 +3842,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_table_row_estimate(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_databasesession_table_structure(
     );
 
@@ -4048,8 +4072,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_connect_saved();
-            if (checksum != 10354) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_connect_saved` checksum `10354`, library returned `{checksum}`");
+            if (checksum != 5649) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_connect_saved` checksum `5649`, library returned `{checksum}`");
             }
         }
         {
@@ -4518,6 +4542,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_table_row_count();
             if (checksum != 47733) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_table_row_count` checksum `47733`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_table_row_estimate();
+            if (checksum != 301) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_table_row_estimate` checksum `301`, library returned `{checksum}`");
             }
         }
         {
@@ -5499,7 +5529,7 @@ class FfiConverterTypeConnectionLibrary: FfiConverter<ConnectionLibrary, ulong> 
 
 internal interface ICore {
     /// <exception cref="CoreException"></exception>
-    Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel);
+    Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, ConnectionSecrets @keep, HostPrompter? @prompter, CancelToken? @cancel);
     DriverInfo[] Drivers();
     /// <exception cref="CoreException"></exception>
     Task<QueryHistoryStore> History();
@@ -5607,11 +5637,11 @@ internal class Core : ICore, IDisposable {
 
     
     /// <exception cref="CoreException"></exception>
-    public async Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel) {
+    public async Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, ConnectionSecrets @keep, HostPrompter? @prompter, CancelToken? @cancel) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_connect_saved(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterOptionalTypeHostPrompter.INSTANCE.Lower(@prompter), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_connect_saved(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@keep), FfiConverterOptionalTypeHostPrompter.INSTANCE.Lower(@prompter), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
@@ -5804,6 +5834,8 @@ internal interface IDatabaseSession {
     Task<TableEditor> TableEditor(TableName @table, bool @refresh, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task<ulong> TableRowCount(TableName @table, TableFilterArg? @filter, CancelToken? @cancel);
+    /// <exception cref="CoreException"></exception>
+    Task<RowEstimate> TableRowEstimate(TableName @table, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task<TableStructure> TableStructure(TableName @table, ObjectKindTag @kind, CancelToken? @cancel);
 }
@@ -6277,6 +6309,28 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
         // Lift
         (result) => FfiConverterUInt64.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<RowEstimate> TableRowEstimate(TableName @table, CancelToken? @cancel) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_table_row_estimate(thisPtr, FfiConverterTypeTableName.INSTANCE.Lower(@table), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeRowEstimate.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -11072,6 +11126,85 @@ class FfiConverterTypeRowEdit : FfiConverterRustBuffer<RowEdit>{
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRowEdit.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record RowEstimate {
+    
+    public record Exact (
+        ulong Rows
+    ) : RowEstimate {}
+    
+    public record Approximate (
+        ulong Rows
+    ) : RowEstimate {}
+    
+    public record Unknown: RowEstimate {}
+    
+    
+
+    
+}
+
+class FfiConverterTypeRowEstimate : FfiConverterRustBuffer<RowEstimate>{
+    public static FfiConverterRustBuffer<RowEstimate> INSTANCE = new FfiConverterTypeRowEstimate();
+
+    public override RowEstimate Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new RowEstimate.Exact(
+                    FfiConverterUInt64.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new RowEstimate.Approximate(
+                    FfiConverterUInt64.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new RowEstimate.Unknown(
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRowEstimate.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(RowEstimate value) {
+        switch (value) {
+            case RowEstimate.Exact variant_value:
+                return 4
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Rows);
+            case RowEstimate.Approximate variant_value:
+                return 4
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Rows);
+            case RowEstimate.Unknown variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRowEstimate.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(RowEstimate value, BigEndianStream stream) {
+        switch (value) {
+            case RowEstimate.Exact variant_value:
+                stream.WriteInt(1);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.Rows, stream);
+                break;
+            case RowEstimate.Approximate variant_value:
+                stream.WriteInt(2);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.Rows, stream);
+                break;
+            case RowEstimate.Unknown variant_value:
+                stream.WriteInt(3);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRowEstimate.Write()", value));
         }
     }
 }

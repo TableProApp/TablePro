@@ -173,12 +173,21 @@ struct RowLookup: Sendable {
     let rowCount: Int
     let pinsRows: Bool
     let check: ParameterizedStatement?
+    // By position in the query's columns: what the one row found must still hold, or another writer changed it.
+    let heldValues: [Int: PluginCellValue]
 
-    init(query: ParameterizedStatement, rowCount: Int, pinsRows: Bool, check: ParameterizedStatement? = nil) {
+    init(
+        query: ParameterizedStatement,
+        rowCount: Int,
+        pinsRows: Bool,
+        check: ParameterizedStatement? = nil,
+        heldValues: [Int: PluginCellValue] = [:]
+    ) {
         self.query = query
         self.rowCount = rowCount
         self.pinsRows = pinsRows
         self.check = check
+        self.heldValues = heldValues
     }
 
     init(_ lookup: PluginRowLookup) {
@@ -205,7 +214,7 @@ struct DataWriteStep: Sendable {
     let statement: ParameterizedStatement
     /// The most rows this statement may legitimately touch, or nil when the engine's count for it
     /// carries no meaning: DDL, a session setting, or a statement a plugin wrote itself for a table
-    /// with a primary key, where nothing tells the host which rows went into it.
+    /// with a primary key without saying how many rows it matches.
     let expectedRowCount: Int?
     let tableName: String?
     /// Whether this statement finds its rows by matching every column, because the table declares no
@@ -217,6 +226,8 @@ struct DataWriteStep: Sendable {
     let rowKind: RowWriteKind?
     // Finds the statement's rows right before it runs, for a driver whose engine has no key that names one row.
     let lookup: RowLookup?
+    // The driver vouched for `expectedRowCount` as the rows the statement matches, whatever engine it runs on.
+    let countsMatchedRows: Bool
 
     init(
         kind: Kind,
@@ -226,7 +237,8 @@ struct DataWriteStep: Sendable {
         matchesRowsWithoutKey: Bool = false,
         refusesSharedKey: Bool = false,
         rowKind: RowWriteKind? = nil,
-        lookup: RowLookup? = nil
+        lookup: RowLookup? = nil,
+        countsMatchedRows: Bool = false
     ) {
         self.kind = kind
         self.statement = statement
@@ -236,6 +248,7 @@ struct DataWriteStep: Sendable {
         self.refusesSharedKey = refusesSharedKey
         self.rowKind = rowKind
         self.lookup = lookup
+        self.countsMatchedRows = countsMatchedRows
     }
 }
 
@@ -254,7 +267,8 @@ extension DataWriteStep {
                     expectedRowCount: $0.rowCount,
                     tableName: tableName,
                     matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert,
-                    refusesSharedKey: $0.refusesSharedKey
+                    refusesSharedKey: $0.refusesSharedKey,
+                    rowKind: $0.kind
                 )
             }
         case .driverWritten(let statements):
@@ -262,11 +276,13 @@ extension DataWriteStep {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
-                    expectedRowCount: $0.keylessRowCount ?? $0.keyedRowCount,
+                    // The lowest: a driver's count never loosens the one row the host holds a statement to.
+                    expectedRowCount: [$0.matchedRowCount, $0.keylessRowCount, $0.keyedRowCount].compactMap { $0 }.min(),
                     tableName: tableName,
                     matchesRowsWithoutKey: $0.keylessRowCount != nil,
                     rowKind: $0.kind,
-                    lookup: $0.lookup
+                    lookup: $0.lookup,
+                    countsMatchedRows: $0.matchedRowCount != nil
                 )
             }
         }

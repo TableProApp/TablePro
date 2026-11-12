@@ -251,4 +251,126 @@ struct MCPInflightRegistryTests {
         #expect(key.requestId == .string("abc"))
         #expect(key == MCPInflightKey(clientFingerprint: "alice", requestId: .string("abc")))
     }
+
+    @Test("Two stdio clients on the bridge credential keep one request id apart")
+    func stdioClientsSharingTheBridgeCredentialAreTwoEntries() async {
+        let registry = MCPInflightRegistry()
+        let cursorToken = MCPCancellationToken()
+        let zedToken = MCPCancellationToken()
+        let cursorKey = MCPInflightKey(client: Self.stdioClient("cursor-vscode"), requestId: .number(1))
+        let zedKey = MCPInflightKey(client: Self.stdioClient("Zed"), requestId: .number(1))
+        #expect(cursorKey != zedKey)
+
+        #expect(await registry.register(key: cursorKey, token: cursorToken, tokenId: nil, method: "tools/call", startedAt: .now))
+        #expect(await registry.register(key: zedKey, token: zedToken, tokenId: nil, method: "tools/call", startedAt: .now))
+        #expect(await registry.count() == 2)
+
+        #expect(await registry.cancel(key: zedKey, reason: .clientRequested(nil)))
+        #expect(await zedToken.isCancelled)
+        #expect(!(await cursorToken.isCancelled))
+
+        await registry.remove(key: zedKey, token: zedToken)
+        #expect(await registry.contains(key: cursorKey))
+    }
+
+    @Test("A token one client holds keys its requests by the token alone")
+    func ownTokenKeysByTheTokenAlone() {
+        let identity = MCPClientIdentity(
+            clientName: "Raycast",
+            clientVersion: "1.0",
+            tokenId: alice.tokenId,
+            tokenName: "Raycast",
+            principalFingerprint: alice.tokenFingerprint,
+            address: .loopback,
+            transport: .http
+        )
+        #expect(MCPInflightKey(client: identity, requestId: .number(7)) == MCPInflightKey(principal: alice, requestId: .number(7)))
+    }
+
+    @Test("A stdio cancellation sent with the renewed bridge credential finds the request the old one started")
+    func stdioCancellationCrossesACredentialRotation() async {
+        let registry = MCPInflightRegistry()
+        let token = MCPCancellationToken()
+        let started = MCPInflightKey(client: Self.stdioClient("claude-code", fingerprint: "a"), requestId: .number(5))
+        let cancelled = MCPInflightKey(client: Self.stdioClient("claude-code", fingerprint: "b"), requestId: .number(5))
+
+        await registry.register(key: started, token: token, tokenId: nil, method: "tools/call", startedAt: .now)
+
+        #expect(await registry.cancel(key: cancelled, reason: .clientRequested(nil)))
+        #expect(await token.isCancelled)
+    }
+
+    @Test("Two sessions of one stdio client keep one request id apart, and ending the client ends every session")
+    func sessionsOfOneStdioClientAreSeparateEntries() async {
+        let registry = MCPInflightRegistry()
+        let client = Self.stdioClient("claude-code")
+        let tokens = [MCPCancellationToken(), MCPCancellationToken(), MCPCancellationToken()]
+        let keys = ["one", "two", "three"].map { MCPInflightKey(client: client, bridgeInstance: $0, requestId: .number(1)) }
+
+        for (key, token) in zip(keys, tokens) {
+            #expect(await registry.register(key: key, token: token, tokenId: nil, clientId: client.id, method: "tools/call", startedAt: .now))
+        }
+        #expect(await registry.count() == 3)
+
+        #expect(await registry.cancel(key: keys[2], reason: .clientRequested(nil)))
+        #expect(!(await tokens[0].isCancelled))
+        #expect(!(await tokens[1].isCancelled))
+
+        #expect(await registry.cancelAll(matchingClientId: client.id, reason: .clientDisconnected) == 2)
+        #expect(await tokens[0].isCancelled)
+        #expect(await tokens[1].isCancelled)
+    }
+
+    @Test("A stdio cancellation without clientInfo stops the request that had it, by bridge instance and request id")
+    func stdioCancellationWithoutClientInfo() async {
+        let registry = MCPInflightRegistry()
+        let token = MCPCancellationToken()
+        let named = Self.stdioClient("claude-code")
+        let unnamed = MCPClientIdentity(
+            clientName: MCPClientIdentity.unknownClientName,
+            clientVersion: nil,
+            tokenId: UUID(),
+            tokenName: "__stdio_bridge__",
+            principalFingerprint: "bridge",
+            address: .localSocket,
+            transport: .stdioBridge
+        )
+        let started = MCPInflightKey(client: named, bridgeInstance: "one", requestId: .number(3))
+        await registry.register(key: started, token: token, tokenId: nil, clientId: named.id, method: "tools/call", startedAt: .now)
+
+        #expect(!(await registry.cancel(key: MCPInflightKey(client: unnamed, bridgeInstance: "two", requestId: .number(3)), reason: .clientRequested(nil))))
+        #expect(await registry.cancel(key: MCPInflightKey(client: unnamed, bridgeInstance: "one", requestId: .number(3)), reason: .clientRequested(nil)))
+        #expect(await token.isCancelled)
+        #expect(MCPInflightKey(bridgeInstance: "one", requestId: .number(3)) == started)
+    }
+
+    @Test("A client on a token of its own cannot pick a bridge instance")
+    func ownTokenIgnoresTheBridgeInstance() {
+        let identity = MCPClientIdentity(
+            clientName: "Raycast",
+            clientVersion: "1.0",
+            tokenId: alice.tokenId,
+            tokenName: "Raycast",
+            principalFingerprint: alice.tokenFingerprint,
+            address: .loopback,
+            transport: .http
+        )
+        #expect(
+            MCPInflightKey(client: identity, bridgeInstance: "forged", requestId: .number(7))
+                == MCPInflightKey(principal: alice, requestId: .number(7))
+        )
+    }
+
+    private static func stdioClient(_ name: String, fingerprint: String = "bridge") -> MCPClientIdentity {
+        MCPClientIdentity(
+            clientName: name,
+            clientInfoName: name,
+            clientVersion: "1.0",
+            tokenId: UUID(),
+            tokenName: "__stdio_bridge__",
+            principalFingerprint: fingerprint,
+            address: .localSocket,
+            transport: .stdioBridge
+        )
+    }
 }

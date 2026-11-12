@@ -249,7 +249,7 @@ struct SQLFeatureLexer {
     }
 
     private func prefixedLiteralEnd(at index: Int, unit: UInt16) -> Int? {
-        guard index == 0 || !isWordUnit(units[index - 1]) else { return nil }
+        guard index == 0 || !continuesNameBeforePrefix(units[index - 1]) else { return nil }
         if features.contains(.escapeStringPrefix), unit == 0x45 || unit == 0x65, unitAt(index + 1) == Self.singleQuote {
             return quotedEnd(from: index + 2, quote: Self.singleQuote, backslashEscapes: true)
         }
@@ -371,8 +371,25 @@ struct SQLFeatureLexer {
         }
     }
 
+    // A prefix glued to a name is part of it: `$`, `#` where it continues a name, and every non-ASCII unit but the
+    // spaces DuckDB blanks before it lexes. DuckDB is the engine whose plugin reads `E'...'` through the kit, and this
+    // is its reading outside the quotes its pre-lexing pass sees; the app's gate also reads the other way.
+    private func continuesNameBeforePrefix(_ unit: UInt16) -> Bool {
+        if unit >= 0x80 {
+            return !Self.duckDBBlanks.contains(unit)
+        }
+        return isASCIIIdentifierPart(unit) || unit == Self.dollar
+            || (unit == Self.hash && features.contains(.dollarAndHashInIdentifiers))
+    }
+
+    private static let duckDBBlanks: Set<UInt16> = Set([0x00A0, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF])
+        .union(0x2000...0x200B)
+
     private func continuesIdentifierBeforeDollar(_ unit: UInt16) -> Bool {
-        isASCIIIdentifierPart(unit) || unit == Self.dollar || unit >= 0x80
+        if unit >= 0x80, features.contains(.escapeStringPrefix) {
+            return !Self.duckDBBlanks.contains(unit)
+        }
+        return isASCIIIdentifierPart(unit) || unit == Self.dollar || unit >= 0x80
     }
 
     private func isTagStart(_ unit: UInt16) -> Bool {

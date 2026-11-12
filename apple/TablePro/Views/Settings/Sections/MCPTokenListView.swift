@@ -4,12 +4,13 @@ import TableProMCP
 
 struct MCPTokenListView: View {
     let tokens: [MCPAuthToken]
+    let isStoreAvailable: Bool
     let onGenerate: () -> Void
     let onRevoke: (UUID) -> Void
-    let onDelete: (UUID) -> Void
+    let onDelete: (Set<UUID>) -> Void
 
     @State private var selection: Set<UUID> = []
-    @State private var deleteCandidate: MCPAuthToken?
+    @State private var deleteCandidates: [MCPAuthToken] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -36,22 +37,28 @@ struct MCPTokenListView: View {
                     Label(String(localized: "Generate Token"), systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!isStoreAvailable)
                 .accessibilityLabel(String(localized: "Generate token"))
 
                 Spacer()
             }
         }
-        .alert(deleteAlertTitle, isPresented: deleteAlertBinding, presenting: deleteCandidate) { token in
+        .alert(
+            deleteAlertTitle,
+            isPresented: deleteAlertBinding,
+            presenting: deleteCandidates.isEmpty ? nil : deleteCandidates
+        ) { candidates in
             Button(String(localized: "Cancel"), role: .cancel) {
-                deleteCandidate = nil
+                deleteCandidates = []
             }
             Button(String(localized: "Delete"), role: .destructive) {
-                onDelete(token.id)
-                selection.remove(token.id)
-                deleteCandidate = nil
+                let ids = Set(candidates.map(\.id))
+                onDelete(ids)
+                selection.subtract(ids)
+                deleteCandidates = []
             }
-        } message: { token in
-            Text(String(format: String(localized: "“%@” will be permanently deleted. External clients using this token will lose access immediately."), token.name))
+        } message: { candidates in
+            Text(verbatim: Self.deleteAlertMessage(for: candidates))
         }
     }
 
@@ -60,9 +67,11 @@ struct MCPTokenListView: View {
             Image(systemName: "key")
                 .font(.title)
                 .foregroundStyle(.tertiary)
-            Text(String(localized: "No tokens created"))
+            Text(isStoreAvailable ? String(localized: "No tokens created") : String(localized: "Tokens are not available"))
                 .foregroundStyle(.secondary)
-            Text(String(localized: "Generate a token so external clients can connect with their own credentials."))
+            Text(isStoreAvailable
+                ? String(localized: "Generate a token so external clients can connect with their own credentials.")
+                : String(localized: "Tokens load while the MCP server is running."))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -87,15 +96,19 @@ struct MCPTokenListView: View {
         }
         Divider()
         Button(role: .destructive) {
-            deleteCandidate = token
+            // A right-click inside a multiple selection acts on all of it, as in Finder.
+            deleteCandidates = selection.contains(token.id) ? selectedTokens : [token]
         } label: {
             Label(String(localized: "Delete…"), systemImage: "trash")
         }
     }
 
+    private var selectedTokens: [MCPAuthToken] {
+        tokens.filter { selection.contains($0.id) }
+    }
+
     private func deleteSelectionFromKeyboard() {
-        guard let id = selection.first, let token = tokens.first(where: { $0.id == id }) else { return }
-        deleteCandidate = token
+        deleteCandidates = selectedTokens
     }
 
     private func copyTokenId(_ id: UUID) {
@@ -104,15 +117,27 @@ struct MCPTokenListView: View {
     }
 
     private var deleteAlertTitle: String {
-        String(localized: "Delete token?")
+        deleteCandidates.count > 1
+            ? String(format: String(localized: "Delete %d tokens?"), deleteCandidates.count)
+            : String(localized: "Delete token?")
+    }
+
+    private static func deleteAlertMessage(for candidates: [MCPAuthToken]) -> String {
+        guard candidates.count > 1 else {
+            return String(
+                format: String(localized: "“%@” will be permanently deleted. External clients using this token will lose access immediately."),
+                candidates.first?.name ?? ""
+            )
+        }
+        return String(localized: "These tokens will be permanently deleted. External clients using them will lose access immediately.")
     }
 
     private var deleteAlertBinding: Binding<Bool> {
         Binding(
-            get: { deleteCandidate != nil },
+            get: { !deleteCandidates.isEmpty },
             set: { isPresented in
                 if !isPresented {
-                    deleteCandidate = nil
+                    deleteCandidates = []
                 }
             }
         )

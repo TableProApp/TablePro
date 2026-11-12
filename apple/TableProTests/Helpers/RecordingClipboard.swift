@@ -12,6 +12,7 @@ final class RecordingClipboard: ClipboardProvider {
     var gridCells: GridCellsClipboardPayload?
     private(set) var html: String?
     private(set) var writes: [String] = []
+    private(set) var secretWrites: [String] = []
     private(set) var images: [NSImage] = []
 
     var hasText: Bool { text != nil }
@@ -22,6 +23,11 @@ final class RecordingClipboard: ClipboardProvider {
     func readGridCells() -> GridCellsClipboardPayload? { gridCells }
 
     func writeText(_ text: String) { replace(text: text) }
+
+    func writeSecretText(_ text: String) {
+        replace(text: text)
+        secretWrites.append(text)
+    }
     func writeCsv(_ csv: String) { replace(text: csv) }
 
     func writeImage(_ image: NSImage) {

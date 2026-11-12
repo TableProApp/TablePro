@@ -36,11 +36,13 @@ extension DamengPluginDriver {
                     parameters.append(cell.newValue)
                     return "\(column) = ?"
                 }
+                // Measured on DM8: the count takes in a row already holding the value and leaves out rows a trigger writes.
                 writes.append(PluginRowWrite(
                     statement: "UPDATE \(qualifiedTable) SET \(assignments.joined(separator: ", ")) WHERE \(match.predicate) AND ROWNUM = 1",
                     parameters: parameters + match.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: match.lookup
+                    lookup: match.lookup,
+                    expectedRowCount: 1
                 ))
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
@@ -49,7 +51,8 @@ extension DamengPluginDriver {
                     statement: "DELETE FROM \(qualifiedTable) WHERE \(match.predicate) AND ROWNUM = 1",
                     parameters: match.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: match.lookup
+                    lookup: match.lookup,
+                    expectedRowCount: 1
                 ))
             }
         }

@@ -95,7 +95,13 @@ public extension MCPToolSchema {
         "row_count": integer(String(localized: "Number of rows returned")),
         "rows_affected": integer(String(localized: "Rows the statement changed")),
         "execution_time_ms": number(String(localized: "Server round trip in milliseconds")),
-        "is_truncated": boolean(String(localized: "Whether the row limit clipped the result")),
+        "is_truncated": boolean(
+            String(localized: "Whether the row limit or the answer's size limit left rows out of the result")
+        ),
+        "notes": array(
+            String(localized: "Why rows were left out or values cut, when they were"),
+            of: stringItem
+        ),
         "status_message": string(String(localized: "Driver status message, when the engine sent one")),
         "database": string(String(localized: "Database the statement ran against")),
         "schema": string(String(localized: "Schema the statement ran against"))

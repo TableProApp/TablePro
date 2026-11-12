@@ -1,7 +1,7 @@
 import Foundation
 import os
 import TableProMCP
-import TableProUtilities
+import TableProProcess
 
 @main
 struct TableProMcpBridge {
@@ -40,7 +40,7 @@ struct TableProMcpBridge {
             return "The local MCP endpoint did not prove it belongs to TablePro. Restart TablePro and try again."
         case MCPBridgeStartupError.unsupportedUpstreamVersion:
             return "This TablePro build does not speak \(MCPProtocolVersion.latest.rawValue). Update TablePro."
-        case MCPHandshakeAcquisitionError.serverTurnedOff:
+        case MCPHandshakeAcquisitionError.serverTurnedOff, MCPHandshakeAcquisitionError.serverFailedToStart:
             return error.localizedDescription
         default:
             return "TablePro is not running. Launch the app and enable the MCP server."

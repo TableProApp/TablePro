@@ -1,151 +1,123 @@
-//
-//  VimTextBufferAdapter.swift
-//  TablePro
-//
-//  Adapts TableProTextEngine's TextView to the VimTextBuffer protocol
-//
-
 import AppKit
 import Foundation
 import TableProTextEngine
 
-/// Bridges TableProTextEngine's TextView to VimTextBuffer for the Vim engine
 @MainActor
 final class VimTextBufferAdapter: VimTextBuffer {
     private weak var textView: TextView?
+
+    private struct LineStorageTrust {
+        weak var storage: NSTextStorage?
+        let length: Int
+        let trusted: Bool
+    }
+
+    private var lineStorageTrust: LineStorageTrust?
 
     init(textView: TextView) {
         self.textView = textView
     }
 
-    private var cachedLineCount: Int?
+    private var text: NSString? {
+        textView?.textStorage?.mutableString
+    }
 
     // MARK: - VimTextBuffer
 
     var length: Int {
-        guard let textView else { return 0 }
-        return (textView.string as NSString).length
+        textView?.textStorage?.length ?? 0
     }
 
     var lineCount: Int {
-        if let cached = cachedLineCount { return cached }
-        guard let textView else { return 1 }
-        let nsString = textView.string as NSString
-        if nsString.length == 0 {
-            cachedLineCount = 1
-            return 1
+        guard let text, text.length > 0 else { return 1 }
+        let endsWithLineBreak = isLineBreak(text.character(at: text.length - 1))
+        // The line storage keeps an empty line after a final line ending, which Vim does not count.
+        if let lines = lineStorage(matching: text), let last = lines.last, (last.range.length == 0) == endsWithLineBreak {
+            return max(1, endsWithLineBreak ? lines.count - 1 : lines.count)
         }
         var count = 0
-        var index = 0
-        while index < nsString.length {
-            let lineRange = nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: index, length: 0))
+        var location = 0
+        while location < text.length {
+            location = NSMaxRange(text.lineRangeBreakingAtLineEndings(for: NSRange(location: location, length: 0)))
             count += 1
-            index = lineRange.location + lineRange.length
         }
-        let result = max(1, count)
-        cachedLineCount = result
-        return result
+        return max(1, count)
     }
 
     func invalidateLineCache() {
-        cachedLineCount = nil
+        lineStorageTrust = nil
     }
 
     func lineRange(forOffset offset: Int) -> NSRange {
-        guard let textView else { return NSRange(location: 0, length: 0) }
-        let nsString = textView.string as NSString
-        let clampedOffset = min(max(0, offset), nsString.length)
-        return nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: clampedOffset, length: 0))
+        guard let text else { return NSRange(location: 0, length: 0) }
+        let clampedOffset = min(max(0, offset), text.length)
+        return text.lineRangeBreakingAtLineEndings(for: NSRange(location: clampedOffset, length: 0))
     }
 
     func lineAndColumn(forOffset offset: Int) -> (line: Int, column: Int) {
-        guard let textView else { return (0, 0) }
-        let nsString = textView.string as NSString
-        let clampedOffset = min(max(0, offset), nsString.length)
-
-        if nsString.length == 0 { return (0, 0) }
-
-        let safeOffset = min(clampedOffset, max(0, nsString.length - 1))
-        let lineRange = nsString.lineRangeBreakingAtLineEndings(
-            for: NSRange(location: safeOffset, length: 0)
-        )
-        let column = clampedOffset - lineRange.location
-
-        // Count newlines before lineRange.location — uses fast NSString search
-        var line = 0
-        var searchStart = 0
-        while searchStart < lineRange.location {
-            let found = nsString.range(of: "\n", range: NSRange(location: searchStart, length: lineRange.location - searchStart))
-            if found.location == NSNotFound { break }
-            line += 1
-            searchStart = found.location + found.length
-        }
-
-        return (line, column)
+        guard let text, text.length > 0 else { return (0, 0) }
+        let clampedOffset = min(max(0, offset), text.length)
+        // The end of the document is a column past the end of the last line, never the empty line after a final
+        // line ending.
+        let anchor = min(clampedOffset, text.length - 1)
+        let range = text.lineRangeBreakingAtLineEndings(for: NSRange(location: anchor, length: 0))
+        return (lineIndex(of: range, in: text), clampedOffset - range.location)
     }
 
     func offset(forLine line: Int, column: Int) -> Int {
-        guard let textView else { return 0 }
-        let nsString = textView.string as NSString
-        var currentLine = 0
-        var index = 0
-        while index < nsString.length && currentLine < line {
-            let lineRange = nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: index, length: 0))
-            currentLine += 1
-            index = lineRange.location + lineRange.length
-        }
-        // Now index is at the start of the target line
-        let lineRange = nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: min(index, nsString.length), length: 0))
-        // Content length excludes trailing newline
+        guard let text else { return 0 }
+        let range = lineRange(atIndex: max(0, line), in: text)
+        let lineEnd = NSMaxRange(range)
         let contentLength: Int
-        let lineEnd = lineRange.location + lineRange.length
-        if lineEnd > lineRange.location && lineEnd <= nsString.length
-            && nsString.character(at: lineEnd - 1) == 0x0A {
-            contentLength = lineRange.length - 1
+        if lineEnd > range.location && lineEnd <= text.length && text.character(at: lineEnd - 1) == 0x0A {
+            contentLength = range.length - 1
         } else {
-            contentLength = lineRange.length
+            contentLength = range.length
         }
-        let clampedCol = min(column, max(0, contentLength - 1))
-        return lineRange.location + max(0, clampedCol)
+        let clampedColumn = min(column, max(0, contentLength - 1))
+        return range.location + max(0, clampedColumn)
     }
 
     func character(at offset: Int) -> unichar {
-        guard let textView else { return 0 }
-        let nsString = textView.string as NSString
-        guard offset >= 0 && offset < nsString.length else { return 0 }
-        return nsString.character(at: offset)
+        guard let text, offset >= 0 && offset < text.length else { return 0 }
+        return text.character(at: offset)
+    }
+
+    func characterRange(at offset: Int) -> NSRange {
+        guard let text, offset >= 0, offset < text.length else {
+            return NSRange(location: min(max(0, offset), length), length: 0)
+        }
+        return text.rangeOfComposedCharacterSequence(at: offset)
     }
 
     func wordBoundary(forward: Bool, from offset: Int) -> Int {
-        guard let textView else { return offset }
-        let nsString = textView.string as NSString
-        guard nsString.length > 0 else { return 0 }
+        guard let text else { return offset }
+        guard text.length > 0 else { return 0 }
 
         if forward {
-            var pos = min(offset, nsString.length - 1)
-            let startClass = charClass(nsString.character(at: pos))
+            var pos = min(offset, text.length - 1)
+            let startClass = charClass(text.character(at: pos))
             if startClass == .whitespace {
-                // Skip whitespace, then stop at start of next word/punctuation
-                while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
+                while pos < text.length && charClass(text.character(at: pos)) == .whitespace {
                     pos += 1
                 }
             } else {
-                while pos < nsString.length && charClass(nsString.character(at: pos)) == startClass {
+                while pos < text.length && charClass(text.character(at: pos)) == startClass {
                     pos += 1
                 }
-                while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
+                while pos < text.length && charClass(text.character(at: pos)) == .whitespace {
                     pos += 1
                 }
             }
-            return min(pos, nsString.length)
+            return min(pos, text.length)
         } else {
-            var pos = min(offset, nsString.length)
+            var pos = min(offset, text.length)
             if pos > 0 { pos -= 1 }
-            while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
+            while pos > 0 && charClass(text.character(at: pos)) == .whitespace {
                 pos -= 1
             }
-            let cls = charClass(nsString.character(at: pos))
-            while pos > 0 && charClass(nsString.character(at: pos - 1)) == cls {
+            let cls = charClass(text.character(at: pos))
+            while pos > 0 && charClass(text.character(at: pos - 1)) == cls {
                 pos -= 1
             }
             return max(0, pos)
@@ -153,20 +125,19 @@ final class VimTextBufferAdapter: VimTextBuffer {
     }
 
     func wordEnd(from offset: Int) -> Int {
-        guard let textView else { return offset }
-        let nsString = textView.string as NSString
-        guard nsString.length > 0 else { return 0 }
+        guard let text else { return offset }
+        guard text.length > 0 else { return 0 }
 
-        var pos = min(offset + 1, nsString.length - 1)
-        while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
+        var pos = min(offset + 1, text.length - 1)
+        while pos < text.length && charClass(text.character(at: pos)) == .whitespace {
             pos += 1
         }
-        guard pos < nsString.length else { return nsString.length - 1 }
-        let cls = charClass(nsString.character(at: pos))
-        while pos < nsString.length - 1 && charClass(nsString.character(at: pos + 1)) == cls {
+        guard pos < text.length else { return text.length - 1 }
+        let cls = charClass(text.character(at: pos))
+        while pos < text.length - 1 && charClass(text.character(at: pos + 1)) == cls {
             pos += 1
         }
-        return min(pos, nsString.length - 1)
+        return min(pos, text.length - 1)
     }
 
     func selectedRange() -> NSRange {
@@ -175,28 +146,35 @@ final class VimTextBufferAdapter: VimTextBuffer {
     }
 
     func string(in range: NSRange) -> String {
-        guard let textView else { return "" }
-        let nsString = textView.string as NSString
+        guard let text else { return "" }
         let clampedRange = NSRange(
             location: max(0, range.location),
-            length: min(range.length, nsString.length - max(0, range.location))
+            length: min(range.length, text.length - max(0, range.location))
         )
         guard clampedRange.length > 0 else { return "" }
-        return nsString.substring(with: clampedRange)
+        return text.substring(with: clampedRange)
     }
 
     func setSelectedRange(_ range: NSRange) {
         guard let textView else { return }
-        let clampedLocation = max(0, min(range.location, (textView.string as NSString).length))
-        let maxLength = (textView.string as NSString).length - clampedLocation
-        let clampedLength = max(0, min(range.length, maxLength))
-        let clampedRange = NSRange(location: clampedLocation, length: clampedLength)
+        let documentLength = length
+        let clampedLocation = max(0, min(range.location, documentLength))
+        let clampedLength = max(0, min(range.length, documentLength - clampedLocation))
+        let wholeRange = wholeCharacters(NSRange(location: clampedLocation, length: clampedLength))
 
         let currentRange = textView.selectedRange()
-        guard clampedRange != currentRange else { return }
+        guard wholeRange != currentRange else { return }
 
-        textView.selectionManager.setSelectedRange(clampedRange)
-        textView.scrollToRange(clampedRange)
+        textView.selectionManager.setSelectedRange(wholeRange)
+        textView.scrollToRange(wholeRange)
+    }
+
+    // A caret or selection never splits a composed character sequence.
+    private func wholeCharacters(_ range: NSRange) -> NSRange {
+        guard range.length > 0, let text else {
+            return NSRange(location: characterRange(at: range.location).location, length: 0)
+        }
+        return text.rangeOfComposedCharacterSequences(for: range)
     }
 
     func replaceCharacters(in range: NSRange, with string: String) {
@@ -215,104 +193,99 @@ final class VimTextBufferAdapter: VimTextBuffer {
     }
 
     func wordEndBackward(from offset: Int) -> Int {
-        guard let textView else { return 0 }
-        let nsString = textView.string as NSString
-        guard nsString.length > 0 else { return 0 }
-        var pos = min(max(0, offset), nsString.length - 1)
+        guard let text else { return 0 }
+        guard text.length > 0 else { return 0 }
+        var pos = min(max(0, offset), text.length - 1)
         if pos > 0 { pos -= 1 }
-        if charClass(nsString.character(at: pos)) == .whitespace {
-            while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
+        if charClass(text.character(at: pos)) == .whitespace {
+            while pos > 0 && charClass(text.character(at: pos)) == .whitespace {
                 pos -= 1
             }
             return pos
         }
-        let cls = charClass(nsString.character(at: pos))
-        while pos > 0 && charClass(nsString.character(at: pos - 1)) == cls {
+        let cls = charClass(text.character(at: pos))
+        while pos > 0 && charClass(text.character(at: pos - 1)) == cls {
             pos -= 1
         }
         guard pos > 0 else { return 0 }
         pos -= 1
-        while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
+        while pos > 0 && charClass(text.character(at: pos)) == .whitespace {
             pos -= 1
         }
         return pos
     }
 
     func bigWordBoundary(forward: Bool, from offset: Int) -> Int {
-        guard let textView else { return offset }
-        let nsString = textView.string as NSString
-        guard nsString.length > 0 else { return 0 }
+        guard let text else { return offset }
+        guard text.length > 0 else { return 0 }
         if forward {
-            var pos = min(offset, nsString.length - 1)
-            let startWS = isWhitespace(nsString.character(at: pos))
+            var pos = min(offset, text.length - 1)
+            let startWS = isWhitespace(text.character(at: pos))
             if startWS {
-                while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
+                while pos < text.length && isWhitespace(text.character(at: pos)) {
                     pos += 1
                 }
             } else {
-                while pos < nsString.length && !isWhitespace(nsString.character(at: pos)) {
+                while pos < text.length && !isWhitespace(text.character(at: pos)) {
                     pos += 1
                 }
-                while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
+                while pos < text.length && isWhitespace(text.character(at: pos)) {
                     pos += 1
                 }
             }
-            return min(pos, nsString.length)
+            return min(pos, text.length)
         }
-        var pos = min(offset, nsString.length)
+        var pos = min(offset, text.length)
         if pos > 0 { pos -= 1 }
-        while pos > 0 && isWhitespace(nsString.character(at: pos)) {
+        while pos > 0 && isWhitespace(text.character(at: pos)) {
             pos -= 1
         }
-        while pos > 0 && !isWhitespace(nsString.character(at: pos - 1)) {
+        while pos > 0 && !isWhitespace(text.character(at: pos - 1)) {
             pos -= 1
         }
         return max(0, pos)
     }
 
     func bigWordEnd(from offset: Int) -> Int {
-        guard let textView else { return offset }
-        let nsString = textView.string as NSString
-        guard nsString.length > 0 else { return 0 }
-        var pos = min(offset + 1, nsString.length - 1)
-        while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
+        guard let text else { return offset }
+        guard text.length > 0 else { return 0 }
+        var pos = min(offset + 1, text.length - 1)
+        while pos < text.length && isWhitespace(text.character(at: pos)) {
             pos += 1
         }
-        guard pos < nsString.length else { return nsString.length - 1 }
-        while pos < nsString.length - 1 && !isWhitespace(nsString.character(at: pos + 1)) {
+        guard pos < text.length else { return text.length - 1 }
+        while pos < text.length - 1 && !isWhitespace(text.character(at: pos + 1)) {
             pos += 1
         }
-        return min(pos, nsString.length - 1)
+        return min(pos, text.length - 1)
     }
 
     func bigWordEndBackward(from offset: Int) -> Int {
-        guard let textView else { return 0 }
-        let nsString = textView.string as NSString
-        guard nsString.length > 0 else { return 0 }
-        var pos = min(max(0, offset), nsString.length - 1)
+        guard let text else { return 0 }
+        guard text.length > 0 else { return 0 }
+        var pos = min(max(0, offset), text.length - 1)
         if pos > 0 { pos -= 1 }
-        if isWhitespace(nsString.character(at: pos)) {
-            while pos > 0 && isWhitespace(nsString.character(at: pos)) {
+        if isWhitespace(text.character(at: pos)) {
+            while pos > 0 && isWhitespace(text.character(at: pos)) {
                 pos -= 1
             }
             return pos
         }
-        while pos > 0 && !isWhitespace(nsString.character(at: pos - 1)) {
+        while pos > 0 && !isWhitespace(text.character(at: pos - 1)) {
             pos -= 1
         }
         guard pos > 0 else { return 0 }
         pos -= 1
-        while pos > 0 && isWhitespace(nsString.character(at: pos)) {
+        while pos > 0 && isWhitespace(text.character(at: pos)) {
             pos -= 1
         }
         return pos
     }
 
     func matchingBracket(at offset: Int) -> Int? {
-        guard let textView else { return nil }
-        let nsString = textView.string as NSString
-        guard offset >= 0 && offset < nsString.length else { return nil }
-        let ch = nsString.character(at: offset)
+        guard let text else { return nil }
+        guard offset >= 0 && offset < text.length else { return nil }
+        let ch = text.character(at: offset)
         let pairs: [unichar: (close: unichar, forward: Bool)] = [
             0x28: (0x29, true), 0x5B: (0x5D, true), 0x7B: (0x7D, true),
             0x29: (0x28, false), 0x5D: (0x5B, false), 0x7D: (0x7B, false)
@@ -321,8 +294,8 @@ final class VimTextBufferAdapter: VimTextBuffer {
         let step = pair.forward ? 1 : -1
         var depth = 1
         var pos = offset + step
-        while pos >= 0 && pos < nsString.length {
-            let cur = nsString.character(at: pos)
+        while pos >= 0 && pos < text.length {
+            let cur = text.character(at: pos)
             if cur == ch {
                 depth += 1
             } else if cur == pair.close {
@@ -339,12 +312,12 @@ final class VimTextBufferAdapter: VimTextBuffer {
             return (0, max(0, lineCount - 1))
         }
         let visible = scrollView.documentVisibleRect
-        let nsString = textView.string as NSString
-        guard nsString.length > 0 else { return (0, 0) }
+        let documentLength = length
+        guard documentLength > 0 else { return (0, 0) }
         let topGlyph = textView.layoutManager.textOffsetAtPoint(visible.origin) ?? 0
         let bottomGlyph = textView.layoutManager.textOffsetAtPoint(
             CGPoint(x: visible.origin.x, y: visible.maxY - 1)
-        ) ?? max(0, nsString.length - 1)
+        ) ?? max(0, documentLength - 1)
         let topLine = lineAndColumn(forOffset: topGlyph).line
         let bottomLine = lineAndColumn(forOffset: bottomGlyph).line
         return (min(topLine, bottomLine), max(topLine, bottomLine))
@@ -356,6 +329,53 @@ final class VimTextBufferAdapter: VimTextBuffer {
 
     func indentWidth() -> Int {
         AppSettingsManager.shared.editor.clampedTabWidth
+    }
+
+    // MARK: - Line Storage
+
+    // The layout manager's line storage finds a line by index or offset in O(log n) and breaks lines where
+    // `lineRangeBreakingAtLineEndings` does. While an edit is still being applied it describes the old text, and an
+    // edit across a CR LF pair can leave it off the text's lines, so either case sends the query back to the text.
+    private func lineStorage(matching text: NSString) -> TextLineStorage<TextLine>? {
+        guard let storage = textView?.textStorage, let lines = textView?.layoutManager?.lineStorage, !lines.isEmpty,
+              lines.length == text.length, !storage.editedMask.contains(.editedCharacters) else {
+            return nil
+        }
+        if let trust = lineStorageTrust, trust.storage === storage, trust.length == text.length {
+            return trust.trusted ? lines : nil
+        }
+        let trusted = text.range(of: "\r", options: .literal).location == NSNotFound || lines.breaksLines(like: text)
+        lineStorageTrust = LineStorageTrust(storage: storage, length: text.length, trusted: trusted)
+        return trusted ? lines : nil
+    }
+
+    private func lineIndex(of range: NSRange, in text: NSString) -> Int {
+        if let line = lineStorage(matching: text)?.getLine(atOffset: range.location), line.range == range {
+            return line.index
+        }
+        var index = 0
+        var location = 0
+        while location < range.location {
+            location = NSMaxRange(text.lineRangeBreakingAtLineEndings(for: NSRange(location: location, length: 0)))
+            index += 1
+        }
+        return index
+    }
+
+    // An index past the last line resolves to the last line, which is the empty one after a final line ending.
+    private func lineRange(atIndex index: Int, in text: NSString) -> NSRange {
+        if let lines = lineStorage(matching: text),
+           let line = lines.getLine(atIndex: min(index, lines.count - 1)),
+           line.range == text.lineRangeBreakingAtLineEndings(for: NSRange(location: line.range.location, length: 0)) {
+            return line.range
+        }
+        var current = 0
+        var location = 0
+        while location < text.length && current < index {
+            location = NSMaxRange(text.lineRangeBreakingAtLineEndings(for: NSRange(location: location, length: 0)))
+            current += 1
+        }
+        return text.lineRangeBreakingAtLineEndings(for: NSRange(location: location, length: 0))
     }
 
     // MARK: - Helpers
@@ -375,5 +395,9 @@ final class VimTextBufferAdapter: VimTextBuffer {
 
     private func isWhitespace(_ char: unichar) -> Bool {
         char == 0x20 || char == 0x09 || char == 0x0A || char == 0x0D
+    }
+
+    private func isLineBreak(_ char: unichar) -> Bool {
+        char == 0x0A || char == 0x0D
     }
 }

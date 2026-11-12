@@ -138,7 +138,7 @@ enum SQLLexicalRelevance {
         var facts: SQLLexicalGrammar = [
             .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
             .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies, .statementsAsValues,
-            .pipeOperatorChains, .databendTokens,
+            .pipeOperatorChains, .databendTokens, .psqlScripts,
         ]
         var blockCommentOpeners = 0
         var index = 0
@@ -196,6 +196,8 @@ enum SQLLexicalRelevance {
                 if next == SqlLexer.singleQuote { facts.insert(.alternativeQuoting) }
             case capitalG, smallG:
                 facts.insert(.batchSeparatorLines)
+            case let space where space >= 0xA0 && SQLNonCodeSpan.spacesBeforeLexing.contains(space):
+                facts.insert(.nonASCIISpacesEndNames)
             default:
                 break
             }

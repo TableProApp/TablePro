@@ -12,11 +12,18 @@ final class SessionRedialer {
     struct Outcome {
         let session: ConnectionSession
         let dialedHere: Bool
+        // What the dial read to check the schema it was asked to restore; nil when it read nothing.
+        let schemas: [String]?
+    }
+
+    private struct Landed: Sendable {
+        let session: ConnectionSession
+        let schemas: [String]?
     }
 
     private struct Dial {
         let id: UUID
-        let task: Task<ConnectionSession, any Error>
+        let task: Task<Landed, any Error>
         let prompter: SharedDialPrompter
         var consumers: Set<ObjectIdentifier>
     }
@@ -31,9 +38,12 @@ final class SessionRedialer {
     }
 
     // The schema goes back inside the dial, so a window that joins or adopts it never reads the default schema.
+    // `onlyIfListed` is for a schema remembered from an earlier session, which may since be dropped or belong to
+    // another database: PostgreSQL and SQL Server would move to it anyway and list no tables.
     func redial(
         _ connection: DatabaseConnection,
         schema: String?,
+        onlyIfListed: Bool = false,
         prompter: ConnectionPromptQueue?,
         joining: Bool = true,
         consumer: AnyObject? = nil,
@@ -44,7 +54,8 @@ final class SessionRedialer {
             if joining {
                 if let consumerId { dials[connection.id]?.consumers.insert(consumerId) }
                 inFlight.prompter.add(consumerId, prompter)
-                return Outcome(session: try await inFlight.task.value, dialedHere: false)
+                let landed = try await inFlight.task.value
+                return Outcome(session: landed.session, dialedHere: false, schemas: landed.schemas)
             }
             // A database switch needs its own target, and a retry after a sign-in its new credentials.
             _ = try? await inFlight.task.value
@@ -61,11 +72,12 @@ final class SessionRedialer {
                 if dials[connection.id]?.id == dialId { dials[connection.id] = nil }
             }
             let session = try await manager.connect(connection, prompter: shared)
-            await Self.restore(schema, on: session.driver)
-            return session
+            let schemas = await Self.restore(schema, onlyIfListed: onlyIfListed, on: session.driver)
+            return Landed(session: session, schemas: schemas)
         }
         dials[connection.id] = Dial(id: dialId, task: task, prompter: shared, consumers: consumerId.map { [$0] } ?? [])
-        return Outcome(session: try await task.value, dialedHere: true)
+        let landed = try await task.value
+        return Outcome(session: landed.session, dialedHere: true, schemas: landed.schemas)
     }
 
     // A window that goes away stops waiting; the dial is cancelled only when no other window still waits on it, so
@@ -97,13 +109,20 @@ final class SessionRedialer {
         }
     }
 
-    private static func restore(_ schema: String?, on driver: any DatabaseDriver) async {
-        guard let schema, let current = driver.currentSchema, current != schema else { return }
+    private static func restore(_ schema: String?, onlyIfListed: Bool, on driver: any DatabaseDriver) async -> [String]? {
+        guard let schema, let current = driver.currentSchema, current != schema else { return nil }
+        var listed: [String]?
         do {
+            if onlyIfListed {
+                let names = try await driver.fetchSchemas()
+                listed = names
+                guard names.contains(schema) else { return names }
+            }
             try await driver.switchSchema(to: schema)
         } catch {
             logger.warning("Failed to restore schema \(schema, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
+        return listed
     }
 }
 

@@ -20,9 +20,9 @@ public struct ConnectionDestination: Equatable, Sendable {
         case verifyIdentity
     }
 
+    // A linked SSH profile is named by the servers it dials, so moving the profile moves the destination.
     public enum Tunnel: Equatable, Sendable {
         case none
-        case profile(UUID)
         case ssh(server: Endpoint, jumps: [Endpoint])
     }
 
@@ -100,8 +100,6 @@ public struct ConnectionDestination: Equatable, Sendable {
         switch tunnel {
         case .none:
             return "none"
-        case .profile(let id):
-            return "profile:" + id.uuidString.lowercased()
         case .ssh(let server, let jumps):
             return ([server] + jumps)
                 .map { Self.normalizedHost($0.host) + ":" + String($0.port) }

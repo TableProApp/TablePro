@@ -98,7 +98,8 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             operation: operation,
             maxRows: maxRows,
             timeoutSeconds: MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings),
-            principal: .inAppAssistant
+            principal: .inAppAssistant,
+            budget: .assistantAnswer
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }

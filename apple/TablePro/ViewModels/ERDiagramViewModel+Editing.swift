@@ -22,13 +22,160 @@ struct ERDiagramColumnHit: Equatable {
 }
 
 struct ERDiagramForeignKeyDraft: Equatable {
+    struct ColumnPair: Identifiable, Equatable {
+        let id: UUID
+        var column: String
+        var referencedColumn: String
+
+        init(id: UUID = UUID(), column: String, referencedColumn: String) {
+            self.id = id
+            self.column = column
+            self.referencedColumn = referencedColumn
+        }
+    }
+
+    enum Issue: Equatable {
+        case noPairs
+        case incompletePair
+        case repeatedColumn(String)
+        case repeatedReferencedColumn(String)
+
+        var message: String {
+            switch self {
+            case .noPairs, .incompletePair:
+                String(localized: "Choose a column and a referenced column in every row.")
+            case .repeatedColumn(let name), .repeatedReferencedColumn(let name):
+                String(format: String(localized: "“%@” is used more than once."), name)
+            }
+        }
+    }
+
     let table: String
-    var column: String
+    var pairs: [ColumnPair]
     var referencedTable: String
-    var referencedColumn: String
     var name: String
     var onDelete: EditableForeignKeyDefinition.ReferentialAction = .noAction
     var onUpdate: EditableForeignKeyDefinition.ReferentialAction = .noAction
+
+    var issue: Issue? {
+        guard !pairs.isEmpty else { return .noPairs }
+        guard !pairs.contains(where: { $0.column.isEmpty || $0.referencedColumn.isEmpty }) else { return .incompletePair }
+        if let repeated = Self.firstRepeated(pairs.map(\.column)) { return .repeatedColumn(repeated) }
+        if let repeated = Self.firstRepeated(pairs.map(\.referencedColumn)) { return .repeatedReferencedColumn(repeated) }
+        return nil
+    }
+
+    // Pair order is key order on both sides, which is what the database matches the referenced key by.
+    var foreignKey: EditableForeignKeyDefinition {
+        var foreignKey = EditableForeignKeyDefinition.placeholder()
+        foreignKey.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        foreignKey.columns = pairs.map(\.column)
+        foreignKey.referencedTable = referencedTable
+        foreignKey.referencedColumns = pairs.map(\.referencedColumn)
+        foreignKey.onDelete = onDelete
+        foreignKey.onUpdate = onUpdate
+        return foreignKey
+    }
+
+    // A drop on a member of a composite key offers the whole key, with the dragged pair at that member's position.
+    static func starting(
+        table: String,
+        column: String,
+        referencedTable: String,
+        keyColumns: [String],
+        target: String?,
+        sourceColumns: [String],
+        name: String
+    ) -> ERDiagramForeignKeyDraft {
+        let pairs: [ColumnPair]
+        if let target, !keyColumns.contains(target) {
+            pairs = [ColumnPair(column: column, referencedColumn: target)]
+        } else if keyColumns.isEmpty {
+            pairs = [ColumnPair(column: column, referencedColumn: target ?? "")]
+        } else {
+            let position = target.flatMap { keyColumns.firstIndex(of: $0) }
+            pairs = guessedPairs(for: keyColumns, keeping: column, at: position, from: sourceColumns)
+        }
+        return ERDiagramForeignKeyDraft(table: table, pairs: pairs, referencedTable: referencedTable, name: name)
+    }
+
+    func settingColumn(_ column: String, of id: UUID) -> ERDiagramForeignKeyDraft {
+        var draft = self
+        guard let index = draft.pairs.firstIndex(where: { $0.id == id }) else { return self }
+        draft.pairs[index].column = column
+        return draft
+    }
+
+    func settingReferencedColumn(_ column: String, of id: UUID) -> ERDiagramForeignKeyDraft {
+        var draft = self
+        guard let index = draft.pairs.firstIndex(where: { $0.id == id }) else { return self }
+        draft.pairs[index].referencedColumn = column
+        return draft
+    }
+
+    func addingPair() -> ERDiagramForeignKeyDraft {
+        var draft = self
+        draft.pairs.append(ColumnPair(column: "", referencedColumn: ""))
+        return draft
+    }
+
+    // The last pair stays: a key needs at least one.
+    func removingPairs(_ ids: Set<UUID>) -> ERDiagramForeignKeyDraft {
+        let kept = pairs.filter { !ids.contains($0.id) }
+        guard !kept.isEmpty else { return self }
+        var draft = self
+        draft.pairs = kept
+        return draft
+    }
+
+    func movingPairs(fromOffsets source: IndexSet, toOffset destination: Int) -> ERDiagramForeignKeyDraft {
+        let moving = source.filter { pairs.indices.contains($0) }.map { pairs[$0] }
+        var remaining = pairs.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let insertion = destination - source.filter { $0 < destination }.count
+        remaining.insert(contentsOf: moving, at: min(max(insertion, 0), remaining.count))
+        var draft = self
+        draft.pairs = remaining
+        return draft
+    }
+
+    // The referenced side follows the referenced table's key, so both change in one write.
+    func referencing(_ table: String, keyColumns: [String], sourceColumns: [String]) -> ERDiagramForeignKeyDraft {
+        var draft = self
+        draft.referencedTable = table
+        let first = pairs.first?.column ?? ""
+        draft.pairs = keyColumns.isEmpty
+            ? [ColumnPair(column: first, referencedColumn: "")]
+            : Self.guessedPairs(for: keyColumns, keeping: first, at: nil, from: sourceColumns)
+        return draft
+    }
+
+    // Unplaced, the kept column takes a key column no other column is named after, else the last: a table's own id shares the referenced id's name.
+    private static func guessedPairs(
+        for keyColumns: [String],
+        keeping column: String,
+        at position: Int?,
+        from sourceColumns: [String]
+    ) -> [ColumnPair] {
+        let others = sourceColumns.filter { $0 != column }
+        func namesake(of key: String, excluding used: Set<String>) -> String? {
+            others.first { !used.contains($0) && $0.caseInsensitiveCompare(key) == .orderedSame }
+        }
+        let slot = position
+            ?? keyColumns.firstIndex { namesake(of: $0, excluding: []) == nil }
+            ?? max(keyColumns.count - 1, 0)
+        var used: Set<String> = []
+        return keyColumns.enumerated().map { offset, key in
+            guard offset != slot else { return ColumnPair(column: column, referencedColumn: key) }
+            let match = namesake(of: key, excluding: used) ?? ""
+            if !match.isEmpty { used.insert(match) }
+            return ColumnPair(column: match, referencedColumn: key)
+        }
+    }
+
+    private static func firstRepeated(_ names: [String]) -> String? {
+        var seen = Set<String>()
+        return names.first { !seen.insert($0).inserted }
+    }
 }
 
 enum ERDiagramEditSheet: Identifiable, Equatable {
@@ -38,7 +185,7 @@ enum ERDiagramEditSheet: Identifiable, Equatable {
 
     var id: String {
         switch self {
-        case .addForeignKey(let draft): "fk:\(draft.table).\(draft.column)"
+        case .addForeignKey(let draft): "fk:\(draft.table).\(draft.pairs.first?.column ?? "")"
         case .addColumn(let table): "add:\(table)"
         case .renameColumn(let table, let column): "rename:\(table).\(column)"
         }
@@ -306,12 +453,13 @@ extension ERDiagramViewModel {
         let referencedTable = target?.tableName
             ?? tables.first { $0 != table }
             ?? table
-        let referencedColumn = target?.columnName ?? defaultReferencedColumn(in: referencedTable)
-        editSheet = .addForeignKey(ERDiagramForeignKeyDraft(
+        editSheet = .addForeignKey(.starting(
             table: table,
             column: column,
             referencedTable: referencedTable,
-            referencedColumn: referencedColumn,
+            keyColumns: referencedKeyColumns(in: referencedTable),
+            target: target?.columnName,
+            sourceColumns: columnNames(of: table),
             name: defaultForeignKeyName(table: table, column: column)
         ))
     }
@@ -327,12 +475,14 @@ extension ERDiagramViewModel {
         return node.columns.filter { $0.stagedEdit != .dropped }.map(\.name)
     }
 
-    func defaultReferencedColumn(in table: String) -> String {
+    // In table order, which is the key's own order unless it was declared in another; the reader can reorder the pairs.
+    func referencedKeyColumns(in table: String) -> [String] {
         guard let id = stagedFullGraph.nodeIndex[table],
               let node = stagedFullGraph.nodes.first(where: { $0.id == id })
-        else { return "" }
-        let keys = node.columns.filter { $0.isPrimaryKey && $0.stagedEdit != .dropped }
-        return (keys.count == 1 ? keys.first : node.columns.first { $0.stagedEdit != .dropped })?.name ?? ""
+        else { return [] }
+        let kept = node.columns.filter { $0.stagedEdit != .dropped }
+        let keys = kept.filter(\.isPrimaryKey).map(\.name)
+        return keys.isEmpty ? kept.prefix(1).map(\.name) : keys
     }
 
     // MySQL wants a foreign key's name unique in the whole database, so it is checked against every key drawn.
@@ -360,13 +510,7 @@ extension ERDiagramViewModel {
     }
 
     func stageForeignKey(_ draft: ERDiagramForeignKeyDraft) {
-        var foreignKey = EditableForeignKeyDefinition.placeholder()
-        foreignKey.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        foreignKey.columns = [draft.column]
-        foreignKey.referencedTable = draft.referencedTable
-        foreignKey.referencedColumns = [draft.referencedColumn]
-        foreignKey.onDelete = draft.onDelete
-        foreignKey.onUpdate = draft.onUpdate
+        let foreignKey = draft.foreignKey
         stage { try await $0.addForeignKey(foreignKey, to: draft.table) }
     }
 

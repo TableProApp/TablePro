@@ -10,6 +10,9 @@ rewrites a catalog. CONTRIBUTING.md has the commands.
     scripts/localization.py plugins --target ios -> the same for the package targets the iOS app links
     scripts/localization.py extracted [--add]   -> strings the app's last build extracted, missing
 
+`--target widget` names the iOS widget extension's own catalog, for `status` and `extracted`. It
+links no package, so `plugins` has nothing to check there.
+
 Xcode extracts strings per target. Code in a plugin bundle or in a package under `Packages/`
 resolves `String(localized:)` against `Bundle.main`, which is the host app, so its strings must be
 in the app's catalog, yet no sync of the app target ever finds them in its sources. Xcode deletes
@@ -35,13 +38,16 @@ from pathlib import Path
 CATALOGS = {
     "mac": Path("TablePro/Resources/Localizable.xcstrings"),
     "ios": Path("TableProMobile/TableProMobile/Localizable.xcstrings"),
+    "widget": Path("TableProMobile/TableProWidget/Localizable.xcstrings"),
 }
+PLUGIN_TARGETS = ("mac", "ios")
 HIDDEN_SOURCE_ROOTS = (Path("Plugins"), Path("Packages"))
 IOS_PROJECT = Path("TableProMobile/project.yml")
 # The project, its scheme, and the targets whose sources hold the catalog.
 APP_BUILDS = {
     "mac": ("TablePro.xcodeproj", "TablePro", ("TablePro",)),
-    "ios": ("TableProMobile/TableProMobile.xcodeproj", "TableProMobile", ("TableProMobile", "TableProWidgetExtension")),
+    "ios": ("TableProMobile/TableProMobile.xcodeproj", "TableProMobile", ("TableProMobile",)),
+    "widget": ("TableProMobile/TableProMobile.xcodeproj", "TableProMobile", ("TableProWidgetExtension",)),
 }
 
 # Xcode writes a catalog through JSONSerialization with exactly these options. Writing through the
@@ -332,6 +338,8 @@ def main() -> int:
     parser.add_argument("--derived-data", type=Path, help="for extracted: the DerivedData folder of the app's build")
     args = parser.parse_args()
 
+    if args.command == "plugins" and args.target not in PLUGIN_TARGETS:
+        parser.error(f"plugins checks {' and '.join(PLUGIN_TARGETS)}: the {args.target} target links no package")
     if args.command == "plugins":
         return plugins(args.add, args.target)
     if args.command == "extracted":

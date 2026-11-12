@@ -1,0 +1,495 @@
+{
+  "schemaVersion": 1,
+  "serverName": "tablepro",
+  "configs": {
+    "claude-desktop": {
+      "macos": { "path": "~/Library/Application Support/Claude/claude_desktop_config.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "${XDG_CONFIG_HOME:-~/.config}/Claude/claude_desktop_config.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "claude-code": {
+      "macos": { "path": "${CLAUDE_CONFIG_DIR:-~}/.claude.json", "format": "json", "keyPath": ["mcpServers"], "writable": false, "otherScopes": [["projects", "*", "mcpServers"]] },
+      "linux": { "path": "${CLAUDE_CONFIG_DIR:-~}/.claude.json", "format": "json", "keyPath": ["mcpServers"], "writable": false, "otherScopes": [["projects", "*", "mcpServers"]] }
+    },
+    "codex": {
+      "macos": { "path": "${CODEX_HOME:-~/.codex}/config.toml", "format": "toml", "keyPath": ["mcp_servers"] },
+      "linux": { "path": "${CODEX_HOME:-~/.codex}/config.toml", "format": "toml", "keyPath": ["mcp_servers"] }
+    },
+    "cursor": {
+      "macos": { "path": "~/.cursor/mcp.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "~/.cursor/mcp.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "vscode": {
+      "macos": { "path": "~/Library/Application Support/Code/User/mcp.json", "format": "jsonc", "keyPath": ["servers"] },
+      "linux": { "path": "${XDG_CONFIG_HOME:-~/.config}/Code/User/mcp.json", "format": "jsonc", "keyPath": ["servers"] }
+    },
+    "vscode-insiders": {
+      "macos": { "path": "~/Library/Application Support/Code - Insiders/User/mcp.json", "format": "jsonc", "keyPath": ["servers"] },
+      "linux": { "path": "${XDG_CONFIG_HOME:-~/.config}/Code - Insiders/User/mcp.json", "format": "jsonc", "keyPath": ["servers"] }
+    },
+    "devin": {
+      "macos": { "path": "${XDG_CONFIG_HOME:-~/.config}/devin/mcp_config.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "${XDG_CONFIG_HOME:-~/.config}/devin/mcp_config.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "zed": {
+      "macos": { "path": "~/.config/zed/settings.json", "format": "jsonc", "keyPath": ["context_servers"] },
+      "linux": { "path": "${XDG_CONFIG_HOME:-~/.config}/zed/settings.json", "format": "jsonc", "keyPath": ["context_servers"] }
+    },
+    "gemini": {
+      "macos": { "path": "~/.gemini/settings.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "~/.gemini/settings.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "copilot": {
+      "macos": { "path": "${COPILOT_HOME:-~/.copilot}/mcp-config.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "${COPILOT_HOME:-~/.copilot}/mcp-config.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "opencode": {
+      "macos": { "path": "${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json", "format": "jsonc", "keyPath": ["mcp", "servers"], "writable": false, "alternateKeyPaths": [["mcp"]] },
+      "linux": { "path": "${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json", "format": "jsonc", "keyPath": ["mcp", "servers"], "writable": false, "alternateKeyPaths": [["mcp"]] }
+    },
+    "cline": {
+      "macos": { "path": "${CLINE_DIR:-~/.cline}/data/settings/cline_mcp_settings.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "${CLINE_DIR:-~/.cline}/data/settings/cline_mcp_settings.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "goose": {
+      "macos": { "path": "${XDG_CONFIG_HOME:-~/.config}/goose/config.yaml", "format": "yaml", "keyPath": ["extensions"], "writable": false },
+      "linux": { "path": "${XDG_CONFIG_HOME:-~/.config}/goose/config.yaml", "format": "yaml", "keyPath": ["extensions"], "writable": false }
+    },
+    "lmstudio": {
+      "macos": { "path": "~/.lmstudio/mcp.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "~/.lmstudio/mcp.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "kiro": {
+      "macos": { "path": "~/.kiro/settings/mcp.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "~/.kiro/settings/mcp.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "warp": {
+      "macos": { "path": "~/.warp/.mcp.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "~/.warp/.mcp.json", "format": "json", "keyPath": ["mcpServers"] }
+    },
+    "junie": {
+      "macos": { "path": "~/.junie/mcp/mcp.json", "format": "json", "keyPath": ["mcpServers"] },
+      "linux": { "path": "~/.junie/mcp/mcp.json", "format": "json", "keyPath": ["mcpServers"] }
+    }
+  },
+  "clients": [
+    {
+      "id": "claude-desktop",
+      "name": "Claude Desktop",
+      "icon": "claude",
+      "config": "claude-desktop",
+      "clientInfo": { "names": ["claude-ai"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "bundleId": "com.anthropic.claudefordesktop" }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [{ "kind": "file" }],
+        "applies": "restartApp"
+      },
+      "linux": {
+        "detect": [{ "binary": "claude-desktop", "paths": ["/usr/bin/claude-desktop", "/usr/lib/claude-desktop/claude-desktop"] }],
+        "unsupported": "stdioOnly"
+      }
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "icon": "claudecode",
+      "config": "claude-code",
+      "clientInfo": { "names": ["claude-code"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "binary": "claude", "paths": ["~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"] }],
+        "entry": { "type": "stdio", "command": "{command}", "args": [], "env": {} },
+        "install": [
+          { "kind": "cli", "binary": "claude", "add": ["mcp", "add", "--scope", "user", "{name}", "--", "{command}"], "remove": ["mcp", "remove", "--scope", "user", "{name}"], "update": "removeThenAdd" }
+        ],
+        "applies": "newSession"
+      },
+      "linux": {
+        "detect": [{ "binary": "claude", "paths": ["~/.local/bin/claude", "~/.claude/local/claude", "/usr/bin/claude", "/usr/local/bin/claude"] }],
+        "entry": { "type": "http", "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [
+          { "kind": "cli", "binary": "claude", "add": ["mcp", "add", "--scope", "user", "--transport", "http", "{name}", "{url}", "--header", "Authorization: {authorization}"], "remove": ["mcp", "remove", "--scope", "user", "{name}"], "update": "removeThenAdd" }
+        ],
+        "applies": "newSession"
+      }
+    },
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "icon": "openai",
+      "config": "codex",
+      "clientInfo": { "names": ["codex-mcp-client", "Codex"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "bundleId": "com.openai.codex" }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [
+          { "kind": "cli", "binary": "codex", "add": ["mcp", "add", "{name}", "--", "{command}"], "remove": ["mcp", "remove", "{name}"], "update": "add" },
+          { "kind": "file" }
+        ],
+        "applies": "restartApp"
+      },
+      "linux": {
+        "detect": [{ "binary": "chatgpt", "paths": ["/usr/bin/chatgpt"] }],
+        "entry": { "url": "{url}", "http_headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "restartApp"
+      }
+    },
+    {
+      "id": "codex",
+      "name": "Codex CLI",
+      "icon": "openai",
+      "config": "codex",
+      "clientInfo": { "names": ["codex-mcp-client", "Codex"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "binary": "codex", "paths": ["~/.local/bin/codex", "/opt/homebrew/bin/codex", "/usr/local/bin/codex"] }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [
+          { "kind": "cli", "binary": "codex", "add": ["mcp", "add", "{name}", "--", "{command}"], "remove": ["mcp", "remove", "{name}"], "update": "add" },
+          { "kind": "file" }
+        ],
+        "applies": "newSession"
+      },
+      "linux": {
+        "detect": [{ "binary": "codex", "paths": ["~/.local/bin/codex", "/usr/bin/codex", "/usr/local/bin/codex"] }],
+        "entry": { "url": "{url}", "http_headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "newSession"
+      }
+    },
+    {
+      "id": "chatgpt-classic",
+      "name": "ChatGPT Classic",
+      "icon": "openai",
+      "config": null,
+      "clientInfo": { "names": [], "prefixes": [] },
+      "macos": {
+        "detect": [{ "bundleId": "com.openai.chat" }],
+        "unsupported": "remoteOnly"
+      }
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "icon": "cursor",
+      "config": "cursor",
+      "clientInfo": { "names": ["cursor-vscode"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "bundleId": "com.todesktop.230313mzl4w4u92" }, { "path": "~/.cursor" }],
+        "entry": { "type": "stdio", "command": "{command}", "args": [] },
+        "install": [
+          { "kind": "deeplink", "scheme": "cursor", "url": "cursor://anysphere.cursor-deeplink/mcp/install?name={name}&config={entry|json|base64|uri}" },
+          { "kind": "file" }
+        ],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "binary": "cursor", "paths": ["/usr/bin/cursor", "/usr/local/bin/cursor"] }, { "path": "~/.cursor" }],
+        "entry": { "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "vscode",
+      "name": "Visual Studio Code",
+      "icon": "vscode",
+      "config": "vscode",
+      "clientInfo": { "names": [], "prefixes": ["Visual Studio Code", "Visual-Studio-Code"] },
+      "macos": {
+        "detect": [{ "bundleId": "com.microsoft.VSCode" }],
+        "entry": { "type": "stdio", "command": "{command}", "args": [] },
+        "install": [
+          { "kind": "deeplink", "scheme": "vscode", "url": "vscode:mcp/install?{entryWithName|json|uri}" },
+          { "kind": "file" }
+        ],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "binary": "code", "paths": ["/usr/bin/code", "/usr/share/code/bin/code", "/snap/bin/code"] }],
+        "entry": { "type": "http", "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "vscode-insiders",
+      "name": "Visual Studio Code - Insiders",
+      "icon": "vscode",
+      "config": "vscode-insiders",
+      "clientInfo": { "names": [], "prefixes": ["Visual Studio Code - Insiders"] },
+      "macos": {
+        "detect": [{ "bundleId": "com.microsoft.VSCodeInsiders" }],
+        "entry": { "type": "stdio", "command": "{command}", "args": [] },
+        "install": [
+          { "kind": "deeplink", "scheme": "vscode-insiders", "url": "vscode-insiders:mcp/install?{entryWithName|json|uri}" },
+          { "kind": "file" }
+        ],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "binary": "code-insiders", "paths": ["/usr/bin/code-insiders", "/snap/bin/code-insiders"] }],
+        "entry": { "type": "http", "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "devin",
+      "name": "Devin Desktop",
+      "icon": "windsurf",
+      "config": "devin",
+      "clientInfo": { "names": ["windsurf-client", "Windsurf"], "prefixes": ["devin"] },
+      "macos": {
+        "detect": [{ "bundleId": "com.exafunction.windsurf" }, { "binary": "devin", "paths": ["~/.local/bin/devin", "/opt/homebrew/bin/devin", "/usr/local/bin/devin"] }, { "path": "~/.config/devin" }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [{ "kind": "file" }],
+        "applies": "reload"
+      },
+      "linux": {
+        "detect": [{ "binary": "devin", "paths": ["~/.local/bin/devin", "/usr/bin/devin"] }, { "path": "~/.config/devin" }],
+        "entry": { "serverUrl": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "reload"
+      }
+    },
+    {
+      "id": "zed",
+      "name": "Zed",
+      "icon": "zed",
+      "config": "zed",
+      "clientInfo": { "names": ["Zed"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "bundleId": "dev.zed.Zed" }, { "bundleId": "dev.zed.Zed-Preview" }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "binary": "zed", "paths": ["~/.local/bin/zed", "/usr/bin/zed", "/usr/bin/zeditor"] }, { "path": "~/.config/zed" }],
+        "entry": { "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "icon": "googlegemini",
+      "config": "gemini",
+      "clientInfo": { "names": ["gemini-cli-mcp-client"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "binary": "gemini", "paths": ["/opt/homebrew/bin/gemini", "/usr/local/bin/gemini", "~/.npm-global/bin/gemini"] }, { "path": "~/.gemini" }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [
+          { "kind": "cli", "binary": "gemini", "add": ["mcp", "add", "--scope", "user", "{name}", "{command}"], "remove": ["mcp", "remove", "--scope", "user", "{name}"], "update": "add" },
+          { "kind": "file" }
+        ],
+        "applies": "newSession"
+      },
+      "linux": {
+        "detect": [{ "binary": "gemini", "paths": ["/usr/bin/gemini", "/usr/local/bin/gemini", "~/.npm-global/bin/gemini"] }, { "path": "~/.gemini" }],
+        "entry": { "httpUrl": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "newSession"
+      }
+    },
+    {
+      "id": "copilot-cli",
+      "name": "GitHub Copilot CLI",
+      "icon": "githubcopilot",
+      "config": "copilot",
+      "clientInfo": { "names": ["copilot-cli", "github-copilot-developer"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "binary": "copilot", "paths": ["/opt/homebrew/bin/copilot", "/usr/local/bin/copilot", "~/.npm-global/bin/copilot"] }, { "path": "~/.copilot" }],
+        "entry": { "type": "local", "command": "{command}", "args": [], "tools": ["*"] },
+        "install": [{ "kind": "file" }],
+        "applies": "newSession"
+      },
+      "linux": {
+        "detect": [{ "binary": "copilot", "paths": ["/usr/bin/copilot", "/usr/local/bin/copilot", "~/.npm-global/bin/copilot"] }, { "path": "~/.copilot" }],
+        "entry": { "type": "http", "url": "{url}", "headers": { "Authorization": "{authorization}" }, "tools": ["*"] },
+        "install": [{ "kind": "file" }],
+        "applies": "newSession"
+      }
+    },
+    {
+      "id": "opencode",
+      "name": "opencode",
+      "icon": "opencode",
+      "config": "opencode",
+      "clientInfo": { "names": ["opencode"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "binary": "opencode", "paths": ["~/.opencode/bin/opencode", "/opt/homebrew/bin/opencode", "/usr/local/bin/opencode"] }, { "bundleId": "ai.opencode.desktop" }],
+        "entry": { "type": "local", "command": ["{command}"] },
+        "install": [
+          { "kind": "cli", "binary": "opencode", "add": ["mcp", "add", "{name}", "--global", "--", "{command}"] }
+        ],
+        "applies": "newSession"
+      },
+      "linux": {
+        "detect": [{ "binary": "opencode", "paths": ["~/.opencode/bin/opencode", "/usr/bin/opencode", "/usr/local/bin/opencode"] }],
+        "entry": { "type": "remote", "url": "{url}", "oauth": false, "headers": { "Authorization": "{authorization}" } },
+        "install": [],
+        "applies": "newSession"
+      }
+    },
+    {
+      "id": "cline",
+      "name": "Cline",
+      "icon": "cline",
+      "config": "cline",
+      "clientInfo": { "names": ["Cline", "@cline/core"], "prefixes": [] },
+      "macos": {
+        "detect": [{ "path": "~/.cline" }, { "binary": "cline", "paths": ["/opt/homebrew/bin/cline", "/usr/local/bin/cline", "~/.npm-global/bin/cline"] }],
+        "entry": { "command": "{command}", "args": [], "disabled": false },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "path": "~/.cline" }, { "binary": "cline", "paths": ["/usr/bin/cline", "/usr/local/bin/cline", "~/.npm-global/bin/cline"] }],
+        "entry": { "type": "streamableHttp", "url": "{url}", "headers": { "Authorization": "{authorization}" }, "disabled": false },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "goose",
+      "name": "Goose",
+      "icon": "goose",
+      "config": "goose",
+      "clientInfo": { "names": ["goose-desktop", "goose-cli"], "prefixes": ["goose"] },
+      "macos": {
+        "detect": [{ "bundleId": "com.electron.goose" }, { "binary": "goose", "paths": ["~/.local/bin/goose", "/opt/homebrew/bin/goose", "/usr/local/bin/goose"] }],
+        "entry": { "type": "stdio", "name": "{name}", "enabled": true, "cmd": "{command}", "args": [], "envs": {}, "env_keys": [], "timeout": 300 },
+        "install": [
+          { "kind": "deeplink", "scheme": "goose", "url": "goose://extension?cmd={command|uri}&id={name}&name=TablePro&description=TablePro%20databases" }
+        ],
+        "applies": "restartApp"
+      },
+      "linux": {
+        "detect": [{ "binary": "goose", "paths": ["~/.local/bin/goose", "/usr/bin/goose", "/usr/local/bin/goose"] }, { "path": "~/.config/goose" }],
+        "entry": { "type": "streamable_http", "name": "{name}", "enabled": true, "uri": "{url}", "headers": { "Authorization": "{authorization}" }, "envs": {}, "env_keys": [], "timeout": 300 },
+        "install": [],
+        "applies": "restartApp"
+      }
+    },
+    {
+      "id": "lmstudio",
+      "name": "LM Studio",
+      "icon": "lmstudio",
+      "config": "lmstudio",
+      "clientInfo": { "names": [], "prefixes": ["lm-studio", "LM Studio"] },
+      "macos": {
+        "detect": [{ "bundleId": "ai.elementlabs.lmstudio" }, { "path": "~/.lmstudio" }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [
+          { "kind": "deeplink", "scheme": "lmstudio", "url": "lmstudio://add_mcp?name={name}&config={entry|json|base64|uri}" },
+          { "kind": "file" }
+        ],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "path": "~/.lmstudio" }],
+        "entry": { "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "kiro",
+      "name": "Kiro",
+      "icon": "kiro",
+      "config": "kiro",
+      "clientInfo": { "names": ["Q DEV CLI"], "prefixes": ["kiro", "Kiro"] },
+      "macos": {
+        "detect": [{ "bundleId": "dev.kiro.desktop" }, { "binary": "kiro-cli", "paths": ["~/.local/bin/kiro-cli", "/opt/homebrew/bin/kiro-cli", "/usr/local/bin/kiro-cli"] }, { "path": "~/.kiro" }],
+        "entry": { "command": "{command}", "args": [], "disabled": false },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "binary": "kiro", "paths": ["/usr/bin/kiro", "/usr/local/bin/kiro"] }, { "binary": "kiro-cli", "paths": ["~/.local/bin/kiro-cli", "/usr/bin/kiro-cli"] }, { "path": "~/.kiro" }],
+        "entry": { "url": "{url}", "headers": { "Authorization": "{authorization}" }, "disabled": false },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "warp",
+      "name": "Warp",
+      "icon": "warp",
+      "config": "warp",
+      "clientInfo": { "names": [], "prefixes": ["dev.warp.Warp"] },
+      "macos": {
+        "detect": [{ "bundleId": "dev.warp.Warp-Stable" }, { "bundleId": "dev.warp.Warp-Preview" }, { "path": "~/.warp" }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      },
+      "linux": {
+        "detect": [{ "binary": "warp-terminal", "paths": ["/usr/bin/warp-terminal"] }, { "path": "~/.warp" }],
+        "entry": { "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "live"
+      }
+    },
+    {
+      "id": "junie",
+      "name": "Junie",
+      "icon": "jetbrains",
+      "config": "junie",
+      "clientInfo": { "names": [], "prefixes": ["junie", "Junie"] },
+      "macos": {
+        "detect": [{ "path": "~/.junie" }, { "binary": "junie", "paths": ["~/.local/bin/junie", "/opt/homebrew/bin/junie", "/usr/local/bin/junie"] }],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [{ "kind": "file" }],
+        "applies": "newSession"
+      },
+      "linux": {
+        "detect": [{ "path": "~/.junie" }, { "binary": "junie", "paths": ["~/.local/bin/junie", "/usr/bin/junie"] }],
+        "entry": { "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [{ "kind": "file" }],
+        "applies": "newSession"
+      }
+    },
+    {
+      "id": "jetbrains-ai",
+      "name": "JetBrains AI Assistant",
+      "icon": "jetbrains",
+      "config": null,
+      "clientInfo": { "names": [], "prefixes": [] },
+      "macos": {
+        "detect": [
+          { "bundleId": "com.jetbrains.intellij" }, { "bundleId": "com.jetbrains.intellij.ce" }, { "bundleId": "com.jetbrains.pycharm" },
+          { "bundleId": "com.jetbrains.pycharm.ce" }, { "bundleId": "com.jetbrains.WebStorm" }, { "bundleId": "com.jetbrains.goland" },
+          { "bundleId": "com.jetbrains.datagrip" }, { "bundleId": "com.jetbrains.rider" }, { "bundleId": "com.jetbrains.PhpStorm" },
+          { "bundleId": "com.jetbrains.rubymine" }, { "bundleId": "com.jetbrains.CLion" }, { "bundleId": "com.jetbrains.toolbox" }
+        ],
+        "entry": { "command": "{command}", "args": [] },
+        "install": [],
+        "applies": "restartApp"
+      },
+      "linux": {
+        "detect": [{ "path": "~/.config/JetBrains" }],
+        "entry": { "url": "{url}", "headers": { "Authorization": "{authorization}" } },
+        "install": [],
+        "applies": "restartApp"
+      }
+    },
+    {
+      "id": "raycast",
+      "name": "Raycast",
+      "icon": "raycast",
+      "config": null,
+      "clientInfo": { "names": [], "prefixes": ["raycast", "Raycast"] },
+      "macos": {
+        "detect": [{ "bundleId": "com.raycast.macos" }],
+        "entry": { "type": "stdio", "command": "{command}", "args": [], "env": {} },
+        "install": [
+          { "kind": "deeplink", "scheme": "raycast", "url": "raycast://mcp/install?{entryWithName|json|uri}" }
+        ],
+        "applies": "live"
+      }
+    }
+  ]
+}

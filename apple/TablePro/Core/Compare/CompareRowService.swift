@@ -39,9 +39,11 @@ internal enum ConcurrentReadRefusal: Equatable, Sendable {
 @MainActor
 internal struct CompareRowService {
     private let manager: DatabaseManager
+    private let gate: any ExecutionGate
 
-    internal init(manager: DatabaseManager = .shared) {
+    internal init(manager: DatabaseManager = .shared, gate: any ExecutionGate = ExecutionGateProvider.shared) {
         self.manager = manager
+        self.gate = gate
     }
 
     internal func concurrentReadRefusal(
@@ -132,6 +134,41 @@ internal struct CompareRowService {
 
     // MARK: - Plumbing
 
+    // A filter is the user's own text, read on a connection that may be at Read-Only: it meets the gate as a Run would.
+    private func authorizeReadOnlyFilter(
+        _ filter: String?,
+        on endpoint: DatabaseEndpoint,
+        schema: String?,
+        table: String
+    ) async throws {
+        let driver = manager.driver(for: endpoint.connectionId)
+        let statement = ReadOnlyReadGate.filterStatement(
+            table: table, schema: schema, filter: filter, databaseType: endpoint.databaseType
+        ) { name in
+            driver?.quoteIdentifier(name) ?? name
+        }
+        try await ReadOnlyReadGate.authorize(
+            statement.map { [$0] } ?? [],
+            connectionId: endpoint.connectionId,
+            databaseType: endpoint.databaseType,
+            gate: gate,
+            operationDescription: String(localized: "Execute Query"),
+            manager: manager
+        )
+    }
+
+    // The sides are built inside the lift: a stream starts its statement when it is built, and a bounded one parks
+    // its connection once its buffer is full, so a lift sent after it would wait behind that statement for good.
+    internal static func readingBothSides<Sides, T>(
+        liftingTimeoutOn drivers: [DatabaseDriver],
+        sides makeSides: () -> Sides,
+        _ body: (Sides) async throws -> T
+    ) async throws -> T {
+        try await BulkReadTimeout.lifted(on: drivers) {
+            try await body(makeSides())
+        }
+    }
+
     private func withBothSides<T: Sendable>(
         source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
@@ -149,6 +186,10 @@ internal struct CompareRowService {
         }
         try await manager.ensureConnected(sourceConnection)
         try await manager.ensureConnected(targetConnection)
+        try await authorizeReadOnlyFilter(plan.scope.effectiveSourceFilter, on: source, schema: source.schema ?? plan.schema, table: plan.table)
+        try await authorizeReadOnlyFilter(plan.scope.effectiveTargetFilter, on: target, schema: plan.targetSchema, table: plan.table)
+        let sourceIsReadOnly = ExecutionGateProvider.runsAtReadOnly(source.connectionId, in: manager)
+        let targetIsReadOnly = ExecutionGateProvider.runsAtReadOnly(target.connectionId, in: manager)
 
         let engine = DataDiffEngine(options: options, shape: plan.comparisonShape)
         let sourceRead = SideRead(
@@ -182,22 +223,27 @@ internal struct CompareRowService {
                     String(localized: "The source driver cannot stream rows for a comparison.")
                 )
             }
+            let sourceSide = sourceRead.carrying(sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly))
             return try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { targetDriver in
                 guard let targetPlugin = CompareMetadataService.pluginDriver(from: targetDriver) else {
                     throw CompareSyncError.unsupportedOperation(
                         String(localized: "The target driver cannot stream rows for a comparison.")
                     )
                 }
-                let sides = RowSides(
-                    source: sourceRead.provider(driver: sourcePlugin),
-                    target: targetRead.provider(driver: targetPlugin),
-                    resolver: KeyLookupResolver(
-                        source: (sourceRead, sourcePlugin),
-                        target: (targetRead, targetPlugin)
-                    ),
-                    targetDriver: targetPlugin
-                )
-                return try await body(engine, sides)
+                let targetSide = targetRead.carrying(targetDriver.readOnlyRunContext(safeModeIsReadOnly: targetIsReadOnly))
+                return try await Self.readingBothSides(liftingTimeoutOn: [sourceDriver, targetDriver]) {
+                    RowSides(
+                        source: sourceSide.provider(driver: sourcePlugin),
+                        target: targetSide.provider(driver: targetPlugin),
+                        resolver: KeyLookupResolver(
+                            source: (sourceSide, sourcePlugin),
+                            target: (targetSide, targetPlugin)
+                        ),
+                        targetDriver: targetPlugin
+                    )
+                } _: { sides in
+                    try await body(engine, sides)
+                }
             }
         }
     }
@@ -214,6 +260,19 @@ private struct SideRead: Sendable {
     let rowLimit: Int?
     let dialect: SQLDialectDescriptor?
     let side: ComparisonSide
+    // Read-Only's, when the side's connection runs at it and its driver holds the engine to it.
+    var context: PluginStatementContext?
+
+    func carrying(_ context: PluginStatementContext?) -> SideRead {
+        var read = self
+        read.context = context
+        return read
+    }
+
+    private func stream(_ query: String, driver: any PluginDatabaseDriver) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let context else { return driver.streamRows(query: query) }
+        return driver.streamRows(query: query, context: context)
+    }
 
     func provider(driver: any PluginDatabaseDriver) -> StreamingRowProvider {
         let query = KeyOrderedQuery.build(
@@ -228,7 +287,7 @@ private struct SideRead: Sendable {
             dialect: dialect
         )
         return StreamingRowProvider(
-            stream: driver.streamRows(query: query),
+            stream: stream(query, driver: driver),
             columns: columns,
             rowLimit: rowLimit,
             context: RowReadContext(side: side, isFiltered: filter != nil)
@@ -247,7 +306,7 @@ private struct SideRead: Sendable {
             databaseType: endpoint.databaseType
         )
         return StreamingRowProvider(
-            stream: driver.streamRows(query: query),
+            stream: stream(query, driver: driver),
             columns: columns,
             context: RowReadContext(side: side, isFiltered: false)
         )

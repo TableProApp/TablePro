@@ -290,11 +290,13 @@ struct MCPExplainRequest: Equatable {
 }
 
 extension MCPConnectionBridge {
+    // The router reads the whole plan, so the budget holds only what goes out: the plan text, the parsed plan, the rows.
     func explainQuery(
         _ operation: ApprovedOperation,
         request: MCPExplainRequest,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        budget: ExternalAnswerBudget = .mcpAnswer
     ) async throws -> JsonValue {
         let databaseType = operation.databaseType
         let masking = ExternalRowMasking.plan(in: request.format)
@@ -316,13 +318,15 @@ extension MCPConnectionBridge {
                 declaredVariants: databaseType.explainVariants
             )
         } else {
-            outcome = try await runStatement(
+            let statement = try await runStatement(
                 operation,
                 maxRows: Self.explainRowLimit,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation,
-                masking: masking
+                masking: masking,
+                budget: nil
             )
+            outcome = (statement.result, statement.executionTimeMs)
             routed = ExplainResultRouter.route(
                 sql: request.statement,
                 columns: outcome.result.columns,
@@ -332,22 +336,61 @@ extension MCPConnectionBridge {
             )
         }
 
+        var spent = budget
+        let planText = routed.map { spent.keep(text: $0.rawText) }
+        // The tree repeats every node's text, so it goes out only when it fits whole; plan_text already carries it.
+        // No `nil` literal near a JsonValue here: it is ExpressibleByNilLiteral, so `nil` can become `.null`.
+        var plan: JsonValue?
+        var planLeftOut = false
+        if let encodedPlan = routed?.plan.map(Self.encode(plan:)) {
+            if spent.keepWhole(bytes: Self.encodedBytes(of: encodedPlan)) {
+                plan = encodedPlan
+            } else {
+                planLeftOut = true
+            }
+        }
+        let kept = spent.keep(outcome.result)
         var payload: [String: JsonValue] = [
             "statement": .string(request.statement),
             "execution_time_ms": .double(outcome.executionTimeMs),
             "columns": .array(outcome.result.columns.map { .string($0) }),
-            "rows": .array(outcome.result.rows.map { row in .array(row.map(Self.cellValue)) })
+            "rows": .array(kept.rows.map { row in .array(row.map(Self.cellValue)) })
         ]
         if let statusMessage = outcome.result.statusMessage {
             payload["status_message"] = .string(statusMessage)
         }
-        if let routed {
-            payload["plan_text"] = .string(routed.rawText)
-            if let plan = routed.plan {
-                payload["plan"] = Self.encode(plan: plan)
-            }
+        if let planText {
+            payload["plan_text"] = .string(planText)
+        }
+        if let plan {
+            payload["plan"] = plan
+        }
+        if spent.sizeLimited || planLeftOut {
+            payload["is_truncated"] = .bool(true)
+        }
+        var notes = spent.notes
+        if planLeftOut {
+            notes.append(String(
+                format: String(localized: "The parsed plan did not fit in TablePro's %@ limit for one answer, so it is left out. Read plan_text instead."),
+                ByteCountFormatter.string(fromByteCount: Int64(spent.limitBytes), countStyle: .memory)
+            ))
+        }
+        if !notes.isEmpty {
+            payload["notes"] = .array(notes.map(JsonValue.string))
         }
         return .object(payload)
+    }
+
+    // What `value` encodes to, measured without rendering it; a number counts as the core counts a scalar.
+    static func encodedBytes(of value: JsonValue) -> Int {
+        switch value {
+        case .null: return 4
+        case .bool: return 5
+        case .int, .double: return 40
+        case .string(let text): return text.utf8.count + 2
+        case .array(let items): return items.reduce(2) { $0 + encodedBytes(of: $1) + 1 }
+        case .object(let fields): return fields.reduce(2) { $0 + $1.key.utf8.count + 3 + encodedBytes(of: $1.value) + 1 }
+        }
     }
 
     static let explainRowLimit = 5_000

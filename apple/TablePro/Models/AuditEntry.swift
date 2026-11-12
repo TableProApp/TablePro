@@ -1,8 +1,3 @@
-//
-//  AuditEntry.swift
-//  TablePro
-//
-
 import Foundation
 
 enum AuditCategory: String, Codable, CaseIterable, Sendable, Identifiable {
@@ -63,6 +58,9 @@ struct AuditEntry: Codable, Identifiable, Sendable, Equatable, Hashable {
     let action: String
     let outcome: String
     let details: String?
+    // The name the client reported for itself, never its token. Nil for rows no client caused and for
+    // rows written before the log recorded it.
+    let clientName: String?
 
     init(
         id: UUID = UUID(),
@@ -73,7 +71,8 @@ struct AuditEntry: Codable, Identifiable, Sendable, Equatable, Hashable {
         connectionId: UUID? = nil,
         action: String,
         outcome: String,
-        details: String? = nil
+        details: String? = nil,
+        clientName: String? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -84,6 +83,7 @@ struct AuditEntry: Codable, Identifiable, Sendable, Equatable, Hashable {
         self.action = action
         self.outcome = outcome
         self.details = details
+        self.clientName = clientName
     }
 
     init(
@@ -95,7 +95,8 @@ struct AuditEntry: Codable, Identifiable, Sendable, Equatable, Hashable {
         connectionId: UUID? = nil,
         action: String,
         outcome: AuditOutcome,
-        details: String? = nil
+        details: String? = nil,
+        clientName: String? = nil
     ) {
         self.init(
             id: id,
@@ -106,7 +107,8 @@ struct AuditEntry: Codable, Identifiable, Sendable, Equatable, Hashable {
             connectionId: connectionId,
             action: action,
             outcome: outcome.rawValue,
-            details: details
+            details: details,
+            clientName: clientName
         )
     }
 }

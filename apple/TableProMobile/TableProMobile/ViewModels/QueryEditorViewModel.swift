@@ -75,7 +75,6 @@ final class QueryEditorViewModel {
 
     var columns: [ColumnInfo] { buffer.columns }
     var window: RowWindow { buffer.window }
-    var legacyRows: [[String?]] { buffer.legacyRows }
     var statusMessage: String? { buffer.statusMessage }
     var truncationReason: TruncationReason? { buffer.truncation }
 
@@ -95,7 +94,7 @@ final class QueryEditorViewModel {
 
     var truncationMessage: String? {
         guard let truncationReason else { return nil }
-        let shown = buffer.legacyRows.count
+        let shown = buffer.count
         switch truncationReason {
         case .rowCap:
             return String(format: String(localized: "Showing the first %d rows. Add LIMIT to fetch more."), shown)
@@ -112,9 +111,39 @@ final class QueryEditorViewModel {
         cutLongValues ? String(localized: "Some long values are shown in part to stay within memory.") : nil
     }
 
+    // Formats off the main actor: 10,000 rows of JSON take long enough to hold up the screen.
+    func exportResults(
+        as format: ExportFormat,
+        databaseType: DatabaseType,
+        driver: (any DatabaseDriver)?,
+        availableBytes: Int
+    ) async throws -> String {
+        try await Self.export(
+            rows: buffer.window.rows, columns: buffer.columns, format: format,
+            databaseType: databaseType, driver: driver, availableBytes: availableBytes
+        )
+    }
+
+    @concurrent
+    nonisolated private static func export(
+        rows: [Row],
+        columns: [ColumnInfo],
+        format: ExportFormat,
+        databaseType: DatabaseType,
+        driver: (any DatabaseDriver)?,
+        availableBytes: Int
+    ) async throws -> String {
+        guard resultsFitExport(rows: rows, availableBytes: availableBytes) else {
+            throw ClipboardExporter.TooLarge(source: .queryResult)
+        }
+        return try ClipboardExporter.exportRows(
+            columns: columns, rows: rows.map(\.cells), format: format, databaseType: databaseType, driver: driver
+        )
+    }
+
     // The export text and the pasteboard's copy of it are held beside the values already on screen.
-    func resultsFitExport(availableBytes: Int) -> Bool {
-        let textBytes = buffer.window.rows.reduce(0) { total, row in
+    nonisolated static func resultsFitExport(rows: [Row], availableBytes: Int) -> Bool {
+        let textBytes = rows.reduce(0) { total, row in
             row.cells.reduce(total) { sum, cell in
                 guard case .text(let value) = cell else { return sum }
                 return sum + value.utf8.count

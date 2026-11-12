@@ -26,6 +26,9 @@ internal final class InfluxDBConnection: @unchecked Sendable {
 
     private let lock = NSLock()
     private var session: URLSession?
+    // A streamed read holds one response for as long as its consumer takes, and a suspended task still counts toward
+    // the resource limit, so streams run on a session that keeps the system default.
+    private var streamSession: URLSession?
     private var inFlight: [ObjectIdentifier: PluginURLSessionTaskBox] = [:]
     private let queryTimeout: HttpQueryTimeoutBox
 
@@ -44,6 +47,9 @@ internal final class InfluxDBConnection: @unchecked Sendable {
         configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         let delegate = skipTLSVerify ? InfluxDBTrustingDelegate() : PluginRedirectRefusingDelegate()
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        // The session made its own copy of the configuration above.
+        configuration.timeoutIntervalForResource = URLSessionConfiguration.default.timeoutIntervalForResource
+        streamSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }
 
     func close() {
@@ -51,6 +57,8 @@ internal final class InfluxDBConnection: @unchecked Sendable {
         lock.withLock {
             session?.invalidateAndCancel()
             session = nil
+            streamSession?.invalidateAndCancel()
+            streamSession = nil
         }
     }
 
@@ -115,7 +123,7 @@ internal final class InfluxDBConnection: @unchecked Sendable {
         lock.withLock { inFlight[key] = taskBox }
         defer { lock.withLock { _ = inFlight.removeValue(forKey: key) } }
         // Made under the lock `close()` invalidates with, as in `perform`.
-        guard let task = lock.withLock({ session?.dataTask(with: urlRequest) }) else {
+        guard let task = lock.withLock({ streamSession?.dataTask(with: urlRequest) }) else {
             throw InfluxError.notConnected
         }
         let chunks = InfluxDBHTTPChunks(task: task)

@@ -19,6 +19,12 @@ final class TeradataAsyncConnection: @unchecked Sendable {
     // Read outside the queue, so asking never waits behind a running statement.
     var hasLostConnection: Bool { connection.hasLostConnection }
 
+    var transactionState: TeradataTransactionState { connection.transactionState }
+
+    var sessionTransactionMode: TeradataTransactionMode { connection.sessionTransactionMode }
+
+    var sessionModeSource: TeradataSessionModeSource { connection.sessionModeSource }
+
     func connect() async throws {
         try await run { try $0.connect() }
     }
@@ -42,6 +48,22 @@ final class TeradataAsyncConnection: @unchecked Sendable {
         onRows: @escaping @Sendable ([[TeradataValue]]) throws -> Bool
     ) async throws {
         try await run { try $0.stream(sql, onColumns: onColumns, onRows: onRows) }
+    }
+
+    func beginTransaction() async throws {
+        try await run { try $0.beginTransaction() }
+    }
+
+    func commitTransaction() async throws {
+        try await run { try $0.commitTransaction() }
+    }
+
+    func rollbackTransaction() async throws {
+        try await run { try $0.rollbackTransaction() }
+    }
+
+    func switchDatabase(to database: String) async throws {
+        try await run { try $0.switchDatabase(to: database) }
     }
 
     func disconnect() {

@@ -18,12 +18,12 @@ struct LinkedSQLIndexDamageTests {
             name: "revenue",
             keyword: "rev",
             description: nil,
-            mtime: Date(timeIntervalSince1970: 1_800_000_000),
+            mtime: 1_800_000_000,
             fileSize: 8,
-            encoding: .utf8
+            encodingName: "utf-8"
         )
 
-        await index.replaceAll(folderId: folderId, files: [file], folderURL: scratch)
+        await index.synchronize(folderId: folderId, files: [file])
 
         #expect(await index.allFolderIds() == [folderId])
         let leftovers = try FileManager.default.contentsOfDirectory(atPath: scratch.path(percentEncoded: false))

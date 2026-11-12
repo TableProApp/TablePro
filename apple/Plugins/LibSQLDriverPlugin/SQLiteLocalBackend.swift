@@ -180,7 +180,7 @@ actor SQLiteLocalBackend {
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty {
-                    continuation.yield(.rows(batch))
+                    _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
                 }
                 continuation.finish(throwing: CancellationError())
                 return
@@ -188,14 +188,15 @@ actor SQLiteLocalBackend {
 
             batch.append(rowValues(of: statement, count: columnCount))
             if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
+                // Blocks the actor's thread: an await here would let another call reach the handle mid-statement.
+                _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
                 batch.removeAll(keepingCapacity: true)
             }
             stepResult = sqlite3_step(statement)
         }
 
         if !batch.isEmpty {
-            continuation.yield(.rows(batch))
+            _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
         }
 
         do {

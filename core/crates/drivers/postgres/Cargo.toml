@@ -11,6 +11,7 @@ tablepro-net.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 chrono.workspace = true
+deadpool.workspace = true
 deadpool-postgres.workspace = true
 fallible-iterator.workspace = true
 futures-util.workspace = true

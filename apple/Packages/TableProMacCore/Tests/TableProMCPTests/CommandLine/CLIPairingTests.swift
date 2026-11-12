@@ -41,6 +41,10 @@ struct CLIPairingTests {
             requestTarget: "\(path)?error=access_denied&error_description=user_denied&state=s1",
             state: "s1"
         ) == .denied)
+        #expect(CLIPairingCallback.parse(
+            requestTarget: "\(path)?error=server_error&error_description=token_not_issued&state=s1",
+            state: "s1"
+        ) == .failed)
         #expect(CLIPairingCallback.parse(requestTarget: "\(path)?code=abc&state=other", state: "s1") == .ignored)
         #expect(CLIPairingCallback.parse(requestTarget: "/favicon.ico", state: "s1") == .ignored)
         #expect(CLIPairingCallback.parse(requestTarget: "\(path)?state=s1", state: "s1") == .ignored)

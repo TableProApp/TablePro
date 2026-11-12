@@ -135,6 +135,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     private let config: DriverConnectionConfig
     let connectionActor = CassandraConnectionActor()
     let activeBrowse = CassandraActiveBrowse()
+    let cellLifetimes = CassandraCellLifetimeStore()
     private let stateLock = NSLock()
     nonisolated(unsafe) private var _currentKeyspace: String?
     nonisolated(unsafe) private var _sessionConsistency: CassandraConsistency?
@@ -287,6 +288,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func disconnect() {
         activeBrowse.cancel()
+        cellLifetimes.removeAll()
         Task.detached(priority: .utility) { [connectionActor] in
             await connectionActor.close()
         }
@@ -481,7 +483,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             return streamBrowse(browse, consistency: consistency)
         }
         let cql = stripTrailingSemicolon(query)
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.connectionActor.streamQuery(
@@ -492,7 +494,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                     continuation.finish(throwing: error)
                 }
             }
-            _ = streamTask
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -558,6 +560,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             )
         }
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let ks = resolveKeyspace(schema)

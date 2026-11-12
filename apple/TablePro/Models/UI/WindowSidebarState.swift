@@ -18,6 +18,12 @@ struct DatabaseTableKey: Hashable, Sendable, Codable {
     let table: String
 }
 
+struct PendingTableOperation: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    let operation: TableOperationType
+    let tables: [DatabaseTreeTableRef]
+}
+
 @MainActor
 internal final class WindowSidebarState: ObservableObject {
     private let connectionId: UUID?
@@ -55,6 +61,19 @@ internal final class WindowSidebarState: ObservableObject {
     var acceptsObjectMarkRefresh: Bool {
         selectedTables.isEmpty && selectedRowCount == 0
     }
+
+    // The connection's queues are shared by every window hosting it, but a Truncate or Drop prompt belongs to the window that asked.
+    @Published private(set) var pendingTableOperation: PendingTableOperation?
+
+    func requestTableOperation(_ operation: TableOperationType, on tables: [DatabaseTreeTableRef]) {
+        pendingTableOperation = PendingTableOperation(operation: operation, tables: tables)
+    }
+
+    func resolveTableOperation(_ request: PendingTableOperation) {
+        guard pendingTableOperation?.id == request.id else { return }
+        pendingTableOperation = nil
+    }
+
     @Published var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
@@ -111,8 +130,7 @@ internal final class WindowSidebarState: ObservableObject {
         isLoaded = true
     }
 
-    /// The kind rides as its raw string. Decoding it as `SidebarObjectKind` throws on a value this
-    /// build does not know, and one throw inside this blob discards every other expansion set.
+    // The kind rides as its persistence name, so a value this build does not know drops only that entry.
     private struct PersistedObjectGroup: Codable {
         let database: String
         let schema: String?
@@ -176,7 +194,7 @@ internal final class WindowSidebarState: ObservableObject {
         from persisted: [PersistedObjectGroup]
     ) -> [DatabaseTreeObjectGroup: Bool] {
         persisted.reduce(into: [:]) { result, entry in
-            guard let kind = SidebarObjectKind(rawValue: entry.kind) else { return }
+            guard let kind = SidebarObjectKind(persistenceName: entry.kind) else { return }
             let group = DatabaseTreeObjectGroup(database: entry.database, schema: entry.schema, kind: kind)
             result[group] = entry.expanded
         }
@@ -189,7 +207,7 @@ internal final class WindowSidebarState: ObservableObject {
             PersistedObjectGroup(
                 database: group.database,
                 schema: group.schema,
-                kind: group.kind.rawValue,
+                kind: group.kind.persistenceName,
                 expanded: expanded
             )
         }

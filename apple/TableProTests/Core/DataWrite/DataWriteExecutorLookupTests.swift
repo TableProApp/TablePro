@@ -83,7 +83,7 @@ struct DataWriteExecutorLookupTests {
             steps: steps
         )
         let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .clickhouse), pluginDriver: lookup)
-        _ = try await DataWriteExecutor.run(plan, on: driver)
+        _ = try await DataWriteExecutor.run(plan, commitMode: .automatic, on: driver)
     }
 
     @Test("A write runs on the rows its lookup found, their values bound after its own")
@@ -95,6 +95,40 @@ struct DataWriteExecutorLookupTests {
         #expect(driver.writes.map { $0.query } == ["DELETE pinned"])
         #expect(driver.writes.first?.parameters == ["a", "part_0", "part_1"])
         #expect(driver.trace.map { $0.query } == ["LOOKUP DELETE pinned", "LOOKUP DELETE pinned", "DELETE pinned", "CHECK DELETE pinned"])
+    }
+
+    private func heldStep(_ held: PluginCellValue) -> DataWriteStep {
+        DataWriteStep(
+            kind: .rowWrite,
+            statement: ParameterizedStatement(sql: "UPDATE held", parameters: ["a"]),
+            expectedRowCount: 1,
+            tableName: "events",
+            lookup: RowLookup(
+                query: ParameterizedStatement(sql: "LOOKUP UPDATE held", parameters: []),
+                rowCount: 1,
+                pinsRows: false,
+                heldValues: [0: held]
+            )
+        )
+    }
+
+    @Test("A row that still holds the reviewed values is written")
+    func heldValuesThatStillMatchWrite() async throws {
+        let driver = LookupDriver(found: [1, 1], affected: 1)
+
+        try await run([heldStep("part_0")], on: driver)
+
+        #expect(driver.writes.map { $0.query } == ["UPDATE held"])
+    }
+
+    @Test("A row another writer changed since the review refuses the write before anything runs")
+    func changedHeldValueRefuses() async throws {
+        let driver = LookupDriver(found: [1, 1], affected: 1)
+
+        await #expect(throws: DataWriteError.self) {
+            try await run([heldStep("reviewed")], on: driver)
+        }
+        #expect(driver.writes.isEmpty)
     }
 
     @Test("A row its lookup cannot tell apart from another refuses the save before anything is written")

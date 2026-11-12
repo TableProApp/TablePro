@@ -90,6 +90,22 @@ public sealed class BrowseTests
     }
 
     [Fact]
+    public async Task AnEstimateIsNoneUntilAnalyzeWritesTheTablesStatistics()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+
+        var before = await database.Session.EstimateRowsAsync(People, cancellationToken);
+        // ANALYZE writes sqlite_stat1, whose row for the index starts with the table's row count.
+        await database.ExecuteAsync("CREATE INDEX people_by_name ON people (name)");
+        await database.ExecuteAsync("ANALYZE");
+        var after = await database.Session.EstimateRowsAsync(People, cancellationToken);
+
+        Assert.Null(before);
+        Assert.Equal(new RowEstimate(SqliteDatabase.PeopleRows, IsExact: false), after);
+    }
+
+    [Fact]
     public async Task TheChoicesAreWhatTheEngineEvaluatesOnEachColumn()
     {
         await using var database = await SqliteDatabase.CreateAsync();

@@ -77,6 +77,7 @@ final class ExportService: ObservableObject {
     private let databaseType: DatabaseType?
     private let effectiveQueryTimeoutSeconds: Int
     private let exportPlugin: @MainActor (String) -> (any ExportFormatPlugin)?
+    var executionGate: any ExecutionGate = ExecutionGateProvider.shared
 
     init(
         driver: DatabaseDriver,
@@ -207,15 +208,29 @@ final class ExportService: ObservableObject {
         }
         try throwIfStopped()
 
-        let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
-
         let rowObjects = objects.filter { plugin.readsRows(optionValues: $0.optionValues, kind: $0.kind) }
+        try await ReadOnlyReadGate.authorize(
+            ReadOnlyReadGate.rowScopeStatements(rowObjects, databaseType: databaseType) { driver.quoteIdentifier($0) },
+            connectionId: driver.connection.id,
+            databaseType: databaseType,
+            gate: executionGate
+        )
+        try throwIfStopped()
+
+        let safeModeIsReadOnly = ExecutionGateProvider.runsAtReadOnly(driver.connection.id)
+        let dataSource = ExportDataSourceAdapter(
+            driver: driver,
+            databaseType: databaseType,
+            safeModeIsReadOnly: safeModeIsReadOnly
+        )
+
         state.readsRows = !rowObjects.isEmpty
         state.totalRows = await fetchTotalRowCount(
             for: rowObjects.filter { $0.kind.carriesRows },
             driver: driver,
             databaseType: databaseType,
-            dataSource: dataSource
+            dataSource: dataSource,
+            context: driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly)
         )
         try throwIfStopped()
 
@@ -429,11 +444,16 @@ final class ExportService: ObservableObject {
             currentProgress = nil
         }
         try throwIfStopped()
+        try await ReadOnlyReadGate.authorize(
+            [query], connectionId: driver.connection.id, databaseType: databaseType, gate: executionGate
+        )
+        try throwIfStopped()
 
         let dataSource = StreamingQueryExportDataSource(
             query: LeadingRowsStatement.resolve(query, rowCap: nil, databaseType: databaseType).sql,
             driver: driver,
-            databaseType: databaseType
+            databaseType: databaseType,
+            safeModeIsReadOnly: ExecutionGateProvider.runsAtReadOnly(driver.connection.id)
         )
 
         let nsProgress = Progress(totalUnitCount: Int64(max(estimatedRows, 1)))
@@ -516,9 +536,15 @@ final class ExportService: ObservableObject {
         for tables: [ExportObjectItem],
         driver: DatabaseDriver,
         databaseType: DatabaseType,
-        dataSource: ExportDataSourceAdapter
+        dataSource: ExportDataSourceAdapter,
+        context: PluginStatementContext?
     ) async -> Int {
         guard !tables.isEmpty else { return 0 }
+        // At Read-Only a count runs read-only too: a view's COUNT(*) runs the view.
+        let runCount: (String) async throws -> QueryResult = { query in
+            guard let context else { return try await driver.execute(query: query) }
+            return try await driver.execute(query: query, context: context)
+        }
 
         var total = 0
         var failedCount = 0
@@ -560,7 +586,7 @@ final class ExportService: ObservableObject {
             let batchQuery = unionParts.joined(separator: " UNION ALL ")
 
             do {
-                let result = try await driver.execute(query: batchQuery)
+                let result = try await runCount(batchQuery)
                 for row in result.rows {
                     if let cell = row.first, let count = Int(cell.asText ?? "0") {
                         total = Self.saturatingSum(total, count)
@@ -571,7 +597,7 @@ final class ExportService: ObservableObject {
                     guard !isStopRequested else { return total }
                     do {
                         let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
-                        let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
+                        let result = try await runCount("SELECT COUNT(*) FROM \(tableRef)")
                         if let cell = result.rows.first?.first, let count = Int(cell.asText ?? "0") {
                             total = Self.saturatingSum(total, count)
                         }

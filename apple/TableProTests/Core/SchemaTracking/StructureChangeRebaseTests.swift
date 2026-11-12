@@ -124,6 +124,139 @@ struct StructureChangeRebaseTests {
         #expect(shown == ["id", "a"])
     }
 
+    private func stageDropAndReAdd(in manager: StructureChangeManager) throws {
+        try manager.deleteColumn(id: workingColumn("a", in: manager).id)
+        var readded = EditableColumnDefinition.from(textColumn("a"))
+        readded.id = UUID()
+        manager.addColumn(readded)
+    }
+
+    private func textColumn(_ name: String) -> ColumnInfo {
+        ColumnInfo(
+            name: name, dataType: "TEXT", isNullable: true, isPrimaryKey: false,
+            defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
+        )
+    }
+
+    private func stagedColumnChanges(_ manager: StructureChangeManager) -> [String] {
+        manager.getChangesArray().compactMap { change -> String? in
+            switch change {
+            case .deleteColumn(let column): return "drop \(column.name) \(column.dataType)"
+            case .addColumn(let column): return "add \(column.name) \(column.dataType)"
+            case .modifyColumn(let old, let new): return "\(old.name)>\(new.name)"
+            default: return nil
+            }
+        }.sorted()
+    }
+
+    @Test("A drop and an add of one name both stay staged when the save wrote nothing")
+    func dropAndReAddSurviveAnUnchangedTable() throws {
+        let manager = manager()
+        try stageDropAndReAdd(in: manager)
+        let before = manager.getChangesArray()
+
+        let moved = manager.rebaseStagedChanges(
+            onto: StructureRebase.Baseline(
+                columns: ["id", "a", "x"].map { column($0) }, indexes: [], foreignKeys: [], primaryKey: ["id"]
+            )
+        )
+
+        #expect(!moved)
+        #expect(manager.getChangesArray() == before)
+    }
+
+    @Test("A drop that failed after a rename ran keeps the drop and the add of the same name")
+    func dropAndReAddSurviveAPartlyAppliedSave() throws {
+        let manager = manager()
+        var renamed = try workingColumn("x", in: manager)
+        renamed.name = "y"
+        manager.updateColumn(id: renamed.id, with: renamed)
+        try stageDropAndReAdd(in: manager)
+
+        let moved = manager.rebaseStagedChanges(
+            onto: StructureRebase.Baseline(
+                columns: ["id", "a", "y"].map { column($0) }, indexes: [], foreignKeys: [], primaryKey: ["id"]
+            )
+        )
+
+        #expect(moved)
+        #expect(stagedColumnChanges(manager) == ["add a TEXT", "drop a INTEGER"])
+    }
+
+    @Test("A drop and an add of one name that both ran leave nothing staged")
+    func dropAndReAddThatRanAreDone() throws {
+        let manager = manager()
+        var renamed = try workingColumn("x", in: manager)
+        renamed.name = "y"
+        manager.updateColumn(id: renamed.id, with: renamed)
+        try stageDropAndReAdd(in: manager)
+
+        let moved = manager.rebaseStagedChanges(
+            onto: StructureRebase.Baseline(
+                columns: [column("id"), column("y"), textColumn("a")], indexes: [], foreignKeys: [], primaryKey: ["id"]
+            )
+        )
+
+        #expect(moved)
+        #expect(stagedColumnChanges(manager).isEmpty)
+    }
+
+    private func stageDropAndRenameInto(in manager: StructureChangeManager) throws {
+        try manager.deleteColumn(id: workingColumn("a", in: manager).id)
+        var renamed = try workingColumn("x", in: manager)
+        renamed.name = "a"
+        manager.updateColumn(id: renamed.id, with: renamed)
+    }
+
+    @Test("A drop and a rename into the same name that both ran leave nothing staged, even with equal definitions")
+    func dropAndRenameIntoThatRanAreDone() throws {
+        let manager = manager()
+        try stageDropAndRenameInto(in: manager)
+
+        let moved = manager.rebaseStagedChanges(
+            onto: StructureRebase.Baseline(
+                columns: ["id", "a"].map { column($0) }, indexes: [], foreignKeys: [], primaryKey: ["id"]
+            )
+        )
+
+        #expect(moved)
+        #expect(stagedColumnChanges(manager).isEmpty)
+    }
+
+    @Test("A drop and a rename into the same name keep both when the save wrote nothing")
+    func dropAndRenameIntoSurviveAnUnchangedTable() throws {
+        let manager = manager()
+        try stageDropAndRenameInto(in: manager)
+        let before = manager.getChangesArray()
+
+        let moved = manager.rebaseStagedChanges(
+            onto: StructureRebase.Baseline(
+                columns: ["id", "a", "x"].map { column($0) }, indexes: [], foreignKeys: [], primaryKey: ["id"]
+            )
+        )
+
+        #expect(!moved)
+        #expect(manager.getChangesArray() == before)
+    }
+
+    @Test("A chain of renames through a dropped name that all ran leaves no drop on the renamed column")
+    func renameChainThatRanStagesNoDrop() throws {
+        let manager = manager()
+        try stageDropAndRenameInto(in: manager)
+        var added = EditableColumnDefinition.from(textColumn("x"))
+        added.id = UUID()
+        manager.addColumn(added)
+
+        let moved = manager.rebaseStagedChanges(
+            onto: StructureRebase.Baseline(
+                columns: [column("id"), column("a"), textColumn("x")], indexes: [], foreignKeys: [], primaryKey: ["id"]
+            )
+        )
+
+        #expect(moved)
+        #expect(!stagedColumnChanges(manager).contains { $0.hasPrefix("drop") })
+    }
+
     @Test("A rename that did not run is staged against the table as it is")
     func unappliedRenameStaysStaged() throws {
         let manager = manager()

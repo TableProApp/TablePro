@@ -70,7 +70,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// which would read one statement where an unknown engine may run several. So are the two single body forms, which
     /// would cut the `BEGIN ... END` body of an engine that has the usual one. So is a statement inside another, which
     /// would make every `update` or `access` column an unknown engine names a write, and Snowflake's pipe operator,
-    /// which would cut a statement at the `->>` that is JSON's operator on an unknown engine.
+    /// which would cut a statement at the `->>` that is JSON's operator on an unknown engine. So are psql's `COPY` rows,
+    /// which would hide lines an unknown engine runs as statements.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
@@ -80,7 +81,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 let unitless = reading.subtracting([
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
                     .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies,
-                    .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
+                    .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains, .psqlScripts,
                 ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
@@ -98,7 +99,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// are operators. From its grammar: a routine's body is a literal or `BEGIN ATOMIC ... END`.
     static let postgreSQL: SQLLexicalGrammar = [
         .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .escapeStringContinuations,
-        .carriageReturnEndsLineComments, .atomicRoutineBodies,
+        .carriageReturnEndsLineComments, .atomicRoutineBodies, .psqlScripts,
     ]
 
     /// CockroachDB, from its scanner: PostgreSQL's grammar, and a `b'...'` byte literal read by the routine that reads
@@ -126,10 +127,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// quotes a name and a `'...'` after a line break is a string of its own, not part of an `E'...'`. 1.5.4 continues
     /// the `E'...'` as PostgreSQL does, a registry plugin built before 2.0 links 1.5, and `enable_legacy_parser` brings
     /// 1.5's parser back on 2.0, so a gate reads both. It has no `BEGIN ... END` body, so it takes PostgreSQL's
-    /// narrower fact.
+    /// narrower fact. Both versions turn the non-ASCII spaces into blanks before they lex, outside the quotes their
+    /// pre-lexing pass sees.
     static let duckDB: SQLLexicalGrammar = [
         .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .backtickQuotes,
-        .carriageReturnEndsLineComments, .atomicRoutineBodies,
+        .carriageReturnEndsLineComments, .atomicRoutineBodies, .nonASCIISpacesEndNames,
     ]
 
     /// Oracle 23.26, measured: a backslash is literal, block comments do not nest, `q'[...]'` is a literal, `$` and
@@ -294,7 +296,13 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "libSQL": sqliteFamily,
             "Turso": sqliteFamily,
             "Cloudflare D1": sqliteFamily,
-            "DuckDB": SQLLexicalProfile(grammar: duckDB, undetermined: [.escapeStringContinuations]),
+            // DuckDB blanks a non-ASCII space only where its own pre-lexing pass is outside a quote, and that pass reads
+            // quotes its own way: after `a$$`, `E'\''` or `/* ' */` it keeps the space, a name character again
+            // (measured by hand on 1.5.4 and 2.0.0; the probe checks the execution reading only). So a gate reads both.
+            "DuckDB": SQLLexicalProfile(
+                grammar: duckDB,
+                undetermined: [.escapeStringContinuations, .nonASCIISpacesEndNames]
+            ),
             "Oracle": SQLLexicalProfile(grammar: oracle),
             "Dameng": SQLLexicalProfile(
                 grammar: dameng,

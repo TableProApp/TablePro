@@ -127,6 +127,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult?
 
+    // The same bounded read with what the host decided about it, under the same contract. The default runs the
+    // requirement above for a context that asks nothing that call cannot honor, and returns nil otherwise, so the host
+    // falls back to a call that takes the context.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult?
+
     /// Sends `query` to the server as one batch and reads it to the end, returning every result set it produced and
     /// every error it raised. `rowCap` bounds each result set on its own. A driver that implements this declares
     /// ``PluginCapabilities/resultSetBatches``; the default returns nil, and the host runs the text statement by
@@ -209,6 +218,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// and nothing above has to know which engines those are.
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo]
     func fetchEventDDL(_ event: PluginEventInfo) async throws -> String
+
+    // Asked of the live driver, so one plugin can answer per server flavor and version.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    // `schema` is the container for a `.container` kind and nil for a `.database` kind. A server
+    // without the catalog answers empty rather than throwing.
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo]
+    // Reads one listed object again with its definition; `identity` is the driver's own key.
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo
 
     /// The settings the server recorded for an object when it was created and applies whenever it runs, such as a
     /// MySQL routine's `sql_mode`, as statements a script writes around the object's `CREATE`. Nil when there are none.
@@ -316,6 +333,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     var providesBulkColumnFetch: Bool { get }
+    var fetchesAllColumnsInOneRequest: Bool { get }
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     var providesBulkForeignKeyFetch: Bool { get }
@@ -504,6 +522,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// after is what turns that into a refusal instead of silent loss. Nil where the driver cannot
     /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
+
+    // A cheap value that changes whenever the catalog does, so a write to a database file that left the schema
+    // alone needs no catalog reload. Nil where the engine keeps none; the host then reloads on every change.
+    func schemaChangeToken() async throws -> String?
 
     var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
     var unsupportedIndexTypes: Set<String> { get }
@@ -834,6 +856,17 @@ public extension PluginDatabaseDriver {
         return definition
     }
 
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
+    }
+
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope? { nil }
 
     func fetchTriggerCreationScope(_ trigger: PluginTriggerInfo) async throws -> PluginStatementScope? { nil }
@@ -1030,6 +1063,9 @@ public extension PluginDatabaseDriver {
     /// read, and a caller that compares two schemas would report the missing detail as no
     /// difference at all.
     var providesBulkColumnFetch: Bool { false }
+
+    // Whether `fetchAllColumns` reads every table in one request or a fixed few, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { providesBulkColumnFetch }
 
     /// Default: fetches columns per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).
@@ -1330,6 +1366,8 @@ public extension PluginDatabaseDriver {
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
 
+    func schemaChangeToken() async throws -> String? { nil }
+
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
@@ -1454,6 +1492,19 @@ public extension PluginDatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? { nil }
+
+    // A driver built before the context overload ignores every field, so a read-only mode, a statement policy or a
+    // catalog pin it was asked for would silently not happen.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+              context.allowsDestructive, context.allowsServerCode
+        else { return nil }
+        return try await executeBoundedQuery(query: query, rowCap: rowCap)
+    }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
         nil

@@ -58,4 +58,40 @@ struct CassandraConditionalWriteTests {
             statement: "UPDATE t SET a = 1 WHERE k = 1", firstColumn: "a", firstValue: "false"
         ) == nil)
     }
+
+    @Test("An edit that keeps a TTL names it before SET and is refused the same way")
+    func updateWithTimeToLive() {
+        let update = CassandraConditionalWrite.updateStatement(
+            target: "\"shop\".\"orders\"", assignments: ["\"note\" = ?"], keyCondition: "\"id\" = ?", timeToLive: 300
+        )
+        #expect(update == "UPDATE \"shop\".\"orders\" USING TTL 300 SET \"note\" = ? WHERE \"id\" = ? IF EXISTS")
+        #expect(CassandraConditionalWrite.refusal(statement: update, firstColumn: "[applied]", firstValue: "false")
+            == .rowMissing)
+    }
+
+    @Test("An unapplied batch of the row's UPDATEs, static ones unconditioned, is refused as a missing row")
+    func batchOfRowUpdatesIsRefused() {
+        let batch = CassandraConditionalWrite.batch([
+            "UPDATE \"t\" USING TTL 60 SET \"a\" = ? WHERE \"k\" = ? AND \"c\" = ? IF EXISTS",
+            "UPDATE \"t\" USING TTL 0 SET \"b\" = ? WHERE \"k\" = ? AND \"c\" = ? IF EXISTS",
+            "UPDATE \"t\" USING TTL 30 SET \"s\" = ? WHERE \"k\" = ?",
+        ])
+        #expect(batch.hasPrefix("BEGIN BATCH UPDATE"))
+        #expect(batch.hasSuffix("; APPLY BATCH"))
+        #expect(CassandraConditionalWrite.refusal(statement: batch, firstColumn: "[applied]", firstValue: "false")
+            == .rowMissing)
+        #expect(CassandraConditionalWrite.refusal(statement: batch, firstColumn: "[applied]", firstValue: "true")
+            == nil)
+    }
+
+    @Test("A batch with a condition of its own, an INSERT or no condition is left to the result", arguments: [
+        "BEGIN BATCH UPDATE t SET a = 1 WHERE k = 1 IF a = 0; UPDATE t SET b = 1 WHERE k = 1 IF EXISTS; APPLY BATCH",
+        "BEGIN BATCH INSERT INTO t (k) VALUES (1) IF NOT EXISTS; UPDATE t SET b = 1 WHERE k = 1 IF EXISTS APPLY BATCH",
+        "BEGIN BATCH INSERT INTO t (k, a) VALUES (1, 2) USING TTL 5; UPDATE t SET b = 1 WHERE k = 1; APPLY BATCH",
+        "BEGIN BATCH UPDATE t SET a = 'IF EXISTS' WHERE k = 1; APPLY BATCH",
+    ])
+    func otherBatchesAreLeftToTheResult(batch: String) {
+        #expect(CassandraConditionalWrite.refusal(statement: batch, firstColumn: "[applied]", firstValue: "false")
+            == nil)
+    }
 }

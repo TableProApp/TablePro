@@ -21,10 +21,15 @@ struct TrustedExternalConnectionsSection: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(entries) { entry in
-                    LabeledContent(entry.key.displayDescription) {
+                    LabeledContent {
                         Button("Forget") {
                             store.revoke(entry.key)
                             refresh()
+                        }
+                    } label: {
+                        Text(entry.key.displayDescription)
+                        if let name = savedConnectionName(of: entry) {
+                            Text(String(format: String(localized: "Saved connection “%@”"), name))
                         }
                     }
                 }
@@ -40,6 +45,11 @@ struct TrustedExternalConnectionsSection: View {
             Text("Links you chose to always allow. TablePro connects without asking. Only connections on this machine can be trusted.")
         }
         .onAppear(perform: refresh)
+    }
+
+    // Two saved connections can share type, host, database and user, so the name tells their entries apart.
+    private func savedConnectionName(of entry: TrustedExternalConnection) -> String? {
+        entry.key.savedConnectionId.flatMap { ConnectionStorage.shared.loadConnection(id: $0)?.name }
     }
 
     private func refresh() {

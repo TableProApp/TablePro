@@ -30,6 +30,23 @@ final class InMemoryKeychainItems: KeychainItemStore, @unchecked Sendable {
     private var refusedAdd: OSStatus?
     private var refusedUpdate: OSStatus?
     private var writes = 0
+    private var callsOnMainThread = 0
+    private var listingHook: (@Sendable () -> Void)?
+
+    // Calls made on the main thread, where a real Keychain call blocks the UI.
+    var mainThreadCalls: Int {
+        lock.withLock { callsOnMainThread }
+    }
+
+    // Runs inside the next listing, before it reads the items, as a save landing mid-listing would.
+    func duringNextListing(_ hook: @escaping @Sendable () -> Void) {
+        lock.withLock { listingHook = hook }
+    }
+
+    private func countIfMainThread() {
+        guard Thread.isMainThread else { return }
+        lock.withLock { callsOnMainThread += 1 }
+    }
 
     // Each write is one tick later than the one before, as a later save on any device would be.
     private func nextDate() -> Date {
@@ -134,8 +151,19 @@ final class InMemoryKeychainItems: KeychainItemStore, @unchecked Sendable {
         }
     }
 
+    func accounts(_ query: [String: Any]) -> [String] {
+        countIfMainThread()
+        let hook = lock.withLock { () -> (@Sendable () -> Void)? in
+            defer { listingHook = nil }
+            return listingHook
+        }
+        hook?()
+        return lock.withLock { matches(query).map { items[$0].account } }
+    }
+
     func delete(_ query: [String: Any]) -> OSStatus {
-        lock.withLock { () -> OSStatus in
+        countIfMainThread()
+        return lock.withLock { () -> OSStatus in
             let matched = Set(matches(query))
             guard !matched.isEmpty else { return errSecItemNotFound }
             items = items.enumerated().filter { !matched.contains($0.offset) }.map { $0.element }
