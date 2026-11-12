@@ -74,7 +74,8 @@ impl ScriptPlan {
     /// Every plan the client or a server may make of `text`: as the client
     /// splits it and, on MySQL, as each server reads what it is sent, at
     /// each version its executable comments name. On SQL Server, with a
-    /// `--` after a number's `e` a comment and not. Each with backslash
+    /// `--` after a number's `e` a comment and not. On DuckDB, with its
+    /// non-ASCII spaces blanked as its pass does and kept. Each with backslash
     /// escapes on and off, since a session setting decides. Built one at a
     /// time. `None` when the text names too many versions to try.
     pub fn server_readings(text: &str, grammar: SqlGrammar) -> Option<impl Iterator<Item = ScriptPlan> + '_> {
