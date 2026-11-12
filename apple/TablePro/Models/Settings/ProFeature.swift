@@ -17,6 +17,7 @@ internal enum ProFeature: String, CaseIterable {
     case teamLibrary = "team_library"
     case compareSync = "compare_sync"
     case dataRewind = "data_rewind"
+    case sharedLinks = "shared_links"
 
     var displayName: String {
         switch self {
@@ -40,6 +41,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Compare & Sync")
         case .dataRewind:
             return String(localized: "Data Rewind")
+        case .sharedLinks:
+            return String(localized: "Share Links")
         }
     }
 
@@ -65,6 +68,8 @@ internal enum ProFeature: String, CaseIterable {
             return "arrow.left.arrow.right.square"
         case .dataRewind:
             return "clock.arrow.circlepath"
+        case .sharedLinks:
+            return "link"
         }
     }
 
@@ -90,6 +95,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Compare structure or data between two connections and generate the sync script.")
         case .dataRewind:
             return String(localized: "Restore the previous values of rows you already saved.")
+        case .sharedLinks:
+            return String(localized: "Share a query, or a query and its results, as a public link anyone can open in a browser.")
         }
     }
 

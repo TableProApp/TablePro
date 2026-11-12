@@ -80,6 +80,7 @@ internal extension LaunchIntent {
              .openDatabaseFile,
              .openDataFile,
              .openConnectionShare,
+             .openShare,
              .pairIntegration,
              .openDatabaseURL,
              .installPlugin,

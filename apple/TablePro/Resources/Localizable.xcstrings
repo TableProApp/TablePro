@@ -16680,6 +16680,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A public link to this query is on your clipboard." : {
+
+    },
     "A publish to the team library is still running. Try again when it finishes." : {
 
     },
@@ -128276,6 +128279,9 @@
         }
       }
     },
+    "Open a database connection, then open the link again." : {
+
+    },
     "Open a database to browse its tables." : {
       "localizations" : {
         "fr" : {
@@ -129703,6 +129709,9 @@
           }
         }
       }
+    },
+    "Open Shared Query" : {
+
     },
     "Open Source Libraries" : {
       "localizations" : {
@@ -166015,6 +166024,9 @@
         }
       }
     },
+    "Share a query, or a query and its results, as a public link anyone can open in a browser." : {
+
+    },
     "Share anonymous usage data" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -166096,6 +166108,15 @@
         }
       }
     },
+    "Share Link" : {
+
+    },
+    "Share Link…" : {
+
+    },
+    "Share Links" : {
+
+    },
     "Share usage data" : {
       "localizations" : {
         "fr" : {
@@ -166137,6 +166158,9 @@
       }
     },
     "Share Used" : {
+
+    },
+    "Sharing links needs a paid plan." : {
 
     },
     "Sheet" : {
@@ -169250,6 +169274,9 @@
 
     },
     "Sign in to Vault with your browser?" : {
+
+    },
+    "Sign in to your account to share links." : {
 
     },
     "Sign In With" : {
@@ -190654,6 +190681,9 @@
         }
       }
     },
+    "The link couldn't be created. Try again." : {
+
+    },
     "The list of allowed values is not carried over." : {
       "localizations" : {
         "fr" : {
@@ -194275,6 +194305,9 @@
 
     },
     "The settings it was created with could not be read, so it gets the target's own." : {
+
+    },
+    "The shared query couldn't be opened." : {
 
     },
     "The shell drops a field named __proto__ from a new document. Remove the field, then set it on the saved document." : {
@@ -203035,6 +203068,9 @@
         }
       }
     },
+    "This shared link is no longer available." : {
+
+    },
     "This shortcut is reserved by macOS and cannot be assigned." : {
       "localizations" : {
         "fr" : {
@@ -205720,7 +205756,13 @@
         }
       }
     },
+    "Too many requests just now. Try again in a moment." : {
+
+    },
     "Too many rows. Add up to %lld rows at a time." : {
+
+    },
+    "Too many shares just now. Try again in a moment." : {
 
     },
     "Tool" : {
@@ -219425,6 +219467,9 @@
         }
       }
     },
+    "You appear to be offline. Try again once you're connected." : {
+
+    },
     "You have no saved queries to publish." : {
       "localizations" : {
         "fr" : {
@@ -219553,6 +219598,9 @@
 
     },
     "You're signed in" : {
+
+    },
+    "You've reached your share limit. Revoke a link and try again." : {
 
     },
     "You've used TablePro on %lld days" : {

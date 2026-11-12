@@ -112,6 +112,90 @@
         ],
         "type": "object"
       },
+      "ColumnJSON": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateShareBody": {
+        "additionalProperties": false,
+        "properties": {
+          "dialect": {
+            "description": "The SQL dialect, for display",
+            "maxLength": 40,
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "When the link stops working; omit for no expiry",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotInput",
+            "description": "The frozen result set, for a result share"
+          },
+          "sql": {
+            "type": "string"
+          },
+          "team_id": {
+            "description": "Team TypeID; omit for a personal share",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "sql"
+        ],
+        "type": "object"
+      },
+      "CreatedShare": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "token": {
+            "description": "The raw link token, shown once",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "url"
+        ],
+        "type": "object"
+      },
       "Cycle": {
         "enum": [
           "monthly",
@@ -772,19 +856,23 @@
             "type": "string"
           },
           "source": {
-            "description": "Extensible enum: subscription, order, manual, legacy",
+            "description": "Extensible enum: subscription, order, manual, legacy, redeem_code, education",
             "examples": [
               "subscription",
               "order",
               "manual",
-              "legacy"
+              "legacy",
+              "redeem_code",
+              "education"
             ],
             "type": "string",
             "x-extensible-enum": [
               "subscription",
               "order",
               "manual",
-              "legacy"
+              "legacy",
+              "redeem_code",
+              "education"
             ]
           },
           "status": {
@@ -1046,7 +1134,7 @@
       "NewsletterStats": {
         "properties": {
           "subscribers": {
-            "description": "Contacts in the newsletter segment who have not unsubscribed, counted at most once an hour",
+            "description": "Subscribers no suppression holds back, counted at most once an hour",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -1060,6 +1148,11 @@
       "NewsletterSubscriptionRequest": {
         "additionalProperties": false,
         "properties": {
+          "consent_version": {
+            "description": "Names the consent text the form showed",
+            "maxLength": 32,
+            "type": "string"
+          },
           "email": {
             "format": "email",
             "maxLength": 254,
@@ -1068,6 +1161,11 @@
           "locale": {
             "description": "Language of the confirmation email, one of the public site's locales; en when absent or unknown",
             "maxLength": 16,
+            "type": "string"
+          },
+          "source": {
+            "description": "URL of the page whose form was sent; kept in the consent log when it is on the public site, else the public site's origin is",
+            "maxLength": 2048,
             "type": "string"
           },
           "turnstile_token": {
@@ -1203,6 +1301,9 @@
             ],
             "type": "string"
           },
+          "education": {
+            "$ref": "#/components/schemas/PricingEducation"
+          },
           "plans": {
             "items": {
               "$ref": "#/components/schemas/PlanPrice"
@@ -1212,7 +1313,20 @@
         },
         "required": [
           "country",
-          "plans"
+          "plans",
+          "education"
+        ],
+        "type": "object"
+      },
+      "PricingEducation": {
+        "properties": {
+          "open": {
+            "description": "Whether students and teachers can claim Pro free with a school address now",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "open"
         ],
         "type": "object"
       },
@@ -1267,6 +1381,83 @@
         ],
         "type": "object"
       },
+      "PublicShare": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dialect": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "made_with": {
+            "description": "Attribution the viewer page shows",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/PublicSnapshot"
+          },
+          "sql": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "sql",
+          "created_at",
+          "made_with"
+        ],
+        "type": "object"
+      },
+      "PublicSnapshot": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ShareColumn"
+            },
+            "type": "array"
+          },
+          "row_count": {
+            "description": "Rows the query returned, which may exceed those shown",
+            "format": "int64",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "row_count",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "Seats": {
         "properties": {
           "available": {
@@ -1298,6 +1489,143 @@
           "used",
           "reserved",
           "available"
+        ],
+        "type": "object"
+      },
+      "ShareColumn": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "ShareList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ShareView"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as cursor for the next page; absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ShareView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dialect": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "has_result": {
+            "description": "true for a result share",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scope": {
+            "description": "account or team",
+            "type": "string"
+          },
+          "sql": {
+            "type": "string"
+          },
+          "team_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "description": "The link, present when the server can rebuild it",
+            "type": "string"
+          },
+          "view_count": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "scope",
+          "title",
+          "sql",
+          "has_result",
+          "view_count",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SnapshotInput": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnJSON"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "row_count": {
+            "description": "Rows the query returned, if more than those sent",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "rows"
         ],
         "type": "object"
       },
@@ -1425,6 +1753,32 @@
           "id",
           "name"
         ],
+        "type": "object"
+      },
+      "UpdateShareBody": {
+        "additionalProperties": false,
+        "properties": {
+          "clear_expiry": {
+            "description": "Remove the expiry",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "description": "Set a new expiry; omit to leave it unchanged",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
         "type": "object"
       }
     },
@@ -2950,6 +3304,1067 @@
         "summary": "Prices in the caller's country",
         "tags": [
           "Checkout"
+        ]
+      }
+    },
+    "/shared/{token}": {
+      "get": {
+        "description": "No authentication. A missing, revoked or expired link answers 404 alike.",
+        "operationId": "get-shared",
+        "parameters": [
+          {
+            "description": "The share's link token",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "description": "The share's link token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicShare"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such share, or it is not visible to you."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Read a shared link",
+        "tags": [
+          "Shares"
+        ]
+      }
+    },
+    "/shares": {
+      "get": {
+        "operationId": "list-shares",
+        "parameters": [
+          {
+            "description": "Team TypeID to list a team's shares; omit for the caller's own",
+            "explode": false,
+            "in": "query",
+            "name": "team",
+            "schema": {
+              "description": "Team TypeID to list a team's shares; omit for the caller's own",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The last share's ID from the previous page",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "The last share's ID from the previous page",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such share, or it is not visible to you."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "List the caller's shares",
+        "tags": [
+          "Shares"
+        ]
+      },
+      "post": {
+        "description": "Needs the shared_links feature. A team share needs a seat in the team.",
+        "operationId": "create-share",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedShare"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "feature_required": {
+                    "summary": "Feature required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/feature-required",
+                      "title": "Feature required",
+                      "status": 403,
+                      "code": "feature_required",
+                      "detail": "Your plan does not include shared_links."
+                    }
+                  },
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "A team share needs a seat in the team."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such share, or it is not visible to you."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "share_limit_reached": {
+                    "summary": "Share limit reached",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/share-limit-reached",
+                      "title": "Share limit reached",
+                      "status": 409,
+                      "code": "share_limit_reached",
+                      "detail": "You have reached your live share limit."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "snapshot_too_large": {
+                    "summary": "Snapshot too large",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/snapshot-too-large",
+                      "title": "Snapshot too large",
+                      "status": 422,
+                      "code": "snapshot_too_large",
+                      "detail": "The result snapshot is over the hard limit."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Create a share link",
+        "tags": [
+          "Shares"
+        ]
+      }
+    },
+    "/shares/{id}": {
+      "delete": {
+        "description": "The link stops working at once.",
+        "operationId": "delete-share",
+        "parameters": [
+          {
+            "description": "Share TypeID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Share TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such share, or it is not visible to you."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Revoke a share",
+        "tags": [
+          "Shares"
+        ]
+      },
+      "get": {
+        "operationId": "get-share",
+        "parameters": [
+          {
+            "description": "Share TypeID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Share TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such share, or it is not visible to you."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Get one share, with its link",
+        "tags": [
+          "Shares"
+        ]
+      },
+      "patch": {
+        "operationId": "update-share",
+        "parameters": [
+          {
+            "description": "Share TypeID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Share TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateShareBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such share, or it is not visible to you."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Change a share's title, note or expiry",
+        "tags": [
+          "Shares"
         ]
       }
     },

@@ -73,6 +73,17 @@ final class WelcomeRouterTests {
     }
 
     @Test
+    func sharedSQLEnqueuesInOrderAndDrainsOnce() {
+        router.enqueueSharedSQL("SELECT 1")
+        router.enqueueSharedSQL("SELECT 2")
+
+        #expect(router.pendingSharedSQL == ["SELECT 1", "SELECT 2"])
+        #expect(router.consumePendingSharedSQL() == ["SELECT 1", "SELECT 2"])
+        #expect(router.pendingSharedSQL.isEmpty)
+        #expect(router.consumePendingSharedSQL().isEmpty)
+    }
+
+    @Test
     func requestSlotIsIndependentOfTheOtherPendingSlots() {
         let connection = DatabaseConnection(name: "Test", type: .mysql)
         router.routePluginInstall(connection)

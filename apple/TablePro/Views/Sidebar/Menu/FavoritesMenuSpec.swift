@@ -16,6 +16,7 @@ internal struct FavoritesMenuContext {
     internal let allFolders: [SQLFavoriteFolder]
     internal let teamLibraryTeams: [TeamLibraryTeam]
     internal let hasTeamLibraryConflicts: Bool
+    internal let canShare: Bool
     internal let databaseEntityName: String
     internal let activeDatabase: String?
     internal let linkedFileGitStates: [UUID: LinkedFileGitState]
@@ -26,6 +27,7 @@ internal struct FavoritesMenuContext {
         allFolders: [SQLFavoriteFolder] = [],
         teamLibraryTeams: [TeamLibraryTeam] = [],
         hasTeamLibraryConflicts: Bool = false,
+        canShare: Bool = false,
         databaseEntityName: String = "Database",
         activeDatabase: String? = nil,
         linkedFileGitStates: [UUID: LinkedFileGitState] = [:],
@@ -35,6 +37,7 @@ internal struct FavoritesMenuContext {
         self.allFolders = allFolders
         self.teamLibraryTeams = teamLibraryTeams
         self.hasTeamLibraryConflicts = hasTeamLibraryConflicts
+        self.canShare = canShare
         self.databaseEntityName = databaseEntityName
         self.activeDatabase = activeDatabase
         self.linkedFileGitStates = linkedFileGitStates
@@ -156,6 +159,9 @@ internal enum FavoritesMenuSpec {
             .command(String(localized: "Edit…"), .editFavorite(favorite)),
             .command(String(localized: "Show History"), .showFavoriteHistory(favorite))
         ]
+        if context.canShare {
+            edits.append(.command(String(localized: "Share Link…"), .shareFavorite(favorite)))
+        }
         if let moveTo = moveToSubmenu(favorite, folders: context.allFolders) {
             edits.append(moveTo)
         }

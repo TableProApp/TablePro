@@ -26,6 +26,7 @@ internal enum FavoritesMenuCommand: Equatable {
     case moveFavorite(id: UUID, toFolder: UUID?)
     case deleteFavorite(SQLFavorite)
     case showFavoriteHistory(SQLFavorite)
+    case shareFavorite(SQLFavorite)
 
     case openLinkedFavorite(LinkedSQLFavorite)
     case editLinkedMetadata(LinkedSQLFavorite)

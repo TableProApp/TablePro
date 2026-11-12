@@ -13,3 +13,9 @@ filter:
     - issue-entitlement
     - list-library-changes
     - push-library-changes
+    - create-share
+    - list-shares
+    - get-share
+    - update-share
+    - delete-share
+    - get-shared

@@ -65,9 +65,21 @@ internal enum DeeplinkParser {
             return parseIntegrations(url)
         case "settings":
             return parseSettings(url)
+        case "share":
+            return parseShare(url)
         default:
             return .failure(.unknownHost(host))
         }
+    }
+
+    private static func parseShare(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
+        guard let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .first(where: { $0.name == "token" })?.value,
+            !token.isEmpty
+        else {
+            return .failure(.missingRequiredParam("token"))
+        }
+        return .success(.openShare(token: token))
     }
 
     /// Never fails: an unknown id or extra segments open the last-used pane, so a link to a pane

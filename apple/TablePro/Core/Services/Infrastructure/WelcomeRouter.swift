@@ -43,6 +43,7 @@ internal final class WelcomeRouter: ObservableObject {
     @Published private(set) var pendingImport: ConnectionBundle?
     @Published private(set) var pendingConnectionShare: URL?
     @Published private(set) var pendingSQLFiles: [URL] = []
+    @Published private(set) var pendingSharedSQL: [String] = []
     @Published private(set) var pendingError: PendingConnectionError?
     @Published private(set) var pendingPluginInstall: DatabaseConnection?
 
@@ -53,6 +54,7 @@ internal final class WelcomeRouter: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.drainPendingSQLFiles()
+                self?.drainPendingSharedSQL()
             }
     }
 
@@ -60,6 +62,12 @@ internal final class WelcomeRouter: ObservableObject {
         let urls = consumePendingSQLFiles()
         guard !urls.isEmpty else { return }
         AppCommands.shared.openSQLFiles.send(urls)
+    }
+
+    private func drainPendingSharedSQL() {
+        let statements = consumePendingSharedSQL()
+        guard !statements.isEmpty else { return }
+        AppCommands.shared.openSharedSQL.send(statements)
     }
 
     internal func route(_ request: WelcomeRequest) {
@@ -95,6 +103,19 @@ internal final class WelcomeRouter: ObservableObject {
 
     internal func enqueueSQLFile(_ url: URL) {
         pendingSQLFiles.append(url)
+    }
+
+    // A shared query arriving with no connected database: hold its SQL and show where to connect, the
+    // way routeShare does for a connection share. It opens on the next databaseDidConnect.
+    internal func enqueueSharedSQL(_ sql: String) {
+        pendingSharedSQL.append(sql)
+        showWelcomeWindow()
+    }
+
+    internal func consumePendingSharedSQL() -> [String] {
+        let value = pendingSharedSQL
+        pendingSharedSQL.removeAll()
+        return value
     }
 
     internal func consumePendingImport() -> ConnectionBundle? {

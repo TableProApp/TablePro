@@ -321,6 +321,43 @@ internal struct FavoritesTabView: View {
         )
     }
 
+    private func shareFavorite(_ favorite: SQLFavorite) {
+        Task { @MainActor in
+            let client = ShareClient(api: AccountServices.shared.api)
+            do throws(ShareFailure) {
+                let link = try await client.createQuery(title: favorite.name, sql: favorite.query, note: nil, dialect: nil)
+                ClipboardService.shared.writeText(link.url)
+                AlertHelper.showInfoSheet(
+                    title: String(localized: "Share Link"),
+                    message: String(localized: "A public link to this query is on your clipboard."),
+                    window: nil
+                )
+            } catch {
+                guard let message = Self.shareFailureMessage(error) else { return }
+                AlertHelper.showInfoSheet(title: String(localized: "Share Link"), message: message, window: nil)
+            }
+        }
+    }
+
+    private static func shareFailureMessage(_ failure: ShareFailure) -> String? {
+        switch failure {
+        case .canceled:
+            return nil
+        case .featureRequired:
+            return String(localized: "Sharing links needs a paid plan.")
+        case .signedOut:
+            return String(localized: "Sign in to your account to share links.")
+        case .limitReached:
+            return String(localized: "You've reached your share limit. Revoke a link and try again.")
+        case .offline:
+            return String(localized: "You appear to be offline. Try again once you're connected.")
+        case .rateLimited:
+            return String(localized: "Too many shares just now. Try again in a moment.")
+        case .forbidden, .notFound, .refused, .server:
+            return String(localized: "The link couldn't be created. Try again.")
+        }
+    }
+
     private func presentTeamLibraryInfo(_ message: String) {
         AlertHelper.showInfoSheet(
             title: String(localized: "Team Library"),
@@ -350,6 +387,7 @@ internal struct FavoritesTabView: View {
                 allFolders: viewModel.nodes.collectFolders(),
                 teamLibraryTeams: featureAccess.isAvailable(.teamLibrary) ? teamLibrarySync.writableTeams : [],
                 hasTeamLibraryConflicts: !teamLibrarySync.conflicts.isEmpty,
+                canShare: featureAccess.isAvailable(.sharedLinks),
                 linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items)),
                 linkedFolderGitStates: linkedFolderGitStates
             ),
@@ -635,6 +673,8 @@ internal struct FavoritesTabView: View {
             viewModel.deleteFavorite(favorite)
         case .showFavoriteHistory(let favorite):
             coordinator?.showVersionHistory(of: favorite)
+        case .shareFavorite(let favorite):
+            shareFavorite(favorite)
         case .openLinkedFavorite(let favorite):
             coordinator?.openLinkedFavorite(favorite)
         case .editLinkedMetadata(let favorite):

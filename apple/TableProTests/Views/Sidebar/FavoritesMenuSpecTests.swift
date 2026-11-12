@@ -15,6 +15,7 @@ struct FavoritesMenuSpecTests {
         allFolders: [SQLFavoriteFolder] = [],
         teamLibraryTeams: [TeamLibraryTeam] = [],
         hasTeamLibraryConflicts: Bool = false,
+        canShare: Bool = false,
         activeDatabase: String? = "shop"
     ) -> FavoritesMenuContext {
         FavoritesMenuContext(
@@ -22,6 +23,7 @@ struct FavoritesMenuSpecTests {
             allFolders: allFolders,
             teamLibraryTeams: teamLibraryTeams,
             hasTeamLibraryConflicts: hasTeamLibraryConflicts,
+            canShare: canShare,
             activeDatabase: activeDatabase
         )
     }
@@ -374,6 +376,15 @@ struct FavoritesMenuSpecTests {
         let query = favorite()
         let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.favorite(query)))))
         #expect(issued.contains(.showFavoriteHistory(query)))
+    }
+
+    @Test("Share Link appears on a saved query only when sharing is available")
+    func shareLinkGatedBySharing() {
+        let query = favorite()
+        let shared = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.favorite(query)), canShare: true)))
+        #expect(shared.contains(.shareFavorite(query)))
+        let withheld = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.favorite(query)), canShare: false)))
+        #expect(!withheld.contains(.shareFavorite(query)))
     }
 
     private func linkedFile() -> LinkedSQLFavorite {
