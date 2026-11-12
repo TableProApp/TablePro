@@ -189,7 +189,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                             if (dropped is not null && heldBy.Remove(dropped, out var gone))
                             {
                                 run.ReleaseSet(gone.Result.SetIndex);
-                                Drop(incoming, gone);
+                                DropSet(incoming, gone);
                             }
                         }
 
@@ -305,7 +305,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     }
 
     // Once the run is shown the grid reads the set it shows, so that one stays until the run lets it go.
-    private void Drop(List<HeldSet> incoming, HeldSet gone)
+    private void DropSet(List<HeldSet> incoming, HeldSet gone)
     {
         if (ReferenceEquals(gone, _picked))
         {
