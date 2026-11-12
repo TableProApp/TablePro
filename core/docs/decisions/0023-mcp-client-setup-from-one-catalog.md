@@ -1,4 +1,4 @@
-# 0022: Both apps set up MCP clients from one catalog
+# 0023: Both apps set up MCP clients from one catalog
 
 - **Status**: Accepted
 - **Date**: 2026-11-12

@@ -119,6 +119,7 @@ final class AppState {
 
         if loadStatus == .ready {
             KeychainSecureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
+            CertificateMaterializer().releaseAll(except: Set(connections.map(\.id)))
             Task {
                 publishLibrary()
             }

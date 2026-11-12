@@ -13,14 +13,23 @@ public interface ITabSession
 
     Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken);
 
-    Task<TableQuery> GetTableQueryAsync(
+    // Starts the page's read on a pooled connection and returns at once; the token stops the read as well.
+    Task<TablePageRead> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
+        TableFilter? filter,
         long limit,
         long offset,
         CancellationToken cancellationToken);
 
-    Task<long> CountRowsAsync(TableName table, CancellationToken cancellationToken);
+    Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken);
+
+    Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken);
+
+    Task<TableStructure> GetStructureAsync(TableName table, ObjectKind kind, CancellationToken cancellationToken);
+
+    // Null when the object is gone or the engine cannot read its definition.
+    Task<ObjectSource?> GetObjectDefinitionAsync(ObjectEntry entry, CancellationToken cancellationToken);
 
     RunGate GateRun(string sql);
 
@@ -33,6 +42,9 @@ public interface ITabSession
 
     ValueTask ReleaseAsync();
 }
+
+// The run gives the page's rows as an editor run's events do; columns past VisibleColumns are the row's address.
+public sealed record TablePageRead(ITabRun Run, int VisibleColumns, bool CanSeek);
 
 // A table's rows as a save sees them. `rows` is the set a page was read into, null when no set is shown.
 public interface ITableEditor : IDisposable
@@ -72,6 +84,8 @@ public interface ITabEditor : IAsyncDisposable
     bool IsLost { get; }
 
     ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken);
+
+    Task UseDatabaseAsync(string database, CancellationToken cancellationToken);
 }
 
 public interface ITabRun : IDisposable
@@ -103,16 +117,33 @@ public sealed class CoreTabSession : ITabSession
     public async Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken) =>
         new CoreTabEditor(await _share.Session.OpenEditorAsync(cancellationToken).ConfigureAwait(true));
 
-    public Task<TableQuery> GetTableQueryAsync(
+    public async Task<TablePageRead> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
+        TableFilter? filter,
         long limit,
         long offset,
-        CancellationToken cancellationToken) =>
-        _share.Session.GetTableQueryAsync(table, sort, limit, offset, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        var page = await _share.Session.ReadTablePageAsync(table, sort, filter, limit, offset, cancellationToken)
+            .ConfigureAwait(true);
+        return new TablePageRead(new CoreTabRun(page.Run), page.VisibleColumns, page.CanSeek);
+    }
 
-    public Task<long> CountRowsAsync(TableName table, CancellationToken cancellationToken) =>
-        _share.Session.CountRowsAsync(table, cancellationToken);
+    public Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken) =>
+        _share.Session.CountRowsAsync(table, filter, cancellationToken);
+
+    public Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken) =>
+        _share.Session.GetFilterChoicesAsync(table, cancellationToken);
+
+    public Task<TableStructure> GetStructureAsync(
+        TableName table,
+        ObjectKind kind,
+        CancellationToken cancellationToken) =>
+        _share.Session.GetStructureAsync(table, kind, cancellationToken);
+
+    public Task<ObjectSource?> GetObjectDefinitionAsync(ObjectEntry entry, CancellationToken cancellationToken) =>
+        _share.Session.GetObjectDefinitionAsync(entry, cancellationToken);
 
     public RunGate GateRun(string sql) => _share.Session.GateRun(sql);
 
@@ -175,6 +206,9 @@ internal sealed class CoreTabEditor(QueryEditor editor) : ITabEditor
 
     public ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken) =>
         new CoreTabRun(editor.Run(sql, options, cancellationToken));
+
+    public Task UseDatabaseAsync(string database, CancellationToken cancellationToken) =>
+        editor.UseDatabaseAsync(database, cancellationToken);
 
     public ValueTask DisposeAsync() => editor.DisposeAsync();
 }

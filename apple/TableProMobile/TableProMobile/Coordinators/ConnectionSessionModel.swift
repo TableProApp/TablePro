@@ -126,6 +126,10 @@ final class ConnectionSessionModel {
         record.type == .oracle
     }
 
+    var qualifiesTablesWithDatabase: Bool {
+        record.type == .mysql || record.type == .mariadb || record.type == .tidb || record.type == .oceanbase
+    }
+
     private var redialsToSwitchDatabase: Bool {
         record.type == .postgresql || record.type == .redshift
     }
@@ -687,6 +691,11 @@ final class ConnectionSessionModel {
         }
         enter(.adopt(live, by: nil))
         commit(load, at: target, onFailure: .empty, for: request)
+        // The next open restores where the session went, not a schema a Roll Back or a commit can still take back.
+        if let schema = moved.schema, activeSchema == schema,
+           appState.sessionTransactions.hold(for: connectionId, on: live.driver) == nil {
+            UserDefaults.standard.set(schema, forKey: ConnectionDefaultsKey.lastSchema.name(for: connectionId))
+        }
         // SQL Server lists another database's schemas.
         if moved.database != nil {
             await loadSchemas(restoring: activeSchema, from: scene)
@@ -702,6 +711,19 @@ final class ConnectionSessionModel {
 
     func endSwitch() {
         switchesInFlight -= 1
+    }
+
+    // Runs with a `USE` in flight on the shared session, in any window.
+    private var databaseMoves = 0
+
+    var isDatabaseMoving: Bool { databaseMoves > 0 }
+
+    func beginDatabaseMove() {
+        databaseMoves += 1
+    }
+
+    func endDatabaseMove() {
+        databaseMoves = max(0, databaseMoves - 1)
     }
 
     private func beginPlacementRequest() -> Int {
@@ -902,6 +924,14 @@ final class ConnectionSessionModel {
         guard !catalog.tablesRefused else {
             await reloadMetadataIfReleased(from: scene)
             return
+        }
+        // PostgreSQL undoes a `SET search_path` the transaction made, the picker's own among them, so the lists follow
+        // the session back.
+        if supportsSchemas, let reporting = session?.driver as? any SessionSchemaReporting {
+            await reporting.settleCurrentSchema()
+            if reporting === session?.driver, reporting.currentSchema.map({ $0 != activeSchema }) == true {
+                await follow(from: scene)
+            }
         }
         guard let session else { return }
         let load = await loadTables(in: supportsSchemas ? activeSchema : nil, on: session)

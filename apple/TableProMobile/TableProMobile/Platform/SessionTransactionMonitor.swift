@@ -44,6 +44,7 @@ final class SessionTransactionMonitor {
     private var rollBackCounts: [UUID: Int] = [:]
     @ObservationIgnored private var refreshGenerations: [UUID: Int] = [:]
     @ObservationIgnored private var workGenerations: [UUID: Int] = [:]
+    @ObservationIgnored private var statementWaiters: [UUID: [UUID: CheckedContinuation<Void, Never>]] = [:]
     @ObservationIgnored private let liveDriver: (UUID) -> (any DatabaseDriver)?
 
     init(liveDriver: @escaping (UUID) -> (any DatabaseDriver)?) {
@@ -86,6 +87,26 @@ final class SessionTransactionMonitor {
     // A grid page is a read the app built, so a session lost under it cannot have committed anything.
     func isRunningStatements(_ connectionId: UUID) -> Bool {
         statementCounts[connectionId, default: 0] > 0
+    }
+
+    // A run that moves the session's database lets a write already on its way finish where it was aimed. Stop ends the
+    // wait, as it ends a run queued behind another.
+    func statementsFinished(for connectionId: UUID) async {
+        guard isRunningStatements(connectionId) else { return }
+        let waiter = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume()
+                    return
+                }
+                statementWaiters[connectionId, default: [:]][waiter] = continuation
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.statementWaiters[connectionId]?.removeValue(forKey: waiter)?.resume()
+            }
+        }
     }
 
     // `reading` work keeps Commit and Roll Back off the session while it streams, and stales a dialog opened before it.
@@ -207,6 +228,10 @@ final class SessionTransactionMonitor {
         guard !reading else { return }
         let statements = statementCounts[connectionId, default: 1] - 1
         statementCounts[connectionId] = statements > 0 ? statements : nil
+        guard statements <= 0 else { return }
+        for waiter in (statementWaiters.removeValue(forKey: connectionId) ?? [:]).values {
+            waiter.resume()
+        }
     }
 }
 
