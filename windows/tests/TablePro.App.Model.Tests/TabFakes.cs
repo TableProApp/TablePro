@@ -37,13 +37,22 @@ internal sealed class FakeSession : ITabSession
 
     public List<(ColumnSort? Sort, long Limit, long Offset)> Queries { get; } = [];
 
+    // The filter each page read and each count was asked with.
+    public List<TableFilter?> PageFilters { get; } = [];
+
+    public List<TableFilter?> CountFilters { get; } = [];
+
+    // The run each page read started.
+    public List<FakeRun> Pages { get; } = [];
+
     public Gate? Opening { get; set; }
 
+    // Waited at by a page read before it starts its run.
     public Gate? Querying { get; set; }
 
     public Gate? Counting { get; set; }
 
-    // Waited at by the run of each page a table query writes.
+    // Waited at by the run of each page read.
     public Gate? PageReading { get; set; }
 
     public RunGate Verdict { get; set; } = new(false, [], false);
@@ -55,9 +64,58 @@ internal sealed class FakeSession : ITabSession
     // The events a run of the SQL gives; the default is one empty set that completes.
     public Func<string, FakeRun> Script { get; set; } = _ => FakeRun.Rows(0);
 
+    // Each editor opened from now on refuses a move to a database with it.
+    public CoreError? DatabaseRefusal { get; set; }
+
     public long TableRows { get; set; }
 
+    // The rows any filter picks.
+    public long FilteredRows { get; set; }
+
     public bool RefusesSort { get; set; }
+
+    // Any filter is refused, as one on a column the table no longer has is.
+    public bool RefusesFilter { get; set; }
+
+    // A filtered read the core built ends this way, as when the server refuses a raw SQL condition or Stop is pressed.
+    public QueryOutcome? FilteredReadEnds { get; set; }
+
+    public FilterChoices Choices { get; set; } = new(
+        [
+            new FilterColumn(
+                "ArtistId",
+                [
+                    FilterOperator.Equal,
+                    FilterOperator.Less,
+                    FilterOperator.Between,
+                    FilterOperator.In,
+                    FilterOperator.IsNull,
+                ]),
+            new FilterColumn(
+                "Name",
+                [
+                    FilterOperator.Equal,
+                    FilterOperator.Contains,
+                    FilterOperator.In,
+                    FilterOperator.IsNull,
+                    FilterOperator.IsNotNull,
+                ]),
+        ],
+        [FilterCombinator.And, FilterCombinator.Or],
+        AcceptsRawSql: true);
+
+    public CoreError? ChoicesFailure { get; set; }
+
+    public int ChoicesReads { get; private set; }
+
+    // The kind each structure read was asked for.
+    public List<ObjectKind> StructureReads { get; } = [];
+
+    public Gate? ReadingStructure { get; set; }
+
+    public CoreError? StructureFailure { get; set; }
+
+    public ObjectSource? Definition { get; set; }
 
     // Every open gives this one, so a test sets it up before the page loads.
     public FakeTableEditor TableEditor { get; } = new();
@@ -92,19 +150,21 @@ internal sealed class FakeSession : ITabSession
             await opening.PassAsync(cancellationToken);
         }
 
-        var editor = new FakeEditor(this);
+        var editor = new FakeEditor(this) { DatabaseRefusal = DatabaseRefusal };
         Editors.Add(editor);
         return editor;
     }
 
-    public async Task<TableQuery> GetTableQueryAsync(
+    public async Task<TablePageRead> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
+        TableFilter? filter,
         long limit,
         long offset,
         CancellationToken cancellationToken)
     {
         Queries.Add((sort, limit, offset));
+        PageFilters.Add(filter);
         if (Querying is { } querying)
         {
             await querying.PassAsync(cancellationToken);
@@ -115,28 +175,71 @@ internal sealed class FakeSession : ITabSession
             throw new TableProException(Errors.Of("ffi.sort_unsupported"));
         }
 
+        if (filter is not null && RefusesFilter)
+        {
+            throw new TableProException(Errors.Of("filter.unknown_column"));
+        }
+
         if (QueryFailure is { } failure)
         {
             throw new TableProException(failure);
         }
 
-        var rows = Math.Clamp(TableRows - offset, 0, limit);
-        var page = FakeRun.Rows(rows);
+        if (filter is not null && FilteredReadEnds is { } ending)
+        {
+            var ended = FakeRun.Ending(ending);
+            Pages.Add(ended);
+            return new TablePageRead(ended, 2, CanSeek: true);
+        }
+
+        var page = FakeRun.Rows(Math.Clamp(RowsPicked(filter) - offset, 0, limit));
         page.Reading = PageReading;
-        Script = _ => page;
-        return new TableQuery($"select * from {table.Name} limit {limit} offset {offset}", 2);
+        Pages.Add(page);
+        return new TablePageRead(page, 2, CanSeek: true);
     }
 
-    public async Task<long> CountRowsAsync(TableName table, CancellationToken cancellationToken)
+    public async Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken)
     {
         Counts++;
+        CountFilters.Add(filter);
         if (Counting is { } counting)
         {
             await counting.PassAsync(cancellationToken);
         }
 
-        return TableRows;
+        return RowsPicked(filter);
     }
+
+    public Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken)
+    {
+        ChoicesReads++;
+        return ChoicesFailure is { } failure
+            ? Task.FromException<FilterChoices>(new TableProException(failure))
+            : Task.FromResult(Choices);
+    }
+
+    // A new structure each read, so a test tells a kept one from one read again.
+    public async Task<TableStructure> GetStructureAsync(
+        TableName table,
+        ObjectKind kind,
+        CancellationToken cancellationToken)
+    {
+        StructureReads.Add(kind);
+        if (ReadingStructure is { } reading)
+        {
+            await reading.PassAsync(cancellationToken);
+        }
+
+        if (StructureFailure is { } failure)
+        {
+            throw new TableProException(failure);
+        }
+
+        return new TableStructure([], [], [], $"CREATE TABLE {table.Name} (ArtistId INTEGER PRIMARY KEY)");
+    }
+
+    public Task<ObjectSource?> GetObjectDefinitionAsync(ObjectEntry entry, CancellationToken cancellationToken) =>
+        Task.FromResult(Definition);
 
     public RunGate GateRun(string sql)
     {
@@ -169,6 +272,8 @@ internal sealed class FakeSession : ITabSession
         Releases++;
         return ValueTask.CompletedTask;
     }
+
+    private long RowsPicked(TableFilter? filter) => filter is null ? TableRows : FilteredRows;
 }
 
 internal sealed class FakeEditor(FakeSession session) : ITabEditor
@@ -183,12 +288,23 @@ internal sealed class FakeEditor(FakeSession session) : ITabEditor
 
     public int Disposals { get; private set; }
 
+    public List<string> Databases { get; } = [];
+
+    // Set, the move to a database fails with it.
+    public CoreError? DatabaseRefusal { get; set; }
+
     public ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken)
     {
         Runs.Add(sql);
         var run = session.Script(sql);
         Started.Add(run);
         return run;
+    }
+
+    public Task UseDatabaseAsync(string database, CancellationToken cancellationToken)
+    {
+        Databases.Add(database);
+        return DatabaseRefusal is { } refusal ? Task.FromException(new TableProException(refusal)) : Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
@@ -221,6 +337,11 @@ internal sealed class FakeRun(IReadOnlyList<QueryEvent> events) : ITabRun
         new QueryEvent.ResultSetStarted(0, Columns),
         new QueryEvent.ResultSetFinished(0, rows, null, Truncation.Complete),
         new QueryEvent.Finished(new QueryOutcome.Completed(TimeSpan.FromMilliseconds(12)), transaction),
+    ]);
+
+    public static FakeRun Ending(QueryOutcome outcome) => new(
+    [
+        new QueryEvent.Finished(outcome, TransactionState.Idle),
     ]);
 
     public static FakeRun Script() => new(
@@ -273,6 +394,10 @@ internal sealed class FakeResults : IResultsView
 
     public TransactionState Transaction { get; private set; }
 
+    public QueryOutcome? Outcome { get; private set; }
+
+    public long? RowsAffected { get; private set; }
+
     public ResultSet? ShownSet => null;
 
     public bool SortsHeldRows { get; set; } = true;
@@ -284,6 +409,8 @@ internal sealed class FakeResults : IResultsView
         Shown.Add("run");
         RunSort = sort;
         ResultSetCount = 0;
+        Outcome = null;
+        RowsAffected = null;
         long? rows = null;
         await foreach (var queryEvent in run.ReadEventsAsync(cancellationToken))
         {
@@ -296,9 +423,13 @@ internal sealed class FakeResults : IResultsView
                 case QueryEvent.ResultSetFinished ended:
                     rows ??= ended.RowCount;
                     break;
+                case QueryEvent.CommandCompleted { RowsAffected: { } affected }:
+                    RowsAffected = (RowsAffected ?? 0) + affected;
+                    break;
                 case QueryEvent.Finished finished:
                     Transaction = finished.Transaction;
                     RowCount = rows ?? 0;
+                    Outcome = finished.Outcome;
                     break;
                 default:
                     break;
@@ -338,11 +469,15 @@ internal sealed class FakeQueryView : IQueryTabView
 
     public int Caret { get; set; }
 
+    public string TimedOutMessage => "timed out";
+
     public Func<RunGate, Task<bool>> Confirm { get; set; } = _ => Task.FromResult(true);
 
     public bool RollsBack { get; set; } = true;
 
     public bool CanCommit { get; private set; }
+
+    public string WordError(CoreError failure) => "worded " + failure.Code;
 
     public void SelectStatement(int start, int length) => Shown.Add($"selected {start} {length}");
 
@@ -423,6 +558,10 @@ internal sealed class FakeTableView : ITableTabView
 
     public int SavesCancelled { get; private set; }
 
+    public List<CoreError> StructureFailures { get; } = [];
+
+    public List<CoreError> ChoicesFailures { get; } = [];
+
     public void ShowRunning(bool running) => UpdatePager();
 
     public void UpdatePager()
@@ -495,6 +634,10 @@ internal sealed class FakeTableView : ITableTabView
         Failures.Add((failure, incomplete));
         return Task.CompletedTask;
     }
+
+    public void ShowStructureFailed(CoreError failure) => StructureFailures.Add(failure);
+
+    public void ShowFilterChoicesFailed(CoreError failure) => ChoicesFailures.Add(failure);
 }
 
 // A stored cell reads "r{row}c{column}", and each change plans one statement named for its kind.

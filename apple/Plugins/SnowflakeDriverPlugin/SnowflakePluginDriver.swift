@@ -318,6 +318,8 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }.sorted { $0.name < $1.name }
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let database = connection?.currentDatabase
         let targetSchema = schema ?? connection?.currentSchema

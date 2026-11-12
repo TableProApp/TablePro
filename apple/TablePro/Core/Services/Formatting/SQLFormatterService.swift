@@ -261,7 +261,14 @@ internal struct SQLTokenFormatter {
                 directiveLines: directiveLines
             )
         }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard stream.last?.type == .directive else { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        // A directive's text stays as written to its end: a COPY's last row can end in a tab that is a column.
+        let start = text.firstIndex { !$0.isWhitespace } ?? text.endIndex
+        var end = text.endIndex
+        while end > start, text[text.index(before: end)] == "\n" {
+            end = text.index(before: end)
+        }
+        return String(text[start..<end])
     }
 
     // The line each directive was written on, counted in one pass: a script can hold tens of thousands of `GO` lines.

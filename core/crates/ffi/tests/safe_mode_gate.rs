@@ -7,6 +7,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use secrecy::SecretString;
 use tablepro_ffi::{
     ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, FileOpenRequest, HostConfig, HostSecretError,
     HostSecrets, RunGate, RunListener, RunOutcome, RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TlsModeTag,
@@ -16,11 +17,11 @@ use tablepro_ffi::{
 struct NoSecrets;
 
 impl HostSecrets for NoSecrets {
-    fn load(&self, _: String, _: SecretKindTag) -> Result<Option<String>, HostSecretError> {
+    fn load(&self, _: String, _: SecretKindTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
 
-    fn store(&self, _: String, _: SecretKindTag, _: String, _: String) -> Result<(), HostSecretError> {
+    fn store(&self, _: String, _: SecretKindTag, _: SecretString, _: String) -> Result<(), HostSecretError> {
         Ok(())
     }
 
@@ -36,11 +37,11 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
-    fn load_item(&self, _: SecretItemTag) -> Result<Option<String>, HostSecretError> {
+    fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
 
-    fn store_item(&self, _: SecretItemTag, _: String) -> Result<(), HostSecretError> {
+    fn store_item(&self, _: SecretItemTag, _: SecretString) -> Result<(), HostSecretError> {
         Ok(())
     }
 
@@ -123,9 +124,15 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         .save(record, ConnectionSecrets::default())
         .await
         .unwrap();
-    core.connect_saved(saved.id, ConnectionSecrets::default(), None, None)
-        .await
-        .unwrap()
+    core.connect_saved(
+        saved.id,
+        ConnectionSecrets::default(),
+        ConnectionSecrets::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap()
 }
 
 #[tokio::test]

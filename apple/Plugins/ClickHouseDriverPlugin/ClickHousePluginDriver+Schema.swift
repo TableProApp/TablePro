@@ -118,6 +118,8 @@ nonisolated extension ClickHousePluginDriver {
         """
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         // Pre-fetch PK columns for all tables. Falls back to sorting_key when
         // primary_key is empty (MergeTree without explicit PRIMARY KEY clause).

@@ -111,9 +111,25 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         controller.restoreCollapsedFolds(ranges)
     }
 
+    var vimDocumentMarks: VimDocumentMarks? {
+        guard let vimEngine else { return pendingVimDocumentMarks }
+        let marks = vimEngine.documentMarks
+        return marks.isEmpty ? nil : marks
+    }
+
+    func restoreVimDocumentMarks(_ marks: VimDocumentMarks) {
+        guard let vimEngine else {
+            pendingVimDocumentMarks = marks
+            return
+        }
+        vimEngine.restoreDocumentMarks(marks)
+    }
+
     /// Vim mode for UI observation
     @Published private(set) var vimMode: VimMode = .normal
     private var vimEngine: VimEngine?
+    // Vim is installed once the editor is in a window, so marks restored before that wait here.
+    private var pendingVimDocumentMarks: VimDocumentMarks?
     private var vimKeyInterceptor: VimKeyInterceptor?
     private var emacsKeyInterceptor: EmacsKeyInterceptor?
     private var commandHandler = VimCommandLineHandler()
@@ -265,6 +281,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
 
     func textViewDidReplaceDocument(controller: TextViewController) {
         vimEngine?.invalidateLineCache()
+        vimEngine?.documentDidReplace()
+        pendingVimDocumentMarks = nil
         foldPreview.dismiss()
         inlineSuggestionManager?.dismissSuggestion()
         statementRunController.refreshControls(in: controller)
@@ -729,6 +747,10 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         let interceptor = VimKeyInterceptor(engine: engine, inlineSuggestionManager: inlineSuggestionManager)
         interceptor.install(controller: controller)
 
+        if let marks = pendingVimDocumentMarks {
+            engine.restoreDocumentMarks(marks)
+            pendingVimDocumentMarks = nil
+        }
         self.vimEngine = engine
         self.vimKeyInterceptor = interceptor
         self.vimMode = .normal

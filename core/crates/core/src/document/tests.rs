@@ -2,11 +2,11 @@ use crate::browse::{
     ExportFields, ExportRequest, PageRequest, RowKeyLayout, SortKey, build_count, build_export, build_page,
 };
 use crate::column::{
-    ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, TextLength,
+    ColumnDefault, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm, TextLength,
 };
 use crate::dialect::TestDialect;
 use crate::dml::{BuildSqlError, build_delete, build_insert, build_multi_row_insert, build_update};
-use crate::edit::CellInput;
+use crate::edit::{CellExpression, CellInput};
 use crate::filter::{BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter};
 use crate::meta::{PagePosition, PageStability, RowIdentity, TableRef};
 use crate::sql_syntax::SqlGrammar;
@@ -289,6 +289,55 @@ fn a_json_field_compares_as_well_as_matching_text() {
 }
 
 #[test]
+fn a_field_of_numbers_compares_and_takes_no_pattern() {
+    let mut columns = columns();
+    columns.push(column(
+        "qty_mixed",
+        crate::document::NUMBER_TYPE,
+        ColumnKind::Json { binary: false },
+    ));
+    let offered = crate::document::filter_operators(&columns[4]);
+    for op in [
+        FilterOp::Eq,
+        FilterOp::NotEq,
+        FilterOp::Lt,
+        FilterOp::GtEq,
+        FilterOp::Between,
+        FilterOp::In,
+        FilterOp::NotIn,
+        FilterOp::IsNull,
+        FilterOp::IsNotNull,
+    ] {
+        assert!(offered.contains(&op), "{op:?} in {offered:?}");
+    }
+    let pattern = FilterSet {
+        rules: vec![FilterRule {
+            column: "qty_mixed".to_owned(),
+            op: FilterOp::Contains,
+            value: Some(FilterValue::Single("1".to_owned())),
+        }],
+        ..FilterSet::default()
+    };
+
+    assert_eq!(
+        build_filter(&mut StatementBuilder::new(), &shell(), &columns, &pattern),
+        Err(BuildFilterError::OperatorNotAllowed {
+            column: "qty_mixed".to_owned(),
+            op: FilterOp::Contains,
+        })
+    );
+    for op in [
+        FilterOp::StartsWith,
+        FilterOp::EndsWith,
+        FilterOp::Like,
+        FilterOp::NotLike,
+        FilterOp::Ilike,
+    ] {
+        assert!(!offered.contains(&op), "{op:?} in {offered:?}");
+    }
+}
+
+#[test]
 fn a_filter_that_is_not_one_document_or_names_a_dotted_field_is_refused() {
     let mut builder = StatementBuilder::new();
     let typed = |text: &str| FilterSet {
@@ -321,7 +370,7 @@ fn a_filter_that_is_not_one_document_or_names_a_dotted_field_is_refused() {
 #[test]
 fn build_filter_writes_the_document_after_parameters_already_bound() {
     let mut builder = StatementBuilder::new();
-    builder.push_bound(crate::document::bind_param(Value::Int(1), None).expect("a param"));
+    builder.push_bound(crate::document::bind_param(Value::Int(1), None, None).expect("a param"));
 
     assert_eq!(build_filter(&mut builder, &shell(), &columns(), &filter()), Ok(true));
 
@@ -458,6 +507,7 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
             (1, CellInput::Value(Value::Text("ann".to_owned()))),
             (2, CellInput::Value(Value::Int(3))),
         ],
+        &[],
     )
     .expect("an update");
     assert_eq!(
@@ -511,14 +561,43 @@ fn a_change_names_its_document_by_id_and_sets_only_the_fields_changed() {
 }
 
 #[test]
-fn a_change_to_null_removes_the_field_and_a_key_keeps_set() {
+fn a_null_is_set_and_a_field_given_back_to_the_server_is_unset() {
     let change = |assignments: &[(usize, CellInput)]| {
-        build_update(&shell(), &users(), &columns(), &by_id(), &[object_id()], assignments).expect("an update")
+        build_update(
+            &shell(),
+            &users(),
+            &columns(),
+            &by_id(),
+            &[object_id()],
+            assignments,
+            &[],
+        )
+        .expect("an update")
     };
+
+    let null = change(&[(2, CellInput::Value(Value::Null))]);
+    assert_eq!(
+        checked(&null),
+        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $2}, {"$set": {"qty": $1}})"#
+    );
+    assert_eq!(null.params()[0].value(), &Value::Null);
+    assert_eq!(
+        null.params()[0].param_type(),
+        &ParamType::Int32,
+        "a null keeps its field's type"
+    );
+    let json_null = change(&[(
+        1,
+        CellInput::Value(Value::Json(JsonText::parse("null".to_owned()).expect("JSON"))),
+    )]);
+    assert_eq!(
+        checked(&json_null),
+        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $2}, {"$set": {"name": $1}})"#
+    );
 
     let both = change(&[
         (1, CellInput::Value(Value::Text("ann".to_owned()))),
-        (2, CellInput::Value(Value::Null)),
+        (2, CellInput::Default),
     ]);
     assert_eq!(
         checked(&both),
@@ -526,37 +605,16 @@ fn a_change_to_null_removes_the_field_and_a_key_keeps_set() {
     );
     assert_eq!(both.params().len(), 2);
 
-    let removed = change(&[(2, CellInput::Value(Value::Null))]);
+    let removed = change(&[(2, CellInput::Default)]);
     assert_eq!(
         checked(&removed),
         r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $1}, {"$unset": {"qty": ""}})"#
     );
     assert_eq!(removed.params().len(), 1);
-
-    let key = change(&[(0, CellInput::Value(Value::Null))]);
-    assert_eq!(
-        checked(&key),
-        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $2}, {"$set": {"_id": $1}})"#
-    );
-    assert_eq!(key.params()[0].value(), &Value::Null);
-    assert!(
-        matches!(key.params()[0].param_type(), ParamType::ServerText(_)),
-        "a null keeps its field's type"
-    );
-
-    let json_null = change(&[(
-        1,
-        CellInput::Value(Value::Json(JsonText::parse("null".to_owned()).expect("JSON"))),
-    )]);
-    assert_eq!(
-        checked(&json_null),
-        r#"db.getSiblingDB("shop").getCollection("users").updateOne({"_id": $2}, {"$set": {"name": $1}})"#,
-        "a typed null is a value"
-    );
 }
 
 #[test]
-fn a_new_document_leaves_out_every_null_cell() {
+fn a_new_document_writes_a_null_and_leaves_out_a_default() {
     let dialect = shell();
     let table = users();
     let columns = columns();
@@ -570,27 +628,16 @@ fn a_new_document_leaves_out_every_null_cell() {
             CellInput::Default,
             CellInput::Value(Value::Text("ann".to_owned())),
             null(),
-            null(),
+            CellInput::Default,
         ],
     )
     .expect("an insert");
     assert_eq!(
         checked(&insert),
-        r#"db.getSiblingDB("shop").getCollection("users").insertOne({"name": $1})"#
+        r#"db.getSiblingDB("shop").getCollection("users").insertOne({"name": $1, "qty": $2})"#
     );
-    assert_eq!(insert.params().len(), 1);
-
-    let empty = build_insert(
-        &dialect,
-        &table,
-        &columns,
-        &[CellInput::Default, null(), null(), null()],
-    )
-    .expect("an insert of no field");
-    assert_eq!(
-        checked(&empty),
-        r#"db.getSiblingDB("shop").getCollection("users").insertOne({})"#
-    );
+    assert_eq!(insert.params()[1].value(), &Value::Null);
+    assert_eq!(insert.params()[1].param_type(), &ParamType::Int32);
 
     let many = build_multi_row_insert(
         &dialect,
@@ -598,16 +645,19 @@ fn a_new_document_leaves_out_every_null_cell() {
         &[&columns[1], &columns[2]],
         vec![
             vec![Value::Text("a".to_owned()), Value::Null],
-            vec![Value::Null, Value::Int(2)],
             vec![Value::Null, Value::Null],
         ],
     )
-    .expect("an insert of three");
+    .expect("an insert of two");
     assert_eq!(
         checked(&many),
-        r#"db.getSiblingDB("shop").getCollection("users").insertMany([{"name": $1}, {"qty": $2}, {}])"#
+        r#"db.getSiblingDB("shop").getCollection("users").insertMany([{"name": $1, "qty": $2}, {"name": $3, "qty": $4}])"#
     );
-    assert_eq!(many.params().len(), 2);
+    assert!(
+        many.params()[1..].iter().all(|param| param.value() == &Value::Null),
+        "{:?}",
+        many.params()
+    );
 }
 
 #[test]
@@ -619,6 +669,7 @@ fn a_dotted_field_cannot_be_updated_by_name() {
         &by_id(),
         &[object_id()],
         &[(3, CellInput::Value(Value::Text("x".to_owned())))],
+        &[],
     );
 
     assert_eq!(
@@ -629,19 +680,133 @@ fn a_dotted_field_cannot_be_updated_by_name() {
 
 #[test]
 fn a_document_field_is_never_set_to_a_value_the_server_computes() {
-    let refused = build_update(
-        &shell(),
-        &users(),
-        &columns(),
-        &by_id(),
-        &[object_id()],
-        &[(1, CellInput::Default)],
-    );
+    const NOW: CellExpression = CellExpression::new("NOW()", &[], &[]);
+    let refused = |assignment: (usize, CellInput)| {
+        build_update(
+            &shell(),
+            &users(),
+            &columns(),
+            &by_id(),
+            &[object_id()],
+            &[assignment],
+            &[],
+        )
+    };
 
     assert_eq!(
-        refused,
+        refused((1, CellInput::Expression(NOW))),
         Err(BuildSqlError::ServerComputedValue {
             name: "name".to_owned()
         })
+    );
+    assert_eq!(
+        refused((0, CellInput::Default)),
+        Err(BuildSqlError::ServerComputedValue { name: "_id".to_owned() }),
+        "a key was unset"
+    );
+}
+
+fn numbers() -> Vec<ColumnInfo> {
+    vec![
+        column("_id", "objectId", ColumnKind::Other),
+        column(
+            "qty",
+            "long",
+            ColumnKind::Integer(IntegerKind {
+                width: IntegerWidth::W64,
+                signed: true,
+            }),
+        ),
+        column("price", "double", ColumnKind::Float(FloatWidth::F64)),
+        column(
+            "amount",
+            "decimal",
+            ColumnKind::Decimal {
+                precision: Some(34),
+                scale: None,
+            },
+        ),
+    ]
+}
+
+fn edited_params(edits: &[(usize, Value, Value)]) -> Vec<(Value, ParamType)> {
+    let assignments: Vec<(usize, CellInput)> = edits
+        .iter()
+        .map(|(column, _, value)| (*column, CellInput::Value(value.clone())))
+        .collect();
+    let read: Vec<(usize, Value)> = edits.iter().map(|(column, read, _)| (*column, read.clone())).collect();
+    let update = build_update(
+        &shell(),
+        &users(),
+        &numbers(),
+        &by_id(),
+        &[object_id()],
+        &assignments,
+        &read,
+    )
+    .expect("an update");
+    checked(&update);
+    update.params()[..edits.len()]
+        .iter()
+        .map(|param| (param.value().clone(), param.param_type().clone()))
+        .collect()
+}
+
+fn decimal(text: &str) -> Value {
+    Value::Decimal(text.parse().expect("a decimal"))
+}
+
+#[test]
+fn an_edited_number_binds_as_the_type_it_was_read_as() {
+    assert_eq!(
+        edited_params(&[
+            (1, Value::Int32(3), Value::Int(7)),
+            (2, Value::Int32(3), Value::Int32(4)),
+            (3, Value::Float64(1.5), decimal("2.5")),
+        ]),
+        [
+            (Value::Int32(7), ParamType::Int32),
+            (Value::Int32(4), ParamType::Int32),
+            (Value::Float64(2.5), ParamType::Float64),
+        ]
+    );
+    assert_eq!(
+        edited_params(&[(1, Value::Int(3), Value::Int(7)), (3, Value::Int(3), decimal("8"))]),
+        [(Value::Int(7), ParamType::Int64), (Value::Int(8), ParamType::Int64)]
+    );
+}
+
+#[test]
+fn an_edit_its_read_type_cannot_hold_takes_the_columns_type() {
+    assert_eq!(
+        edited_params(&[
+            (2, Value::Int32(3), Value::Float64(4.5)),
+            (1, Value::Int32(3), Value::Int(3_000_000_000)),
+            (3, Value::Float64(1.5), decimal("0.10000000000000000001")),
+        ]),
+        [
+            (Value::Float64(4.5), ParamType::Float64),
+            (Value::Int(3_000_000_000), ParamType::Int64),
+            (decimal("0.10000000000000000001"), ParamType::Decimal),
+        ]
+    );
+    assert_eq!(
+        edited_params(&[(3, Value::Int32(3), decimal("4.0"))]),
+        [(decimal("4.0"), ParamType::Decimal)],
+        "a fraction typed into an int field became an int"
+    );
+}
+
+#[test]
+fn a_cell_read_as_null_or_not_a_number_takes_the_columns_type() {
+    assert_eq!(
+        edited_params(&[
+            (1, Value::Null, Value::Int(7)),
+            (2, Value::Text("x".to_owned()), Value::Float64(4.0)),
+        ]),
+        [
+            (Value::Int(7), ParamType::Int64),
+            (Value::Float64(4.0), ParamType::Float64),
+        ]
     );
 }

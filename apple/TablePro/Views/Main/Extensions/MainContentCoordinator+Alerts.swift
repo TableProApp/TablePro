@@ -61,6 +61,8 @@ extension MainContentCoordinator {
         /// edits: the table is fetched again with a different column list.
         case .columnVisibility:
             return String(localized: "Showing or hiding columns will reload data and discard all unsaved changes.")
+        case .containerChange:
+            return String(localized: "Moving this tab to another database or schema will discard all unsaved changes.")
         }
     }
 

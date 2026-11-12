@@ -37,7 +37,8 @@ pub(super) fn html_head(out: &mut String, columns: &[ResultColumn], title: &str)
 pub(super) fn html_row<'a>(out: &mut String, columns: &[ResultColumn], row: impl IntoIterator<Item = &'a Value>) {
     out.push_str("<tr>");
     for (index, value) in row.into_iter().enumerate() {
-        match value_text(value, column_type(columns, index)) {
+        let column = column_type(columns, index);
+        match value_text(&crate::document::json_number(value, column), column) {
             Some(text) => {
                 out.push_str("<td>");
                 escape_into(out, &text);
@@ -101,6 +102,19 @@ mod tests {
 
         assert!(html.contains("&lt;b&gt;id&lt;/b&gt;"), "{html}");
         assert!(!html.contains("<b>"), "a column name reached the document as markup");
+    }
+
+    #[test]
+    fn a_number_fields_json_is_written_as_the_number_and_other_json_as_it_is() {
+        let (columns, rows) = super::super::test_columns::mixed_json();
+
+        let html = render_html(&columns, &rows, "t");
+
+        assert!(html.contains("<td>3000000000</td><td>19.90</td><td>{"), "{html}");
+        assert!(
+            html.contains("<td>19.90</td><td>{&quot;$numberLong&quot;: &quot;7&quot;}</td></tr>"),
+            "{html}"
+        );
     }
 
     #[test]

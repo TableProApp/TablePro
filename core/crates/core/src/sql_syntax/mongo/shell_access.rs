@@ -187,8 +187,15 @@ fn call_access(call: &ShellCall) -> StatementAccess {
             "status" | "conf" | "config" | "hello" | "isMaster" | "printReplicationInfo" => StatementAccess::Read,
             _ => StatementAccess::Write,
         },
-        (CallRoot::Db, Some(_)) => collection_access(&operation.name, &operation.args),
-        (CallRoot::Db, None) => database_access(&operation.name, &operation.args),
+        (CallRoot::Db, Some(collection)) => collection_access(
+            &operation.name,
+            &operation.args,
+            Source {
+                database: call.database.as_deref(),
+                collection,
+            },
+        ),
+        (CallRoot::Db, None) => database_access(&operation.name, &operation.args, call.database.as_deref()),
     };
     match shaped {
         true => access,
@@ -196,9 +203,11 @@ fn call_access(call: &ShellCall) -> StatementAccess {
     }
 }
 
-fn collection_access(method: &str, args: &[ShellValue]) -> StatementAccess {
+fn collection_access(method: &str, args: &[ShellValue], source: Source<'_>) -> StatementAccess {
     match method {
-        "aggregate" => args.first().map_or(StatementAccess::Read, pipeline_access),
+        "aggregate" => args.first().map_or(StatementAccess::Read, |pipeline| {
+            pipeline_access(pipeline, Some(source))
+        }),
         _ if COLLECTION_READS.contains(&method) => StatementAccess::Read,
         _ if COLLECTION_DROPS.contains(&method) => StatementAccess::Destructive,
         // `dropTarget` drops the collection the rename replaces.
@@ -245,10 +254,18 @@ fn is_true(value: &ShellValue) -> bool {
     }
 }
 
-fn database_access(method: &str, args: &[ShellValue]) -> StatementAccess {
+fn database_access(method: &str, args: &[ShellValue], database: Option<&str>) -> StatementAccess {
+    let database = match method {
+        "adminCommand" => Some("admin"),
+        _ => database,
+    };
     match method {
-        "runCommand" | "adminCommand" => args.first().map_or(StatementAccess::Write, command_access),
-        "aggregate" => args.first().map_or(StatementAccess::Read, pipeline_access),
+        "runCommand" | "adminCommand" => args
+            .first()
+            .map_or(StatementAccess::Write, |command| command_access(command, database)),
+        "aggregate" => args
+            .first()
+            .map_or(StatementAccess::Read, |pipeline| pipeline_access(pipeline, None)),
         _ if DATABASE_READS.contains(&method) => StatementAccess::Read,
         _ if DATABASE_DROPS.contains(&method) => StatementAccess::Destructive,
         _ => StatementAccess::Write,
@@ -256,8 +273,9 @@ fn database_access(method: &str, args: &[ShellValue]) -> StatementAccess {
 }
 
 /// A command document by its first key, the command's name, which the
-/// server matches without regard to case for most commands.
-fn command_access(command: &ShellValue) -> StatementAccess {
+/// server matches without regard to case for most commands. `database`
+/// is the one it runs in, `None` for the current one.
+fn command_access(command: &ShellValue, database: Option<&str>) -> StatementAccess {
     let Some(name) = command
         .as_object()
         .and_then(|fields| fields.first())
@@ -267,11 +285,17 @@ fn command_access(command: &ShellValue) -> StatementAccess {
     };
     let name = name.to_ascii_lowercase();
     let set = |option: &str| command.field(option).is_some_and(is_true);
-    let pipeline = command.field("pipeline").map_or(StatementAccess::Read, pipeline_access);
+    let source = (name == "aggregate")
+        .then(|| command.field("aggregate").and_then(ShellValue::as_str))
+        .flatten()
+        .map(|collection| Source { database, collection });
+    let pipeline = command
+        .field("pipeline")
+        .map_or(StatementAccess::Read, |pipeline| pipeline_access(pipeline, source));
     let writes = pipeline > StatementAccess::Read
         || command
             .field("explain")
-            .is_some_and(|inner| command_access(inner) > StatementAccess::Read)
+            .is_some_and(|inner| command_access(inner, database) > StatementAccess::Read)
         || (name == "validate" && VALIDATE_WRITES.into_iter().any(set));
     let destructive = pipeline == StatementAccess::Destructive
         || COMMAND_DROPS.contains(&name.as_str())
@@ -320,17 +344,59 @@ fn reaches_every_document(name: &str, command: &ShellValue) -> bool {
         .any(|entry| every(entry) && entry.field(filter).is_none_or(matches_every_document))
 }
 
+/// The collection an aggregate reads, in `database`, `None` for the
+/// current one.
+#[derive(Clone, Copy)]
+struct Source<'a> {
+    database: Option<&'a str>,
+    collection: &'a str,
+}
+
 /// What a pipeline does, by the stages it holds at any depth: a
-/// `$lookup` or `$facet` holds pipelines of its own.
-fn pipeline_access(pipeline: &ShellValue) -> StatementAccess {
+/// `$lookup` or `$facet` holds pipelines of its own. A `$merge` into the
+/// collection it reads rewrites that collection's documents.
+fn pipeline_access(pipeline: &ShellValue, source: Option<Source<'_>>) -> StatementAccess {
     let stages = pipeline.keys();
-    if stages.contains(&REPLACING_STAGE) {
+    if stages.contains(&REPLACING_STAGE) || source.is_some_and(|source| merges_into(pipeline, source)) {
         StatementAccess::Destructive
     } else if stages.contains(&MERGING_STAGE) {
         StatementAccess::Write
     } else {
         StatementAccess::Read
     }
+}
+
+/// Whether a `$merge` at any depth may write into `source`. Its `into`
+/// names a collection of the current database, or `{db, coll}`. A `db`
+/// named where the call names none, which may be the current one, and a
+/// target that is not a name count as the source, the stricter reading.
+fn merges_into(value: &ShellValue, source: Source<'_>) -> bool {
+    match value {
+        ShellValue::Object(fields) => fields
+            .iter()
+            .any(|(key, value)| (key == MERGING_STAGE && merge_names(value, source)) || merges_into(value, source)),
+        ShellValue::Array(items) | ShellValue::Constructor { args: items, .. } => {
+            items.iter().any(|item| merges_into(item, source))
+        }
+        _ => false,
+    }
+}
+
+fn merge_names(stage: &ShellValue, source: Source<'_>) -> bool {
+    let into = match stage.as_object() {
+        Some(_) => stage.field("into"),
+        None => Some(stage),
+    };
+    let (database, collection) = match into {
+        Some(ShellValue::String(collection)) => (None, Some(collection.as_str())),
+        Some(target @ ShellValue::Object(_)) => (target.field("db"), target.field("coll").and_then(ShellValue::as_str)),
+        _ => (None, None),
+    };
+    let other_database = matches!(
+        (database, source.database),
+        (Some(ShellValue::String(named)), Some(read)) if named != read
+    );
+    !other_database && collection.is_none_or(|collection| collection == source.collection)
 }
 
 /// Whether a `mapReduce` output replaces a collection: a collection's
@@ -427,6 +493,32 @@ mod tests {
             "db.runCommand({aggregate: 'a', pipeline: [{$merge: 'b'}], cursor: {}})",
             "db.runCommand({explain: {aggregate: 'a', pipeline: [{$merge: 'b'}]}})",
             "db.aggregate([{$documents: [{}]}, {$merge: 'b'}])",
+        ] {
+            assert_eq!(script_access(text), StatementAccess::Write, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_merge_into_the_collection_it_reads_is_destructive() {
+        for text in [
+            "db.users.aggregate([{$match: {}}, {$merge: {into: 'users', whenMatched: 'replace'}}])",
+            "db.users.aggregate([{$merge: 'users'}])",
+            "db.users.aggregate([{$merge: {into: {coll: 'users'}}}])",
+            "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'shop', coll: 'users'}}}])",
+            "db.users.aggregate([{$merge: {into: {db: 'shop', coll: 'users'}}}])",
+            "db.getCollection('users').aggregate([{$merge: {whenMatched: 'replace'}}])",
+            "db.runCommand({aggregate: 'users', pipeline: [{$merge: {into: 'users'}}], cursor: {}})",
+        ] {
+            assert_eq!(script_access(text), StatementAccess::Destructive, "{text}");
+        }
+        for text in [
+            "db.users.aggregate([{$merge: {into: 'users_copy', whenMatched: 'replace'}}])",
+            "db.users.aggregate([{$merge: 'Users'}])",
+            "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'archive', coll: 'users'}}}])",
+            "db.runCommand({aggregate: 'users', pipeline: [{$merge: 'totals'}], cursor: {}})",
+            "db.adminCommand({aggregate: 'users', pipeline: [{$merge: {into: {db: 'shop', coll: 'users'}}}], cursor: {}})",
+            "db.aggregate([{$documents: [{}]}, {$merge: 'users'}])",
+            "db.runCommand({explain: {aggregate: 'users', pipeline: [{$merge: 'users'}]}})",
         ] {
             assert_eq!(script_access(text), StatementAccess::Write, "{text}");
         }

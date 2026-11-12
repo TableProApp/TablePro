@@ -1,11 +1,18 @@
 use bson::Document;
 use mongodb::{ClientSession, SessionCursor};
-use tablepro_core::{DriverError, LossPhase, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
+use tablepro_core::{ByteLimit, DriverError, LossPhase, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
 
 use crate::call::ReadStop;
 use crate::endpoint::MongoEndpoint;
 use crate::rows::{BATCH_ROWS, Layout};
 use crate::shell_command::Columns;
+
+// Found columns hold every kept document before the first event, so no sink can stop them at the byte limit.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EditorLimits {
+    pub(crate) rows: RowLimit,
+    pub(crate) bytes: ByteLimit,
+}
 
 /// Stream a cursor into `sink` as the result set `set_index`. With a
 /// `limit`, as an editor reads, at most that many documents are kept; with
@@ -15,13 +22,13 @@ pub(crate) async fn stream(
     read: Read<'_>,
     columns: Columns,
     sink: &mut dyn ResultSink,
-    limit: Option<RowLimit>,
+    limit: Option<EditorLimits>,
     set_index: usize,
 ) -> Result<(SinkFlow, u64), DriverError> {
     let discovered = matches!(columns, Columns::Discovered);
     match (limit, discovered) {
         (Some(limit), true) => discovered_kept(read, columns, sink, limit).await,
-        (Some(limit), false) => named_kept(read, columns, sink, limit, set_index).await,
+        (Some(limit), false) => named_kept(read, columns, sink, limit.rows, set_index).await,
         (None, _) => every(read, columns, sink).await,
     }
 }
@@ -62,6 +69,11 @@ impl<'a> Read<'a> {
         }
     }
 
+    // The BSON size of the document `next` returned last.
+    fn current_bytes(&self) -> u64 {
+        self.cursor.current().as_bytes().len() as u64
+    }
+
     /// Up to a batch of the `room` documents left to keep, and how the set
     /// ends when it does: a full `room` reads one more to say whether the
     /// result was cut.
@@ -93,15 +105,22 @@ async fn discovered_kept(
     mut read: Read<'_>,
     columns: Columns,
     sink: &mut dyn ResultSink,
-    limit: RowLimit,
+    limit: EditorLimits,
 ) -> Result<(SinkFlow, u64), DriverError> {
     let mut documents = Vec::new();
-    let mut more = false;
+    let mut end = Truncation::Complete;
+    // The document that crosses the byte limit is kept whole, as the session's sink keeps a row.
+    let mut held: u64 = 0;
     while let Some(document) = read.next().await? {
-        if documents.len() as u64 == limit.get() {
-            more = true;
+        if documents.len() as u64 == limit.rows.get() {
+            end = Truncation::ReadPastLimit;
             break;
         }
+        if held >= limit.bytes.get() {
+            end = Truncation::ByteLimit;
+            break;
+        }
+        held = held.saturating_add(read.current_bytes());
         documents.push(document);
     }
     drop(read);
@@ -122,10 +141,6 @@ async fn discovered_kept(
             return Ok((SinkFlow::ConsumerGone, retained));
         }
     }
-    let end = match more {
-        true => Truncation::ReadPastLimit,
-        false => Truncation::Complete,
-    };
     Ok((close(sink, retained, end).await, retained))
 }
 
@@ -182,12 +197,18 @@ async fn named_kept(
     Ok((close(sink, retained, end).await, retained))
 }
 
-/// End a kept set: `RowLimitReached` first when the result was cut.
+/// End a kept set: `RowLimitReached`, or `ByteLimitReached`, first when the result was cut.
 async fn close(sink: &mut dyn ResultSink, retained: u64, end: Truncation) -> SinkFlow {
     match end {
         Truncation::Complete => finish(sink, retained, Some(retained), Truncation::Complete).await,
         cut => {
-            if sink.accept(ResultEvent::RowLimitReached { retained }).await == SinkFlow::ConsumerGone {
+            let reached = match cut {
+                Truncation::ByteLimit => ResultEvent::ByteLimitReached { retained },
+                Truncation::Complete | Truncation::ServerStopped | Truncation::ReadPastLimit => {
+                    ResultEvent::RowLimitReached { retained }
+                }
+            };
+            if sink.accept(reached).await == SinkFlow::ConsumerGone {
                 return SinkFlow::ConsumerGone;
             }
             finish(sink, retained, None, cut).await

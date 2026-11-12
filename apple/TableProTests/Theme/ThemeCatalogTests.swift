@@ -133,8 +133,7 @@ struct ThemeCatalogTests {
 
     // MARK: - Deleted on disk
 
-    // The file is gone, so writing it again would bring back a theme deleted in Finder or on
-    // another Mac.
+    // Writing the file again would bring back a theme deleted in Finder or on another Mac.
     @Test("A save of a theme whose file was deleted outside TablePro is refused and recreates nothing")
     func saveRefusesAFileDeletedOnDisk() throws {
         let sandbox = try Sandbox()
@@ -170,8 +169,7 @@ struct ThemeCatalogTests {
         #expect(try sandbox.fileNames().isEmpty)
     }
 
-    // A file edited into one that no longer loads keeps its name, so a stale save would otherwise
-    // write `<id>-2.json` and leave two files with one id once the first is fixed.
+    // A stale save would write `<id>-2.json` beside the broken file, leaving two files with one id once it is fixed.
     @Test("A save of a theme whose file no longer loads is refused, and writes no second file")
     func saveRefusesAFileThatNoLongerLoads() throws {
         let sandbox = try Sandbox()
@@ -663,8 +661,7 @@ struct ThemeCatalogTests {
         #expect(catalog.theme(id: BuiltInThemes.defaultDarkId) == BuiltInThemes.dark)
     }
 
-    // The id in a file says nothing about which theme on this Mac it is: the same file imported
-    // twice, or on two Macs, would otherwise collide in sync.
+    // The same file imported twice, or on two Macs, would otherwise collide in sync.
     @Test("Import mints a new id even when the file's id is free, and keeps a free name")
     func importMintsAFreshId() throws {
         let sandbox = try Sandbox()

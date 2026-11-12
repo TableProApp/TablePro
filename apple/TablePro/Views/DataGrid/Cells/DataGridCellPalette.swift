@@ -34,7 +34,7 @@ struct DataGridCellPalette: Equatable {
         placeholderText: NSColor,
         booleanTrueText: NSColor,
         booleanFalseText: NSColor,
-        valueColors: DataGridValueColors? = nil,
+        valueColors: DataGridValueColors,
         rowNumberText: NSColor,
         deletedRowText: NSColor,
         modifiedColumnTint: NSColor,
@@ -51,7 +51,7 @@ struct DataGridCellPalette: Equatable {
         self.placeholderText = placeholderText
         self.booleanTrueText = booleanTrueText
         self.booleanFalseText = booleanFalseText
-        self.valueColors = valueColors ?? DataGridValueColors(all: text)
+        self.valueColors = valueColors
         self.rowNumberText = rowNumberText
         self.deletedRowText = deletedRowText
         self.modifiedColumnTint = modifiedColumnTint

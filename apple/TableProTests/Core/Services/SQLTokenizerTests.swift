@@ -305,6 +305,22 @@ struct SQLTokenizerTests {
         #expect(code("select 1;\ndelimiter $$", .mysql).last?.type == .directive)
     }
 
+    @Test("A DELIMITER line sets the first word after it, as the mysql client reads it")
+    func delimiterArgumentIsTheFirstWord() {
+        let tokens = code("DELIMITER // -- set\nselect 1//\nDELIMITER\nselect 2;", .mysql)
+        #expect(tokens.map(\.value) == ["DELIMITER // -- set", "select", "1", "//", "DELIMITER", "select", "2", ";"])
+        #expect(tokens.first?.type == .directive)
+        #expect(tokens[4].type == .directive)
+    }
+
+    @Test("A COPY with its rows and a psql \\restrict line keep their text")
+    func psqlScriptText() {
+        let tokens = code("\\restrict k\nCOPY t FROM stdin;\n\tselect 'x\n\\.\nselect 2;", .postgresql)
+        #expect(tokens.map(\.value) == ["\\restrict k", "COPY t FROM stdin;\n\tselect 'x\n\\.", "select", "2", ";"])
+        #expect(tokens[0].type == .directive)
+        #expect(tokens[1].type == .directive)
+    }
+
     @Test("A MySQL # comment runs to the end of its line")
     func hashComment() {
         #expect(code("a # b and\nc", .mysql).map(\.value) == ["a", "# b and", "c"])

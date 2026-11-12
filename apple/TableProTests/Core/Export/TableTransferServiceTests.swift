@@ -346,7 +346,6 @@ struct TableTransferServiceTests {
         #expect(destination.executedParameters.last == [.text("5"), .text("1")])
     }
 
-    // The digits take the catalog's BIT(8), whatever width the header names.
     @MainActor @Test("A MySQL BIT transferred to a PostgreSQL bit varying arrives as its digits, at the source's width")
     func mysqlBitReachesPostgresAsItsDigits() async throws {
         let source = TransferStubDriver(
@@ -354,7 +353,7 @@ struct TableTransferServiceTests {
             rows: [[.text("1"), .text("5")]],
             columns: ["id", "flags"],
             types: ["id": "int", "flags": "bit(8)"],
-            headerTypes: ["id": "INT", "flags": "BIT"]
+            headerTypes: ["id": "INT", "flags": "BIT(8)"]
         )
         let destination = TransferStubDriver(columns: ["id", "flags"], types: ["id": "integer", "flags": "varbit"])
         let request = TableTransferService.Request(

@@ -44,7 +44,7 @@ struct QueryEditorView: View {
     @State private var showClearConfirmation = false
     @State private var showShareSheet = false
     @State private var shareText = ""
-    @State private var resultsExportError: ClipboardExporter.IncompleteValues?
+    @State private var resultsExportError: (any Error)?
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var containerSize: CGSize = .zero
@@ -108,6 +108,28 @@ struct QueryEditorView: View {
             guard await coordinator.catalogMatchesSession else { return nil }
             return try await manager.readCatalog(for: connectionId, database: database) { driver in
                 try await driver.fetchColumns(table: table, schema: schema ?? activeSchema)
+            }
+        }
+    }
+
+    private var catalogForeignKeyReader: QueryForeignKeyReader {
+        let manager = appState.connectionManager
+        let connectionId = connectionId
+        let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
+        let activeSchema = activeSchema
+        let coordinator = coordinator
+        return { table, schema in
+            guard await coordinator.catalogMatchesSession else { return nil }
+            let namespace = schema ?? activeSchema
+            let keys = try await manager.readCatalog(for: connectionId, database: database) { driver in
+                try await driver.fetchForeignKeys(table: table, schema: namespace)
+            }
+            // MySQL, which has no schemas, names a key's database there. A key into another namespace would pair with
+            // a same-named table of this one.
+            let home = namespace.flatMap { $0.isEmpty ? nil : $0 } ?? database
+            return keys?.filter { key in
+                guard let target = key.referencedSchema, !target.isEmpty else { return true }
+                return target.caseInsensitiveCompare(home) == .orderedSame
             }
         }
     }
@@ -199,7 +221,8 @@ struct QueryEditorView: View {
                 readColumns: sessionColumnReader,
                 readCatalogColumns: catalogColumnReader,
                 readSchemaTables: sessionTableReader,
-                readCatalogSchemaTables: catalogTableReader
+                readCatalogSchemaTables: catalogTableReader,
+                readCatalogForeignKeys: catalogForeignKeyReader
             )
         }
         .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {
@@ -380,7 +403,7 @@ struct QueryEditorView: View {
     }
 
     private var canRun: Bool {
-        !isExecuting && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isExecuting && !coordinator.isDatabaseMoving && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var runAtCursorTitle: String {
@@ -521,6 +544,10 @@ struct QueryEditorView: View {
             noticeBanner(message, systemImage: "exclamationmark.triangle.fill", tint: .orange)
             Divider()
         }
+        if includesTruncation, let notice = viewModel.longValuesNotice {
+            noticeBanner(notice, systemImage: "info.circle.fill", tint: .secondary)
+            Divider()
+        }
         if let summary = viewModel.scriptSummary {
             noticeBanner(summary, systemImage: "checkmark.circle.fill", tint: .green)
             Divider()
@@ -562,7 +589,7 @@ struct QueryEditorView: View {
             keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: [])
         ) { index, line in
             NavigationLink {
-                RowDetailView(columns: columns, rows: viewModel.window.rows, initialIndex: index)
+                resultRowDetail(columns: columns, initialIndex: index)
             } label: {
                 line
             }
@@ -584,11 +611,7 @@ struct QueryEditorView: View {
                 let rowIndex = item.id
                 let row = item.values
                 NavigationLink {
-                    RowDetailView(
-                        columns: viewModel.columns,
-                        rows: viewModel.window.rows,
-                        initialIndex: rowIndex
-                    )
+                    resultRowDetail(columns: viewModel.columns, initialIndex: rowIndex)
                 } label: {
                     resultRowCard(columns: viewModel.columns, row: row)
                 }
@@ -598,6 +621,17 @@ struct QueryEditorView: View {
             }
         }
         .listStyle(.plain)
+    }
+
+    // No table, so nothing to edit; the engine's type and session decide how Copy Row quotes and escapes.
+    private func resultRowDetail(columns: [ColumnInfo], initialIndex: Int) -> some View {
+        RowDetailView(
+            columns: columns,
+            rows: viewModel.window.rows,
+            initialIndex: initialIndex,
+            session: session,
+            databaseType: databaseType
+        )
     }
 
     private func resultRowCard(columns: [ColumnInfo], row: [String?]) -> some View {
@@ -705,12 +739,8 @@ struct QueryEditorView: View {
                 Section("Share Results") {
                     ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {
-                            do throws(ClipboardExporter.IncompleteValues) {
-                                shareText = try ClipboardExporter.exportRows(
-                                    columns: viewModel.columns, rows: viewModel.window.rows.map(\.cells),
-                                    format: format,
-                                    databaseType: databaseType, driver: coordinator.session?.driver
-                                )
+                            do {
+                                shareText = try exportedResults(as: format)
                                 showShareSheet = true
                             } catch {
                                 resultsExportError = error
@@ -723,12 +753,8 @@ struct QueryEditorView: View {
                 Section("Copy Results") {
                     ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {
-                            do throws(ClipboardExporter.IncompleteValues) {
-                                let text = try ClipboardExporter.exportRows(
-                                    columns: viewModel.columns, rows: viewModel.window.rows.map(\.cells),
-                                    format: format,
-                                    databaseType: databaseType, driver: coordinator.session?.driver
-                                )
+                            do {
+                                let text = try exportedResults(as: format)
                                 ClipboardExporter.copyToClipboard(text)
                             } catch {
                                 resultsExportError = error
@@ -764,6 +790,17 @@ struct QueryEditorView: View {
         } message: { error in
             Text(verbatim: error.localizedDescription)
         }
+    }
+
+    private func exportedResults(as format: ExportFormat) throws -> String {
+        guard viewModel.resultsFitExport(availableBytes: MemoryPressureMonitor.shared.availableMemoryBytes()) else {
+            throw ClipboardExporter.TooLarge(source: .queryResult)
+        }
+        return try ClipboardExporter.exportRows(
+            columns: viewModel.columns, rows: viewModel.window.rows.map(\.cells),
+            format: format,
+            databaseType: databaseType, driver: coordinator.session?.driver
+        )
     }
 
     // MARK: - Execution
@@ -819,8 +856,14 @@ struct QueryEditorView: View {
     // Claimed before the first await, so a second Run while the session reports how it reads literals starts nothing.
     private func executeQueryDirect(_ trimmed: String) async {
         guard let session, !isExecuting else { return }
+        // A run with a `USE` in any window holds the session until the picker follows it.
+        guard !coordinator.isDatabaseMoving else {
+            appError = ConnectionCoordinator.databaseMovingRefusal
+            return
+        }
 
         isExecuting = true
+        let movesDatabase = coordinator.beginDatabaseMove(ifRunning: trimmed)
         let startedAt = Date()
         executionStartTime = startedAt
         appError = nil
@@ -829,6 +872,7 @@ struct QueryEditorView: View {
         await completion.finishColumnReads()
         let script = await plan(trimmed, on: session)
         guard !script.isEmpty else {
+            if movesDatabase { coordinator.endDatabaseMove() }
             isExecuting = false
             completion.reopenColumnReads()
             executionStartTime = nil
@@ -843,18 +887,32 @@ struct QueryEditorView: View {
             startedAt: startedAt
         )
 
+        // A write another window started before this run lands where it was aimed before the run can move the session.
+        if movesDatabase { await appState.sessionTransactions.statementsFinished(for: connectionId) }
         let holdsCatalog = SessionLocalStatements.changesDatabases(trimmed, databaseType: databaseType)
         if holdsCatalog { await appState.connectionManager.holdCatalogConnections(for: connectionId) }
         // Waited on before the Stop check, and nothing suspends from here until `track` marks the session busy, which
         // keeps a new list reload off it.
         await appState.catalogChanges.sessionReadsFinished(for: connectionId)
         guard !Task.isCancelled else {
+            if movesDatabase { coordinator.endDatabaseMove() }
             if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
             recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
             isExecuting = false
             completion.reopenColumnReads()
             executionStartTime = nil
             await appState.queryActivities.end(token: token, outcome: .stopped)
+            return
+        }
+
+        // Another window may have begun a run with a `USE` while this one planned; nothing suspends from here to `track`.
+        guard movesDatabase || !coordinator.isDatabaseMoving else {
+            if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
+            appError = ConnectionCoordinator.databaseMovingRefusal
+            isExecuting = false
+            completion.reopenColumnReads()
+            executionStartTime = nil
+            await appState.queryActivities.end(token: token, outcome: QueryExecutionOutcome.failed.activityOutcome)
             return
         }
 
@@ -870,9 +928,15 @@ struct QueryEditorView: View {
         progressUpdater.cancel()
         // Released before the change posts, so the reload it starts can open a catalog connection again.
         if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
-        postCatalogChanges(on: session)
-        // Waits for a request Stop ended to return, which the run's end must not.
-        Task { await coordinator.followSessionDatabase() }
+        let move = postCatalogChanges(on: session)
+        let follow = Task {
+            await coordinator.followSessionPlacement(after: move)
+            if movesDatabase { coordinator.endDatabaseMove() }
+        }
+        // The follow waits for a statement Stop ended to return, which the run's end must not; Run stays off until the
+        // move lands. A plugin driver's read waits for its stopped request too.
+        let stopped = QueryExecutionOutcome(phase: viewModel.phase) == .stopped
+        if !stopped, !(session.driver is PluginBackedDriver) { await follow.value }
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
 
@@ -912,17 +976,18 @@ struct QueryEditorView: View {
     // Every statement sent counts as run, a failed one's too: a missed reload leaves the lists naming what is gone.
     // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
     // session reads literals.
-    private func postCatalogChanges(on session: ConnectionSession) {
+    private func postCatalogChanges(on session: ConnectionSession) -> ConnectionCoordinator.SessionMove {
         let statements = viewModel.sentStatements
         // A key or a collection a write made or removed is on the lists too; only a proven read leaves them as they are.
         guard databaseType.speaksSQL else {
             if statements.contains(where: { SQLWriteClassifier.isWriteQuery($0, databaseType: databaseType) }) {
                 coordinator.noteCatalogChanged([.tables, .databases])
             }
-            return
+            return ConnectionCoordinator.SessionMove()
         }
+        let sessionEffect = SessionLocalStatements.effect(of: statements, databaseType: databaseType)
         appState.catalogChanges.noteSessionEffect(
-            SessionLocalStatements.effect(of: statements, databaseType: databaseType),
+            sessionEffect,
             for: connectionId,
             driver: ObjectIdentifier(session.driver)
         )
@@ -934,6 +999,12 @@ struct QueryEditorView: View {
         // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
         if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }
         coordinator.noteCatalogChanged(kinds)
+        // A transaction's end takes back a `SET LOCAL` or a `SET` inside it, a function may set the search path, and a
+        // typed ROLLBACK of a held transaction also reaches the Roll Back reload.
+        return ConnectionCoordinator.SessionMove(
+            database: sessionEffect.usesDatabase,
+            schema: sessionEffect.leavesCatalog || effect.endsTransaction
+        )
     }
 
     private func plan(_ text: String, on session: ConnectionSession) async -> QueryScript {
@@ -959,14 +1030,13 @@ struct QueryEditorView: View {
     }
 
     private func recordHistory(query: String, outcome: QueryExecutionOutcome, errorMessage: String?) {
-        coordinator.addHistoryItem(
-            QueryHistoryItem(
-                query: query,
-                connectionId: connectionId,
-                wasSuccessful: outcome == .completed,
-                errorMessage: errorMessage
-            )
+        let item = QueryHistoryItem(
+            query: query,
+            connectionId: connectionId,
+            wasSuccessful: outcome == .completed,
+            errorMessage: errorMessage
         )
+        Task { await coordinator.addHistoryItem(item) }
     }
 
     // MARK: - Live Activity

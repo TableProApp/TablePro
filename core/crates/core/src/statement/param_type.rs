@@ -51,13 +51,13 @@ impl ParamType {
         matches!(
             (self, value),
             (Self::Bool, Value::Bool(_))
-                | (Self::Int16 | Self::Int32 | Self::Int64, Value::Int(_))
+                | (Self::Int16 | Self::Int32 | Self::Int64, Value::Int(_) | Value::Int32(_))
                 | (Self::Int64 | Self::UInt64, Value::UInt(_))
                 | (Self::Float32, Value::Float32(_))
                 | (Self::Float64, Value::Float64(_) | Value::Float32(_))
                 | (
                     Self::Decimal,
-                    Value::Decimal(_) | Value::Int(_) | Value::UInt(_) | Value::WideInt(_)
+                    Value::Decimal(_) | Value::Int32(_) | Value::Int(_) | Value::UInt(_) | Value::WideInt(_)
                 )
                 | (Self::Text | Self::FixedText | Self::ServerText(_), Value::Text(_))
                 | (Self::ServerText(_), Value::Other(_))
@@ -185,6 +185,12 @@ mod tests {
         assert!(ParamType::Float64.accepts(&Value::Float32(1.5)));
         assert!(ParamType::Decimal.accepts(&Value::Int(3)));
         assert!(ParamType::Int64.accepts(&Value::UInt(3)));
+        assert!(ParamType::Int64.accepts(&Value::Int32(3)));
+        assert!(ParamType::Decimal.accepts(&Value::Int32(3)));
+        assert!(
+            !ParamType::Float64.accepts(&Value::Int32(3)),
+            "an int32 bound as a double"
+        );
         assert!(
             !ParamType::Float32.accepts(&Value::Float64(1.5)),
             "narrowing was accepted"

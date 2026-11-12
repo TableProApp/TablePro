@@ -26,6 +26,7 @@ private struct BatchOutput: Sendable {
     let rowsAffected: Int
     let errors: [PluginBatchError]
     let discardedResultSetCount: Int
+    let supersededResultSetCount: Int
     let executionTime: TimeInterval
     let errorDescription: String?
     var serverOutput: PluginServerOutput = .none
@@ -157,12 +158,24 @@ extension QueryExecutionCoordinator {
             let plan = await batchResultPlan(prepared, outputs: Self.outputs(of: run.outcome), tabId: tabId)
 
             let sessionNotice = Self.runNotice(outcome: run.outcome, sessionState: run.sessionState)
+            guard parent.tabExecution.settle(claim) || reportsUnknownCommitAfterStop(run.outcome, claim: claim) else {
+                await keepBatchesAfterStop(
+                    prepared, run: run, plan: plan, parameters: parameters, claim: claim, sessionNotice: sessionNotice
+                )
+                return
+            }
+            parent.retireQueryTask(.claim(claim))
+
             switch run.outcome {
             case .cancelled(let outputs):
-                guard parent.tabExecution.settle(claim) else { return }
-                parent.retireQueryTask(.claim(claim))
                 keepStoppedBatches(
-                    prepared, outputs: outputs, parameters: parameters, tabId: tabId, sessionNotice: sessionNotice, plan: plan
+                    prepared,
+                    outputs: outputs,
+                    parameters: parameters,
+                    tabId: tabId,
+                    sessionNotice: sessionNotice,
+                    plan: plan,
+                    presentsResults: true
                 )
                 parent.reportEndedExecutions([
                     EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
@@ -308,7 +321,8 @@ extension QueryExecutionCoordinator {
         driver: DatabaseDriver,
         failureOutput: ServerOutputBox
     ) async throws -> BatchOutput {
-        var combined = QueryBatchResult.empty
+        var earliest = QueryBatchResult.empty
+        var latest = QueryBatchResult.empty
         var printed = BatchPrintedOutput()
         for _ in 0..<max(prepared.batch.repeatCount, 1) {
             try Task.checkCancellation()
@@ -331,14 +345,18 @@ extension QueryExecutionCoordinator {
             }
             printed.append(printedAnswer.serverOutput)
             let answer = printedAnswer.answer
-            combined = combined.followed(by: answer)
+            earliest = earliest.followed(by: answer)
+            latest = latest.followedKeepingLatest(by: answer)
             guard answer.errors.isEmpty else { break }
         }
+        // Once the driver read past result sets, the newest ones kept are not the batch's last.
+        let combined = latest.discardedResultSetCount == 0 ? latest : earliest
         var output = BatchOutput(
             resultSets: combined.resultSets,
             rowsAffected: combined.rowsAffected,
             errors: combined.errors,
             discardedResultSetCount: combined.discardedResultSetCount,
+            supersededResultSetCount: combined.supersededResultSetCount,
             executionTime: combined.executionTime,
             errorDescription: BatchErrorText.describe(combined.errors, batchStartLine: prepared.startLine)
         )
@@ -387,9 +405,6 @@ extension QueryExecutionCoordinator {
         sessionNotice: String?,
         plan: BatchResultPlan
     ) {
-        guard parent.tabExecution.settle(claim) else { return }
-        parent.retireQueryTask(.claim(claim))
-
         let totalRowsAffected = outputs.reduce(0) { $0 + $1.rowsAffected }
         reportOperation(
             kind: .queryBatch,
@@ -406,16 +421,49 @@ extension QueryExecutionCoordinator {
         )
     }
 
+    // A Stop during a batch reads as one between batches: the completed ones are kept, with no error result.
+    private func keepBatchesAfterStop(
+        _ prepared: [PreparedBatch],
+        run: BatchRun,
+        plan: BatchResultPlan,
+        parameters: [QueryParameter],
+        claim: TabExecutionClaim,
+        sessionNotice: String?
+    ) async {
+        let kept = run.outcome.keptAfterStop(plan: run.plan)
+        guard !kept.isEmpty else { return }
+        // A failed batch's own results were in the plan, so a run that drops it is planned again.
+        let keptPlan = kept.count == Self.outputs(of: run.outcome).count
+            ? plan
+            : await batchResultPlan(prepared, outputs: kept, tabId: claim.tabId)
+        let presentsResults = stoppedRunCanReplaceResults(onTab: claim.tabId)
+        guard parent.tabExecution.settleStopped(claim, replacingContent: presentsResults) else { return }
+        keepStoppedBatches(
+            prepared,
+            outputs: kept,
+            parameters: parameters,
+            tabId: claim.tabId,
+            sessionNotice: sessionNotice,
+            plan: keptPlan,
+            presentsResults: presentsResults
+        )
+        parent.reportEndedExecutions([
+            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+        ])
+    }
+
     private func keepStoppedBatches(
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
         parameters: [QueryParameter],
         tabId: UUID,
         sessionNotice: String?,
-        plan: BatchResultPlan
+        plan: BatchResultPlan,
+        presentsResults: Bool
     ) {
         guard !outputs.isEmpty else { return }
         recordBatchHistory(prepared, outputs: outputs, parameters: parameters, tabId: tabId, failedIndex: nil)
+        guard presentsResults else { return }
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
@@ -450,8 +498,6 @@ extension QueryExecutionCoordinator {
         errorResult.failedQuery = report.failedSQL
         errorResult.statementAnchor = failedBatch?.batch.anchor
 
-        guard parent.tabExecution.settle(claim) else { return }
-        parent.retireQueryTask(.claim(claim))
         reportOperation(kind: .queryBatch, claim: claim, outcome: .failed(reason: context.errorDescription))
         recordBatchHistory(
             prepared,
@@ -558,6 +604,7 @@ extension QueryExecutionCoordinator {
             }
         }
         for ((entry, output), queries) in zip(zip(prepared, outputs), plan.queries) {
+            candidate += output.supersededResultSetCount
             let firstCandidate = candidate
             if let queries {
                 for (statement, result) in zip(queries, output.resultSets) {
@@ -627,6 +674,8 @@ extension QueryExecutionCoordinator {
                 }
                 continue
             }
+            // Result sets the batch let go still count toward the run's results, and are never shown.
+            shapes += repeatElement(true, count: output.supersededResultSetCount)
             let pairs: [(sql: String?, result: QueryResult)] = mapped.map { mapped in
                 zip(mapped, output.resultSets).map { (sql: $0.sql as String?, result: $1) }
             } ?? output.resultSets.map { (sql: nil, result: $0) }
@@ -653,7 +702,7 @@ extension QueryExecutionCoordinator {
         let isPlainQuery = { (sql: String) in
             QueryExecutor.qualifiesForRowCap(sql: sql, tabType: .query, databaseType: databaseType)
         }
-        guard BatchResultMapping.mapsToStatements(
+        guard output.supersededResultSetCount == 0, BatchResultMapping.mapsToStatements(
             entry.batch,
             resultSetCount: output.resultSets.count,
             hasErrors: !output.errors.isEmpty,

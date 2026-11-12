@@ -22,6 +22,7 @@ pub(crate) fn bind(value: &Value) -> Result<Bound, DriverError> {
     Ok(match value {
         Value::Null => Bound::Null,
         Value::Bool(flag) => Bound::Boolean(*flag),
+        Value::Int32(integer) => Bound::BigInt(i64::from(*integer)),
         Value::Int(integer) => Bound::BigInt(*integer),
         Value::UInt(integer) => Bound::UBigInt(*integer),
         Value::WideInt(integer) => match (integer.to_i128(), integer.to_u128()) {

@@ -242,17 +242,23 @@ impl TrackedValues {
         RowSnapshot::new(cells, pending.into_iter().collect())
     }
 
-    /// Like `snapshot`, except a draft's cell left to the server stays
-    /// `Default`.
+    /// Like `snapshot`, except a cell left to the server stays `Default`,
+    /// a draft's or a saved row's pending one.
     pub fn inputs(&self, row: &GridRow) -> Vec<CellInput> {
         if let (GridRowId::Draft(draft_id), Some(tracker)) = (row.id(), self.tracker.as_ref()) {
             return tracker.draft_inputs(draft_id).unwrap_or_default();
         }
-        self.snapshot(row)
-            .to_values()
-            .into_iter()
-            .map(CellInput::Value)
-            .collect()
+        let width = row.cells().map_or(0, |cells| cells.len());
+        (0..width).map(|column| self.edit_input(row, column)).collect()
+    }
+
+    /// Whether the cell shows the value as it was read, with no edit over
+    /// it.
+    pub fn shows_read_value(&self, row: &GridRow, column: usize) -> bool {
+        !matches!(row.id(), GridRowId::Draft(_))
+            && self
+                .tracked_key(row)
+                .is_none_or(|(tracker, key)| tracker.cell_overlay(&key, column).pending.is_none())
     }
 }
 

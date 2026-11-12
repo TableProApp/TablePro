@@ -62,10 +62,10 @@ pub struct PromptFieldInfo {
     pub secret: bool,
 }
 
-#[derive(Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Clone, uniffi::Enum)]
 pub enum PromptAnswer {
     // One value per field; a host key or a confirmation is trusted with none.
-    Submitted { values: Vec<String>, remember: bool },
+    Submitted { values: Vec<SecretString>, remember: bool },
     Cancelled,
 }
 
@@ -177,10 +177,7 @@ impl From<PromptReason> for PromptReasonTag {
 impl From<PromptAnswer> for PromptReply {
     fn from(answer: PromptAnswer) -> Self {
         match answer {
-            PromptAnswer::Submitted { values, remember } => Self::Submitted {
-                values: values.into_iter().map(SecretString::from).collect(),
-                remember,
-            },
+            PromptAnswer::Submitted { values, remember } => Self::Submitted { values, remember },
             PromptAnswer::Cancelled => Self::Cancelled,
         }
     }
@@ -242,7 +239,7 @@ mod tests {
         let prompter = bridge(Answering {
             asked: asked.clone(),
             answer: PromptAnswer::Submitted {
-                values: vec!["correct horse".to_owned()],
+                values: vec![SecretString::from("correct horse")],
                 remember: true,
             },
         });
@@ -277,7 +274,7 @@ mod tests {
     #[test]
     fn debug_output_of_an_answer_holds_no_typed_value() {
         let answer = PromptAnswer::Submitted {
-            values: vec!["correct horse".to_owned()],
+            values: vec![SecretString::from("correct horse")],
             remember: true,
         };
 

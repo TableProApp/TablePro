@@ -2,9 +2,6 @@
 //  CellDisplayFormatter.swift
 //  TablePro
 //
-//  Pure formatter that transforms raw cell values into display-ready strings.
-//  Used by the data grid coordinator's display cache to compute values once per cell.
-//
 
 import Foundation
 import TableProPluginKit
@@ -19,7 +16,14 @@ enum CellDisplayFormatter {
         displayFormat: ValueDisplayFormat? = nil,
         databaseType: DatabaseType? = nil
     ) -> String? {
-        display(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType).text
+        resolve(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: DateFormattingService.shared.renderer,
+            checksRendering: false
+        ).text
     }
 
     static func format(
@@ -29,7 +33,14 @@ enum CellDisplayFormatter {
         databaseType: DatabaseType?,
         dates: DateDisplayRenderer
     ) -> String? {
-        display(rawValue, columnType: columnType, displayFormat: displayFormat, databaseType: databaseType, dates: dates).text
+        resolve(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: dates,
+            checksRendering: false
+        ).text
     }
 
     @MainActor
@@ -39,12 +50,13 @@ enum CellDisplayFormatter {
         displayFormat: ValueDisplayFormat?,
         databaseType: DatabaseType?
     ) -> (text: String?, isFormatted: Bool) {
-        display(
+        resolve(
             rawValue,
             columnType: columnType,
             displayFormat: displayFormat,
             databaseType: databaseType,
-            dates: DateFormattingService.shared.renderer
+            dates: DateFormattingService.shared.renderer,
+            checksRendering: true
         )
     }
 
@@ -55,6 +67,25 @@ enum CellDisplayFormatter {
         displayFormat: ValueDisplayFormat?,
         databaseType: DatabaseType?,
         dates: DateDisplayRenderer
+    ) -> (text: String?, isFormatted: Bool) {
+        resolve(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: dates,
+            checksRendering: true
+        )
+    }
+
+    // Find, the value filter and the display order discard the flag, and the JSON and PHP checks read the whole value.
+    private static func resolve(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer,
+        checksRendering: Bool
     ) -> (text: String?, isFormatted: Bool) {
         switch rawValue {
         case .null:
@@ -71,7 +102,7 @@ enum CellDisplayFormatter {
             if let displayFormat, displayFormat != .raw,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
                let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType, dates: dates) {
-                return (fitToCell(formatted), rendered(formatted, from: value, by: displayFormat))
+                return (fitToCell(formatted), checksRendering && rendered(formatted, from: value, by: displayFormat))
             }
             var displayValue = value
             if let columnType {

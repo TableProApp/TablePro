@@ -10,16 +10,24 @@ public enum ConnectionState
     Failed,
 }
 
-public sealed record SecretAnswer(string Secret, bool Save);
+public sealed record SecretAnswer(string Secret, bool Save)
+{
+    // A record's ToString prints every property, and this one holds a password.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append("Secret = [REDACTED], Save = ").Append(Save);
+        return true;
+    }
+}
 
 // The core calls a connect makes.
 public interface IConnector<TSession>
 {
-    Task<TSession> ConnectSavedAsync(Guid id, ConnectionSecrets secrets, CancellationToken cancellationToken);
+    // The core stores keep once it logs in, against the record it connected with, so an edit saved meanwhile wins.
+    Task<TSession> ConnectSavedAsync(
+        Guid id, ConnectionSecrets secrets, ConnectionSecrets keep, CancellationToken cancellationToken);
 
     Task<TSession> OpenFileAsync(string path, string? engineId, CancellationToken cancellationToken);
-
-    Task SaveSecretsAsync(Guid id, ConnectionSecrets secrets);
 }
 
 // What an open connection shows and asks while it connects and closes; its tabs live in the view.
@@ -100,46 +108,25 @@ public sealed class ConnectionLife<TSession>
             return;
         }
 
-        using var connecting = new CancellationTokenSource();
-        _connecting = connecting;
-        SetState(ConnectionState.Connecting);
-        _view.ShowConnecting();
-        try
+        await RunConnectAsync().ConfigureAwait(true);
+    }
+
+    // The core read the saved connection as the connect began, so one saved since takes a connect that starts over.
+    public Task RestartConnectAsync()
+    {
+        // A connect the user cancelled is still ending, and ends as cancelled.
+        if (State != ConnectionState.Connecting
+            || _connecting is not { } superseded
+            || superseded.IsCancellationRequested)
         {
-            var session = Origin.ConnectionId is { } id
-                ? await ConnectSavedAsync(id, connecting.Token).ConfigureAwait(true)
-                : await _connector.OpenFileAsync(
-                    Origin.FilePath!,
-                    string.IsNullOrEmpty(Origin.EngineId) ? null : Origin.EngineId,
-                    connecting.Token).ConfigureAwait(true);
-            var share = new SessionShare<TSession>(session);
-            Share = share;
-            SetState(ConnectionState.Connected);
-            _view.ShowConnected(share, _restore, adopted: false);
-            _restore = null;
-            _keepOnCancel = false;
+            return Task.CompletedTask;
         }
-        catch (OperationCanceledException)
-        {
-            SetState(ConnectionState.NotConnected);
-            if (_keepOnCancel)
-            {
-                _view.ShowCancelledKeepsTabs();
-            }
-            else
-            {
-                Cancelled?.Invoke(this, EventArgs.Empty);
-            }
-        }
-        catch (TableProException exception)
-        {
-            SetState(ConnectionState.Failed);
-            _view.ShowFailed(exception.Error);
-        }
-        finally
-        {
-            _connecting = null;
-        }
+
+        // Cleared first, so the old connect's end leaves the state to the new one.
+        _connecting = null;
+        superseded.Cancel();
+        _view.CancelRecovery();
+        return RunConnectAsync();
     }
 
     public void CancelConnect()
@@ -181,6 +168,64 @@ public sealed class ConnectionLife<TSession>
 
     public SessionConnection Snapshot() => _view.Snapshot(_restore ?? Origin);
 
+    private async Task RunConnectAsync()
+    {
+        using var connecting = new CancellationTokenSource();
+        _connecting = connecting;
+        SetState(ConnectionState.Connecting);
+        _view.ShowConnecting();
+        try
+        {
+            var session = Origin.ConnectionId is { } id
+                ? await ConnectSavedAsync(id, connecting.Token).ConfigureAwait(true)
+                : await _connector.OpenFileAsync(
+                    Origin.FilePath!,
+                    string.IsNullOrEmpty(Origin.EngineId) ? null : Origin.EngineId,
+                    connecting.Token).ConfigureAwait(true);
+            // The core checks the token only until the server answers, so its session can arrive after a cancel.
+            if (connecting.IsCancellationRequested)
+            {
+                await DiscardAsync(session).ConfigureAwait(true);
+                connecting.Token.ThrowIfCancellationRequested();
+            }
+
+            var share = new SessionShare<TSession>(session);
+            Share = share;
+            SetState(ConnectionState.Connected);
+            _view.ShowConnected(share, _restore, adopted: false);
+            _restore = null;
+            _keepOnCancel = false;
+        }
+        catch (OperationCanceledException) when (ReferenceEquals(_connecting, connecting))
+        {
+            SetState(ConnectionState.NotConnected);
+            if (_keepOnCancel)
+            {
+                _view.ShowCancelledKeepsTabs();
+            }
+            else
+            {
+                Cancelled?.Invoke(this, EventArgs.Empty);
+            }
+        }
+        catch (TableProException exception) when (ReferenceEquals(_connecting, connecting))
+        {
+            SetState(ConnectionState.Failed);
+            _view.ShowFailed(exception.Error);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or TableProException)
+        {
+            // A connect started over in its place shows its own outcome.
+        }
+        finally
+        {
+            if (ReferenceEquals(_connecting, connecting))
+            {
+                _connecting = null;
+            }
+        }
+    }
+
     // A secret with none saved is asked for, as macOS asks; closing the dialog cancels the connect.
     private async Task<TSession> ConnectSavedAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -192,13 +237,8 @@ public sealed class ConnectionLife<TSession>
         {
             try
             {
-                var session = await _connector.ConnectSavedAsync(id, secrets, cancellationToken).ConfigureAwait(true);
-                if (remembered != ConnectionSecrets.None)
-                {
-                    await SaveSecretsAsync(id, remembered).ConfigureAwait(true);
-                }
-
-                return session;
+                return await _connector.ConnectSavedAsync(id, secrets, remembered, cancellationToken)
+                    .ConfigureAwait(true);
             }
             catch (TableProException exception)
                 when (exception.Error.HostKey is { TrustAllowed: true } key && replaced.Add(key.Host))
@@ -228,24 +268,24 @@ public sealed class ConnectionLife<TSession>
         }
     }
 
+    private static async Task DiscardAsync(TSession session)
+    {
+        try
+        {
+            await session.DisposeAsync().ConfigureAwait(true);
+        }
+        catch (TableProException)
+        {
+            // The session lets go of its connection even when the close fails, and this connect still ends cancelled.
+        }
+    }
+
     private static ConnectionSecrets WithSecret(ConnectionSecrets secrets, SecretKind kind, string value) => kind switch
     {
         SecretKind.SshPassword => secrets with { SshPassword = value },
         SecretKind.SshPassphrase => secrets with { SshPassphrase = value },
         _ => secrets with { DatabasePassword = value },
     };
-
-    private async Task SaveSecretsAsync(Guid id, ConnectionSecrets secrets)
-    {
-        try
-        {
-            await _connector.SaveSecretsAsync(id, secrets).ConfigureAwait(true);
-        }
-        catch (TableProException)
-        {
-            // The connect worked; a secret that could not be saved is asked for again next time.
-        }
-    }
 
     private void SetState(ConnectionState state)
     {
@@ -271,18 +311,10 @@ public sealed class CoreConnector : IConnector<DatabaseSession>
     public Task<DatabaseSession> ConnectSavedAsync(
         Guid id,
         ConnectionSecrets secrets,
+        ConnectionSecrets keep,
         CancellationToken cancellationToken) =>
-        _core.ConnectAsync(id, secrets, _prompter, cancellationToken);
+        _core.ConnectAsync(id, secrets, _prompter, keep, cancellationToken);
 
     public Task<DatabaseSession> OpenFileAsync(string path, string? engineId, CancellationToken cancellationToken) =>
         _core.OpenFileAsync(new FileOpenOptions(path, engineId), cancellationToken);
-
-    public async Task SaveSecretsAsync(Guid id, ConnectionSecrets secrets)
-    {
-        var snapshot = await _core.Library.GetSnapshotAsync().ConfigureAwait(true);
-        if (snapshot.Connections.FirstOrDefault(connection => connection.Id == id) is { } saved)
-        {
-            await _core.Library.SaveAsync(saved, secrets).ConfigureAwait(true);
-        }
-    }
 }

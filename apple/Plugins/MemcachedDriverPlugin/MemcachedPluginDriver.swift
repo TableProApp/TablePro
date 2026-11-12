@@ -417,6 +417,8 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ]
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         [MemcachedPlugin.keysTable: try await fetchColumns(table: MemcachedPlugin.keysTable, schema: schema)]
     }

@@ -469,6 +469,40 @@ struct DataBrowserViewModelTests {
         #expect(driver.executedQueries.contains(where: { $0.uppercased().hasPrefix("DELETE") }))
     }
 
+    @Test("A delete confirmed after another window moved the browser to another schema is refused")
+    func deleteRaisedInAnotherSchemaIsRefused() {
+        let driver = MockDatabaseDriver()
+        let session = makeSession(driver: driver)
+        let vm = DataBrowserViewModel()
+        vm.attach(session: session, table: TableInfo(name: "users"), databaseType: .mssql, host: "localhost", schema: "dbo")
+        let raised = vm.rowSource
+        #expect(!vm.refusesDelete(raisedOn: raised))
+        #expect(vm.operationError == nil)
+
+        vm.attach(session: session, table: TableInfo(name: "users"), databaseType: .mssql, host: "localhost", schema: "archive")
+
+        #expect(vm.refusesDelete(raisedOn: raised))
+        #expect(vm.operationError != nil)
+        #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("A delete confirmed after a redial handed the browser a new session is refused")
+    func deleteRaisedOnAnOlderSessionIsRefused() {
+        let vm = DataBrowserViewModel()
+        vm.attach(
+            session: makeSession(driver: MockDatabaseDriver()), table: TableInfo(name: "users"),
+            databaseType: .postgresql, host: "localhost", schema: "public"
+        )
+        let raised = vm.rowSource
+
+        vm.attach(
+            session: makeSession(driver: MockDatabaseDriver()), table: TableInfo(name: "users"),
+            databaseType: .postgresql, host: "localhost", schema: "public"
+        )
+
+        #expect(vm.refusesDelete(raisedOn: raised))
+    }
+
     @Test("A binary, NULL or ref-less cut key cell gives no key, and a cut one with a ref gives the whole key")
     func nonTextKeyGivesNoKey() async {
         let columns = [
@@ -872,6 +906,81 @@ struct DataBrowserViewModelTests {
         return QueryResult(columns: makeColumns(), rows: rows, rowsAffected: 0, executionTime: 0)
     }
 
+    private func firstPageQuery(
+        _ type: DatabaseType,
+        columns: [ColumnInfo],
+        sort: SortState = SortState()
+    ) async -> String? {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = columns
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "events"), databaseType: type, host: "localhost")
+        vm.sortState = sort
+        await vm.load(isInitial: true)
+        // The page size is the user's default, so the expected text names it as `{limit}`.
+        return driver.executedQueries.first?.replacingOccurrences(of: "LIMIT \(vm.pagination.pageSize) ", with: "LIMIT {limit} ")
+            .replacingOccurrences(of: "NEXT \(vm.pagination.pageSize) ROWS", with: "NEXT {limit} ROWS")
+    }
+
+    private var compositeKey: [ColumnInfo] {
+        [
+            ColumnInfo(name: "tenant", typeName: "INT", isPrimaryKey: true, ordinalPosition: 0),
+            ColumnInfo(name: "id", typeName: "INT", isPrimaryKey: true, ordinalPosition: 1),
+            ColumnInfo(name: "status", typeName: "TEXT", ordinalPosition: 2)
+        ]
+    }
+
+    @Test("A PostgreSQL page orders by every key column, so paging neither repeats nor skips rows")
+    func postgresPageOrdersByTheWholeKey() async {
+        let query = await firstPageQuery(.postgresql, columns: compositeKey)
+        #expect(query == #"SELECT * FROM "events" ORDER BY "tenant" ASC, "id" ASC LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("A ClickHouse page orders by its key columns")
+    func clickHousePageOrdersByTheKey() async {
+        let columns = [
+            ColumnInfo(name: "day", typeName: "Date", isPrimaryKey: true, ordinalPosition: 0),
+            ColumnInfo(name: "hits", typeName: "UInt64", ordinalPosition: 1)
+        ]
+        let query = await firstPageQuery(.clickhouse, columns: columns)
+        #expect(query == "SELECT * FROM `events` ORDER BY `day` ASC LIMIT {limit} OFFSET 0")
+    }
+
+    @Test("A PostgreSQL table with no key pages as before")
+    func keylessPostgresPageHasNoOrder() async {
+        let columns = [ColumnInfo(name: "note", typeName: "TEXT", ordinalPosition: 0)]
+        let query = await firstPageQuery(.postgresql, columns: columns)
+        #expect(query == #"SELECT * FROM "events" LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("The user's sort comes first and the key breaks its ties")
+    func userSortKeepsTheKeyAsTiebreak() async {
+        let sort = SortState(columns: [SortColumn(name: "status", ascending: false)])
+        let query = await firstPageQuery(.postgresql, columns: compositeKey, sort: sort)
+        #expect(query == #"SELECT * FROM "events" ORDER BY "status" DESC, "tenant" ASC, "id" ASC LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("A key column the user sorts by is not repeated")
+    func userSortOnAKeyColumnIsNotRepeated() async {
+        let sort = SortState(columns: [SortColumn(name: "id", ascending: false)])
+        let query = await firstPageQuery(.postgresql, columns: compositeKey, sort: sort)
+        #expect(query == #"SELECT * FROM "events" ORDER BY "id" DESC, "tenant" ASC LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("SQL Server orders by the whole key, and a keyless table by its first column")
+    func sqlServerOrdersByTheWholeKey() async {
+        let keyed = await firstPageQuery(.mssql, columns: compositeKey)
+        #expect(keyed == "SELECT * FROM [events] ORDER BY [tenant] ASC, [id] ASC OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY")
+        let keyless = await firstPageQuery(.mssql, columns: [ColumnInfo(name: "note", typeName: "NVARCHAR", ordinalPosition: 0)])
+        #expect(keyless == "SELECT * FROM [events] ORDER BY [note] ASC OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY")
+    }
+
+    @Test("MySQL and Redshift pages keep their scan order")
+    func scanOrderedEnginesAddNoOrder() async {
+        #expect(await firstPageQuery(.mysql, columns: compositeKey) == "SELECT * FROM `events` LIMIT {limit} OFFSET 0")
+        #expect(await firstPageQuery(.redshift, columns: compositeKey) == #"SELECT * FROM "events" LIMIT {limit} OFFSET 0"#)
+    }
+
     @Test("A page trimmed under memory pressure labels the rows it kept, not the ones it dropped")
     func trimmedPageLabelsTheRowsItKept() async {
         let driver = MockDatabaseDriver()
@@ -1020,6 +1129,37 @@ struct DataBrowserViewModelTests {
         #expect(vm.legacyRows.isEmpty)
         #expect(vm.isLoading == false)
         #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("a long value in a key's contents stays whole within the budget, and the grid shows a preview of it")
+    func longKeyValueStaysWhole() async {
+        let long = String(repeating: "v", count: 10_000)
+        let driver = MockKeyContentsDriver()
+        driver.scriptedPages = [
+            .success(KeyContentsPage(
+                result: QueryResult(
+                    columns: [ColumnInfo(name: "value", typeName: "string", ordinalPosition: 0)],
+                    rows: [[long]],
+                    rowsAffected: 0,
+                    executionTime: 0
+                ),
+                totalCount: 1
+            ))
+        ]
+        let vm = DataBrowserViewModel(textBudgetBytes: { 1_000_000 })
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "profile"), databaseType: .redis, host: "localhost")
+
+        await vm.load(isInitial: true)
+
+        guard case .text(let kept)? = vm.cells(at: 0).first else {
+            Issue.record("the value should be kept whole, got \(vm.cells(at: 0))")
+            return
+        }
+        #expect(kept == long)
+        #expect(DataBrowserViewModel.canComplete(vm.cells(at: 0)))
+        let shown = vm.legacyRows.first?.first ?? nil
+        #expect(shown?.utf8.count == Cell.previewByteLimit)
     }
 }
 

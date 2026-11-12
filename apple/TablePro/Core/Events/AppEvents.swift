@@ -80,7 +80,6 @@ final class AppEvents {
 
     let browseContainerChanged = PassthroughSubject<UUID, Never>()
 
-    // The connections strip moves its highlight on this.
     let visibleContainerChanged = PassthroughSubject<Void, Never>()
 
     let sessionTransactionsChanged = PassthroughSubject<UUID, Never>()

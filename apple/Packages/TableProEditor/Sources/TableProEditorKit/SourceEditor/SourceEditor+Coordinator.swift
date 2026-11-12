@@ -37,11 +37,12 @@ public extension SourceEditor {
 
         init(
             text: TextAPI,
+            documentID: AnyHashable? = nil,
             editorState: Binding<SourceEditorState>,
             highlightProviders: [any HighlightProviding]?,
             textCoordinators: [any TextViewCoordinator]
         ) {
-            self.textSync = TextBindingSync(text: text, phase: phase)
+            self.textSync = TextBindingSync(text: text, documentID: documentID, phase: phase)
             self._editorState = editorState
             self.highlightProviders = highlightProviders ?? [TreeSitterClient()]
             self.textCoordinators = textCoordinators

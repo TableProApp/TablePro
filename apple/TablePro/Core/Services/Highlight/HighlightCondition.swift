@@ -10,8 +10,8 @@ struct HighlightCondition {
     static let searchLimit = 10_000
 
     private enum ValueKind {
-        case numeric
-        case boolean
+        // A boolean column can hold numbers: MySQL's TINYINT(1) stores any integer from -128 to 127.
+        case numberOrBoolean
         case text
     }
 
@@ -130,10 +130,8 @@ struct HighlightCondition {
 
     private var prefersNumbers: Bool {
         switch valueKind {
-        case .numeric:
+        case .numberOrBoolean:
             return true
-        case .boolean:
-            return false
         case .text:
             return isOrderingOperator
         }
@@ -141,7 +139,7 @@ struct HighlightCondition {
 
     private var prefersBooleans: Bool {
         switch valueKind {
-        case .numeric, .boolean:
+        case .numberOrBoolean:
             return true
         case .text:
             return false
@@ -194,12 +192,7 @@ struct HighlightCondition {
         regularExpression(pattern, ignoresCase: false) != nil
     }
 
-    /// `searchLimit` caps the haystack in `searchable(_:)`, not the pattern. Capping the pattern
-    /// looked like a guard against a runaway expression and is not one: cost comes from a pattern's
-    /// shape rather than its length, and `(a+)+$` compiles in 0.01ms. Measured against this cap,
-    /// a valid 160,000-unit alternation compiles in 8.85ms, once per rule set rather than per row,
-    /// so the only thing the cap achieved was to refuse a pattern the user wrote and then report it
-    /// as invalid. Nil now means the expression will not compile, and nothing else.
+    // No length cap: cost follows a pattern's shape, and a valid 160,000-unit alternation compiled in 8.85ms.
     private static func regularExpression(_ pattern: String, ignoresCase: Bool) -> NSRegularExpression? {
         guard !pattern.isEmpty else { return nil }
         return try? NSRegularExpression(pattern: pattern, options: ignoresCase ? [.caseInsensitive] : [])
@@ -207,10 +200,8 @@ struct HighlightCondition {
 
     private static func valueKind(for columnType: ColumnType?) -> ValueKind {
         switch columnType {
-        case .integer, .decimal:
-            return .numeric
-        case .boolean:
-            return .boolean
+        case .integer, .decimal, .boolean:
+            return .numberOrBoolean
         case .text, .date, .timestamp, .datetime, .blob, .json, .enumType, .set, .spatial, .vector, .array, .none:
             return .text
         }

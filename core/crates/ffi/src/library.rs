@@ -118,15 +118,14 @@ pub struct ConnectionRecord {
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
-#[derive(Clone, Default, PartialEq, Eq, uniffi::Record)]
+#[derive(Clone, Default, uniffi::Record)]
 pub struct ConnectionSecrets {
-    pub database_password: Option<String>,
-    pub ssh_password: Option<String>,
-    pub ssh_passphrase: Option<String>,
+    pub database_password: Option<SecretString>,
+    pub ssh_password: Option<SecretString>,
+    pub ssh_passphrase: Option<SecretString>,
 }
 
 impl ConnectionSecrets {
-    // Moves each string into a SecretString, which wipes it on drop, instead of leaving a plain copy behind.
     pub(crate) fn into_typed(self) -> Vec<(SecretKind, SecretString)> {
         [
             (SecretKind::DatabasePassword, self.database_password),
@@ -134,7 +133,7 @@ impl ConnectionSecrets {
             (SecretKind::SshPassphrase, self.ssh_passphrase),
         ]
         .into_iter()
-        .filter_map(|(kind, secret)| secret.map(|secret| (kind, SecretString::from(secret))))
+        .filter_map(|(kind, secret)| secret.map(|secret| (kind, secret)))
         .collect()
     }
 }
@@ -196,16 +195,78 @@ const RECENT_LIMIT: usize = 8;
 // A kind as the vault held it before a save, None for no value or one that could not be read.
 type HeldValue = (SecretKind, Option<SecretString>);
 
+// Held by every write that can change or drop a connection, and by a connect keeping the secret it logged in with.
+pub(crate) type LibraryWrites = Arc<tokio::sync::Mutex<()>>;
+
+// An edit, a delete or a secret saved since the connect read the record wins: what it typed may unlock nothing now.
+pub(crate) async fn keep_proved_secrets(
+    store: &ConnectionStore,
+    vault: &Arc<dyn SecretVault>,
+    writes: &LibraryWrites,
+    tasks: &Tasks,
+    proved: &SavedConnection,
+    typed: Vec<(SecretKind, SecretString)>,
+) {
+    if typed.is_empty() {
+        return;
+    }
+    let _held = writes.lock().await;
+    let reader = store.clone();
+    let id = proved.id;
+    let current = match tasks.spawn_blocking_task(move || reader.list_blocking()).await {
+        Ok(Ok(list)) => list.connections.iter().find(|saved| saved.id == id).cloned(),
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "could not read the connection to keep the secret its connect logged in with");
+            return;
+        }
+        Err(failure) => {
+            tracing::warn!(%failure, "could not read the connection to keep the secret its connect logged in with");
+            return;
+        }
+    };
+    let Some(current) = current.filter(|current| current.connects_like(proved)) else {
+        return;
+    };
+    for (kind, secret) in typed {
+        // The connect asked for it because none was stored, so one stored now came from a save since.
+        if !matches!(vault.load(id, kind).await, Ok(SecretLookup::NotStored)) {
+            continue;
+        }
+        let target = current.secret_target(kind);
+        if let Err(error) = vault
+            .store(id, kind, &secret, &english_secret_label(kind, &target))
+            .await
+        {
+            tracing::warn!(%error, "could not keep the secret a connect logged in with");
+        }
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct ConnectionLibrary {
     store: ConnectionStore,
     secrets: Arc<dyn SecretVault>,
     tasks: Tasks,
+    writes: LibraryWrites,
 }
 
 impl ConnectionLibrary {
-    pub(crate) fn new(store: ConnectionStore, secrets: Arc<dyn SecretVault>, tasks: Tasks) -> Self {
-        Self { store, secrets, tasks }
+    pub(crate) fn new(
+        store: ConnectionStore,
+        secrets: Arc<dyn SecretVault>,
+        tasks: Tasks,
+        writes: LibraryWrites,
+    ) -> Self {
+        Self {
+            store,
+            secrets,
+            tasks,
+            writes,
+        }
+    }
+
+    pub(crate) async fn hold_writes(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.writes.lock().await
     }
 
     pub(crate) async fn delete_secrets(&self, ids: Vec<Uuid>) -> Result<(), CoreError> {
@@ -386,6 +447,7 @@ impl ConnectionLibrary {
         let tls = tls_config(&record.tls)?;
         let typed = secrets.into_typed();
         let kinds = typed.iter().map(|(kind, _)| *kind).collect();
+        let _held = self.hold_writes().await;
         // Read before anything is written, for a refused secret to put back.
         let previous = match id {
             Some(id) => self.held_values(id, kinds).await?,
@@ -430,6 +492,7 @@ impl ConnectionLibrary {
     // Secrets go first, so a refused store leaves the connection listed to delete again, never a secret no entry names.
     pub async fn delete(&self, id: String) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
+        let _held = self.hold_writes().await;
         self.delete_secrets(vec![id]).await?;
         self.blocking(move |store| {
             store.remove_blocking(id)?;
@@ -585,6 +648,7 @@ impl ConnectionLibrary {
 
     // Merges a TablePro connections file; it carries no passwords.
     pub async fn import_file(&self, path: String) -> Result<ImportSummary, CoreError> {
+        let _held = self.hold_writes().await;
         self.blocking(move |store| {
             let path = PathBuf::from(path);
             let bytes = std::fs::read(&path).map_err(|error| {
@@ -838,9 +902,9 @@ mod tests {
     #[test]
     fn debug_output_says_which_secrets_are_held_but_not_what_they_are() {
         let secrets = ConnectionSecrets {
-            database_password: Some("hunter2".to_owned()),
+            database_password: Some(SecretString::from("hunter2")),
             ssh_password: None,
-            ssh_passphrase: Some(String::new()),
+            ssh_passphrase: Some(SecretString::from("")),
         };
 
         assert_eq!(

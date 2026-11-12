@@ -144,6 +144,63 @@ struct TSQLControlFlowBlockTests {
         #expect(!SQLUnterminatedStatements.blockHoldsSeveralStatements(sql, grammar: postgreSQL))
     }
 
+    @Test("A ; that ends an IF's body before its ELSE stays inside the IF", arguments: [
+        (
+            "IF DATENAME(weekday, GETDATE()) IN (N'Saturday', N'Sunday')\n       SELECT 'Weekend';\nELSE\n       SELECT 'Weekday';",
+            ["IF DATENAME(weekday, GETDATE()) IN (N'Saturday', N'Sunday')\n       SELECT 'Weekend';\nELSE\n       SELECT 'Weekday'"]
+        ),
+        ("IF @a = 1 SELECT 1; -- one\nELSE SELECT 2; SELECT 3", ["IF @a = 1 SELECT 1; -- one\nELSE SELECT 2", "SELECT 3"]),
+        (
+            "IF @a = 1 IF @b = 1 SELECT 1; ELSE SELECT 2; ELSE SELECT 3; SELECT 4",
+            ["IF @a = 1 IF @b = 1 SELECT 1; ELSE SELECT 2; ELSE SELECT 3", "SELECT 4"]
+        ),
+        (
+            "IF @a = 1 SELECT 1; ELSE IF @b = 1 SELECT 2; ELSE SELECT 3; SELECT 4",
+            ["IF @a = 1 SELECT 1; ELSE IF @b = 1 SELECT 2; ELSE SELECT 3", "SELECT 4"]
+        ),
+        ("WHILE @i < 3 IF @i = 1 BREAK; ELSE SET @i += 1; SELECT @i", ["WHILE @i < 3 IF @i = 1 BREAK; ELSE SET @i += 1", "SELECT @i"]),
+        ("IF @a = 1 BEGIN SELECT 1; END; ELSE SELECT 2; SELECT 3", ["IF @a = 1 BEGIN SELECT 1; END; ELSE SELECT 2", "SELECT 3"]),
+        ("IF @a = 1 SELECT 1;; ELSE SELECT 2", ["IF @a = 1 SELECT 1;; ELSE SELECT 2"]),
+        ("IF @a = 1 \(Self.merge); ELSE SELECT 2;", ["IF @a = 1 \(Self.merge); ELSE SELECT 2"]),
+        ("IF @a = 1 SELECT 1; ELSE \(Self.merge);", ["IF @a = 1 SELECT 1; ELSE \(Self.merge);"]),
+    ])
+    func semicolonBeforeElse(sql: String, expected: [String]) {
+        #expect(sent(sql) == expected)
+        #expect(!SQLUnterminatedStatements.blockHoldsSeveralStatements(expected[0], grammar: Self.sqlServer))
+    }
+
+    @Test("A ; after an IF's body ends the IF when no ELSE follows", arguments: [
+        ("IF @a = 1 SELECT 1; SELECT 2;", ["IF @a = 1 SELECT 1", "SELECT 2"]),
+        ("IF @a = 1 SELECT 1;\n", ["IF @a = 1 SELECT 1"]),
+        ("IF @a = 1 SELECT 1;; SELECT 2", ["IF @a = 1 SELECT 1", "SELECT 2"]),
+        ("IF @a = 1 SELECT 1; [ELSE]", ["IF @a = 1 SELECT 1", "[ELSE]"]),
+        ("IF @a = 1 SELECT 1; ELSEWHERE", ["IF @a = 1 SELECT 1", "ELSEWHERE"]),
+        ("IF @a = 1 SELECT 1 ELSE SELECT 2; ELSE SELECT 3", ["IF @a = 1 SELECT 1 ELSE SELECT 2", "ELSE SELECT 3"]),
+        ("SELECT 1; ELSE SELECT 2", ["SELECT 1", "ELSE SELECT 2"]),
+        ("DROP TABLE IF EXISTS t; SELECT 1", ["DROP TABLE IF EXISTS t", "SELECT 1"]),
+        (
+            "IF @a = 1 SELECT CASE WHEN @b = 1 THEN 1 ELSE 2 END; SELECT 3",
+            ["IF @a = 1 SELECT CASE WHEN @b = 1 THEN 1 ELSE 2 END", "SELECT 3"]
+        ),
+    ])
+    func semicolonWithoutElse(sql: String, expected: [String]) {
+        #expect(sent(sql) == expected)
+    }
+
+    @Test("Run Current anywhere in an IF ... ELSE runs the whole IF, and the gate tiers both branches")
+    func caretOnTheElseRunsTheIf() {
+        let statement = "IF @env = 'dev'\n  SELECT 1;\nELSE\n  DROP TABLE dbo.t"
+        let sql = "SELECT 0;\n\(statement);\nSELECT 9;"
+
+        #expect(atCursor(sql, on: "ELSE") == statement)
+        #expect(atCursor(sql, on: "DROP") == statement)
+        #expect(atCursor(sql, on: "SELECT 9") == "SELECT 9")
+        #expect(SQLStatementScanner.navigableStatements(in: sql, grammar: Self.sqlServer).count == 3)
+
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "SQL Server", declared: nil, session: nil)
+        #expect(SQLStatementClassifier.classify(statement, databaseTypeId: "SQL Server", readings: readings).tier == .destructive)
+    }
+
     @Test("Other engines still read BEGIN outside a routine as a word", arguments: ["PostgreSQL", "MySQL", "SQLite"])
     func otherEnginesAreUnchanged(typeId: String) {
         let grammar = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil).execution
