@@ -658,7 +658,7 @@ struct SessionTransactionTrackerTests {
             isAborted: false,
             connectionName: "Prod",
             database: "sales",
-            safeModeLevel: .silent
+            effectiveSafeModeLevel: .silent
         )
         #expect(open.title == "Transaction Open")
         #expect(open.subtitle == "sales")
@@ -669,7 +669,7 @@ struct SessionTransactionTrackerTests {
             isAborted: false,
             connectionName: "Prod",
             database: nil,
-            safeModeLevel: .readOnly
+            effectiveSafeModeLevel: .readOnly
         )
         #expect(!readOnly.offersCommit)
         #expect(readOnly.subtitle == "Prod")
@@ -678,7 +678,7 @@ struct SessionTransactionTrackerTests {
             isAborted: true,
             connectionName: "Prod",
             database: "",
-            safeModeLevel: .silent
+            effectiveSafeModeLevel: .silent
         )
         #expect(!aborted.offersCommit)
         #expect(aborted.title == "Transaction Failed")

@@ -35,6 +35,9 @@ internal enum BatchCommitStatement {
         case "END":
             guard let follower = cursor.next()?.word else { return true }
             return transactionNouns.contains(follower)
+        // Teradata's abbreviation of END TRANSACTION.
+        case "ET":
+            return cursor.next() == nil
         default:
             return false
         }

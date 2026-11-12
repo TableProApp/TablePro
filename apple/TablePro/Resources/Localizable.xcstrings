@@ -17297,6 +17297,12 @@
         }
       }
     },
+    "A statement failed in the transaction, so it can only be rolled back." : {
+
+    },
+    "A statement is still running in the transaction, so it cannot be committed now." : {
+
+    },
     "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved." : {
       "localizations" : {
         "fr" : {
@@ -17686,7 +17692,13 @@
     "A transaction is open on this connection, and this change cannot run inside it. Nothing was run. Commit or roll back the transaction, then try again." : {
 
     },
+    "A transaction is open on this connection, and this change would have to end it. Commit or roll back the transaction, then try again." : {
+
+    },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
+
+    },
+    "A transaction is still open on %@." : {
 
     },
     "A transaction is still open on this connection. Commit or roll it back." : {
@@ -36699,6 +36711,9 @@
     "Changes Unavailable" : {
 
     },
+    "Changes you don’t commit are rolled back." : {
+
+    },
     "Changing %@ from %@ to %@ can truncate existing values." : {
       "localizations" : {
         "en" : {
@@ -53274,6 +53289,9 @@
         }
       }
     },
+    "Could Not Commit the Transaction" : {
+
+    },
     "Could Not Compare" : {
       "localizations" : {
         "fr" : {
@@ -66842,6 +66860,33 @@
         }
       }
     },
+    "Do you want to commit the open transaction before closing “%@”?" : {
+
+    },
+    "Do you want to commit the open transaction before closing the database “%@”?" : {
+
+    },
+    "Do you want to commit the open transaction before disconnecting from “%@”?" : {
+
+    },
+    "Do you want to commit the open transaction before quitting?" : {
+
+    },
+    "Do you want to commit the open transaction before relaunching?" : {
+
+    },
+    "Do you want to commit the open transactions before closing “%@”?" : {
+
+    },
+    "Do you want to commit the open transactions before disconnecting from “%@”?" : {
+
+    },
+    "Do you want to commit the open transactions before quitting?" : {
+
+    },
+    "Do you want to commit the open transactions before relaunching?" : {
+
+    },
     "Do you want to save changes?" : {
       "localizations" : {
         "fr" : {
@@ -71483,6 +71528,9 @@
       "generatesSymbol" : false
     },
     "Edits %@" : {
+
+    },
+    "Edits saved with Manual Commit on are not committed yet." : {
 
     },
     "Effective" : {
@@ -144791,6 +144839,9 @@
         }
       }
     },
+    "Read-Only Safe Mode does not allow a commit." : {
+
+    },
     "Read-only SQL over Iceberg tables in R2" : {
       "localizations" : {
         "fr" : {
@@ -171390,6 +171441,9 @@
         }
       }
     },
+    "Some tabs have unsaved edits. Relaunching will discard these changes." : {
+
+    },
     "Some values are set outside this file" : {
       "localizations" : {
         "fr" : {
@@ -175078,6 +175132,21 @@
           }
         }
       }
+    },
+    "Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open bar, then begin the rest with “%4$@”." : {
+
+    },
+    "Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open bar, then run the rest." : {
+
+    },
+    "Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open bar. A new run starts in the tab's database, so begin the rest with “%4$@”." : {
+
+    },
+    "Statement %1$d/%2$d moves the session to another database, which this session takes only outside a transaction. The run stopped before it. Click Commit or Roll Back on the Transaction Open bar, then run the script again from statement %1$d." : {
+
+    },
+    "Statement %1$d/%2$d moves the session to another database, which this session takes only outside a transaction. The run stopped before it. Click Roll Back on the Transaction Open bar, move the statement above the script's BT, then run the script again from there." : {
+
     },
     "Statement %lld" : {
       "extractionState" : "stale",
@@ -187754,6 +187823,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The connection “%@” has an open transaction. Changes you don’t commit are rolled back." : {
+
+    },
+    "The connection “%@” has open transactions. Changes you don’t commit are rolled back." : {
+
+    },
     "The connection closed." : {
 
     },
@@ -188550,6 +188625,9 @@
 
     },
     "The data has no values to insert into %@." : {
+
+    },
+    "The database “%@” has an open transaction. Changes you don’t commit are rolled back." : {
 
     },
     "The database “%@” has an open transaction. Closing rolls it back and discards its uncommitted changes." : {
@@ -197397,6 +197475,9 @@
     "These columns would leave too little room to scroll the rest." : {
 
     },
+    "These connections have open transactions: %@. Changes you don’t commit are rolled back." : {
+
+    },
     "These connections open their tunnel by running a command on this Mac, every time they connect:\n\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -197412,6 +197493,9 @@
 
     },
     "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both.\n\n%@" : {
+
+    },
+    "These databases have open transactions: %@. Changes you don’t commit are rolled back." : {
 
     },
     "These databases have open transactions: %@. Closing rolls them back and discards their uncommitted changes." : {
@@ -198165,6 +198249,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection has an open transaction. Closing rolls it back and discards its uncommitted changes." : {
+
+    },
     "This connection has an open transaction. Commit or roll it back first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -198176,6 +198263,9 @@
           }
         }
       }
+    },
+    "This connection has an open transaction. Disconnecting rolls it back and discards its uncommitted changes." : {
+
     },
     "This connection has another database attached, which closing the file would detach." : {
       "extractionState" : "manual",
@@ -208427,7 +208517,13 @@
     "Uncommitted changes on “%@” are rolled back when TablePro quits." : {
 
     },
+    "Uncommitted changes on “%@” are rolled back when TablePro relaunches." : {
+
+    },
     "Uncommitted changes on %@ are rolled back when TablePro quits." : {
+
+    },
+    "Uncommitted changes on %@ are rolled back when TablePro relaunches." : {
 
     },
     "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server" : {

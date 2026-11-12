@@ -41,11 +41,6 @@ internal struct RunningWorkPrompt: Equatable, Sendable {
         return ([message, lines, consequence(of: action)] + notes(for: work)).joined(separator: "\n\n")
     }
 
-    // An open transaction rides along as a loss: closing or disconnecting rolls it back.
-    internal static func transactionLines(for databases: [String]) -> [String] {
-        databases.map { String(format: String(localized: "Open transaction in “%@”"), $0) }
-    }
-
     internal static func line(for work: RunningWork) -> String {
         let subject = work.subject.trimmingCharacters(in: .whitespacesAndNewlines)
         let connection = work.connectionName

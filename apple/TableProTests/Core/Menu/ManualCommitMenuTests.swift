@@ -108,13 +108,12 @@ struct ManualCommitMenuTests {
         #expect(enabled(commit, context))
     }
 
-    @Test("Commit is offered for an open hold below Read-Only, never for an aborted one")
+    // The level is the gate's, managed floor included, so Commit is never offered for the gate to refuse.
+    @Test("Commit is offered for an open hold below the effective Read-Only, never for an aborted one")
     func commitFollowsSafeModeAndState() {
-        let key = SessionTransactionTracker.Key(connectionId: UUID(), lane: nil)
-        let open = SessionTransactionTracker.Hold(key: key, state: .open, revision: 1)
-        let aborted = SessionTransactionTracker.Hold(key: key, state: .aborted, revision: 1)
-        #expect(ConnectionTransactionActions.offersCommit(open, safeModeLevel: .silent))
-        #expect(!ConnectionTransactionActions.offersCommit(open, safeModeLevel: .readOnly))
-        #expect(!ConnectionTransactionActions.offersCommit(aborted, safeModeLevel: .silent))
+        #expect(ConnectionTransactionActions.offersCommit(.open, effectiveLevel: .silent))
+        #expect(ConnectionTransactionActions.offersCommit(.open, effectiveLevel: .safeModeFull))
+        #expect(!ConnectionTransactionActions.offersCommit(.open, effectiveLevel: .readOnly))
+        #expect(!ConnectionTransactionActions.offersCommit(.aborted, effectiveLevel: .silent))
     }
 }

@@ -20,7 +20,10 @@ struct BatchStatementRunTests {
         commitPoints: Set<String> = [],
         failing: String? = nil,
         stopsAfter: Int = .max,
-        commitOutput: ServerOutputBox = ServerOutputBox()
+        commitOutput: ServerOutputBox = ServerOutputBox(),
+        endsItsTransaction: (String) -> Bool = { _ in false },
+        closesTransaction: (String) -> Bool = { _ in false },
+        movesDatabase: (String) -> Bool = { _ in false }
     ) async -> BatchStatementOutcome<QueryResult> {
         let claims = probe ?? ClaimProbe()
         return await BatchStatementRun.run(
@@ -32,6 +35,9 @@ struct BatchStatementRunTests {
             gate: claims.gate,
             failureSQL: { $0 },
             isCommitPoint: { commitPoints.contains($0) },
+            endsItsTransaction: endsItsTransaction,
+            closesTransaction: closesTransaction,
+            movesDatabase: movesDatabase,
             commitOutput: commitOutput
         ) { statement in
             if claims.recordExecution() == stopsAfter { claims.stop() }
@@ -599,6 +605,318 @@ struct BatchStatementRunTests {
             return
         }
     }
+
+    // MARK: - A statement the session takes nothing after but the end of its transaction
+
+    private static let create = "CREATE MULTISET TABLE sales.t (id INTEGER) PRIMARY INDEX (id)"
+    private static let insert = "INSERT INTO sales.t VALUES (1)"
+
+    nonisolated private static func teradataDefinition(_ sql: String) -> Bool {
+        AutocommitOnlyStatement.matches(sql, family: .teradata, grammar: DatabaseType.teradata.lexicalGrammar)
+    }
+
+    nonisolated private static func teradataEnd(_ sql: String) -> Bool {
+        TransactionEndStatement.matches(sql, grammar: DatabaseType.teradata.lexicalGrammar)
+    }
+
+    nonisolated private static func teradataMove(_ sql: String) -> Bool {
+        AutocommitOnlyStatement.movesDatabase(sql, family: .teradata, grammar: DatabaseType.teradata.lexicalGrammar)
+    }
+
+    private static func runTeradata(
+        _ statements: [String],
+        plan: BatchTransactionPlan = .autocommit,
+        driver: TransactionRecordingDriver,
+        probe: ClaimProbe? = nil,
+        stopsAfter: Int = .max
+    ) async -> BatchStatementOutcome<QueryResult> {
+        await Self.run(
+            plan: plan,
+            driver: driver,
+            probe: probe,
+            statements: statements,
+            stopsAfter: stopsAfter,
+            endsItsTransaction: teradataDefinition,
+            closesTransaction: teradataEnd,
+            movesDatabase: teradataMove
+        )
+    }
+
+    // Error 3722 in ANSI mode; inside BT, Failure 3932 would roll back the whole block.
+    @Test("A run stops after DDL the session holds open, before the next statement, and keeps the DDL's result")
+    func stopsAfterADefinitionTheSessionHolds() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.runTeradata([Self.create, Self.insert], driver: driver)
+
+        #expect(driver.events.isEmpty)
+        #expect(driver.executedQueries == [Self.create])
+        guard case .failed(let results, let failure, let description) = outcome else {
+            Issue.record("expected a stopped run, got \(outcome)")
+            return
+        }
+        #expect(results.count == 1)
+        #expect(failure == .awaitsCommit(sql: Self.create))
+        #expect(description.isEmpty)
+        #expect(outcome.succeededCount == 1)
+        #expect(outcome.ranCount(of: 2) == 1)
+    }
+
+    @Test(
+        "The stop commits nothing and rolls nothing back, whatever the plan",
+        arguments: [BatchTransactionPlan.autocommit, .scriptTransaction, .sessionTransaction, .heldTransaction, .appTransaction]
+    )
+    func theStopLeavesTheTransactionOpen(plan: BatchTransactionPlan) async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.runTeradata([Self.create, Self.insert], plan: plan, driver: driver)
+
+        #expect(!driver.events.contains(.commit))
+        #expect(!driver.events.contains(.rollback))
+        guard case .failed(_, .awaitsCommit, _) = outcome else {
+            Issue.record("expected a stopped run, got \(outcome)")
+            return
+        }
+    }
+
+    @Test(
+        "A run carries on when the next statement ends the transaction",
+        arguments: ["COMMIT WORK", "COMMIT", "ROLLBACK", "ROLLBACK WORK", "ABORT", "ET", "END TRANSACTION"]
+    )
+    func carriesOnIntoTheTransactionEnd(end: String) async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.runTeradata([Self.create, end, Self.insert], driver: driver)
+
+        #expect(driver.executedQueries == [Self.create, end, Self.insert])
+        #expect(outcome.isCompleted)
+    }
+
+    // Teradata mode outside BT commits each request itself, and an unresolved mode cannot say.
+    @Test(
+        "A run carries on when the session holds no transaction after the DDL",
+        arguments: [PluginSessionTransactionState.idle, .unknown]
+    )
+    func carriesOnWhenNothingIsHeld(state: PluginSessionTransactionState) async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = state
+
+        let outcome = await Self.runTeradata([Self.create, Self.insert], driver: driver)
+
+        #expect(driver.executedQueries == [Self.create, Self.insert])
+        #expect(outcome.isCompleted)
+    }
+
+    @Test("A run whose engine has no such rule carries on past DDL")
+    func carriesOnWithoutTheRule() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.run(plan: .autocommit, driver: driver, statements: [Self.create, Self.insert])
+
+        #expect(driver.executedQueries == [Self.create, Self.insert])
+        #expect(outcome.isCompleted)
+    }
+
+    @Test("DDL as the last statement completes the run")
+    func definitionLastCompletes() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.runTeradata([Self.insert, Self.create], driver: driver)
+
+        #expect(driver.executedQueries == [Self.insert, Self.create])
+        #expect(outcome.isCompleted)
+    }
+
+    @Test("The stop reads the statement a replan put next")
+    func theStopReadsTheReplannedStatement() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+        let claims = ClaimProbe()
+
+        let outcome = await BatchStatementRun.run(
+            [Self.create, Self.insert],
+            plan: .autocommit,
+            mode: .readWrite,
+            driver: driver,
+            connectionId: claims.connectionId,
+            gate: claims.gate,
+            failureSQL: { $0 },
+            isCommitPoint: { _ in false },
+            endsItsTransaction: Self.teradataDefinition,
+            closesTransaction: Self.teradataEnd,
+            replanned: { ran in ran == 1 ? ["COMMIT WORK", Self.insert] : nil }
+        ) { statement in
+            try await driver.execute(query: statement)
+        }
+
+        #expect(driver.executedQueries == [Self.create, "COMMIT WORK", Self.insert])
+        #expect(outcome.isCompleted)
+    }
+
+    // A Stop that lands on the DDL is a Stop: the plan takes back what it opened.
+    @Test("A Stop during the DDL is reported as a Stop, not as a wait for the commit")
+    func aStopDuringTheDefinitionWins() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.runTeradata(
+            ["BT", Self.create, Self.insert], plan: .scriptTransaction, driver: driver, stopsAfter: 2
+        )
+
+        #expect(driver.events == [.rollback])
+        #expect(driver.executedQueries == ["BT", Self.create])
+        guard case .cancelled = outcome else {
+            Issue.record("expected a cancelled run, got \(outcome)")
+            return
+        }
+    }
+
+    // MARK: - A statement that moves the session's database
+
+    private static let move = "DATABASE sales_dev"
+    private static let delete = "DELETE FROM orders"
+
+    // A new run is pinned back to the tab's database, so the DELETE would land in the wrong one.
+    @Test(
+        "A run stops before a database move while the session holds a transaction, and sends nothing of it",
+        arguments: [BatchTransactionPlan.autocommit, .scriptTransaction, .sessionTransaction]
+    )
+    func stopsBeforeAMoveInsideATransaction(plan: BatchTransactionPlan) async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.runTeradata([Self.insert, Self.move, Self.delete], plan: plan, driver: driver)
+
+        #expect(driver.executedQueries == [Self.insert])
+        #expect(driver.events.isEmpty)
+        guard case .failed(let results, let failure, let description) = outcome else {
+            Issue.record("expected a stopped run, got \(outcome)")
+            return
+        }
+        #expect(results.count == 1)
+        #expect(failure == .databaseMoveAwaitsCommit(sql: Self.move))
+        #expect(description.isEmpty)
+        #expect(outcome.ranCount(of: 3) == 1)
+    }
+
+    @Test(
+        "Every spelling of a move stops inside a transaction",
+        arguments: ["DATABASE sales_dev", "SET SESSION DATABASE sales_dev", "SS DATABASE sales_dev"]
+    )
+    func everyMoveSpellingStops(move: String) async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.runTeradata([move, Self.delete], driver: driver)
+
+        #expect(driver.executedQueries.isEmpty)
+        guard case .failed(_, .databaseMoveAwaitsCommit(let sql), _) = outcome else {
+            Issue.record("expected a stopped run, got \(outcome)")
+            return
+        }
+        #expect(sql == move)
+    }
+
+    // ANSI opens a transaction for the move alone; the app's own switch commits it the same way.
+    @Test("A move on an idle session is committed at once, and the run carries on in the same run")
+    func moveOnAnIdleSessionIsCommitted() async {
+        let probe = ClaimProbe()
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .idle
+        driver.stateAfterStatement = [Self.move: .inTransaction]
+        driver.stateAfterCommit = .idle
+
+        let outcome = await Self.runTeradata([Self.move, Self.delete], driver: driver, probe: probe)
+
+        #expect(driver.executedQueries == [Self.move, Self.delete])
+        #expect(driver.events == [.commit])
+        #expect(probe.commitPhaseEntries == 1)
+        #expect(probe.commitPhaseExits == 1)
+        #expect(probe.isStoppable)
+        guard case .completed(let results) = outcome else {
+            Issue.record("expected a completed run, got \(outcome)")
+            return
+        }
+        #expect(results.count == 2)
+    }
+
+    @Test("A move that leaves the session idle is not committed")
+    func moveThatOpensNothingIsLeftAlone() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .idle
+
+        let outcome = await Self.runTeradata([Self.move, Self.delete], driver: driver)
+
+        #expect(driver.executedQueries == [Self.move, Self.delete])
+        #expect(driver.events.isEmpty)
+        #expect(outcome.isCompleted)
+    }
+
+    @Test("A move's commit the server refused fails the run at the move")
+    func refusedMoveCommitFailsTheRun() async {
+        let driver = TransactionRecordingDriver(failsCommit: true)
+        driver.sessionState = .idle
+        driver.stateAfterStatement = [Self.move: .inTransaction]
+
+        let outcome = await Self.runTeradata([Self.move, Self.delete], driver: driver)
+
+        #expect(driver.executedQueries == [Self.move])
+        #expect(driver.events == [.commit])
+        guard case .failed(let results, let failure, _) = outcome else {
+            Issue.record("expected a failed run, got \(outcome)")
+            return
+        }
+        #expect(results.isEmpty)
+        #expect(failure == .statement(sql: Self.move))
+    }
+
+    @Test("A move on a session that cannot say what it holds runs as before")
+    func moveOnAnUnknownSessionRunsAsBefore() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .unknown
+
+        let outcome = await Self.runTeradata([Self.move, Self.delete], driver: driver)
+
+        #expect(driver.executedQueries == [Self.move, Self.delete])
+        #expect(driver.events.isEmpty)
+        #expect(outcome.isCompleted)
+    }
+
+    @Test("A run whose engine has no such rule runs a move inside a transaction")
+    func moveWithoutTheRuleRuns() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .inTransaction
+
+        let outcome = await Self.run(plan: .autocommit, driver: driver, statements: [Self.insert, Self.move, Self.delete])
+
+        #expect(driver.executedQueries == [Self.insert, Self.move, Self.delete])
+        #expect(driver.events.isEmpty)
+        #expect(outcome.isCompleted)
+    }
+
+    @Test("A stop after DDL that follows a move names the move, which a new run has to repeat")
+    func stopAfterAMoveNamesTheMove() async {
+        let driver = TransactionRecordingDriver()
+        driver.sessionState = .idle
+        driver.stateAfterStatement = [Self.move: .inTransaction, Self.create: .inTransaction]
+        driver.stateAfterCommit = .idle
+
+        let outcome = await Self.runTeradata([Self.move, Self.create, Self.delete], driver: driver)
+
+        #expect(driver.executedQueries == [Self.move, Self.create])
+        #expect(driver.events == [.commit])
+        guard case .failed(let results, let failure, _) = outcome else {
+            Issue.record("expected a stopped run, got \(outcome)")
+            return
+        }
+        #expect(results.count == 2)
+        #expect(failure == .awaitsCommit(sql: Self.create, databaseMove: Self.move))
+    }
 }
 
 private enum TestError: Error {
@@ -717,6 +1035,11 @@ private final class TransactionRecordingDriver: DatabaseDriver, @unchecked Senda
     private(set) var cancelCount = 0
     private(set) var commitSawCancellation = false
     private(set) var rollbackSawCancellation = false
+    private(set) var executedQueries: [String] = []
+    var sessionState: PluginSessionTransactionState = .unknown
+    // What the session holds once a statement of this text ran, and once a commit went through.
+    var stateAfterStatement: [String: PluginSessionTransactionState] = [:]
+    var stateAfterCommit: PluginSessionTransactionState?
 
     /// What each statement the run executes through this driver should throw, by its text. Only the
     /// commit-point cases use it: everything else fails through the run's own closure.
@@ -753,6 +1076,7 @@ private final class TransactionRecordingDriver: DatabaseDriver, @unchecked Senda
         if let hook = whileCommitting { await MainActor.run { hook() } }
         commitSawCancellation = commitSawCancellation || Task.isCancelled
         if failsCommit { throw commitError }
+        if let stateAfterCommit { sessionState = stateAfterCommit }
     }
 
     func rollbackTransaction() async throws {
@@ -769,10 +1093,16 @@ private final class TransactionRecordingDriver: DatabaseDriver, @unchecked Senda
         return serverOutputs.isEmpty ? .none : serverOutputs.removeFirst()
     }
 
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        sessionState
+    }
+
     func execute(query: String) async throws -> QueryResult {
         executedStatements += 1
+        executedQueries.append(query)
         if executedStatements == 1, let hook = whileExecuting { await MainActor.run { hook() } }
         if let error = failingStatements[query] { throw error }
+        if let next = stateAfterStatement[query] { sessionState = next }
         return .empty
     }
 
