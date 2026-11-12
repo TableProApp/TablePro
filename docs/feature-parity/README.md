@@ -22,7 +22,7 @@ What the Linux app does in each area, in detail: [linux/ROADMAP.md](../../linux/
 | SSH tunnels with jump hosts | Yes | Partial: no jump hosts |
 | Safe Mode per connection (off, confirm writes, read only) | Yes | Partial: Confirm Writes does not ask before a write |
 | Import connections from other apps | Yes | No: imports a TablePro JSON file only |
-| Application menu with Quit | Yes: a main menu, since GNOME apps have no menu bar; [#4139](https://github.com/TableProApp/TablePro/pull/4139) splits the session's commands into a menu of their own | Yes |
+| Application menu with Quit | Yes: a main menu, since GNOME apps have no menu bar, and a session menu for the database commands | Yes |
 | The server's other databases in the sidebar | Yes: each opened from the sidebar's menu | No |
 
 ## Sidebar
@@ -30,16 +30,16 @@ What the Linux app does in each area, in detail: [linux/ROADMAP.md](../../linux/
 | Feature | Linux | Windows |
 |---|---|---|
 | Schemas and tables, with search | Yes | Yes |
-| A schema's objects grouped by kind | In [#4159](https://github.com/TableProApp/TablePro/pull/4159) | Yes |
-| Width set by dragging its edge | In [#4155](https://github.com/TableProApp/TablePro/pull/4155) | Yes |
+| A schema's objects grouped by kind | Yes | Yes |
+| Width set by dragging its edge | Yes | Yes |
 | Toggle in the window header | Yes | Partial: View > Object Tree and Ctrl+B; no button in the title bar |
-| Bottom bar with an Add menu | In [#4146](https://github.com/TableProApp/TablePro/pull/4146) | No |
-| Choose which schemas the sidebar lists | In [#4150](https://github.com/TableProApp/TablePro/pull/4150) | No |
+| Bottom bar with an Add menu | Yes | No |
+| Choose which schemas the sidebar lists | Yes | No |
 | Tables and Favorites scope switch | Yes | No |
-| Favorite folders | In [#4130](https://github.com/TableProApp/TablePro/pull/4130) | No |
+| Favorite folders | Yes | No |
 | Favorite keywords that expand in the editor | No | No |
 | Favorite tables and databases, with environments | No | No |
-| Open Quickly (find a table by name) | In [#4121](https://github.com/TableProApp/TablePro/pull/4121): tables and views; saved queries in [#4133](https://github.com/TableProApp/TablePro/pull/4133), past queries in [#4144](https://github.com/TableProApp/TablePro/pull/4144) | Partial: Ctrl+P moves to the sidebar's filter |
+| Open Quickly (find a table by name) | Yes: tables, views, saved queries and past queries | Partial: Ctrl+P moves to the sidebar's filter |
 
 ## Data grid
 
@@ -54,14 +54,14 @@ What the Linux app does in each area, in detail: [linux/ROADMAP.md](../../linux/
 | Open a referenced row and the rows that reference one | Yes | No |
 | Set Value on every selected row (Empty, NULL, DEFAULT, UUID, an expression, any value) | Partial: Empty, NULL, DEFAULT and the engine's expressions | No |
 | Show row numbers, row height and the text shown for NULL | Yes | No |
-| Highlight rules (color rows and cells by a condition) | In [#4127](https://github.com/TableProApp/TablePro/pull/4127): kept per table in [#4129](https://github.com/TableProApp/TablePro/pull/4129) | No |
-| The grid in the editor theme's colors | In [#4128](https://github.com/TableProApp/TablePro/pull/4128) | No |
-| Font of the grid's cells, and zoom | In [#4135](https://github.com/TableProApp/TablePro/pull/4135): family and size; no zoom | No |
-| Date format of the cells | In [#4142](https://github.com/TableProApp/TablePro/pull/4142) | No |
-| Default sort of a table (none, primary key, first column) | In [#4140](https://github.com/TableProApp/TablePro/pull/4140) | No |
-| The format Copy writes for several rows | In [#4137](https://github.com/TableProApp/TablePro/pull/4137) | No: copies tab-separated values only |
-| Open the row details when a row is selected | In [#4138](https://github.com/TableProApp/TablePro/pull/4138) | No |
-| Mark zero-width, control and special space characters in the value editor | No: [#4141](https://github.com/TableProApp/TablePro/pull/4141) marks spaces, tabs and line breaks instead | No |
+| Highlight rules (color rows and cells by a condition) | Yes | No |
+| The grid in the editor theme's colors | Yes | No |
+| Font of the grid's cells, and zoom | Partial: family and size; no zoom | No |
+| Date format of the cells | Yes | No |
+| Default sort of a table (none, primary key, first column) | Yes | No |
+| The format Copy writes for several rows | Yes | No: copies tab-separated values only |
+| Open the row details when a row is selected | Yes | No |
+| Mark zero-width, control and special space characters in the value editor | Yes | No |
 
 ## Bottom bar
 
@@ -70,7 +70,7 @@ What the Linux app does in each area, in detail: [linux/ROADMAP.md](../../linux/
 | Columns button | Yes | No |
 | Time a page or a query took | Yes | Yes |
 | Data and Structure in one tab | Yes | No |
-| JSON view of the rows | In [#4122](https://github.com/TableProApp/TablePro/pull/4122): table tabs; not query results | No |
+| JSON view of the rows | Partial: table tabs; not query results | No |
 | Chart view of a result | No | No |
 | Map view of a result | No | No |
 
@@ -80,11 +80,11 @@ What the Linux app does in each area, in detail: [linux/ROADMAP.md](../../linux/
 |---|---|---|
 | Row details pane | Yes | No |
 | Type, key and edit marks on a field | Yes | No |
-| Foreign key mark on a field | In [#4131](https://github.com/TableProApp/TablePro/pull/4131) | No |
+| Foreign key mark on a field | Yes | No |
 | Field search and an edited-only filter | Yes | No |
-| A field drawn as its name over its value | In [#4156](https://github.com/TableProApp/TablePro/pull/4156) | No |
-| An editor inside each field row | In [#4157](https://github.com/TableProApp/TablePro/pull/4157) | No |
-| A menu on each field | In [#4158](https://github.com/TableProApp/TablePro/pull/4158) | No |
+| A field drawn as its name over its value | Yes | No |
+| An editor inside each field row | Yes | No |
+| A menu on each field | Yes | No |
 | A row as JSON | Partial: a dialog from the grid's menu, not a view of the row details | No |
 
 ## SQL editor
@@ -119,15 +119,15 @@ What the Linux app does in each area, in detail: [linux/ROADMAP.md](../../linux/
 | AI assistant | Yes | No |
 | MCP server for outside clients | Yes | No |
 | TablePro account and entitlement | Yes | No |
-| The `tablepro` command line tool | In [#4145](https://github.com/TableProApp/TablePro/pull/4145) | No: `tablepro.exe` opens the app and reads no arguments |
+| The `tablepro` command line tool | Yes | No: `tablepro.exe` opens the app and reads no arguments |
 
 ## Window toolbar
 
 | Feature | Linux | Windows |
 |---|---|---|
-| Safe Mode level in the toolbar | In [#4124](https://github.com/TableProApp/TablePro/pull/4124) | No |
+| Safe Mode level in the toolbar | Yes | No |
 | Refresh button | Yes | Yes |
-| Save Changes button | In [#4126](https://github.com/TableProApp/TablePro/pull/4126) | No |
+| Save Changes button | Yes | No |
 | Connection and database chips | Partial: the title names the connection and the sidebar lists every open connection and database; no chips | Partial: the title bar names the connection; no database chip |
 | Back and Forward through a tab's browse history | n/a: a referenced row opens in a new tab, where macOS moves the tab to it | No |
 | Actions menu (Preview SQL, Show and Copy DDL, Users and Roles, Query Insights, Server Dashboard) | Partial: Show CREATE TABLE is in the sidebar's menu; the rest is not built | No |
