@@ -28,6 +28,8 @@ private enum AutocommitOnlyFixture {
             return sqlServer
         case .oracle:
             return TestGrammar.oracle
+        case .teradata:
+            return DatabaseType.teradata.lexicalGrammar
         case .redis, .other:
             return TestGrammar.standard
         }
@@ -390,5 +392,70 @@ struct AutocommitOnlyStatementSQLServerTests {
     )
     func oracleKeepsTheWrap(statement: String) {
         #expect(!AutocommitOnlyFixture.matches(statement, .oracle))
+    }
+}
+
+struct AutocommitOnlyStatementTeradataTests {
+    @Test(
+        "Teradata takes nothing but the end of a transaction after these",
+        arguments: [
+            "CREATE MULTISET TABLE sales.t (id INTEGER) PRIMARY INDEX (id)",
+            "create volatile table v (id integer) on commit preserve rows",
+            "CT sales.t (id INTEGER)",
+            "ALTER TABLE sales.t ADD note VARCHAR(10)",
+            "DROP TABLE sales.t",
+            "RENAME TABLE sales.t TO t2",
+            "REPLACE VIEW sales.v AS SELECT 1 AS a",
+            "COMMENT ON TABLE sales.t AS 'orders'",
+            "COLLECT STATISTICS COLUMN (id) ON sales.t",
+            "COLLECT STATS ON sales.t COLUMN id",
+            "DATABASE sales",
+            "SET SESSION DATABASE sales",
+            "SET SESSION DATEFORM = ANSIDATE",
+            "SET QUERY_BAND = 'app=tp;' FOR SESSION",
+            "SET ROLE analyst",
+            "SET TIME ZONE LOCAL",
+            "MODIFY USER u AS PERM = 1e9",
+            "DELETE DATABASE sales",
+            "DELETE USER u",
+            "GRANT SELECT ON sales TO u",
+            "REVOKE SELECT ON sales FROM u",
+            "BEGIN QUERY LOGGING ON ALL",
+            "END QUERY LOGGING ON ALL",
+            "BEGIN LOGGING ON EACH ALL ON TABLE sales.t",
+            "FLUSH QUERY LOGGING WITH ALL",
+            "-- nightly\nDROP TABLE sales.t",
+            "/* rebuild */ CREATE TABLE t (a INTEGER)",
+        ]
+    )
+    func teradataRefusals(statement: String) {
+        #expect(AutocommitOnlyFixture.matches(statement, .teradata))
+    }
+
+    @Test(
+        "Data and transaction statements keep the wrap",
+        arguments: [
+            "SELECT * FROM sales.t",
+            "SEL * FROM sales.t",
+            "INSERT INTO sales.t VALUES (1)",
+            "UPDATE sales.t SET id = 2",
+            "DELETE FROM sales.t",
+            "DELETE sales.t ALL",
+            "MERGE INTO sales.t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET id = s.id",
+            "HELP SESSION",
+            "SHOW TABLE sales.t",
+            "BT",
+            "ET",
+            "BEGIN TRANSACTION",
+            "END TRANSACTION",
+            "COMMIT WORK",
+            "ROLLBACK",
+            "CHECKPOINT sales.j",
+            "LOCKING ROW FOR ACCESS SELECT * FROM sales.t",
+            "SELECT 'CREATE TABLE t (a INTEGER)'",
+        ]
+    )
+    func teradataAcceptances(statement: String) {
+        #expect(!AutocommitOnlyFixture.matches(statement, .teradata))
     }
 }

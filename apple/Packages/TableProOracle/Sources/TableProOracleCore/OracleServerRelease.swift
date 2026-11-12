@@ -32,4 +32,14 @@ public struct OracleServerRelease: Sendable, Equatable {
     public var hasVectorInfo: Bool {
         major > 23 || (major == 23 && update >= 4)
     }
+
+    // 12.1 added `ALL_CONSTRAINTS.SEARCH_CONDITION_VC`. Before it a check's text is only in the LONG `SEARCH_CONDITION`.
+    public var hasSearchConditionText: Bool {
+        major >= 12
+    }
+
+    // 23ai brought SQL's BOOLEAN type. Before it `TRUE` and `FALSE` are names, and a statement using one fails ORA-00904.
+    public var hasBooleanType: Bool {
+        major >= 23
+    }
 }
