@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use deadpool_postgres::{Pool, PoolError, TimeoutType, Timeouts};
+use deadpool_postgres::{PoolError, TimeoutType, Timeouts};
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
@@ -31,7 +31,7 @@ use crate::errors::{map_error, map_pool_error};
 use crate::metadata;
 use crate::pg_call::PgCall;
 use crate::physical::PgEndpoint;
-use crate::pool::{probe_timeouts, workspace_timeouts};
+use crate::pool::{PgPool, probe_timeouts, workspace_timeouts};
 use crate::standalone::Standalone;
 use crate::stream_read::stream;
 use crate::workspace_call::{
@@ -43,7 +43,7 @@ use crate::write_batch::{WritePlan, perform, precheck};
 /// connections behind the sidebar, the grid and every save.
 pub(crate) struct PgConnection {
     endpoint: Arc<PgEndpoint>,
-    pool: Pool,
+    pool: PgPool,
     calls: OwnedCalls,
     tracker: TaskTracker,
     settings: WorkspaceSettings,
@@ -56,7 +56,7 @@ pub(crate) struct PgConnection {
 impl PgConnection {
     pub(crate) fn new(
         endpoint: Arc<PgEndpoint>,
-        pool: Pool,
+        pool: PgPool,
         tracker: TaskTracker,
         settings: WorkspaceSettings,
         server: ServerInfo,

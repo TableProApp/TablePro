@@ -5,7 +5,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts};
+use deadpool::managed::{self, Metrics, RecycleResult};
+use deadpool_postgres::{ClientWrapper, Manager, ManagerConfig, RecyclingMethod, Runtime, Timeouts};
 use tablepro_core::{DriverError, LivenessPolicy};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::task::JoinHandle;
@@ -50,17 +51,54 @@ impl deadpool_postgres::Connect for PgConnect {
     }
 }
 
-pub(crate) fn build_pool(endpoint: Arc<PgEndpoint>, tracker: TaskTracker) -> Result<Pool, DriverError> {
+pub(crate) type PgPool = managed::Pool<PgManager>;
+pub(crate) type PgObject = managed::Object<PgManager>;
+
+// deadpool-postgres's Fast recycle hands a connection out again while its connection task runs: a server that closed
+// it, or a route whose keepalive failed, has already ended that task.
+pub(crate) struct PgManager {
+    fast: Manager,
+    ask_after_idle: Duration,
+}
+
+impl managed::Manager for PgManager {
+    type Type = ClientWrapper;
+    type Error = tokio_postgres::Error;
+
+    async fn create(&self) -> Result<ClientWrapper, tokio_postgres::Error> {
+        self.fast.create().await
+    }
+
+    // A route can drop an idle connection without a word, and keepalive finds that out only after its idle time, so
+    // a connection idle that long answers the server first.
+    async fn recycle(&self, client: &mut ClientWrapper, metrics: &Metrics) -> RecycleResult<tokio_postgres::Error> {
+        self.fast.recycle(client, metrics).await?;
+        if metrics.last_used() >= self.ask_after_idle {
+            client.simple_query("").await?;
+        }
+        Ok(())
+    }
+
+    fn detach(&self, client: &mut ClientWrapper) {
+        self.fast.detach(client);
+    }
+}
+
+pub(crate) fn build_pool(endpoint: Arc<PgEndpoint>, tracker: TaskTracker) -> Result<PgPool, DriverError> {
     let liveness = *endpoint.liveness();
-    let manager = Manager::from_connect(
+    let fast = Manager::from_connect(
         Config::new(),
         PgConnect { endpoint, tracker },
         ManagerConfig {
-            recycling_method: RecyclingMethod::Verified,
+            recycling_method: RecyclingMethod::Fast,
         },
     );
+    let manager = PgManager {
+        fast,
+        ask_after_idle: liveness.tcp_keepalive_idle,
+    };
     let timeouts = workspace_timeouts(&liveness);
-    Pool::builder(manager)
+    PgPool::builder(manager)
         .max_size(WORKSPACE_POOL_MAX_SIZE)
         .wait_timeout(timeouts.wait)
         .create_timeout(timeouts.create)

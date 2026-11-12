@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken};
 use tablepro_core::sql_syntax::{SourceTable, SqlGrammar};
 use tablepro_core::{DriverError, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, SinkFlow, Truncation, Value};
-use tokio_postgres::SimpleQueryMessage;
+use tokio_postgres::{SimpleQueryMessage, SimpleQueryStream};
 use tracing::debug;
 
 use super::cursor_flight::{
@@ -164,23 +164,23 @@ impl<'a> Run<'a> {
         }
     }
 
-    // A row source goes through a cursor, so a result larger than the limit stops on the server. The DECLARE and the
-    // FETCH go as separate messages.
+    // A row source goes through a cursor, so a result larger than the limit stops on the server. It costs two flights,
+    // each sent whole and answered in order: the open with the DECLARE, then the FETCH with the end of the cursor.
     async fn cursor(
         &mut self,
         text: &str,
         class: StatementClass,
         owner: CursorOwner,
     ) -> Result<Option<DriverError>, Lost> {
-        let open = match owner {
-            CursorOwner::Driver { read_only: true } => "START TRANSACTION READ ONLY",
-            CursorOwner::Driver { read_only: false } => "BEGIN",
-            CursorOwner::Savepoint => SAVEPOINT,
-        };
-        if let Some(error) = self.exchange(open, Role::Control).await? {
+        // With backslash escapes on, the statement the parser reads may not be the one the server ran.
+        let traced = traceable(text, owner)
+            .filter(|_| self.core.standard_conforming_strings() && !self.stopped() && self.watch.due().is_none());
+        let opening = self.open_cursor(text, owner, traced).await?;
+        if let Some(error) = opening.opened {
+            self.core.discard_notices();
             return Ok(Some(error));
         }
-        let declared = self.read(&declare(text), Role::Wrapper).await?.map(correct_position);
+        let declared = opening.declared.map(correct_position);
         if declared
             .as_ref()
             .is_some_and(|error| needs_plain_statement(error) && !self.stopped())
@@ -195,26 +195,123 @@ impl<'a> Run<'a> {
             self.abandon_cursor(owner, false).await?;
             return Ok(Some(error));
         }
-        // With backslash escapes on, the statement the parser reads may not be the one the server ran.
-        self.traced = match traceable(text, owner) {
-            Some(statement) if self.core.standard_conforming_strings() => self.trace(statement).await?,
-            _ => None,
+        let traced = match opening.trace {
+            Some(answers) => self.traced_table(answers).await?,
+            None => None,
         };
-        let fetched = self
-            .exchange(&fetch(self.limit), Role::User { class, cursor: true })
-            .await?;
-        self.traced = None;
-        if let Some(error) = fetched {
+        self.watch.settle().await;
+        if self.stopped() {
             self.abandon_cursor(owner, false).await?;
-            return Ok(Some(error));
+            return Ok(Some(DriverError::Cancelled));
         }
-        self.exchange(CLOSE, Role::Control).await?;
-        // Deferred triggers fire at the COMMIT, for the user's statement.
-        let closed = match owner {
-            CursorOwner::Driver { .. } => self.exchange("COMMIT", Role::Wrapper).await?,
-            CursorOwner::Savepoint => self.exchange(RELEASE_SAVEPOINT, Role::Wrapper).await?,
+        self.fetch_rows(class, owner, traced).await
+    }
+
+    // A failed open fails the DECLARE before it plans anything, so no part of the statement runs outside the
+    // transaction or savepoint it needs. The origin lookup rides along, after the DECLARE that took the lock it reads.
+    async fn open_cursor(
+        &mut self,
+        text: &str,
+        owner: CursorOwner,
+        traced: Option<SourceTable>,
+    ) -> Result<Opening, Lost> {
+        let open = match owner {
+            CursorOwner::Driver { read_only: true } => "START TRANSACTION READ ONLY",
+            CursorOwner::Driver { read_only: false } => "BEGIN",
+            CursorOwner::Savepoint => SAVEPOINT,
         };
-        Ok(closed)
+        self.watch.settle().await;
+        let opening = self.queue(open).await?;
+        let declaring = self.queue(&declare(text)).await?;
+        let client = &self.core.client;
+        let mut flight = std::pin::pin!(async move {
+            let trace = async move {
+                match traced {
+                    Some(statement) => Some(futures_util::join!(
+                        client.batch_execute(result_origin::SAVEPOINT),
+                        result_origin::lookup(client, statement),
+                        client.batch_execute(result_origin::RELEASE_SAVEPOINT),
+                    )),
+                    None => None,
+                }
+            };
+            futures_util::join!(answer(opening), answer(declaring), trace)
+        });
+        let (opened, declared, trace) = loop {
+            tokio::select! {
+                biased;
+                answers = &mut flight => break answers,
+                interrupt = self.watch.triggered(), if self.watch.fired().is_none() => {
+                    let running = Some((Arc::clone(&self.core.endpoint), self.core.cancel_token.clone()));
+                    self.watch.fire(interrupt, running);
+                }
+                () = self.watch.gave_up(), if self.watch.fired().is_some() => return Err(Lost),
+            }
+        };
+        Ok(Opening {
+            opened: opened?,
+            declared: declared?,
+            trace,
+        })
+    }
+
+    // A lookup that failed is rolled back to its own savepoint, which leaves the cursor's transaction and the user's
+    // rows as they were.
+    async fn traced_table(&mut self, (saved, found, released): TraceAnswers) -> Result<Option<TracedTable>, Lost> {
+        if saved.is_ok() && released.is_err() && !self.stopped() {
+            self.exchange(result_origin::ROLLBACK_TO_SAVEPOINT, Role::Control)
+                .await?;
+        }
+        Ok(match (found, released) {
+            (Ok(traced), Ok(())) => traced,
+            (Ok(_), Err(_)) => None,
+            (Err(error), _) => {
+                debug!(%error, "the origin lookup of a result failed");
+                None
+            }
+        })
+    }
+
+    // COMMIT closes a cursor declared without HOLD and ends a block the FETCH aborted as a rollback, so it needs no
+    // answer before it goes. RELEASE leaves a cursor open, so the savepoint's cursor is closed first.
+    async fn fetch_rows(
+        &mut self,
+        class: StatementClass,
+        owner: CursorOwner,
+        traced: Option<TracedTable>,
+    ) -> Result<Option<DriverError>, Lost> {
+        let fetching = self.queue(&fetch(self.limit)).await?;
+        let closing = match owner {
+            CursorOwner::Driver { .. } => None,
+            CursorOwner::Savepoint => Some(self.queue(CLOSE).await?),
+        };
+        let ending = match owner {
+            CursorOwner::Driver { .. } => self.queue("COMMIT").await?,
+            CursorOwner::Savepoint => self.queue(RELEASE_SAVEPOINT).await?,
+        };
+        self.traced = traced;
+        let fetched = self.drain(fetching, Role::User { class, cursor: true }).await;
+        self.traced = None;
+        let fetched = fetched?;
+        self.forward_notices().await;
+        if let Some(closing) = closing {
+            self.drain(closing, Role::Control).await?;
+        }
+        // Deferred triggers fire at the COMMIT, for the user's statement.
+        let ended = self.drain(ending, Role::Wrapper).await?;
+        self.forward_notices().await;
+        match owner {
+            CursorOwner::Driver { .. } => {
+                // A cancel that reached the COMMIT before it ran leaves the block open and aborted.
+                if ended.is_some() {
+                    self.exchange("ROLLBACK", Role::Control).await?;
+                }
+                self.core.tracker.set(KnownState::Idle);
+            }
+            CursorOwner::Savepoint if fetched.is_some() => self.core.tracker.set(KnownState::Failed),
+            CursorOwner::Savepoint => {}
+        }
+        Ok(fetched.or(ended))
     }
 
     /// Undo the cursor's own transaction or savepoint after a failure.
@@ -235,49 +332,6 @@ impl<'a> Run<'a> {
             (CursorOwner::Savepoint, false) => self.core.tracker.set(KnownState::Failed),
         }
         Ok(())
-    }
-
-    // The lookup goes in one round trip between a savepoint of the driver's own and its release, so one that fails
-    // is rolled back to the savepoint and leaves the cursor's transaction and the user's rows as they were.
-    async fn trace(&mut self, statement: SourceTable) -> Result<Option<TracedTable>, Lost> {
-        if self.stopped() || self.watch.due().is_some() {
-            return Ok(None);
-        }
-        self.watch.settle().await;
-        let (saved, found, released) = {
-            let client = &self.core.client;
-            let mut flight = std::pin::pin!(async move {
-                futures_util::join!(
-                    client.batch_execute(result_origin::SAVEPOINT),
-                    result_origin::lookup(client, statement),
-                    client.batch_execute(result_origin::RELEASE_SAVEPOINT),
-                )
-            });
-            loop {
-                tokio::select! {
-                    biased;
-                    answers = &mut flight => break answers,
-                    interrupt = self.watch.triggered(), if self.watch.fired().is_none() => {
-                        let running = Some((Arc::clone(&self.core.endpoint), self.core.cancel_token.clone()));
-                        self.watch.fire(interrupt, running);
-                    }
-                    () = self.watch.gave_up(), if self.watch.fired().is_some() => return Err(Lost),
-                }
-            }
-        };
-        self.core.discard_notices();
-        if saved.is_ok() && released.is_err() && !self.stopped() {
-            self.exchange(result_origin::ROLLBACK_TO_SAVEPOINT, Role::Control)
-                .await?;
-        }
-        match (found, released) {
-            (Ok(traced), Ok(())) => Ok(traced),
-            (Ok(_), Err(_)) => Ok(None),
-            (Err(error), _) => {
-                debug!(%error, "the origin lookup of a result failed");
-                Ok(None)
-            }
-        }
     }
 
     async fn track(&mut self, class: StatementClass, succeeded: bool) -> Result<(), Lost> {
@@ -331,10 +385,17 @@ impl<'a> Run<'a> {
         if self.stopped() && matches!(role, Role::User { .. }) {
             return Ok(Some(DriverError::Cancelled));
         }
-        let stream = match self.core.client.simple_query_raw(sql).await {
-            Ok(stream) => stream,
-            Err(_) => return Err(Lost),
-        };
+        let stream = self.queue(sql).await?;
+        self.drain(stream, role).await
+    }
+
+    // tokio-postgres writes a message as soon as it is queued, and the server answers in order, so messages queued
+    // before any answer is read share one round trip.
+    async fn queue(&mut self, sql: &str) -> Result<SimpleQueryStream, Lost> {
+        self.core.client.simple_query_raw(sql).await.map_err(|_| Lost)
+    }
+
+    async fn drain(&mut self, stream: SimpleQueryStream, role: Role) -> Result<Option<DriverError>, Lost> {
         let mut stream = std::pin::pin!(stream);
         let mut set = ResultSet::default();
         let mut first_error = None;
@@ -467,6 +528,34 @@ impl<'a> Run<'a> {
             .await;
         }
     }
+}
+
+struct Opening {
+    opened: Option<DriverError>,
+    declared: Option<DriverError>,
+    trace: Option<TraceAnswers>,
+}
+
+type TraceAnswers = (
+    Result<(), tokio_postgres::Error>,
+    Result<Option<TracedTable>, DriverError>,
+    Result<(), tokio_postgres::Error>,
+);
+
+/// The first error of a driver message that returns no rows.
+async fn answer(stream: SimpleQueryStream) -> Result<Option<DriverError>, Lost> {
+    let mut stream = std::pin::pin!(stream);
+    let mut first_error = None;
+    while let Some(message) = stream.next().await {
+        match message {
+            Ok(_) => {}
+            Err(error) if error.as_db_error().is_none() => return Err(Lost),
+            Err(error) => {
+                first_error.get_or_insert_with(|| map_error(&error));
+            }
+        }
+    }
+    Ok(first_error)
 }
 
 /// Why a set ended where it did. A cursor that stopped at the limit

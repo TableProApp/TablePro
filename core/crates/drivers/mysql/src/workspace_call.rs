@@ -83,7 +83,7 @@ pub(crate) async fn query_bound(
 }
 
 /// The columns of a statement that returned no rows: the prepare
-/// carries them, and with no cache the statement is closed right after.
+/// carries them, and the statement cache closes the oldest when full.
 pub(crate) async fn describe(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,

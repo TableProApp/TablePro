@@ -18,6 +18,9 @@ use crate::relay::Relay;
 use crate::session_statements::{EDITOR_SQL_MODE_STATEMENT, SessionLimits, for_session};
 use crate::workspace_session::{WORKSPACE_SQL_MODE_STATEMENT, WORKSPACE_TIME_ZONE};
 
+// Room for every fixed catalog statement of either flavour.
+const CACHED_STATEMENTS: usize = 32;
+
 /// Which session a physical connection opens as.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionKind {
@@ -80,9 +83,10 @@ impl MysqlEndpoint {
             .no_engine_substitution(false)
             .set_names(false)
             .timezone(None::<String>)
-            // No statement outlives the call that prepared it, so a pool
-            // connection never piles up server-side statement handles.
-            .statement_cache_capacity(0)
+            // The catalog's fixed statements stay prepared, so a later
+            // read skips the PREPARE; the bound caps the server-side
+            // handles a connection holds.
+            .statement_cache_capacity(CACHED_STATEMENTS)
             // sqlx would log every statement, values and all.
             .disable_statement_logging();
         if let Some(database) = target.database.as_deref().filter(|name| !name.is_empty()) {
