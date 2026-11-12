@@ -79,7 +79,8 @@ final class ConnectionSessionModel {
     @ObservationIgnored private var placementEpoch = 0
     @ObservationIgnored private var switchesInFlight = 0
     @ObservationIgnored private var placementRestored = false
-    @ObservationIgnored private var rememberedDatabaseHung = false
+    // Why the last dial into the remembered database failed with no fallback; the next open starts from the saved one.
+    @ObservationIgnored private var rememberedDialFailure: (any Error)?
     @ObservationIgnored private var scenes: [WeakScene] = []
 
     private let appState: AppState
@@ -326,11 +327,16 @@ final class ConnectionSessionModel {
             let saved = record
             // A remembered database that never answered may hang again, so the next open starts from the saved one and
             // switches after, as opens did before.
-            let target = rememberedDatabaseHung ? record : openTarget(restoring: wanted)
-            rememberedDatabaseHung = false
+            let failedBefore = rememberedDialFailure
+            rememberedDialFailure = nil
+            let target = failedBefore == nil ? openTarget(restoring: wanted) : record
             let landed: OpenLanding
             var restoring = wanted
             var refused: RefusedDatabase?
+            // The saved database's list then says whether the remembered one is gone, as after a refused dial.
+            if let failedBefore, !redialsToSwitchDatabase, !wanted.database.isEmpty, wanted.database != saved.database {
+                refused = RefusedDatabase(name: wanted.database, error: failedBefore, reportedBySwitch: true)
+            }
             do {
                 landed = try await dialForOpen(
                     target, schema: schemaRestored(by: target, restoring: wanted), by: attempt, joining: allowSignIn
@@ -338,8 +344,8 @@ final class ConnectionSessionModel {
             } catch let thrown {
                 let listRefused = thrown as? TableListRefused
                 let error = listRefused?.error ?? thrown
-                if target.database != saved.database, case PostgreSQLError.unreachable = error {
-                    rememberedDatabaseHung = true
+                if target.database != saved.database, startsNextOpenFromSaved(after: error, listRefused: listRefused != nil) {
+                    rememberedDialFailure = error
                 }
                 // A sign-in is the connection's, not the database's: the saved database would fail the same way.
                 guard target.database != saved.database, isCurrent(attempt),
@@ -448,11 +454,20 @@ final class ConnectionSessionModel {
         return !notAboutTheDatabase.contains { message.contains($0) }
     }
 
-    // The MySQL driver tells a refusal that may be the database's apart by its code.
+    // The MySQL driver types a refused database by its code.
     private func blamesDatabase(_ error: any Error) -> Bool {
         if redialsToSwitchDatabase { return Self.mayBlameDatabase(error) }
         if case MySQLError.databaseRefused = error { return true }
         return false
+    }
+
+    // A USE engine's other failure may still be the database's on a server that numbers it its own way.
+    private func startsNextOpenFromSaved(after error: any Error, listRefused: Bool) -> Bool {
+        if redialsToSwitchDatabase {
+            if case PostgreSQLError.unreachable = error { return true }
+            return false
+        }
+        return !listRefused && !blamesDatabase(error) && !(error is CancellationError)
     }
 
     private nonisolated static let notAboutTheDatabase = [

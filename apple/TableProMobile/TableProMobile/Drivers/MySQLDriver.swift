@@ -438,16 +438,10 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 }
 
-// 1044 and 1049 refuse the database as a USE would (scripts/probes/check-mysql-dial-database-refusal.sh).
-nonisolated enum MySQLHandshakeRefusal {
-    // Codes any database fails alike: the sign-in, the account, the host, the connection. 2000-2999 are the client's.
-    private static let notAboutTheDatabase: Set<UInt32> = [
-        1_040, 1_043, 1_045, 1_129, 1_130, 1_203, 1_226, 1_251, 1_275, 1_698, 1_820, 1_862, 1_927,
-        3_032, 3_118, 3_159, 3_955, 4_150, 4_151,
-    ]
-
-    static func mayBlameDatabase(code: UInt32) -> Bool {
-        !(2_000..<3_000).contains(code) && !notAboutTheDatabase.contains(code)
+// The sign-in went through and the database was refused as a USE there is (scripts/probes/check-mysql-dial-database-refusal.sh).
+nonisolated enum MySQLDatabaseRefusal {
+    static func isRefusal(code: UInt32) -> Bool {
+        code == 1_044 || code == 1_049
     }
 }
 
@@ -751,7 +745,7 @@ private actor MySQLActor {
             if let tlsFailure = MariaDBSSLClassifier.classifySSLError(code: failure.code, message: failure.message) {
                 throw tlsFailure
             }
-            if MySQLHandshakeRefusal.mayBlameDatabase(code: failure.code) {
+            if MySQLDatabaseRefusal.isRefusal(code: failure.code) {
                 throw MySQLError.databaseRefused(failure.message)
             }
             throw MySQLError.connectionFailed(failure.message)
@@ -1276,7 +1270,7 @@ nonisolated private struct RawMySQLResult: Sendable {
 
 nonisolated enum MySQLError: Error, LocalizedError {
     case connectionFailed(String)
-    // A refusal that may be about the database the handshake named; it reads as any failed connect.
+    // The database the handshake named was refused; it reads as any failed connect.
     case databaseRefused(String)
     case notConnected
     case queryFailed(String)

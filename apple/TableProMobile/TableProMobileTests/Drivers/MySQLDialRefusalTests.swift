@@ -5,15 +5,13 @@ import Testing
 
 @Suite(.timeLimit(.minutes(1)))
 struct MySQLDialRefusalTests {
-    // 1105 is what a server speaking the protocol may send for a database it does not have.
     @Test(
-        "A refusal that may be about the dialed database is told apart, and reads as any failed connect",
+        "A database refused at sign-in is told apart, and reads as any failed connect",
         arguments: [
             FakeMySQLServer.LoginRefusal(code: 1_049, sqlState: "42000", message: "Unknown database 'app_archive'"),
             FakeMySQLServer.LoginRefusal(
                 code: 1_044, sqlState: "42000", message: "Access denied for user 'app'@'%' to database 'app_archive'"
             ),
-            FakeMySQLServer.LoginRefusal(code: 1_105, sqlState: "HY000", message: "Unknown database 'app_archive'"),
         ]
     )
     func refusedDatabase(_ refusal: FakeMySQLServer.LoginRefusal) async throws {
@@ -27,8 +25,9 @@ struct MySQLDialRefusalTests {
         #expect(error?.localizedDescription == "MySQL connection failed: \(refusal.message)")
     }
 
+    // 1524 is a sign-in plugin the server has not loaded; 1105 is what another server may send for anything.
     @Test(
-        "A refused sign-in, account or host stays a failed connect, whatever database the dial names",
+        "Any other refusal stays a failed connect, whatever database the dial names",
         arguments: [
             FakeMySQLServer.LoginRefusal(
                 code: 1_045, sqlState: "28000", message: "Access denied for user 'app'@'10.0.0.2' (using password: YES)"
@@ -40,6 +39,10 @@ struct MySQLDialRefusalTests {
                 code: 4_151, sqlState: "HY000", message: "Access denied, this account is locked"
             ),
             FakeMySQLServer.LoginRefusal(code: 1_040, sqlState: "08004", message: "Too many connections"),
+            FakeMySQLServer.LoginRefusal(
+                code: 1_524, sqlState: "HY000", message: "Plugin 'mysql_native_password' is not loaded"
+            ),
+            FakeMySQLServer.LoginRefusal(code: 1_105, sqlState: "HY000", message: "Unknown database 'app_archive'"),
         ]
     )
     func refusedSignIn(_ refusal: FakeMySQLServer.LoginRefusal) async throws {

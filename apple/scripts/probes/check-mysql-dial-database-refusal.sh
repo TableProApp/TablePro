@@ -3,9 +3,9 @@
 # Check that a MySQL-family server refuses the database a handshake names exactly as it refuses a USE there, and keeps
 # a failed sign-in apart from both.
 #
-# The iOS open dials a MySQL, MariaDB or TiDB connection straight into the database it was last on. It falls back to
-# the saved one on 1044, 1049 or any code outside the sign-in and connection ones (MySQLHandshakeRefusal), and fails
-# on those. That is right only while:
+# The iOS open dials a MySQL, MariaDB or TiDB connection straight into the database it was last on, and falls back to
+# the saved one in the same open only when the dial is refused with 1044 or 1049 (MySQLDatabaseRefusal). That is right
+# only while:
 #
 #   - a database the user may not use, or that is missing, is refused with 1044 (ER_DBACCESS_DENIED_ERROR) or 1049
 #     (ER_BAD_DB_ERROR), with the same code and text a USE there gets after the sign-in;

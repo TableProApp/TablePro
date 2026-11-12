@@ -347,15 +347,16 @@ struct ConnectionCoordinatorSwitchTests {
         #expect(UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id)) == nil)
     }
 
-    @Test("A MySQL sign-in refused on the remembered database fails the open after one dial")
+    @Test("A MySQL sign-in refused on the remembered database fails the open after one dial, and the next open dials the saved one and moves with USE")
     func refusedMySQLSignInDialsOnce() async {
         remember(database: "app_staging", for: connection)
         defer { forget(connection) }
         let denied = driver()
         let refusal = MySQLError.connectionFailed("Access denied for user 'app'@'10.0.0.2' (using password: YES)")
         denied.connectError = refusal
+        let saved = mySQLDriver(tables: ["staging_orders"])
         factory.queue(denied)
-        factory.queue(mySQLDriver(tables: ["orders"]))
+        factory.queue(saved)
         let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
         coordinator.restorePersistedState()
 
@@ -364,6 +365,43 @@ struct ConnectionCoordinatorSwitchTests {
         #expect(factory.dialed.map { $0.database } == ["app_staging"])
         #expect(coordinator.session == nil)
         #expect(coordinator.displayStatus == .failed(cause: refusal.localizedDescription))
+
+        await coordinator.connect()
+
+        #expect(factory.dialed.map { $0.database } == ["app_staging", "app_prod"])
+        #expect(coordinator.session?.driver === saved)
+        #expect(saved.switchedDatabases == ["app_staging"])
+        #expect(coordinator.activeDatabase == "app_staging")
+        #expect(coordinator.displayStatus == .connected)
+    }
+
+    // Another server speaking the protocol may number a missing database its own way, as 1105.
+    @Test("A MySQL dial refused in a way it cannot pin on the database fails once, and the next open forgets one no longer listed")
+    func unrecognizedMySQLRefusalYieldsToTheSavedDatabase() async {
+        remember(database: "app_archive", for: connection)
+        defer { forget(connection) }
+        let refused = driver()
+        let refusal = MySQLError.connectionFailed("Unknown database 'app_archive'")
+        refused.connectError = refusal
+        factory.queue(refused)
+        let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
+        coordinator.restorePersistedState()
+
+        await coordinator.connect()
+
+        #expect(factory.dialed.map { $0.database } == ["app_archive"])
+        #expect(coordinator.displayStatus == .failed(cause: refusal.localizedDescription))
+
+        let saved = mySQLDriver(tables: ["orders"])
+        factory.queue(saved)
+        await coordinator.connect()
+
+        #expect(factory.dialed.map { $0.database } == ["app_archive", "app_prod"])
+        #expect(coordinator.session?.driver === saved)
+        #expect(saved.switchedDatabases.isEmpty)
+        #expect(coordinator.activeDatabase == "app_prod")
+        #expect(!coordinator.showFailureAlert)
+        #expect(UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id)) == nil)
     }
 
     @Test("A MySQL database whose table list is refused falls back to the saved one and moves there with USE")
