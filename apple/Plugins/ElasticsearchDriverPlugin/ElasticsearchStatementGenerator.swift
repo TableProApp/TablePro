@@ -17,12 +17,54 @@ struct ElasticsearchWriteRequest: Equatable {
     // The fields a partial update sets, each as its mapping keys. The stored document decides how
     // each one is spelled, so the request is aligned to it when it runs.
     let leafPaths: [[String]]
+    // Leaves of `leafPaths` sent as text that reads as a JSON array. The grid shows the string `["a"]` and the array
+    // `["a"]` alike, so the stored document decides which one the edit is.
+    let arrayCandidates: [[String]]
 
-    init(method: String, path: String, body: String?, leafPaths: [[String]] = []) {
+    init(method: String, path: String, body: String?, leafPaths: [[String]] = [], arrayCandidates: [[String]] = []) {
         self.method = method
         self.path = path
         self.body = body
         self.leafPaths = leafPaths
+        self.arrayCandidates = arrayCandidates
+    }
+}
+
+// Where a hit lives: its concrete index (a search can go through an alias or a wildcard) and, for a document indexed
+// with custom routing, the routing that finds its shard again. With custom routing an `_id` is unique only per shard.
+struct ElasticsearchDocumentLocator: Equatable {
+    let index: String
+    let id: String
+    let routing: String?
+
+    private static let indexKey = "_index"
+    private static let idKey = "_id"
+    private static let routingKey = "_routing"
+
+    init(index: String, id: String, routing: String?) {
+        self.index = index
+        self.id = id
+        self.routing = routing
+    }
+
+    init?(hit: [String: Any]) {
+        guard let index = hit[Self.indexKey] as? String, let id = hit[Self.idKey] as? String else { return nil }
+        self.init(index: index, id: id, routing: hit[Self.routingKey] as? String)
+    }
+
+    init?(locator: String) {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(locator.utf8)) as? [String: Any] else {
+            return nil
+        }
+        self.init(hit: object)
+    }
+
+    // Sorted keys, so the same hit always gives the same text.
+    var locator: String? {
+        var object: [String: Any] = [Self.indexKey: index, Self.idKey: id]
+        if let routing { object[Self.routingKey] = routing }
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }
 
@@ -32,10 +74,16 @@ struct ElasticsearchStatementGenerator {
     // Plain `PUT _doc/<id>` replaces a document that already has the id.
     private static let createOnlyQuery = "&op_type=create"
     private static let updateEndpoint = "_update"
+    private static let documentEndpoint = "_doc"
+    private static let routingParameter = "routing="
 
     let index: String
     let columns: [String]
     let columnTypeNames: [String]
+    // By row index, the `ElasticsearchDocumentLocator` text each hit was read with.
+    let rowLocators: [Int: String]
+    // String fields some hit held a string reading as a JSON array in.
+    let arrayTextColumns: Set<String>
 
     /// A `nested` column carries the whole array of objects, and its dotted leaves are views of
     /// those same bytes. Writing both makes Elasticsearch expand the dotted key into the object the
@@ -45,11 +93,20 @@ struct ElasticsearchStatementGenerator {
     private let nestedParentByLeaf: [String: String]
     private let columnPathKeys: [String: [String]]
 
-    init(index: String, columns: [String], columnTypeNames: [String], columnPathKeys: [String: [String]] = [:]) {
+    init(
+        index: String,
+        columns: [String],
+        columnTypeNames: [String],
+        columnPathKeys: [String: [String]] = [:],
+        rowLocators: [Int: String] = [:],
+        arrayTextColumns: Set<String> = []
+    ) {
         self.index = index
         self.columns = columns
         self.columnTypeNames = columnTypeNames
         self.columnPathKeys = columnPathKeys
+        self.rowLocators = rowLocators
+        self.arrayTextColumns = arrayTextColumns
         self.nestedParentByLeaf = Self.nestedParents(columns: columns, typeNames: columnTypeNames)
     }
 
@@ -202,12 +259,11 @@ struct ElasticsearchStatementGenerator {
 
     private func updateRequest(for change: PluginRowChange) throws -> ElasticsearchWriteRequest? {
         guard !change.cellChanges.isEmpty else { return nil }
-        guard let id = documentId(from: change) else {
-            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.missingIdReason)
-        }
+        let target = try document(for: change)
 
         var doc: [String: Any] = [:]
         var leafPaths: [[String]] = []
+        var arrayCandidates: [[String]] = []
         for cellChange in change.cellChanges {
             let column = cellChange.columnName
             if metaColumns.contains(column) {
@@ -222,8 +278,15 @@ struct ElasticsearchStatementGenerator {
                Self.isShortened(cellChange.newValue) || Self.isShortened(cellChange.oldValue) {
                 throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.shortenedValueReason(column))
             }
-            let value: Any = cellChange.newValue.asText.map { jsonValue($0, for: column) } ?? NSNull()
             let keys = pathKeys(for: column)
+            let text = cellChange.newValue.asText
+            let value: Any
+            if let text, holdsTextOrArray(column), Self.parsedArray(text) != nil {
+                value = text
+                arrayCandidates.append(keys)
+            } else {
+                value = text.map { jsonValue($0, for: column) } ?? NSNull()
+            }
             guard DocumentPathPlacement.set(value, atKeys: keys, in: &doc) else {
                 throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.notJSONReason)
             }
@@ -235,9 +298,10 @@ struct ElasticsearchStatementGenerator {
         }
         return .init(
             method: "POST",
-            path: "/\(encodedIndex)/\(Self.updateEndpoint)/\(encodePathComponent(id))\(Self.refreshQuery)",
+            path: documentPath(Self.updateEndpoint, for: target),
             body: body,
-            leafPaths: leafPaths
+            leafPaths: leafPaths,
+            arrayCandidates: arrayCandidates
         )
     }
 
@@ -247,11 +311,16 @@ struct ElasticsearchStatementGenerator {
         request.path.hasSuffix(createOnlyQuery)
     }
 
+    // A routed document is found only on its routing's shard, so the read carries the update's routing.
     static func storedDocumentPath(for request: ElasticsearchWriteRequest) -> String? {
         guard !request.leafPaths.isEmpty else { return nil }
-        let parts = (request.path.split(separator: "?", maxSplits: 1).first ?? "").split(separator: "/")
+        let pathAndQuery = request.path.split(separator: "?", maxSplits: 1)
+        let parts = (pathAndQuery.first ?? "").split(separator: "/")
         guard parts.count == 3, parts[1] == updateEndpoint else { return nil }
-        return "/\(parts[0])/_doc/\(parts[2])"
+        let routing = pathAndQuery.dropFirst().first?
+            .split(separator: "&")
+            .first(where: { $0.hasPrefix(routingParameter) })
+        return "/\(parts[0])/\(documentEndpoint)/\(parts[2])" + (routing.map { "?\($0)" } ?? "")
     }
 
     static func aligned(
@@ -267,7 +336,11 @@ struct ElasticsearchStatementGenerator {
 
         var placed: [String: Any] = [:]
         for keys in request.leafPaths {
-            guard let value = DocumentPathPlacement.value(in: doc, atKeys: keys) else { return request }
+            guard var value = DocumentPathPlacement.value(in: doc, atKeys: keys) else { return request }
+            if request.arrayCandidates.contains(keys), let text = value as? String, let array = parsedArray(text),
+               storedHoldsArray(atKeys: keys, in: stored) {
+                value = array
+            }
             try DocumentPathPlacement.place(value, atKeys: keys, in: &placed, following: stored)
         }
         guard let alignedBody = serialize(["doc": placed]) else { return request }
@@ -279,13 +352,33 @@ struct ElasticsearchStatementGenerator {
         return ElasticsearchWriteRequest(method: request.method, path: path, body: alignedBody)
     }
 
+    // Every spelling the stored document has for the field holds an array.
+    private static func storedHoldsArray(atKeys keys: [String], in stored: [String: Any]) -> Bool {
+        let atoms = keys.flatMap { $0.split(separator: ".", omittingEmptySubsequences: false).map(String.init) }
+        let found = storedValues(of: atoms[...], in: stored)
+        return !found.isEmpty && found.allSatisfy { $0 is [Any] }
+    }
+
+    // The same walk as `DocumentPathPlacement.place`: a level can spell the next part of the path as one dotted key.
+    private static func storedValues(of atoms: ArraySlice<String>, in level: [String: Any]) -> [Any] {
+        var found: [Any] = []
+        for end in atoms.indices.map({ $0 + 1 }) {
+            let key = atoms[atoms.startIndex..<end].joined(separator: ".")
+            guard let value = level[key] else { continue }
+            if end == atoms.endIndex {
+                found.append(value)
+            } else if let object = value as? [String: Any] {
+                found += storedValues(of: atoms[end...], in: object)
+            }
+        }
+        return found
+    }
+
     // MARK: - DELETE
 
     private func deleteRequest(for change: PluginRowChange) throws -> ElasticsearchWriteRequest {
-        guard let id = documentId(from: change) else {
-            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.missingIdReason)
-        }
-        return .init(method: "DELETE", path: docPath(id: id), body: nil)
+        let target = try document(for: change)
+        return .init(method: "DELETE", path: documentPath(Self.documentEndpoint, for: target), body: nil)
     }
 
     // MARK: - Refusals
@@ -317,6 +410,20 @@ struct ElasticsearchStatementGenerator {
 
     // MARK: - Helpers
 
+    // A row read from a table tab carries its hit's locator. Without one, the tab's index and the `_id` cell.
+    private func document(for change: PluginRowChange) throws -> ElasticsearchDocumentLocator {
+        if let locator = rowLocators[change.rowIndex] {
+            guard let document = ElasticsearchDocumentLocator(locator: locator) else {
+                throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.missingIdReason)
+            }
+            return document
+        }
+        guard let id = documentId(from: change) else {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.missingIdReason)
+        }
+        return ElasticsearchDocumentLocator(index: index, id: id, routing: nil)
+    }
+
     private func documentId(from change: PluginRowChange) -> String? {
         guard let originalRow = change.originalRow,
               let idIndex = columns.firstIndex(of: ElasticsearchMappingFlattener.idColumn),
@@ -332,7 +439,13 @@ struct ElasticsearchStatementGenerator {
     }
 
     private func docPath(id: String) -> String {
-        "/\(encodedIndex)/_doc/\(encodePathComponent(id))\(Self.refreshQuery)"
+        documentPath(Self.documentEndpoint, for: ElasticsearchDocumentLocator(index: index, id: id, routing: nil))
+    }
+
+    private func documentPath(_ endpoint: String, for document: ElasticsearchDocumentLocator) -> String {
+        let path = "/\(encodePathComponent(document.index))/\(endpoint)/\(encodePathComponent(document.id))\(Self.refreshQuery)"
+        guard let routing = document.routing else { return path }
+        return path + "&" + Self.routingParameter + Self.encodeQueryValue(routing)
     }
 
     private var encodedIndex: String {
@@ -341,17 +454,49 @@ struct ElasticsearchStatementGenerator {
 
     private static let pathComponentAllowed: CharacterSet =
         .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+    // RFC 3986 unreserved: `&`, `=`, `+`, `#` and `%` in a routing value would end or change the parameter.
+    private static let queryValueAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
     private static let structuredTypes: Set<String> = ["object", "nested", "flattened", "join"]
+    static let stringTypes: Set<String> = [
+        "text", "keyword", "wildcard", "constant_keyword", "match_only_text", "search_as_you_type", "annotated_text"
+    ]
 
     private func encodePathComponent(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: Self.pathComponentAllowed) ?? value
     }
 
-    private func jsonValue(_ text: String, for column: String) -> Any {
-        let typeName = columns.firstIndex(of: column).flatMap { index in
+    private static func encodeQueryValue(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: queryValueAllowed) ?? value
+    }
+
+    private func mappedType(of column: String) -> String {
+        columns.firstIndex(of: column).flatMap { index in
             index < columnTypeNames.count ? columnTypeNames[index] : nil
         } ?? ""
+    }
 
+    // A string field, or one whose type is unknown, can hold a string that reads as a JSON array.
+    private func holdsTextOrArray(_ column: String) -> Bool {
+        let typeName = mappedType(of: column)
+        return typeName.isEmpty || Self.stringTypes.contains(typeName)
+    }
+
+    // JSON allows white space before the bracket; anything else is not an array and is never copied and parsed.
+    static func parsedArray(_ text: String) -> [Any]? {
+        guard text.unicodeScalars.first(where: { !" \t\n\r".unicodeScalars.contains($0) }) == "[" else { return nil }
+        return try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [Any]
+    }
+
+    private func jsonValue(_ text: String, for column: String) -> Any {
+        let typeName = mappedType(of: column)
+
+        if Self.stringTypes.contains(typeName) {
+            // A new row has no stored value to compare, so an array is read as one unless the field held such text.
+            if !arrayTextColumns.contains(column), let array = Self.parsedArray(text) { return array }
+            return text
+        }
         if ElasticsearchQueryBuilder.numericTypes.contains(typeName) {
             if let intVal = Int(text) { return intVal }
             if let doubleVal = Double(text) { return doubleVal }
@@ -385,7 +530,11 @@ struct ElasticsearchStatementGenerator {
         guard !request.leafPaths.isEmpty,
               let leafData = try? JSONSerialization.data(withJSONObject: request.leafPaths)
         else { return statement }
-        return "\(statement):\(leafData.base64EncodedString())"
+        let withLeaves = "\(statement):\(leafData.base64EncodedString())"
+        guard !request.arrayCandidates.isEmpty,
+              let candidateData = try? JSONSerialization.data(withJSONObject: request.arrayCandidates)
+        else { return withLeaves }
+        return "\(withLeaves):\(candidateData.base64EncodedString())"
     }
 
     static func decode(_ statement: String) -> ElasticsearchWriteRequest? {
@@ -396,15 +545,17 @@ struct ElasticsearchStatementGenerator {
               let path = decodeBase64(parts[1])
         else { return nil }
         let body = decodeBase64(parts[2])
-        let leafPaths = parts.count > 3
-            ? Data(base64Encoded: parts[3]).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String]] }
-            : nil
         return ElasticsearchWriteRequest(
             method: method,
             path: path,
             body: (body?.isEmpty ?? true) ? nil : body,
-            leafPaths: leafPaths ?? []
+            leafPaths: parts.count > 3 ? decodePaths(parts[3]) : [],
+            arrayCandidates: parts.count > 4 ? decodePaths(parts[4]) : []
         )
+    }
+
+    private static func decodePaths(_ part: String) -> [[String]] {
+        Data(base64Encoded: part).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String]] } ?? []
     }
 
     static func isTaggedStatement(_ statement: String) -> Bool {

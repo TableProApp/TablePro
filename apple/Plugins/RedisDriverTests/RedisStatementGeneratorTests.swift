@@ -1219,4 +1219,105 @@ struct RedisStatementGeneratorRefusalTests {
         #expect(written.map(\.statement) == ["EXPIRE mykey 60", "DEL {u}a {u}b", "DEL x"])
         #expect(written.map(\.rowIndices) == [[0], [1, 3], [2]])
     }
+
+    private static let shownInPart = PluginRowWriteRefusal(
+        rowIndex: 0,
+        reason: "The grid shows only the start of this value, so it cannot be edited here. "
+            + "Change it with a command in the query editor."
+    )
+
+    @Test("A Value edit of a string longer than the grid reads is refused")
+    func valueShownInPartRefused() {
+        let change = edit(
+            [(columnIndex: 4, columnName: "Value", oldValue: "start...", newValue: "start")],
+            original: ["page:1", "string", "-1", .text(String(RedisStringPreview.byteLimit + 1)), "start..."]
+        )
+        #expect(throws: Self.shownInPart) { try writes(for: [change]) }
+    }
+
+    @Test("A string exactly as long as the grid reads is written")
+    func valueAtTheLimitWritten() throws {
+        let change = edit(
+            [(columnIndex: 4, columnName: "Value", oldValue: "old", newValue: "new")],
+            original: ["page:1", "string", "-1", .text(String(RedisStringPreview.byteLimit)), "old"]
+        )
+        #expect(try writes(for: [change]).map(\.statement) == ["SET page:1 new KEEPTTL"])
+    }
+
+    @Test("A TTL edit and a rename of a string shown in part still write")
+    func otherEditsOfAShortenedRowWrite() throws {
+        let change = edit(
+            [
+                (columnIndex: 2, columnName: "TTL", oldValue: "-1", newValue: "60"),
+                (columnIndex: 0, columnName: "Key", oldValue: "page:1", newValue: "page:2"),
+            ],
+            original: ["page:1", "string", "-1", "900000", "start..."]
+        )
+        #expect(try writes(for: [change]).map(\.statement) == ["EXPIRE page:1 60", "MUSTAPPLY RENAMENX page:1 page:2"])
+    }
+
+    @Test("Without a length, a Value cell that filled the read range is refused")
+    func unknownLengthFilledRangeRefused() throws {
+        let filled = String(repeating: "a", count: RedisStringPreview.byteLimit - 3) + RedisStringPreview.marker
+        let refused = edit(
+            [(columnIndex: 4, columnName: "Value", oldValue: .text(filled), newValue: "b")],
+            original: ["page:1", "string", "-1", .null, .text(filled)]
+        )
+        #expect(throws: Self.shownInPart) { try writes(for: [refused]) }
+
+        let short = edit(
+            [(columnIndex: 4, columnName: "Value", oldValue: "old", newValue: "new")],
+            original: ["page:1", "string", "-1", .null, "old"]
+        )
+        #expect(try writes(for: [short]).map(\.statement) == ["SET page:1 new KEEPTTL"])
+    }
+}
+
+// Duplicate copies the Value cell the grid showed, which for a long string or a large collection is only its start.
+struct RedisCopiedPreviewInsertTests {
+    private static let browseColumns = ["Key", "Type", "TTL", "Length", "Value"]
+
+    private static let partRefusal = PluginRowWriteRefusal(
+        rowIndex: 0,
+        reason: "This row holds only the part of a value the grid shows, so adding it would store that part. "
+            + "Add the key with a command in the query editor."
+    )
+
+    private func statements(type: String, length: PluginCellValue, value: PluginCellValue) throws -> [String] {
+        var gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        gen.stagingToken = { "t" }
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        return try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [0: ["copy", .text(type), nil, length, value]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        ).map(\.statement)
+    }
+
+    @Test("A copied string the grid showed in part is refused")
+    func copiedShortenedStringRefused() {
+        let shown = String(repeating: "a", count: RedisStringPreview.byteLimit) + RedisStringPreview.marker
+        let length = PluginCellValue.text(String(RedisStringPreview.byteLimit + 10))
+        #expect(throws: Self.partRefusal) { try statements(type: "string", length: length, value: .text(shown)) }
+        #expect(throws: Self.partRefusal) {
+            try statements(type: "string", length: length, value: .bytes(Data(repeating: 0xFF, count: RedisStringPreview.byteLimit)))
+        }
+    }
+
+    @Test("A copied string shown whole is added")
+    func copiedWholeStringAdded() throws {
+        #expect(try statements(type: "string", length: "5", value: "hello") == ["MUSTAPPLY SET copy hello NX"])
+    }
+
+    @Test("A copied collection holding fewer elements than its length is refused")
+    func copiedCollectionPreviewRefused() {
+        #expect(throws: Self.partRefusal) { try statements(type: "list", length: "250", value: #"["a","b"]"#) }
+        #expect(throws: Self.partRefusal) { try statements(type: "hash", length: "3", value: #"{"f":"v"}"#) }
+    }
+
+    @Test("A copied collection holding every element is added")
+    func copiedWholeCollectionAdded() throws {
+        #expect(try statements(type: "set", length: "2", value: #"["a","b"]"#).count == 3)
+    }
 }

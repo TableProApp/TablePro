@@ -19,6 +19,9 @@ struct CassandraBrowseStatement: Equatable, Sendable {
         let limit: Int
         let values: [String]
         let refusal: String?
+        // The table the CQL reads, for the TTL() selectors the run adds. A header written before them has neither.
+        var keyspace: String?
+        var table: String?
     }
 
     static let opening = "/* TablePro browse "
@@ -34,13 +37,21 @@ struct CassandraBrowseStatement: Equatable, Sendable {
         return Self.opening + header + Self.closing + cql
     }
 
-    /// The same browse read one row past a query tab's cap, so a result the cap trims is still reported as trimmed.
+    // The same browse read one row past a query tab's cap, so a result the cap trims is still reported as trimmed.
     func cappedAt(rowCap: Int) -> CassandraBrowseStatement {
         let limit = min(window.limit, rowCap + 1)
         return CassandraBrowseStatement(
-            window: Window(offset: window.offset, limit: limit, values: window.values, refusal: window.refusal),
+            window: Window(
+                offset: window.offset, limit: limit, values: window.values, refusal: window.refusal,
+                keyspace: window.keyspace, table: window.table
+            ),
             cql: cql
         )
+    }
+
+    // The run keys its resume points on the CQL it sends.
+    func sending(_ cql: String) -> CassandraBrowseStatement {
+        CassandraBrowseStatement(window: window, cql: cql)
     }
 
     static func parse(_ text: String) -> CassandraBrowseStatement? {
@@ -111,7 +122,10 @@ enum CassandraBrowseRenderer {
             if sorted { throw CassandraBrowseRefusal.sorting }
             let condition = try whereCondition(filters: filters, matchAll: matchAll)
             return CassandraBrowseStatement(
-                window: .init(offset: max(offset, 0), limit: max(limit, 0), values: condition.values, refusal: nil),
+                window: .init(
+                    offset: max(offset, 0), limit: max(limit, 0), values: condition.values, refusal: nil,
+                    keyspace: keyspace?.isEmpty == false ? keyspace : nil, table: table
+                ),
                 cql: appending(condition, to: source)
             )
         } catch {

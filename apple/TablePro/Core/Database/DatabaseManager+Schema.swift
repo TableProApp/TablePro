@@ -42,7 +42,8 @@ extension DatabaseManager {
         _ script: SchemaChangeScript,
         databaseType: DatabaseType,
         scope: DatabaseScope,
-        gate: any ExecutionGate = ExecutionGateProvider.shared
+        gate: any ExecutionGate = ExecutionGateProvider.shared,
+        holdConfirmation: SchemaChangeHoldConfirmation = DatabaseManager.confirmSchemaChangeBesideHold
     ) async throws {
         let route = schemaChangeRoute(for: scope)
         let statements = script.statements
@@ -52,6 +53,8 @@ extension DatabaseManager {
         if let denial = await gate.authorize(request).denialError {
             throw denial
         }
+        try await confirmSchemaChange(on: route, connectionId: scope.connectionId, confirmation: holdConfirmation)
+        let isPooled = route.isPooled
 
         let executionTimes: [TimeInterval]
         do {
@@ -61,7 +64,7 @@ extension DatabaseManager {
                 cancellation: .protectedWrite
             ) { driver in
                 try await Self.refuseBeforeWriting(script, scope: scope, on: driver)
-                let useTransaction = Self.wrapsDDLInTransaction(driver)
+                let useTransaction = await Self.wrapsSchemaChange(on: driver, isPooled: isPooled)
                 if useTransaction {
                     try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
                 }
@@ -231,10 +234,12 @@ extension DatabaseManager {
         statements: [String],
         databaseType: DatabaseType,
         scope: DatabaseScope,
-        gate: any ExecutionGate = ExecutionGateProvider.shared
+        gate: any ExecutionGate = ExecutionGateProvider.shared,
+        holdConfirmation: SchemaChangeHoldConfirmation = DatabaseManager.confirmSchemaChangeBesideHold
     ) async throws {
         guard !statements.isEmpty else { return }
         let route = schemaChangeRoute(for: scope)
+        let isPooled = route.isPooled
         let script = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
 
         let authorization = await gate.authorize(
@@ -249,6 +254,7 @@ extension DatabaseManager {
             )
         )
         if let denial = authorization.denialError { throw denial }
+        try await confirmSchemaChange(on: route, connectionId: scope.connectionId, confirmation: holdConfirmation)
 
         let executionTimes: [TimeInterval]
         do {
@@ -257,7 +263,8 @@ extension DatabaseManager {
                 route: route,
                 cancellation: .protectedWrite
             ) { driver in
-                let useTransaction = Self.wrapsDDLInTransaction(driver) && statements.count > 1
+                let wraps = await Self.wrapsSchemaChange(on: driver, isPooled: isPooled)
+                let useTransaction = wraps && statements.count > 1
                 if useTransaction {
                     try await driver.beginTransaction(mode: .readWrite)
                 }

@@ -2,11 +2,8 @@
 //  TabDiskActor.swift
 //  TablePro
 //
-//  Thread-safe actor for tab state persistence.
-//  Replaces TabStateStorage with actor-based serialization
-//  to eliminate data races on concurrent file writes.
-//
 
+import CryptoKit
 import Foundation
 import os
 
@@ -52,9 +49,15 @@ private struct LossyTab: Decodable {
     }
 }
 
+// What this process last wrote or read for one connection, so an unchanged save leaves the disk alone.
+internal struct TabDiskWrittenState {
+    var stateDigest: SHA256.Digest?
+    var sidecars = TabQueryOverflowStore.WrittenSidecars()
+}
+
 private final class TabDiskConnectionWriteGate: @unchecked Sendable {
     private let generation = OSAllocatedUnfairLock(initialState: UInt64.zero)
-    private let operation = OSAllocatedUnfairLock(initialState: ())
+    private let operation = OSAllocatedUnfairLock(initialState: TabDiskWrittenState())
 
     func issueToken() -> UInt64 {
         generation.withLock { value in
@@ -65,17 +68,17 @@ private final class TabDiskConnectionWriteGate: @unchecked Sendable {
 
     func performIfCurrent<T>(
         token: UInt64,
-        operation work: () throws -> T
+        operation work: (inout TabDiskWrittenState) throws -> T
     ) rethrows -> T? {
-        try operation.withLockUnchecked { _ in
+        try operation.withLockUnchecked { written in
             guard generation.withLock({ $0 == token }) else { return nil }
-            return try work()
+            return try work(&written)
         }
     }
 
-    func perform<T>(_ work: () throws -> T) rethrows -> T {
-        try operation.withLockUnchecked { _ in
-            try work()
+    func perform<T>(_ work: (inout TabDiskWrittenState) throws -> T) rethrows -> T {
+        try operation.withLockUnchecked { written in
+            try work(&written)
         }
     }
 }
@@ -116,7 +119,7 @@ internal actor TabDiskActor {
     private init() {
         let directory = Self.resolvedTabStateDirectory()
         tabStateDirectory = directory
-        encoder = JSONEncoder()
+        encoder = Self.makeEncoder()
         decoder = JSONDecoder()
 
         do {
@@ -137,26 +140,62 @@ internal actor TabDiskActor {
         lastActiveSchema: String? = nil,
         writeToken: UInt64
     ) throws -> Bool {
-        let result = try Self.writeGate(for: connectionId).performIfCurrent(token: writeToken) {
-            let state = TabDiskState(
-                tabs: TabQueryOverflowStore.externalize(
-                    tabs,
-                    connectionId: connectionId,
-                    tabStateDirectory: tabStateDirectory
-                ),
+        let result = try Self.writeGate(for: connectionId).performIfCurrent(token: writeToken) { written in
+            try Self.write(
+                tabs: tabs,
                 selectedTabId: selectedTabId,
                 lastActiveDatabase: lastActiveDatabase,
-                lastActiveSchema: lastActiveSchema
+                lastActiveSchema: lastActiveSchema,
+                connectionId: connectionId,
+                directory: tabStateDirectory,
+                encoder: encoder,
+                written: &written
             )
-            let data = try encoder.encode(state)
-            let fileURL = tabStateFileURL(for: connectionId)
-            try data.write(to: fileURL, options: .atomic)
         }
         return result != nil
     }
 
+    // Sorted keys, so a dictionary rebuilt in another order encodes to the same bytes and the unchanged check holds.
+    nonisolated private static func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+
+    // Every save funnels here: the 30 s timer, the draft and tab-switch saves, and quit. Most find nothing new.
+    nonisolated private static func write(
+        tabs: [PersistedTab],
+        selectedTabId: UUID?,
+        lastActiveDatabase: String?,
+        lastActiveSchema: String?,
+        connectionId: UUID,
+        directory: URL,
+        encoder: JSONEncoder,
+        written: inout TabDiskWrittenState
+    ) throws {
+        let state = TabDiskState(
+            tabs: TabQueryOverflowStore.externalize(
+                tabs,
+                connectionId: connectionId,
+                tabStateDirectory: directory,
+                written: &written.sidecars
+            ),
+            selectedTabId: selectedTabId,
+            lastActiveDatabase: lastActiveDatabase,
+            lastActiveSchema: lastActiveSchema
+        )
+        let data = try encoder.encode(state)
+        let digest = SHA256.hash(data: data)
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        if digest == written.stateDigest, FileManager.default.fileExists(atPath: fileURL.path) {
+            return
+        }
+        try data.write(to: fileURL, options: .atomic)
+        written.stateDigest = digest
+    }
+
     internal func load(connectionId: UUID) -> TabDiskState? {
-        Self.writeGate(for: connectionId).perform {
+        Self.writeGate(for: connectionId).perform { written in
             let fileURL = tabStateFileURL(for: connectionId)
 
             guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -166,13 +205,20 @@ internal actor TabDiskActor {
             do {
                 let data = try Data(contentsOf: fileURL)
                 let state = try decoder.decode(TabDiskState.self, from: data)
+                written.stateDigest = SHA256.hash(data: data)
                 return TabDiskState(
-                    tabs: TabQueryOverflowStore.inline(state.tabs, tabStateDirectory: tabStateDirectory),
+                    tabs: TabQueryOverflowStore.inline(
+                        state.tabs,
+                        tabStateDirectory: tabStateDirectory,
+                        written: &written.sidecars
+                    ),
                     selectedTabId: state.selectedTabId,
                     lastActiveDatabase: state.lastActiveDatabase,
                     lastActiveSchema: state.lastActiveSchema
                 )
             } catch {
+                // The file no longer holds what this process wrote, so the next save must write it.
+                written = TabDiskWrittenState()
                 Self.logger.error("Failed to load tab state for \(connectionId): \(error.localizedDescription)")
                 return nil
             }
@@ -180,7 +226,8 @@ internal actor TabDiskActor {
     }
 
     internal func clear(connectionId: UUID, writeToken: UInt64) -> Bool {
-        let result = Self.writeGate(for: connectionId).performIfCurrent(token: writeToken) {
+        let result = Self.writeGate(for: connectionId).performIfCurrent(token: writeToken) { written in
+            written = TabDiskWrittenState()
             TabQueryOverflowStore.removeAll(connectionId: connectionId, tabStateDirectory: tabStateDirectory)
             let fileURL = tabStateFileURL(for: connectionId)
 
@@ -227,21 +274,18 @@ internal actor TabDiskActor {
         let writeToken = issueWriteToken(for: connectionId)
         let directory = resolvedTabStateDirectory()
         do {
-            _ = try writeGate(for: connectionId).performIfCurrent(token: writeToken) {
-                let state = TabDiskState(
-                    tabs: TabQueryOverflowStore.externalize(
-                        tabs,
-                        connectionId: connectionId,
-                        tabStateDirectory: directory
-                    ),
+            _ = try writeGate(for: connectionId).performIfCurrent(token: writeToken) { written in
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try write(
+                    tabs: tabs,
                     selectedTabId: selectedTabId,
                     lastActiveDatabase: lastActiveDatabase,
-                    lastActiveSchema: lastActiveSchema
+                    lastActiveSchema: lastActiveSchema,
+                    connectionId: connectionId,
+                    directory: directory,
+                    encoder: makeEncoder(),
+                    written: &written
                 )
-                let data = try JSONEncoder().encode(state)
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let fileURL = tabStateFileURL(for: connectionId)
-                try data.write(to: fileURL, options: .atomic)
             }
         } catch {
             logger.fault("saveSync failed for \(connectionId): \(error.localizedDescription)")
@@ -250,7 +294,8 @@ internal actor TabDiskActor {
 
     nonisolated internal static func clearSync(connectionId: UUID) {
         let writeToken = issueWriteToken(for: connectionId)
-        _ = writeGate(for: connectionId).performIfCurrent(token: writeToken) {
+        _ = writeGate(for: connectionId).performIfCurrent(token: writeToken) { written in
+            written = TabDiskWrittenState()
             TabQueryOverflowStore.removeAll(
                 connectionId: connectionId,
                 tabStateDirectory: resolvedTabStateDirectory()

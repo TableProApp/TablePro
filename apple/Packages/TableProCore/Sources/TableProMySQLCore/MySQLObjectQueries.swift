@@ -256,6 +256,23 @@ public enum MySQLObjectQueries {
         """
     }
 
+    // The sidebar's read, apart from export's `eventList`, which keeps the four columns every server answers.
+    // A name narrows it to the one event a source tab reads again.
+    public static func eventDetails(schema: String, name: String? = nil, exactSchema: Bool) -> String {
+        let namePredicate = name.map { "\n  AND EVENT_NAME = '\(escapeLiteral($0))'" } ?? ""
+        return """
+        SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA,
+               EXECUTE_AT, INTERVAL_VALUE, INTERVAL_FIELD, STARTS, ENDS,
+               ON_COMPLETION, LAST_EXECUTED, DEFINER, EVENT_COMMENT
+        FROM information_schema.EVENTS
+        WHERE \(schemaMatch("EVENT_SCHEMA", schema, exact: exactSchema))\(namePredicate)
+        ORDER BY EVENT_NAME
+        """
+    }
+
+    // Its own statement, so a server without the variable loses that one attribute rather than the list.
+    public static let eventScheduler = "SELECT @@global.event_scheduler"
+
     /// Qualified with the schema. Unqualified, the server resolves the name against the session
     /// database instead of the one being browsed, and returns a different routine's body or none.
     public static func routineDefinition(kind: String, schema: String?, name: String) -> String {

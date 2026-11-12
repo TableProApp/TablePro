@@ -35,6 +35,7 @@ struct ConnectionFormEdits: Equatable {
     var queryTimeoutSeconds: Int?
     var binaryInlineLimitKilobytes: Int?
     var completionIdentifierCase: SQLIdentifierCase = .default
+    var commitMode: ConnectionCommitMode = .automatic
     var redisDatabase: Int?
     var startupCommands: String?
     var localOnly: Bool
@@ -51,6 +52,7 @@ struct ConnectionFormEdits: Equatable {
         DatabaseConnection.queryTimeoutSecondsKey,
         DatabaseConnection.binaryInlineLimitKilobytesKey,
         DatabaseConnection.completionIdentifierCaseKey,
+        DatabaseConnection.commitModeKey,
         DatabaseConnection.maskingRulesKey,
         DatabaseConnection.sshForwardUnixSocketPathKey,
         MySQLLocalSocket.fieldKey
@@ -89,6 +91,7 @@ struct ConnectionFormEdits: Equatable {
         result.queryTimeoutSeconds = queryTimeoutSeconds
         result.binaryInlineLimitKilobytes = binaryInlineLimitKilobytes
         result.completionIdentifierCase = completionIdentifierCase
+        result.commitMode = commitMode
         result.maskingRules = maskingRules
         return result
     }

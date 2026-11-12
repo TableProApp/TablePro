@@ -7,11 +7,12 @@ import AppKit
 
 @MainActor
 enum FileMenuBuilder {
-    /// Retained for the menu's lifetime, which is the app's: `NSMenu.delegate` is unowned.
+    // Retained for the app's lifetime: `NSMenu.delegate` is unowned.
     private static let closeTitleDelegate = CloseCommandMenuDelegate()
     private static let importFormatDelegate = ImportFormatMenuDelegate()
     private static let agentSessionDelegate = AgentSessionMenuDelegate()
     private static let conversationHistoryDelegate = ConversationHistoryMenuDelegate()
+    private static let revertToDelegate = QueryTabRevertMenuDelegate()
 
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         let file = MenuItemFactory.menu(String(localized: "File"), items: [
@@ -84,14 +85,9 @@ enum FileMenuBuilder {
                 shortcut: .saveAs,
                 keyboard: keyboard
             ),
+            revertToSubmenu(),
             MenuItemFactory.separator,
-            /// `performClose:` is the close command every `NSWindow` implements and validates, so
-            /// Command W reaches Settings, the integrations activity window and every viewer the
-            /// app opens. An app-specific selector here reached only the editor window, and the
-            /// windows that missed out had to answer it by hand. `EditorWindow` overrides it to
-            /// close the front tab, which is where a window that draws its own tabs says so.
-            /// Built with the title the resolver gives a window with no tabs; the File menu's
-            /// delegate resolves it from the key window from then on.
+            // `performClose:` reaches every window, not only the editor; `EditorWindow` overrides it to close the front tab.
             MenuItemFactory.item(
                 CloseCommandTitleResolver.windowTitle,
                 action: #selector(NSWindow.performClose(_:)),
@@ -143,14 +139,8 @@ enum FileMenuBuilder {
         return file
     }
 
-    /// Agent mode's four session commands and the assistant's three conversation commands, which
-    /// between them had no menu-bar home at all: the rail's buttons and the pane header's menu were
-    /// the only routes, so none of them could be found by search, rebound, or reached by a user who
-    /// had the rail collapsed. They sit in File because a session and a conversation are things this
-    /// window opens, closes and throws away, which is what the rest of this menu is about.
-    ///
-    /// Each command has exactly one item here, and each item leaves `target` nil, so the window
-    /// validates it through the responder chain and dims what the mode cannot run.
+    // A session and a conversation are things this window opens and closes. Each item leaves `target` nil, so the
+    // window validates it through the responder chain.
     private static func sessionSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Session"), items: [
             MenuItemFactory.item(
@@ -159,11 +149,7 @@ enum FileMenuBuilder {
                 shortcut: .newAgentSession,
                 keyboard: keyboard
             ),
-            /// Opens the session the rail has highlighted, which is what Return on the rail does.
-            /// A separate leaf rather than the list's own row: AppKit ignores a key equivalent on an
-            /// item that owns a submenu, so making this the list would hand Settings a binding that
-            /// records, reads back and never fires. That is the same trap Import Data… is split
-            /// around, and it is why the list is a row of its own below.
+            // A leaf beside the list: AppKit ignores a key equivalent on an item that owns a submenu.
             MenuItemFactory.item(
                 String(localized: "Open Session"),
                 action: #selector(MainSplitViewController.openAgentSession(_:)),
@@ -198,20 +184,24 @@ enum FileMenuBuilder {
         ])
     }
 
-    /// Every session the connection on screen owns, latest first, filled when it opens. A session
-    /// list built at menu-build time would be one window's sessions frozen at launch.
+    // Filled when it opens; a list built with the menu bar would be frozen at launch.
     private static func recentSessionsSubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Recent Sessions"), items: [])
         container.submenu?.delegate = agentSessionDelegate
         return container
     }
 
-    /// The assistant's stored conversations, filled when it opens for the same reason: the set
-    /// changes with every reply. The pane header's own menu offers the same list, and both put the
-    /// choice through the window so neither can act on a connection the other is showing.
+    // Filled when it opens, since the set changes with every reply.
     private static func conversationHistorySubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Conversation History"), items: [])
         container.submenu?.delegate = conversationHistoryDelegate
+        return container
+    }
+
+    // The selected query tab's recent versions, filled when it opens. No shortcut: AppKit ignores one on this row.
+    private static func revertToSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Revert To"), items: [])
+        container.submenu?.delegate = revertToDelegate
         return container
     }
 
@@ -253,9 +243,7 @@ enum FileMenuBuilder {
         return container
     }
 
-    /// Every format the connection imports from, for naming one a file's extension does not.
-    /// Import Data… above it reads the format off the file instead. The Actions pull-down offers
-    /// the same list under the same title, and the two are filled by the same class when they open.
+    // For a format the file's extension does not name; the Actions pull-down fills the same list with the same class.
     private static func importFormatsSubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Import Data From"), items: [])
         container.submenu?.delegate = importFormatDelegate

@@ -13,7 +13,8 @@ public enum DownloadedBinary {
 
         var hasher = SHA256()
         do {
-            while let chunk = try handle.read(upToCount: hashChunkSize), !chunk.isEmpty {
+            // Each read returns an autoreleased buffer, and the caller's job may not drain its pool until the whole file is read.
+            while let chunk = try autoreleasepool(invoking: { try handle.read(upToCount: hashChunkSize) }), !chunk.isEmpty {
                 hasher.update(data: chunk)
             }
         } catch {
@@ -23,11 +24,7 @@ public enum DownloadedBinary {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    /// `ditto -xk` writes `com.apple.quarantine` onto every file it extracts, not just the
-    /// directory it extracts into, so clearing the bundle root alone leaves the Mach-O inside
-    /// `Contents/MacOS` still quarantined. Gatekeeper reads the flag on the file it is about
-    /// to map, and refuses a quarantined bundle with "library load disallowed by system
-    /// policy" even inside a process that has `com.apple.security.cs.disable-library-validation`.
+    // `ditto -xk` quarantines every extracted file, and Gatekeeper refuses to map a quarantined Mach-O even with library validation off.
     public static func stripQuarantine(at url: URL) {
         stripQuarantineFromSingleItem(at: url)
 

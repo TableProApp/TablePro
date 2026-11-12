@@ -12,16 +12,25 @@ internal final class PipeReader: @unchecked Sendable {
 
     private let handle: FileHandle
     private let descriptor: Int32
-    private let lock = NSLock()
+    // Recursive: an owner may stop the reader from inside its own consumer or end callback.
+    private let lock = NSRecursiveLock()
     private var consumer: (@Sendable (Data) -> Void)?
+    private var atEnd: (@Sendable ((any Error)?) -> Void)?
 
     init(_ handle: FileHandle) {
         self.handle = handle
         descriptor = handle.fileDescriptor
     }
 
-    func start(delivering consumer: @escaping @Sendable (Data) -> Void) {
-        lock.withLock { self.consumer = consumer }
+    // `atEnd` gets nil at end of file or the read error, after the last chunk, and never once the owner stopped the reader.
+    func start(
+        delivering consumer: @escaping @Sendable (Data) -> Void,
+        atEnd: (@Sendable ((any Error)?) -> Void)? = nil
+    ) {
+        lock.withLock {
+            self.consumer = consumer
+            self.atEnd = atEnd
+        }
         handle.readabilityHandler = { _ in
             self.readArrivedBytes()
         }
@@ -47,6 +56,7 @@ internal final class PipeReader: @unchecked Sendable {
         handle.readabilityHandler = nil
         lock.lock()
         defer { lock.unlock() }
+        atEnd = nil
         guard let consumer else { return }
         self.consumer = nil
         drain(consumer)
@@ -59,7 +69,7 @@ internal final class PipeReader: @unchecked Sendable {
         do {
             let chunk = try DescriptorRead.availableBytes(from: descriptor)
             guard !chunk.isEmpty else {
-                endReading()
+                endReading(failure: nil)
                 return
             }
             consumer(chunk)
@@ -67,12 +77,15 @@ internal final class PipeReader: @unchecked Sendable {
             return
         } catch {
             Self.logger.error("Reading a pipe failed: \(error.publicLogShape, privacy: .public)")
-            endReading()
+            endReading(failure: error)
         }
     }
 
-    private func endReading() {
+    private func endReading(failure: (any Error)?) {
         consumer = nil
         handle.readabilityHandler = nil
+        let finished = atEnd
+        atEnd = nil
+        finished?(failure)
     }
 }

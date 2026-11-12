@@ -135,6 +135,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     private let config: DriverConnectionConfig
     let connectionActor = CassandraConnectionActor()
     let activeBrowse = CassandraActiveBrowse()
+    let cellLifetimes = CassandraCellLifetimeStore()
     private let stateLock = NSLock()
     nonisolated(unsafe) private var _currentKeyspace: String?
     nonisolated(unsafe) private var _sessionConsistency: CassandraConsistency?
@@ -287,6 +288,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func disconnect() {
         activeBrowse.cancel()
+        cellLifetimes.removeAll()
         Task.detached(priority: .utility) { [connectionActor] in
             await connectionActor.close()
         }

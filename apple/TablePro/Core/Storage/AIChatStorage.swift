@@ -2,13 +2,10 @@
 //  AIChatStorage.swift
 //  TablePro
 //
-//  File-based persistence for AI chat conversations.
-//
 
 import Foundation
 import os
 
-/// Manages persistent storage of AI chat conversations as individual JSON files
 actor AIChatStorage {
     static let shared = AIChatStorage()
 
@@ -35,7 +32,6 @@ actor AIChatStorage {
             .appendingPathComponent("ai_chats", isDirectory: true)
         directory = dir
 
-        // Create directory inline since actor init is nonisolated
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try FileManager.default.setAttributes(
@@ -49,23 +45,16 @@ actor AIChatStorage {
 
     // MARK: - Public Methods
 
-    /// Maximum encoded size for a single conversation file (500 KB)
     private static let maxFileSize = 500_000
 
-    /// Maximum number of messages to keep after trimming
-    private static let trimmedMessageCount = 50
+    // Past `maxFileSize` only the last turns are written, so a longer transcript may be on disk in part.
+    static let turnsKeptWhenTrimmed = 50
 
-    /// Save a conversation to disk
     func save(_ conversation: AIConversation) {
         Self.write(conversation, into: directory)
     }
 
-    /// Writes on the calling thread, for the one caller that cannot wait for an actor hop.
-    ///
-    /// `applicationWillTerminate` runs to the end of the main run loop turn and the process goes;
-    /// a hop booked there is never scheduled, so the last turns of a reply were lost while the
-    /// session record on disk still named the conversation they belonged to. The body touches no
-    /// actor state beyond `directory`, which is a `let`.
+    // A hop booked in applicationWillTerminate is never scheduled. Touches nothing but the `let` directory.
     nonisolated func saveSynchronously(_ conversation: AIConversation) {
         Self.write(conversation, into: directory)
     }
@@ -80,7 +69,7 @@ actor AIChatStorage {
                 let originalSize = data.count
                 let originalCount = conversation.messages.count
                 var trimmed = conversation
-                trimmed.messages = Array(trimmed.messages.suffix(Self.trimmedMessageCount))
+                trimmed.messages = Array(trimmed.messages.suffix(Self.turnsKeptWhenTrimmed))
                 let dropped = originalCount - trimmed.messages.count
                 data = try Self.encoder.encode(trimmed)
                 Self.logger.warning(
@@ -98,51 +87,48 @@ actor AIChatStorage {
         }
     }
 
-    /// One connection's conversations, newest first.
-    ///
-    /// A conversation stored before conversations carried a connection id has no answer, so it is
-    /// shown on every connection rather than lost.
-    func loadAll(connectionId: UUID?) -> [AIConversation] {
-        guard let connectionId else { return loadAll() }
-        return loadAll().filter { $0.connectionId == nil || $0.connectionId == connectionId }
+    // A conversation stored before conversations carried a connection id is shown everywhere, not lost.
+    static func isShown(conversationOf owner: UUID?, on connectionId: UUID?) -> Bool {
+        connectionId == nil || owner == nil || owner == connectionId
     }
 
-    /// One conversation by id, without reading the rest of the directory.
+    // The history list needs titles only, so no stored conversation's messages are held.
+    func loadSummaries(connectionId: UUID?) -> [AIConversation] {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil,
+                options: .skipsHiddenFiles
+            )
+        } catch {
+            Self.logger.error("Failed to list conversations: \(error.localizedDescription)")
+            return []
+        }
+
+        let summaries: [AIConversation] = files
+            .filter { $0.pathExtension == "json" }
+            .compactMap { fileURL in
+                do {
+                    let data = try Data(contentsOf: fileURL)
+                    let header = try Self.decoder.decode(ConversationHeader.self, from: data)
+                    guard Self.isShown(conversationOf: header.connectionId, on: connectionId) else { return nil }
+                    return header.summary
+                } catch {
+                    Self.logger.error("Failed to load conversation from \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                    return nil
+                }
+            }
+
+        return summaries.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
     func load(id: UUID) -> AIConversation? {
         let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? Self.decoder.decode(AIConversation.self, from: data)
     }
 
-    /// Load all conversations, sorted by updatedAt descending
-    func loadAll() -> [AIConversation] {
-        do {
-            let files = try FileManager.default.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: nil,
-                options: .skipsHiddenFiles
-            )
-
-            let conversations: [AIConversation] = files
-                .filter { $0.pathExtension == "json" }
-                .compactMap { fileURL in
-                    do {
-                        let data = try Data(contentsOf: fileURL)
-                        return try Self.decoder.decode(AIConversation.self, from: data)
-                    } catch {
-                        Self.logger.error("Failed to load conversation from \(fileURL.lastPathComponent): \(error.localizedDescription)")
-                        return nil
-                    }
-                }
-
-            return conversations.sorted { $0.updatedAt > $1.updatedAt }
-        } catch {
-            Self.logger.error("Failed to list conversations: \(error.localizedDescription)")
-            return []
-        }
-    }
-
-    /// Delete a conversation by ID
     func delete(_ id: UUID) {
         let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
 
@@ -153,7 +139,6 @@ actor AIChatStorage {
         }
     }
 
-    /// Delete all conversations
     func deleteAll() {
         do {
             let files = try FileManager.default.contentsOfDirectory(
@@ -166,6 +151,29 @@ actor AIChatStorage {
             }
         } catch {
             Self.logger.error("Failed to delete all conversations: \(error.localizedDescription)")
+        }
+    }
+
+    // Decodes the same keys as `AIConversation` and the same defaults, without `messages`.
+    private struct ConversationHeader: Decodable {
+        let id: UUID
+        let title: String?
+        let createdAt: Date
+        let updatedAt: Date
+        let connectionId: UUID?
+        let connectionName: String?
+        let schemaVersion: Int?
+
+        var summary: AIConversation {
+            AIConversation(
+                id: id,
+                title: title ?? "",
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                connectionId: connectionId,
+                connectionName: connectionName,
+                schemaVersion: max(schemaVersion ?? 0, AIConversation.currentSchemaVersion)
+            )
         }
     }
 }

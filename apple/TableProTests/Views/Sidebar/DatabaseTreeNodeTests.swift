@@ -333,4 +333,87 @@ struct DatabaseTreeNodeTests {
         #expect(groups.map(\.kind) == [.procedure])
         #expect(groups.allSatisfy { $0.schema == "HR" })
     }
+
+    // MARK: - Server objects
+
+    private let events = SidebarServerObjectKind(
+        id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+    )
+    private let extensions = SidebarServerObjectKind(
+        id: "extension", displayName: "Extension", pluralDisplayName: "Extensions", iconName: "puzzlepiece.extension",
+        scope: .database
+    )
+
+    @Test("A container kind's group follows Types in a container and carries the declared descriptor")
+    func containerKindGroupFollowsTypes() {
+        let groups = DatabaseTreeObjectGroupResolver.groups(
+            database: "shop",
+            schema: nil,
+            itemCounts: [.table: 2, .trigger: 1, .type: 1, .server(SidebarServerObjectKind(id: "event")): 3],
+            declared: [events]
+        )
+
+        #expect(groups.map { $0.kind } == [.table, .trigger, .type, .server(events)])
+        #expect(groups.last?.kind.pluralDisplayName == "Events")
+    }
+
+    @Test("A database kind's group lists beside the schemas only when it holds rows or failed")
+    func databaseKindGroupNeedsRowsOrFailure() {
+        let empty = DatabaseTreeObjectGroupResolver.groups(database: "app", schema: nil, itemCounts: [:], declared: [extensions])
+        #expect(empty.isEmpty)
+
+        let phases = DatabaseTreeSidePhases(
+            routines: .idle, triggers: nil, types: nil, serverObjects: ["extension": .failed("permission denied")]
+        )
+        let failed = DatabaseTreeObjectGroupResolver.groups(
+            database: "app",
+            schema: nil,
+            itemCounts: [:],
+            keeping: phases.failedKinds(among: [.server(extensions)]),
+            declared: [extensions]
+        )
+        #expect(failed.map { $0.kind } == [.server(extensions)])
+        #expect(phases.placeholder(for: .server(extensions)) == .error("permission denied"))
+    }
+
+    @Test("A server kind's phase is its own fetch's, and an undeclared kind reads as loaded")
+    func serverKindPhases() {
+        let phases = DatabaseTreeSidePhases(
+            routines: .loaded, triggers: .loaded, types: nil, serverObjects: ["event": .loading]
+        )
+
+        #expect(phases.phase(for: .server(events)) == .loading)
+        #expect(phases.phase(for: .server(extensions)) == .loaded)
+        #expect(phases.all == [.loaded, .loaded, .loading])
+        #expect(DatabaseTreeNode.Status.emptyContainer(sideStates: phases.all) == .loading)
+        #expect(phases.placeholder(for: .server(events)) == nil)
+    }
+
+    @Test("A server object row is a selectable leaf with an id of its own")
+    func serverObjectRowIdentity() {
+        let object = ServerObjectInfo(kindId: "event", name: "nightly", schema: "shop")
+        let ref = DatabaseTreeServerObjectRef(database: "shop", schema: "shop", kind: events, object: object)
+        let node = DatabaseTreeNode(id: DatabaseTreeNode.serverObjectId(ref), kind: .serverObject(ref))
+        let trigger = DatabaseTreeTriggerRef(
+            database: "shop", schema: "shop",
+            trigger: TriggerInfo(name: "nightly", timing: "AFTER", event: "INSERT", statement: "")
+        )
+
+        #expect(!node.isExpandable)
+        #expect(!node.isGroupRow)
+        #expect(!node.isContainer)
+        #expect(DatabaseTreeSelection.isSelectable(node.kind))
+        #expect(DatabaseTreeNode.serverObjectId(ref) != DatabaseTreeNode.triggerId(trigger))
+        #expect(DatabaseTreeDoubleClickResolver.resolve(node: node) == .openObjectSource(ref.objectRef))
+    }
+
+    @Test("A declared kind's group id spells its persistence name, and built-in ids are unchanged")
+    func serverGroupIdsUsePersistenceName() {
+        #expect(DatabaseTreeNode.objectKindSectionId(.table) == "kindSection\u{1}table")
+        #expect(
+            DatabaseTreeNode.containerObjectKindSectionId(objectGroup(kind: .materializedView))
+                == "containerKindSection\u{1}shop\u{1}public\u{1}materializedView"
+        )
+        #expect(DatabaseTreeNode.objectKindSectionId(.server(events)) == "kindSection\u{1}server.event")
+    }
 }

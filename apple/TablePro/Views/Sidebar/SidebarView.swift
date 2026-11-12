@@ -47,7 +47,8 @@ struct SidebarView: View {
     }
 
     private var hasAnyMatch: Bool {
-        SidebarObjectKind.allCases.contains { kind in
+        let declared = SidebarServerObjectKind.declared(by: DatabaseManager.shared.driver(for: connectionId))
+        return SidebarObjectKind.ordered(declared: declared).contains { kind in
             countFor(kind: kind) > 0
         } || !otherSchemaMatches.isEmpty || !attachedSchemaMatches.isEmpty || hasTemporaryMatch
     }
@@ -483,6 +484,12 @@ struct SidebarView: View {
         case .routine: return viewModel.filteredRoutines(of: kind, from: routines).count
         case .trigger: return viewModel.filteredTriggers(from: triggers).count
         case .type:    return viewModel.filteredUserTypes(from: userDefinedTypes).count
+        case .server:
+            guard let serverKind = kind.serverKind else { return 0 }
+            return viewModel.filteredServerObjects(
+                kindId: serverKind.id,
+                from: schemaService.serverObjects(for: connectionId, kindId: serverKind.id)
+            ).count
         }
     }
 }
