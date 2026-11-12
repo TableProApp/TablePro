@@ -126,7 +126,9 @@ final class DataTabSQLExporter: DataGridSQLExporting {
             columnTypes: [column.type ?? .text(rawType: nil)],
             escapeStringLiteral: driver?.escapeStringLiteral,
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
-            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState)
+            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState),
+            booleanLiteralStyle: (try? resolveSQLDialect(for: databaseType))?.booleanLiteralStyle ?? .truefalse,
+            databaseType: databaseType
         )
         return converter.generateInClause(rows: values.map { [$0] })
     }

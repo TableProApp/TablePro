@@ -176,7 +176,7 @@ extension DataGridCommands {
     }
 
     // The grid's copy says which fields were SQL; any other field is text however it reads. Text from another app is
-    // read the way a typed cell is.
+    // read the way a typed cell is. A binary column takes `0x` hex as the bytes it spells, as the hex editor does.
     func pastedEntry(
         _ field: String?,
         of block: DataGridCellPasteBlock,
@@ -184,6 +184,10 @@ extension DataGridCommands {
         column: DataGridColumn
     ) -> StagedCellEntry? {
         let rows = model.rows
+        if !isExpression, let field, BlobFormattingService.hasHexPrefix(field),
+           rows.editingColumnType(at: column.dataIndex)?.isBlobType == true {
+            return BlobFormattingService.shared.bytes(fromPrefixedHex: field).map { (value: .bytes($0), isExpression: false) }
+        }
         guard block.isGridCopy else {
             let text = field.flatMap {
                 DataGridCellPasteBlock.pastedText($0, columnType: rows.editingColumnType(at: column.dataIndex))

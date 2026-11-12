@@ -3713,6 +3713,9 @@
         }
       }
     },
+    "%@ is a binary column, and this value is not 0x followed by hex digits." : {
+
+    },
     "%@ is a boolean field, so it matches only true or false, not %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -202077,6 +202080,9 @@
 
     },
     "This row has no value for this field." : {
+
+    },
+    "This row has no values, and %@ has no way to insert a row of only defaults." : {
 
     },
     "This row holds only the part of a value the grid shows, so adding it would store that part. Add the key with a command in the query editor." : {

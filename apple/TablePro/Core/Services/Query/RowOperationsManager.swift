@@ -402,7 +402,11 @@ final class RowOperationsManager {
         }
 
         if parser == nil, let cells = clipboardProvider.readGridCells(), cells.text == clipboardText {
-            let parsedRows = Self.rows(fromCopiedCells: cells, schema: schema, tableRows: tableRows)
+            guard let parsedRows = Self.readingCopiedHex(
+                Self.rows(fromCopiedCells: cells, schema: schema, tableRows: tableRows), tableRows: tableRows
+            ) else {
+                return PasteRowsResult(pastedRows: [], delta: .none)
+            }
             return insertParsedRows(
                 keepsMissingFields ? parsedRows.map(Self.nullsAsMissingFields) : parsedRows,
                 primaryKeyColumns: primaryKeyColumns,
@@ -418,6 +422,9 @@ final class RowOperationsManager {
         case .success(let parsedRows):
             let unfilled = Self.unfilledCellValues(columns: columns, primaryKeyColumns: primaryKeyColumns, tableRows: tableRows)
             let filled = parsedRows.map { Self.fillingBlankCells($0, with: unfilled) }
+            guard let filled = Self.readingCopiedHex(filled, tableRows: tableRows) else {
+                return PasteRowsResult(pastedRows: [], delta: .none)
+            }
             return insertParsedRows(
                 keepsMissingFields ? filled.map(Self.nullsAsMissingFields) : filled,
                 primaryKeyColumns: primaryKeyColumns,
@@ -484,6 +491,33 @@ final class RowOperationsManager {
             }
             return ParsedRow(values: values, sourceLineNumber: index + 1, expressionColumns: expressionColumns)
         }
+    }
+
+    // A copy writes bytes as `0x` hex, so a binary column takes back the bytes it spells. A `0x` field that is not hex,
+    // such as a copy cut short with `…`, refuses the paste, as it refuses a cell paste.
+    private static func readingCopiedHex(_ rows: [ParsedRow], tableRows: TableRows) -> [ParsedRow]? {
+        var read: [ParsedRow] = []
+        read.reserveCapacity(rows.count)
+        for row in rows {
+            var values = row.values
+            for index in values.indices where !row.expressionColumns.contains(index) {
+                guard case .text(let text) = values[index], BlobFormattingService.hasHexPrefix(text),
+                      tableRows.editingColumnType(at: index)?.isBlobType == true else { continue }
+                guard let bytes = BlobFormattingService.shared.bytes(fromPrefixedHex: text) else {
+                    logger.warning("Paste refused: a binary column's field is not hex after 0x")
+                    return nil
+                }
+                values[index] = .bytes(bytes)
+            }
+            read.append(ParsedRow(
+                values: values,
+                sourceLineNumber: row.sourceLineNumber,
+                absentColumns: row.absentColumns,
+                expressionColumns: row.expressionColumns,
+                blankColumns: row.blankColumns
+            ))
+        }
+        return read
     }
 
     // A blank cell of pasted text was left unfilled, so it takes what a new row's cell does: the server's value where

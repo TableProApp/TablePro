@@ -219,7 +219,9 @@ extension DataGridCommands {
                 columnTypes: [column.type ?? .text(rawType: nil)],
                 escapeStringLiteral: nil,
                 stringLiteralPrefix: traits.stringLiteralPrefix,
-                stringEscapes: traits.databaseType.map { SQLLexicalResolver.keptTextStringEscapes(for: $0, session: session) } ?? .standard
+                stringEscapes: traits.databaseType.map { SQLLexicalResolver.keptTextStringEscapes(for: $0, session: session) } ?? .standard,
+                booleanLiteralStyle: traits.databaseType.flatMap { try? resolveSQLDialect(for: $0) }?.booleanLiteralStyle ?? .truefalse,
+                databaseType: traits.databaseType
             ).generateInClause(rows: values.map { [$0] })
         guard !text.isEmpty else { return }
         ClipboardService.shared.writeText(text)
