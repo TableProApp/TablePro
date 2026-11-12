@@ -51,16 +51,16 @@ C_MODULE=""
 LINK=""
 case "$ENGINE" in
     elasticsearch)
-        FOLDER=ElasticsearchDriverPlugin CLASS=ElasticsearchPlugin PORT_DEFAULT=9200
+        FOLDER=ElasticsearchDriverPlugin PORT_DEFAULT=9200
         PRODUCTS="TableProNumberFormatting TableProDocumentPath"
         ;;
     mongodb)
-        FOLDER=MongoDBDriverPlugin CLASS=MongoDBPlugin PORT_DEFAULT=27017 C_MODULE=CLibMongoc
+        FOLDER=MongoDBDriverPlugin PORT_DEFAULT=27017 C_MODULE=CLibMongoc
         PRODUCTS="TableProLogRedaction TableProSQLGrammar TableProNumberFormatting"
         LINK="$ROOT/Libs/libmongoc.a $ROOT/Libs/libbson.a -lssl.3 -lcrypto.3 -lresolv -lz"
         ;;
     trino)
-        FOLDER=TrinoDriverPlugin CLASS=TrinoPlugin PORT_DEFAULT=8080
+        FOLDER=TrinoDriverPlugin PORT_DEFAULT=8080
         PRODUCTS="TableProTLSClientIdentity TableProTrinoCore"
         ;;
     *)
