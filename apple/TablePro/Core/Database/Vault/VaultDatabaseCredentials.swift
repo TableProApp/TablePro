@@ -6,31 +6,41 @@
 import Foundation
 import os
 
-// Every call reads a new lease. The credential lives only in the returned value and the driver it configures.
+// The credential lives only in memory: in the cached lease and the drivers that sign in with it.
 struct VaultDatabaseCredentials: Sendable {
     static let shared = VaultDatabaseCredentials()
 
     // A lease dies with the token that created it, so a minted token close to its end is renewed or replaced first.
     static let minimumTokenLife: Duration = .seconds(300)
+    // Quit waits this long for Vault to revoke the users still leased.
+    static let quitRevokeLimit: Duration = .seconds(3)
 
     private let authenticator: VaultAuthenticator
     private let transport: any VaultTransport
     private let clock: any Clock<Duration>
+    private let leases: VaultLeaseCache
 
-    init(
+    init<C: Clock<Duration>>(
         authenticator: VaultAuthenticator = .shared,
         transport: any VaultTransport = URLSessionVaultTransport.shared,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: C = ContinuousClock()
     ) {
         self.authenticator = authenticator
         self.transport = transport
         self.clock = clock
+        self.leases = VaultLeaseCache(clock: clock)
     }
 
-    func signIn(_ role: VaultDatabaseRole, interactive: Bool) async throws -> ResolvedSignIn {
+    // `owner` is the credential profile, or the connection for a role of its own. One owner signs in as one user
+    // while its lease lives. `connection` is the one signing in, nil for a test of the source alone.
+    func signIn(
+        _ role: VaultDatabaseRole,
+        owner: UUID,
+        for connection: UUID?,
+        interactive: Bool
+    ) async throws -> ResolvedSignIn {
         let endpoint = try VaultEndpoint.resolve(address: role.address, environment: authenticator.currentEnvironment)
         let client = VaultClient(endpoint: endpoint, transport: transport)
-        let path = role.credentialsPath
 
         var token = try await authenticator.token(
             for: role.auth,
@@ -42,6 +52,31 @@ struct VaultDatabaseCredentials: Sendable {
             await authenticator.forget(role.auth, endpoint: endpoint)
             token = try await authenticator.token(for: role.auth, endpoint: endpoint, interactive: interactive)
         }
+        let key = VaultLeaseCache.Key(owner: owner, role: role, endpoint: endpoint, token: token.value)
+        let issuing = token
+        let hold = try await leases.acquire(key, for: connection) {
+            try await readLease(role, endpoint: endpoint, client: client, token: issuing, interactive: interactive)
+        }
+        return ResolvedSignIn(username: hold.username, password: hold.password, lease: hold)
+    }
+
+    func endUse(connection: UUID, live: Set<UUID>) {
+        leases.endUse(connection: connection, live: live)
+    }
+
+    func revokeAllLeases() async {
+        await leases.revokeAll(within: Self.quitRevokeLimit)
+    }
+
+    private func readLease(
+        _ role: VaultDatabaseRole,
+        endpoint: VaultEndpoint,
+        client: VaultClient,
+        token initialToken: VaultToken,
+        interactive: Bool
+    ) async throws -> VaultLeaseCache.Issued {
+        let path = role.credentialsPath
+        var token = initialToken
         let credential: VaultLeasedCredential
         let issuedAt: ContinuousClock.Instant
         do {
@@ -54,7 +89,7 @@ struct VaultDatabaseCredentials: Sendable {
             credential = try await Self.read(path: path, token: token.value, client: client)
             issuedAt = authenticator.currentInstant
         } catch let error as VaultRequestError {
-            throw VaultError.credentialsFailed(path: path, message: error.message)
+            throw Self.failure(error, path: path, client: client)
         }
 
         if token.source.isMinted,
@@ -88,7 +123,12 @@ struct VaultDatabaseCredentials: Sendable {
             renewer: renewer,
             clock: clock
         )
-        return ResolvedSignIn(username: credential.username, password: credential.password, lease: lease)
+        return VaultLeaseCache.Issued(
+            username: credential.username,
+            password: credential.password,
+            lease: lease,
+            token: token.value
+        )
     }
 
     // Only a token TablePro minted bounds the lease's schedule. The user's own token is theirs to renew; rotating
@@ -101,8 +141,12 @@ struct VaultDatabaseCredentials: Sendable {
         do {
             return try await client.readCredentials(path: path, token: token)
         } catch let error as VaultRequestError {
-            throw VaultError.credentialsFailed(path: path, message: error.message)
+            throw failure(error, path: path, client: client)
         }
+    }
+
+    private static func failure(_ error: VaultRequestError, path: String, client: VaultClient) -> VaultError {
+        .signInFailure(error, at: client.endpoint, otherwise: .credentialsFailed(path: path, message: error.message))
     }
 }
 

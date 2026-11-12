@@ -245,7 +245,7 @@ extension DatabaseManager {
     static func promptCacheKey(for connection: DatabaseConnection) -> PromptedPasswordKey {
         let sharedByProfile = connection.credentialMode.profileId != nil
         return PromptedPasswordKey(
-            owner: ConnectionCredentialResolver.promptCacheKey(for: connection),
+            owner: ConnectionCredentialResolver.credentialOwner(for: connection),
             destination: sharedByProfile ? "" : connection.destination.digest
         )
     }
@@ -833,6 +833,7 @@ extension DatabaseManager {
             "[close] disconnectSession driver.disconnect done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(driverStart) * 1_000))"
         )
         removeSessionEntry(for: sessionId)
+        VaultDatabaseCredentials.shared.endUse(connection: sessionId, live: Set(activeSessions.keys))
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
         await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)

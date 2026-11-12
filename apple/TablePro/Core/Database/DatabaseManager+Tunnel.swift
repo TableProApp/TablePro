@@ -74,6 +74,7 @@ extension DatabaseManager {
             type: connection.type,
             sshConfig: SSHConfiguration(),
             sslConfig: tunnelSSL,
+            credentialMode: connection.credentialMode,
             passwordSource: connection.passwordSource,
             additionalFields: effectiveFields
         )

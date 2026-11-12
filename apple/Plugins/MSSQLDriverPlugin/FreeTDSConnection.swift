@@ -143,7 +143,13 @@ nonisolated private func freetdsRecordMessage(_ message: MSSQLServerMessage, for
         return
     }
     let key = freetdsConnectionKey(dbproc)
+    // db-lib hands a login's messages the DBPROCESS it is still building, which has no gate until it is adopted and is
+    // freed when the login fails, so the first refusal goes where a failed open reads its reason.
+    let refusesLogin = message.isError && freetdsGate(forKey: key) == nil
     freetdsErrors.withLock { state in
+        if refusesLogin, state.global.isEmpty {
+            state.global = message.text
+        }
         state.perConnection[key, default: FreeTDSDiagnostics()].record(message)
     }
 }
@@ -342,7 +348,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         defer { dbloginfree(login) }
         try configure(login)
 
-        let opened: UnsafeMutablePointer<DBPROCESS>?
+        let opened: (proc: UnsafeMutablePointer<DBPROCESS>?, refusal: String)
         do {
             opened = try freetdsConfigFile.withEntry(
                 entry,
@@ -350,7 +356,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 givingUpWhen: { attempt.isSettled }
             ) {
                 guard !attempt.isSettled else { throw CancellationError() }
-                freetdsClearError(for: nil)
                 return try open(login, serverName: entry.name, deadline: deadline)
             }
         } catch MSSQLFreeTDSConfigError.nameInUse {
@@ -358,8 +363,8 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         } catch let error as MSSQLFreeTDSConfigError {
             throw MSSQLCoreError.connectionFailed(error.localizedDescription)
         }
-        guard let proc = opened else {
-            throw openFailure()
+        guard let proc = opened.proc else {
+            throw openFailure(detail: opened.refusal)
         }
         return proc
     }
@@ -373,14 +378,16 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         }
     }
 
+    // A refused login's reason lands in process-wide state the next login clears, so it is read under the same lock.
     private func open(
         _ login: UnsafeMutablePointer<LOGINREC>,
         serverName: String,
         deadline: MSSQLConnectDeadline
-    ) throws -> UnsafeMutablePointer<DBPROCESS>? {
+    ) throws -> (proc: UnsafeMutablePointer<DBPROCESS>?, refusal: String) {
         Self.loginStartLock.lock()
         defer { Self.loginStartLock.unlock() }
-        return try withKerberosEnvironmentIfNeeded(deadline: deadline) {
+        freetdsClearError(for: nil)
+        let proc = try withKerberosEnvironmentIfNeeded(deadline: deadline) {
             let timeoutMilliseconds = deadline.remainingMilliseconds
             guard timeoutMilliseconds > 0 else {
                 throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
@@ -389,6 +396,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             _ = dbsetlogintime(seconds)
             return dbopen(login, serverName)
         }
+        return (proc, proc == nil ? freetdsGetError(for: nil) : "")
     }
 
     private func discardKerberosCache() {
@@ -426,8 +434,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         }
     }
 
-    private func openFailure() -> MSSQLCoreError {
-        let detail = freetdsGetError(for: nil)
+    private func openFailure(detail: String) -> MSSQLCoreError {
         let msg = detail.isEmpty ? "Check host, port, credentials, and TLS settings" : detail
         if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
             return .tlsHandshakeFailed(kind: kind, serverMessage: detail)

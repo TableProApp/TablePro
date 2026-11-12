@@ -60,6 +60,18 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.passwordSource == .env(variable: "DB_PASS"))
     }
 
+    @Test("A tunneled connection keeps its credential profile, so it signs in with the profile's credentials")
+    func tunnelPreservesCredentialProfile() {
+        let profileId = UUID()
+        var connection = DatabaseConnection(name: "tunneled", host: "db.internal", port: 3_306, type: .mysql)
+        connection.credentialMode = .profile(id: profileId)
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 61_235)
+
+        #expect(tunneled.credentialMode.profileId == profileId)
+        #expect(ConnectionCredentialResolver.credentialOwner(for: tunneled) == profileId)
+    }
+
     @Test("A tunneled DuckDB Remote row dials the forward through its own Host and Port fields")
     func tunnelRewritesServerEndpointFields() {
         let connection = DatabaseConnection(
