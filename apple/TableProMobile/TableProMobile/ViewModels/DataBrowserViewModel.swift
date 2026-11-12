@@ -25,7 +25,6 @@ final class DataBrowserViewModel {
 
     var columns: [ColumnInfo] { buffer.columns }
     var window: RowWindow { buffer.window }
-    var legacyRows: [[String?]] { buffer.legacyRows }
     var rowsAffected: Int? { buffer.rowsAffected }
     var statusMessage: String? { buffer.statusMessage }
 
@@ -56,7 +55,11 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var hasSeededFilters = false
-    @ObservationIgnored private var singleRowMatch = SingleRowMatch.inactive
+    @ObservationIgnored private var foreignKeysRead = false
+    // Bumped when what the count counts changes; a page turn, a sort or a page size change leaves it.
+    @ObservationIgnored private var countEpoch = 0
+    @ObservationIgnored private var countingEpoch: Int?
+    private var singleRowMatch = SingleRowMatch.inactive
 
     private enum SingleRowMatch {
         case inactive
@@ -87,17 +90,20 @@ final class DataBrowserViewModel {
     private var rowIdentity: RowIdentity { RowLocator.identity(of: session?.driver) }
 
     var showsPaginationBar: Bool {
-        !legacyRows.isEmpty || hasActiveSearch || hasActiveFilters || isPageLoading
+        !buffer.isEmpty || hasActiveSearch || hasActiveFilters || isPageLoading || pagination.currentPage > 0
     }
 
     var canGoToPreviousPage: Bool { pagination.currentPage > 0 && !isLoading }
-    var canGoToNextPage: Bool { pagination.hasNextPage && !isLoading }
+    var canGoToNextPage: Bool { pagination.hasNextPage && !isLoading && !isPastTheEnd }
+
+    // An empty page after the first: Next or Go to Page went past the last row before the count said where it was.
+    var isPastTheEnd: Bool { buffer.isEmpty && pagination.currentPage > 0 }
 
     var paginationLabel: String {
-        guard !legacyRows.isEmpty else { return "" }
+        guard !buffer.isEmpty else { return "" }
         // A memory trim drops rows from the head of the page, so the range starts at the first row still held.
         let start = pagination.currentOffset + window.firstAbsoluteIndex + 1
-        let end = start + legacyRows.count - 1
+        let end = start + buffer.count - 1
         guard let total = pagination.totalRows else { return "\(start)-\(end)" }
         return Self.pageRangeLabel(start: start, end: end, total: total)
     }
@@ -119,12 +125,17 @@ final class DataBrowserViewModel {
         schema: String? = nil,
         trackRead: SessionReadTracker? = nil
     ) {
+        // Another session or schema holds other rows, so neither the total nor a count still running applies.
+        let movesSource = session?.driver !== self.session?.driver || schema != self.schema || table.name != self.table?.name
         self.session = session
         self.table = table
         self.databaseType = databaseType
         self.host = host
         self.schema = schema
         self.trackRead = trackRead
+        if movesSource {
+            resetTotal()
+        }
     }
 
     // Only the first call counts, so filters the user changed afterwards survive the view's task running again.
@@ -134,6 +145,11 @@ final class DataBrowserViewModel {
         filters = seeded
         filterLogicMode = .and
         singleRowMatch = hasActiveFilters ? .awaitingFirstLoad : .inactive
+    }
+
+    var hasSingleRowMatch: Bool {
+        if case .found = singleRowMatch { return true }
+        return false
     }
 
     func takeSingleRowMatch() -> Bool {
@@ -160,7 +176,7 @@ final class DataBrowserViewModel {
             return
         }
 
-        if isInitial || legacyRows.isEmpty {
+        if isInitial || buffer.isEmpty {
             isLoading = true
         } else {
             isPageLoading = true
@@ -194,7 +210,7 @@ final class DataBrowserViewModel {
         isLoading = false
         isPageLoading = false
         guard case .awaitingFirstLoad = singleRowMatch else { return }
-        singleRowMatch = loadError == nil && legacyRows.count == 1 ? .found : .inactive
+        singleRowMatch = loadError == nil && buffer.count == 1 ? .found : .inactive
     }
 
     private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool, generation: Int) async {
@@ -226,19 +242,24 @@ final class DataBrowserViewModel {
                 return
             }
             settleTotalRowsFromShortPage()
+            // The page is on screen and takes taps; the key links and the pager's total fill in after it.
+            finishLoad()
 
-            if foreignKeys.isEmpty || isInitial {
+            if !foreignKeysRead || isInitial {
                 do {
                     let fetched = try await session.driver.fetchForeignKeys(table: table.name, schema: schema)
                     guard isCurrent(generation) else { return }
                     foreignKeys = fetched
+                    foreignKeysRead = true
                 } catch {
                     Self.logger.warning("Failed to fetch foreign keys: \(error.localizedDescription, privacy: .private)")
                 }
             }
 
-            if isCurrent(generation), pagination.totalRows == nil {
-                await fetchTotalRows(session: session, table: table, generation: generation)
+            // A count already running for the same rows lands for this page too, so a page turn neither drops it nor
+            // starts another behind it.
+            if isCurrent(generation), pagination.totalRows == nil, countingEpoch != countEpoch {
+                await fetchTotalRows(session: session, table: table)
             }
         } catch {
             guard isCurrent(generation) else { return }
@@ -285,10 +306,13 @@ final class DataBrowserViewModel {
         }
     }
 
-    // A page cut short by Stop, a closed screen or another statement says nothing about where the table ends.
+    // A page cut short by Stop, a closed screen or another statement says nothing about where the table ends, and an
+    // empty page after the first says only that it ends before it.
     private func settleTotalRowsFromShortPage() {
-        guard pageEndedOnItsOwn, legacyRows.count < pagination.pageSize, pagination.totalRows == nil else { return }
-        pagination.totalRows = pagination.currentOffset + legacyRows.count
+        guard pageEndedOnItsOwn, buffer.count < pagination.pageSize, pagination.totalRows == nil, !isPastTheEnd else {
+            return
+        }
+        pagination.totalRows = pagination.currentOffset + buffer.count
     }
 
     private func pageOptions(lazyContext: LazyContext?, textBudget: TextBudget? = nil) -> StreamOptions {
@@ -370,11 +394,16 @@ final class DataBrowserViewModel {
         columns.filter { !Cell.holdsBytes(typeName: $0.typeName) }
     }
 
-    private func fetchTotalRows(session: ConnectionSession, table: TableInfo, generation: Int) async {
+    private func fetchTotalRows(session: ConnectionSession, table: TableInfo) async {
+        let epoch = countEpoch
+        countingEpoch = epoch
+        defer {
+            if countingEpoch == epoch { countingEpoch = nil }
+        }
         do {
             if let builder = session.driver as? any DriverQueryBuilding {
                 let total = try await builder.rowCount(readRequest(table: table))
-                guard isCurrent(generation) else { return }
+                guard epoch == countEpoch else { return }
                 pagination.totalRows = total
                 return
             }
@@ -396,7 +425,7 @@ final class DataBrowserViewModel {
                 countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)
             }
             let countResult = try await session.driver.execute(query: countQuery)
-            guard isCurrent(generation) else { return }
+            guard epoch == countEpoch else { return }
             if let firstRow = countResult.rows.first, let firstCol = firstRow.first {
                 pagination.totalRows = Int(firstCol ?? "0")
             }
@@ -430,10 +459,10 @@ final class DataBrowserViewModel {
         await navigatePage()
     }
 
+    // The page size and the order cannot change how many rows there are, so the total stays.
     func changePageSize(_ size: Int) async {
         pagination.pageSize = size
         pagination.currentPage = 0
-        pagination.totalRows = nil
         await navigatePage()
     }
 
@@ -445,7 +474,6 @@ final class DataBrowserViewModel {
 
     func applySort() async {
         pagination.currentPage = 0
-        pagination.totalRows = nil
         await load()
     }
 
@@ -454,7 +482,7 @@ final class DataBrowserViewModel {
         activeSearchText = trimmed
         guard !trimmed.isEmpty, !columns.isEmpty else { return }
         pagination.currentPage = 0
-        pagination.totalRows = nil
+        resetTotal()
         searchTask?.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
@@ -467,7 +495,7 @@ final class DataBrowserViewModel {
     func clearSearch() async {
         activeSearchText = ""
         pagination.currentPage = 0
-        pagination.totalRows = nil
+        resetTotal()
         searchTask?.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
@@ -479,15 +507,20 @@ final class DataBrowserViewModel {
 
     func applyFilters() async {
         pagination.currentPage = 0
-        pagination.totalRows = nil
+        resetTotal()
         await load()
     }
 
     func clearFilters() async {
         filters.removeAll()
         pagination.currentPage = 0
-        pagination.totalRows = nil
+        resetTotal()
         await load()
+    }
+
+    private func resetTotal() {
+        pagination.totalRows = nil
+        countEpoch += 1
     }
 
     // MARK: - Row Operations

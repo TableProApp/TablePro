@@ -73,8 +73,10 @@ struct AppStateFixture {
             bookmarkStore: bookmarkStore,
             libraryPublisher: libraryPublisher ?? ConnectionLibraryPublisher(
                 searchIndex: RecordingSearchIndex(),
+                readWidgetItems: { [] },
                 writeWidgetItems: { _ in },
-                refreshShortcutParameters: {}
+                refreshShortcutParameters: {},
+                defaults: defaults
             ),
             driverFactory: driverFactory
         )
