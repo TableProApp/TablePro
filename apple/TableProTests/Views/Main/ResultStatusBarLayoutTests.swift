@@ -105,6 +105,37 @@ struct ResultStatusBarLayoutTests {
         return host.fittingSize.height
     }
 
+    @Test("A bar above the content draws its rule on its lower edge and opens its popovers downward")
+    func topBarFacesTheContentBelowIt() {
+        #expect(StatusBarPlacement.top.dividerEdge == .bottom)
+        #expect(StatusBarPlacement.top.popoverArrowEdge == .bottom)
+        #expect(StatusBarPlacement.bottom.dividerEdge == .top)
+        #expect(StatusBarPlacement.bottom.popoverArrowEdge == .top)
+    }
+
+    /// Moving the bar moves its rule and nothing else, so the grid below it gets the same height
+    /// back and the bar drops a tier at the same widths it always did.
+    @Test("Placed above the grid, the bar keeps its height and its width")
+    func topPlacementKeepsTheFootprint() {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        let below = NSHostingView(rootView: bar)
+        let above = NSHostingView(rootView: bar.environment(\.statusBarPlacement, .top))
+        below.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
+        above.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
+        below.layoutSubtreeIfNeeded()
+        above.layoutSubtreeIfNeeded()
+
+        #expect(above.fittingSize.height == below.fittingSize.height)
+        #expect(above.fittingSize.width == below.fittingSize.width)
+        #expect(above.fittingSize.height >= StatusBarChrome.height)
+    }
+
     /// A fresh query tab used to render an 8pt sliver that snapped to 28pt on the first execution,
     /// shoving the grid up by 20pt every time.
     @Test("The bar is the same height before and after a result arrives")

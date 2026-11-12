@@ -52,16 +52,25 @@ internal enum DatabaseTreeTypeSelect {
         tableEntityName: String? = nil
     ) -> String? {
         switch kind {
-        case .recentSection, .temporarySection, .foldersSection, .status, .objectKindSection, .redisKeysSection:
+        case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .status, .objectKindSection,
+             .redisKeysSection:
             return nil
+        case .connectionGroup(let group):
+            return group.name
+        case .savedConnection(let ref):
+            return ref.row.connection.name
         case .tableFolder(let ref):
             return ref.folder.name
         case .containerObjectKindSection(let group):
             return group.kind.title(tableEntityName: tableEntityName)
-        case .recentTable(let ref), .temporaryTable(let ref), .table(let ref):
+        case .recentTable(let ref), .favoriteTable(let ref), .temporaryTable(let ref), .table(let ref):
             return ref.table.name
         case .partition(let ref):
             return ref.partition.name
+        case .tableDetailGroup(let group):
+            return TableDetailRowLogic.title(for: group.kind)
+        case .tableDetail(let ref):
+            return ref.item.name
         case .database(let metadata):
             return metadata.name
         case .schema(_, let schema):

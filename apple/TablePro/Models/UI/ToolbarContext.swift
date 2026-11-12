@@ -42,10 +42,20 @@ internal struct ToolbarContext: Equatable {
 
     // Whether the Routine Debugger module puts its controls in the toolbar at all.
     internal let showsDebugItems: Bool
+    // A labeled toolbar is a fixed strip of named commands: a content command that cannot act dims in place.
+    internal let keepsContentCommandsInPlace: Bool
     // What the selected debug tab can do now; empty and false everywhere else.
     internal let debugCommands: Set<PluginDebugCommand>
     internal let canStopDebugging: Bool
     internal let isPresentingSheet: Bool
+
+    // What the connection supports and the browsed container offers, for the Objects buttons.
+    // Enablement only, never visibility.
+    internal let canListTables: Bool
+    internal let offersViews: Bool
+    internal let offersFunctions: Bool
+    internal let supportsUserManagement: Bool
+    internal let supportsBackup: Bool
 
     // Only these stable facts may change the toolbar layout or labels.
     internal struct VisibilityKey: Equatable {
@@ -59,6 +69,7 @@ internal struct ToolbarContext: Equatable {
         internal let isAIEnabled: Bool
         internal var stagesObjectChanges = false
         internal var showsDebugItems = false
+        internal var keepsContentCommandsInPlace = false
     }
 
     internal var visibilityKey: VisibilityKey {
@@ -72,7 +83,8 @@ internal struct ToolbarContext: Equatable {
             supportsServerDashboard: supportsServerDashboard,
             isAIEnabled: isAIEnabled,
             stagesObjectChanges: stagesObjectChanges,
-            showsDebugItems: showsDebugItems
+            showsDebugItems: showsDebugItems,
+            keepsContentCommandsInPlace: keepsContentCommandsInPlace
         )
     }
 
@@ -98,9 +110,15 @@ internal struct ToolbarContext: Equatable {
         isAIEnabled: Bool = false,
         stagesObjectChanges: Bool = false,
         showsDebugItems: Bool = false,
+        keepsContentCommandsInPlace: Bool = false,
         debugCommands: Set<PluginDebugCommand> = [],
         canStopDebugging: Bool = false,
-        isPresentingSheet: Bool = false
+        isPresentingSheet: Bool = false,
+        canListTables: Bool = false,
+        offersViews: Bool = false,
+        offersFunctions: Bool = false,
+        supportsUserManagement: Bool = false,
+        supportsBackup: Bool = false
     ) {
         self.tabKind = tabKind
         self.resultsMode = resultsMode
@@ -123,9 +141,15 @@ internal struct ToolbarContext: Equatable {
         self.isAIEnabled = isAIEnabled
         self.stagesObjectChanges = stagesObjectChanges
         self.showsDebugItems = showsDebugItems
+        self.keepsContentCommandsInPlace = keepsContentCommandsInPlace
         self.debugCommands = debugCommands
         self.canStopDebugging = canStopDebugging
         self.isPresentingSheet = isPresentingSheet
+        self.canListTables = canListTables
+        self.offersViews = offersViews
+        self.offersFunctions = offersFunctions
+        self.supportsUserManagement = supportsUserManagement
+        self.supportsBackup = supportsBackup
     }
 
     // Over a key the caller already computed, so the slow-moving facts are read once per context.
@@ -144,7 +168,12 @@ internal struct ToolbarContext: Equatable {
         canNavigateForward: Bool,
         debugCommands: Set<PluginDebugCommand> = [],
         canStopDebugging: Bool = false,
-        isPresentingSheet: Bool = false
+        isPresentingSheet: Bool = false,
+        canListTables: Bool = false,
+        offersViews: Bool = false,
+        offersFunctions: Bool = false,
+        supportsUserManagement: Bool = false,
+        supportsBackup: Bool = false
     ) {
         self.init(
             tabKind: key.tabKind,
@@ -168,9 +197,15 @@ internal struct ToolbarContext: Equatable {
             isAIEnabled: key.isAIEnabled,
             stagesObjectChanges: key.stagesObjectChanges,
             showsDebugItems: key.showsDebugItems,
+            keepsContentCommandsInPlace: key.keepsContentCommandsInPlace,
             debugCommands: debugCommands,
             canStopDebugging: canStopDebugging,
-            isPresentingSheet: isPresentingSheet
+            isPresentingSheet: isPresentingSheet,
+            canListTables: canListTables,
+            offersViews: offersViews,
+            offersFunctions: offersFunctions,
+            supportsUserManagement: supportsUserManagement,
+            supportsBackup: supportsBackup
         )
     }
 }

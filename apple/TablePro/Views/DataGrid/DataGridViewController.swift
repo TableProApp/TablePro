@@ -341,6 +341,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         main.scrollView.fitsRows = configuration.fitsRows
         container.followsPageScroll = configuration.fitsRows
         applyRowHeight()
+        applyHeaderLayout()
     }
 
     private func applyRowReorder(_ reorder: DataGridRowReorder, to table: DataGridTableView) {

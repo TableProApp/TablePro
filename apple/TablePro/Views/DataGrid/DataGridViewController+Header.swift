@@ -123,6 +123,37 @@ extension DataGridViewController {
 
     // MARK: - Header
 
+    // Both panes' headers take the type line together: the frozen pane lies over the main one, so their heights match.
+    // The clip keeps its offset in points, so the first visible row is put back under the new header, and auto widths
+    // are measured again with or without the line.
+    func applyHeaderLayout() {
+        let shows = model.configuration.showsColumnTypes
+        guard panes.contains(where: { $0.headerView.showsTypeLine != shows }) else { return }
+        knownWidths.removeAll()
+        let sample = viewportSample()
+        for pane in panes {
+            pane.headerView.showsTypeLine = shows
+            pane.scrollView.tile()
+        }
+        let table = main.tableView
+        let top = sample.map { table.rect(ofRow: $0.row).minY + $0.offset } ?? 0
+        table.scroll(NSPoint(x: main.scrollView.contentView.bounds.origin.x, y: top - headerInset))
+        updateFittingHeight()
+    }
+
+    func headerTypeLine(for tableColumn: NSTableColumn, in kind: DataGridPane.Kind) -> DataGridHeaderTypeLine? {
+        guard model.configuration.showsColumnTypes,
+              let id = container.pane(kind).columnID(of: tableColumn),
+              let column = model.columns.column(id: id) else { return nil }
+        return headerTypeLine(for: column)
+    }
+
+    // A table's data tab names the type as the table defines it; any other grid, or a column the definition lacks,
+    // names the result's type.
+    func headerTypeLine(for column: DataGridColumn) -> DataGridHeaderTypeLine? {
+        DataGridHeaderTypeLine(column.type, declaredType: model.declaredType(of: column))
+    }
+
     // Titles, the value-filter funnel, tooltips and sort accessibility for every column of both panes.
     func refreshHeaders() {
         let columns = model.columns
@@ -156,7 +187,12 @@ extension DataGridViewController {
                     tableColumn.headerToolTip = tooltip
                 }
                 let cell = tableColumn.headerCell
-                let label = headerAccessibilityLabel(for: column, showsComment: showsComments, isMasked: isMasked)
+                let label = headerAccessibilityLabel(
+                    for: column,
+                    showsComment: showsComments,
+                    showsType: model.configuration.showsColumnTypes,
+                    isMasked: isMasked
+                )
                 if cell.accessibilityLabel() != label {
                     cell.setAccessibilityLabel(label)
                 }
@@ -227,7 +263,7 @@ extension DataGridViewController {
         sortKeyCount: Int
     ) -> String {
         var tooltip: String
-        if let typeName = column.type?.rawType ?? column.type?.displayName {
+        if let typeName = DataGridHeaderTypeLine.typeName(of: column.type) {
             tooltip = column.name + " (" + typeName + ")"
         } else {
             tooltip = column.name
@@ -249,8 +285,12 @@ extension DataGridViewController {
         return tooltip
     }
 
-    private func headerAccessibilityLabel(for column: DataGridColumn, showsComment: Bool, isMasked: Bool) -> String {
+    // The type line is read out while it shows, so VoiceOver hears what the header draws.
+    private func headerAccessibilityLabel(for column: DataGridColumn, showsComment: Bool, showsType: Bool, isMasked: Bool) -> String {
         var label = String(format: String(localized: "Column: %@"), column.name)
+        if showsType, let typeName = headerTypeLine(for: column)?.text {
+            label += ", " + typeName
+        }
         if isMasked {
             label += ", " + String(localized: "masked")
         }

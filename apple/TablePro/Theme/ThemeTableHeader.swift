@@ -10,6 +10,14 @@ class ThemeTableHeaderView: NSTableHeaderView {
     // On macOS 26 the header sits in the scroll pocket's vibrant banner, which would blend the band lighter (measured).
     override var allowsVibrancy: Bool { false }
 
+    // The cell holds no object references (AppKit copies it), so a header with a line under the titles lays it out here.
+    func contentRect(forCellFrame cellFrame: NSRect) -> NSRect {
+        ThemeTableHeaderCell.interiorRect(in: cellFrame)
+    }
+
+    // Called after AppKit drew the title, with the part of the content below the title's band.
+    func drawBelowTitle(of cell: ThemeTableHeaderCell, in rect: NSRect, cellFrame: NSRect) {}
+
     // AppKit bolds the highlighted column's title only in the highlight pass the themed band replaces.
     override func viewWillDraw() {
         super.viewWillDraw()
@@ -31,17 +39,23 @@ final class ThemeTableHeaderCell: NSTableHeaderCell {
 
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
         let header = controlView as? NSTableHeaderView
-        let resolved = ((header as? ThemeTableHeaderView)?.themeScope ?? .live).resolved
+        let themedHeader = header as? ThemeTableHeaderView
+        let resolved = (themedHeader?.themeScope ?? .live).resolved
         resolved[.gridHeaderBackground].setFill()
         cellFrame.fill()
 
-        let interior = Self.interiorRect(in: cellFrame)
+        let content = themedHeader?.contentRect(forCellFrame: cellFrame) ?? Self.interiorRect(in: cellFrame)
+        let interior = Self.titleRect(in: content)
         resolved[.gridLine].setFill()
         Self.bottomLineRect(in: cellFrame).fill(using: .sourceOver)
         if let tableView = header?.tableView, !Self.isFiller(cellFrame, of: tableView) {
-            Self.dividerRect(in: cellFrame, interior: interior).fill(using: .sourceOver)
+            Self.dividerRect(in: cellFrame, interior: content).fill(using: .sourceOver)
         }
         drawInterior(withFrame: interior, in: controlView)
+        if content.maxY > interior.maxY {
+            let below = NSRect(x: content.minX, y: interior.maxY, width: content.width, height: content.maxY - interior.maxY)
+            themedHeader?.drawBelowTitle(of: self, in: below, cellFrame: cellFrame)
+        }
     }
 
     // AppKit's highlight pass draws its own band; the highlighted title is bold instead (`ThemeTableHeaderView`).
@@ -69,6 +83,11 @@ final class ThemeTableHeaderCell: NSTableHeaderCell {
     static func interiorRect(in cellFrame: NSRect) -> NSRect {
         let height = min(interiorHeight, cellFrame.height)
         return NSRect(x: cellFrame.minX, y: cellFrame.midY - height / 2, width: cellFrame.width, height: height)
+    }
+
+    // The title and sort arrow keep AppKit's band at the top of the content; a header of one line has no more content.
+    static func titleRect(in content: NSRect) -> NSRect {
+        NSRect(x: content.minX, y: content.minY, width: content.width, height: min(interiorHeight, content.height))
     }
 
     static func bottomLineRect(in cellFrame: NSRect) -> NSRect {

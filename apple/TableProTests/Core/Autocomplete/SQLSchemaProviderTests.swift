@@ -12,6 +12,23 @@ import TableProPluginKit
 import TableProTestSupport
 import Testing
 
+/// One read held on the wire: `reached` opens when the read gets there, `cancelled` when its task is
+/// cancelled, and the read returns once `release` opens.
+final class HeldDriverRead: Sendable {
+    let reached = AsyncGate()
+    let release = AsyncGate()
+    let cancelled = AsyncGate()
+
+    func hold() async {
+        await reached.open()
+        await withTaskCancellationHandler {
+            await release.wait()
+        } onCancel: {
+            Task { await self.cancelled.open() }
+        }
+    }
+}
+
 final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sendable {
     let connection: DatabaseConnection
     var status: ConnectionStatus = .connected
@@ -95,9 +112,15 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     var schemaRoutinesToReturn: [String: [RoutineInfo]] = [:]
+    /// Each `fetchRoutines(schema:)` takes the next hold after reading its rows, so a case can keep two
+    /// reads on the wire at once.
+    var routineFetchHolds: [HeldDriverRead] = []
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
-        schema.flatMap { schemaRoutinesToReturn[$0] } ?? []
+        let snapshot = schema.flatMap { schemaRoutinesToReturn[$0] } ?? []
+        guard !routineFetchHolds.isEmpty else { return snapshot }
+        await routineFetchHolds.removeFirst().hold()
+        return snapshot
     }
 
     func fetchSchemas() async throws -> [String] {

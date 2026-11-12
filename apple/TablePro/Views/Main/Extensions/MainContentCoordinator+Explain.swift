@@ -33,6 +33,7 @@ extension MainContentCoordinator {
         }
         guard !isShowingSafeModePrompt else { return nil }
         guard let statement = explainStatement(in: tab) else { return nil }
+        endEditorCompletion()
         let anchor = tab.tabType == .table ? nil : StatementAnchor(statement)
         guard let request = ExplainRequest.make(
             variant: variant,
@@ -207,13 +208,12 @@ extension MainContentCoordinator {
                                 serverOutput: fetchResult.serverOutput
                             )]
                         )
-                        if tab.display.isResultsCollapsed {
-                            tab.display.isResultsCollapsed = false
-                        }
+                        if tab.display.isResultsCollapsed { tab.display.isResultsCollapsed = false }
                     }
                     seedBufferFromActiveResult(tabId: tabId)
                     dropParkedEdits(ofBackgroundTab: tabId)
                     toolbarState.isResultsCollapsed = false
+                    queryExecutionCoordinator.recordStatementRun(request.sql, tabId: tabId, startedAt: claim.startedAt)
 
                     recordHistory(
                         QueryHistoryRecordRequest(
@@ -267,6 +267,7 @@ extension MainContentCoordinator {
                         toolbarState.isResultsCollapsed = false
                         announceQueryError(error.localizedDescription)
                     }
+                    queryExecutionCoordinator.recordStatementFailure(request.sql, error: error, tabId: tabId, startedAt: claim.startedAt)
 
                     recordHistory(
                         QueryHistoryRecordRequest(

@@ -88,8 +88,15 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     enum Kind {
+        /// A group of saved connections, at the top of a tree that lists them.
+        case connectionGroup(ConnectionNavigatorGroupRow)
+        /// A saved connection. The tree's own one holds everything the tree lists without connections.
+        case savedConnection(DatabaseTreeSavedConnectionRef)
         case recentSection
         case recentTable(DatabaseTreeTableRef)
+        /// The browsed database's favorite tables, above Recent. Each table also keeps its own row.
+        case favoritesSection
+        case favoriteTable(DatabaseTreeTableRef)
         case temporarySection
         case temporaryTable(DatabaseTreeTableRef)
         /// Flat shape: the section the browsed schema's folders sit in, above the object kinds.
@@ -103,6 +110,12 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         /// A partition of a partitioned table. Separate from `.table` because on MySQL and Oracle a
         /// partition is not a relation and cannot be opened, dropped or renamed on its own.
         case partition(DatabaseTreePartitionRef)
+        /// A heading under a table for one kind of detail. An ordinary row, not a source list group,
+        /// so it indents under its table the way an object group indents under its schema.
+        case tableDetailGroup(DatabaseTreeTableDetailGroupRef)
+        /// A column, index, foreign key or check. A trigger under a table stays `.trigger`, so it
+        /// opens and offers its menu the way it does under a schema.
+        case tableDetail(DatabaseTreeTableDetailRef)
         case routine(DatabaseTreeRoutineRef)
         case trigger(DatabaseTreeTriggerRef)
         case userType(DatabaseTreeUserTypeRef)
@@ -130,8 +143,8 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
 
     var isExpandable: Bool {
         switch kind {
-        case .recentSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
-             .objectKindSection, .containerObjectKindSection,
+        case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
+             .objectKindSection, .containerObjectKindSection, .tableDetailGroup,
              .hierarchicalSchemaSection, .redisKeysSection:
             return true
         case .table(let ref):
@@ -141,8 +154,49 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .serverObject, .status:
+        case .connectionGroup(let group):
+            return !group.children.isEmpty
+        case .savedConnection(let ref):
+            return ref.ownsTree
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .serverObject, .status, .tableDetail:
             return false
+        }
+    }
+
+    /// The disclosure a row offers under the sidebar's options, the one rule every expandability gate
+    /// reads. `isExpandable` answers for the kind alone, as the outline drew it before Table Details:
+    /// partitions shown, details hidden.
+    func isExpandable(showsPartitions: Bool, showsTableDetails: Bool) -> Bool {
+        switch kind {
+        case .table(let ref):
+            if showsTableDetails, TableDetailGroupResolver.listsDetails(of: ref.table.type) { return true }
+            return showsPartitions && ref.table.type == .partitionedTable
+        case .partition:
+            return showsPartitions && isExpandable
+        default:
+            return isExpandable
+        }
+    }
+
+    /// Whether an Option-click on a row above this one opens it too. With Table Details on, every
+    /// table holds groups that each read a list as they open, so a schema of 2,000 tables queued
+    /// about 10,000 reads and saved every row it opened. A table and its groups then open only by
+    /// their own click; a partitioned table keeps opening with its schema while the option is off.
+    func opensWithAncestor(showsTableDetails: Bool) -> Bool {
+        switch kind {
+        case .table:
+            return !showsTableDetails
+        case .tableDetailGroup:
+            return false
+        // Opening a group with Option held must not open every database of the connection inside it,
+        // each of which reads its schemas as it opens.
+        case .savedConnection:
+            return false
+        case .connectionGroup, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .database, .schema, .partition, .tableDetail, .routine, .trigger, .userType, .serverObject, .status,
+             .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection,
+             .redisNode:
+            return true
         }
     }
 
@@ -164,6 +218,16 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         return nil
     }
 
+    var favoriteTableRef: DatabaseTreeTableRef? {
+        if case .favoriteTable(let ref) = kind { return ref }
+        return nil
+    }
+
+    var savedConnectionRef: DatabaseTreeSavedConnectionRef? {
+        if case .savedConnection(let ref) = kind { return ref }
+        return nil
+    }
+
     var temporaryTableRef: DatabaseTreeTableRef? {
         if case .temporaryTable(let ref) = kind { return ref }
         return nil
@@ -172,11 +236,12 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     // Chrome the app invented to bucket objects; a schema is a real object, so it stays an ordinary container row.
     var isGroupRow: Bool {
         switch kind {
-        case .recentSection, .temporarySection, .foldersSection, .objectKindSection, .redisKeysSection:
+        case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .objectKindSection,
+             .redisKeysSection:
             return true
-        case .database, .schema, .containerObjectKindSection, .tableFolder,
-             .hierarchicalSchemaSection, .recentTable, .temporaryTable, .table, .partition,
-             .routine, .trigger, .userType, .serverObject, .status, .redisNode:
+        case .connectionGroup, .savedConnection, .database, .schema, .containerObjectKindSection, .tableFolder,
+             .hierarchicalSchemaSection, .recentTable, .favoriteTable, .temporaryTable, .table, .partition,
+             .routine, .trigger, .userType, .serverObject, .status, .redisNode, .tableDetailGroup, .tableDetail:
             return false
         }
     }
@@ -185,9 +250,11 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         switch kind {
         case .database, .schema:
             return true
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable,
+             .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .serverObject, .status, .objectKindSection,
-             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return false
         }
     }
@@ -198,9 +265,10 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .table, .partition, .routine, .trigger, .userType, .serverObject, .status, .objectKindSection,
-             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return nil
         }
     }
@@ -210,7 +278,10 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         return nil
     }
 
+    static func connectionGroupId(_ groupId: UUID) -> String { "conngroup\u{1}\(groupId.uuidString)" }
+    static func savedConnectionId(_ connectionId: UUID) -> String { "savedconn\u{1}\(connectionId.uuidString)" }
     static let recentSectionId = "recent-section"
+    static let favoritesSectionId = "favorites-section"
     /// The flat shape's root, which has no row of its own; its status row hangs off this id.
     static let flatRootId = "flat-root"
     static let foldersSectionId = "folders-section"
@@ -258,7 +329,18 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     static func partitionId(_ ref: DatabaseTreePartitionRef) -> String { "partition\u{1}\(ref.id)" }
+    /// Under the table's own id, so a trigger listed under its table and under its schema's Triggers
+    /// group is two rows: `NSOutlineView` holds each item once.
+    static func tableDetailGroupId(_ group: DatabaseTreeTableDetailGroupRef) -> String {
+        "\(tableId(group.table))\u{1}detailgroup\u{1}\(group.kind.rawValue)"
+    }
+
+    static func tableDetailId(groupId: String, key: String) -> String {
+        "\(groupId)\u{1}detail\u{1}\(key)"
+    }
+
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
+    static func favoriteTableId(_ ref: DatabaseTreeTableRef) -> String { "favorite\u{1}table\u{1}\(ref.id)" }
     static let temporarySectionId = "temporary-section"
     static func temporaryTableId(_ ref: DatabaseTreeTableRef) -> String { "temporary\u{1}table\u{1}\(ref.id)" }
     static func routineId(_ ref: DatabaseTreeRoutineRef) -> String { "routine\u{1}\(ref.id)" }

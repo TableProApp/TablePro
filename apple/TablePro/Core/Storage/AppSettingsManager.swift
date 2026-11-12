@@ -12,11 +12,23 @@ final class AppSettingsManager: ObservableObject {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
-            if oldValue.showWorkspaceRail != general.showWorkspaceRail {
+            // The strip stands aside for a tree that lists the connections itself, so that setting moves it too.
+            if oldValue.showWorkspaceRail != general.showWorkspaceRail
+                || oldValue.showsConnectionNavigator != general.showsConnectionNavigator
+                || oldValue.showsConnectionsInTree != general.showsConnectionsInTree {
                 appEvents.workspaceRailVisibilityChanged.send(())
             }
             if oldValue.connectionHealthCheck != general.connectionHealthCheck {
                 appEvents.connectionHealthCheckChanged.send(())
+            }
+            if oldValue.showsObjectToolbar != general.showsObjectToolbar {
+                MainWindowToolbar.applyObjectToolbarSettingChange()
+            }
+            if oldValue.showsToolbarLabels != general.showsToolbarLabels {
+                MainWindowToolbar.applyToolbarLabelsSettingChange()
+            }
+            if oldValue.showsToolbarLocationItems != general.showsToolbarLocationItems {
+                MainWindowToolbar.applyLocationItemsSettingChange()
             }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.general)
         }
@@ -29,6 +41,10 @@ final class AppSettingsManager: ObservableObject {
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
             )
+            if oldValue.objectIconStyle != appearance.objectIconStyle {
+                appEvents.objectIconStyleChanged.send(appearance.objectIconStyle)
+                MainWindowToolbar.applyObjectIconStyleChange()
+            }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.appearance)
         }
     }

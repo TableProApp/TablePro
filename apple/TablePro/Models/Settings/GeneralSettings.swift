@@ -61,12 +61,23 @@ struct GeneralSettings: Codable, Equatable {
     var queryTimeoutSeconds: Int
     var shareAnalytics: Bool
     var showRecentTables: Bool
+    var showsFavoritesSection: Bool
+    var showsObjectsOnSelection: Bool
+    var showsObjectToolbar: Bool
+    // Written only by the Layout buttons. The toolbar's own menu is where a person picks labels, so there is no toggle.
+    var showsToolbarLabels: Bool
+    // The connection and database capsules centred in the toolbar. Off where the tree, the query bar and the tab
+    // titles already name both.
+    var showsToolbarLocationItems: Bool
     var showObjectComments: Bool
     var showObjectIcons: Bool
     var showSystemContainers: Bool
     var showPartitions: Bool
+    var showTableDetails: Bool
     var showWorkspaceRail: Bool
     var sidebarRowSize: SidebarRowSizePreference
+    var showsConnectionNavigator: Bool
+    var showsConnectionsInTree: Bool
     var connectionHealthCheck: ConnectionHealthCheck
 
     static let `default` = GeneralSettings(
@@ -75,12 +86,20 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: 60,
         shareAnalytics: true,
         showRecentTables: false,
+        showsFavoritesSection: false,
+        showsObjectsOnSelection: false,
+        showsObjectToolbar: false,
+        showsToolbarLabels: false,
+        showsToolbarLocationItems: true,
         showObjectComments: true,
         showObjectIcons: true,
         showSystemContainers: false,
         showPartitions: true,
+        showTableDetails: false,
         showWorkspaceRail: true,
         sidebarRowSize: .matchSystem,
+        showsConnectionNavigator: false,
+        showsConnectionsInTree: false,
         connectionHealthCheck: .every30Seconds
     )
 
@@ -90,12 +109,20 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: Int = 60,
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
+        showsFavoritesSection: Bool = false,
+        showsObjectsOnSelection: Bool = false,
+        showsObjectToolbar: Bool = false,
+        showsToolbarLabels: Bool = false,
+        showsToolbarLocationItems: Bool = true,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
         showSystemContainers: Bool = false,
         showPartitions: Bool = true,
+        showTableDetails: Bool = false,
         showWorkspaceRail: Bool = true,
         sidebarRowSize: SidebarRowSizePreference = .matchSystem,
+        showsConnectionNavigator: Bool = false,
+        showsConnectionsInTree: Bool = false,
         connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
     ) {
         self.startupBehavior = startupBehavior
@@ -103,12 +130,20 @@ struct GeneralSettings: Codable, Equatable {
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.shareAnalytics = shareAnalytics
         self.showRecentTables = showRecentTables
+        self.showsFavoritesSection = showsFavoritesSection
+        self.showsObjectsOnSelection = showsObjectsOnSelection
+        self.showsObjectToolbar = showsObjectToolbar
+        self.showsToolbarLabels = showsToolbarLabels
+        self.showsToolbarLocationItems = showsToolbarLocationItems
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
         self.showSystemContainers = showSystemContainers
         self.showPartitions = showPartitions
+        self.showTableDetails = showTableDetails
         self.showWorkspaceRail = showWorkspaceRail
         self.sidebarRowSize = sidebarRowSize
+        self.showsConnectionNavigator = showsConnectionNavigator
+        self.showsConnectionsInTree = showsConnectionsInTree
         self.connectionHealthCheck = connectionHealthCheck
     }
 
@@ -120,12 +155,27 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
         shareAnalytics = container.decodeSetting(.shareAnalytics, default: fallback.shareAnalytics)
         showRecentTables = container.decodeSetting(.showRecentTables, default: fallback.showRecentTables)
+        showsFavoritesSection = container.decodeSetting(.showsFavoritesSection, default: fallback.showsFavoritesSection)
+        showsObjectsOnSelection = container.decodeSetting(
+            .showsObjectsOnSelection, default: fallback.showsObjectsOnSelection
+        )
+        showsObjectToolbar = container.decodeSetting(.showsObjectToolbar, default: fallback.showsObjectToolbar)
+        showsToolbarLabels = container.decodeSetting(.showsToolbarLabels, default: fallback.showsToolbarLabels)
+        showsToolbarLocationItems = container.decodeSetting(
+            .showsToolbarLocationItems, default: fallback.showsToolbarLocationItems
+        )
         showObjectComments = container.decodeSetting(.showObjectComments, default: fallback.showObjectComments)
         showObjectIcons = container.decodeSetting(.showObjectIcons, default: fallback.showObjectIcons)
         showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)
         showPartitions = container.decodeSetting(.showPartitions, default: fallback.showPartitions)
+        showTableDetails = container.decodeSetting(.showTableDetails, default: fallback.showTableDetails)
         showWorkspaceRail = container.decodeSetting(.showWorkspaceRail, default: fallback.showWorkspaceRail)
         sidebarRowSize = container.decodeSetting(.sidebarRowSize, default: fallback.sidebarRowSize)
+        showsConnectionNavigator = container.decodeSetting(
+            .showsConnectionNavigator,
+            default: fallback.showsConnectionNavigator
+        )
+        showsConnectionsInTree = container.decodeSetting(.showsConnectionsInTree, default: fallback.showsConnectionsInTree)
         connectionHealthCheck = container.decodeSetting(.connectionHealthCheck, default: fallback.connectionHealthCheck)
     }
 }

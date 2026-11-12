@@ -4,6 +4,9 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
+    @Binding var dataGridSettings: DataGridSettings
+    @Binding var editorSettings: EditorSettings
+    @Binding var appearanceSettings: AppearanceSettings
     @ObservedObject var updater: SoftwareUpdater
     var onResetAll: () -> Void
 
@@ -58,17 +61,81 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .help("Scrolling keeps one row of tabs, the way every macOS tab bar does. Rows wraps them so nothing is off screen.")
+
+                Toggle("Show database and connection in table tab titles", isOn: $tabSettings.titleShowsLocation)
+                    .help("Titles a table tab orders@shop (Shop Demo), with a table or view icon, so each tab says where its rows come from. Query tabs keep their names.")
+            }
+
+            Section {
+                HStack {
+                    Button(String(localized: "Use Navigator Layout")) {
+                        useLayoutPreset(navigator: true)
+                    }
+                    Button(String(localized: "Use Standard Layout")) {
+                        useLayoutPreset(navigator: false)
+                    }
+                }
+            } header: {
+                Text("Layout")
+            } footer: {
+                Text(String(localized: """
+                    Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects \
+                    tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the \
+                    tree, takes the connection and database out of the toolbar, makes Tree the default \
+                    sidebar layout and uses compact sidebar rows. In table tabs it shows column types in \
+                    the header, the sort and a Text mode in the filter bar, opens that bar with each table, \
+                    puts the result bar above the grid and names the database and connection in tab titles. \
+                    In query tabs it shows the query bar on two rows and Message and Summary tabs above the \
+                    results, and object icons turn colorful. \
+                    Standard Layout turns them off again. Open connections switch layout too.
+                    """))
             }
 
             Section("Sidebar") {
                 Toggle("Show connections", isOn: $settings.showWorkspaceRail)
                     .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
 
+                Toggle("List every saved connection beside the database tree", isOn: $settings.showsConnectionNavigator)
+                    .help("Turns the connections column into a list of every saved connection, in its groups. Double-click one to open it.")
+
+                Toggle("Show saved connections in the database tree", isOn: $settings.showsConnectionsInTree)
+                    .help(String(localized: """
+                        In the Tree layout, lists every saved connection in its groups at the top of the sidebar, \
+                        with the connection on screen opened to its databases. Double-click another one to open it.
+                        """))
+
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
                     .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
 
+                Toggle("Show favorite tables at the top of the tree", isOn: $settings.showsFavoritesSection)
+                    .help("Adds a Favorites section above Recent with the tables you starred in the database you are browsing. Each table also stays in its own place.")
+
+                Toggle("Show objects when a database, schema or group is selected", isOn: $settings.showsObjectsOnSelection)
+                    .help("Clicking a database, schema or object group in the sidebar lists its objects in the main area. Show Objects in the row's menu lists them either way.")
+
+                Toggle("Show object buttons in the toolbar", isOn: $settings.showsObjectToolbar)
+                    .help("Adds Tables, Views, Functions, Users, Query and Backup buttons to the connection window's toolbar. Customize Toolbar can move or remove them.")
+
+                Toggle("Show connection and database in the toolbar", isOn: $settings.showsToolbarLocationItems)
+                    .help(String(localized: """
+                        Shows the connection and the database in the middle of the toolbar. Off, the sidebar, the \
+                        query bar and the tab titles still name them, and the Database menu still switches them.
+                        """))
+
                 Toggle("Show object icons", isOn: $settings.showObjectIcons)
                     .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")
+
+                // Here rather than in Appearance: that pane cannot scroll, and one more row pushed its controls off it.
+                Picker("Object icon style:", selection: $appearanceSettings.objectIconStyle) {
+                    ForEach(ObjectIconStyle.allCases) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                .accessibilityIdentifier("general-object-icon-style")
+                .help(String(localized: """
+                    Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs, the \
+                    toolbar and the object lists.
+                    """))
 
                 Toggle("Show object comments", isOn: $settings.showObjectComments)
                     .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
@@ -94,7 +161,8 @@ struct GeneralSettingsView: View {
                 }
                 .help(String(localized: """
                     Match System follows Sidebar icon size in System Settings > Appearance. \
-                    Choose a size to fit more objects on screen than the rest of the system shows.
+                    Choose a size to fit more objects on screen than the rest of the system shows. \
+                    Compact keeps the regular text size with less space between rows.
                     """))
 
                 Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {
@@ -155,12 +223,38 @@ struct GeneralSettingsView: View {
             if initialLanguage == nil { initialLanguage = settings.language }
         }
     }
+
+    // Writes through the General settings binding and the same stored default the layout picker uses,
+    // so every control below shows the result and each setting's own observers fire.
+    private func useLayoutPreset(navigator: Bool) {
+        if navigator {
+            NavigatorLayoutPreset.apply(to: &settings, defaultLayout: &defaultSidebarLayout)
+            NavigatorLayoutPreset.applyDataView(
+                tabs: &tabSettings,
+                dataGrid: &dataGridSettings,
+                editor: &editorSettings,
+                appearance: &appearanceSettings
+            )
+        } else {
+            NavigatorLayoutPreset.restore(to: &settings, defaultLayout: &defaultSidebarLayout)
+            NavigatorLayoutPreset.restoreDataView(
+                tabs: &tabSettings,
+                dataGrid: &dataGridSettings,
+                editor: &editorSettings,
+                appearance: &appearanceSettings
+            )
+        }
+        NavigatorLayoutPreset.switchOpenConnections(to: defaultSidebarLayout)
+    }
 }
 
 #Preview {
     GeneralSettingsView(
         settings: .constant(.default),
         tabSettings: .constant(.default),
+        dataGridSettings: .constant(.default),
+        editorSettings: .constant(.default),
+        appearanceSettings: .constant(.default),
         updater: SoftwareUpdater.shared,
         onResetAll: {}
     )

@@ -113,6 +113,12 @@ internal struct JoinBuilderSheet: View {
 
 private struct JoinBuilderTableList: View {
     @ObservedObject var model: JoinBuilderViewModel
+    /// Observed so the glyphs follow the object icon style while the sheet is open.
+    @ObservedObject private var settings = AppSettingsManager.shared
+
+    init(model: JoinBuilderViewModel) {
+        self.model = model
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -144,9 +150,15 @@ private struct JoinBuilderTableList: View {
             get: { model.isIncluded(table) },
             set: { model.setIncluded($0, table: table) }
         )) {
-            Label(table, systemImage: "tablecells")
-                .lineLimit(1)
-                .truncationMode(.middle)
+            let icon = model.objectIcon(for: table, style: settings.appearance.objectIconStyle)
+            Label {
+                Text(table)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } icon: {
+                icon.image
+                    .objectIconTint(icon)
+            }
         }
         .toggleStyle(.checkbox)
         .accessibilityIdentifier("join-builder-table-\(table)")

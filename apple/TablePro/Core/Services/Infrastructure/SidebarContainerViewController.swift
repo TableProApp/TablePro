@@ -31,7 +31,16 @@ internal final class SidebarContainerViewController: NSViewController {
     /// alone would leave the list standing under their height.
     private var listBelowChrome: NSLayoutConstraint?
     private var listAtTop: NSLayoutConstraint?
+    /// Exactly one of these is active, for the reason the two above are.
+    private var filterBelowScope: NSLayoutConstraint?
+    private var filterAtTop: NSLayoutConstraint?
     private var chromeHidden = false
+    private var settingsObservation: AnyCancellable?
+    private var reportedTreeListsConnections = false
+
+    /// Whether the shown connection's tree lists the saved connections moved: the window keeps its
+    /// connections strip away while it does.
+    internal var onTreeListsConnectionsChange: (() -> Void)?
 
     /// A list the user picked, reported to the window, which owns the sidebar and whether it is
     /// open.
@@ -60,6 +69,29 @@ internal final class SidebarContainerViewController: NSViewController {
         chromeHidden
     }
 
+    internal var isScopeHidden: Bool {
+        scopeControl.isHidden
+    }
+
+    /// Whether the connection on screen draws the saved connections in its tree, whichever list the
+    /// switcher has selected.
+    internal var treeListsConnections: Bool {
+        guard let sidebarState,
+              let type = DatabaseManager.shared.session(for: sidebarState.connectionId)?.connection.type
+        else { return false }
+        return DatabaseTreeConnectionRows.applies(
+            settingEnabled: AppSettingsManager.shared.general.showsConnectionsInTree,
+            databaseType: type,
+            layout: sidebarState.sidebarLayout
+        )
+    }
+
+    /// The tree is then the whole sidebar under the filter. Favorites keeps the switcher, which is
+    /// the way back to Tables, and View > Show Favorites still reaches Favorites from Tables.
+    private var hidesScopeForTree: Bool {
+        treeListsConnections && sidebarState?.selectedSidebarTab == .tables
+    }
+
     /// Agent mode puts its session rail where the object list goes, and neither row above it has
     /// anything there to act on: the scope would switch a list that is not drawn, and the field
     /// would filter one. Both go, and the rail takes their height.
@@ -73,8 +105,17 @@ internal final class SidebarContainerViewController: NSViewController {
     /// one the view comes up in.
     private func applyChromeVisibility() {
         guard isViewLoaded else { return }
-        scopeControl.isHidden = chromeHidden
+        let hidesScope = chromeHidden || hidesScopeForTree
+        scopeControl.isHidden = hidesScope
         filterRow.isHidden = chromeHidden
+        if hidesScope {
+            filterBelowScope?.isActive = false
+            filterAtTop?.isActive = true
+        } else {
+            filterAtTop?.isActive = false
+            filterBelowScope?.isActive = true
+        }
+        reportTreeListsConnections()
         if chromeHidden {
             listBelowChrome?.isActive = false
             listAtTop?.isActive = true
@@ -160,10 +201,13 @@ internal final class SidebarContainerViewController: NSViewController {
         let listBelowChrome = hostingView.topAnchor.constraint(equalTo: filterRow.bottomAnchor, constant: 5)
         self.listBelowChrome = listBelowChrome
         listAtTop = hostingView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        let filterBelowScope = filterRow.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 6)
+        self.filterBelowScope = filterBelowScope
+        filterAtTop = filterRow.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5)
 
         NSLayoutConstraint.activate(insets + [
             scopeControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
-            filterRow.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 6),
+            filterBelowScope,
 
             listBelowChrome,
             hostingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -171,6 +215,18 @@ internal final class SidebarContainerViewController: NSViewController {
             hostingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         applyChromeVisibility()
+        /// The setting is the app's, not the connection's, so it is watched here rather than through
+        /// the sidebar state.
+        settingsObservation = AppSettingsManager.shared.onMainActorChange { [weak self] in
+            self?.applyChromeVisibility()
+        }
+    }
+
+    private func reportTreeListsConnections() {
+        let lists = treeListsConnections
+        guard lists != reportedTreeListsConnections else { return }
+        reportedTreeListsConnections = lists
+        onTreeListsConnectionsChange?()
     }
 
     /// Asked of the field's ancestors too, because Agent mode hides the row it sits in rather
@@ -251,6 +307,7 @@ internal final class SidebarContainerViewController: NSViewController {
             viewOptionsButton.isHidden = true
             scopeControl.isEnabled = false
             scopeControl.selectedTab = nil
+            applyChromeVisibility()
             return
         }
         searchField.isEnabled = true
@@ -262,6 +319,7 @@ internal final class SidebarContainerViewController: NSViewController {
         viewOptionsButton.isHidden = state.selectedSidebarTab != .tables
         scopeControl.selectedTab = state.selectedSidebarTab
         focusScope = state.selectedSidebarTab
+        applyChromeVisibility()
         observationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -295,6 +353,8 @@ internal final class SidebarContainerViewController: NSViewController {
     /// Favorites, which write the same state the scope control does, move the control with them.
     private func syncFromState(_ state: SharedSidebarState) {
         scopeControl.selectedTab = state.selectedSidebarTab
+        // The tab and the layout both decide whether the switcher stands aside for the tree.
+        applyChromeVisibility()
         let activeText: String
         let placeholder: String
         switch state.selectedSidebarTab {

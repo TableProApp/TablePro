@@ -35,14 +35,18 @@ struct UserTypeRowView: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     let type: UserDefinedTypeInfo
 
+    private var objectIcon: ObjectIcon {
+        ObjectIconProvider.icon(for: .userType(type.kind), style: settingsManager.appearance.objectIconStyle)
+    }
+
     var body: some View {
         Label {
             Text(type.name)
                 .lineLimit(1)
                 .truncationMode(.tail)
         } icon: {
-            Image(systemName: type.kind.iconName)
-                .selectionAwareTint(Color.accentColor)
+            objectIcon.image
+                .objectIconTint(objectIcon, standard: Color.accentColor)
                 .frame(width: 16)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)

@@ -29,6 +29,44 @@ internal class ContentWindow: NSWindow {
         )
     }
 
+    // A transparent titlebar lets the content under it take the press, so AppKit never sees the double-click it turns
+    // into the user's titlebar action, and only the window drag still worked there. Where content, not a control, is
+    // under the pointer, the window runs that action itself; the titlebar's own views still answer as AppKit's do.
+    override internal func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, event.clickCount == 2, takesTitlebarDoubleClick(at: event.locationInWindow) {
+            performTitlebarDoubleClickAction()
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    internal func takesTitlebarDoubleClick(at point: NSPoint) -> Bool {
+        guard point.y >= contentLayoutRect.maxY,
+              let contentView,
+              let frameView = contentView.superview,
+              let hit = frameView.hitTest(point),
+              hit.isDescendant(of: contentView),
+              !(hit is NSControl)
+        else { return false }
+        var view: NSView? = hit
+        while let current = view, current !== frameView {
+            guard current.mouseDownCanMoveWindow else { return false }
+            view = current.superview
+        }
+        return true
+    }
+
+    // Read when it is needed, so a change in System Settings applies at once.
+    internal static var titlebarDoubleClickAction: () -> TitlebarDoubleClickAction = { .current }
+
+    private func performTitlebarDoubleClickAction() {
+        switch Self.titlebarDoubleClickAction() {
+        case .zoom: performZoom(nil)
+        case .minimize: performMiniaturize(nil)
+        case .none: break
+        }
+    }
+
     // Hiding the toolbar drops the content's top safe area, so the titlebar is decided again.
     override internal func toggleToolbarShown(_ sender: Any?) {
         super.toggleToolbarShown(sender)

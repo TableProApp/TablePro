@@ -37,10 +37,23 @@ internal struct TableListingLoader: Sendable {
                 }
                 return try await driver.executeCatalogRead(query: statement)
             }
+            let listingColumns = ObjectListingColumns(columns: result.columns)
+            let rows = TableRows.from(
+                queryRows: listingColumns?.tableRows(of: result.rows) ?? result.rows,
+                columns: listingColumns == nil ? result.columns : result.columns.map(ObjectListingColumns.displayTitle(for:)),
+                columnTypes: result.columnTypes
+            )
+            let items = listingColumns?.items(
+                in: rows,
+                containerSchema: scope.schema,
+                readsSchemaColumn: slot == .schema
+            ) ?? [:]
             return .fetched(TableListing(
-                rows: TableRows.from(queryRows: result.rows, columns: result.columns, columnTypes: result.columnTypes),
+                rows: rows,
                 isIncomplete: result.isTruncated,
-                statusMessage: result.statusMessage
+                statusMessage: result.statusMessage,
+                items: items,
+                columnKeys: listingColumns == nil ? [] : result.columns.map { $0.lowercased() }
             ))
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) { return .cancelled }
@@ -58,10 +71,25 @@ internal struct TableListing: Sendable {
     /// The driver's own words about the result, such as the cursor of the next page, else a plain
     /// statement that the listing is partial.
     let notice: String?
+    /// The object each row lists, which the name filter and the row commands read. Empty for a
+    /// listing with no name column, whose rows stay plain values.
+    let items: [RowID: ObjectListingItem]
+    /// Each column's source name, the plugin's alias or the built column's key, lowercased. The list
+    /// formats, orders and remembers columns by it, since the titles are localized. Empty for a
+    /// listing whose rows name no objects.
+    let columnKeys: [String]
 
-    init(rows: TableRows, isIncomplete: Bool, statusMessage: String?) {
+    init(
+        rows: TableRows,
+        isIncomplete: Bool,
+        statusMessage: String?,
+        items: [RowID: ObjectListingItem] = [:],
+        columnKeys: [String] = []
+    ) {
         self.rows = rows
         self.isIncomplete = isIncomplete
+        self.items = items
+        self.columnKeys = columnKeys
         if let statusMessage, !statusMessage.isEmpty {
             notice = statusMessage
         } else {

@@ -120,3 +120,25 @@ struct ResultSetMenuModel: Equatable {
     private static let compactTitleCharacterLimit = 16
     private static let tabTitleCharacterLimit = 24
 }
+
+extension ResultSetMenuModel {
+    /// The tab's results in order, the active one marked and numbered from 1.
+    @MainActor
+    init(resultSets: [ResultSet], activeId: UUID?, isComparable: (ResultSet) -> Bool) {
+        let entries = resultSets.enumerated().map { index, resultSet in
+            ResultSetMenuEntry(
+                id: resultSet.id,
+                label: resultSet.label,
+                isPinned: resultSet.isPinned,
+                isActive: resultSet.id == activeId,
+                ordinal: index + 1,
+                isComparable: isComparable(resultSet)
+            )
+        }
+        self.init(
+            entries: entries,
+            activeOrdinal: entries.first(where: \.isActive)?.ordinal ?? entries.count,
+            total: entries.count
+        )
+    }
+}

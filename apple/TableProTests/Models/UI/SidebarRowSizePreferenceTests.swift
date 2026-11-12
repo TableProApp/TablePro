@@ -36,6 +36,21 @@ struct SidebarRowSizePreferenceTests {
         #expect(SidebarRowSizeResolver.rowSizeStyle(for: .large) == .large)
     }
 
+    @Test("Compact keeps the regular text and glyph and asks for its own row height")
+    func compactKeepsRegularTextInShorterRows() {
+        #expect(SidebarRowSizeResolver.resolve(preference: .compact, system: .small) == .medium)
+        #expect(SidebarRowSizeResolver.resolve(preference: .compact, system: .large) == .medium)
+        #expect(SidebarRowSizeResolver.rowSizeStyle(for: .compact) == .custom)
+        #expect(SidebarRowSizeResolver.rowHeight(for: .compact) == SidebarRowSizeResolver.compactRowHeight)
+    }
+
+    @Test("Only Compact names a row height; the other sizes leave it to AppKit")
+    func otherSizesHaveNoCustomHeight() {
+        for preference in SidebarRowSizePreference.allCases where preference != .compact {
+            #expect(SidebarRowSizeResolver.rowHeight(for: preference) == nil)
+        }
+    }
+
     @Test("A taller row draws larger text and a larger glyph")
     func contentScalesWithTheRow() {
         #expect(SidebarRowSize.small.iconPointSize < SidebarRowSize.medium.iconPointSize)
@@ -44,12 +59,14 @@ struct SidebarRowSizePreferenceTests {
 
     @Test("The preference round-trips through settings so it survives a relaunch")
     func preferenceIsCodable() throws {
-        let settings = GeneralSettings(sidebarRowSize: .large)
-        let decoded = try JSONDecoder().decode(
-            GeneralSettings.self, from: try JSONEncoder().encode(settings)
-        )
+        for size in [SidebarRowSizePreference.large, .compact] {
+            let settings = GeneralSettings(sidebarRowSize: size)
+            let decoded = try JSONDecoder().decode(
+                GeneralSettings.self, from: try JSONEncoder().encode(settings)
+            )
 
-        #expect(decoded.sidebarRowSize == .large)
+            #expect(decoded.sidebarRowSize == size)
+        }
     }
 
     @Test("Settings saved before the preference existed default to following the system")

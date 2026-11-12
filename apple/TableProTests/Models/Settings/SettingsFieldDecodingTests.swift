@@ -31,6 +31,22 @@ struct SettingsFieldDecodingTests {
         #expect(settings.queryTimeoutSeconds == 120)
     }
 
+    @Test("General settings saved before the toolbar's location setting keep the connection and database in it")
+    func toolbarLocationItemsDefaultOn() throws {
+        let legacy = try decode(GeneralSettings.self, #"{"showsObjectToolbar":true,"showsToolbarLabels":true}"#)
+        #expect(legacy.showsToolbarLocationItems == true)
+        #expect(legacy.showsObjectToolbar == true)
+        #expect(GeneralSettings.default.showsToolbarLocationItems == true)
+
+        let bad = try decode(GeneralSettings.self, #"{"showsToolbarLocationItems":"no","showsToolbarLabels":true}"#)
+        #expect(bad.showsToolbarLocationItems == true)
+        #expect(bad.showsToolbarLabels == true)
+
+        let chosen = GeneralSettings(showsToolbarLocationItems: false)
+        let decoded = try decode(GeneralSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.showsToolbarLocationItems == false)
+    }
+
     @Test("A bad Editor value falls back alone")
     func editorKeepsOtherFields() throws {
         let settings = try decode(
@@ -64,6 +80,93 @@ struct SettingsFieldDecodingTests {
         chosen.rowCopyFormat = .csvWithHeaders
         let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
         #expect(decoded.rowCopyFormat == .csvWithHeaders)
+    }
+
+    @Test("Data Grid settings saved before column types in the header load with them off, and an explicit on round-trips")
+    func columnTypesInHeaderDefaultsOff() throws {
+        #expect(DataGridSettings.default.showsColumnTypesInHeader == false)
+        let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)
+        #expect(legacy.showsColumnTypesInHeader == false)
+        #expect(legacy.showRowNumbers == false)
+
+        let malformed = try decode(DataGridSettings.self, #"{"showsColumnTypesInHeader":"yes","showRowNumbers":false}"#)
+        #expect(malformed.showsColumnTypesInHeader == false)
+        #expect(malformed.showRowNumbers == false)
+
+        var chosen = DataGridSettings.default
+        chosen.showsColumnTypesInHeader = true
+        let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.showsColumnTypesInHeader == true)
+    }
+
+    @Test("Editor settings saved before the two-row query bar keep the single row, and the choice round-trips")
+    func queryBarTwoRowsDefaultsOff() throws {
+        let legacy = try decode(EditorSettings.self, #"{"wordWrap":true}"#)
+        #expect(legacy.queryBarTwoRows == false)
+        #expect(legacy.wordWrap == true)
+        #expect(EditorSettings.default.queryBarTwoRows == false)
+
+        let bad = try decode(EditorSettings.self, #"{"queryBarTwoRows":"yes","wordWrap":true}"#)
+        #expect(bad.queryBarTwoRows == false)
+        #expect(bad.wordWrap == true)
+
+        var chosen = EditorSettings.default
+        chosen.queryBarTwoRows = true
+        let decoded = try decode(EditorSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.queryBarTwoRows == true)
+        #expect(decoded == chosen)
+    }
+
+    @Test("Editor settings saved before the Message and Summary tabs keep them off, and the choice round-trips")
+    func queryResultTabsDefaultOff() throws {
+        let legacy = try decode(EditorSettings.self, #"{"wordWrap":true,"queryBarTwoRows":true}"#)
+        #expect(legacy.queryResultTabs == false)
+        #expect(legacy.queryBarTwoRows == true)
+        #expect(EditorSettings.default.queryResultTabs == false)
+
+        let bad = try decode(EditorSettings.self, #"{"queryResultTabs":"yes","wordWrap":true}"#)
+        #expect(bad.queryResultTabs == false)
+        #expect(bad.wordWrap == true)
+
+        var chosen = EditorSettings.default
+        chosen.queryResultTabs = true
+        let decoded = try decode(EditorSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.queryResultTabs == true)
+        #expect(decoded == chosen)
+    }
+
+    @Test("Data Grid settings saved before the result bar could move keep it below the grid")
+    func resultBarAtTopDefaultsOff() throws {
+        let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)
+        #expect(legacy.resultBarAtTop == false)
+        #expect(legacy.showRowNumbers == false)
+        #expect(DataGridSettings.default.resultBarAtTop == false)
+
+        let bad = try decode(DataGridSettings.self, #"{"resultBarAtTop":"yes","showRowNumbers":false}"#)
+        #expect(bad.resultBarAtTop == false)
+        #expect(bad.showRowNumbers == false)
+
+        var chosen = DataGridSettings.default
+        chosen.resultBarAtTop = true
+        let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.resultBarAtTop == true)
+    }
+
+    @Test("Tab settings saved before located titles keep bare table names, and the choice round-trips")
+    func titleShowsLocationDefaultsOff() throws {
+        let legacy = try decode(TabSettings.self, #"{"enablePreviewTabs":false,"overflow":"rows"}"#)
+        #expect(legacy.titleShowsLocation == false)
+        #expect(legacy.enablePreviewTabs == false)
+        #expect(legacy.overflow == .rows)
+        #expect(TabSettings.default.titleShowsLocation == false)
+
+        let bad = try decode(TabSettings.self, #"{"titleShowsLocation":3,"enablePreviewTabs":false}"#)
+        #expect(bad.titleShowsLocation == false)
+        #expect(bad.enablePreviewTabs == false)
+
+        let chosen = TabSettings(titleShowsLocation: true)
+        let decoded = try decode(TabSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.titleShowsLocation == true)
     }
 
     @Test("Color values by type is off by default and in stored value colors without it, and a choice round-trips")

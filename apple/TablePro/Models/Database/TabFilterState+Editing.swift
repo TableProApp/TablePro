@@ -60,12 +60,42 @@ internal extension TabFilterState {
         return filter.id
     }
 
+    /// The row the panel opens with. A replaceable one is remembered as it was added, so a filter
+    /// brought in from outside the panel takes its place until the reader edits it.
+    @discardableResult
+    mutating func addStartingFilter(
+        settings: FilterSettings,
+        columns: [String],
+        primaryKeyColumn: String?,
+        offersRawFilter: Bool,
+        isReplaceable: Bool
+    ) -> UUID {
+        let id = addFilter(
+            settings: settings,
+            columns: columns,
+            primaryKeyColumn: primaryKeyColumn,
+            offersRawFilter: offersRawFilter
+        )
+        startingFilter = isReplaceable ? filters.last : nil
+        return id
+    }
+
+    /// The panel's starting row only stood in for a condition, so it goes once one arrives from
+    /// outside the panel. A row the reader changed is theirs and stays.
+    mutating func dropUntouchedStartingFilter() {
+        defer { startingFilter = nil }
+        guard let startingFilter, let index = filters.firstIndex(of: startingFilter) else { return }
+        filters.remove(at: index)
+    }
+
     mutating func addFilter(forColumn columnName: String, settings: FilterSettings) {
+        dropUntouchedStartingFilter()
         filters.append(TableFilter(
             columnName: columnName,
             filterOperator: settings.defaultOperator.toFilterOperator()
         ))
         isVisible = true
+        leaveTextMode()
     }
 
     static func crossColumnSearchFilters(term: String, columns: [String]) -> [TableFilter] {
@@ -79,6 +109,7 @@ internal extension TabFilterState {
         commit = .all
         isVisible = true
         filterLogicMode = .and
+        leaveTextMode()
     }
 
     mutating func applySingleFilter(_ filter: TableFilter) {
@@ -86,6 +117,7 @@ internal extension TabFilterState {
         filters = [filter]
         commit = .all
         isVisible = true
+        leaveTextMode()
     }
 
     @discardableResult
@@ -156,13 +188,17 @@ internal extension TabFilterState {
         }
     }
 
+    /// The tab moves to another table, so a sort draft on this one's columns goes too.
     mutating func clearFilters() {
         filters = []
         commit = nil
+        sortDraft = nil
+        leaveTextMode()
     }
 
     mutating func loadPreset(_ preset: FilterPreset) {
         filters = preset.filters
+        leaveTextMode()
     }
 
     static func filterMove(
@@ -225,6 +261,8 @@ internal extension TabFilterState {
     /// modes agree and the mode becomes Match all. With two or more running rows the condition
     /// cannot join them, so it runs alone.
     static func cellFilterState(_ state: TabFilterState, adding filter: TableFilter) -> TabFilterState {
+        var state = state
+        state.dropUntouchedStartingFilter()
         let executedIDs = Set(state.executedFilters.map(\.id))
         let runningIDs = Set(state.filters.lazy.map(\.id).filter(executedIDs.contains))
         let keepsRunningRows = (state.executedLogicMode ?? state.filterLogicMode) == .and || runningIDs.count <= 1
@@ -247,6 +285,7 @@ internal extension TabFilterState {
         }
         next.commit = .all
         next.isVisible = true
+        next.leaveTextMode()
         return next
     }
 }

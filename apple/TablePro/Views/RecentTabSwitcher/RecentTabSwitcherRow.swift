@@ -13,11 +13,18 @@ internal struct RecentTabSwitcherRow: View {
         isHighlighted ? Color.emphasizedSelectionLabel.opacity(0.85) : Color.secondary
     }
 
+    /// The highlight is the selected-content fill, where a hue would vanish, so it turns white as
+    /// the title does.
+    private var glyphColor: Color {
+        guard !isHighlighted, let tint = candidate.symbolTint else { return secondary }
+        return tint.color
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: candidate.symbolName)
                 .font(.callout.weight(.medium))
-                .foregroundStyle(secondary)
+                .foregroundStyle(glyphColor)
                 .frame(width: 18)
                 .accessibilityHidden(true)
 

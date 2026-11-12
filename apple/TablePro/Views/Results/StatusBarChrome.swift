@@ -28,20 +28,52 @@ private struct StatusBarMaterial: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
+extension EnvironmentValues {
+    /// Set by the host that puts a bar above its content rather than below it. Read by the chrome
+    /// and by every control in the bar that opens a popover, so the bar never changes its own
+    /// contents to move.
+    @Entry var statusBarPlacement: StatusBarPlacement = .bottom
+}
+
+extension StatusBarPlacement {
+    /// Toward the content the bar describes, so a popover never opens over the chrome on the bar's
+    /// far side: the editor, the tab strip or the toolbar.
+    var popoverArrowEdge: Edge {
+        switch self {
+        case .top: .bottom
+        case .bottom: .top
+        }
+    }
+
+    /// The rule sits between the bar and the content it borders.
+    var dividerEdge: VerticalEdge {
+        switch self {
+        case .top: .bottom
+        case .bottom: .top
+        }
+    }
+}
+
 // The material does not follow a custom window color, so over a themed backdrop the bar draws none.
 private struct StatusBarChromeModifier: ViewModifier {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.statusBarPlacement) private var placement
     @Environment(\.isOnSplitItem) private var isOnSplitItem
 
     func body(content: Content) -> some View {
         let isThemed = ThemeBackdropState.isThemed(highContrast: contrast == .increased, onSplitItem: isOnSplitItem)
         return VStack(spacing: 0) {
-            Divider()
+            if placement.dividerEdge == .top {
+                Divider()
+            }
             content
                 .padding(.horizontal, StatusBarChrome.horizontalPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: StatusBarChrome.height)
+            if placement.dividerEdge == .bottom {
+                Divider()
+            }
         }
         .background {
             if !isThemed {

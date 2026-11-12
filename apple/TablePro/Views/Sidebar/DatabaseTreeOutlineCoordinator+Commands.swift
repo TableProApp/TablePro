@@ -129,8 +129,10 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.requestContainerDrop(targets)
         case .copyObjectsTo, .copyContainerTo, .duplicateDatabase, .searchContainer:
             performSheetCommand(command)
-        case .showAllTablesMetadata:
-            mainCoordinator?.showAllTablesMetadata()
+        case .showObjects(let target):
+            mainCoordinator?.showObjects(target, asPreview: false)
+        case .showBrowsedObjects(let kind):
+            mainCoordinator?.showBrowsedObjects(kind)
         case .refreshObjectKind(let kind):
             refreshObjectKind(kind)
         case .refreshContainerObjectKind(let group):
@@ -154,7 +156,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .openRedisKey(let key, let keyType):
             mainCoordinator?.openRedisKey(key, keyType: keyType)
         case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
-             .setRowSize:
+             .toggleTableDetails, .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
         }
     }
