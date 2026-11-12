@@ -321,16 +321,17 @@ struct RowOperationsManagerPasteKeyTests {
         #expect(paste(clipboard).first?.first == .null)
     }
 
-    @Test("A blank UUID key takes a fresh UUID and a pasted one is kept")
-    func uuidKeyFillsOnlyWhenBlank() throws {
+    @Test("A UUID key the server does not fill takes a fresh UUID on every pasted row")
+    func uuidKeyTakesAFreshUUID() {
         let clipboard = RecordingClipboard()
         clipboard.text = "\tLamp\n6f1c2b0e-3c1a-4d0e-9a7b-1f2e3d4c5b6a\tDesk"
 
         let rows = paste(clipboard, uuidKeyForms: [0: .hyphenated])
 
-        let generated = try #require(rows.first?.first?.asText)
-        #expect(UUID(uuidString: generated) != nil)
-        #expect(rows.last?.first == .text("6f1c2b0e-3c1a-4d0e-9a7b-1f2e3d4c5b6a"))
+        let keys = rows.compactMap { $0.first?.asText }
+        #expect(keys.count == 2)
+        #expect(keys.allSatisfy { UUID(uuidString: $0) != nil })
+        #expect(!keys.contains("6f1c2b0e-3c1a-4d0e-9a7b-1f2e3d4c5b6a"))
     }
 
     @Test("CSV keeps the spaces inside a quoted field")

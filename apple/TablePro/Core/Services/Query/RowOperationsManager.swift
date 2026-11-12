@@ -594,8 +594,8 @@ final class RowOperationsManager {
         return containsComma ? CSVRowParser() : TSVRowParser()
     }
 
-    // A key the server fills goes back to its default, a natural key keeps the pasted value, and an unfilled UUID key
-    // takes a fresh UUID per row.
+    // A key the server fills goes back to its default, a UUID key it does not fill takes a fresh UUID per row, and any
+    // other key keeps the pasted value.
     private func insertParsedRows(
         _ parsedRows: [ParsedRow],
         primaryKeyColumns: [String],
@@ -623,9 +623,7 @@ final class RowOperationsManager {
                 absentColumns.remove(index)
                 expressionColumns.insert(index)
             }
-            for (index, form) in uuidKeyForms where index < rowValues.count
-                && (rowValues[index].isNull
-                    || rowValues[index].isColumnDefault(isExpression: expressionColumns.contains(index))) {
+            for (index, form) in uuidKeyForms where index < rowValues.count {
                 rowValues[index] = Self.freshUUID(form)
                 absentColumns.remove(index)
                 expressionColumns.remove(index)
