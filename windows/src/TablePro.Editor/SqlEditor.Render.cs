@@ -5,8 +5,6 @@ using TablePro.Graphics;
 using TerraFX.Interop.DirectX;
 using static TerraFX.Interop.DirectX.D2D1_ANTIALIAS_MODE;
 using static TerraFX.Interop.DirectX.D2D1_DRAW_TEXT_OPTIONS;
-using static TerraFX.Interop.Windows.SPI;
-using static TerraFX.Interop.Windows.Windows;
 
 namespace TablePro.Editor;
 
@@ -15,7 +13,6 @@ public sealed partial class SqlEditor
     private readonly Dictionary<int, LineLayout> _frameLayouts = [];
     private readonly List<StyleRun> _runs = [];
     private long _frameVersion = -1;
-    private float _caretWidth = -1;
     private bool _idleLexingQueued;
     private bool _waitingForTick;
 
@@ -113,8 +110,7 @@ public sealed partial class SqlEditor
         var matches = FindMatchesIn(first, last);
         var spanIndex = 0;
         var primaryLine = Document.GetLineFromOffset(_model.Primary.Active);
-        var caretOn = _blink.CaretVisible;
-        var caretWidth = CaretWidth();
+        _caretSpots.Clear();
         for (var line = first; line <= last; line++)
         {
             var lineStart = Document.GetLineStart(line);
@@ -189,23 +185,18 @@ public sealed partial class SqlEditor
                 DrawCompositionMarks(context, layout, compositionColumn, originX, y, lineHeight);
             }
 
-            if (caretOn)
+            foreach (var selection in selections)
             {
-                foreach (var selection in selections)
+                if (selection.Active < lineStart || selection.Active > lineEnd)
                 {
-                    if (selection.Active < lineStart || selection.Active > lineEnd)
-                    {
-                        continue;
-                    }
-                    var column = selection.Active - lineStart;
-                    if (composing && selection.Active == _model.Primary.Active)
-                    {
-                        column += _compositionCaret;
-                    }
-                    var x = originX + layout.XAt(column);
-                    var caret = Rect(x, y, caretWidth, lineHeight);
-                    context->FillRectangle(&caret, brushes.Caret);
+                    continue;
                 }
+                var column = selection.Active - lineStart;
+                if (composing && selection.Active == _model.Primary.Active)
+                {
+                    column += _compositionCaret;
+                }
+                _caretSpots.Add(new System.Numerics.Vector2(originX + layout.XAt(column), y));
             }
         }
         context->PopAxisAlignedClip();
@@ -217,6 +208,7 @@ public sealed partial class SqlEditor
             return;
         }
         _layouts.EndFrame();
+        PlaceCarets(gutter, width, height, lineHeight);
         var presented = Now();
         FramePresented?.Invoke(this, new EditorFrame(presented, Milliseconds(started, presented), lexMilliseconds,
             Document.Version, first, last, created, _device.IsSoftware));
@@ -358,20 +350,6 @@ public sealed partial class SqlEditor
             return [];
         }
         return TextSearch.InRange(Document, _findBar.Query, Document.GetLineStart(first), Document.GetLineEnd(last));
-    }
-
-    private float CaretWidth()
-    {
-        if (_caretWidth < 0)
-        {
-            uint pixels = 1;
-            unsafe
-            {
-                SystemParametersInfoW(SPI_GETCARETWIDTH, 0, &pixels, 0);
-            }
-            _caretWidth = Math.Max(1, pixels);
-        }
-        return _caretWidth / Math.Max(1, _panel.CompositionScaleX);
     }
 
     private static ulong StyleKey(List<StyleRun> runs)

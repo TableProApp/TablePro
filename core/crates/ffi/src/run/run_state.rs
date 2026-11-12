@@ -1,6 +1,6 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -20,7 +20,14 @@ pub(crate) struct RunState {
 #[derive(Default)]
 struct Queue {
     events: Vec<RunEvent>,
-    sets: Vec<Arc<ResultStore>>,
+    // A released set keeps its slot, so every later set keeps its index.
+    sets: Vec<Slot>,
+}
+
+enum Slot {
+    Held(Arc<ResultStore>),
+    // Weak, so a `ResultSet` the app still holds is finished with the run.
+    Released(Weak<ResultStore>),
 }
 
 impl RunState {
@@ -36,12 +43,34 @@ impl RunState {
 
     pub(crate) fn add_set(&self, store: Arc<ResultStore>) -> u32 {
         let mut queue = self.lock();
-        queue.sets.push(store);
+        queue.sets.push(Slot::Held(store));
         u32::try_from(queue.sets.len() - 1).unwrap_or(u32::MAX)
     }
 
     pub(crate) fn set(&self, index: u32) -> Option<Arc<ResultStore>> {
-        self.lock().sets.get(usize::try_from(index).ok()?).cloned()
+        match self.lock().sets.get(usize::try_from(index).ok()?)? {
+            Slot::Held(store) => Some(store.clone()),
+            Slot::Released(_) => None,
+        }
+    }
+
+    pub(crate) fn release_set(&self, index: u32) {
+        let Ok(index) = usize::try_from(index) else {
+            return;
+        };
+        let released = {
+            let mut queue = self.lock();
+            let Some(slot) = queue.sets.get_mut(index) else {
+                return;
+            };
+            let Slot::Held(store) = slot else {
+                return;
+            };
+            let weak = Arc::downgrade(store);
+            std::mem::replace(slot, Slot::Released(weak))
+        };
+        // Outside the lock: freeing a large set's rows takes a while, and the reader posts under it.
+        drop(released);
     }
 
     // Called on a runtime thread.
@@ -84,7 +113,15 @@ impl RunState {
 
     // Every set holds what it will, and `Finished` is the last event.
     pub(crate) fn finish(&self, outcome: RunOutcome, transaction: TransactionStateTag) {
-        let sets = self.lock().sets.clone();
+        let sets: Vec<_> = self
+            .lock()
+            .sets
+            .iter()
+            .filter_map(|slot| match slot {
+                Slot::Held(store) => Some(store.clone()),
+                Slot::Released(store) => store.upgrade(),
+            })
+            .collect();
         sets.iter().for_each(|store| store.finish());
         self.enqueue(RunEvent::Finished {
             outcome: outcome.clone(),
@@ -224,6 +261,33 @@ mod tests {
         state.post(rows(0, 3));
         assert_eq!(listener.calls.load(Ordering::SeqCst), 2);
         assert_eq!(state.drain(), [rows(0, 3)]);
+    }
+
+    #[test]
+    fn a_released_set_is_gone_from_the_run_and_the_later_sets_keep_their_index() {
+        let state = RunState::new(Box::new(CountingListener::default()));
+        let first = Arc::new(ResultStore::new(Vec::new().into()));
+        let second = Arc::new(ResultStore::new(Vec::new().into()));
+        let third = Arc::new(ResultStore::new(Vec::new().into()));
+        let dropped = Arc::downgrade(&third);
+        assert_eq!(state.add_set(first.clone()), 0);
+        assert_eq!(state.add_set(second.clone()), 1);
+        assert_eq!(state.add_set(third), 2);
+
+        state.release_set(0);
+        state.release_set(0);
+        state.release_set(2);
+        state.release_set(7);
+
+        assert!(state.set(0).is_none());
+        assert!(Arc::ptr_eq(&state.set(1).unwrap(), &second));
+        assert_eq!(Arc::strong_count(&first), 1);
+        assert!(dropped.upgrade().is_none());
+        assert_eq!(state.add_set(Arc::new(ResultStore::new(Vec::new().into()))), 3);
+        state.finish(RunOutcome::Cancelled, TransactionStateTag::Idle);
+        assert!(second.is_finished());
+        // The app may still read a set it released, and it ends with the run.
+        assert!(first.is_finished());
     }
 
     #[derive(Clone, Default)]
