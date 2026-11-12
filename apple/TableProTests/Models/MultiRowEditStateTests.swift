@@ -349,6 +349,59 @@ struct MultiRowEditStateTests {
             #expect(sut.fields[1].pendingValue == nil)
             #expect(sut.fields[2].pendingValue == nil)
         }
+
+        @Test("A new selection keeps each field's identity and gives every editor a new one")
+        func newSelectionKeepsFieldIdentity() {
+            let sut = makeSUT(rows: [["1", "Alice", "alice@test.com"]], selectedIndices: [0])
+            let fieldIDs = sut.fields.map(\.id)
+            let editorIDs = sut.fields.map(\.editorID)
+
+            sut.configure(
+                rowIDs: [.existing(1)],
+                allRows: [["1", "Bob", "alice@test.com"]],
+                columns: ["id", "name", "email"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+            )
+
+            #expect(sut.fields.map(\.id) == fieldIDs)
+            #expect(zip(editorIDs, sut.fields.map(\.editorID)).allSatisfy { $0 != $1 })
+        }
+
+        @Test("The same selection and values keep every editor's identity")
+        func sameSelectionKeepsEditorIdentity() {
+            let sut = makeSUT(rows: [["1", "Alice", "alice@test.com"]])
+            let editorIDs = sut.fields.map(\.editorID)
+
+            sut.configure(
+                rowIDs: [.existing(0)],
+                allRows: [["1", "Alicia", "alice@test.com"]],
+                columns: ["id", "name", "email"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+            )
+
+            let after = sut.fields.map(\.editorID)
+            #expect(after[0] == editorIDs[0])
+            #expect(after[1] != editorIDs[1])
+            #expect(after[2] == editorIDs[2])
+        }
+
+        @Test("A column renamed in place is a different field")
+        func renamedColumnIsANewField() {
+            let sut = makeSUT()
+            let before = sut.fields.map(\.id)
+
+            sut.configure(
+                rowIDs: [.existing(0)],
+                allRows: [["1", "Alice", "alice@test.com"]],
+                columns: ["id", "full_name", "email"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+            )
+
+            let after = sut.fields.map(\.id)
+            #expect(after[0] == before[0])
+            #expect(after[1] != before[1])
+            #expect(after[2] == before[2])
+        }
     }
 
     // MARK: - updateField()

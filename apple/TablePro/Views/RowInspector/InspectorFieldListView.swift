@@ -108,7 +108,7 @@ internal struct InspectorFieldListView: View {
 
     private func fieldList(_ fields: [FieldEditState]) -> some View {
         List {
-            ForEach(fields, id: \.id) { field in
+            ForEach(fields) { field in
                 row(for: field)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(
@@ -148,9 +148,10 @@ internal struct InspectorFieldListView: View {
                 ? { editState.toggleExpansion(ofColumn: field.columnIndex) }
                 : nil,
             onPopOut: { onPopOut?(field, $0, kind) },
-            onTabStopChange: { [tabStops] in tabStops.record($0, for: field.id) },
+            onTabStopChange: { [tabStops] in tabStops.record($0, for: field.editorID) },
             focusedField: $focusedField,
-            fieldID: field.id
+            fieldID: field.id,
+            editorID: field.editorID
         )
     }
 
@@ -189,7 +190,7 @@ internal struct InspectorFieldListView: View {
     // A List's key view loop has one stop, measured. Ignored at either end so focus leaves the list instead of wrapping.
     private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPressResultCompat {
         guard !fields.isEmpty else { return .ignored }
-        let order = fields.map(\.id)
+        let order = fields.map(\.editorID)
         tabStops.forget(allBut: order)
         // With Full Keyboard Access on, the controls of a field showing a map are key views.
         let skipped = NSApplication.shared.isFullKeyboardAccessEnabled ? [] : tabStops.fieldsWithoutTabStop
@@ -218,7 +219,7 @@ internal struct InspectorFieldListView: View {
         guard isEditable,
               offersDatabaseValues,
               let focusedField,
-              let field = editState.fields.first(where: { $0.id == focusedField }),
+              let field = editState.fields.first(where: { $0.editorID == focusedField }),
               Self.isFieldEditable(field, kind: FieldEditorResolver.resolve(field: field), rowIsEditable: isEditable),
               let command = Self.stateShortcutCommand(
                   for: key, offered: editState.setValueCommands(for: field, isWritable: true)
@@ -245,17 +246,17 @@ internal struct InspectorFieldListView: View {
 internal final class InspectorTabStopRegistry: ObservableObject {
     internal private(set) var fieldsWithoutTabStop: Set<UUID> = []
 
-    internal func record(_ hasTabStop: Bool, for fieldID: UUID) {
+    internal func record(_ hasTabStop: Bool, for editorID: UUID) {
         if hasTabStop {
-            fieldsWithoutTabStop.remove(fieldID)
+            fieldsWithoutTabStop.remove(editorID)
         } else {
-            fieldsWithoutTabStop.insert(fieldID)
+            fieldsWithoutTabStop.insert(editorID)
         }
     }
 
-    // Field ids are reissued on every selection change.
-    internal func forget(allBut fieldIDs: [UUID]) {
-        fieldsWithoutTabStop.formIntersection(fieldIDs)
+    // Editor ids are reissued on every selection change.
+    internal func forget(allBut editorIDs: [UUID]) {
+        fieldsWithoutTabStop.formIntersection(editorIDs)
     }
 }
 
