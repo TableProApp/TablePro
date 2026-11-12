@@ -364,8 +364,9 @@ struct SQLStatementGenerator {
 
     var maxBindParameters: Int {
         switch databaseType {
-        case .sqlite: 32_766
+        case .sqlite, .libsql, .turso: 32_766
         case .mssql: 2_100
+        case .cloudflareD1: 100
         default: 65_535
         }
     }

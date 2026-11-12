@@ -27,12 +27,19 @@ extension MainContentCoordinator {
     /// two. They all read this now.
     var canEditActiveResult: Bool {
         guard let tab = tabManager.selectedTab else { return false }
-        // A claimed execution replaces these rows and clears whatever was staged on them meanwhile, as the data files grid does when busy.
+        // A claimed execution or a landing save replaces these rows and clears whatever was staged on them meanwhile, as the data
+        // files grid does when busy.
         return tab.tableContext.isEditable
             && tab.tableContext.allowsRowEditing
             && !safeModeLevel.blocksAllWrites
             && activeResultEditRefusal == nil
             && !tabExecution.isExecuting(tab.id)
+            && !rowEditingCoordinator.isSaving(tabId: tab.id)
+    }
+
+    // Undo, Redo and Discard wait too: the landing save clears the change manager they would act on.
+    var isSavingSelectedTab: Bool {
+        rowEditingCoordinator.isSaving(tabId: tabManager.selectedTabId)
     }
 
     // A query tab learns its result reads a view from the result's origin; a table tab from its context.

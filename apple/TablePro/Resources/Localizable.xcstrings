@@ -120565,6 +120565,9 @@
         }
       }
     },
+    "No row took the change. Another client may have changed or deleted it, or a security policy or trigger skipped it." : {
+
+    },
     "No rows" : {
       "localizations" : {
         "fr" : {
@@ -151500,6 +151503,12 @@
           }
         }
       }
+    },
+    "Restore Row" : {
+
+    },
+    "Restore Rows" : {
+
     },
     "Restore the previous values of a save" : {
       "localizations" : {

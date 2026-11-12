@@ -105,8 +105,8 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
     }
 
     func gridDuplicateRows(_ rowIDs: [RowID]) {
-        guard ownsWindowState, let first = rowIDs.first else { return }
-        coordinator?.duplicateRow(first)
+        guard ownsWindowState, !rowIDs.isEmpty else { return }
+        coordinator?.duplicateRows(rowIDs)
     }
 
     func gridCanPasteRows() -> Bool {

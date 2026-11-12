@@ -464,11 +464,10 @@ final class MultiRowEditState: ObservableObject {
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
         if isJson, let value, !value.isEmpty {
-            let normalized = JsonReindenter.normalize(value)
-            if let original, JsonReindenter.normalize(original) == normalized {
+            if let original, JsonReindenter.normalize(original) == JsonReindenter.normalize(value) {
                 return nil
             }
-            return normalized
+            return JsonReindenter.staged(value, keepingLayoutOf: original)
         }
         if value == original || (original == nil && value == "") {
             return nil

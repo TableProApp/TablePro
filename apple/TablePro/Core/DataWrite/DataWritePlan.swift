@@ -173,12 +173,21 @@ struct RowLookup: Sendable {
     let rowCount: Int
     let pinsRows: Bool
     let check: ParameterizedStatement?
+    // By position in the query's columns: what the one row found must still hold, or another writer changed it.
+    let heldValues: [Int: PluginCellValue]
 
-    init(query: ParameterizedStatement, rowCount: Int, pinsRows: Bool, check: ParameterizedStatement? = nil) {
+    init(
+        query: ParameterizedStatement,
+        rowCount: Int,
+        pinsRows: Bool,
+        check: ParameterizedStatement? = nil,
+        heldValues: [Int: PluginCellValue] = [:]
+    ) {
         self.query = query
         self.rowCount = rowCount
         self.pinsRows = pinsRows
         self.check = check
+        self.heldValues = heldValues
     }
 
     init(_ lookup: PluginRowLookup) {
@@ -254,7 +263,8 @@ extension DataWriteStep {
                     expectedRowCount: $0.rowCount,
                     tableName: tableName,
                     matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert,
-                    refusesSharedKey: $0.refusesSharedKey
+                    refusesSharedKey: $0.refusesSharedKey,
+                    rowKind: $0.kind
                 )
             }
         case .driverWritten(let statements):
