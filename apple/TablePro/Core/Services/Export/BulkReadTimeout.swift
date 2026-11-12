@@ -11,9 +11,9 @@ import os
 enum BulkReadTimeout {
     private static let logger = Logger(subsystem: "com.TablePro", category: "BulkReadTimeout")
 
-    static func lifted<T: Sendable>(
+    static func lifted<T>(
         on drivers: [DatabaseDriver],
-        _ operation: @Sendable () async throws -> T
+        _ operation: () async throws -> T
     ) async throws -> T {
         var restored: [(DatabaseDriver, Int)] = []
         for driver in drivers {

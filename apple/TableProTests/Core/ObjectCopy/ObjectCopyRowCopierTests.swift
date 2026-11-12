@@ -386,8 +386,9 @@ struct ObjectCopyRowCopierTests {
             targetDatabaseType: .oracle
         ).copy(from: source, to: target) { _ in }
 
-        #expect(target.executedTypeNames == [["NUMBER", "VARCHAR2(20 BYTE)", "NUMBER", "VARCHAR2(20 BYTE)"]])
-        #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "00123", "2", "0.50"])
+        // Oracle takes one row per INSERT.
+        #expect(target.executedTypeNames == [["NUMBER", "VARCHAR2(20 BYTE)"], ["NUMBER", "VARCHAR2(20 BYTE)"]])
+        #expect(target.executedParameters.map { row in row.map { $0.sortKey } } == [["1", "00123"], ["2", "0.50"]])
     }
 
     @Test

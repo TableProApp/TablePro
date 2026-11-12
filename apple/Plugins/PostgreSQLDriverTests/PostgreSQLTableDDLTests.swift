@@ -248,7 +248,7 @@ struct PostgreSQLTableDDLTests {
 
             COMMENT ON TABLE public.events_2024 IS 'year 2024';
 
-            COMMENT ON COLUMN public.events_2024.note IS 'it''s a note';
+            COMMENT ON COLUMN public.events_2024."note" IS 'it''s a note';
             """))
     }
 
