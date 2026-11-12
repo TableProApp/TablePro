@@ -185,7 +185,7 @@ enum ColumnType: Equatable, Sendable {
     private static let uuidTypeNames: Set<String> = ["UUID", "UNIQUEIDENTIFIER", "TIMEUUID"]
 
     // `Nullable(UUID)`, `year(4)` and `INTERVAL DAY TO SECOND` all name their type in the first word.
-    private static func baseTypeName(_ rawType: String?) -> String {
+    static func baseTypeName(_ rawType: String?) -> String {
         guard var name = rawType?.uppercased() else { return "" }
         while let wrapper = typeWrappers.first(where: { name.hasPrefix($0) }) {
             name.removeFirst(wrapper.count)

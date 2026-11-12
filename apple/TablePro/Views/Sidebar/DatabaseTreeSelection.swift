@@ -15,10 +15,12 @@ import Foundation
 internal enum DatabaseTreeSelection {
     internal static func isSelectable(_ kind: DatabaseTreeNode.Kind) -> Bool {
         switch kind {
-        case .status, .recentSection, .temporarySection, .foldersSection, .objectKindSection, .redisKeysSection:
+        case .status, .recentSection, .favoritesSection, .temporarySection, .foldersSection, .objectKindSection,
+             .redisKeysSection:
             return false
-        case .database, .schema, .hierarchicalSchemaSection, .table, .partition, .routine, .trigger, .userType,
-             .serverObject, .recentTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode:
+        case .connectionGroup, .savedConnection, .database, .schema, .hierarchicalSchemaSection, .table, .partition,
+             .routine, .trigger, .userType, .serverObject, .recentTable, .favoriteTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return true
         }
     }
@@ -32,7 +34,7 @@ internal enum DatabaseTreeSelection {
     // A temporary table opens but takes no Table menu command: those run on a pooled connection, where its name
     // reaches the database's own table of that name, if any.
     private static func commandableRef(of node: DatabaseTreeNode) -> DatabaseTreeTableRef? {
-        node.tableRef ?? node.recentTableRef
+        node.tableRef ?? node.recentTableRef ?? node.favoriteTableRef
     }
 
     /// What the Table menu acts on, and what a queued Truncate or Drop is keyed by. The tree
@@ -64,5 +66,44 @@ internal enum DatabaseTreeSelection {
     ) -> DatabaseTreeTableRef? {
         guard selectedNodes.count == 1 else { return nil }
         return SelectionDelta.singleAddition(old: previousRefs, new: newRefs)
+    }
+
+    /// The container and kind a row stands for. A database row on an engine grouped by schema holds
+    /// schemas, not objects, so it names none; each schema does.
+    internal static func objectsTarget(
+        of kind: DatabaseTreeNode.Kind,
+        databaseHoldsSchemas: Bool,
+        hierarchicalDatabase: String
+    ) -> DatabaseTreeObjectGroup? {
+        switch kind {
+        case .database(let metadata):
+            return databaseHoldsSchemas ? nil : DatabaseTreeObjectGroup(database: metadata.name, schema: nil, kind: .table)
+        case .schema(let database, let schema):
+            return DatabaseTreeObjectGroup(database: database, schema: schema, kind: .table)
+        case .hierarchicalSchemaSection(let schema):
+            return DatabaseTreeObjectGroup(database: hierarchicalDatabase, schema: schema, kind: .table)
+        case .containerObjectKindSection(let group):
+            return group
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .table, .partition, .tableDetailGroup, .tableDetail, .routine, .trigger, .userType, .serverObject, .status,
+             .objectKindSection, .redisKeysSection, .redisNode:
+            return nil
+        }
+    }
+
+    /// Only a selection of one row lists anything: one row added to a selection is the user
+    /// gathering rows for a command, not picking a container.
+    internal static func selectionObjectsTarget(
+        selectedNodes: [DatabaseTreeNode],
+        showsObjectsOnSelection: Bool,
+        databaseHoldsSchemas: Bool,
+        hierarchicalDatabase: String
+    ) -> DatabaseTreeObjectGroup? {
+        guard showsObjectsOnSelection, selectedNodes.count == 1 else { return nil }
+        return objectsTarget(
+            of: selectedNodes[0].kind,
+            databaseHoldsSchemas: databaseHoldsSchemas,
+            hierarchicalDatabase: hierarchicalDatabase
+        )
     }
 }

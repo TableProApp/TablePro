@@ -71,8 +71,10 @@ internal enum ToolbarContextResolver {
         case .objectSource where key.stagesObjectChanges:
             return []
         case .serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory, .tableListing:
-            // None of these can stage a change, so the commit control could only ever be dim.
-            return [MainWindowToolbar.saveChanges]
+            // None of these can stage a change, so the commit control could only ever be dim. A labeled toolbar keeps
+            // it there, dim: each item is wide with its name under it, and taking one out moved Refresh, Actions and
+            // Safe Mode across the titlebar on every switch to one of these tabs.
+            return key.keepsContentCommandsInPlace ? [] : [MainWindowToolbar.saveChanges]
         case .routineDebug, .liveMessages:
             // A debug run or a live subscription has nothing to reload or commit; its own controls take that place.
             return [MainWindowToolbar.refresh, MainWindowToolbar.saveChanges]
@@ -82,7 +84,7 @@ internal enum ToolbarContextResolver {
     }
 
     // Agent mode mounts no browse content. `MenuContentModeParityTests` holds these to the menu bar's `agentModeSelectors`.
-    private static let browseContentIdentifiers: Set<NSToolbarItem.Identifier> = [
+    private static let browseContentIdentifiers = Set<NSToolbarItem.Identifier>([
         MainWindowToolbar.refresh,
         MainWindowToolbar.saveChanges,
         MainWindowToolbar.addRow,
@@ -96,7 +98,7 @@ internal enum ToolbarContextResolver {
         MainWindowToolbar.importTables,
         MainWindowToolbar.navigateBack,
         MainWindowToolbar.navigateForward,
-    ]
+    ]).union(MainWindowToolbar.objectKindItemIdentifiers)
 
     // The same commands as the menu bar's `sheetCommandSelectors`: a window with a sheet attached takes no second one.
     private static let sheetCommandIdentifiers: Set<NSToolbarItem.Identifier> = [
@@ -105,6 +107,7 @@ internal enum ToolbarContextResolver {
         MainWindowToolbar.exportTables,
         MainWindowToolbar.importTables,
         MainWindowToolbar.restorePreviousValues,
+        MainWindowToolbar.objectBackup,
     ]
 
     // The `default:` is false: an unconditional true left Query History live and inert over a window that never connected.
@@ -162,6 +165,19 @@ internal enum ToolbarContextResolver {
             return context.debugCommands.contains(.stepOut)
         case MainWindowToolbar.debugStop:
             return context.canStopDebugging
+        case MainWindowToolbar.objectTables:
+            return context.isConnected && context.canListTables
+        // The sidebar's own lists hold these, so they need no listing statement, only objects to list.
+        case MainWindowToolbar.objectViews:
+            return context.isConnected && context.offersViews
+        case MainWindowToolbar.objectFunctions:
+            return context.isConnected && context.offersFunctions
+        case MainWindowToolbar.objectUsers:
+            return context.isConnected && context.supportsUserManagement
+        case MainWindowToolbar.objectQuery:
+            return context.isConnected
+        case MainWindowToolbar.objectBackup:
+            return context.isConnected && context.supportsBackup
         default:
             return false
         }

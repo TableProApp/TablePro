@@ -41,6 +41,8 @@ internal final class ContextValidatedToolbar: NSToolbar {
             return
         }
         owner.withinValidationPass { super.validateVisibleItems() }
+        // The selected Objects button rides the pass every window update runs, as each item's enabled state does.
+        owner.refreshObjectKindSelection()
     }
 }
 

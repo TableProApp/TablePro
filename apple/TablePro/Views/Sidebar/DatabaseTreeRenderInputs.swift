@@ -82,6 +82,7 @@ struct DatabaseTreeRenderInputs: Equatable {
     let currency: [ObjectsKey: Currency]
     let serverObjectsCurrency: [ServerObjectsKey: Bool]
     let partitions: [DatabaseTreeMetadataService.PartitionsKey: Rows<PartitionInfo>]
+    let tableDetails: [DatabaseTreeMetadataService.TableDetailsKey: MetadataLoadState<TableDetailList>]
     let listings: [DatabaseKey: Listing]
     let listsRevision: Int
     let catalogGeneration: Int
@@ -148,6 +149,7 @@ struct DatabaseTreeRenderInputs: Equatable {
         self.currency = currency
         self.serverObjectsCurrency = serverObjectsCurrency
         self.partitions = Self.slice(treeMetadata.partitionsState, where: { $0.connectionId == connectionId }) { Rows($0) }
+        self.tableDetails = Self.slice(treeMetadata.tableDetailsState, where: { $0.connectionId == connectionId }) { $0 }
         self.listings = listings
         self.listsRevision = treeMetadata.listsRevision(for: connectionId)
         self.catalogGeneration = schemaService.generationToken(for: connectionId)

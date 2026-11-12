@@ -21,6 +21,8 @@ enum DataGridCommand: Hashable, CaseIterable {
     case valueFilter
     case copyAsSQL
     case loadUnloadedValues
+    // A double click or Return opens what the row stands for instead of the cell's value.
+    case openRow
 }
 
 enum DataGridLayoutScope: Equatable {
@@ -98,6 +100,7 @@ protocol DataGridActions: AnyObject {
     func gridClearResults()
     func gridSearchAllRows(term: String)
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn)
+    func gridOpenRow(_ rowID: RowID)
     func gridLoadUnloadedValues(rowIDs: [RowID], columns: IndexSet?, completion: @escaping @MainActor (Bool) -> Void)
     var gridSQLExporter: (any DataGridSQLExporting)? { get }
 
@@ -130,6 +133,7 @@ extension DataGridActions {
     func gridClearResults() {}
     func gridSearchAllRows(term: String) {}
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn) {}
+    func gridOpenRow(_ rowID: RowID) {}
     func gridLoadUnloadedValues(rowIDs: [RowID], columns: IndexSet?, completion: @escaping @MainActor (Bool) -> Void) {
         completion(false)
     }

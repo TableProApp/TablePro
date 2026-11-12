@@ -150,6 +150,9 @@ private struct SettingsPaneContent: View {
             GeneralSettingsView(
                 settings: $settingsManager.general,
                 tabSettings: $settingsManager.tabs,
+                dataGridSettings: $settingsManager.dataGrid,
+                editorSettings: $settingsManager.editor,
+                appearanceSettings: $settingsManager.appearance,
                 updater: SoftwareUpdater.shared,
                 onResetAll: { settingsManager.resetToDefaults() }
             )

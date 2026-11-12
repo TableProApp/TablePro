@@ -44,9 +44,17 @@ extension DatabaseTreeOutlineCoordinator {
     private func buildChildren(of node: DatabaseTreeNode?) -> [DatabaseTreeNode] {
         guard let node else { return rootNodes() }
         switch node.kind {
+        case .connectionGroup(let group):
+            return connectionLevelNodes(group.children)
+        case .savedConnection(let ref):
+            return ref.ownsTree ? shapeRootNodes() : []
         case .recentSection:
             return recentTableRefs().map {
                 self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
+            }
+        case .favoritesSection:
+            return favoriteTableRefs().map {
+                self.node(id: DatabaseTreeNode.favoriteTableId($0), kind: .favoriteTable($0))
             }
         case .temporarySection:
             return temporaryTableRefs().map {
@@ -63,8 +71,9 @@ extension DatabaseTreeOutlineCoordinator {
         case .schema(let database, let schema):
             return objectNodes(database: database, schema: schema)
         case .table(let ref):
+            if showsTableDetails { return tableDetailGroupNodes(of: ref) }
             guard showsPartitions, ref.table.type == .partitionedTable else { return [] }
-            return partitionNodes(of: ref)
+            return partitionNodes(of: ref, parentId: DatabaseTreeNode.tableId(ref))
         case .partition(let ref):
             guard showsPartitions, ref.partition.isSubpartitioned else { return [] }
             return subpartitionNodes(of: ref)
@@ -78,15 +87,16 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
             return redisChildren(of: redisNode)
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .serverObject, .status:
+        case .tableDetailGroup(let group):
+            return tableDetailNodes(in: group)
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .serverObject, .status, .tableDetail:
             return []
         }
     }
 
     /// Only the top-level partitions. A subpartition names the partition it subdivides and is
     /// nested under that row instead, because an engine that has them reports both in one list.
-    private func partitionNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
-        let parentId = DatabaseTreeNode.tableId(ref)
+    internal func partitionNodes(of ref: DatabaseTreeTableRef, parentId: String) -> [DatabaseTreeNode] {
         let state = service.partitionsLoadState(
             connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
         )
@@ -108,7 +118,7 @@ extension DatabaseTreeOutlineCoordinator {
     /// own list carrying its name.
     private func subpartitionNodes(of ref: DatabaseTreePartitionRef) -> [DatabaseTreeNode] {
         if let relation = ref.tableRef {
-            return partitionNodes(of: relation)
+            return partitionNodes(of: relation, parentId: DatabaseTreeNode.tableId(relation))
         }
         let parent = ref.parent
         let state = service.partitionsLoadState(
@@ -139,6 +149,12 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private func rootNodes() -> [DatabaseTreeNode] {
+        listsConnections ? connectionLevelNodes(connectionTreeRows()) : shapeRootNodes()
+    }
+
+    /// What the shape lists at its top: the root itself, or the own connection's row when the tree
+    /// lists the saved connections above it.
+    internal func shapeRootNodes() -> [DatabaseTreeNode] {
         switch rootShape {
         case .databaseTree: return databaseTreeRootNodes()
         case .flat: return flatRootNodes()
@@ -160,7 +176,25 @@ extension DatabaseTreeOutlineCoordinator {
         nodes += matched
             .filter { seen.insert($0.id).inserted }
             .map { node(id: DatabaseTreeNode.databaseId($0.name), kind: .database($0)) }
+        if matched.isEmpty, let status = ownDatabaseListStatus() {
+            nodes.append(statusNode(parentId: DatabaseTreeNode.savedConnectionId(connectionId), status: status))
+        }
         return nodes
+    }
+
+    /// Under its connection's row the tree stands whatever the database list is doing, so the
+    /// connections above stay on screen. The states the view showed in the outline's place say
+    /// themselves here. A search that matches nothing lists nothing, as it does without the row.
+    private func ownDatabaseListStatus() -> DatabaseTreeNode.Status? {
+        guard listsConnections, searchText.isEmpty else { return nil }
+        switch service.databaseListState(for: connectionId) {
+        case .idle, .loading:
+            return .loading
+        case .failed(let message):
+            return .error(message)
+        case .loaded:
+            return .empty
+        }
     }
 
     internal var browsingDatabase: String? {
@@ -499,6 +533,9 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func sessionSectionNodes() -> [DatabaseTreeNode] {
         var nodes: [DatabaseTreeNode] = []
+        if !favoriteTableRefs().isEmpty {
+            nodes.append(node(id: DatabaseTreeNode.favoritesSectionId, kind: .favoritesSection))
+        }
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
         }
@@ -898,7 +935,7 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
-    private func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {
+    internal func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {
         node(id: DatabaseTreeNode.statusId(parentId: parentId, status: status), kind: .status(status))
     }
 

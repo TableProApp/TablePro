@@ -181,6 +181,8 @@ extension MainContentCoordinator {
         var configuration = DataGridConfiguration()
         configuration.primaryKeyColumns = tab.tableContext.primaryKeyColumns
         configuration.showRowNumbers = AppSettingsManager.shared.dataGrid.showRowNumbers
+        configuration.showsColumnTypes = AppSettingsManager.shared.dataGrid.showsColumnTypesInHeader
+        configuration.namesDeclaredColumnTypes = tab.tabType == .table
         configuration.appliesRowSortPreferences = true
         configuration.appliesRowCopyFormat = true
         configuration.colorsValuesByType = true

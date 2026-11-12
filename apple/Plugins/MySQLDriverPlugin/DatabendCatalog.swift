@@ -88,9 +88,9 @@ internal enum DatabendCatalog {
             table_name AS name,
             table_type AS kind,
             table_rows AS estimated_rows,
-            CONCAT(ROUND((data_length + index_length) / 1024 / 1024, 2), ' MB') AS total_size,
-            CONCAT(ROUND(data_length / 1024 / 1024, 2), ' MB') AS data_size,
-            CONCAT(ROUND(index_length / 1024 / 1024, 2), ' MB') AS index_size,
+            data_length + index_length AS total_size,
+            data_length AS data_size,
+            index_length AS index_size,
             table_comment AS comment
         FROM information_schema.tables
         WHERE table_schema = DATABASE()

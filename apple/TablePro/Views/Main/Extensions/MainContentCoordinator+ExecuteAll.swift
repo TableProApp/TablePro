@@ -12,6 +12,7 @@ extension MainContentCoordinator {
         confirmRunDiscard(onTab: tab.id) { [weak self] in
             guard let self else { return }
             flushEditorText(forTab: tab.id)
+            endEditorCompletion()
             queryExecutionCoordinator.runAllStatements(extraCapabilities: extraCapabilities)
         }
     }

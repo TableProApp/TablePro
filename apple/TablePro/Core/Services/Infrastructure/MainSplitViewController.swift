@@ -315,6 +315,7 @@ internal final class MainSplitViewController: NSSplitViewController {
 
         navigationSidebar = NavigationSidebarViewController()
         navigationSidebar.railController.host = self
+        navigationSidebar.navigatorController.model.host = self
         navigationSidebar.railController.onLayoutChange = { [weak self] _ in
             self?.navigationSidebar.applyRailLayout()
             self?.recomputeWindowMinSize()
@@ -324,6 +325,11 @@ internal final class MainSplitViewController: NSSplitViewController {
         }
         navigationSidebar.objectBrowser.onScopeSelection = { [weak self] tab in
             self?.setSidebarTab(tab)
+        }
+        /// The layout and the setting move without the pane moving, so the strip is settled again
+        /// whenever the tree starts or stops listing the connections.
+        navigationSidebar.objectBrowser.onTreeListsConnectionsChange = { [weak self] in
+            self?.applyPaneChrome()
         }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
         sidebarSplitItem.canCollapse = true
@@ -525,6 +531,9 @@ internal final class MainSplitViewController: NSSplitViewController {
         guard window.toolbar !== owner.managedToolbar else { return }
         window.toolbar = owner.managedToolbar
         owner.reconcileDebugItems()
+        owner.reconcileObjectKindItems()
+        owner.reconcileLocationItems()
+        owner.reconcileDisplayMode()
         /// The item set every window starts from is the full one, because `isHidden` is never
         /// persisted, so the context is applied the moment the items exist rather than on the first
         /// change to it. Measured on macOS 27, that moment is this assignment: `NSToolbar.items` is
@@ -704,6 +713,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
         /// rail in the app rebuild its whole entry list to answer a question none of them asked.
         navigationSidebar?.railController.refreshSelection()
+        navigationSidebar?.navigatorController.refreshSelection()
         syncFrontmostTabManager()
 
         /// The toolbar's shape follows the workspace, not only its coordinator. Pointing the toolbar
@@ -1190,6 +1200,14 @@ internal final class MainSplitViewController: NSSplitViewController {
     }
 
     var canToggleWorkspaceRail: Bool {
+        ConnectionWindowPaneResolver.canToggleConnectionsColumn(
+            navigatorEnabled: AppSettingsManager.shared.general.showsConnectionNavigator,
+            workspaceCount: WorkspaceRailStore.entries.count
+        )
+    }
+
+    /// Stepping between workspaces needs a second one whichever list the column holds.
+    var canCycleWorkspaces: Bool {
         WorkspaceRailStore.entries.count > 1
     }
 
@@ -1217,13 +1235,23 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// sibling connection opening or closing is enough.
     func applyRailVisibility(workspaceCount: Int) {
         hostedWorkspaceCount = workspaceCount
+        let general = AppSettingsManager.shared.general
+        let showsNavigator = general.showsConnectionNavigator
+        navigationSidebar?.setNavigatorEnabled(showsNavigator)
         setWorkspaceRailVisible(
-            ConnectionWindowPaneResolver.showsWorkspaceRail(
-                preferenceEnabled: AppSettingsManager.shared.general.showWorkspaceRail,
-                workspaceCount: workspaceCount,
-                pane: currentPane,
-                isClosing: phase == .closing
-            )
+            showsNavigator
+                ? ConnectionWindowPaneResolver.showsConnectionNavigator(
+                    preferenceEnabled: general.showWorkspaceRail,
+                    navigatorEnabled: showsNavigator,
+                    isClosing: phase == .closing
+                )
+                : ConnectionWindowPaneResolver.showsWorkspaceRail(
+                    preferenceEnabled: general.showWorkspaceRail,
+                    workspaceCount: workspaceCount,
+                    pane: currentPane,
+                    isClosing: phase == .closing,
+                    treeListsConnections: navigationSidebar?.objectBrowser.treeListsConnections ?? false
+                )
         )
         applyChromeStandingOnRail()
     }

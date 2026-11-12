@@ -32,6 +32,7 @@ struct PaginationControlsView: View {
 
     @State private var showJumpPopover = false
     @State private var showCustomPopover = false
+    @Environment(\.statusBarPlacement) private var placement
     @State private var jumpPage: Int?
     @State private var customPageSize: Int?
     @FocusState private var isJumpFocused: Bool
@@ -95,7 +96,7 @@ struct PaginationControlsView: View {
         .help(String(localized: "Rows per page"))
         .accessibilityValue(pagination.pageSize.formatted())
         .accessibilityIdentifier("pagination-page-size")
-        .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
+        .popover(isPresented: $showCustomPopover, arrowEdge: placement.popoverArrowEdge) {
             customPageSizePopover
         }
     }
@@ -208,7 +209,7 @@ struct PaginationControlsView: View {
             .disabled(!pagination.hasRowCountTotal || pagination.isLoading)
             .help(String(localized: "Go to page"))
             .pageIndicatorAccessibility(value: pageIndicatorAccessibilityValue)
-            .popover(isPresented: $showJumpPopover, arrowEdge: .top) {
+            .popover(isPresented: $showJumpPopover, arrowEdge: placement.popoverArrowEdge) {
                 jumpPopover
             }
         } else {
@@ -233,10 +234,10 @@ struct PaginationControlsView: View {
             .disabled(pagination.isLoading)
             .help(String(localized: "Go to page"))
             .pageIndicatorAccessibility(value: pageIndicatorAccessibilityValue)
-            .popover(isPresented: $showJumpPopover, arrowEdge: .top) {
+            .popover(isPresented: $showJumpPopover, arrowEdge: placement.popoverArrowEdge) {
                 jumpPopover
             }
-            .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
+            .popover(isPresented: $showCustomPopover, arrowEdge: placement.popoverArrowEdge) {
                 customPageSizePopover
             }
         }

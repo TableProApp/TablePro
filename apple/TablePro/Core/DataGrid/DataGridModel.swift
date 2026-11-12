@@ -259,6 +259,12 @@ final class DataGridModel: ObservableObject {
         setSelection(.empty)
     }
 
+    /// Before a reload whose rows took other ids: the selection stays on the rows the map names, and
+    /// the reload resolves it as it resolves any kept selection.
+    func carrySelection(_ rowMap: [RowID: RowID]) {
+        store.selectionSnapshot = store.selectionSnapshot.remappingRows(rowMap)
+    }
+
     // The change that follows tells the view: a selection moved ahead of it would end an open edit.
     private func restoreSelection(in rows: TableRows) {
         let resolved = store.selectionSnapshot
@@ -579,6 +585,13 @@ final class DataGridModel: ObservableObject {
     func displayFormat(for column: DataGridColumn) -> ValueDisplayFormat? {
         let formats = store.displayFormats
         return column.dataIndex < formats.count ? formats[column.dataIndex] : nil
+    }
+
+    // The table's own spelling of the column's type, where the owner says the columns are that table's. Read at use, so
+    // a definition that lands after the rows reaches the header with the metadata delta that carried it.
+    func declaredType(of column: DataGridColumn) -> String? {
+        guard configuration.namesDeclaredColumnTypes else { return nil }
+        return rows.declaredType(at: column.dataIndex)
     }
 
     // MARK: - Editing

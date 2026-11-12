@@ -28,6 +28,13 @@ extension MainContentCoordinator {
         )
     }
 
+    /// The query bar's connection picker, which moves the tab the way Move Tab to Connection does,
+    /// without the picker popover: the menu it was chosen from already named the target.
+    internal func moveQueryTab(_ tabId: UUID, toConnection targetConnectionId: UUID) {
+        guard let host = splitViewController else { return }
+        WindowManager.shared.moveQueryTab(tabId: tabId, from: connectionId, in: host, to: targetConnectionId)
+    }
+
     /// A dirty file buffer lives in `content` and moves with the tab, so it is the one kind of
     /// unsaved work `savability` counts that does not block a move.
     private func holdsWorkThatStaysBehind(_ tab: QueryTab) -> Bool {

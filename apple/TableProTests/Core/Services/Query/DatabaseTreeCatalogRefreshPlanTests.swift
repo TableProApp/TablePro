@@ -201,6 +201,61 @@ struct DatabaseTreeCatalogRefreshPlanTests {
         #expect(result.isEmpty)
     }
 
+    private typealias TableDetailsKey = DatabaseTreeMetadataService.TableDetailsKey
+
+    private func detailKey(
+        _ kind: TableDetailKind,
+        database: String = "shop",
+        schema: String? = "public",
+        connection: UUID? = nil
+    ) -> TableDetailsKey {
+        TableDetailsKey(connectionId: connection ?? connectionId, database: database, schema: schema, table: "orders", kind: kind)
+    }
+
+    private func detailPlan(_ change: CatalogChange, keys: [TableDetailsKey]) -> CatalogTreeRefreshPlan {
+        DatabaseTreeMetadataService.catalogRefreshPlan(
+            for: change,
+            hasDatabaseList: false,
+            schemaListKeys: [DatabaseKey](),
+            tableKeys: [ObjectsKey](),
+            tableDetailKeys: keys,
+            routineKeys: [ObjectsKey](),
+            triggerKeys: [ObjectsKey](),
+            typeKeys: [ObjectsKey]()
+        )
+    }
+
+    /// A foreign key in one schema can point at a table another schema's DDL just dropped, so a
+    /// table change reaches the whole database, the way partition lists are reached.
+    @Test("A table change reaches every detail list of its database, in any schema")
+    func tableChangeReachesDetailLists() {
+        let columns = detailKey(.columns)
+        let auditTriggers = detailKey(.triggers, schema: "audit")
+        let otherDatabase = detailKey(.columns, database: "warehouse")
+        let otherConnection = detailKey(.columns, connection: UUID())
+
+        let result = detailPlan(
+            CatalogChange(connectionId: connectionId, database: "shop", schema: "public", kinds: .tables),
+            keys: [columns, auditTriggers, otherDatabase, otherConnection]
+        )
+
+        #expect(result.tableDetails == [columns, auditTriggers])
+        #expect(!result.isEmpty)
+    }
+
+    @Test("A trigger change reaches trigger lists alone, and a routine change reaches none")
+    func triggerChangeReachesTriggerLists() {
+        let columns = detailKey(.columns)
+        let triggers = detailKey(.triggers)
+
+        let triggerPlan = detailPlan(CatalogChange(connectionId: connectionId, kinds: .triggers), keys: [columns, triggers])
+        let routinePlan = detailPlan(CatalogChange(connectionId: connectionId, kinds: .routines), keys: [columns, triggers])
+
+        #expect(triggerPlan.tableDetails == [triggers])
+        #expect(routinePlan.tableDetails.isEmpty)
+        #expect(routinePlan.isEmpty)
+    }
+
     private typealias ServerObjectsKey = DatabaseTreeMetadataService.ServerObjectsKey
 
     private func serverObjectPlan(_ change: CatalogChange, keys: [ServerObjectsKey]) -> CatalogTreeRefreshPlan {
