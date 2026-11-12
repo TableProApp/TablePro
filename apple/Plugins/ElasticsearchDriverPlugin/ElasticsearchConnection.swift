@@ -42,6 +42,25 @@ internal struct ElasticsearchResponse {
     let rawText: String
 }
 
+// A search can answer with a new point-in-time id, and the next request has to name the newest one.
+internal final class ElasticsearchPointInTime: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: String
+
+    init(id: String) {
+        current = id
+    }
+
+    var id: String {
+        lock.withLock { current }
+    }
+
+    func adopt(from response: ElasticsearchResponse) {
+        guard let next = (response.json as? [String: Any])?["pit_id"] as? String, !next.isEmpty else { return }
+        lock.withLock { current = next }
+    }
+}
+
 internal struct ElasticsearchIndexInfo {
     let name: String
     let docsCount: Int?
@@ -262,6 +281,27 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
               let id = json["id"] as? String
         else { throw mapError(response, fallback: "Failed to open point-in-time") }
         return id
+    }
+
+    // A shard whose context is gone would otherwise answer 200 without its hits, and the page would lose its rows.
+    func searchPointInTime(body: [String: Any]) async throws -> ElasticsearchResponse {
+        let response = try await request(
+            method: "POST",
+            path: "/_search?allow_partial_search_results=false",
+            body: try serialize(body),
+            isRead: true
+        )
+        guard response.statusCode == 200 else { throw mapError(response, fallback: "Search failed") }
+        return response
+    }
+
+    // A search for no hits that names the point-in-time renews its keep-alive on every shard and reads nothing.
+    func renewPointInTime(id: String, keepAlive: String) async throws -> ElasticsearchResponse {
+        try await searchPointInTime(body: [
+            "size": 0,
+            "track_total_hits": false,
+            "pit": ["id": id, "keep_alive": keepAlive]
+        ])
     }
 
     func closePointInTime(id: String) async {
