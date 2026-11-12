@@ -126,6 +126,26 @@ struct DataGridViewportTests {
         #expect(NSLocationInRange(250, grid.main.rows(in: grid.main.visibleRect)))
     }
 
+    @Test("A placement keeps a cell cursor on its column rather than selecting the whole row on column 0")
+    func placedCursorKeepsItsColumn() async throws {
+        let grid = makeGrid()
+        defer { grid.close() }
+        let column = DataGridColumnID(name: "c3", occurrence: 0)
+        let cell = GridSelectionSnapshot.Cell(rowID: .existing(40), columnID: column)
+        var cursor = GridSelectionSnapshot(rowIDs: [.existing(40)], rectangles: [], activeCell: cell, anchor: cell)
+        cursor.mode = .cursor
+
+        grid.model.store.viewportAnchor = GridViewportPlacement(
+            firstVisibleRow: .existing(30), firstVisibleOffset: 0, selection: cursor, revealsSelection: false
+        )
+        grid.controller.applyStagedViewport()
+
+        try await waitUntil { grid.model.selection.mode == .cursor }
+        let position = try #require(grid.model.columns.displayPosition(of: column))
+        #expect(grid.model.selection.activeCell == GridCoord(row: 40, displayColumn: position))
+        #expect(grid.model.selectedRowIDs == [.existing(40)])
+    }
+
     @Test("Revealing a row scrolls the frozen pane with it")
     func revealScrollsBothPanes() async throws {
         let grid = makeGrid()

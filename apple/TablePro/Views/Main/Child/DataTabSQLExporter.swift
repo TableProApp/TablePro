@@ -36,7 +36,10 @@ final class DataTabSQLExporter: DataGridSQLExporting {
               let tableName = tab.tableContext.tableName else { return nil }
         return Target(
             tableName: tableName,
-            schemaName: tab.tableContext.schemaName,
+            // A query tab's schema is the picker's; the rows name the schema they were read in.
+            schemaName: tab.tabType == .query
+                ? tab.display.activeResultSet?.origin?.schemaName ?? tab.tableContext.schemaName
+                : tab.tableContext.schemaName,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: coordinator.connection.type,
             connectionId: coordinator.connectionId,

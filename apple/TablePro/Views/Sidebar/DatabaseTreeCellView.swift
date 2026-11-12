@@ -40,6 +40,8 @@ final class DatabaseTreeCellView: RenamableSidebarCellView<DatabaseTreeRowView> 
             return metadata.isSystemDatabase ? "gearshape" : "cylinder"
         case .schema, .tableFolder:
             return "folder"
+        case .serverObject(let ref):
+            return ref.kind.iconName
         case .routine, .trigger, .userType, .status, .recentSection, .temporarySection, .foldersSection,
              .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return "tablecells"

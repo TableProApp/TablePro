@@ -290,6 +290,16 @@ struct ResultStatusModelTests {
         #expect(!structure.controls.showsPagination)
     }
 
+    @Test("Auto Refresh is offered on a table tab's data grid only")
+    func autoRefreshFollowsTheTableGrid() {
+        let table = makeSnapshot(rowCount: 10)
+        #expect(model(table, viewMode: .data).controls.showsAutoRefresh)
+        #expect(!model(table, viewMode: .json).controls.showsAutoRefresh)
+        #expect(!model(table, viewMode: .structure).controls.showsAutoRefresh)
+        #expect(!model(makeSnapshot(tabType: .query, rowCount: 10, hasTableName: false)).controls.showsAutoRefresh)
+        #expect(!model(makeSnapshot(rowCount: 10, hasTableName: false)).controls.showsAutoRefresh)
+    }
+
     @Test("Highlight rules are offered only where the data grid draws the result")
     func highlightRulesFollowTheDataGrid() {
         let table = makeSnapshot(rowCount: 10)

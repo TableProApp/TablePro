@@ -66,6 +66,9 @@ struct QueryTab: Identifiable, Equatable {
     var sessionHighlightRules: [HighlightRule] = []
     // Set only by Reveal, after the user authenticated; never saved, so a reopened tab masks again.
     var revealsMaskedValues = false
+    // Never saved: a relaunch must not start polling a server with nobody watching.
+    var autoRefreshInterval: TableAutoRefreshInterval = .off
+    var autoRefreshPause: TableAutoRefreshPause?
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
     var mapConfiguration: ResultMapConfiguration
@@ -375,6 +378,8 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.sortState == rhs.sortState
             && lhs.valueFilter == rhs.valueFilter
             && lhs.sessionHighlightRules == rhs.sessionHighlightRules
+            && lhs.autoRefreshInterval == rhs.autoRefreshInterval
+            && lhs.autoRefreshPause == rhs.autoRefreshPause
             && lhs.chartConfiguration == rhs.chartConfiguration
             && lhs.mapConfiguration == rhs.mapConfiguration
             && lhs.display == rhs.display

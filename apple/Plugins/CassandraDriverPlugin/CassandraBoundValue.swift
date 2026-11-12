@@ -141,7 +141,7 @@ enum CassandraValueParser {
         case .blob:
             return .bytes(data)
         case .text:
-            guard let text = String(data: data, encoding: .utf8) else {
+            guard let text = CassandraWireText.text(data) else {
                 throw CassandraValueRefusal.invalid("0x" + data.map { String(format: "%02x", $0) }.joined(), typeName: type.name)
             }
             return .string(text)

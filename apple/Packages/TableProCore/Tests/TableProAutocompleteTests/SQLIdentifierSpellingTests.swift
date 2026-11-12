@@ -155,6 +155,46 @@ struct SQLIdentifierSpellingTests {
         #expect(applied([item], .lower, quoting: .enclosed)[0].insertText == "o.\"MixedCase\"")
     }
 
+    @Test("A join condition spells each column and keeps each qualifier as written")
+    func joinConditionSides() {
+        let item = SQLCompletionItem(
+            label: "O.CUSTOMER_ID = c.ID AND O.Region = c.REGION",
+            kind: .joinCondition,
+            columnPairs: [
+                SQLCompletionColumnPair(
+                    left: SQLCompletionIdentifier([.statement("O", quoted: true), .catalog("CUSTOMER_ID")]),
+                    right: SQLCompletionIdentifier([.statement("c", quoted: false), .catalog("ID")])
+                ),
+                SQLCompletionColumnPair(
+                    left: SQLCompletionIdentifier([.statement("O", quoted: true), .catalog("Region")]),
+                    right: SQLCompletionIdentifier([.statement("c", quoted: false), .catalog("REGION")])
+                ),
+            ]
+        )
+        let spelled = applied([item], .lower, prefix: "O")[0]
+        #expect(spelled.label == "O.customer_id = c.id AND O.Region = c.region")
+        #expect(spelled.insertText == "\"O\".customer_id = c.id AND \"O\".\"Region\" = c.region")
+        #expect(spelled.filterText == item.filterText)
+
+        let opened = applied([item], .lower, quoting: .opened)[0]
+        #expect(opened.insertText == item.insertText)
+    }
+
+    @Test("On a lower-folding engine a mixed-case key column is quoted and a quoted alias keeps its quotes")
+    func joinConditionOnLowerFolding() {
+        let item = SQLCompletionItem(
+            label: "O.CustomerId = c.id",
+            kind: .joinCondition,
+            columnPairs: [SQLCompletionColumnPair(
+                left: SQLCompletionIdentifier([.statement("O", quoted: true), .catalog("CustomerId")]),
+                right: SQLCompletionIdentifier([.statement("c", quoted: false), .catalog("id")])
+            )]
+        )
+        let spelled = spelling(.asStored, rules: lowerFolding).applied(to: [item], typedPrefix: "", quoting: .none)[0]
+        #expect(spelled.insertText == "\"O\".\"CustomerId\" = c.id")
+        #expect(spelled.label == "O.CustomerId = c.id")
+    }
+
     @Test("Keywords and items without a catalog name are untouched")
     func otherItemsUntouched() {
         let keyword = SQLCompletionItem.keyword("SELECT")

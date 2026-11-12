@@ -42,7 +42,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let tableEditDialect: TableEditDialect?
     private let nameHazards = OSAllocatedUnfairLock<[String]>(initialState: [])
     private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
+    private let leavesTransactionOpen = OSAllocatedUnfairLock(initialState: false)
+    private let disabledForeignKeys = OSAllocatedUnfairLock(initialState: false)
     private let joinsTransaction: Bool
+    private let commitMode: ConnectionCommitMode
     private let transactionRecord = OSAllocatedUnfairLock(initialState: TransactionRecord())
 
     private struct TransactionRecord {
@@ -75,14 +78,17 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         rowWriting: ImportRowWriting = .insert,
         binaryText: ImportBinaryText? = nil,
         joinsTransaction: Bool = false,
+        commitMode: ConnectionCommitMode = .automatic,
         importRun: ImportRun? = nil,
         fileIndex: Int? = 0,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.importControl = importRun.map {
             ImportSinkRun(run: $0, driver: driver, databaseType: databaseType, fileIndex: fileIndex,
-                          targetTable: targetTable, targetSchema: targetSchema, joinsTransaction: joinsTransaction)
+                          targetTable: targetTable, targetSchema: targetSchema, joinsTransaction: joinsTransaction,
+                          commitMode: commitMode)
         }
+        self.commitMode = commitMode
         self.isCancelled = isCancelled
         self.rowWriting = rowWriting
         self.binaryText = binaryText
@@ -602,19 +608,32 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     func beginTransaction() async throws {
         if let importControl { return try await importControl.begin() }
         guard !joinsTransaction else { return }
+        let state = await driver.heldSessionTransactionState()
+        if commitMode == .manual {
+            guard !disabledForeignKeys.withLock({ $0 }) else { throw ManualCommitForeignKeyRefusal() }
+            try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
+        }
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: state,
+            commitMode: commitMode
         )
-        ownsTransaction.withLock { $0 = owner.opensTransaction }
+        ownsTransaction.withLock { $0 = owner.sendsBegin }
+        leavesTransactionOpen.withLock { $0 = owner.sendsBegin && !owner.commitsAtEnd }
         transactionRecord.withLock { $0 = TransactionRecord() }
-        guard owner.opensTransaction else { return }
+        guard owner.sendsBegin else { return }
         try await driver.beginTransaction(mode: .readWrite)
+        if owner == .held { ManualCommit.turnHold?.mark(true) }
     }
 
     func commitTransaction() async throws {
         if let importControl { return try await importControl.commit() }
         guard ownsTransaction.withLock({ $0 }) else { return }
+        // Manual Commit: the imported rows stay pending in the transaction the user commits.
+        guard !leavesTransactionOpen.withLock({ $0 }) else {
+            ownsTransaction.withLock { $0 = false }
+            return
+        }
         try await driver.commitTransaction()
         ownsTransaction.withLock { $0 = false }
         transactionRecord.withLock { $0.ending = .committed }
@@ -680,6 +699,8 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 _ = try await self.driver.execute(query: stmt)
             }
         }
+        disabledForeignKeys.withLock { $0 = true }
+        importControl?.noteForeignKeysDisabled()
     }
 
     func enableForeignKeyChecks() async throws {
@@ -697,7 +718,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func prepareImportRun() async throws {
-        try await importControl?.prepare()
+        if let importControl { return try await importControl.prepare() }
+        guard commitMode == .manual else { return }
+        let state = await driver.heldSessionTransactionState()
+        try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
     }
 
     func importCheckpoint() async throws {

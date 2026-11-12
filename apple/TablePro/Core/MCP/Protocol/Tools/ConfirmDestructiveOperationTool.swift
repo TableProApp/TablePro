@@ -11,7 +11,8 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user \
         approves it before it runs: through your elicitation prompt when your client supports elicitation, \
         otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a \
-        connection the user left writable for external clients.
+        connection the user left writable for external clients. The transaction rules of execute_query apply, \
+        Manual Commit's among them.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]

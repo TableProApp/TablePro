@@ -8,12 +8,14 @@ import Foundation
 internal enum VersionHistorySubject: Codable, Hashable, Sendable {
     case savedQuery(id: UUID)
     case linkedFile(url: URL)
+    case queryTab(id: UUID)
 }
 
 internal enum VersionHistoryReference: Hashable, Sendable {
     case current
     case savedQueryVersion(id: Int64)
     case gitRevision(commit: String, path: String)
+    case tabVersion(id: Int64)
 
     var shortRevision: String? {
         guard case .gitRevision(let commit, _) = self else { return nil }
@@ -35,6 +37,7 @@ internal struct VersionHistoryEntry: Identifiable, Hashable, Sendable {
 internal enum VersionHistoryNotice: Hashable, Sendable {
     case keepsLatestVersions(Int)
     case showsLatestCommits(Int)
+    case keepsRecentVersions(count: Int, days: Int)
 }
 
 internal struct VersionHistoryPage: Equatable, Sendable {
@@ -64,6 +67,7 @@ internal enum VersionHistoryError: LocalizedError, Equatable {
     case storedInLargeFileStorage
     case fileChangedBeforeWriting
     case restoreFailed(String)
+    case tabClosed
 
     var errorDescription: String? {
         switch self {
@@ -87,6 +91,8 @@ internal enum VersionHistoryError: LocalizedError, Equatable {
             return String(localized: "The file or its staged version changed before it could be written. Nothing was replaced.")
         case .restoreFailed(let message):
             return String(format: String(localized: "The version could not be restored: %@"), message)
+        case .tabClosed:
+            return String(localized: "This tab is closed. Reopen it to see its history.")
         }
     }
 }

@@ -9,6 +9,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 /// Driven by one task at a time, so the outcomes are handed out in order with no synchronisation.
 /// It also stands in for one node of a cluster, which hands it the cluster's database.
@@ -16,6 +17,7 @@ final class StubRedisChannel: RedisClusterNodeConnection, @unchecked Sendable {
     private var outcomes: [Result<RedisReply, Error>]
     private(set) var sentCommands: [[String]] = []
     private(set) var sentScopes: [RedisCommandScope] = []
+    private(set) var pipelineSizes: [Int] = []
     private(set) var footprint = RedisSessionFootprint()
     let supportsDatabaseSelection: Bool
     private(set) var sessionDatabase: RedisSessionDatabase
@@ -61,6 +63,7 @@ final class StubRedisChannel: RedisClusterNodeConnection, @unchecked Sendable {
     func forgetSentCommands() {
         sentCommands = []
         sentScopes = []
+        pipelineSizes = []
     }
 
     /// Mirrors the hiredis connection: a SELECT queued in an open block moves nothing yet and
@@ -105,6 +108,7 @@ final class StubRedisChannel: RedisClusterNodeConnection, @unchecked Sendable {
     /// connection does, because every command is on the wire before the first reply is read.
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         let pipeline = commands.map(decoded)
+        pipelineSizes.append(pipeline.count)
         try admit(scope, command: pipeline.first ?? [])
         try moveToCommandDatabase(command: pipeline.first?.first)
         let replies = try pipeline.map { try send($0, scope: scope) }
@@ -136,7 +140,7 @@ final class StubRedisChannel: RedisClusterNodeConnection, @unchecked Sendable {
     }
 
     private func decoded(_ args: [Data]) -> [String] {
-        args.map { String(data: $0, encoding: .utf8) ?? "" }
+        args.map { RedisWireText.decode($0) ?? "" }
     }
 
     private func admit(_ scope: RedisCommandScope, command: [String]) throws {

@@ -942,7 +942,7 @@ enum HiredisReply {
         switch reply.pointee.type {
         case REDIS_REPLY_STRING, REDIS_REPLY_BIGNUM, REDIS_REPLY_VERB:
             guard let data = bytes(of: reply) else { return .null }
-            return String(data: data, encoding: .utf8).map(RedisReply.string) ?? .data(data)
+            return RedisWireText.decode(data).map(RedisReply.string) ?? .data(data)
 
         case REDIS_REPLY_INTEGER, REDIS_REPLY_BOOL:
             return .integer(reply.pointee.integer)
@@ -966,10 +966,10 @@ enum HiredisReply {
             return .null
 
         case REDIS_REPLY_STATUS:
-            return .status(bytes(of: reply).flatMap { String(data: $0, encoding: .utf8) } ?? "")
+            return .status(bytes(of: reply).flatMap(RedisWireText.decode) ?? "")
 
         case REDIS_REPLY_ERROR:
-            return .error(bytes(of: reply).flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error")
+            return .error(bytes(of: reply).flatMap(RedisWireText.decode) ?? "Unknown error")
 
         case REDIS_REPLY_DOUBLE:
             return .string(bytes(of: reply).flatMap { String(data: $0, encoding: .utf8) } ?? String(reply.pointee.dval))

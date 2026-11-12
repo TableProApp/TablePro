@@ -54,6 +54,8 @@ struct QueryEditorBar: View {
                 schemaName: scope.schemaName,
                 onChange: onContainerChanged
             )
+            // A run moved to another database mid-flight would either land its rows there or lose what it committed.
+            .disabled(isExecuting)
 
             if let vimMode {
                 VimModeIndicatorView(mode: vimMode)

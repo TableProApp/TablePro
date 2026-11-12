@@ -24,7 +24,10 @@ use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
 use crate::history::QueryHistoryStore;
 use crate::host::{HostConfig, HostSecretStore, HostSecrets};
-use crate::library::{ConnectionLibrary, ConnectionRecord, ConnectionSecrets, apply, blank, parse_id, tls_config};
+use crate::library::{
+    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets, parse_id,
+    tls_config,
+};
 use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
 use crate::session::DatabaseSession;
@@ -39,6 +42,7 @@ pub struct Core {
     items: Arc<dyn SecretItems>,
     paths: Option<StoragePaths>,
     store: Option<ConnectionStore>,
+    writes: LibraryWrites,
     // Opened on first use, so a core that never shows history never migrates or prunes it.
     history: Arc<OnceCell<Arc<QueryHistoryStore>>>,
     pub(crate) tasks: Tasks,
@@ -89,6 +93,7 @@ impl Core {
             store,
             self.vault.clone(),
             self.tasks.clone(),
+            self.writes.clone(),
         )))
     }
 
@@ -159,11 +164,12 @@ impl Core {
         .await
     }
 
-    // Typed secrets come first, then Credential Manager; with no prompter an SSH login fails where it would ask.
+    // Typed secrets come first, then Credential Manager; `keep` is stored once it logs in; no prompter, no SSH asks.
     pub async fn connect_saved(
         &self,
         id: String,
         secrets: ConnectionSecrets,
+        keep: ConnectionSecrets,
         prompter: Option<Box<dyn HostPrompter>>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<Arc<DatabaseSession>, CoreError> {
@@ -173,6 +179,7 @@ impl Core {
         let connector = self.connector.clone();
         let deadlines = self.deadlines.clone();
         let vault = self.vault.clone();
+        let writes = self.writes.clone();
         let tasks = self.tasks.clone();
         let prompter = self.prompter(prompter);
         let cancel = token(cancel);
@@ -187,7 +194,7 @@ impl Core {
                 .find(|saved| saved.id == id)
                 .cloned()
                 .ok_or_else(|| CoreError::failed("storage.connection_not_found", format!("no connection {id}")))?;
-            let credentials = Arc::new(Prefilled::new(&saved, vault, secrets));
+            let credentials = Arc::new(Prefilled::new(&saved, vault.clone(), secrets));
             let refreshed = resolve_saved(
                 &saved,
                 &registry,
@@ -207,6 +214,7 @@ impl Core {
                 );
                 return Err(CoreError::Cancelled);
             }
+            keep_proved_secrets(&store, &vault, &writes, &tasks, &saved, keep.into_typed()).await;
             let session = Session::start(
                 pending,
                 SessionDeps {
@@ -305,6 +313,7 @@ impl Core {
             items,
             paths,
             store,
+            writes: LibraryWrites::default(),
             history: Arc::default(),
             tasks,
             ssh,
@@ -599,7 +608,7 @@ mod tests {
         };
 
         let connect = core
-            .connect_saved(stored.id.to_string(), typed(), None, None)
+            .connect_saved(stored.id.to_string(), typed(), ConnectionSecrets::default(), None, None)
             .await
             .unwrap_err();
         let test = core
@@ -609,6 +618,67 @@ mod tests {
 
         assert_eq!(connect.code(), "config.network_option_unsupported");
         assert_eq!(test.code(), connect.code());
+    }
+
+    #[tokio::test]
+    async fn a_secret_a_connect_proved_is_kept_only_while_nothing_was_saved_since() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConnectionStore::new(&storage_paths(dir.path()));
+        let vault: Arc<dyn SecretVault> = Arc::new(Vault::default());
+        let writes = LibraryWrites::default();
+        let tasks = runtime::tasks().unwrap();
+        let mut proved = blank(Uuid::new_v4());
+        proved.driver_id = "postgres".to_owned();
+        proved.host = "localhost".to_owned();
+        proved.port = 5432;
+        proved.username = "app".to_owned();
+        proved.ssh = Some(SavedSshConfig {
+            host: "staging-bastion".to_owned(),
+            port: None,
+            username: None,
+            jump_hosts: Vec::new(),
+            auth: SavedSshAuth::Agent,
+        });
+        let typed = || vec![(SecretKind::DatabasePassword, SecretString::from("typed"))];
+        let held = |vault: Arc<dyn SecretVault>, id| async move {
+            vault
+                .load(id, SecretKind::DatabasePassword)
+                .await
+                .unwrap()
+                .found()
+                .map(|secret| secret.expose_secret().to_owned())
+        };
+
+        keep_proved_secrets(&store, &vault, &writes, &tasks, &proved, typed()).await;
+        let deleted = held(vault.clone(), proved.id).await;
+        let mut renamed = proved.clone();
+        renamed.name = "renamed".to_owned();
+        store.upsert_blocking(renamed.clone()).unwrap();
+        keep_proved_secrets(&store, &vault, &writes, &tasks, &proved, typed()).await;
+        let kept = held(vault.clone(), proved.id).await;
+        vault.delete_connection(proved.id).await.unwrap();
+        let mut moved = renamed.clone();
+        moved.ssh.as_mut().unwrap().host = "prod-bastion".to_owned();
+        store.upsert_blocking(moved).unwrap();
+        keep_proved_secrets(&store, &vault, &writes, &tasks, &proved, typed()).await;
+        let after_move = held(vault.clone(), proved.id).await;
+        store.upsert_blocking(renamed).unwrap();
+        vault
+            .store(
+                proved.id,
+                SecretKind::DatabasePassword,
+                &SecretString::from("saved since"),
+                "label",
+            )
+            .await
+            .unwrap();
+        keep_proved_secrets(&store, &vault, &writes, &tasks, &proved, typed()).await;
+        let after_save = held(vault.clone(), proved.id).await;
+
+        assert_eq!(deleted, None);
+        assert_eq!(kept.as_deref(), Some("typed"));
+        assert_eq!(after_move, None);
+        assert_eq!(after_save.as_deref(), Some("saved since"));
     }
 
     struct Answer {

@@ -15,10 +15,16 @@ public enum BigtableBytes {
 
     /// The bytes as text when `display` would show them as themselves.
     public static func printableText(_ data: Data) -> String? {
-        guard let text = String(data: data, encoding: .utf8), isPrintable(text), !text.hasPrefix(base64Prefix) else {
+        guard let text = exactText(data), isPrintable(text), !text.hasPrefix(base64Prefix) else {
             return nil
         }
         return text
+    }
+
+    // String(data:encoding:) drops a leading byte order mark, which names a different row or column.
+    static func exactText(_ data: Data) -> String? {
+        let text = String(decoding: data, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+        return text.utf8.elementsEqual(data) ? text : nil
     }
 
     public static func parse(_ text: String) throws -> Data {

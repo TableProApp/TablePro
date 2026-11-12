@@ -59,6 +59,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     var canDebugRoutines: Bool { true }
     var canFollowNotifications: Bool { true }
 
+    // In the class body so KingbaseES, whose catalog is not established, can answer none.
+    var serverObjectKinds: [PluginServerObjectKind] {
+        PostgreSQLExtensions.isDeclared(capabilities: catalogCapabilities) ? [PostgreSQLExtensions.kind] : []
+    }
+
     init(config: DriverConnectionConfig, singleConnectionMode: Bool = false) {
         self.core = LibPQDriverCore(config: config, singleConnectionMode: singleConnectionMode)
     }
@@ -74,16 +79,22 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     /// Runs inside the connect's deadline and cancellation, before the connection is handed out.
     func probeAfterConnect() async throws {
-        await probeSessionFacts()
-        await probeCatalogPresence()
-        await probePostgisOids()
-        await probeEnumOids()
-        await probeVectorTypes()
+        let probes: [(statement: String, apply: (Result<PluginQueryResult, Error>) -> Void)] = [
+            (PostgreSQLSessionFacts.probeQuery, applySessionFactsProbe),
+            (PostgreSQLCatalogPresence.probeQuery, applyCatalogPresenceProbe),
+            (PostGISTypes.probeQuery, applyPostgisProbe),
+            (PostgreSQLSchemaQueries.enumTypeOidQuery, applyEnumProbe),
+            (PgvectorTypes.probeQuery, applyVectorTypesProbe)
+        ]
+        let reads = await core.executeCatalogReads(probes.map { $0.statement })
+        for (probe, read) in zip(probes, reads) {
+            probe.apply(read)
+        }
     }
 
-    private func probeCatalogPresence() async {
+    private func applyCatalogPresenceProbe(_ read: Result<PluginQueryResult, Error>) {
         do {
-            let result = try await core.executeCatalogRead(PostgreSQLCatalogPresence.probeQuery)
+            let result = try read.get()
             let relationNames = result.rows.compactMap { $0.first?.asText }
             catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
         } catch {
@@ -91,18 +102,18 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
-    private func probePostgisOids() async {
+    private func applyPostgisProbe(_ read: Result<PluginQueryResult, Error>) {
         do {
-            let result = try await core.executeCatalogRead(PostGISTypes.probeQuery)
+            let result = try read.get()
             core.setPostgisOidMap(PostGISTypes.names(fromProbeRows: result.rows.map { row in row.map(\.asText) }))
         } catch {
             Self.logger.debug("PostGIS type probe failed; spatial values stay as hex: \(error.localizedDescription)")
         }
     }
 
-    private func probeVectorTypes() async {
+    private func applyVectorTypesProbe(_ read: Result<PluginQueryResult, Error>) {
         do {
-            let result = try await core.executeCatalogRead(PgvectorTypes.probeQuery)
+            let result = try read.get()
             let rows = result.rows.map { row in row.map(\.asText) }
             core.mergeCatalogTypeNames(PgvectorTypes.names(fromProbeRows: rows))
         } catch {

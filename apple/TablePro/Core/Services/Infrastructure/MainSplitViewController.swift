@@ -636,6 +636,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         workspace.sessionState?.coordinator.teardown(endsTabSession: false)
         workspace.sessionState = nil
         workspace.session = nil
+        workspace.retireFoundingPayload()
         if let releasedCoordinator, toolbarOwner?.coordinator === releasedCoordinator {
             toolbarOwner?.repoint(to: nil)
         }

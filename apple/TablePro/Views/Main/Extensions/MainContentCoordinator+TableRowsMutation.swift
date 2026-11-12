@@ -159,8 +159,8 @@ extension MainContentCoordinator {
         guard tabManager.tabs[tabIdx].tabType == .query else { return }
         let origin = resultSet.origin
         tabManager.mutate(at: tabIdx) { tab in
+            // Not the schema: it is the tab's binding, and a pinned result from another schema would move the next run there.
             tab.tableContext.tableName = origin?.tableName
-            tab.tableContext.schemaName = origin?.schemaName
             tab.tableContext.primaryKeyColumns = origin?.primaryKeyColumns ?? []
             tab.tableContext.isEditable = origin?.isEditable ?? false
             tab.tableContext.isView = origin?.isView ?? false
@@ -221,13 +221,15 @@ extension MainContentCoordinator {
 
     private func syncLoadMoreState(from resultSet: ResultSet, at tabIdx: Int) {
         guard tabManager.tabs[tabIdx].tabType == .query else { return }
+        let readElsewhere = wasReadElsewhere(resultSet, in: tabManager.tabs[tabIdx])
         tabManager.mutate(at: tabIdx) { tab in
-            if resultSet.isTruncated {
+            if resultSet.isTruncated, !readElsewhere {
                 tab.pagination.hasMoreRows = true
                 tab.pagination.isLoadingMore = false
             } else {
                 tab.pagination.resetLoadMore()
             }
+            guard !readElsewhere else { return }
             tab.pagination.setBaseQueryForMore(
                 resultSet.baseQuery,
                 parameterValues: resultSet.baseQueryParameterValues

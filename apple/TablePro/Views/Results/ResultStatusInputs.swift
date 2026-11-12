@@ -34,6 +34,21 @@ struct StatusBarHighlightState {
     }
 }
 
+struct StatusBarAutoRefreshState {
+    let interval: TableAutoRefreshInterval
+    let pause: TableAutoRefreshPause?
+    let onChange: (TableAutoRefreshInterval) -> Void
+
+    static var unavailable: StatusBarAutoRefreshState {
+        StatusBarAutoRefreshState(interval: .off, pause: nil, onChange: { _ in })
+    }
+
+    var help: String {
+        if interval.isOn, let reason = pause?.help { return reason }
+        return String(format: String(localized: "Auto Refresh: %@"), interval.title)
+    }
+}
+
 struct StatusBarColumnState {
     let hidden: Set<String>
     let columns: [GridColumnEntry]

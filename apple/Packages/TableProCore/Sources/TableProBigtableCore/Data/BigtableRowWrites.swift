@@ -38,6 +38,15 @@ public enum BigtableRowWrites {
         BigtableRequest(verb: .delete, table: table, key: key)
     }
 
+    // The locator is the base64 of the key the row was read with; the _key text is only the fallback.
+    public static func originalKey(locator: String?, keyCell: BigtableRowSet.Cell?) throws -> Data? {
+        guard let locator else { return try keyCell.flatMap { try key($0) } }
+        guard let decoded = Data(base64Encoded: locator), !decoded.isEmpty else {
+            throw BigtableError.malformedResponse(String(localized: "This row cannot be found again from what was read. Reload the table."))
+        }
+        return decoded
+    }
+
     public static func key(_ cell: BigtableRowSet.Cell) throws -> Data? {
         switch cell {
         case .absent: return nil

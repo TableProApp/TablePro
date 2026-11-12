@@ -13,7 +13,11 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through \
         confirm_destructive_operation instead. Statements that read or write files, or run server-side code, \
         are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at \
-        its GO lines and result_sets lists every result set when there is more than one.
+        its GO lines and result_sets lists every result set when there is more than one. A statement that starts \
+        a transaction while one is open is refused. With Manual Commit on, a write stays pending until the user \
+        commits it in TablePro, and statements that begin, commit or roll back a transaction are refused. While a \
+        transaction is open on PostgreSQL or CockroachDB a statement runs inside a savepoint, so its failure leaves \
+        the transaction usable; on Redshift and DuckDB it is refused.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]

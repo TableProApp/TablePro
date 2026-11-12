@@ -72,6 +72,8 @@ internal enum DatabaseTreeTypeSelect {
             return ref.trigger.name
         case .userType(let ref):
             return ref.type.name
+        case .serverObject(let ref):
+            return ref.object.name
         case .hierarchicalSchemaSection(let schema):
             return schema
         case .redisNode(let node):

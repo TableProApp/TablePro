@@ -415,6 +415,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         )
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let datasetId = dataset(for: schema)
         guard !datasetId.isEmpty else { return [:] }

@@ -107,7 +107,7 @@ struct MultiStatementFailureTests {
         )
         #expect(firstStatement.message == "Statement 1/3 failed: database is locked")
 
-        for plan in [BatchTransactionPlan.appTransaction, .scriptTransaction] {
+        for plan in [BatchTransactionPlan.appTransaction, .heldTransaction, .scriptTransaction] {
             let rolledBack = Self.report(
                 .statement(sql: "VACUUM"),
                 executed: 2,
@@ -228,7 +228,7 @@ struct MultiStatementFailureTests {
     /// `.appTransaction` and a script's own commit under `.scriptTransaction` are both unanswered.
     @Test(
         "The unknown-outcome wording does not change with the plan",
-        arguments: [BatchTransactionPlan.appTransaction, .scriptTransaction, .sessionTransaction, .autocommit]
+        arguments: [BatchTransactionPlan.appTransaction, .heldTransaction, .scriptTransaction, .sessionTransaction, .autocommit]
     )
     func unknownCommitOutcomeReadsTheSameUnderEveryPlan(plan: BatchTransactionPlan) {
         let report = Self.report(
