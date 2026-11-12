@@ -336,7 +336,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ShowPickedLabel();
     }
 
-    // Called from the run's events, never from the picker's own, so its list never changes while it takes a pick.
+    // Never inside the picker's own SelectionChanged, so its list never changes while it takes a pick.
     private void LetGoOfLeaving()
     {
         if (_leaving is not { } leaving || ReferenceEquals(leaving, _picked))
