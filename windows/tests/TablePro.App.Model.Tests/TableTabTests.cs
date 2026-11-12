@@ -134,6 +134,91 @@ public sealed class TableTabTests
     }
 
     [Fact]
+    public async Task OfTenRestoredTableTabsOnlyTheOneThatShowsReadsItsTable()
+    {
+        var saved = Enumerable.Range(1, 10)
+            .Select(index => new SessionTab { Kind = TabKind.Table, Title = $"T{index}", Table = $"T{index}" })
+            .ToList();
+        var (restored, selected) = SessionTabs.Persisted(saved, 4);
+        var tabs = restored
+            .Select(tab => new TableTab(
+                _session,
+                new FakeTableView(),
+                new FakeResults(),
+                new TableName(tab.Schema, tab.Table!),
+                tab.ObjectKindOr(ObjectKind.Table),
+                () => _settings,
+                tab))
+            .ToList();
+
+        await tabs[selected].ShowAsync();
+
+        Assert.Equal(10, tabs.Count);
+        Assert.Single(_session.Pages);
+        Assert.Equal(1, _session.TableEditorOpens);
+        Assert.Equal(1, _session.Counts);
+        Assert.Equal(1_000, tabs[selected].Page.Rows);
+    }
+
+    [Fact]
+    public async Task ATabReadsItsPageTheFirstTimeItShowsAndNotAgain()
+    {
+        await _tab.ShowAsync();
+        await _tab.ShowAsync();
+
+        Assert.Single(_session.Queries);
+        Assert.Equal(1, _session.TableEditorOpens);
+        Assert.Equal(1, _session.Counts);
+    }
+
+    [Fact]
+    public async Task ARunBeforeTheTabFirstShowsCountsAsItsShow()
+    {
+        await _tab.RunAsync();
+        await _tab.ShowAsync();
+
+        Assert.Single(_session.Queries);
+    }
+
+    [Fact]
+    public void ATabThatNeverShowedSavesThePageSizeOffsetAndFilterItWasRestoredWith()
+    {
+        var filter = new TableFilter(
+            FilterCombinator.And,
+            [new FilterRule("Name", FilterOperator.Contains, new FilterValue.One("AC"))],
+            null);
+        var tab = New(new SessionTab
+        {
+            Kind = TabKind.Table,
+            Title = "Artist",
+            Table = "Artist",
+            PageSize = 20,
+            Offset = 40,
+            Filter = SavedFilter.From(filter),
+        });
+
+        var snapshot = tab.Snapshot();
+
+        Assert.Equal(20, snapshot.PageSize);
+        Assert.Equal(40, snapshot.Offset);
+        Assert.Equal(FilterText.Of(filter), FilterText.Of(snapshot.Filter?.ToFilter()));
+        Assert.Empty(_session.Queries);
+    }
+
+    [Fact]
+    public async Task ATabClosedBeforeItShowedLetsItsSessionGoOnceAndReadsNothing()
+    {
+        await _tab.CloseAsync();
+        await _tab.ShowAsync();
+
+        Assert.Equal(1, _session.Releases);
+        Assert.Empty(_session.Queries);
+        Assert.Equal(0, _session.TableEditorOpens);
+        Assert.Equal(0, _session.Counts);
+        Assert.Equal(0, _session.Estimates);
+    }
+
+    [Fact]
     public async Task ASortReadsTheFirstPageInOrderAndARefusedOneKeepsTheShownSort()
     {
         await _tab.RunAsync();

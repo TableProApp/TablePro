@@ -24,21 +24,32 @@ internal sealed unsafe class GraphicsDevice : IDisposable
     // WinUI 3's ISwapChainPanelNative IID (microsoft.ui.xaml.media.dxinterop.h); TerraFX has only the vtable.
     private static readonly Guid SwapChainPanelNativeIid = new("63aad0b8-7c24-40ff-85a8-640d944cc325");
 
-    private readonly RenderDevice _device;
+    // Every editor on a UI thread draws on one device, as the grid's rows do, so showing a tab makes none.
+    [ThreadStatic]
+    private static RenderDevice? s_hardware;
+
+    [ThreadStatic]
+    private static RenderDevice? s_software;
+
+    [ThreadStatic]
+    private static int s_swapChainsCreated;
+
+    private readonly bool _forceSoftware;
+    private RenderDevice _device;
     private ID2D1DeviceContext* _context;
     private IDXGISwapChain1* _swapChain;
     private ID2D1Bitmap1* _target;
     private IDWriteFactory* _dwrite;
     private HANDLE _frameReady;
+    private SwapChainPanel? _panel;
     private float _scaleX = 1;
     private float _scaleY = 1;
 
     public GraphicsDevice(bool forceSoftware)
     {
-        _device = new RenderDevice(forceSoftware);
-        ID2D1DeviceContext* context;
-        NativeCom.Check(_device.Direct2D->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context));
-        _context = context;
+        _forceSoftware = forceSoftware;
+        _device = Shared(forceSoftware);
+        _context = CreateContext(_device);
         IDWriteFactory* dwrite;
         NativeCom.Check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, NativeCom.Iid<IDWriteFactory>(), (IUnknown**)&dwrite));
         _dwrite = dwrite;
@@ -56,7 +67,29 @@ internal sealed unsafe class GraphicsDevice : IDisposable
 
     public IDWriteFactory* DWrite => _dwrite;
 
+    public bool HasSwapChain => _swapChain is not null;
+
     public bool HasTarget => _target is not null;
+
+    // False once another editor found the shared device lost and replaced it.
+    public bool IsCurrent => ReferenceEquals(_device, _forceSoftware ? s_software : s_hardware);
+
+    // Checked before a swap chain is made or resized, since a hidden tab or an idle caret draws nothing to find the loss.
+    public bool NeedsRecovery => !IsCurrent || _device.IsLost;
+
+    internal static int SwapChainsCreated => s_swapChainsCreated;
+
+    internal static void SimulateLoss(bool software)
+    {
+        if ((software ? s_software : s_hardware) is { } device)
+        {
+            device.SimulatedLoss = true;
+        }
+    }
+
+    // DXGI's answer when the device went away under the call.
+    public static bool IsDeviceLoss(int result) =>
+        result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET;
 
     public void Attach(SwapChainPanel panel, int pixelWidth, int pixelHeight, float scaleX, float scaleY)
     {
@@ -81,6 +114,7 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         NativeCom.Check(_device.DxgiFactory->CreateSwapChainForComposition((IUnknown*)_device.Direct3D, &description, null,
             &swapChain));
         _swapChain = swapChain;
+        s_swapChainsCreated++;
         // A frame starts only when the swap chain can take it, so Present never blocks the UI thread.
         IDXGISwapChain2* swapChain2;
         NativeCom.Check(_swapChain->QueryInterface(NativeCom.Iid<IDXGISwapChain2>(), (void**)&swapChain2));
@@ -88,19 +122,51 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         _frameReady = swapChain2->GetFrameLatencyWaitableObject();
         swapChain2->Release();
         ApplyScale();
-
-        var inspectable = ((WinRT.IWinRTObject)panel).NativeObject.ThisPtr;
-        var iid = SwapChainPanelNativeIid;
-        Marshal.ThrowExceptionForHR(Marshal.QueryInterface(inspectable, in iid, out var native));
-        try
-        {
-            NativeCom.Check(((TerraFX.Interop.WinRT.ISwapChainPanelNative*)native)->SetSwapChain((IDXGISwapChain*)_swapChain));
-        }
-        finally
-        {
-            Marshal.Release(native);
-        }
+        SetSwapChain(panel, (IDXGISwapChain*)_swapChain);
+        _panel = panel;
         CreateTarget();
+    }
+
+    // A hidden editor gives back its three window-sized buffers; its context and what it made on it stay.
+    public void Detach()
+    {
+        if (_frameReady != HANDLE.NULL)
+        {
+            CloseHandle(_frameReady);
+            _frameReady = HANDLE.NULL;
+        }
+        if (_context is not null)
+        {
+            _context->SetTarget(null);
+        }
+        NativeCom.Release(ref _target);
+        if (_panel is not null)
+        {
+            SetSwapChain(_panel, null);
+            _panel = null;
+        }
+        NativeCom.Release(ref _swapChain);
+    }
+
+    // The first editor to see the loss replaces the shared device; the caller then remakes its brushes and swap chain.
+    public void Recover(bool lost)
+    {
+        Detach();
+        NativeCom.Release(ref _context);
+        if (IsCurrent && (lost || _device.IsLost))
+        {
+            if (_forceSoftware)
+            {
+                s_software = null;
+            }
+            else
+            {
+                s_hardware = null;
+            }
+            _device.Dispose();
+        }
+        _device = Shared(_forceSoftware);
+        _context = CreateContext(_device);
     }
 
     public void Resize(int pixelWidth, int pixelHeight, float scaleX, float scaleY)
@@ -150,22 +216,56 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         return true;
     }
 
+    // The shared device stays for the thread's other editors.
     public void Dispose()
     {
-        if (_frameReady != HANDLE.NULL)
-        {
-            CloseHandle(_frameReady);
-            _frameReady = HANDLE.NULL;
-        }
-        if (_context is not null)
-        {
-            _context->SetTarget(null);
-        }
-        NativeCom.Release(ref _target);
-        NativeCom.Release(ref _swapChain);
+        Detach();
         NativeCom.Release(ref _context);
-        _device.Dispose();
         NativeCom.Release(ref _dwrite);
+    }
+
+    // A device removed while no editor drew is not handed to a new one; editors still holding it find it no longer current.
+    private static RenderDevice Shared(bool forceSoftware)
+    {
+        var device = forceSoftware ? s_software : s_hardware;
+        if (device is { IsLost: true })
+        {
+            device.Dispose();
+            device = null;
+        }
+        device ??= new RenderDevice(forceSoftware);
+        if (forceSoftware)
+        {
+            s_software = device;
+        }
+        else
+        {
+            s_hardware = device;
+        }
+        return device;
+    }
+
+    private static ID2D1DeviceContext* CreateContext(RenderDevice device)
+    {
+        ID2D1DeviceContext* context;
+        NativeCom.Check(device.Direct2D->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context));
+        return context;
+    }
+
+    // Null takes the swap chain off the panel.
+    private static void SetSwapChain(SwapChainPanel panel, IDXGISwapChain* swapChain)
+    {
+        var inspectable = ((WinRT.IWinRTObject)panel).NativeObject.ThisPtr;
+        var iid = SwapChainPanelNativeIid;
+        Marshal.ThrowExceptionForHR(Marshal.QueryInterface(inspectable, in iid, out var native));
+        try
+        {
+            NativeCom.Check(((TerraFX.Interop.WinRT.ISwapChainPanelNative*)native)->SetSwapChain(swapChain));
+        }
+        finally
+        {
+            Marshal.Release(native);
+        }
     }
 
     // The panel shows the buffer at its own scale, so the buffer is drawn in pixels and shrunk back by the scale.

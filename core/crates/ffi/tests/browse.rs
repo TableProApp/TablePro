@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 use secrecy::SecretString;
 use tablepro_ffi::{
     ColumnSort, CombinatorTag, Core, CoreError, DatabaseSession, FileOpenRequest, FilterOpTag, FilterRuleArg,
-    FilterValueArg, HostConfig, HostSecretError, HostSecrets, ObjectEntry, ObjectKindTag, ObjectScopeArg, RunEvent,
-    RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg, TableName, TablePageRead,
-    TransactionStateTag, TruncationTag,
+    FilterValueArg, HostConfig, HostSecretError, HostSecrets, ObjectEntry, ObjectKindTag, ObjectScopeArg, RowEstimate,
+    RunEvent, RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg, TableName,
+    TablePageRead, TransactionStateTag, TruncationTag,
 };
 
 struct NoSecrets;
@@ -86,12 +86,17 @@ async fn fixture(dir: &Path, sql: &str) -> (Arc<Core>, Arc<DatabaseSession>) {
         create: true,
     };
     let session = core.open_file(request, None).await.unwrap();
+    execute(&session, sql).await;
+    (core, session)
+}
+
+// On an editor of its own, closed before the test reads through the session.
+async fn execute(session: &DatabaseSession, sql: &str) {
     let editor = session.open_editor(None).await.unwrap();
     let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
     let outcome = run.outcome().await.unwrap();
     assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
     editor.close().await.unwrap();
-    (core, session)
 }
 
 fn table(name: &str) -> TableName {
@@ -227,6 +232,21 @@ async fn contains_finds_a_percent_sign_as_typed_and_like_keeps_the_users_wildcar
 
     assert_eq!(contained, texts(&["50% off"]));
     assert_eq!(liked, texts(&["50% off", "500 units"]));
+}
+
+#[tokio::test]
+async fn a_tables_estimate_is_unknown_until_analyze_writes_its_statistics() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path(), PEOPLE).await;
+
+    let before = session.table_row_estimate(table("people"), None).await.unwrap();
+    // ANALYZE writes sqlite_stat1, whose row for the index starts with the table's row count.
+    execute(&session, "CREATE INDEX people_by_age ON people (age); ANALYZE").await;
+    let after = session.table_row_estimate(table("people"), None).await.unwrap();
+    session.close().await.unwrap();
+
+    assert_eq!(before, RowEstimate::Unknown);
+    assert_eq!(after, RowEstimate::Approximate { rows: 7 });
 }
 
 #[tokio::test]
