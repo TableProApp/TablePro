@@ -3,8 +3,9 @@
 # Check that a MySQL-family server refuses the database a handshake names exactly as it refuses a USE there, and keeps
 # a failed sign-in apart from both.
 #
-# The iOS open dials a MySQL, MariaDB or TiDB connection straight into the database it was last on, and falls back to
-# the saved one only when the dial is refused with 1044 or 1049 (MySQLDatabaseRefusal). That is right only while:
+# The iOS open dials a MySQL, MariaDB or TiDB connection straight into the database it was last on. It falls back to
+# the saved one on 1044, 1049 or any code outside the sign-in and connection ones (MySQLHandshakeRefusal), and fails
+# on those. That is right only while:
 #
 #   - a database the user may not use, or that is missing, is refused with 1044 (ER_DBACCESS_DENIED_ERROR) or 1049
 #     (ER_BAD_DB_ERROR), with the same code and text a USE there gets after the sign-in;
@@ -37,9 +38,11 @@ trap 'rm -rf "$WORK"' EXIT
     exit 3
 }
 
+# Connector/C dials localhost through the Unix socket, which a server in a container does not share.
+[ "$HOST" = localhost ] && HOST=127.0.0.1
 LOOPBACK=0
 case "$HOST" in
-    127.*|localhost|::1) LOOPBACK=1 ;;
+    127.*|::1) LOOPBACK=1 ;;
 esac
 
 cat > "$WORK/check.c" << 'C'
@@ -109,7 +112,8 @@ static void expect_code(const struct answer *answer, unsigned expected, const ch
 static void expect_same_as_use(const char *user, const char *password, const char *database, unsigned expected,
                                const char *label) {
     struct answer dialed, used, signed_in;
-    dial(user, password, database, &dialed);
+    MYSQL *unexpected = dial(user, password, database, &dialed);
+    if (unexpected) mysql_close(unexpected);
     expect_code(&dialed, expected, label);
     MYSQL *m = dial(user, password, NULL, &signed_in);
     if (!m) {
@@ -165,14 +169,17 @@ int main(int argc, char **argv) {
     const char *databases[] = { "dr_kept", "dr_locked", "dr_missing" };
     for (size_t i = 0; i < 3; i++) {
         char label[128];
-        dial("dr_plain", "wrong-password", databases[i], &answer);
+        MYSQL *unexpected = dial("dr_plain", "wrong-password", databases[i], &answer);
+        if (unexpected) mysql_close(unexpected);
         snprintf(label, sizeof label, "a wrong password is refused with 1045 when the dial names %s", databases[i]);
         expect_code(&answer, 1045, label);
-        dial("dr_wide", "wrong-password", databases[i], &answer);
+        unexpected = dial("dr_wide", "wrong-password", databases[i], &answer);
+        if (unexpected) mysql_close(unexpected);
         snprintf(label, sizeof label, "and for a user with global privileges, naming %s", databases[i]);
         expect_code(&answer, 1045, label);
     }
-    dial("dr_nobody", "wrong-password", "dr_missing", &answer);
+    MYSQL *nobody = dial("dr_nobody", "wrong-password", "dr_missing", &answer);
+    if (nobody) mysql_close(nobody);
     expect_code(&answer, 1045, "an unknown user is refused with 1045 when the dial names a missing database");
 
     for (size_t i = 0; i < sizeof cleanup / sizeof *cleanup; i++) admin(a, cleanup[i]);

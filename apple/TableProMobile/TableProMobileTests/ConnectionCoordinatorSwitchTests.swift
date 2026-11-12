@@ -355,6 +355,7 @@ struct ConnectionCoordinatorSwitchTests {
         let refusal = MySQLError.connectionFailed("Access denied for user 'app'@'10.0.0.2' (using password: YES)")
         denied.connectError = refusal
         factory.queue(denied)
+        factory.queue(mySQLDriver(tables: ["orders"]))
         let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
         coordinator.restorePersistedState()
 

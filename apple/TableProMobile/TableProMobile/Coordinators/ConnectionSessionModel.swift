@@ -136,9 +136,7 @@ final class ConnectionSessionModel {
         record.type == .postgresql || record.type == .redshift
     }
 
-    // MySQL, MariaDB and TiDB sign in by user and host alone, and refuse the database a handshake names with the code a
-    // `USE` there gets. SQL Server signs a contained user in against the database the login names, so a dial there
-    // can fail the sign-in or sign in as another principal; it and the others dial the saved database and move after.
+    // MySQL, MariaDB and TiDB sign in apart from the database; SQL Server signs contained users in to the named one.
     private var dialsRememberedDatabase: Bool {
         redialsToSwitchDatabase || record.type == .mysql || record.type == .mariadb || record.type == .tidb
     }
@@ -353,7 +351,7 @@ final class ConnectionSessionModel {
                 await appState.connectionManager.disconnect(connectionId)
                 guard isCurrent(attempt) else { return }
                 landed = try await dialForOpen(saved, schema: nil, by: attempt, joining: false)
-                // A USE engine still moves there with USE, as its open always did, and that USE says why it fails.
+                // A USE engine still moves there with USE, which says why it fails, as its open always did.
                 if redialsToSwitchDatabase {
                     restoring.database = saved.database
                 }
@@ -450,7 +448,7 @@ final class ConnectionSessionModel {
         return !notAboutTheDatabase.contains { message.contains($0) }
     }
 
-    // A MySQL-family refusal comes typed by its code; any other would fail the saved database the same way.
+    // The MySQL driver tells a refusal that may be the database's apart by its code.
     private func blamesDatabase(_ error: any Error) -> Bool {
         if redialsToSwitchDatabase { return Self.mayBlameDatabase(error) }
         if case MySQLError.databaseRefused = error { return true }
