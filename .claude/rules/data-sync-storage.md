@@ -156,7 +156,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Preferences | UserDefaults | `AppSettingsStorage`, `AppSettingsManager` |
 | Editor and grid fonts | UserDefaults, device-local, never synced | `TypographySettings` through `AppSettingsManager` |
 | Appearance mode (Auto, Light, Dark) | UserDefaults, device-local, never synced | `AppSettingsStorage` through `AppSettingsManager.appearanceMode` |
-| Light and dark theme ids and the object icon style (iCloud-synced, category `appearance`) | UserDefaults | `AppearanceSettings` through `AppSettingsManager` |
+| Light and dark theme ids (iCloud-synced, category `appearance`) | UserDefaults | `AppearanceSettings` through `AppSettingsManager` |
 | User themes (iCloud-synced, one `AppSettings` record `theme.<id>` each) | JSON, one file per theme | `ThemeCatalog` (sync rules: `.claude/rules/theme.md`, Sync) |
 | Query history | SQLite FTS5 | `QueryHistoryStorage` |
 | Query tab edit history: up to 50 versions per tab, kept 30 days or the shorter Query History window, after the tab closes too; purged with the connection and by Clear History | SQLite `query_tab_versions.db`, device-local, never synced | `QueryTabVersionStorage` |
@@ -168,17 +168,12 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
 | Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
-| Objects tab column choices, per object kind | UserDefaults `com.TablePro.objectsList.columns.<kind>`, device-local, never synced | `ObjectListingColumnVisibilityStore` |
-| Connection navigator group expansion, shared with the database tree's connection groups | UserDefaults `com.TablePro.navigator.groupExpansion`, device-local, never synced | `ConnectionNavigatorExpansionStore` |
-| Connection navigator column width | AppKit split view autosave `com.TablePro.connectionNavigator`, device-local | `NavigationSidebarViewController` through `SplitViewAutosaveName.current(_:)` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
 | Table Health history, per connection and database: when each finding was first and last seen, resolved findings, ignored findings | JSON, one file per connection under `TableHealth/`, device-local, never synced | `TableHealthHistoryStorage` |
 | Module on/off (Settings > Extensions) | UserDefaults, device-local, never synced | `AppModuleSettings` |
 | Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
 | Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
-| Whether the toolbar arrangement already carries the Objects buttons | UserDefaults, device-local | `MainWindowToolbar` |
-| Whether the toolbar display mode already carries the Navigator Layout's labels | UserDefaults, device-local | `MainWindowToolbar` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |

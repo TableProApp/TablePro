@@ -48,8 +48,6 @@ struct PersistedTab: Codable {
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
     var versionHistorySubject: VersionHistorySubject?
-    // Raw, like objectTypeRawValue: a kind a newer build adds decodes to nil, which is Tables.
-    var listingKindRawValue: String?
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
     // Nil in files written before this existed: decodes to .user when columns were saved, .unset when none were.
@@ -83,7 +81,6 @@ struct PersistedTab: Codable {
         erDiagramSchemaKey: String? = nil,
         objectRef: DatabaseObjectRef? = nil,
         versionHistorySubject: VersionHistorySubject? = nil,
-        listingKindRawValue: String? = nil,
         queryParameters: [QueryParameter]? = nil,
         sortColumns: [PersistedSortColumn]? = nil,
         sortSource: SortSource? = nil,
@@ -112,7 +109,6 @@ struct PersistedTab: Codable {
         self.erDiagramSchemaKey = erDiagramSchemaKey
         self.objectRef = objectRef
         self.versionHistorySubject = versionHistorySubject
-        self.listingKindRawValue = listingKindRawValue
         self.queryParameters = queryParameters
         self.sortColumns = sortColumns
         self.sortSource = sortSource
@@ -131,7 +127,6 @@ struct PersistedTab: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, objectTypeRawValue, databaseName, schemaName
         case sourceFileURL, sourceFileEncoding, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
-        case listingKindRawValue
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
@@ -156,7 +151,6 @@ struct PersistedTab: Codable {
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
         objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
         versionHistorySubject = try container.decodeIfPresent(VersionHistorySubject.self, forKey: .versionHistorySubject)
-        listingKindRawValue = try container.decodeIfPresent(String.self, forKey: .listingKindRawValue)
         queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
         sortSource = try container.decodeIfPresent(SortSource.self, forKey: .sortSource)
@@ -680,16 +674,10 @@ struct TabDisplayState: Equatable {
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
     var versionHistorySubject: VersionHistorySubject?
-    // The kind an Objects tab lists. Nil is Tables, which every tab saved before kinds existed shows.
-    var listingKind: SidebarObjectKind?
     var isResultsCollapsed: Bool = false
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?
     var highlightRulesPresentationRequest: Int = 0
-    // What the last run did, statement by statement, for the Message and Summary tabs. Never saved.
-    var runLog: QueryRunLog?
-    // The page in front while those tabs are on. Off, the pane always shows the active result.
-    var resultsPage: ResultsPage = .result
 
     var activeResultSet: ResultSet? {
         guard let id = activeResultSetId else { return resultSets.last }
@@ -715,19 +703,7 @@ struct TabDisplayState: Equatable {
         result.isPinned = resultSets[index].isPinned
         resultSets[index] = result
         activeResultSetId = result.id
-        runLog = runLog?.replacingResult(outgoingId, with: result.id)
         leaveOutputModeWithoutOutput()
-    }
-
-    // A run that ends after a later one started has nothing to say about what is on screen now.
-    func admitsRunLog(_ log: QueryRunLog) -> Bool {
-        runLog.map { $0.startedAt <= log.startedAt } ?? true
-    }
-
-    mutating func installRunLog(_ log: QueryRunLog) {
-        guard admitsRunLog(log) else { return }
-        runLog = log
-        resultsPage = log.opensOnMessage ? .message : .result
     }
 
     @MainActor
@@ -777,7 +753,5 @@ struct TabDisplayState: Equatable {
             && lhs.resultSets.map(\.id) == rhs.resultSets.map(\.id)
             && lhs.activeResultSetId == rhs.activeResultSetId
             && lhs.highlightRulesPresentationRequest == rhs.highlightRulesPresentationRequest
-            && lhs.runLog == rhs.runLog
-            && lhs.resultsPage == rhs.resultsPage
     }
 }

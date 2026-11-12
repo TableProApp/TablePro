@@ -199,43 +199,6 @@ struct QueryCommandAvailabilityTests {
         #expect(commands.stopHint.contains("committing") == false)
     }
 
-    /// Save is Cmd+S for the tab: a changed file or grid edits are written, and a query with no file
-    /// yet asks where to go. A clean file and an empty untitled tab have nothing to save.
-    @Test("Save is live exactly when Cmd+S would write something for the tab")
-    func saveFollowsWhatCmdSWouldDo() {
-        #expect(Self.make(hasQueryText: true, hasSourceFile: false).canSave, "Untitled query: Save As")
-        #expect(Self.make(hasQueryText: false, hasSourceFile: false).canSave == false)
-        #expect(Self.make(hasSourceFile: true).canSave == false, "A file with nothing changed")
-        #expect(Self.make(hasUnsavedEdits: true, hasSourceFile: true).canSave, "A changed file")
-        #expect(Self.make(hasQueryText: false, hasUnsavedEdits: true).canSave, "Grid edits in the results")
-        #expect(Self.make(isConnected: false, hasSourceFile: false).canSave, "Writing a file needs no session")
-        #expect(Self.make(hasSourceFile: true).saveHint.contains("nothing to save"))
-        #expect(Self.make(hasSourceFile: false).saveHint.contains("nothing to save") == false)
-    }
-
-    @Test("Query Builder shows only where the engine builds joins, and waits for the session")
-    func queryBuilderFollowsTheEngine() {
-        let unsupported = Self.make(supportsQueryBuilder: false)
-        #expect(unsupported.showsQueryBuilder == false)
-        #expect(unsupported.canOpenQueryBuilder == false)
-
-        let supported = Self.make(supportsQueryBuilder: true)
-        #expect(supported.showsQueryBuilder)
-        #expect(supported.canOpenQueryBuilder)
-
-        let offline = Self.make(isConnected: false, supportsQueryBuilder: true)
-        #expect(offline.showsQueryBuilder)
-        #expect(offline.canOpenQueryBuilder == false)
-        #expect(offline.queryBuilderHint.contains("not available"))
-    }
-
-    @Test("The two-row Format names itself Beautify SQL and keeps Format's reasons")
-    func beautifyHint() {
-        #expect(Self.make().beautifyHint == String(localized: "Beautify SQL"))
-        #expect(Self.make(hasQueryText: false).beautifyHint.contains("nothing to format"))
-        #expect(Self.make(supportsFormatting: false).beautifyHint.contains("no formatter"))
-    }
-
     private static func make(
         isConnected: Bool = true,
         hasQueryText: Bool = true,
@@ -243,10 +206,7 @@ struct QueryCommandAvailabilityTests {
         isStoppable: Bool = true,
         hasResults: Bool = true,
         explainVariants: [ExplainVariant] = [ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")],
-        supportsFormatting: Bool = true,
-        hasUnsavedEdits: Bool = false,
-        hasSourceFile: Bool = false,
-        supportsQueryBuilder: Bool = false
+        supportsFormatting: Bool = true
     ) -> QueryCommandAvailability {
         QueryCommandAvailability(
             isConnected: isConnected,
@@ -256,9 +216,6 @@ struct QueryCommandAvailabilityTests {
             hasResults: hasResults,
             explainVariants: explainVariants,
             supportsFormatting: supportsFormatting,
-            hasUnsavedEdits: hasUnsavedEdits,
-            hasSourceFile: hasSourceFile,
-            supportsQueryBuilder: supportsQueryBuilder,
             shortcutHint: { label, _ in label }
         )
     }

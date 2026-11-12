@@ -117,12 +117,6 @@ internal final class EditorEventRouter {
         coordinator.performFormatSQL()
     }
 
-    /// The query bar's Snippets menu, which sits above the editor it fills, as Format does.
-    internal func insertSavedQueryForKeyWindow(_ sql: String) {
-        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
-        coordinator.insertSavedQuery(sql)
-    }
-
     internal func performRemoveInvisibleCharactersForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.performRemoveInvisibleCharacters()
@@ -152,15 +146,6 @@ internal final class EditorEventRouter {
     internal func runStatementAtCursorAndAdvanceForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.runStatementAtCursorAndAdvance()
-    }
-
-    /// A run started in `window`, so every editor there ends its completion session. Not only the focused one:
-    /// the run may come from a click on the query bar, which leaves the focus where it was, or from the menu.
-    internal func dismissCompletions(in window: NSWindow?) {
-        guard let window else { return }
-        for ref in editors.values where ref.textView?.window === window {
-            ref.coordinator?.dismissCompletions()
-        }
     }
 
     // A large document writes its text to the tab on a delay; a run, save, close or quit reads the tab.

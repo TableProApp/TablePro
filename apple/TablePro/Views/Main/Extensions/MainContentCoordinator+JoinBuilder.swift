@@ -21,13 +21,6 @@ extension MainContentCoordinator {
         ))
     }
 
-    // The query bar's Query Builder: the tab's own database and schema, with no table picked yet.
-    func openJoinBuilder(forQueryTab tabId: UUID) {
-        guard admitsSheetCommand(), let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
-        let tabScope = scope(for: tab)
-        openJoinBuilder(database: tabScope?.database, schema: tabScope?.schema, tables: [])
-    }
-
     // One query joins one schema, so only the tables sharing the first one's are seeded.
     func openJoinBuilder(seededWith selection: Set<DatabaseTreeTableRef>) {
         let refs = selection.sorted { $0.table.name.localizedStandardCompare($1.table.name) == .orderedAscending }

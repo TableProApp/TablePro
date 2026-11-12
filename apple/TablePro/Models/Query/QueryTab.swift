@@ -169,10 +169,7 @@ struct QueryTab: Identifiable, Equatable {
 
     init(from persisted: PersistedTab, defaultPageSize: Int) {
         self.id = persisted.id
-        // A listing saved by an older build is titled after its kind ("Tables: sales"); every listing now reads Objects.
-        self.title = persisted.tabType == .tableListing
-            ? QueryTabManager.tableListingTitle(schemaName: persisted.schemaName)
-            : persisted.title
+        self.title = persisted.title
         self.tabType = persisted.tabType
         self.isPreview = false
         self.isPinned = persisted.isPinned
@@ -195,8 +192,7 @@ struct QueryTab: Identifiable, Equatable {
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
             objectRef: persisted.objectRef,
-            versionHistorySubject: persisted.versionHistorySubject,
-            listingKind: persisted.listingKindRawValue.flatMap(SidebarObjectKind.init(persistenceName:))
+            versionHistorySubject: persisted.versionHistorySubject
         )
         self.pendingChanges = TabChangeSnapshot()
         self.selectionSnapshot = .empty
@@ -353,7 +349,6 @@ struct QueryTab: Identifiable, Equatable {
             erDiagramSchemaKey: display.erDiagramSchemaKey,
             objectRef: display.objectRef,
             versionHistorySubject: display.versionHistorySubject,
-            listingKindRawValue: display.listingKind?.persistenceName,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
             sortSource: persistedSortSource,

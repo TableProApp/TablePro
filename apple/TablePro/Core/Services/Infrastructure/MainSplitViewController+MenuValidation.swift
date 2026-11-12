@@ -105,7 +105,6 @@ struct MenuValidationContext: Equatable {
     var canSaveAsFavorite = false
     var canSwitchSidebarLayout = false
     var canToggleWorkspaceRail = false
-    var canCycleWorkspaces = false
     // Only embedded engines that lock their database file answer yes, so server connections never show the command at all.
     var canReleaseFileLock = false
     var canShowTableStructure = false
@@ -451,11 +450,10 @@ extension MainSplitViewController: NSMenuItemValidation {
     // A Focus command that would focus nothing is dimmed: `makeFirstResponder` accepts a view that cannot take the keyboard.
     private static func isWindowCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         switch selector {
-        case #selector(toggleWorkspaceRail(_:)):
-            return context.canToggleWorkspaceRail
-        case #selector(showPreviousWorkspace(_:)),
+        case #selector(toggleWorkspaceRail(_:)),
+             #selector(showPreviousWorkspace(_:)),
              #selector(showNextWorkspace(_:)):
-            return context.canCycleWorkspaces
+            return context.canToggleWorkspaceRail
 
         case #selector(focusObjectList(_:)): return context.canFocusObjectList
         case #selector(focusEditor(_:)): return context.canFocusEditor
@@ -698,7 +696,6 @@ extension MainSplitViewController: NSMenuItemValidation {
                 canMoveTabToConnection: canMoveSelectedTabToConnection,
                 hasOtherWindowTabs: hasOtherWindowTabs,
                 canToggleWorkspaceRail: canToggleWorkspaceRail,
-                canCycleWorkspaces: canCycleWorkspaces,
                 canDisconnect: canDisconnect,
                 isPresentingSheet: isViewLoaded && view.window?.attachedSheet != nil
             )
@@ -766,7 +763,6 @@ extension MainSplitViewController: NSMenuItemValidation {
             canSaveAsFavorite: actions.canSaveAsFavorite,
             canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
             canToggleWorkspaceRail: canToggleWorkspaceRail,
-            canCycleWorkspaces: canCycleWorkspaces,
             canReleaseFileLock: canReleaseFileLock,
             canShowTableStructure: actions.canShowTableStructure,
             canEditViewDefinition: actions.canEditViewDefinition,

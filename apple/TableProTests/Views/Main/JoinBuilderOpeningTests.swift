@@ -89,37 +89,6 @@ struct JoinBuilderOpeningTests {
         #expect(!model.scopeDescription.contains("/tmp/"))
     }
 
-    /// The catalog read names tables and views alike, so the kind comes from the sidebar's own list.
-    @Test("The table list draws each relation with its kind's glyph in the chosen icon style")
-    func tableListFollowsKindAndStyle() {
-        let connection = TestFixtures.makeConnection(name: "Shop", database: "shop", type: .mysql)
-        let asked = ScopeRecorder()
-        let model = JoinBuilderViewModel(
-            launch: JoinBuilderLaunchRequest(database: "shop", schema: nil, tables: []),
-            connection: connection,
-            listedRelations: { scope in
-                asked.scopes.append(scope)
-                return [
-                    TableInfo(name: "orders", type: .table, rowCount: nil),
-                    TableInfo(name: "v_low_stock", type: .view, rowCount: nil),
-                ]
-            }
-        )
-        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: nil)
-
-        model.adopt(JoinBuilderViewModel.Catalog(graph: .empty, columnTypes: [:]), scope: scope)
-
-        #expect(asked.scopes == [scope])
-        let standardView = ObjectIconProvider.icon(for: .relation(.view), style: .standard)
-        #expect(model.objectIcon(for: "orders", style: .standard) == ObjectIcon(symbolName: "tablecells"))
-        #expect(model.objectIcon(for: "v_low_stock", style: .standard) == standardView)
-        #expect(standardView.symbolName != "tablecells", "A view is not drawn as a table")
-        #expect(model.objectIcon(for: "orders", style: .colorful) == ObjectIconProvider.colorfulIcon(for: .relation(.table)))
-        #expect(model.objectIcon(for: "v_low_stock", style: .colorful) == ObjectIconProvider.colorfulIcon(for: .relation(.view)))
-        #expect(model.objectIcon(for: "v_low_stock", style: .colorful).tint != nil)
-        #expect(model.objectIcon(for: "unlisted", style: .colorful) == ObjectIconProvider.colorfulIcon(for: .relation(.table)))
-    }
-
     @Test("Only an engine with SQL and foreign keys gets the builder")
     func eligibility() {
         let dialect = SQLDialectDescriptor(identifierQuote: "\"", keywords: [], functions: [], dataTypes: [])
@@ -129,9 +98,4 @@ struct JoinBuilderOpeningTests {
         #expect(!JoinBuilderEligibility.supportsJoinBuilder(editorLanguage: .sql, dialect: nil, supportsForeignKeys: true))
         #expect(!JoinBuilderEligibility.supportsJoinBuilder(editorLanguage: .javascript, dialect: dialect, supportsForeignKeys: true))
     }
-}
-
-@MainActor
-private final class ScopeRecorder {
-    var scopes: [DatabaseScope] = []
 }

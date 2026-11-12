@@ -39,9 +39,6 @@ internal struct EditorTabStrip: View {
     /// shares a title with. Resolved by the window, because a view has no business asking the
     /// plugin registry what kind of container a connection has.
     internal let containerTarget: ContainerSwitchTarget?
-    /// Named in a table tab's title when Settings asks for the location. Passed in rather than read
-    /// from the session, for the reason `containerTarget` is.
-    internal var connectionName = ""
     /// Which tabs are running something. Observed rather than pushed in, so a claim opening or
     /// settling redraws this strip the same way it redraws the result pane. A tab that is not the
     /// selected one has no status bar on screen, and its progress used to show as the window-wide
@@ -83,12 +80,6 @@ internal struct EditorTabStrip: View {
         }
         .onChange(of: settings.tabs.overflow) { style in
             interaction.overflow = style
-        }
-        /// A located title asks for its whole width. Handed over here, where the labels are resolved, on
-        /// appearing and whenever a title, the location setting or the icon style moves it.
-        .onAppear { interaction.setPreferredWidths(preferredWidths) }
-        .onChange(of: preferredWidths) { widths in
-            interaction.setPreferredWidths(widths)
         }
         /// Cmd+1..9, opening a table from the sidebar and closing a tab can all land on a tab that
         /// is scrolled out of sight, so the selection pulls itself into view.
@@ -166,20 +157,7 @@ internal struct EditorTabStrip: View {
     }
 
     private var labels: [UUID: EditorTabLabelResolver.Label] {
-        EditorTabLabelResolver.resolve(
-            tabs: displayedTabs,
-            target: containerTarget,
-            style: titleStyle,
-            iconStyle: settings.appearance.objectIconStyle
-        )
-    }
-
-    private var preferredWidths: [UUID: CGFloat] {
-        EditorTabStripLayout.preferredWidths(tabs: displayedTabs, labels: labels)
-    }
-
-    private var titleStyle: EditorTabTitleStyle {
-        EditorTabTitleStyle(showsLocation: settings.tabs.titleShowsLocation, connectionName: connectionName)
+        EditorTabLabelResolver.resolve(tabs: displayedTabs, target: containerTarget)
     }
 
     @ViewBuilder
@@ -366,13 +344,12 @@ private struct EditorTabStripItem: View {
                         .foregroundStyle(titleColor)
                         .accessibilityHidden(true)
                 }
-                if let icon = label.icon {
-                    icon.image
-                        .font(.system(size: EditorTabStripLayout.objectGlyphSize))
-                        .foregroundStyle(glyphColor(for: icon))
-                        .accessibilityHidden(true)
-                }
-                titleText
+                Text(label.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .italic(tab.isPreview)
+                    .font(.system(size: EditorTabStripLayout.fontSize))
+                    .foregroundStyle(titleColor)
             }
             .frame(maxWidth: .infinity)
             unseenIndicator
@@ -385,38 +362,6 @@ private struct EditorTabStripItem: View {
         /// shape of its own everything either side of a title like "Album" stops selecting the
         /// tab: roughly 55pt of dead zone at each end of a 184pt tab.
         .contentShape(Rectangle())
-    }
-
-    /// A located title that does not fit drops the connection first, then gives way in the middle of the
-    /// object's name while `@database` stays whole: cut at its tail it lost the database and the
-    /// connection both, which are what tell this tab from the same table elsewhere. Any other title is
-    /// cut at its tail, as the system's tabs cut theirs.
-    @ViewBuilder
-    private var titleText: some View {
-        if let short = label.shortForm {
-            ViewThatFits(in: .horizontal) {
-                titleSegment(label.text)
-                HStack(spacing: 0) {
-                    titleSegment(short.object)
-                        .truncationMode(.middle)
-                    if !short.database.isEmpty {
-                        titleSegment(short.database)
-                            .layoutPriority(1)
-                    }
-                }
-            }
-        } else {
-            titleSegment(label.text)
-                .truncationMode(.tail)
-        }
-    }
-
-    private func titleSegment(_ text: String) -> some View {
-        Text(text)
-            .lineLimit(1)
-            .italic(tab.isPreview)
-            .font(.system(size: EditorTabStripLayout.fontSize))
-            .foregroundStyle(titleColor)
     }
 
     // The trailing slot is reserved, so nothing reflows. Running outranks the unseen mark, and shows on the selected tab too.
@@ -500,13 +445,6 @@ private struct EditorTabStripItem: View {
             return Color(nsColor: isSelected ? .secondaryLabelColor : .tertiaryLabelColor)
         }
         return Color(nsColor: isSelected ? .labelColor : .secondaryLabelColor)
-    }
-
-    /// A hue only while the window is active: an inactive window's tabs step down to the label
-    /// colors, and a glyph left in full color would be the brightest thing in the strip.
-    private func glyphColor(for icon: ObjectIcon) -> Color {
-        guard isWindowActive, let tint = icon.tint else { return titleColor }
-        return tint.color
     }
 
     /// Shown for the tab in front at all times, and for any tab the pointer is over, so closing

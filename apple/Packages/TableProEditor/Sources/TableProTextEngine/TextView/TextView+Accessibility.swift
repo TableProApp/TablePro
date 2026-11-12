@@ -49,15 +49,12 @@ extension TextView {
         string
     }
 
-    // Assistive technology edits on the user's behalf, so the edit takes the user's path: the delegate and the
-    // change notification hear it, undo records it, and a read-only editor refuses it. Setting `string` swapped the
-    // storage silently, so the editor showed text its document never received.
     override open func setAccessibilityValue(_ accessibilityValue: Any?) {
         guard let string = accessibilityValue as? String else {
             return
         }
 
-        replaceCharacters(in: documentRange, with: string)
+        self.string = string
     }
 
     override open func accessibilityString(for range: NSRange) -> String? {

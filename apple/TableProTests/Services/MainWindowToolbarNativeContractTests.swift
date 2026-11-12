@@ -403,35 +403,8 @@ struct MainWindowToolbarNativeContractTests {
     func displayModeDefaultsToIconOnly() {
         let owner = MainWindowToolbar()
         #expect(owner.managedToolbar.displayMode == .iconOnly)
+        #expect(owner.managedToolbar.autosavesConfiguration)
         #expect(owner.managedToolbar.allowsUserCustomization)
-    }
-
-    /// AppKit files the arrangement in the real standard domain, so a sandboxed run or a test wrote over the arrangement
-    /// the installed app reads.
-    @Test("Only the installed app saves the toolbar arrangement; the test host and the sandbox never write it")
-    func arrangementIsSavedOnlyOutsideTheTestHostAndTheSandbox() {
-        #expect(MainWindowToolbar.autosavesArrangement(isUnitTestHost: false, isIsolated: false))
-        #expect(!MainWindowToolbar.autosavesArrangement(isUnitTestHost: true, isIsolated: false))
-        #expect(!MainWindowToolbar.autosavesArrangement(isUnitTestHost: false, isIsolated: true))
-        #expect(!MainWindowToolbar().managedToolbar.autosavesConfiguration)
-    }
-
-    /// With nothing saved each launch starts from the default items, so records left by the last sandboxed run would
-    /// claim the Objects buttons and labels were already there and keep them out.
-    @Test("Starting the records over forgets what an unsaved arrangement carried")
-    func startingRecordsOverClearsThem() throws {
-        let storage = try EphemeralDefaults()
-        ToolbarDebugItemsRecord(defaults: storage.defaults).record(true)
-        ToolbarObjectKindsRecord(defaults: storage.defaults).record(true)
-        ToolbarLocationItemsRecord(defaults: storage.defaults).record(true)
-        ToolbarLabelsRecord(defaults: storage.defaults).record(true)
-
-        MainWindowToolbar.startArrangementRecordsOver(in: storage.defaults)
-
-        #expect(!ToolbarDebugItemsRecord(defaults: storage.defaults).isApplied)
-        #expect(!ToolbarObjectKindsRecord(defaults: storage.defaults).isApplied)
-        #expect(!ToolbarLocationItemsRecord(defaults: storage.defaults).isApplied)
-        #expect(!ToolbarLabelsRecord(defaults: storage.defaults).isApplied)
     }
 
     /// The HIG's macOS rule: "Make every toolbar item available as a command in the menu bar." The

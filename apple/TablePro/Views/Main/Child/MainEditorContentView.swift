@@ -55,6 +55,7 @@ struct MainEditorContentView: View {
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
+    @State private var tableListingModels = TableListingModelStore()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
     // Table highlight rules live here, not on the tab; unobserved, Add Rule on a table tab changed nothing on screen.
@@ -153,8 +154,7 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
-            // A listing a table click took over keeps its id, and its model must go with the listing.
-            coordinator.tableListingModels.retainTabs(Set(tabManager.tabs.filter { $0.tabType == .tableListing }.map(\.id)))
+            tableListingModels.retainTabs(openTabIds)
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
         .onChange(of: tabManager.selectedTabId) { _ in
@@ -224,60 +224,22 @@ struct MainEditorContentView: View {
     // MARK: - Table Listing Tab Content
 
     private func tableListingContent(tab: QueryTab) -> some View {
-        let declared = connection.type.declaredObjectKinds
-        let kind = ObjectListingKinds.effective(tab.display.listingKind ?? .table, declared: declared)
-        let scope = DatabaseScope(
-            connectionId: connection.id,
-            database: tab.tableContext.databaseName,
-            schema: tab.tableContext.schemaName
-        )
-        let target = DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind)
-        let tabId = tab.id
-        let model = coordinator.tableListingModels.model(forTab: tabId, target: target) {
+        let model = tableListingModels.model(forTab: tab.id) {
             TableListingViewModel(
-                tabId: tabId,
-                scope: scope,
-                kind: kind,
+                tabId: tab.id,
+                scope: DatabaseScope(
+                    connectionId: connection.id,
+                    database: tab.tableContext.databaseName,
+                    schema: tab.tableContext.schemaName
+                ),
                 loader: TableListingLoader(
                     databaseType: connection.type,
                     slot: EngineNamespaceSlot(databaseType: connection.type)
-                ),
-                perform: { [weak coordinator = self.coordinator] action in
-                    coordinator?.performListingAction(action, fromTab: tabId)
-                },
-                commandFacts: { [weak coordinator = self.coordinator] items in
-                    coordinator?.listingCommandFacts(for: items, inTab: tabId) ?? ObjectListingCommandFacts()
-                },
-                onInteraction: { [weak tabManager = self.tabManager] in
-                    tabManager?.promotePreviewTab(id: tabId)
-                }
+                )
             )
         }
-        let tableEntityName = PluginManager.shared.tableEntityName(for: connection.type)
-        return TableListingTabView(
-            model: model,
-            databaseType: connection.type,
-            kinds: ObjectListingKinds.available(itemCounts: listedObjectCounts(in: scope), declared: declared, current: kind),
-            kindTitle: { $0.title(tableEntityName: tableEntityName) },
-            onSelectKind: { coordinator.selectListingKind($0, inTab: tabId) }
-        )
-        // The model reads the tab's own kind, and Tables reads none of the sidebar's lists. The picker
-        // offers the groups the sidebar shows, from the lists it already holds, so nothing else is read.
-        .task(id: target) {
-            if (tab.display.listingKind ?? .table) != kind {
-                coordinator.adoptListingKind(kind, inTab: tabId)
-            }
-        }
-        .id(tab.id)
-    }
-
-    private func listedObjectCounts(in scope: DatabaseScope) -> [SidebarObjectKind: Int] {
-        ObjectListingKinds.itemCounts(
-            tables: treeService.tables(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
-            routines: treeService.routines(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
-            triggers: treeService.triggers(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
-            types: treeService.userDefinedTypes(connectionId: scope.connectionId, database: scope.database, schema: scope.schema)
-        )
+        return TableListingTabView(model: model, databaseType: connection.type)
+            .id(tab.id)
     }
 
     // MARK: - Version History Tab Content
@@ -670,67 +632,35 @@ struct MainEditorContentView: View {
         let presentation = resultPresentation(for: tab, rows: rows)
 
         VStack(spacing: 0) {
-            if presentation.showsRunTabs {
-                QueryRunTabBar(
-                    page: presentation.page,
-                    results: resultSetEntriesModel(for: tab),
-                    statementTitles: QueryRunTabStrip.statementTitles(in: tab.display.runLog),
-                    showsMenu: presentation.resultSetChooser == .tabRow,
-                    actions: coordinator.runTabActions(forTab: tab.id)
-                )
-            } else if presentation.resultSetChooser == .tabRow {
+            if presentation.resultSetChooser == .tabRow {
                 ResultSetTabBar(
                     model: resultSetMenuModel(for: tab, placedIn: .tabRow),
-                    actions: coordinator.resultSetActions(forTab: tab.id)
+                    actions: resultSetActions(for: tab)
                 )
             }
 
-            if presentation.page == .result {
-                resultPage(tab: tab, rows: rows, presentation: presentation)
-            } else {
-                QueryRunPage(page: presentation.page, display: tab.display) { [coordinator, tabId = tab.id] in
-                    coordinator.showRunResult($0, in: tabId)
+            if presentation.showsErrorBanner {
+                executionErrorBanner(tab: tab)
+            }
+
+            if presentation.showsFilterChrome {
+                rowFilterChrome(tab: tab, rows: rows)
+            }
+
+            resultContent(presentation.content, tab: tab, rows: rows)
+                .gridStandInBackground(isActive: presentation.content.standsInForGrid)
+
+            if presentation.showsStatusBar {
+                if let model = coordinator.activeGridModel {
+                    DataGridModelReader(model: model) { model in
+                        statusBar(tab: tab, selectedRowCount: model.selection.affectedRows.count)
+                    }
+                } else {
+                    statusBar(tab: tab, selectedRowCount: 0)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private func resultPage(tab: QueryTab, rows: TableRows, presentation: QueryResultPresentation) -> some View {
-        /// Above the error banner, so a failure appearing or being dismissed moves the grid and
-        /// never the bar. Below the result set tabs, which choose the result this bar describes.
-        if presentation.showsStatusBar(at: .top) {
-            statusBarSection(tab: tab, placement: .top)
-        }
-
-        if presentation.showsErrorBanner {
-            executionErrorBanner(tab: tab)
-        }
-
-        if presentation.showsFilterChrome {
-            rowFilterChrome(tab: tab, rows: rows)
-        }
-
-        resultContent(presentation.content, tab: tab, rows: rows)
-            .gridStandInBackground(isActive: presentation.content.standsInForGrid)
-
-        if presentation.showsStatusBar(at: .bottom) {
-            statusBarSection(tab: tab, placement: .bottom)
-        }
-    }
-
-    private func statusBarSection(tab: QueryTab, placement: StatusBarPlacement) -> some View {
-        Group {
-            if let model = coordinator.activeGridModel {
-                DataGridModelReader(model: model) { model in
-                    statusBar(tab: tab, selectedRowCount: model.selection.affectedRows.count)
-                }
-            } else {
-                statusBar(tab: tab, selectedRowCount: 0)
-            }
-        }
-        .environment(\.statusBarPlacement, placement)
     }
 
     @ViewBuilder
@@ -856,15 +786,7 @@ struct MainEditorContentView: View {
         inputs.executionStatusMessage = tab.execution.statusMessage
         inputs.hasAppliedFilters = tab.filterState.hasAppliedFilters
         inputs.isFilterPanelVisible = tab.filterState.isVisible
-        inputs.prefersStatusBarAtTop = settingsManager.dataGrid.resultBarAtTop
-        Self.fillRunTabInputs(&inputs, tab: tab, prefersRunTabs: settingsManager.editor.queryResultTabs)
         return QueryResultPresentation(inputs: inputs)
-    }
-
-    private static func fillRunTabInputs(_ inputs: inout QueryResultInputs, tab: QueryTab, prefersRunTabs: Bool) {
-        inputs.prefersRunTabs = prefersRunTabs
-        inputs.hasRunLog = tab.display.runLog != nil
-        inputs.resultsPage = tab.display.resultsPage
     }
 
     // Filtering rebuilds and reruns the query, so a mode showing this panel gets filtered rows without knowing.
@@ -1052,7 +974,7 @@ struct MainEditorContentView: View {
             isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
             viewMode: resultsViewModeBinding(for: tab),
             resultSetMenu: resultSetMenuModel(for: tab, placedIn: .statusBar),
-            resultSetActions: coordinator.resultSetActions(forTab: tab.id),
+            resultSetActions: resultSetActions(for: tab),
             onToggleFilters: { coordinator.toggleFilterPanel() },
             onFetchAll: { coordinator.fetchAllRows() },
             autoRefresh: StatusBarAutoRefreshState(
@@ -1065,13 +987,23 @@ struct MainEditorContentView: View {
         )
     }
 
+    private func resultSetActions(for tab: QueryTab) -> ResultSetActions {
+        let tabId = tab.id
+        return ResultSetActions(
+            activate: { coordinator.switchActiveResultSet(to: $0, in: tabId) },
+            togglePin: { coordinator.togglePinResultSet(id: $0) },
+            compare: { coordinator.compareResultSet(id: $0) },
+            close: { coordinator.closeResultSet(id: $0) },
+            closeOthers: { coordinator.closeOtherResultSets(keeping: $0) }
+        )
+    }
+
     // Only the three deciding fields, not a full `resultPresentation`, which would pull the whole row buffer for a row-free answer.
     private func resultSetChooser(for tab: QueryTab) -> ResultSetChooserPlacement {
         var selectorInputs = QueryResultInputs()
         selectorInputs.tabType = tab.tabType
         selectorInputs.viewMode = tab.display.resultsViewMode
         selectorInputs.resultSetCount = tab.display.resultSets.count
-        Self.fillRunTabInputs(&selectorInputs, tab: tab, prefersRunTabs: settingsManager.editor.queryResultTabs)
         return QueryResultPresentation(inputs: selectorInputs).resultSetChooser
     }
 
@@ -1079,13 +1011,22 @@ struct MainEditorContentView: View {
         guard resultSetChooser(for: tab) == placement else {
             return ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0)
         }
-        return resultSetEntriesModel(for: tab)
-    }
-
-    private func resultSetEntriesModel(for tab: QueryTab) -> ResultSetMenuModel {
-        ResultSetMenuModel(resultSets: tab.display.resultSets, activeId: tab.display.activeResultSet?.id) {
-            coordinator.isComparable($0, in: tab)
+        let activeId = tab.display.activeResultSet?.id
+        let entries = tab.display.resultSets.enumerated().map { index, resultSet in
+            ResultSetMenuEntry(
+                id: resultSet.id,
+                label: resultSet.label,
+                isPinned: resultSet.isPinned,
+                isActive: resultSet.id == activeId,
+                ordinal: index + 1,
+                isComparable: coordinator.isComparable(resultSet, in: tab, activeResultSetId: activeId)
+            )
         }
+        return ResultSetMenuModel(
+            entries: entries,
+            activeOrdinal: entries.first(where: \.isActive)?.ordinal ?? entries.count,
+            total: entries.count
+        )
     }
 
     private func resultsViewModeBinding(for tab: QueryTab) -> Binding<ResultsViewMode> {
@@ -1178,9 +1119,6 @@ extension MainEditorContentView {
             explainVariants: coordinator.connection.type.explainVariants,
             supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
             aiActions: coordinator.aiQueryActionAvailability(for: tab),
-            hasUnsavedEdits: tab.content.isFileDirty || changeManager.hasChanges,
-            hasSourceFile: tab.content.sourceFileURL != nil,
-            supportsQueryBuilder: coordinator.canBuildJoinQuery,
             shortcutHint: { label, action in
                 settingsManager.keyboard.shortcutHint(label, for: action)
             }
@@ -1232,7 +1170,6 @@ extension MainEditorContentView {
         let showsHistoryTip = showsHistoryTip
         let parameters = parameterBinding(for: tab)
         let isParameterPanelVisible = parameterVisibilityBinding(for: tab)
-        let twoRow = settingsManager.editor.queryBarTwoRows ? coordinator.queryBarTwoRowInput(forTab: tab.id) : nil
         let header: (VimMode?) -> AnyView = { vimMode in
             AnyView(VStack(alignment: .leading, spacing: 0) {
                 if let change = tab.content.diskChange,
@@ -1262,8 +1199,7 @@ extension MainEditorContentView {
                     onSaveAsFavorite: { coordinator.saveCurrentQueryAsFavorite() },
                     onClearQuery: { coordinator.commandActions?.clearQuery() },
                     onClearResults: { coordinator.clearActiveQueryResults() },
-                    onContainerChanged: { name in changeContainer(for: tab, to: name) },
-                    twoRow: twoRow
+                    onContainerChanged: { name in changeContainer(for: tab, to: name) }
                 )
                 Divider()
                 if isParameterPanelVisible.wrappedValue && !parameters.wrappedValue.isEmpty {

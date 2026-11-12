@@ -452,17 +452,15 @@ struct MainWindowToolbarValidationTests {
         #expect(toolbar.validationCount == invalidationBaseline)
     }
 
-    /// The installed app saves the arrangement; this host must not, since AppKit writes it into the real standard domain.
-    /// `MainWindowToolbarNativeContractTests` checks both sides of that rule.
-    @Test("Toolbar is configured for user customization, and the test host saves no arrangement")
-    func toolbarConfigurationAllowsCustomization() {
+    @Test("Toolbar is configured for user customization and autosave")
+    func toolbarConfigurationEnablesAutosave() {
         let coordinatorFixture = makeFixture()
         let coordinator = coordinatorFixture.coordinator
         let owner = MainWindowToolbar()
         owner.repoint(to: coordinator)
         #expect(owner.managedToolbar.identifier == MainWindowToolbar.toolbarIdentifier)
         #expect(owner.managedToolbar.allowsUserCustomization == true)
-        #expect(owner.managedToolbar.autosavesConfiguration == false)
+        #expect(owner.managedToolbar.autosavesConfiguration == true)
     }
 
     @Test("Allowed item identifiers are a superset of defaults so restored items survive autosave")

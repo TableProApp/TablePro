@@ -549,104 +549,25 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    // A container holds one listing, kept or a preview. Asking again lands on it and another kind retargets it, rather
-    // than opening a second. A new preview takes the strip slot of the preview it replaces, so browsing the sidebar does
-    // not grow the strip.
     @discardableResult
-    func addTableListingTab(
-        title: String,
-        databaseName: String,
-        schemaName: String?,
-        kind: SidebarObjectKind = .table,
-        isPreview: Bool = false,
-        replacing previewId: UUID? = nil
-    ) -> UUID {
+    func addTableListingTab(title: String, databaseName: String, schemaName: String?) -> UUID {
         let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
-        if let landing = tableListingLanding(
-            databaseName: databaseName, schemaName: schemaName, kind: kind, isPreview: isPreview
-        ) {
-            if landing.retargets {
-                setTableListingKind(kind, title: title, tabId: landing.tabId)
-            }
-            if !isPreview {
-                promotePreviewTab(id: landing.tabId)
-            }
-            selectedTabId = landing.tabId
-            if let closing = landing.closesPreviewId {
-                closeTab(id: closing)
-            }
-            return landing.tabId
+        if let existing = tabs.first(where: {
+            $0.tabType == .tableListing
+                && $0.tableContext.databaseName == databaseName
+                && $0.tableContext.schemaName == schemaName
+        }) {
+            selectedTabId = existing.id
+            return existing.id
         }
         var newTab = QueryTab(title: title, tabType: .tableListing)
         newTab.tableContext.isEditable = false
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.schemaName = schemaName
-        newTab.display.listingKind = Self.storedListingKind(kind)
-        newTab.isPreview = isPreview
-        // The structure-change check promotes a preview carrying this flag; a listing preview is kept only by the user.
-        newTab.hasUserInteraction = !isPreview
-        if let previewId, let index = tabs.firstIndex(where: { $0.id == previewId && $0.isPreview }) {
-            var updated = tabs
-            updated[index] = newTab
-            tabs = updated
-        } else {
-            tabs.append(newTab)
-        }
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
         selectedTabId = newTab.id
         return newTab.id
-    }
-
-    /// Where a request for a container's objects lands among the listings open for it, nil for a new
-    /// tab. One container has one Objects tab: a preview returns to a kept listing showing the kind, as
-    /// it is, else it takes the container's preview, else the kept listing, which then shows the kind
-    /// asked for. Opening a second tab beside a kept one put two "Objects" tabs of one database on the
-    /// strip with nothing to tell them apart. A request to keep takes the kept listing, else the preview,
-    /// and a preview left beside a kept listing, which only a restored session can hold, goes.
-    func tableListingLanding(
-        databaseName: String,
-        schemaName: String?,
-        kind: SidebarObjectKind,
-        isPreview: Bool
-    ) -> TableListingLanding? {
-        let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
-        let listings = tabs.filter {
-            $0.tabType == .tableListing
-                && $0.tableContext.databaseName == databaseName
-                && $0.tableContext.schemaName == schemaName
-        }
-        let kept = listings.filter { !$0.isPreview }
-        // A preview the user kept, or one a relaunch restored as kept, can make a second kept listing.
-        let keptShowingKind = kept.first { ($0.display.listingKind ?? .table) == kind }
-        let preview = listings.first { $0.isPreview }
-        if isPreview {
-            if let keptShowingKind {
-                return TableListingLanding(tabId: keptShowingKind.id, retargets: false, closesPreviewId: nil)
-            }
-            if let preview {
-                return TableListingLanding(tabId: preview.id, retargets: true, closesPreviewId: nil)
-            }
-            return kept.first.map { TableListingLanding(tabId: $0.id, retargets: true, closesPreviewId: nil) }
-        }
-        if let keptTab = keptShowingKind ?? kept.first {
-            return TableListingLanding(tabId: keptTab.id, retargets: true, closesPreviewId: preview?.id)
-        }
-        return preview.map { TableListingLanding(tabId: $0.id, retargets: true, closesPreviewId: nil) }
-    }
-
-    func setTableListingKind(_ kind: SidebarObjectKind, title: String, tabId: UUID) {
-        guard let index = tabs.firstIndex(where: { $0.id == tabId && $0.tabType == .tableListing }) else { return }
-        let stored = Self.storedListingKind(kind)
-        guard tabs[index].display.listingKind != stored || tabs[index].title != title else { return }
-        mutate(at: index) { tab in
-            tab.display.listingKind = stored
-            tab.title = title
-        }
-        markTabRenamed(tabId)
-    }
-
-    // Nil stands for Tables, so a tab saved before kinds existed reads as one.
-    private static func storedListingKind(_ kind: SidebarObjectKind) -> SidebarObjectKind? {
-        kind == .table ? nil : kind
     }
 
     // One per database. No database opens nothing: the report never falls back to the browse cursor, which moves.
@@ -695,12 +616,10 @@ final class QueryTabManager: ObservableObject {
         return newTab.id
     }
 
-    // The kind picker inside the tab names the kind, so the title stays put when the kind changes. It is
-    // qualified by schema where objects are listed per schema, or two listings in one database would share a label.
-    nonisolated static func tableListingTitle(schemaName: String?) -> String {
-        let title = String(localized: "Objects")
-        guard let schemaName, !schemaName.isEmpty else { return title }
-        return String(format: String(localized: "%@: %@"), title, schemaName)
+    // Qualified by schema where tables are listed per schema, or two listings in one database would share a label.
+    static func tableListingTitle(kindTitle: String, schemaName: String?) -> String {
+        guard let schemaName, !schemaName.isEmpty else { return kindTitle }
+        return String(format: String(localized: "%@: %@"), kindTitle, schemaName)
     }
 
     static var versionHistoryFallbackTitle: String {
@@ -777,7 +696,6 @@ final class QueryTabManager: ObservableObject {
         tab.display.resultsViewMode = .data
         tab.display.resultSets = []
         tab.display.activeResultSetId = nil
-        tab.display.listingKind = nil
         tab.sortState = SortState()
         tab.restoredSortSource = .unset
         tab.selectionSnapshot = .empty
@@ -968,13 +886,4 @@ extension QueryTabManager {
         _visibleTabs = nil
         AppEvents.shared.visibleContainerChanged.send()
     }
-}
-
-/// The open listing a request for a container's objects selects.
-internal struct TableListingLanding: Equatable {
-    let tabId: UUID
-    /// False for a kept listing a preview returns to: it keeps its kind, filter and sort.
-    let retargets: Bool
-    /// The preview beside the kept listing a request to keep lands on, which closes.
-    let closesPreviewId: UUID?
 }

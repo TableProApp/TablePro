@@ -41,18 +41,14 @@ struct RoutineRowView: View {
     let routine: RoutineInfo
     let displayLabel: String
 
-    private var objectIcon: ObjectIcon {
-        ObjectIconProvider.icon(for: .routine(routine.kind), style: settingsManager.appearance.objectIconStyle)
-    }
-
     var body: some View {
         Label {
             Text(displayLabel)
                 .lineLimit(1)
                 .truncationMode(.tail)
         } icon: {
-            objectIcon.image
-                .objectIconTint(objectIcon, standard: Color.accentColor)
+            Image(systemName: RoutineRowLogic.iconName(for: routine.kind))
+                .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)

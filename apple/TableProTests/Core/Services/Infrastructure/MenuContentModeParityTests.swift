@@ -273,59 +273,6 @@ struct MenuContentModeParityTests {
         return context
     }
 
-    /// Users, Query and Backup in the Objects toolbar group run commands the menu bar already offers,
-    /// so each answers as its twin does in both modes, with and without a session or a sheet.
-    @Test("The object buttons answer as their menu-bar twins")
-    func objectButtonsMatchTheirMenuTwins() {
-        let twins: [CommandPair] = [
-            CommandPair(
-                selector: #selector(MainSplitViewController.showUsersAndRoles(_:)),
-                identifier: MainWindowToolbar.objectUsers
-            ),
-            CommandPair(
-                selector: #selector(MainSplitViewController.newEditorTab(_:)),
-                identifier: MainWindowToolbar.objectQuery
-            ),
-            CommandPair(
-                selector: #selector(MainSplitViewController.backupDatabase(_:)),
-                identifier: MainWindowToolbar.objectBackup
-            ),
-        ]
-        for contentMode in ConnectionWorkspaceContentMode.allCases {
-            for connected in [true, false] {
-                for sheet in [false, true] {
-                    var menu = Self.menuContext(contentMode)
-                    menu.isConnected = connected
-                    menu.isPresentingSheet = sheet
-                    menu.supportsUserManagement = true
-                    menu.supportsBackup = true
-                    let toolbar = ToolbarContext(
-                        tabKind: .query,
-                        contentMode: contentMode,
-                        pane: connected ? .content : .unavailable(.notConnected),
-                        isConnected: connected,
-                        hasSelectedWorkspace: true,
-                        isPresentingSheet: sheet,
-                        canListTables: true,
-                        offersViews: true,
-                        offersFunctions: true,
-                        supportsUserManagement: true,
-                        supportsBackup: true
-                    )
-                    for twin in twins {
-                        let menuAnswer = MainSplitViewController.isEnabled(twin.selector, context: menu)
-                        let toolbarAnswer = ToolbarContextResolver.isEnabled(twin.identifier, context: toolbar)
-                        let state = "\(contentMode.rawValue), connected \(connected), sheet \(sheet)"
-                        #expect(menuAnswer == toolbarAnswer, "\(twin.name) and \(twin.identifier.rawValue) disagree: \(state)")
-                        if contentMode == .browse, connected, !sheet {
-                            #expect(menuAnswer, "\(twin.name) is dim while browsing a live session")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     /// Named rather than left to the equality above, which two disabled answers would also satisfy.
     @Test("The window's own commands still answer in Agent mode")
     func theWindowsCommandsAnswerInAgentMode() {

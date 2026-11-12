@@ -19,16 +19,9 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     var allSchemaTables: [TableInfo]?
     var answersTablesInSchemas = false
     var partitionsByTable: [String: [PartitionInfo]] = [:]
-    var columnsByTable: [String: [ColumnInfo]] = [:]
-    var indexesByTable: [String: [IndexInfo]] = [:]
-    var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
-    var checksByTable: [String: [CheckConstraintInfo]] = [:]
-    var triggersByTable: [String: [TriggerInfo]] = [:]
-    var detailError: Error?
 
     private let lock = NSLock()
     private var readLog: [String] = []
-    private var detailReadLog: [String] = []
     private var pauseNextTableFetch = false
     private var tableFetchPausedHandler: (@Sendable () -> Void)?
     private var tableFetchGate: CheckedContinuation<Void, Never>?
@@ -39,12 +32,6 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
 
     var reads: [String] {
         lock.withLock { readLog }
-    }
-
-    /// The per-table reads a sidebar table's detail groups send. Kept apart from `reads`, so a count
-    /// of catalog reads never picks up a column lookup another path makes on this driver.
-    var detailReads: [String] {
-        lock.withLock { detailReadLog }
     }
 
     var pausesNextTableFetch: Bool {
@@ -155,39 +142,6 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
         record("partitions:\(table)")
         return partitionsByTable[table] ?? []
-    }
-
-    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        try await answerDetail("columns", table: table, columnsByTable[table] ?? [])
-    }
-
-    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        try await answerDetail("indexes", table: table, indexesByTable[table] ?? [])
-    }
-
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        try await answerDetail("foreignKeys", table: table, foreignKeysByTable[table] ?? [])
-    }
-
-    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
-        try await answerDetail("checks", table: table, checksByTable[table] ?? [])
-    }
-
-    func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo] {
-        try await answerDetail("triggers", table: table, triggersByTable[table] ?? [])
-    }
-
-    /// Shares the table read's pause gate, so a test holds whichever read it starts next.
-    private func answerDetail<Value>(_ kind: String, table: String, _ value: Value) async throws -> Value {
-        lock.withLock { detailReadLog.append("\(kind):\(table)") }
-        if let detailError { throw detailError }
-        if takeTableFetchPause() {
-            await withCheckedContinuation { continuation in
-                park(continuation)
-            }
-            try Task.checkCancellation()
-        }
-        return value
     }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {

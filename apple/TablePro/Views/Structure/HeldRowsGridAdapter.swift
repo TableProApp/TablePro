@@ -23,9 +23,6 @@ final class HeldRowsGridAdapter: ObservableObject {
     var spokenTexts: [RowID: [Int: String]] = [:]
     var checkboxState: ((RowID, DataGridColumn) -> Bool?)?
     var checkboxChange: ((Bool, [RowID], DataGridColumn) -> Void)?
-    // For an owner whose rows stand for objects; the grid opens a row only when its commands offer .openRow.
-    var rowMenuItems: (([RowID], RowID) -> [NSMenuItem])?
-    var opensRow: ((RowID) -> Void)?
 
     private(set) var heldRows = TableRows()
     private var displayedRows = TableRows()
@@ -55,11 +52,8 @@ final class HeldRowsGridAdapter: ObservableObject {
             }
     }
 
-    // The rows were replaced. An owner whose row ids are positions passes where each selected row went.
-    func setRows(_ rows: TableRows, carryingSelection rowMap: [RowID: RowID]? = nil) {
-        if let rowMap {
-            model.carrySelection(rowMap)
-        }
+    // The rows were replaced.
+    func setRows(_ rows: TableRows) {
         let previousColumns = displayedRows.columns
         heldRows = rows
         displayedRows = sortsHeldRows ? TableRowsSorting.sorted(rows, by: model.store.sortState) : rows
@@ -122,14 +116,6 @@ extension HeldRowsGridAdapter: DataGridActions {
 
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn) {
         checkboxChange?(isOn, rowIDs, column)
-    }
-
-    func gridOpenRow(_ rowID: RowID) {
-        opensRow?(rowID)
-    }
-
-    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] {
-        rowMenuItems?(rowIDs, clickedRow) ?? []
     }
 }
 

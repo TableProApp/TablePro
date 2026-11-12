@@ -55,11 +55,6 @@ struct DatabaseTreeRowContext {
     var showsPartitions: Bool = true
     /// The engine's schema rows are databases attached beside the opened file, never one to switch to.
     var listsAttachedSchemas: Bool = false
-    /// A group's count comes from the list its table read, which only the coordinator holds.
-    var tableDetailCount: @MainActor (DatabaseTreeTableDetailGroupRef) -> Int? = { _ in nil }
-    /// Under a saved connection's row the sections are ordinary rows: AppKit lays a source list group
-    /// out at the root's own depth, which would pull them out from under the connection.
-    var drawsSectionsAsRows = false
 }
 
 struct DatabaseTreeRowView: View {
@@ -70,10 +65,6 @@ struct DatabaseTreeRowView: View {
     let actions: DatabaseTreeRowActions
 
     @State private var isHovered = false
-
-    private func objectIcon(_ kind: ObjectIconKind) -> ObjectIcon {
-        ObjectIconProvider.icon(for: kind, style: settingsManager.appearance.objectIconStyle)
-    }
 
     /// No `.contextMenu` here. A menu on the hosted view answers the right-click before the outline
     /// view ever sees it, which cost the clicked-row highlight, `clickedRow`, and any menu at all in
@@ -94,18 +85,12 @@ struct DatabaseTreeRowView: View {
     @ViewBuilder
     private var rowContent: some View {
         switch node.kind {
-        case .connectionGroup(let group):
-            ConnectionNavigatorGroupLabel(group: group)
-        case .savedConnection(let ref):
-            ConnectionNavigatorConnectionLabel(row: ref.row, glyphSide: context.rowSize.iconPointSize)
         case .recentSection:
-            sectionHeader(String(localized: "Recent"), icon: objectIcon(.recentSection))
-        case .recentTable(let ref), .favoriteTable(let ref):
+            sectionHeader(String(localized: "Recent"))
+        case .recentTable(let ref):
             tableRow(ref)
-        case .favoritesSection:
-            sectionHeader(String(localized: "Favorites"), icon: objectIcon(.favoritesSection))
         case .temporarySection:
-            sectionHeader(String(localized: "Temporary"), icon: objectIcon(.temporarySection))
+            sectionHeader(String(localized: "Temporary"))
         case .temporaryTable(let ref):
             TableRow(
                 table: ref.table,
@@ -115,17 +100,17 @@ struct DatabaseTreeRowView: View {
                 accessibilityKind: String(localized: "Temporary Table")
             )
         case .foldersSection:
-            sectionHeader(String(localized: "Folders"), icon: objectIcon(.tableFolder))
+            sectionHeader(String(localized: "Folders"))
         case .tableFolder(let ref):
             folderRow(ref)
         case .database(let metadata):
             databaseRow(metadata)
         case .schema(_, let schema) where context.listsAttachedSchemas:
-            header(text: schema, icon: objectIcon(.database), isActive: false, isSystem: false, caption: nil)
+            header(text: schema, systemImage: "cylinder", isActive: false, isSystem: false, caption: nil)
         case .schema(let database, let schema):
             header(
                 text: schema,
-                icon: objectIcon(context.isExternalSchema(database, schema) ? .externalSchema : .schema),
+                systemImage: context.isExternalSchema(database, schema) ? "folder.badge.gearshape" : "folder",
                 isActive: database == context.activeDatabase && schema == context.activeSchema,
                 isSystem: context.systemSchemas.contains(schema),
                 caption: context.isExternalSchema(database, schema) ? String(localized: "External") : nil
@@ -134,14 +119,10 @@ struct DatabaseTreeRowView: View {
             tableRow(ref)
         case .partition(let ref):
             partitionRow(ref)
-        case .tableDetailGroup(let group):
-            TableDetailGroupRowView(kind: group.kind, count: context.tableDetailCount(group))
-        case .tableDetail(let ref):
-            TableDetailRowView(item: ref.item)
         case .routine(let ref):
             RoutineRowView(routine: ref.routine, displayLabel: context.routineDisplayLabel(ref))
         case .trigger(let ref):
-            TriggerRowView(trigger: ref.trigger, listedUnderTable: ref.listedUnderTable)
+            TriggerRowView(trigger: ref.trigger)
         case .userType(let ref):
             UserTypeRowView(type: ref.type)
         case .serverObject(let ref):
@@ -149,18 +130,18 @@ struct DatabaseTreeRowView: View {
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):
-            sectionHeader(context.objectKindTitle(kind), icon: objectIcon(.section(kind)))
+            sectionHeader(context.objectKindTitle(kind))
         case .containerObjectKindSection(let group):
             objectGroupRow(group.kind)
         case .hierarchicalSchemaSection(let schema):
             header(
                 text: schema,
-                icon: objectIcon(.schema),
+                systemImage: "folder",
                 isActive: schema == context.activeSchema,
                 isSystem: false
             )
         case .redisKeysSection:
-            sectionHeader(String(localized: "Keys"), icon: ObjectIcon(symbolName: "key"))
+            sectionHeader(String(localized: "Keys"))
         case .redisNode(let redisNode):
             redisRow(redisNode)
         }
@@ -168,24 +149,12 @@ struct DatabaseTreeRowView: View {
 
     /// A source list section title carries no icon and no chevron of its own: AppKit draws the
     /// group row's background and its collapse control, and an icon here would be a second glyph
-    /// competing with the one on every object below it. Drawn as an ordinary row it takes the icon
-    /// every other row at its depth has.
-    @ViewBuilder
-    private func sectionHeader(_ text: String, icon: ObjectIcon) -> some View {
-        if context.drawsSectionsAsRows {
-            Label {
-                Text(text)
-            } icon: {
-                icon.image.objectIconTint(icon)
-            }
-            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+    /// competing with the one on every object below it.
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
             .lineLimit(1)
-        } else {
-            Text(text)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
     }
 
     private func folderRow(_ ref: DatabaseTreeFolderRef) -> some View {
@@ -198,8 +167,7 @@ struct DatabaseTreeRowView: View {
                     .foregroundStyle(.secondary)
             }
         } icon: {
-            let icon = objectIcon(.tableFolder)
-            icon.image.objectIconTint(icon)
+            Image(systemName: "folder")
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityElement(children: .combine)
@@ -207,14 +175,9 @@ struct DatabaseTreeRowView: View {
     }
 
     private func objectGroupRow(_ kind: SidebarObjectKind) -> some View {
-        let icon = objectIcon(.section(kind))
-        return Label {
-            Text(context.objectKindTitle(kind))
-        } icon: {
-            icon.image.objectIconTint(icon)
-        }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
-        .lineLimit(1)
+        Label(context.objectKindTitle(kind), systemImage: kind.iconName)
+            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+            .lineLimit(1)
     }
 
     private func databaseRow(_ metadata: DatabaseMetadata) -> some View {
@@ -222,7 +185,7 @@ struct DatabaseTreeRowView: View {
         return HStack(spacing: 6) {
             header(
                 text: metadata.name,
-                icon: objectIcon(metadata.isSystemDatabase ? .systemDatabase : .database),
+                systemImage: metadata.isSystemDatabase ? "gearshape" : "cylinder",
                 isActive: metadata.name == context.activeDatabase,
                 isSystem: metadata.isSystemDatabase
             )
@@ -284,9 +247,8 @@ struct DatabaseTreeRowView: View {
                     }
                 }
             } icon: {
-                let icon = objectIcon(.partition)
-                icon.image
-                    .objectIconTint(icon, standard: Color.accentColor)
+                Image(systemName: SidebarPartitionRow.iconName)
+                    .selectionAwareTint(Color.accentColor)
                     .frame(width: 16)
             }
             .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
@@ -338,7 +300,7 @@ struct DatabaseTreeRowView: View {
 
     private func header(
         text: String,
-        icon: ObjectIcon,
+        systemImage: String,
         isActive: Bool,
         isSystem: Bool,
         caption: String? = nil
@@ -354,7 +316,7 @@ struct DatabaseTreeRowView: View {
                 }
             }
         } icon: {
-            icon.image.objectIconTint(icon)
+            Image(systemName: systemImage)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .lineLimit(1)

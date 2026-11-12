@@ -520,11 +520,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         formatSQL(selectedRange: textView.selectedRange())
     }
 
-    func insertSavedQuery(_ sql: String) {
-        guard let controller else { return }
-        QuerySnippetInsertion.insert(sql, into: controller)
-    }
-
     private func formatSQL(selectedRange: NSRange) {
         guard let textView = controller?.textView else { return }
         let formatter: QueryFormatting
@@ -796,14 +791,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimCursorManager = nil
         vimKeyInterceptor = nil
         vimEngine = nil
-    }
-
-    // MARK: - Completion
-
-    /// Ends this editor's completion session, whether its popup is showing or its items are still loading, so
-    /// nothing opens over the results of a run that started meanwhile.
-    func dismissCompletions() {
-        controller?.dismissCompletions()
     }
 
     // MARK: - Menu Escape Routing

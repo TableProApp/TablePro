@@ -24,8 +24,6 @@ internal struct RecentTabCandidate: Identifiable, Equatable {
     internal let title: String
     internal let detail: String
     internal let symbolName: String
-    /// The glyph's hue in the colorful icon style; nil keeps the row's secondary color.
-    internal var symbolTint: ObjectIconTint?
 
     internal var id: RecentTabReference { reference }
 }

@@ -124,7 +124,6 @@ struct SelectionSummaryReadout: View {
     @ObservedObject var state: SelectionSummaryState
     let scopeNote: String?
     @Binding var isPopoverPresented: Bool
-    @Environment(\.statusBarPlacement) private var placement
 
     var body: some View {
         if let summary = state.summary {
@@ -140,7 +139,7 @@ struct SelectionSummaryReadout: View {
             .accessibilityAddTraits(.updatesFrequently)
             .accessibilityIdentifier("result-status-selection-summary")
             .help(sentence(figures))
-            .popover(isPresented: $isPopoverPresented, arrowEdge: placement.popoverArrowEdge) {
+            .popover(isPresented: $isPopoverPresented, arrowEdge: .top) {
                 SelectionSummaryPopover(state: state, scopeNote: scopeNote)
             }
             // The flag outlives the button, so a summary that comes back would reopen the popover.

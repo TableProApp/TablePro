@@ -173,7 +173,7 @@ extension QueryExecutionCoordinator {
                     prepared,
                     outputs: outputs,
                     parameters: parameters,
-                    claim: claim,
+                    tabId: tabId,
                     sessionNotice: sessionNotice,
                     plan: plan,
                     presentsResults: true
@@ -426,19 +426,12 @@ extension QueryExecutionCoordinator {
             outcome: .succeeded(OperationSummary(rowsAffected: totalRowsAffected, statementCount: outputs.count))
         )
         recordBatchHistory(prepared, outputs: outputs, parameters: parameters, tabId: tabId, failedIndex: nil)
-        let mapped = batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan)
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
             totalRowsAffected: totalRowsAffected,
-            newResultSets: mapped.all,
+            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan),
             sessionNotice: sessionNotice
-        )
-        recordRunLog(
-            Self.runLogEntries(prepared, outputs: outputs, firstResults: mapped.firstOfBatch),
-            tabId: tabId,
-            startedAt: claim.startedAt,
-            notice: sessionNotice
         )
     }
 
@@ -452,24 +445,18 @@ extension QueryExecutionCoordinator {
         sessionNotice: String?
     ) async {
         let kept = run.outcome.keptAfterStop(plan: run.plan)
-        guard !kept.isEmpty else {
-            recordStoppedBatches(prepared, outputs: [], claim: claim)
-            return
-        }
+        guard !kept.isEmpty else { return }
         // A failed batch's own results were in the plan, so a run that drops it is planned again.
         let keptPlan = kept.count == Self.outputs(of: run.outcome).count
             ? plan
             : await batchResultPlan(prepared, outputs: kept, tabId: claim.tabId)
         let presentsResults = stoppedRunCanReplaceResults(onTab: claim.tabId)
-        guard parent.tabExecution.settleStopped(claim, replacingContent: presentsResults) else {
-            recordStoppedBatches(prepared, outputs: kept, claim: claim)
-            return
-        }
+        guard parent.tabExecution.settleStopped(claim, replacingContent: presentsResults) else { return }
         keepStoppedBatches(
             prepared,
             outputs: kept,
             parameters: parameters,
-            claim: claim,
+            tabId: claim.tabId,
             sessionNotice: sessionNotice,
             plan: keptPlan,
             presentsResults: presentsResults
@@ -483,70 +470,21 @@ extension QueryExecutionCoordinator {
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
         parameters: [QueryParameter],
-        claim: TabExecutionClaim,
+        tabId: UUID,
         sessionNotice: String?,
         plan: BatchResultPlan,
         presentsResults: Bool
     ) {
-        let tabId = claim.tabId
-        guard !outputs.isEmpty else {
-            recordStoppedBatches(prepared, outputs: [], claim: claim)
-            return
-        }
+        guard !outputs.isEmpty else { return }
         recordBatchHistory(prepared, outputs: outputs, parameters: parameters, tabId: tabId, failedIndex: nil)
-        guard presentsResults else {
-            recordStoppedBatches(prepared, outputs: outputs, claim: claim)
-            return
-        }
-        let mapped = batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan)
+        guard presentsResults else { return }
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
             totalRowsAffected: outputs.reduce(0) { $0 + $1.rowsAffected },
-            newResultSets: mapped.all,
+            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan),
             sessionNotice: sessionNotice
         )
-        recordRunLog(
-            QueryRunLog.entries(
-                statements: prepared.map(\.batch.sql),
-                finished: Self.runLogEntries(prepared, outputs: outputs, firstResults: mapped.firstOfBatch),
-                ending: .stopped
-            ),
-            tabId: tabId,
-            startedAt: claim.startedAt,
-            notice: sessionNotice
-        )
-    }
-
-    /// A stopped run installs none of its results, so its entries point at none.
-    private func recordStoppedBatches(_ prepared: [PreparedBatch], outputs: [BatchOutput], claim: TabExecutionClaim) {
-        let finished = Self.runLogEntries(prepared, outputs: outputs, firstResults: [])
-        recordRunLog(
-            QueryRunLog.entries(statements: prepared.map(\.batch.sql), finished: finished, ending: .stopped),
-            tabId: claim.tabId,
-            startedAt: claim.startedAt
-        )
-    }
-
-    /// One entry per batch, as history keeps one per batch: the batch is what ran. It points at the first result the
-    /// batch produced, and counts the rows of all of them.
-    private static func runLogEntries(
-        _ prepared: [PreparedBatch],
-        outputs: [BatchOutput],
-        firstResults: [ResultSet?]
-    ) -> [QueryRunLogEntry] {
-        zip(prepared, outputs).enumerated().map { index, pair in
-            let (entry, output) = pair
-            let returned = output.resultSets.reduce(0) { $0 + $1.rows.count }
-            return QueryRunLogEntry(
-                statement: entry.batch.sql,
-                outcome: output.resultSets.isEmpty ? .affectedRows(output.rowsAffected) : .returnedRows(returned),
-                executionTime: output.executionTime,
-                statusMessage: output.resultSets.compactMap(\.statusMessage).first,
-                serverOutput: output.serverOutput,
-                resultSetId: firstResults.indices.contains(index) ? firstResults[index]?.id : nil
-            )
-        }
     }
 
     private func handleBatchFailure(
@@ -586,14 +524,15 @@ extension QueryExecutionCoordinator {
 
         let timing = PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime })
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
-        let mapped = batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan)
         parent.tabManager.mutate(tabId: tabId) { tab in
             // The Error result carries the failure, so the banner stays on it rather than over every other result.
             tab.execution.errorMessage = nil
             tab.execution.errorQuery = nil
             tab.execution.executionTime = timing.total
             tab.execution.lastExecutedAt = Date()
-            tab.display.replaceUnpinnedResults(with: mapped.all + [errorResult])
+            tab.display.replaceUnpinnedResults(
+                with: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan) + [errorResult]
+            )
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
             }
@@ -605,21 +544,6 @@ extension QueryExecutionCoordinator {
             parent.toolbarState.recordQueryTiming(timing, for: tabId)
             parent.announceQueryError(report.message)
         }
-        // The batch that answered with an error is among the outputs, and is reported as the failure, not as run.
-        let succeeded = BatchStatementOutcome<BatchOutput>.failed(
-            results: outputs, failure: context.failure, errorDescription: context.errorDescription
-        ).succeededCount
-        recordRunLog(
-            QueryRunLog.entries(
-                statements: prepared.map(\.batch.sql),
-                finished: Self.runLogEntries(
-                    Array(prepared.prefix(succeeded)), outputs: Array(outputs.prefix(succeeded)), firstResults: mapped.firstOfBatch
-                ),
-                ending: .failed(statement: failedBatch?.batch.sql ?? report.failedSQL, message: message, resultSetId: errorResult.id)
-            ),
-            tabId: tabId,
-            startedAt: claim.startedAt
-        )
     }
 
     /// One history entry per batch, because the batch is what ran. A failed batch is recorded as failed, with the
@@ -654,15 +578,14 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    /// Each batch's result sets in the order it returned them, and the first result each batch landed on. A batch
-    /// whose shape pins each result set to one of its queries names them after it and points back at it; any other
-    /// batch numbers them and points at the batch.
+    /// Each batch's result sets in the order it returned them. A batch whose shape pins each result set to one of its
+    /// queries names them after it and points back at it; any other batch numbers them and points at the batch.
     private func batchResultSets(
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
         tabId: UUID,
         plan: BatchResultPlan
-    ) -> (all: [ResultSet], firstOfBatch: [ResultSet?]) {
+    ) -> [ResultSet] {
         let grammar = parent.lexicalGrammar
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
         let reading = parent.tableNameReading
@@ -694,11 +617,9 @@ extension QueryExecutionCoordinator {
                 }
             }
         }
-        var batchCandidates: [Range<Int>] = []
         for ((entry, output), queries) in zip(zip(prepared, outputs), plan.queries) {
             candidate += output.supersededResultSetCount
             let firstCandidate = candidate
-            defer { batchCandidates.append(firstCandidate..<candidate) }
             if let queries {
                 for (statement, result) in zip(queries, output.resultSets) {
                     let built = nextBuilt()
@@ -737,22 +658,16 @@ extension QueryExecutionCoordinator {
                 parts[last] = part.withServerOutput(output.serverOutput)
             }
         }
-        var summary: ResultSet?
         let resultSets = runPlan.entries.compactMap { entry -> ResultSet? in
             switch entry {
             case .statement(let index):
                 return own[index]
             case .summary(let indices):
-                let made = makeRunSummaryResultSet(indices.compactMap { parts[$0] })
-                summary = made
-                return made
+                return makeRunSummaryResultSet(indices.compactMap { parts[$0] })
             }
         }
         appendDroppedNotice(of: runPlan, to: resultSets)
-        let firstOfBatch = batchCandidates.map { candidates in
-            candidates.lazy.compactMap { own[$0] ?? (runPlan.summarizes(statement: $0) ? summary : nil) }.first
-        }
-        return (resultSets, firstOfBatch)
+        return resultSets
     }
 
     // Decided once, before the settle: the mapping costs a classification per statement and the rows a pass each.

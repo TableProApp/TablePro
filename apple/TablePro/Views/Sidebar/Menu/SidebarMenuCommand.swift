@@ -71,9 +71,7 @@ internal enum SidebarMenuCommand: Equatable {
     case copyContainerTo(DatabaseContainerRef)
     case duplicateDatabase(DatabaseContainerRef)
     case searchContainer(DatabaseContainerRef)
-    case showObjects(DatabaseTreeObjectGroup)
-    /// The flat list's kind sections, whose container is the one the sidebar is browsing.
-    case showBrowsedObjects(SidebarObjectKind)
+    case showAllTablesMetadata
     case refreshObjectKind(SidebarObjectKind)
     case refreshContainerObjectKind(DatabaseTreeObjectGroup)
     case refreshHierarchicalSchema(String)
@@ -92,7 +90,6 @@ internal enum SidebarMenuCommand: Equatable {
     case toggleObjectComments
     case toggleSystemContainers
     case togglePartitions
-    case toggleTableDetails
     case setRowSize(SidebarRowSizePreference)
 }
 

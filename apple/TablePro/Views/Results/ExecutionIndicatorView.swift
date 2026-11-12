@@ -31,7 +31,6 @@ struct ExecutionIndicatorView: View {
     var onCancel: (() -> Void)?
 
     @State private var showsBreakdown = false
-    @Environment(\.statusBarPlacement) private var placement
 
     /// Why the two numbers differ, in the popover's own words. A client-measured first row carries
     /// one network round trip and a server-reported figure does not, and a reader comparing them
@@ -103,7 +102,7 @@ struct ExecutionIndicatorView: View {
             .accessibilityHint(String(localized: "Shows how the time was spent"))
             .accessibilityIdentifier("execution-duration")
             .help(breakdown.summary)
-            .popover(isPresented: $showsBreakdown, arrowEdge: placement.popoverArrowEdge) {
+            .popover(isPresented: $showsBreakdown, arrowEdge: .top) {
                 QueryTimingPopover(
                     breakdown: breakdown,
                     explanation: timing.server != nil ? Self.serverExplanation : Self.clientExplanation

@@ -63,20 +63,11 @@ struct PersistedFilterState: Codable, Equatable {
     /// Absent in every file written before this existed, which decodes to `true`: only an applied
     /// set was ever saved.
     var isApplied: Bool
-    /// Whether the rows were saved from the panel's Text mode. Absent in every older file, which
-    /// decodes to Builder; an older build ignores the key and shows the one raw row it holds.
-    var editMode: FilterEditMode
 
-    init(
-        filters: [TableFilter],
-        logicMode: FilterLogicMode = .and,
-        isApplied: Bool = true,
-        editMode: FilterEditMode = .builder
-    ) {
+    init(filters: [TableFilter], logicMode: FilterLogicMode = .and, isApplied: Bool = true) {
         self.filters = filters
         self.logicMode = logicMode
         self.isApplied = isApplied
-        self.editMode = editMode
     }
 
     init(from decoder: Decoder) throws {
@@ -85,18 +76,16 @@ struct PersistedFilterState: Codable, Equatable {
             self.filters = filters
             self.logicMode = (try? keyed.decode(FilterLogicMode.self, forKey: .logicMode)) ?? .and
             self.isApplied = (try? keyed.decode(Bool.self, forKey: .isApplied)) ?? true
-            self.editMode = (try? keyed.decode(FilterEditMode.self, forKey: .editMode)) ?? .builder
             return
         }
         let single = try decoder.singleValueContainer()
         self.filters = try single.decode([TableFilter].self)
         self.logicMode = .and
         self.isApplied = true
-        self.editMode = .builder
     }
 
     private enum CodingKeys: String, CodingKey {
-        case filters, logicMode, isApplied, editMode
+        case filters, logicMode, isApplied
     }
 }
 

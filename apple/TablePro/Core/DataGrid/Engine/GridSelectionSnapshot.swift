@@ -57,24 +57,6 @@ struct GridSelectionSnapshot: Equatable {
         self.mode = selection.mode
     }
 
-    /// For rows a new read gave other ids: each selected row keeps its place under its new id, and a
-    /// row the map leaves out went with the read, so it leaves the selection.
-    func remappingRows(_ rowMap: [RowID: RowID]) -> GridSelectionSnapshot {
-        func cell(_ cell: Cell?) -> Cell? {
-            guard let cell, let rowID = rowMap[cell.rowID] else { return nil }
-            return Cell(rowID: rowID, columnID: cell.columnID)
-        }
-        var remapped = self
-        remapped.rowIDs = rowIDs.compactMap { rowMap[$0] }
-        remapped.rectangles = rectangles.compactMap { rectangle in
-            let rowIDs = rectangle.rowIDs.compactMap { rowMap[$0] }
-            return rowIDs.isEmpty ? nil : Rectangle(rowIDs: rowIDs, columnIDs: rectangle.columnIDs)
-        }
-        remapped.activeCell = cell(activeCell)
-        remapped.anchor = cell(anchor)
-        return remapped.rowIDs.isEmpty && remapped.rectangles.isEmpty ? .empty : remapped
-    }
-
     var namedRowIDs: Set<RowID> {
         var named = Set(rowIDs)
         for rectangle in rectangles { named.formUnion(rectangle.rowIDs) }
