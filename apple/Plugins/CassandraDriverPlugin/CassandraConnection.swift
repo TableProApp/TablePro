@@ -959,7 +959,7 @@ actor CassandraConnectionActor {
         return "Unknown error"
     }
 
-    // One non-suspending actor job, blocked in cass_future_wait and in `abort.send`, so the consumer's departure
+    // One non-suspending actor job, blocked in cass_future_wait and in `deliverBlocking`, so the consumer's departure
     // reaches it only through `abort`, read between pages and between rows rather than mid-request.
     func streamQuery(
         _ cql: String,
@@ -1064,7 +1064,7 @@ actor CassandraConnectionActor {
             cass_result_free(result)
 
             if !page.isEmpty, !aborted {
-                abort.send(page, to: continuation)
+                _ = PluginRowStream.deliverBlocking(.rows(page), to: continuation)
             }
 
             if !hasMore || aborted { break }

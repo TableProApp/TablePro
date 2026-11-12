@@ -513,7 +513,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let batching = OracleRowBatcher(rowsPerBatch: OracleRowBatcher.batchRows, rowBudget: rowBudget)
 
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             // A plain `Task {}` is not a child of this one, so only the explicit cancel on abort stops oracle-nio.
             let streamTask = Task {
                 do {
@@ -525,7 +525,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                                 columnTypeNames: columns.map(\.typeName)
                             )))
                         case .rows(let batch):
-                            await abort.send(batch.map { $0.map(\.asPluginCell) }, to: continuation)
+                            _ = await PluginRowStream.deliver(.rows(batch.map { $0.map(\.asPluginCell) }), to: continuation)
                         case .affectedRows:
                             // The plugin stream carries rows only. The app sends writes and DDL through
                             // `execute`, which reports the count, and bounds only reads through this stream.

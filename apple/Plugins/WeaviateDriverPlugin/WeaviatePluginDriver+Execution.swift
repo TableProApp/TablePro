@@ -47,10 +47,10 @@ extension WeaviatePluginDriver {
         guard let collectionName = WeaviateOperations.decodeExport(query) else {
             return defaultStreamRows(query: query)
         }
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
-                    try await self.streamCollection(collectionName, abort: abort, continuation: continuation)
+                    try await self.streamCollection(collectionName, continuation: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -62,7 +62,6 @@ extension WeaviatePluginDriver {
 
     private func streamCollection(
         _ name: String,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let client = try requireClient()
@@ -80,7 +79,7 @@ extension WeaviatePluginDriver {
                     value.map(PluginCellValue.text) ?? .null
                 }
             }
-            await abort.send(rows, to: continuation)
+            _ = await PluginRowStream.deliver(.rows(rows), to: continuation)
         }
     }
 

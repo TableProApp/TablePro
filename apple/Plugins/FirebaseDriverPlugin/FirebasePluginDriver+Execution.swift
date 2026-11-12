@@ -234,11 +234,11 @@ extension FirebasePluginDriver {
     // MARK: - Export
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     if case .browse(let spec)? = try? FirebaseStatement.parse(query), spec.limit == 0 {
-                        try await self.export(spec, abort: abort, continuation: continuation)
+                        try await self.export(spec, continuation: continuation)
                     } else {
                         let result = try await self.execute(query: query)
                         continuation.yield(.header(PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames,
@@ -254,11 +254,7 @@ extension FirebasePluginDriver {
         }
     }
 
-    private func export(
-        _ spec: FirebaseBrowseSpec,
-        abort: PluginStreamAbort,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
+    private func export(_ spec: FirebaseBrowseSpec, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) async throws {
         var header: [String]?
         var types: [String] = []
         try await forEachExportPage(spec) { columns, columnTypes, rows in
@@ -268,7 +264,7 @@ extension FirebasePluginDriver {
                 continuation.yield(.header(PluginStreamHeader(columns: header ?? [], columnTypeNames: types, estimatedRowCount: nil)))
             }
             let fixed = header ?? []
-            await abort.send(rows.map { row in Self.align(row, columns: columns, to: fixed) }, to: continuation)
+            _ = await PluginRowStream.deliver(.rows(rows.map { row in Self.align(row, columns: columns, to: fixed) }), to: continuation)
         }
         if header == nil {
             continuation.yield(.header(PluginStreamHeader(columns: [Self.extraColumn], columnTypeNames: ["map"], estimatedRowCount: nil)))

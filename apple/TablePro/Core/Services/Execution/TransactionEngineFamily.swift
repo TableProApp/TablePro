@@ -68,7 +68,9 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
     // After a failed statement the block takes nothing but a rollback, so one error costs every pending change.
     internal var failedStatementAbortsTransaction: Bool {
         switch self {
-        case .postgres, .redshift, .cockroach, .duckdb:
+        // Teradata session mode rolls the whole transaction back on an error. ANSI mode keeps it, but nothing here
+        // knows the mode.
+        case .postgres, .redshift, .cockroach, .duckdb, .teradata:
             return true
         case .mysql, .sqlite, .sqlServer, .oracle, .redis, .other:
             return false

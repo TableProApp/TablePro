@@ -7,7 +7,7 @@ import TableProPluginKit
 extension InfluxDBPluginDriver {
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let remembered = streamedGrid(query) else { return collectedStream(query) }
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let producer = Task {
                 do {
                     try await self.streamGrid(remembered, abort: abort, continuation: continuation)
@@ -68,7 +68,7 @@ extension InfluxDBPluginDriver {
                     continuation.yield(.header(PluginStreamHeader(columns: batch.columns, columnTypeNames: batch.typeNames)))
                 }
                 if !batch.rows.isEmpty {
-                    await abort.send(Self.cells(batch.rows), to: continuation)
+                    _ = await PluginRowStream.deliver(.rows(Self.cells(batch.rows)), to: continuation)
                 }
             }
         }

@@ -84,24 +84,21 @@ public final class SpannerExecutor: Sendable {
         }
     }
 
-    // Each output goes to `emit`, and a query's response is read on only once `emit` returns.
-    public func stream(_ sql: String, hostParameters: [SpannerCell]?, into emit: @escaping SpannerStreamEmit) async throws {
-        try ensureOpen()
-        try await stream(prepare(sql, hostParameters: hostParameters), into: emit)
+    public func stream(_ sql: String, hostParameters: [SpannerCell]?) -> AsyncThrowingStream<SpannerStreamOutput, Error> {
+        do {
+            try ensureOpen()
+            return stream(try prepare(sql, hostParameters: hostParameters))
+        } catch {
+            return AsyncThrowingStream { $0.finish(throwing: error) }
+        }
     }
 
-    public func stream(_ statement: SpannerRenderedStatement, into emit: @escaping SpannerStreamEmit) async throws {
-        try ensureOpen()
+    public func stream(_ statement: SpannerRenderedStatement) -> AsyncThrowingStream<SpannerStreamOutput, Error> {
         let prepared = SpannerPreparedStatement(statement)
         guard case .query = SpannerStatementClassifier.classify(prepared.sql, dialect: dialect) else {
-            let outcome = try await run(statement)
-            await emit(.header(outcome.fields))
-            if !outcome.rows.isEmpty {
-                await emit(.rows(outcome.rows))
-            }
-            return
+            return outcomeStream(statement)
         }
-        try await streamQuery(prepared, into: emit)
+        return queryStream(prepared)
     }
 
     public func read(_ statement: SpannerRenderedStatement) async throws -> [[SpannerCell]] {
@@ -202,6 +199,24 @@ public final class SpannerExecutor: Sendable {
         } catch let error as SpannerAPIError where error.isSessionNotFound {
             await sessions.discardReadSession(session)
             return try await body(try await sessions.readSessionName())
+        }
+    }
+
+    private func outcomeStream(_ statement: SpannerRenderedStatement) -> AsyncThrowingStream<SpannerStreamOutput, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let outcome = try await self.run(statement)
+                    continuation.yield(.header(outcome.fields))
+                    if !outcome.rows.isEmpty {
+                        continuation.yield(.rows(outcome.rows))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }

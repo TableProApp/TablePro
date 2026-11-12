@@ -181,12 +181,12 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         report: HanaStreamReport,
         refusesCutValues: Bool
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let driver = self
             let producer = Task {
                 do {
                     try await driver.produce(
-                        sql, into: continuation, abort: abort, report: report, refusesCutValues: refusesCutValues
+                        sql, into: continuation, report: report, refusesCutValues: refusesCutValues
                     )
                     continuation.finish()
                 } catch {
@@ -202,18 +202,17 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func produce(
         _ sql: String,
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
-        abort: PluginStreamAbort,
         report: HanaStreamReport,
         refusesCutValues: Bool
     ) async throws {
         if HanaExplainStatement.explainedStatement(in: sql) != nil {
             let result = try await run(sql, parameters: nil, rowCap: nil)
-            continuation.yield(.header(PluginStreamHeader(
+            _ = await PluginRowStream.deliver(.header(PluginStreamHeader(
                 columns: result.columns,
                 columnTypeNames: result.columnTypeNames
-            )))
+            )), to: continuation)
             if !result.rows.isEmpty {
-                continuation.yield(.rows(result.rows))
+                _ = await PluginRowStream.deliver(.rows(result.rows), to: continuation)
             }
             return
         }
@@ -225,10 +224,10 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 cancellation: query.cancellation,
                 onHeader: { header in
                     report.record(header)
-                    continuation.yield(.header(PluginStreamHeader(
+                    _ = PluginRowStream.deliverBlocking(.header(PluginStreamHeader(
                         columns: header.columns,
                         columnTypeNames: header.columnTypeNames
-                    )))
+                    )), to: continuation, stops: { query.cancellation.isCancelled })
                 },
                 onBatch: { batch in
                     report.record(truncatedLargeObjects: batch.truncatedLobCount)
@@ -238,7 +237,12 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         return
                     }
                     // Runs on the session's own queue, which waits here while the reader is behind.
-                    abort.send(HanaResultMapping.pluginRows(batch.rows), to: continuation)
+                    let delivered = PluginRowStream.deliverBlocking(
+                        .rows(HanaResultMapping.pluginRows(batch.rows)),
+                        to: continuation,
+                        stops: { query.cancellation.isCancelled }
+                    )
+                    if !delivered { _ = query.cancellation.cancel() }
                 }
             )
         } catch let failure as HanaBridgeFailure {

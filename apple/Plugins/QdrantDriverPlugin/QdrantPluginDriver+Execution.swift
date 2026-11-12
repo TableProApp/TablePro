@@ -150,11 +150,11 @@ extension QdrantPluginDriver {
 
     // The protocol's default `streamRows` runs `execute` once and buffers the whole collection.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     if let name = QdrantOperations.decodeExport(query) {
-                        try await self.streamCollection(name, abort: abort, continuation: continuation)
+                        try await self.streamCollection(name, continuation: continuation)
                     } else {
                         let result = try await self.execute(query: query)
                         continuation.yield(.header(PluginStreamHeader(
@@ -177,7 +177,6 @@ extension QdrantPluginDriver {
     // alone, which skips the vectors that make up most of a page.
     private func streamCollection(
         _ name: String,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let client = try requireClient()
@@ -193,7 +192,7 @@ extension QdrantPluginDriver {
             estimatedRowCount: collection.pointsCount
         )))
         for try await points in client.pointPages(collection: name, pageSize: Self.exportPageSize) {
-            await abort.send(points.map(cells(columns: columns, typeNames: typeNames)), to: continuation)
+            _ = await PluginRowStream.deliver(.rows(points.map(cells(columns: columns, typeNames: typeNames))), to: continuation)
         }
     }
 }

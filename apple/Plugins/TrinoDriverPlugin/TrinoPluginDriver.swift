@@ -14,9 +14,6 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     static let logger = Logger(subsystem: "com.TablePro", category: "TrinoPluginDriver")
 
-    // The coordinator abandons a query its client has not polled for query.client.timeout, 5 minutes by default.
-    static let unpolledQueryPause: TimeInterval = 60
-
     // PluginKit's parameter binder calls back into `execute(query:)`, so the host's split reaches it through the task.
     @TaskLocal private static var hostSplit = false
 
@@ -176,23 +173,18 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
                 do {
                     var headerSent = false
-                    try await client.executeStreamed(
-                        statement,
-                        onColumns: { columns in
+                    for try await element in client.executeStreamed(statement) {
+                        switch element {
+                        case .columns(let columns):
                             continuation.yield(.header(PluginStreamHeader(
                                 columns: columns.map(\.name),
                                 columnTypeNames: columns.map(\.typeName)
                             )))
                             headerSent = true
-                        },
-                        onPage: { page in
-                            await abort.send(
-                                page.map { row in row.map(Self.cellValue) },
-                                to: continuation,
-                                maximumPause: Self.unpolledQueryPause
-                            )
+                        case .rows(let page):
+                            continuation.yield(.rows(page.map { row in row.map(Self.cellValue) }))
                         }
-                    )
+                    }
                     if !headerSent {
                         continuation.yield(.header(PluginStreamHeader(columns: [], columnTypeNames: [])))
                     }

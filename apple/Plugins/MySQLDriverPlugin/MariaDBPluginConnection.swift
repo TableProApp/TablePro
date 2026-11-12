@@ -742,10 +742,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     private static let killTimeoutSeconds: UInt32 = 5
 
-    // The server drops a connection it could not write a result to for net_write_timeout, 60 s by default and 600 s
-    // once `raiseStreamingWriteTimeout` ran; the lower one holds when a server refused the raise.
-    private static let unreadResultPause: TimeInterval = 20
-
     // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
     private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
         MariaDBTLSMode.apply(mode, serverName: tlsServerName, to: handle)
@@ -1459,7 +1455,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         /// The drain belongs to the producer. Enqueued from `onTermination` it would sit behind the
         /// producer on this one serial queue and run only after the whole result had been read,
         /// which is why the abort is a polled flag instead.
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             self.queue.async { [self] in
                 do {
                     let stream = {
@@ -1529,11 +1525,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             binaryStringsAreText: binaryStringsAreText(in: queryToRun, flavor: sessionFlavor)
         )
 
-        continuation.yield(.header(PluginStreamHeader(
+        let stops = { self.cancellationGate.isCancelled(generation) }
+        _ = PluginRowStream.deliverBlocking(.header(PluginStreamHeader(
             columns: columns.names,
             columnTypeNames: columns.typeNames,
             estimatedRowCount: nil
-        )))
+        )), to: continuation, stops: stops)
 
         let batchSize = 5_000
         var batch: [PluginRow] = []
@@ -1550,14 +1547,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
 
             batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
-            if batch.count >= batchSize {
-                abort.send(batch, to: continuation, maximumPause: Self.unreadResultPause)
+            // A reader that left or a Stop is handled at the top of the loop.
+            if batch.count >= batchSize,
+               PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops) {
                 batch.removeAll(keepingCapacity: true)
             }
         }
-        if !batch.isEmpty {
-            continuation.yield(.rows(batch))
-        }
+        let delivered = batch.isEmpty || PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops)
 
         if mysql_errno(mysql) != 0 {
             let error = noting(getError(), generation: generation)
@@ -1567,6 +1563,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         mysql_free_result(resultPtr)
         try consumeTrailingResults(on: mysql, generation: generation)
+        guard delivered else { throw CancellationError() }
     }
 
     // While the stream waits for its reader the server waits on the socket, and gives up after `net_write_timeout`,

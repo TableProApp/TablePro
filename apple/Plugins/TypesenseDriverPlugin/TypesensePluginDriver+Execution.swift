@@ -112,10 +112,10 @@ extension TypesensePluginDriver {
     // Export reads the collection's JSONL endpoint a line at a time, so a collection larger than memory still exports
     // and the 250-hit search ceiling never applies. Anything else runs as an ordinary query, handed over in one batch.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
-                    try await self.performStreamRows(query: query, abort: abort, continuation: continuation)
+                    try await self.performStreamRows(query: query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -126,7 +126,6 @@ extension TypesensePluginDriver {
 
     private func performStreamRows(
         query: String,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         guard let collection = TypesenseOperations.decodeExport(query) else {
@@ -154,12 +153,12 @@ extension TypesensePluginDriver {
         try await connection.streamExport(collection: collection) { document in
             batch.append(document)
             guard batch.count >= Self.exportBatchSize else { return true }
-            await abort.send(TypesenseSchema.rows(for: batch, columns: columns, length: .whole), to: continuation)
+            _ = await PluginRowStream.deliver(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)), to: continuation)
             batch.removeAll(keepingCapacity: true)
             return true
         }
         if !batch.isEmpty {
-            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)))
+            _ = await PluginRowStream.deliver(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)), to: continuation)
         }
         continuation.finish()
     }

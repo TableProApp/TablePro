@@ -760,30 +760,28 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let actor = connectionActor
 
-        return PluginRowStream.make { continuation, abort in
-            let task = Task {
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
+            Task {
                 do {
-                    try await actor.streamQuery(query, continuation: continuation, abort: abort)
+                    try await actor.streamQuery(query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            abort.onAbort { task.cancel() }
         }
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard context.readOnly, context.origin == .external else { return streamRows(query: query) }
         let actor = connectionActor
-        return PluginRowStream.make { continuation, abort in
-            let task = Task {
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
+            Task {
                 do {
-                    try await actor.streamReadOnly(query, continuation: continuation, abort: abort)
+                    try await actor.streamReadOnly(query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            abort.onAbort { task.cancel() }
         }
     }
 

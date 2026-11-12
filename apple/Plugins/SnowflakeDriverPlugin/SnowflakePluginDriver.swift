@@ -621,7 +621,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     guard let conn = self.connection else { throw SnowflakeError.notConnected }
@@ -633,10 +633,10 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         estimatedRowCount: streamed.estimatedRowCount
                     )))
                     if !streamed.inlineRows.isEmpty {
-                        await abort.send(streamed.inlineRows.map { row in row.map(Self.cellValue) }, to: continuation)
+                        _ = await PluginRowStream.deliver(.rows(streamed.inlineRows.map { row in row.map(Self.cellValue) }), to: continuation)
                     }
                     try await conn.forEachChunk(of: streamed) { batch in
-                        await abort.send(batch.map { row in row.map(Self.cellValue) }, to: continuation)
+                        _ = await PluginRowStream.deliver(.rows(batch.map { row in row.map(Self.cellValue) }), to: continuation)
                     }
                     continuation.finish()
                 } catch {

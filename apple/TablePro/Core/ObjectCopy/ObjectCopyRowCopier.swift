@@ -14,9 +14,9 @@
 //  protocol default that calls `execute` and yields the whole result at once,
 //  which Dameng still inherits, so there a large table is materialised before
 //  the first batch is written and Stop cannot land until it is. Every other SQL
-//  driver implements it for real, and reads only as fast as the writes take its
-//  rows. Export has the same property through the same call; a capability that
-//  lets this refuse rather than inherit would have to be declared by every plugin.
+//  driver implements it for real. Export has the same property through the same
+//  call; a capability that lets this refuse rather than inherit would have to be
+//  declared by every plugin.
 //
 //  This is the write path CSV and JSON import already use, through the same
 //  `SQLStatementGenerator` and its per-engine bind-parameter ceiling. The one

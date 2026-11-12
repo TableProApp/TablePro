@@ -21,8 +21,6 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     static let maxResultWindow = 10_000
     static let deepPageBatchSize = 1_000
     static let pitKeepAlive = "1m"
-    // The point in time expires `pitKeepAlive` after the last page that asked for it.
-    static let unreadPagePause: TimeInterval = 20
 
     var connection: ElasticsearchConnection? { lock.withLock { _connection } }
 

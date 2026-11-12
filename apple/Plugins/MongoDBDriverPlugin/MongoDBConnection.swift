@@ -830,8 +830,11 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     }
     // MARK: - Streaming Queries
 
-    // Takes the options as the document the caller built, so an export keeps the `hint`, `collation` and
-    // `allowDiskUse` that decide which documents the grid showed.
+    /// Streams a find whose options are given as the document the caller already built.
+    ///
+    /// Taking the text rather than rebuilding it from pieces is what keeps an export reading the
+    /// same rows the grid showed: `hint`, `collation` and `allowDiskUse` change which documents come
+    /// back, and a signature that only carries sort, projection, skip and limit drops them.
     func streamFind(
         database: String,
         collection: String,
@@ -843,8 +846,8 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         let queue = self.queue
         let streamState = MongoStreamState()
 
-        return PluginRowStream.makeExport { continuation, abort in
-            abort.onAbort {
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            continuation.onTermination = { @Sendable _ in
                 streamState.lock.withLock { streamState.cancelled = true }
                 queue.async {
                     streamState.lock.lock()
@@ -888,7 +891,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
                     streamState.lock.unlock()
 
                     iterateCursorStreaming(
-                        cursor: cursor, continuation: continuation, abort: abort, streamState: streamState
+                        cursor: cursor, continuation: continuation, streamState: streamState
                     ) {
                         try self.fieldCensus(census, client: client, database: database, collection: collection)
                     }
@@ -913,8 +916,8 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         let queue = self.queue
         let streamState = MongoStreamState()
 
-        return PluginRowStream.makeExport { continuation, abort in
-            abort.onAbort {
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            continuation.onTermination = { @Sendable _ in
                 streamState.lock.withLock { streamState.cancelled = true }
                 queue.async {
                     streamState.lock.lock()
@@ -969,7 +972,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
                     streamState.lock.unlock()
 
                     iterateCursorStreaming(
-                        cursor: cursor, continuation: continuation, abort: abort, streamState: streamState
+                        cursor: cursor, continuation: continuation, streamState: streamState
                     ) {
                         try self.fieldCensus(census, client: client, database: database, collection: collection)
                     }

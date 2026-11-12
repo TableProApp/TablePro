@@ -229,7 +229,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let connection = self.connection
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 guard let connection else {
                     continuation.finish(throwing: TeradataWireError.connectionFailed("not connected"))
@@ -247,8 +247,11 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         },
                         onRows: { rows in
                             guard !abort.isAborted else { return false }
-                            abort.send(rows.map { row in row.map { $0.asPluginCell } }, to: continuation)
-                            return !abort.isAborted
+                            let delivered = PluginRowStream.deliverBlocking(
+                                .rows(rows.map { row in row.map { $0.asPluginCell } }),
+                                to: continuation
+                            )
+                            return delivered && !abort.isAborted
                         }
                     )
                     continuation.finish()

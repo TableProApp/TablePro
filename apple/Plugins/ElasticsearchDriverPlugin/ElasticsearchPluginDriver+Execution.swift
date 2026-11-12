@@ -48,30 +48,32 @@ extension ElasticsearchPluginDriver {
 
     // MARK: - Export
 
-    // An export pages the index instead of holding it whole. Anything that is not an export tag keeps the default,
-    // which runs `execute` once and buffers the result, fine for a grid page.
+    /// Exports one index by paging it, yielding each batch instead of holding the whole index.
+    ///
+    /// The protocol default runs `execute` once and buffers the entire result, which is fine for a
+    /// grid page and not for an export. Anything that is not an export tag keeps that default.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let index = ElasticsearchOperations.decodeExport(query) else {
             return defaultStreamRows(query: query)
         }
-        return PluginRowStream.make { continuation, abort in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
                 do {
-                    try await self.streamIndex(index, abort: abort, continuation: continuation)
+                    try await self.streamIndex(index, continuation: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            abort.onAbort { task.cancel() }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
         }
     }
 
-    // A point-in-time pins the index for the whole export, so a document written meanwhile cannot shift the sort and
-    // be exported twice or skipped. `search_after` walks it, the only way past the 10,000 `max_result_window` ceiling.
+    /// A point-in-time pins the index for the whole export, so a document written while it runs
+    /// cannot shift the sort and be exported twice or skipped. `search_after` walks it, which is the
+    /// only way past the 10,000 `max_result_window` ceiling.
     private func streamIndex(
         _ index: String,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         guard let conn = connection else { throw ElasticsearchError.notConnected }
@@ -98,8 +100,9 @@ extension ElasticsearchPluginDriver {
             let hits = extractHits(response)
             guard !hits.isEmpty else { break }
 
-            // The columns are settled once, from the mapping and the first batch: a stream has one header, so a later
-            // batch holding a new field must not widen it.
+            /// The columns are settled once, from the mapping plus the first batch, because a
+            /// stream has one header and a later batch holding a field the first did not must not
+            /// widen it.
             if columns == nil {
                 let resolved = ElasticsearchMappingFlattener.columns(forHits: hits, mappingColumns: mappingColumns)
                 columns = resolved
@@ -110,13 +113,9 @@ extension ElasticsearchPluginDriver {
                 )))
             }
             if let resolved = columns {
-                await abort.send(
-                    ElasticsearchMappingFlattener.rows(
-                        forHits: hits, columns: resolved, nestedParents: nestedParents, length: .whole
-                    ),
-                    to: continuation,
-                    maximumPause: Self.unreadPagePause
-                )
+                continuation.yield(.rows(ElasticsearchMappingFlattener.rows(
+                    forHits: hits, columns: resolved, nestedParents: nestedParents, length: .whole
+                )))
             }
 
             searchAfter = hits.last?["sort"] as? [Any]

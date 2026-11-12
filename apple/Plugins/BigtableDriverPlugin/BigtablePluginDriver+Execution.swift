@@ -149,11 +149,11 @@ extension BigtablePluginDriver {
     // MARK: - Export
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     if case .browse(let spec)? = try? BigtableStatement.parse(query), spec.limit == 0 {
-                        try await self.export(spec, abort: abort, continuation: continuation)
+                        try await self.export(spec, continuation: continuation)
                     } else {
                         let result = try await self.execute(query: query)
                         var header = PluginStreamHeader(
@@ -172,12 +172,8 @@ extension BigtablePluginDriver {
         }
     }
 
-    // The columns come from the first page; a column only later rows hold goes into `__extra__`.
-    private func export(
-        _ spec: BigtableBrowseSpec,
-        abort: PluginStreamAbort,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
+    /// The columns come from the first page; a column only later rows hold goes into `__extra__`.
+    private func export(_ spec: BigtableBrowseSpec, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) async throws {
         let client = try requireClient()
         var header: [String]?
         var after: Data?
@@ -194,7 +190,7 @@ extension BigtablePluginDriver {
                 )))
             }
             if !rows.isEmpty {
-                await abort.send(page.rows(alignedTo: columns).map { $0.map(Self.cell) }, to: continuation)
+                _ = await PluginRowStream.deliver(.rows(page.rows(alignedTo: columns).map { $0.map(Self.cell) }), to: continuation)
             }
             after = rows.count == Self.exportPageSize ? rows.last?.key : nil
         } while after != nil

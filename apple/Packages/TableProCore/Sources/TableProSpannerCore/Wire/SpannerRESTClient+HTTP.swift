@@ -61,13 +61,30 @@ internal extension SpannerRESTClient {
         return (response, chunks)
     }
 
-    // Pulled: a chunk is read and decoded only when the reader wants an event past the ones already decoded.
     static func events(
         from chunks: AsyncThrowingStream<Data, Error>,
         httpStatus: Int
     ) -> AsyncThrowingStream<SpannerStreamEvent, Error> {
-        let source = SpannerEventSource(chunks: chunks, httpStatus: httpStatus)
-        return AsyncThrowingStream(unfolding: { try await source.next() })
+        AsyncThrowingStream { continuation in
+            let producer = Task {
+                do {
+                    var decoder = SpannerStreamDecoder(httpStatus: httpStatus)
+                    for try await chunk in chunks {
+                        for event in try decoder.consume(chunk) {
+                            continuation.yield(event)
+                        }
+                    }
+                    try Task.checkCancellation()
+                    for event in try decoder.finish() {
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in producer.cancel() }
+        }
     }
 
     func encode<Value: Encodable>(_ value: Value) throws -> Data {
@@ -122,33 +139,6 @@ internal extension SpannerRESTClient {
             }
         }
         return body
-    }
-}
-
-// One reader pulls the events, so one call at a time reaches the decoder.
-private final class SpannerEventSource: @unchecked Sendable {
-    private var chunks: AsyncThrowingStream<Data, Error>.AsyncIterator
-    private var decoder: SpannerStreamDecoder
-    private var pending: [SpannerStreamEvent] = []
-    private var isFinished = false
-
-    init(chunks: AsyncThrowingStream<Data, Error>, httpStatus: Int) {
-        self.chunks = chunks.makeAsyncIterator()
-        decoder = SpannerStreamDecoder(httpStatus: httpStatus)
-    }
-
-    func next() async throws -> SpannerStreamEvent? {
-        while pending.isEmpty {
-            guard !isFinished else { return nil }
-            if let chunk = try await chunks.next() {
-                pending = try decoder.consume(chunk)
-            } else {
-                try Task.checkCancellation()
-                isFinished = true
-                pending = try decoder.finish()
-            }
-        }
-        return pending.removeFirst()
     }
 }
 

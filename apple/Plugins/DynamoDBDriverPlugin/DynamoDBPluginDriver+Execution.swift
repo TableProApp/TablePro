@@ -344,11 +344,11 @@ extension DynamoDBPluginDriver {
     // the items go to a temporary file while their attributes are collected and the rows follow once the read ends.
     // The rows are read back from the file only as fast as the consumer takes them.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     try await self.run { session in
-                        try await self.spool(query, session: session, continuation: continuation, abort: abort)
+                        try await self.spool(query, session: session, continuation: continuation)
                     }
                     continuation.finish()
                 } catch {
@@ -362,8 +362,7 @@ extension DynamoDBPluginDriver {
     private func spool(
         _ text: String,
         session: Session,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
-        abort: PluginStreamAbort
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let statement = try DynamoDBStatement.parse(text)
         let source: SpoolSource
@@ -415,7 +414,7 @@ extension DynamoDBPluginDriver {
             for start in stride(from: 0, to: slice.count, by: 1_000) {
                 try Task.checkCancellation()
                 let batch = slice[start..<min(start + 1_000, slice.count)]
-                await abort.send(batch.map { item in columns.map { DynamoDBCellCodec.cell(for: item[$0]) } }, to: continuation)
+                _ = await PluginRowStream.deliver(.rows(batch.map { item in columns.map { DynamoDBCellCodec.cell(for: item[$0]) } }), to: continuation)
             }
             return
         }
@@ -429,11 +428,11 @@ extension DynamoDBPluginDriver {
             let item = try DynamoDBItem(wireItem: DynamoDBJSON.parse(line))
             batch.append(columns.map { DynamoDBCellCodec.cell(for: item[$0]) })
             if batch.count == 1_000 {
-                await abort.send(batch, to: continuation)
+                _ = await PluginRowStream.deliver(.rows(batch), to: continuation)
                 batch.removeAll(keepingCapacity: true)
             }
         }
-        if !batch.isEmpty { continuation.yield(.rows(batch)) }
+        if !batch.isEmpty { _ = await PluginRowStream.deliver(.rows(batch), to: continuation) }
     }
 
     private static let notAReadMarker = "\u{0}not-a-read"

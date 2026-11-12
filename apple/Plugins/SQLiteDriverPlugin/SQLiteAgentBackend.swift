@@ -127,8 +127,7 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
     func streamQuery(
         _ query: String,
         scope: SQLiteStatementScope,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
-        abort: PluginStreamAbort
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         _ = try await withTaskCancellationHandler {
             try await connection.execute(
@@ -151,8 +150,6 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
                         batch.append(values[index..<(index + columnCount)].map(Self.decode))
                         index += columnCount
                     }
-                    // Not paced: a reader thread waiting here leaves the tunnel relay blocked sending to it, so it
-                    // stops forwarding the heartbeats and the agent's 60 s idle watchdog ends the session.
                     continuation.yield(.rows(batch))
                 }
             )

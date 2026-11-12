@@ -521,10 +521,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, abort: abort, continuation: continuation)
+                    try await self.performStreamRows(query: query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -535,7 +535,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func performStreamRows(
         query: String,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         guard let conn = redisConnection else {
@@ -547,7 +546,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch operation {
         case .scan(_, let pattern, _, let type):
             try await streamScanRows(
-                connection: conn, pattern: pattern, typeFilter: type, scope: .session, abort: abort, continuation: continuation
+                connection: conn, pattern: pattern, typeFilter: type, scope: .session, continuation: continuation
             )
         case .keyBrowse(let pattern, let typeScope, _, _, let database):
             try await conn.withDatabase(database) {
@@ -556,12 +555,11 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     pattern: pattern,
                     typeFilter: typeScope,
                     scope: .outsideBlock,
-                    abort: abort,
                     continuation: continuation
                 )
             }
         case .keys(let pattern):
-            try await streamKeyRows(connection: conn, pattern: pattern, abort: abort, continuation: continuation)
+            try await streamKeyRows(connection: conn, pattern: pattern, continuation: continuation)
         default:
             let startTime = Date()
             let result = try await executeOperation(operation, connection: conn, startTime: startTime)
@@ -584,7 +582,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         pattern: String?,
         typeFilter: String? = nil,
         scope: RedisCommandScope,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         continuation.yield(.header(PluginStreamHeader(
@@ -611,7 +608,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let batchKeys = Array(page.keys[batchStart ..< batchEnd])
                 let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn, stringByteLimit: nil)
                 if !rowBatch.isEmpty {
-                    await abort.send(rowBatch, to: continuation)
+                    _ = await PluginRowStream.deliver(.rows(rowBatch), to: continuation)
                 }
                 batchStart = batchEnd
             }
@@ -624,7 +621,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func streamKeyRows(
         connection conn: any RedisCommandChannel,
         pattern: String,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let keys = (try await conn.run(["KEYS", pattern]).arrayValue ?? []).map(\.displayText)
@@ -638,7 +634,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let batch = Array(keys[start ..< min(start + Self.keySummaryBatchSize, keys.count)])
             let rows = try await buildKeySummaryRows(keys: batch, connection: conn, stringByteLimit: nil)
             if !rows.isEmpty {
-                await abort.send(rows, to: continuation)
+                _ = await PluginRowStream.deliver(.rows(rows), to: continuation)
             }
         }
         continuation.finish()

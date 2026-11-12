@@ -690,19 +690,24 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         stream(query, scope: SQLiteStatementScope(context))
     }
 
+    // Over the SSH agent the stream stays unbounded: a reader waiting for its consumer stops the tunnel relaying the
+    // heartbeats, and the agent's idle watchdog ends the session.
     private func stream(_ query: String, scope: SQLiteStatementScope) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        return PluginRowStream.make { continuation, abort in
+        let policy: AsyncThrowingStream<PluginStreamElement, Error>.Continuation.BufferingPolicy = backend is SQLiteLocalBackend
+            ? .bufferingOldest(PluginRowStream.boundedBufferBatches)
+            : .unbounded
+        return AsyncThrowingStream(bufferingPolicy: policy) { continuation in
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(
-                        queryToRun, scope: scope, continuation: continuation, abort: abort
-                    )
+                    try await self.backend.streamQuery(queryToRun, scope: scope, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            abort.onAbort { streamTask.cancel() }
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
+            }
         }
     }
 

@@ -185,10 +185,10 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, context: context, abort: abort, continuation: continuation)
+                    try await self.performStreamRows(query: query, context: context, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -201,7 +201,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func performStreamRows(
         query: String,
         context: PluginStatementContext,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         guard let client = httpClient else {
@@ -216,7 +215,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sortAscending: parsed.sortAscending,
                 filter: parsed.filter,
                 client: client,
-                abort: abort,
                 continuation: continuation
             )
             return
@@ -239,7 +237,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sortAscending: Bool,
         filter: EtcdRowFilter,
         client: EtcdHttpClient,
-        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let matcher = try filter.matcher()
@@ -277,7 +274,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 client: client,
                 beforeNextBatch: {
                     guard !unsent.isEmpty else { return }
-                    await abort.send(unsent, to: continuation)
+                    _ = await PluginRowStream.deliver(.rows(unsent), to: continuation)
                     unsent = []
                 },
                 body: { kvs in
@@ -292,7 +289,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ))
         }
         if !unsent.isEmpty {
-            continuation.yield(.rows(unsent))
+            _ = await PluginRowStream.deliver(.rows(unsent), to: continuation)
         }
         continuation.finish()
     }

@@ -283,10 +283,10 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, continuation: continuation, abort: abort)
+                    try await self.performStreamRows(query: query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -298,8 +298,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func performStreamRows(
         query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
-        abort: PluginStreamAbort
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         switch getBackend() {
         case .remote(let client):
@@ -322,7 +321,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
             continuation.finish()
         case .local(let localBackend):
-            try await localBackend.streamQuery(query, continuation: continuation, abort: abort)
+            try await localBackend.streamQuery(query, continuation: continuation)
         case nil:
             throw LibSQLError.notConnected
         }

@@ -151,8 +151,7 @@ actor SQLiteLocalBackend {
 
     func streamQuery(
         _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
-        abort: PluginStreamAbort
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
         guard let db else {
             throw LibSQLError.notConnected
@@ -181,7 +180,7 @@ actor SQLiteLocalBackend {
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty {
-                    continuation.yield(.rows(batch))
+                    _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
                 }
                 continuation.finish(throwing: CancellationError())
                 return
@@ -190,14 +189,14 @@ actor SQLiteLocalBackend {
             batch.append(rowValues(of: statement, count: columnCount))
             if batch.count >= batchSize {
                 // Blocks the actor's thread: an await here would let another call reach the handle mid-statement.
-                abort.send(batch, to: continuation)
+                _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
                 batch.removeAll(keepingCapacity: true)
             }
             stepResult = sqlite3_step(statement)
         }
 
         if !batch.isEmpty {
-            continuation.yield(.rows(batch))
+            _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
         }
 
         do {
