@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Compression
 import Foundation
 
 /// The Python program TablePro runs on the SSH server to open a SQLite database with the server's
@@ -19,27 +20,49 @@ enum RemoteSQLiteAgentSource {
     /// `platform-python` under `/usr/libexec` with no `python3` on `PATH`.
     private static let interpreters = ["python3", "/usr/bin/python3", "/usr/libexec/platform-python"]
 
+    /// The bootstrap each interpreter runs: decode and inflate the program from its first argument,
+    /// then run it. `COMPRESSION_ZLIB` emits raw DEFLATE, so `zlib.decompress` takes wbits `-15`.
+    static let interpreterBootstrap = "import base64,zlib,sys;exec(zlib.decompress(base64.b64decode(sys.argv[1]),-15))"
+
+    /// The program, raw-DEFLATE compressed then base64, as the launcher ships it. Compressed because
+    /// the exec request is one SSH packet, and libssh2 rejects an uncompressed payload at or above
+    /// `MAX_SSH_PACKET_LEN - 0x100` (34744) with `LIBSSH2_ERROR_INVAL`; the raw 24 KB base64, carried
+    /// once per interpreter, ran past that. 4.8 KB compressed leaves room as the program grows.
+    static let encodedProgram: String = {
+        let source = Data(python.utf8)
+        let capacity = source.count + 1_024
+        var deflated = Data(count: capacity)
+        let written = deflated.withUnsafeMutableBytes { destination -> Int in
+            source.withUnsafeBytes { input -> Int in
+                guard let destinationBase = destination.bindMemory(to: UInt8.self).baseAddress,
+                      let inputBase = input.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+                return compression_encode_buffer(destinationBase, capacity, inputBase, source.count, nil, COMPRESSION_ZLIB)
+            }
+        }
+        deflated.removeSubrange(written..<deflated.count)
+        return deflated.base64EncodedString()
+    }()
+
     /// The command handed to `libssh2_channel_process_startup("exec", …)`.
     ///
-    /// The whole string is a fixed literal but for the base64 of the program, which is drawn from
-    /// the base64 alphabet alone and is therefore safe as a bare shell word and inside single
-    /// quotes under sh, bash, zsh, fish and csh (measured). The server never sees a byte of user
-    /// data on this line: the database path and every value travel as framed protocol fields once
-    /// the program is running, never as shell text.
+    /// The whole string is a fixed literal but for the base64 blob, which is drawn from the base64
+    /// alphabet alone and is therefore safe as a bare shell word and inside single quotes under sh,
+    /// bash, zsh, fish and csh (measured). It is carried once, in `b`, rather than per interpreter.
+    /// The server never sees a byte of user data on this line: the database path and every value
+    /// travel as framed protocol fields once the program is running, never as shell text.
     ///
-    /// `-I` runs the interpreter isolated, so `PYTHON*` variables and the user site directory
-    /// cannot redirect it. When no interpreter is found the launcher prints the agent's own notice
-    /// on standard output, where it reaches the client as a launcher notice rather than being lost
-    /// on standard error, and exits cleanly.
+    /// `-I` runs the interpreter isolated, so `PYTHON*` variables and the user site directory cannot
+    /// redirect it. When no interpreter is found the launcher prints the agent's own notice on
+    /// standard output, where it reaches the client as a launcher notice rather than being lost on
+    /// standard error, and exits cleanly.
     static func launcherCommand() -> String {
-        let encoded = Data(python.utf8).base64EncodedString()
-        let loop = interpreters.map { interpreter -> String in
+        let branches = interpreters.map { interpreter -> String in
             let present = #"command -v "\#(interpreter)" >/dev/null 2>&1"#
-            let run = #"exec "\#(interpreter)" -I -S -c "import base64,sys;exec(base64.b64decode(sys.argv[1]))" \#(encoded)"#
+            let run = #"exec "\#(interpreter)" -I -S -c "\#(interpreterBootstrap)" "$b""#
             return "if \(present); then \(run); fi"
         }
         .joined(separator: "; ")
-        return "sh -c '" + loop + "; echo " + RemoteSQLiteWire.noPythonNotice + "; exit 0'"
+        return "sh -c 'b=" + encodedProgram + "; " + branches + "; echo " + RemoteSQLiteWire.noPythonNotice + "; exit 0'"
     }
 
     static let python = #"""

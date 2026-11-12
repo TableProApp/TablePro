@@ -42,12 +42,13 @@ struct RemoteSQLiteAdmissionTests {
         #expect(token.allSatisfy { $0.isHexDigit })
     }
 
-    @Test func launcherCommandCarriesNoUserDataAndFitsTheArgumentLimit() {
+    @Test func launcherCommandCarriesNoUserDataAndFitsThePacketLimit() {
         let command = RemoteSQLiteAgentSource.launcherCommand()
-        #expect(command.hasPrefix("sh -c '"))
+        #expect(command.hasPrefix("sh -c 'b="))
         #expect(command.contains(RemoteSQLiteWire.noPythonNotice))
-        #expect(command.contains("base64.b64decode"))
-        // Well under the Linux MAX_ARG_STRLEN of 128 KiB.
-        #expect(command.utf8.count < 100_000)
+        #expect(command.contains("zlib.decompress"))
+        // The exec request is one SSH packet; libssh2 rejects an uncompressed payload at or above
+        // MAX_SSH_PACKET_LEN - 0x100 with -34. Stay under it with room to spare.
+        #expect(command.utf8.count < 34_744)
     }
 }
