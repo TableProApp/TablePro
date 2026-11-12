@@ -100,6 +100,9 @@ struct SQLStatementGeneratorImportTests {
         #expect(try makeGenerator(databaseType: .sqlite).maxBindParameters == 32_766)
         #expect(try makeGenerator(databaseType: .mssql).maxBindParameters == 2_100)
         #expect(try makeGenerator(databaseType: .mysql).maxBindParameters == 65_535)
+        #expect(try makeGenerator(databaseType: .libsql).maxBindParameters == 32_766)
+        #expect(try makeGenerator(databaseType: .turso).maxBindParameters == 32_766)
+        #expect(try makeGenerator(databaseType: .cloudflareD1).maxBindParameters == 100)
     }
 
     @Test("keyMatchCountStatement asks one count per key, tagged with its position")

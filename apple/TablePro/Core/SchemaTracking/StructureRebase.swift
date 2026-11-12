@@ -105,18 +105,35 @@ enum StructureRebase {
             let entityName = entity[keyPath: name]
             if !entityName.isEmpty, idsBeforeSave[entityName] == nil { idsBeforeSave[entityName] = entity.id }
         }
+        let earlierByID = Dictionary(earlier.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let loadedNames = Set(loaded.map { $0[keyPath: name] })
+        func reads(_ entity: Entity, as held: Entity?) -> Bool {
+            guard let held else { return false }
+            var probe = entity
+            probe[keyPath: id] = held.id
+            return probe == held
+        }
+        // A deleted definition and another one that takes its name: the drop runs first, so the table still holds the
+        // deleted one while a rename into the name has not run, or while it reads as it did before the save. A rename
+        // whose old name another definition takes leaves no such evidence, and the renamed one is matched as before.
+        func stillHoldsDeleted(_ entity: Entity, deleted before: UUID, taker after: UUID) -> Bool {
+            if let renamedFrom = earlierByID[after]?[keyPath: name], renamedFrom != entity[keyPath: name] {
+                return idsAfterSave[renamedFrom] == nil && loadedNames.contains(renamedFrom)
+            }
+            return reads(entity, as: earlierByID[before])
+        }
         var used = Set<UUID>()
         let current: [Entity] = loaded.map { entity in
             let entityName = entity[keyPath: name]
             var candidates = [idsAfterSave[entityName], idsBeforeSave[entityName]].compactMap { $0 }
+            if let before = idsBeforeSave[entityName], deleted.contains(before),
+               let after = idsAfterSave[entityName], after != before,
+               stillHoldsDeleted(entity, deleted: before, taker: after) {
+                candidates = [before, after]
+            }
             if entityName.isEmpty {
                 // A definition with no name is the one it was when nothing else about it changed.
-                candidates = earlier.filter { held in
-                    var probe = entity
-                    probe[keyPath: id] = held.id
-                    return probe == held
-                }
-                .map(\.id)
+                candidates = earlier.filter { reads(entity, as: $0) }.map(\.id)
             }
             guard let kept = candidates.first(where: { !used.contains($0) }) else { return entity }
             used.insert(kept)
@@ -126,7 +143,6 @@ enum StructureRebase {
         }
 
         let currentByID = Dictionary(current.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let earlierByID = Dictionary(earlier.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var rebasedWorking: [Entity] = []
         var changes: [(key: SchemaChangeIdentifier, change: SchemaChange)] = []
         for entity in working {

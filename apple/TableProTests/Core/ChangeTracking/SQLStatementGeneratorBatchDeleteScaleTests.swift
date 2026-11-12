@@ -76,6 +76,25 @@ struct SQLStatementGeneratorBatchDeleteScaleTests {
         #expect(statements.reduce(0) { $0 + $1.parameters.count } == cap + 1)
     }
 
+    @Test("Cloudflare D1 deletes in statements of at most 100 parameters")
+    func cloudflareD1ChunksAtItsLimit() throws {
+        let generator = try makeGenerator(
+            columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .cloudflareD1
+        )
+        let changes = deleteChanges(count: 150, columns: ["id", "name"])
+
+        let statements = generator.generateStatements(
+            from: changes,
+            insertedRowData: [:],
+            deletedRowIDs: Set((0..<150).map(RowID.existing)),
+            insertedRowIDs: []
+        )
+
+        #expect(statements.count == 2)
+        #expect(statements.allSatisfy { $0.parameters.count <= 100 })
+        #expect(statements.reduce(0) { $0 + $1.parameters.count } == 150)
+    }
+
     @Test("Primary-key selection exactly at the cap stays one statement")
     func testPKSelectionExactlyAtCapSingleStatement() throws {
         let generator = try makeGenerator(

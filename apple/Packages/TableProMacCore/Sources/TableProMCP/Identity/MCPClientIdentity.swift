@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import TableProUtilities
 
 public struct MCPClientIdentity: Sendable, Equatable, Hashable, Identifiable {
     public static let unknownClientName = String(localized: "Unknown client")
@@ -56,7 +55,7 @@ public struct MCPClientIdentity: Sendable, Equatable, Hashable, Identifiable {
         ]
         let joined = fields.joined(separator: "\u{1F}")
         let digest = SHA256.hash(data: Data(joined.utf8))
-        return String(digest.hexEncoded.prefix(16))
+        return String(digest.map { String(format: "%02x", $0) }.joined().prefix(16))
     }
 }
 

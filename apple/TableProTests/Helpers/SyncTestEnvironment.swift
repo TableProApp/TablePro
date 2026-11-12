@@ -83,7 +83,8 @@ final class SyncTestEnvironment {
         transport: ScriptedSyncTransport,
         favorites: SQLFavoriteManager? = nil,
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { nil },
-        licenseGate: @escaping @MainActor () -> DisableReason? = { nil }
+        licenseGate: @escaping @MainActor () -> DisableReason? = { nil },
+        activationClock: any Clock<Duration> = ContinuousClock()
     ) -> SyncCoordinator {
         let live = AppServices.live
         let services = AppServices(
@@ -137,7 +138,8 @@ final class SyncTestEnvironment {
             transport: transport,
             makeNetworkMonitor: makeNetworkMonitor,
             columnLayouts: self.columnLayouts,
-            licenseGate: licenseGate
+            licenseGate: licenseGate,
+            activationClock: activationClock
         )
     }
 }

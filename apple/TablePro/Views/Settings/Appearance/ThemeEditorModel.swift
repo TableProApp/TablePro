@@ -12,10 +12,10 @@ internal protocol ThemePreviewing: AnyObject {
 
 extension ThemeEngine: ThemePreviewing {}
 
-/// One open theme. The draft is saved a moment after it settles and on close, previewed in every
-/// window while it is edited, and undone one settled step at a time. The catalog reloads whenever
-/// TablePro becomes active, so a file changed or removed elsewhere is noticed here before a save
-/// could write over it.
+// One open theme. The draft is saved a moment after it settles and on close, previewed in every
+// window while it is edited, and undone one settled step at a time. The catalog reloads when its
+// folder changes on disk, so a file changed or removed elsewhere is noticed before a save could
+// write over it.
 @MainActor
 internal final class ThemeEditorModel: ObservableObject {
     internal enum Alert: Identifiable, Equatable {

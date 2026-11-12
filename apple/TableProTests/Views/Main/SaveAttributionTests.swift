@@ -68,7 +68,7 @@ struct SaveAttributionTests {
         #expect(fixture.changeManager.hasChanges)
         #expect(fixture.tabManager.tabs.first { $0.id == other.id }?.execution.errorMessage == nil)
         // The save is over: a second one is not refused as already running.
-        #expect(fixture.coordinator.rowEditingCoordinator.beginSaveInFlight())
+        #expect(fixture.coordinator.rowEditingCoordinator.beginSaveInFlight(tabId: nil))
         fixture.coordinator.rowEditingCoordinator.endSaveInFlight()
     }
 

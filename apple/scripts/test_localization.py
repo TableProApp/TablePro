@@ -3,13 +3,17 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location("localization", Path(__file__).with_name("localization.py"))
 localization = importlib.util.module_from_spec(SPEC)
@@ -152,6 +156,20 @@ class ExtractedStringTests(unittest.TestCase):
             ["Open Connection", "Run Query", "Shown", "Widget text"],
         )
 
+    def test_the_ios_app_and_its_widget_each_check_their_own_build(self):
+        view = self.source("View.swift", 'Text("App text")\n')
+        widget = self.source("Widget.swift", 'Text("Widget text")\n')
+        self.stringsdata("TableProMobile", view, [("App text", 1, "")])
+        self.stringsdata("TableProWidgetExtension", widget, [("Widget text", 1, "")])
+
+        app = localization.extracted_strings(self.objects, localization.APP_BUILDS["ios"][2], "Localizable")
+        extension = localization.extracted_strings(self.objects, localization.APP_BUILDS["widget"][2], "Localizable")
+
+        self.assertEqual(localization.extracted_keys(app, "Localizable"), ["App text"])
+        self.assertEqual(localization.extracted_keys(extension, "Localizable"), ["Widget text"])
+        self.assertEqual(localization.APP_BUILDS["widget"][:2], localization.APP_BUILDS["ios"][:2])
+        self.assertEqual(localization.CATALOGS["widget"].stem, "Localizable")
+
     @unittest.skipUnless(shutil.which("xcrun"), "adding a key runs xcstringstool")
     def test_adds_an_entry_as_xcode_writes_it(self):
         menu = self.source("Menu.swift", 'String(localized: "menu.edit", defaultValue: "Edit", comment: "Edit menu")\n')
@@ -192,6 +210,13 @@ class ManagementTests(unittest.TestCase):
 
         self.assertEqual(strings["Hello"]["localizations"]["fr"], unit)
         self.assertEqual(localization.unmanaged_keys(strings, ["Hello", "New"]), [])
+
+    def test_plugins_refuses_the_widget_which_links_no_package(self):
+        with mock.patch.object(sys, "argv", ["localization.py", "plugins", "--target", "widget"]):
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    localization.main()
+        self.assertEqual(raised.exception.code, 2)
 
 
 @unittest.skipUnless(shutil.which("xcrun"), "writing a catalog uses Foundation through xcrun swift")

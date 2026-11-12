@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProFirebaseClient
 import TableProFirebaseCore
 import TableProGoogleCloud
 import TableProLogRedaction
