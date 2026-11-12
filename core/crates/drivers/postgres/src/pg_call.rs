@@ -7,7 +7,7 @@ use tokio_postgres::Client;
 
 use crate::cancel::PgStop;
 use crate::errors::map_pool_error;
-use crate::pool::{PgObject, PgPool};
+use crate::pool::{PgMember, PgObject, PgPool};
 
 /// The pooled connection one workspace call runs on.
 ///
@@ -57,7 +57,7 @@ impl PgCall {
     pub(crate) fn client(&self) -> Result<&Client, DriverError> {
         self.object
             .as_deref()
-            .map(|wrapper| &**wrapper)
+            .map(PgMember::client)
             .ok_or_else(|| DriverError::Protocol("the call holds no connection".to_owned()))
     }
 

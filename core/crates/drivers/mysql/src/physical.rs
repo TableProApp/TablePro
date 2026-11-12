@@ -83,10 +83,9 @@ impl MysqlEndpoint {
             .no_engine_substitution(false)
             .set_names(false)
             .timezone(None::<String>)
-            // The catalog's fixed statements stay prepared, so a later
-            // read skips the PREPARE; the bound caps the server-side
-            // handles a connection holds.
-            .statement_cache_capacity(CACHED_STATEMENTS)
+            // No statement outlives the call that prepared it, so a
+            // session never piles up server-side statement handles.
+            .statement_cache_capacity(0)
             // sqlx would log every statement, values and all.
             .disable_statement_logging();
         if let Some(database) = target.database.as_deref().filter(|name| !name.is_empty()) {
@@ -151,7 +150,11 @@ impl MysqlEndpoint {
             },
         };
         Ok(match kind {
-            SessionKind::Workspace => options.timezone(Some(WORKSPACE_TIME_ZONE.to_owned())),
+            // The catalog's fixed statements stay prepared, so a later read
+            // skips the PREPARE; the bound caps the handles a pool member holds.
+            SessionKind::Workspace => options
+                .timezone(Some(WORKSPACE_TIME_ZONE.to_owned()))
+                .statement_cache_capacity(CACHED_STATEMENTS),
             SessionKind::Editor | SessionKind::Control => options,
         })
     }

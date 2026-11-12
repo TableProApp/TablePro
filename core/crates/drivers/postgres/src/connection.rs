@@ -31,7 +31,7 @@ use crate::errors::{map_error, map_pool_error};
 use crate::metadata;
 use crate::pg_call::PgCall;
 use crate::physical::PgEndpoint;
-use crate::pool::{PgPool, probe_timeouts, workspace_timeouts};
+use crate::pool::{PgObject, PgPool, probe_timeouts, workspace_timeouts};
 use crate::standalone::Standalone;
 use crate::stream_read::stream;
 use crate::workspace_call::{
@@ -229,6 +229,35 @@ impl PgConnection {
     }
 }
 
+// A member that has not answered may sit on a dead route, so it leaves the pool instead of going back, also when the
+// probe's deadline drops it mid-question.
+struct Asking(Option<PgObject>);
+
+impl Asking {
+    async fn answer(mut self) -> Result<(), DriverError> {
+        let answered = match self.0.as_ref() {
+            Some(object) => object
+                .simple_query("SELECT 1")
+                .await
+                .map(|_| ())
+                .map_err(|error| map_error(&error)),
+            None => Ok(()),
+        };
+        if answered.is_ok() {
+            drop(self.0.take());
+        }
+        answered
+    }
+}
+
+impl Drop for Asking {
+    fn drop(&mut self) {
+        if let Some(object) = self.0.take() {
+            drop(PgObject::take(object));
+        }
+    }
+}
+
 /// A failure that may mean the route is gone rather than one statement:
 /// a lost connection, a transport error, or a timeout the server never
 /// acknowledged.
@@ -292,11 +321,11 @@ impl Connection for PgConnection {
         let probing = async {
             let quick: Timeouts = probe_timeouts(self.liveness());
             match self.pool.timeout_get(&quick).await {
-                Ok(object) => object
-                    .simple_query("SELECT 1")
-                    .await
-                    .map(|_| ())
-                    .map_err(|error| map_error(&error)),
+                Ok(object) => match Asking(Some(object)).answer().await {
+                    // Only this member may have gone stale; a login of its own says whether the route has.
+                    Err(error) if suspects_link(&error) => self.probe_standalone(deadline).await,
+                    answered => answered,
+                },
                 // Every slot is busy, which is not the server being gone.
                 Err(PoolError::Timeout(TimeoutType::Wait)) => self.probe_standalone(deadline).await,
                 Err(error) => Err(map_pool_error(&error)),

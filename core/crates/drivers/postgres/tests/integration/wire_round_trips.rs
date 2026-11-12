@@ -108,7 +108,8 @@ async fn a_workspace_read_on_a_pooled_connection_costs_one_round_trip() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn a_pooled_connection_idle_past_the_keepalive_idle_time_answers_first() {
-    let idle = Duration::from_millis(400);
+    // Whole seconds: Linux refuses a keepalive idle time under one.
+    let idle = Duration::from_secs(1);
     let liveness = LivenessPolicy {
         tcp_keepalive_idle: idle,
         ..test_liveness()
@@ -117,7 +118,7 @@ async fn a_pooled_connection_idle_past_the_keepalive_idle_time_answers_first() {
     setup(wire.connection.as_ref(), TABLE).await;
     wire.read("SELECT * FROM t").await;
 
-    tokio::time::sleep(idle + Duration::from_millis(100)).await;
+    tokio::time::sleep(idle + Duration::from_millis(200)).await;
     assert_eq!(
         wire.read("SELECT * FROM t").await,
         2,

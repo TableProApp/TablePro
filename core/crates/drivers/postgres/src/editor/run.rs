@@ -201,7 +201,7 @@ impl<'a> Run<'a> {
         };
         self.watch.settle().await;
         if self.stopped() {
-            self.abandon_cursor(owner, false).await?;
+            self.abandon_cursor(owner, true).await?;
             return Ok(Some(DriverError::Cancelled));
         }
         self.fetch_rows(class, owner, traced).await
@@ -273,7 +273,8 @@ impl<'a> Run<'a> {
     }
 
     // COMMIT closes a cursor declared without HOLD and ends a block the FETCH aborted as a rollback, so it needs no
-    // answer before it goes. RELEASE leaves a cursor open, so the savepoint's cursor is closed first.
+    // answer before it goes. RELEASE leaves a cursor open, so the savepoint's cursor is closed first. The connection
+    // reads ahead into the notice queue, so a notice the COMMIT raises can reach the sink before the last rows.
     async fn fetch_rows(
         &mut self,
         class: StatementClass,
@@ -317,10 +318,11 @@ impl<'a> Run<'a> {
     /// Undo the cursor's own transaction or savepoint after a failure.
     ///
     /// Inside the user's transaction a statement that really failed still
-    /// aborts it, as it would without the row limit; only a DECLARE the
-    /// cursor itself caused to fail is rolled back to the savepoint.
-    async fn abandon_cursor(&mut self, owner: CursorOwner, refused_declare: bool) -> Result<(), Lost> {
-        match (owner, refused_declare) {
+    /// aborts it, as it would without the row limit; a cursor whose
+    /// statement never ran, refused at its DECLARE or stopped before its
+    /// FETCH, is rolled back to the savepoint, which also closes it.
+    async fn abandon_cursor(&mut self, owner: CursorOwner, never_ran: bool) -> Result<(), Lost> {
+        match (owner, never_ran) {
             (CursorOwner::Driver { .. }, _) => {
                 self.exchange("ROLLBACK", Role::Control).await?;
                 self.core.tracker.set(KnownState::Idle);

@@ -1,9 +1,10 @@
 use std::future::Future;
 use std::io;
+use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use deadpool::managed::{self, Metrics, RecycleResult};
 use deadpool_postgres::{ClientWrapper, Manager, ManagerConfig, RecyclingMethod, Runtime, Timeouts};
@@ -61,26 +62,52 @@ pub(crate) struct PgManager {
     ask_after_idle: Duration,
 }
 
+// deadpool's own idle time is an Instant, which stops while the machine sleeps, and a sleep is when a route most
+// often drops a connection, so the member also keeps the wall-clock time it was last handed out.
+pub(crate) struct PgMember {
+    client: ClientWrapper,
+    handed_out: SystemTime,
+}
+
+impl PgMember {
+    pub(crate) fn client(&self) -> &Client {
+        &self.client
+    }
+}
+
+impl Deref for PgMember {
+    type Target = ClientWrapper;
+
+    fn deref(&self) -> &ClientWrapper {
+        &self.client
+    }
+}
+
 impl managed::Manager for PgManager {
-    type Type = ClientWrapper;
+    type Type = PgMember;
     type Error = tokio_postgres::Error;
 
-    async fn create(&self) -> Result<ClientWrapper, tokio_postgres::Error> {
-        self.fast.create().await
+    async fn create(&self) -> Result<PgMember, tokio_postgres::Error> {
+        Ok(PgMember {
+            client: self.fast.create().await?,
+            handed_out: SystemTime::now(),
+        })
     }
 
     // A route can drop an idle connection without a word, and keepalive finds that out only after its idle time, so
     // a connection idle that long answers the server first.
-    async fn recycle(&self, client: &mut ClientWrapper, metrics: &Metrics) -> RecycleResult<tokio_postgres::Error> {
-        self.fast.recycle(client, metrics).await?;
-        if metrics.last_used() >= self.ask_after_idle {
-            client.simple_query("").await?;
+    async fn recycle(&self, member: &mut PgMember, metrics: &Metrics) -> RecycleResult<tokio_postgres::Error> {
+        self.fast.recycle(&mut member.client, metrics).await?;
+        let asleep = member.handed_out.elapsed().unwrap_or_default();
+        if metrics.last_used().max(asleep) >= self.ask_after_idle {
+            member.client.simple_query("").await?;
         }
+        member.handed_out = SystemTime::now();
         Ok(())
     }
 
-    fn detach(&self, client: &mut ClientWrapper) {
-        self.fast.detach(client);
+    fn detach(&self, member: &mut PgMember) {
+        self.fast.detach(&mut member.client);
     }
 }
 

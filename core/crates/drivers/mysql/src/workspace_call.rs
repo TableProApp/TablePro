@@ -1,7 +1,7 @@
 use futures_util::TryStreamExt;
 use futures_util::future::BoxFuture;
-use sqlx::mysql::MySqlConnection;
-use sqlx::{AssertSqlSafe, Executor as _, Row as _, SqlSafeStr as _, Statement as _};
+use sqlx::mysql::{MySqlConnection, MySqlStatement};
+use sqlx::{AssertSqlSafe, Connection as _, Executor as _, Row as _, SqlSafeStr as _, Statement as _};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::statement::Statement;
 use tablepro_core::{DriverError, QueryResult, RowLimit};
@@ -83,14 +83,13 @@ pub(crate) async fn query_bound(
 }
 
 /// The columns of a statement that returned no rows: the prepare
-/// carries them, and the statement cache closes the oldest when full.
+/// carries them.
 pub(crate) async fn describe(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
     sql: &str,
 ) -> Result<Vec<ResultColumn>, DriverError> {
-    let prepared = (&mut *connection)
-        .prepare(AssertSqlSafe(sql.to_owned()).into_sql_str())
+    let prepared = prepare_uncached(connection, sql)
         .await
         .map_err(|error| map_error(&error, flavour))?;
     Ok(prepared
@@ -98,6 +97,20 @@ pub(crate) async fn describe(
         .iter()
         .map(|column| result_column(column, MySqlTimestampMode::WorkspaceUtc))
         .collect())
+}
+
+// The cache keys a statement by its text alone and keeps the columns of its first PREPARE, and after a schema change
+// the same text has other columns. sqlx can only empty the whole cache, so the catalog's statements go with it and are
+// prepared again on their next read.
+pub(crate) async fn prepare_uncached(
+    connection: &mut MySqlConnection,
+    sql: &str,
+) -> Result<MySqlStatement, sqlx::Error> {
+    let prepared = (&mut *connection)
+        .prepare(AssertSqlSafe(sql.to_owned()).into_sql_str())
+        .await;
+    connection.clear_cached_statements().await?;
+    prepared
 }
 
 pub(crate) fn count_op(statement: Statement) -> ReadOp<u64> {
