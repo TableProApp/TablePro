@@ -45,7 +45,20 @@ enum VaultError: LocalizedError, Equatable {
     case oidcCallbackPortInUse
     case credentialsFailed(path: String, message: String)
     case unreachable(String, String)
+    // Vault's own failure, such as a standby with no active node: worth another try.
+    case serverFailed(String)
     case malformedResponse
+
+    // A sign-in's Vault HTTP failure: a busy, sealed or failing Vault is worth another try, anything else is `refusal`.
+    static func signInFailure(
+        _ error: VaultRequestError,
+        at endpoint: VaultEndpoint,
+        otherwise refusal: VaultError
+    ) -> VaultError {
+        if error.isTransient { return .unreachable(endpoint.address.absoluteString, error.message) }
+        if error.status >= 500 { return .serverFailed(error.message) }
+        return refusal
+    }
 
     var errorDescription: String? {
         switch self {
@@ -94,6 +107,8 @@ enum VaultError: LocalizedError, Equatable {
             return String(format: String(localized: "Vault could not issue credentials from %@: %@"), path, message)
         case let .unreachable(address, message):
             return String(format: String(localized: "Could not reach Vault at %@: %@"), address, message)
+        case let .serverFailed(message):
+            return String(format: String(localized: "Vault could not complete the request: %@"), message)
         case .malformedResponse:
             return String(localized: "Vault returned a response TablePro could not read.")
         }

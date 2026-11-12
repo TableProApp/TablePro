@@ -11,7 +11,34 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+private struct ServerError: PluginDriverError {
+    let pluginErrorMessage: String
+    var pluginErrorCode: Int?
+    var pluginSqlState: String?
+}
+
 struct ConnectionFailureClassifierTests {
+    @Test("A refused login reads as one in each engine's own words", arguments: [
+        "Login failed for user 'v-token-ro-1'.",
+        "ORA-01017: invalid username/password; logon denied",
+        "WRONGPASS invalid username-password pair or user is disabled.",
+        "Provided username v-token-ro-1 and/or password are incorrect",
+        "Incorrect username or password was specified.",
+        "password authentication failed for user \"v-token-ro-1\"",
+    ])
+    func refusedLoginInEachEngine(message: String) {
+        #expect(ConnectionFailureClassifier.isAuthenticationFailure(ServerError(pluginErrorMessage: message)))
+    }
+
+    @Test("A SQL Server login refused only while it upgrades, restarts or runs single-user is not a refused login", arguments: [
+        "Login failed for user 'v-token-ro-1'. Reason: Server is in script upgrade mode. Only administrator can connect at this time.",
+        "Login failed for user 'v-token-ro-1'. Reason: Server is in single user mode. Only one administrator can connect at this time.",
+        "Cannot open database \"inventory\" requested by the login. The login failed.",
+    ])
+    func passingSQLServerRefusals(message: String) {
+        #expect(!ConnectionFailureClassifier.isAuthenticationFailure(ServerError(pluginErrorMessage: message)))
+    }
+
     @Test("A Swift cancellation is a cancel, not a failure")
     func swiftCancellationIsCancelled() {
         #expect(ConnectionFailureClassifier.isUserCancelled(CancellationError()))

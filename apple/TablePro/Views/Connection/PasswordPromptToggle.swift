@@ -26,6 +26,7 @@ struct PasswordPromptToggle: View {
                 PasswordSourceTestView(
                     source: source,
                     context: { coordinator.passwordSourceContext() },
+                    leaseOwner: { coordinator.connectionId },
                     refusal: {
                         coordinator.storage.storeIsTrusted ? nil : PasswordSourceResolver.ResolutionError.storeNotTrusted
                     }
