@@ -10,7 +10,7 @@
 # Usage:
 #   scripts/probes/check-stream-backpressure.sh <engine> [--rows N] [--delay-ms N] [--root DIR]
 #
-#   engine:     postgresql, mysql
+#   engine:     postgresql, mysql, sqlite (a scratch file, no server)
 #   --rows      rows in the probe table, default 1000000
 #   --delay-ms  the consumer's wait per batch, default 20
 #   --root      the apple/ folder whose sources to build, default this one; Libs comes from it too
@@ -52,8 +52,14 @@ case "$ENGINE" in
         digits="(SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9)"
         CREATE="CREATE TABLE tp_stream_probe AS SELECT id, REPEAT(MD5(id), 6) AS payload FROM (SELECT d0.n + d1.n * 10 + d2.n * 100 + d3.n * 1000 + d4.n * 10000 + d5.n * 100000 + d6.n * 1000000 + 1 AS id FROM $digits d0, $digits d1, $digits d2, $digits d3, $digits d4, $digits d5, $digits d6) AS numbers WHERE id <= $ROWS"
         ;;
+    sqlite)
+        FOLDER=SQLiteDriverPlugin CLASS=SQLitePlugin C_MODULE=""
+        PRODUCTS="CSQLite TableProSQLiteCore TableProSQLQuoting TableProSQLVocabulary"
+        LINK="$ROOT/Libs/libsqlite3_vendored.a"
+        CREATE="CREATE TABLE tp_stream_probe AS WITH RECURSIVE g(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM g WHERE x < $ROWS) SELECT x AS id, hex(randomblob(96)) AS payload FROM g"
+        ;;
     *)
-        echo "usage: $0 <postgresql|mysql> [--rows N] [--delay-ms N] [--root DIR]" >&2
+        echo "usage: $0 <postgresql|mysql|sqlite> [--rows N] [--delay-ms N] [--root DIR]" >&2
         exit 3
         ;;
 esac
@@ -66,11 +72,13 @@ for library in $LINK; do
 done
 
 HOST="${TP_STREAM_HOST:-127.0.0.1}"
-PORT="${TP_STREAM_PORT:-$PORT_DEFAULT}"
+PORT="${TP_STREAM_PORT:-${PORT_DEFAULT:-0}}"
 USER_NAME="${TP_STREAM_USER:-$USER}"
 PASSWORD="${TP_STREAM_PASSWORD:-}"
-DATABASE="${TP_STREAM_DATABASE:-$DATABASE_DEFAULT}"
-nc -z "$HOST" "$PORT" > /dev/null 2>&1 || { echo "no server at $HOST:$PORT" >&2; exit 3; }
+DATABASE="${TP_STREAM_DATABASE:-${DATABASE_DEFAULT:-}}"
+if [ -n "$C_MODULE" ]; then
+    nc -z "$HOST" "$PORT" > /dev/null 2>&1 || { echo "no server at $HOST:$PORT" >&2; exit 3; }
+fi
 
 WORK="${TP_STREAM_BUILD_DIR:-}"
 if [ -z "$WORK" ]; then
@@ -80,6 +88,10 @@ fi
 SOURCES="$WORK/Sources/Probe"
 rm -rf "$SOURCES" "$WORK/CModule"
 mkdir -p "$SOURCES"
+if [ "$ENGINE" = sqlite ] && [ -z "$DATABASE" ]; then
+    DATABASE="$WORK/probe.sqlite"
+    rm -f "$DATABASE" "$DATABASE-wal" "$DATABASE-shm"
+fi
 
 while IFS= read -r source; do
     ln -s "$source" "$SOURCES/driver_$(basename "$source")"
@@ -87,12 +99,18 @@ done < <(find "$PLUGINS/$FOLDER" -name '*.swift' -not -path '*/Tests/*')
 for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
     [ -f "$PLUGINS/Shared/$shared.swift" ] && ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
-ln -s "$PLUGINS/$FOLDER/$C_MODULE" "$WORK/CModule"
-
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
-                .product(name: "TableProProcess", package: "TableProCore"),
-                "'"$C_MODULE"'",'
+                .product(name: "TableProProcess", package: "TableProCore"),'
+system_target=""
+c_flags=""
+if [ -n "$C_MODULE" ]; then
+    ln -s "$PLUGINS/$FOLDER/$C_MODULE" "$WORK/CModule"
+    dependencies="$dependencies
+                \"$C_MODULE\","
+    system_target=".systemLibrary(name: \"$C_MODULE\", path: \"CModule\"),"
+    c_flags=".unsafeFlags([\"-Xcc\", \"-I$PLUGINS/$FOLDER/$C_MODULE/include\"]),"
+fi
 for product in $PRODUCTS; do
     dependencies="$dependencies
                 .product(name: \"$product\", package: \"TableProCore\"),"
@@ -113,7 +131,7 @@ let package = Package(
         .package(path: "$ROOT/Packages/TableProCore"),
     ],
     targets: [
-        .systemLibrary(name: "$C_MODULE", path: "CModule"),
+        $system_target
         .executableTarget(
             name: "Probe",
             dependencies: [
@@ -123,7 +141,7 @@ let package = Package(
             swiftSettings: [
                 .swiftLanguageMode(.v6),
                 .enableUpcomingFeature("MemberImportVisibility"),
-                .unsafeFlags(["-Xcc", "-I$PLUGINS/$FOLDER/$C_MODULE/include"]),
+                $c_flags
             ],
             linkerSettings: [.unsafeFlags([$flags])]
         ),
