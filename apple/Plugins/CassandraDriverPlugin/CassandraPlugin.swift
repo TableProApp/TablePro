@@ -483,7 +483,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             return streamBrowse(browse, consistency: consistency)
         }
         let cql = stripTrailingSemicolon(query)
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.connectionActor.streamQuery(
@@ -494,7 +494,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                     continuation.finish(throwing: error)
                 }
             }
-            _ = streamTask
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

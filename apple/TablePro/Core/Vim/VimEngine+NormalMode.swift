@@ -85,7 +85,8 @@ extension VimEngine {
 
         switch char {
         case "h":
-            moveLeft(consumeCount(), in: buffer)
+            let count = consumeCount()
+            executeMotion(in: buffer) { self.moveLeft(count, in: buffer) }
             return true
         case "j":
             moveDown(consumeCount(), in: buffer)
@@ -94,7 +95,8 @@ extension VimEngine {
             moveUp(consumeCount(), in: buffer)
             return true
         case "l":
-            moveRight(consumeCount(), in: buffer)
+            let count = consumeCount()
+            executeMotion(in: buffer) { self.moveRight(count, in: buffer) }
             return true
         case "w":
             let count = consumeCount()
@@ -189,7 +191,7 @@ extension VimEngine {
             countPrefix = 0
             let pos = buffer.selectedRange().location
             if pos < buffer.length {
-                buffer.setSelectedRange(NSRange(location: pos + 1, length: 0))
+                buffer.setSelectedRange(NSRange(location: characterEnd(at: pos, in: buffer), length: 0))
             }
             setMode(.insert)
             return true
@@ -236,8 +238,7 @@ extension VimEngine {
             let pos = buffer.selectedRange().location
             visualAnchor = pos
             cursorOffset = pos
-            let initialLen = pos < buffer.length ? 1 : 0
-            buffer.setSelectedRange(NSRange(location: pos, length: initialLen))
+            buffer.setSelectedRange(buffer.characterRange(at: pos))
             setMode(.visual(linewise: false))
             return true
         case "V":

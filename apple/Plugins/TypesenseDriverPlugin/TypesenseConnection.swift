@@ -50,6 +50,9 @@ internal struct TypesenseResponse {
 internal final class TypesenseConnection: NSObject, @unchecked Sendable {
     private let lock = NSLock()
     private var _session: URLSession?
+    // An export holds one response for as long as its consumer takes, and a paused read still counts toward the
+    // resource limit, so it runs on a session that keeps the system default.
+    private var _streamSession: URLSession?
     private var _currentTask: URLSessionDataTask?
     private var _serverVersion: String?
     private let queryTimeout = HttpQueryTimeoutBox()
@@ -98,7 +101,13 @@ internal final class TypesenseConnection: NSObject, @unchecked Sendable {
         sessionConfig.timeoutIntervalForRequest = connectTimeout
         sessionConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         let session = URLSession(configuration: sessionConfig, delegate: self, delegateQueue: nil)
-        lock.withLock { _session = session }
+        // The session made its own copy of the configuration above.
+        sessionConfig.timeoutIntervalForResource = URLSessionConfiguration.default.timeoutIntervalForResource
+        let streamSession = URLSession(configuration: sessionConfig, delegate: self, delegateQueue: nil)
+        lock.withLock {
+            _session = session
+            _streamSession = streamSession
+        }
 
         let response = try await request(
             method: "GET",
@@ -118,6 +127,8 @@ internal final class TypesenseConnection: NSObject, @unchecked Sendable {
             _currentTask = nil
             _session?.finishTasksAndInvalidate()
             _session = nil
+            _streamSession?.finishTasksAndInvalidate()
+            _streamSession = nil
         }
     }
 
@@ -180,10 +191,10 @@ internal final class TypesenseConnection: NSObject, @unchecked Sendable {
     /// collection never holds it in memory.
     func streamExport(
         collection: String,
-        onDocument: @escaping ([String: Any]) -> Bool
+        onDocument: ([String: Any]) async -> Bool
     ) async throws {
         let session: URLSession = try lock.withLock {
-            guard let session = _session else { throw TypesenseError.notConnected }
+            guard let session = _streamSession else { throw TypesenseError.notConnected }
             return session
         }
         let path = TypesenseOperations.exportPath(collection: collection)
@@ -224,7 +235,7 @@ internal final class TypesenseConnection: NSObject, @unchecked Sendable {
                   let data = line.data(using: .utf8),
                   let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else { continue }
-            if !onDocument(document) { return }
+            if await !onDocument(document) { return }
         }
     }
 
