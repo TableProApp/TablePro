@@ -430,7 +430,7 @@ async fn refuse_held_kill_sessions(watcher: &dyn EditorSession) -> Instant {
         .await;
         assert_eq!(summary.end, RunEnd::Completed);
         match rows(&events).first().and_then(|row| row.first()) {
-            Some(Value::Int(opid)) => {
+            Some(Value::Int32(opid)) => {
                 let (killed, _) = run(watcher, &format!("db.adminCommand({{killOp: 1, op: {opid}}})")).await;
                 assert_eq!(killed.end, RunEnd::Completed);
                 return Instant::now();

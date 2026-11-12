@@ -217,7 +217,6 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         }
     }
 
-    // A file declaring an older format cannot hold the key.
     public var introducedInSchema: Int {
         switch self {
         case .windowBackdrop,

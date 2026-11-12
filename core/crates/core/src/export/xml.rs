@@ -36,7 +36,8 @@ pub(super) fn xml_row<'a>(
         };
         out.push_str("    <field name=\"");
         escape_into(out, name, Position::Attribute).map_err(|_| refused())?;
-        match value_text(value, column_type(columns, index)) {
+        let column = column_type(columns, index);
+        match value_text(&crate::document::json_number(value, column), column) {
             Some(text) => {
                 out.push_str("\">");
                 escape_into(out, &text, Position::Text).map_err(|_| refused())?;
@@ -112,6 +113,21 @@ mod tests {
         let xml = render_xml(&cols(&["a"]), &rows).expect("the document");
 
         assert!(xml.contains("a &lt; b &amp; &quot;c&quot;"), "{xml}");
+    }
+
+    #[test]
+    fn a_number_fields_json_is_written_as_the_number_and_other_json_as_it_is() {
+        let (columns, rows) = super::super::test_columns::mixed_json();
+
+        let xml = render_xml(&columns, &rows).expect("the document");
+
+        assert!(xml.contains("<field name=\"long\">3000000000</field>"), "{xml}");
+        assert!(xml.contains("<field name=\"price\">19.90</field>"), "{xml}");
+        assert!(xml.contains("<field name=\"pg_price\">19.90</field>"), "{xml}");
+        assert!(
+            xml.contains("<field name=\"pg_long\">{&quot;$numberLong&quot;: &quot;7&quot;}</field>"),
+            "{xml}"
+        );
     }
 
     #[test]

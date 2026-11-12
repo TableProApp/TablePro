@@ -26,7 +26,7 @@ use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::call::{ClientCall, KillState, ReadStop, SessionKill, generated, release, remaining_millis, session};
-use crate::catalog::{CollectionType, JsonFields, Reader};
+use crate::catalog::{CollectionType, KnownFields, Reader};
 use crate::dialect::MongoDialect;
 use crate::editor_session::MongoEditorSession;
 use crate::endpoint::MongoEndpoint;
@@ -62,7 +62,7 @@ pub(crate) struct MongoConnection {
     dialect: Arc<MongoDialect>,
     link: LinkWatch,
     closed: AtomicBool,
-    json_fields: Arc<JsonFields>,
+    known_fields: Arc<KnownFields>,
 }
 
 impl MongoConnection {
@@ -85,7 +85,7 @@ impl MongoConnection {
             dialect: Arc::new(MongoDialect),
             link: LinkWatch::new(),
             closed: AtomicBool::new(false),
-            json_fields: Arc::new(JsonFields::default()),
+            known_fields: Arc::new(KnownFields::default()),
         }
     }
 
@@ -321,7 +321,7 @@ impl Connection for MongoConnection {
                 })
             })
             .await?;
-        self.json_fields.remember(&key.0, &key.1, &columns);
+        self.known_fields.remember(&key.0, &key.1, &columns);
         Ok(columns)
     }
 
@@ -450,13 +450,14 @@ impl Connection for MongoConnection {
         options: CallOptions,
     ) -> Result<QueryResult, DriverError> {
         let mut planned = self.generated_read(statement)?;
-        let (json_fields, deadline) = (self.json_fields.clone(), options.deadline());
+        let (known_fields, deadline) = (self.known_fields.clone(), options.deadline());
         self.read(options, move |context, session| {
             Box::pin(async move {
-                let shown = json_fields.of(&planned, &mut reader(&context, session)).await?;
-                planned.show_as_json(&shown);
+                let known = known_fields.of(&planned, &mut reader(&context, session)).await?;
+                planned.show_as_json(&known);
                 // After the census, which the page's deadline also bounds.
                 planned.limit_time(remaining_millis(deadline));
+                context.stop.before_command().await?;
                 let source = start(&context.endpoint, &context.client, session, planned).await?;
                 collect(&context.endpoint, source, session, limit, &context.stop).await
             })
@@ -487,7 +488,7 @@ impl Connection for MongoConnection {
     ) -> Result<StreamSummary, DriverError> {
         self.ensure_open()?;
         let (read, endpoint, database) = (read.clone(), self.endpoint.clone(), self.database.clone());
-        let (json_fields, max_time) = (self.json_fields.clone(), remaining_millis(options.deadline()));
+        let (known_fields, max_time) = (self.known_fields.clone(), remaining_millis(options.deadline()));
         let kill = SessionKill::new();
         let armed = kill.clone();
         let stop = kill.clone();
@@ -500,7 +501,7 @@ impl Connection for MongoConnection {
                 move |call, request: StopRequest| async move {
                     let scope = ExportScope {
                         database: &database,
-                        json_fields: &json_fields,
+                        known_fields: &known_fields,
                         max_time,
                     };
                     let result =
@@ -596,5 +597,6 @@ fn reader<'a>(context: &'a CallContext, session: &'a mut ClientSession) -> Reade
         client: &context.client,
         session,
         max_time: context.max_time,
+        stop: &context.stop,
     }
 }

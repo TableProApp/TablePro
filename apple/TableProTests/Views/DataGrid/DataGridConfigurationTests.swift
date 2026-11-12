@@ -4,8 +4,10 @@
 //
 
 import AppKit
+import SwiftUI
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -45,6 +47,92 @@ struct DataGridConfigurationTests {
         #expect(configuration.commands.isEmpty)
         #expect(!configuration.colorsValuesByType)
         #expect(!configuration.overridesValueColorSetting)
+    }
+
+    // MARK: - Value colors
+
+    @Test("The data tab, routine debug results and both comparison grids color values by type")
+    func resultGridsColorValuesByType() async throws {
+        let fixture = CoordinatorFixture()
+        let tab = fixture.addTab(QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query))
+        let result = PluginQueryResult(
+            columns: ["total"],
+            columnTypeNames: ["integer"],
+            rows: [[.text("7")]],
+            rowsAffected: 0,
+            timing: PluginQueryTiming(total: 0)
+        )
+        let (routine, _) = RoutineDebugFixtures.controller(session: FakeDebugSession(performAnswer: .finished(result)))
+        routine.start()
+        try await waitUntil { routine.state.pausedLocation != nil && !routine.variables.isEmpty }
+        routine.perform(.continueExecution)
+        try await waitUntil { routine.hasEnded }
+        let debugGrid = try #require(routine.resultGrid)
+
+        #expect(fixture.coordinator.gridConfiguration(for: tab).colorsValuesByType)
+        #expect(debugGrid.model.configuration.colorsValuesByType)
+        #expect(CompareRowGridModel().model.configuration.colorsValuesByType)
+        #expect(ResultComparisonGridModel().model.configuration.colorsValuesByType)
+    }
+
+    @Test("Table Listing draws its catalog rows in the grid text")
+    func tableListingStaysPlain() {
+        #expect(!TableListingTabView.gridConfiguration(databaseType: .mysql).colorsValuesByType)
+    }
+
+    @Test("Structure lists, Structure sections and data files draw values in the grid text")
+    func definitionAndFileGridsStayPlain() throws {
+        let list = StructureListGridModel<String>()
+        list.load(
+            columns: ["Name"],
+            rows: [StructureListRow(id: "a", values: ["alpha"])],
+            defaultWidths: [],
+            minimumWidths: [],
+            databaseType: .mysql,
+            sortState: nil
+        )
+        let suite = try EphemeralDefaults()
+        let editor = StructureDefinitionEditor(
+            manager: StructureChangeManager(),
+            context: .existingTable(
+                connection: TestFixtures.makeConnection(type: .mysql),
+                databaseName: "db",
+                schemaName: nil,
+                tableName: "t",
+                objectKind: .table,
+                isSessionBound: false
+            ),
+            defaults: suite.defaults
+        )
+        editor.refresh()
+
+        #expect(!list.model.configuration.colorsValuesByType)
+        #expect(!editor.adapter(for: .columns).model.configuration.colorsValuesByType)
+        #expect(!DataFileContentView.gridConfiguration(for: DataFileController()).colorsValuesByType)
+    }
+
+    @Test("An agent session's rows draw values in the grid text")
+    func agentRowsStayPlain() async throws {
+        let run = AgentQueryRun(id: "1", sql: "select total from orders", resultJSON: #"{"columns":["total"],"rows":[["7"]]}"#)
+        let window = ThemeTestFixture.host(
+            AgentResultRowsView(runs: [run], artifacts: AgentArtifactCache(), connection: nil),
+            size: NSSize(width: 600, height: 300)
+        )
+        defer { window.contentView = nil }
+
+        try await waitUntil {
+            window.contentView?.layoutSubtreeIfNeeded()
+            return Self.mainTable(in: window.contentView)?.controller?.model.rowCount == 1
+        }
+        let model = try #require(Self.mainTable(in: window.contentView)?.controller?.model)
+
+        #expect(!model.configuration.colorsValuesByType)
+    }
+
+    private static func mainTable(in view: NSView?) -> DataGridTableView? {
+        guard let view else { return nil }
+        if let table = view as? DataGridTableView, table.paneKind == .main { return table }
+        return view.subviews.lazy.compactMap { mainTable(in: $0) }.first
     }
 
     // MARK: - Sort

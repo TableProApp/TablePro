@@ -59,20 +59,44 @@ struct ThemeContrastTests {
 
     private static let valueSlots = ThemeSlotSection.values.slots.filter { $0 != .gridNullValue }
 
-    @Test("Every bundled theme sets each value color at 4.5:1 or more on its grid background")
-    func bundledValueColorsOnGridBackground() throws {
+    // Alternate rows are on by default, and a modified cell or an inserted row washes either row.
+    private static func rowSurfaces(of theme: ThemeDefinition) throws -> [ThemeColor] {
+        let background = try #require(theme.overrides[.gridBackground], "\(theme.id)")
+        let stripe = try #require(theme.value(for: .gridAlternateRow).themedColor, "\(theme.id)")
+        let rows = [background, stripe.composited(over: background)]
+        let modified = try #require(theme.overrides[.gridModified], "\(theme.id)")
+        let inserted = try #require(theme.overrides[.gridInserted], "\(theme.id)")
+        return rows + [modified, inserted].flatMap { wash in rows.map { wash.composited(over: $0) } }
+    }
+
+    private static func lowestRatio(of color: ThemeColor, on surfaces: [ThemeColor]) -> Double {
+        surfaces.map { color.contrastRatio(with: $0) }.min() ?? 0
+    }
+
+    @Test("Every bundled value color reaches 4.5:1 on both rows and on the modified and inserted washes over them")
+    func bundledValueColorsOnEveryRowSurface() throws {
         let themes = try Self.bundledThemes()
         #expect(themes.count >= 14)
         #expect(Self.valueSlots.count == 9)
 
         for theme in themes {
-            let background = try #require(theme.overrides[.gridBackground], "\(theme.id)")
+            let surfaces = try Self.rowSurfaces(of: theme)
             for slot in Self.valueSlots {
                 let color = try #require(theme.overrides[slot], "\(theme.id) sets no \(slot.rawValue)")
-                let ratio = color.contrastRatio(with: background)
+                let ratio = Self.lowestRatio(of: color, on: surfaces)
                 #expect(ratio >= ThemeContrastNote.minimumRatio, "\(theme.id) \(slot.rawValue) \(color.hex): \(ratio)")
             }
             #expect(ThemeContrastNote.message(for: .values, in: theme) == nil, "\(theme.id)")
+        }
+    }
+
+    @Test("No two value colors in a bundled theme are the same")
+    func bundledValueColorsAreDistinct() throws {
+        for theme in try Self.bundledThemes() {
+            let colors = Self.valueSlots.compactMap { theme.overrides[$0] }
+            let hexes = colors.map { $0.hex }
+            #expect(colors.count == Self.valueSlots.count, "\(theme.id)")
+            #expect(Set(colors).count == colors.count, "\(theme.id): \(hexes)")
         }
     }
 
@@ -83,9 +107,12 @@ struct ThemeContrastTests {
         appearance: .dark,
         overrides: [
             .gridBackground: ThemeColor(red: 0x28, green: 0x2A, blue: 0x36),
+            .gridAlternateRow: ThemeColor(red: 0x21, green: 0x22, blue: 0x2C),
+            .gridModified: ThemeColor(red: 0xFF, green: 0xB8, blue: 0x6C, alpha: 0x26),
+            .gridInserted: ThemeColor(red: 0x50, green: 0xFA, blue: 0x7B, alpha: 0x26),
             .gridText: ThemeColor(red: 0xF8, green: 0xF8, blue: 0xF2),
             .gridBoolTrue: ThemeColor(red: 0x50, green: 0xFA, blue: 0x7B),
-            .gridNumber: ThemeColor(red: 0xBD, green: 0x93, blue: 0xF9),
+            .gridNumber: ThemeColor(red: 0xD6, green: 0xBC, blue: 0xFF),
         ]
     )
 
@@ -96,9 +123,9 @@ struct ThemeContrastTests {
 
         theme.overrides[.gridJSON] = ThemeColor(red: 0x6B, green: 0x5A, blue: 0x30)
         theme.overrides[.gridBoolFalse] = ThemeColor(red: 0x80, green: 0x30, blue: 0x30)
-        let background = try #require(theme.overrides[.gridBackground])
-        let falseRatio = try #require(theme.overrides[.gridBoolFalse]).contrastRatio(with: background)
-        let jsonRatio = try #require(theme.overrides[.gridJSON]).contrastRatio(with: background)
+        let surfaces = try Self.rowSurfaces(of: theme)
+        let falseRatio = Self.lowestRatio(of: try #require(theme.overrides[.gridBoolFalse]), on: surfaces)
+        let jsonRatio = Self.lowestRatio(of: try #require(theme.overrides[.gridJSON]), on: surfaces)
         #expect(falseRatio < jsonRatio)
         #expect(jsonRatio < ThemeContrastNote.minimumRatio)
 
@@ -111,6 +138,28 @@ struct ThemeContrastTests {
             ThemeContrastNote.message(for: .values, in: theme)
                 == "Bool False contrast is \(formatted):1. Aim for at least 4.5:1."
         )
+    }
+
+    @Test(
+        "The values note checks the alternate row and the modified and inserted washes over both rows",
+        arguments: [
+            (ThemeSlot.gridAlternateRow, ThemeColor(red: 0x5A, green: 0x5D, blue: 0x70)),
+            (ThemeSlot.gridModified, ThemeColor(red: 0xFF, green: 0xB8, blue: 0x6C, alpha: 0x80)),
+            (ThemeSlot.gridInserted, ThemeColor(red: 0x50, green: 0xFA, blue: 0x7B, alpha: 0x80)),
+        ]
+    )
+    func valuesNoteChecksEveryRowSurface(surface: ThemeSlot, color: ThemeColor) throws {
+        var theme = Self.valuesTheme
+        theme.overrides[surface] = color
+        let background = try #require(theme.overrides[.gridBackground])
+        let number = try #require(theme.overrides[.gridNumber])
+        let expected = Self.lowestRatio(of: number, on: try Self.rowSurfaces(of: theme))
+        #expect(number.contrastRatio(with: background) >= ThemeContrastNote.minimumRatio)
+
+        let lowest = try #require(ThemeContrastNote.lowest(for: .values, in: theme))
+        #expect(lowest.slot == .gridNumber)
+        #expect(lowest.ratio == expected)
+        #expect(lowest.ratio < ThemeContrastNote.minimumRatio)
     }
 
     @Test("The values note skips NULL and the value colors that follow the grid text")

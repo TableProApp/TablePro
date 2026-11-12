@@ -21,7 +21,7 @@ pub use document_filter::filter_operators;
 pub(crate) use document_filter::{filter_document, typed_document};
 pub(crate) use document_read::{count, export, page};
 pub(crate) use document_write::{delete, insert, insert_many, key_probe, update};
-pub(crate) use json_cells::json_cells;
+pub(crate) use json_cells::{json_cells, json_number};
 pub use shell_literal::shell_literal;
 pub(crate) use shell_literal::{insert_document, insert_start};
 pub(crate) use shell_params::ShellParams;
@@ -29,6 +29,9 @@ pub use shell_params::bind_param;
 
 use crate::dialect::SqlDialect;
 use crate::sql_syntax::SqlGrammar;
+
+/// The type of a JSON column of numbers of more than one BSON type.
+pub const NUMBER_TYPE: &str = "number";
 
 /// Whether the dialect's statements are shell calls rather than SQL.
 pub(crate) fn speaks_shell(dialect: &dyn SqlDialect) -> bool {

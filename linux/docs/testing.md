@@ -325,6 +325,8 @@ meson and distro builds use cargo test, which works too:
 cargo test -p tablepro-driver-postgres -- --ignored --test-threads=1
 ```
 
+The MongoDB seed-list and replica-set tests also need public DNS and host port 27017 free: they reach the MongoDB driver specification's records under `test.build.10gen.cc`, which point at `localhost:27017`.
+
 ### Files from tablepro-cloud
 
 `core/crates/account` keeps copies of two tablepro-cloud files: `openapi/v2.openapi-3.0.json`, the `/v2` document `build.rs` generates the client from, and `tests/data/entitlement_vectors.json`, the vectors the entitlement checks run against. tablepro-cloud is private and CI cannot reach it, so they are copies, never links. From `linux/`, refresh both from a tablepro-cloud checkout:

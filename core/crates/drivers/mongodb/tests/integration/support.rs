@@ -183,6 +183,7 @@ pub async fn save_field(
         changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(column, CellInput::Value(value))],
+            read: Vec::new(),
         })],
     };
     let plan = plan_save(&*connection.dialect(), table, &columns, &identity, &changes).expect("a save plan");

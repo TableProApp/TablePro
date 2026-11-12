@@ -158,6 +158,7 @@ fn text_data(text: String) -> ColumnData<'static> {
 /// say whether it fits.
 fn whole(param_type: &ParamType, value: &Value) -> Result<i128, DriverError> {
     match value {
+        Value::Int32(integer) => Ok(i128::from(*integer)),
         Value::Int(integer) => Ok(i128::from(*integer)),
         Value::UInt(integer) => Ok(i128::from(*integer)),
         other => Err(refused(param_type, other)),
@@ -166,6 +167,7 @@ fn whole(param_type: &ParamType, value: &Value) -> Result<i128, DriverError> {
 
 fn numeric(param_type: &ParamType, value: &Value) -> Result<Numeric, DriverError> {
     let (mantissa, scale) = match value {
+        Value::Int32(integer) => (i128::from(*integer), 0),
         Value::Int(integer) => (i128::from(*integer), 0),
         Value::UInt(integer) => (i128::from(*integer), 0),
         Value::WideInt(integer) => (

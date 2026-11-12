@@ -17,18 +17,13 @@ use tablepro_core::sql_syntax::script::{
 };
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
+use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowBatch, RowLimit, SinkFlow, Truncation};
 
 use crate::catalog::{result_column_type, storage_class_type};
 use crate::column_origins::column_origins;
 use crate::decode::decode_row;
 use crate::encode::bind_all;
 use crate::errors::map_error;
-
-/// How many rows travel in one `Rows` event: enough that a large read
-/// is not one await per row, few enough that the first rows show at
-/// once.
-const ROWS_PER_EVENT: usize = 256;
 
 /// What a run of statements did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -245,7 +240,7 @@ async fn run_statement(
     }
 
     let mut stream = query.fetch(&mut *connection);
-    let mut batch: Vec<Vec<Value>> = Vec::with_capacity(ROWS_PER_EVENT);
+    let mut batch = RowBatch::new();
     let mut retained = 0u64;
     let mut truncation = Truncation::Complete;
     while let Some(row) = stream.try_next().await.map_err(map_error)? {
@@ -265,9 +260,9 @@ async fn run_statement(
                 return Ok(());
             }
         }
-        batch.push(values);
+        let full = batch.push(values);
         retained += 1;
-        if batch.len() == ROWS_PER_EVENT && gone(sink.accept(ResultEvent::Rows(std::mem::take(&mut batch))).await) {
+        if full && gone(sink.accept(ResultEvent::Rows(batch.take())).await) {
             outcome.rows += retained;
             outcome.consumer_gone = true;
             return Ok(());
@@ -280,7 +275,7 @@ async fn run_statement(
 
     let mut closing = Vec::new();
     if !batch.is_empty() {
-        closing.push(ResultEvent::Rows(batch));
+        closing.push(ResultEvent::Rows(batch.take()));
     }
     if truncation == Truncation::ReadPastLimit {
         closing.push(ResultEvent::RowLimitReached { retained });

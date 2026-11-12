@@ -33,14 +33,22 @@ enum DataGridValueTone: Equatable, Sendable {
             if declaresEnumLabels { return .enumeration }
             if type.isUUIDType { return .uuid }
             guard let name = ColumnType.unwrappedTypeName(rawType), !name.isEmpty,
-                  ColumnTypeSQLQuoting.isCharacterType(.text(rawType: name)) else { return .plain }
+                  ColumnTypeSQLQuoting.isCharacterType(.text(rawType: name)) || isCharacterTypeName(name) else { return .plain }
             return .string
         case .boolean, .spatial, .vector, .array:
             return .plain
         }
     }
 
-    // nil where the cell shows the column's own value.
+    // Character data `isCharacterType` leaves out: it also decides which columns a filter casts before LIKE.
+    private static let characterTypeNames: Set<String> = [
+        "KEYWORD", "WILDCARD", "CONSTANT_KEYWORD", "ASCII", "LONG", "SYSNAME",
+    ]
+
+    private static func isCharacterTypeName(_ name: String) -> Bool {
+        characterTypeNames.contains(name.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces).uppercased())
+    }
+
     static func shown(by format: ValueDisplayFormat) -> DataGridValueTone? {
         switch format {
         case .raw:

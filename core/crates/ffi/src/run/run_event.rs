@@ -26,6 +26,12 @@ pub enum RunEvent {
         set_index: u32,
         retained: u64,
     },
+    // The run kept `limit_bytes` of rows; the set's rows after its first `retained` were read and not kept.
+    ByteLimitReached {
+        set_index: u32,
+        retained: u64,
+        limit_bytes: u64,
+    },
     ResultSetFinished {
         set_index: u32,
         row_count: u64,
@@ -83,6 +89,7 @@ pub enum TruncationTag {
     ServerStopped,
     /// There were rows past the limit, which were not kept.
     ReadPastLimit,
+    ByteLimit,
 }
 
 /// How a run ended. A statement the server refused is `Failed`, not an
@@ -133,6 +140,7 @@ impl From<Truncation> for TruncationTag {
             Truncation::Complete => Self::Complete,
             Truncation::ServerStopped => Self::ServerStopped,
             Truncation::ReadPastLimit => Self::ReadPastLimit,
+            Truncation::ByteLimit => Self::ByteLimit,
         }
     }
 }

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
@@ -421,7 +421,7 @@ fn fill(request: &mut ConnectRequest, typed: &[(SecretKind, SecretString)]) {
         return;
     };
     for (kind, secret) in typed {
-        let secret = SecretString::from(secret.expose_secret().to_owned());
+        let secret = secret.clone();
         match (kind, &mut *credentials, ssh.as_mut().map(|ssh| &mut ssh.auth)) {
             (SecretKind::DatabasePassword, Credentials::Password { password, .. }, _) => *password = secret,
             (SecretKind::SshPassword, _, Some(SshAuth::Password { password })) => *password = secret,
@@ -492,6 +492,7 @@ mod tests {
     use std::sync::Mutex;
 
     use async_trait::async_trait;
+    use secrecy::ExposeSecret;
     use tablepro_core::credentials::{
         CredentialPrompt, PromptPurpose, PromptReason, PromptReply, SecretError, SecretItem, SecretLookup,
     };
@@ -575,7 +576,7 @@ mod tests {
         stored.options.dns_seed_list = true;
         core.store.as_ref().unwrap().upsert_blocking(stored.clone()).unwrap();
         let typed = || ConnectionSecrets {
-            database_password: Some("typed".to_owned()),
+            database_password: Some(SecretString::from("typed")),
             ..ConnectionSecrets::default()
         };
 
@@ -635,9 +636,9 @@ mod tests {
 
     fn secrets(value: &str) -> ConnectionSecrets {
         ConnectionSecrets {
-            database_password: Some(value.to_owned()),
-            ssh_password: Some(value.to_owned()),
-            ssh_passphrase: Some(value.to_owned()),
+            database_password: Some(SecretString::from(value)),
+            ssh_password: Some(SecretString::from(value)),
+            ssh_passphrase: Some(SecretString::from(value)),
         }
     }
 

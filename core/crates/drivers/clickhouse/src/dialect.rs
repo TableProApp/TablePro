@@ -315,6 +315,7 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
     Ok(match value {
         Value::Null => "NULL".to_owned(),
         Value::Bool(flag) => flag.to_string(),
+        Value::Int32(int) => int.to_string(),
         Value::Int(int) => int.to_string(),
         Value::UInt(int) => int.to_string(),
         Value::WideInt(int) => int.to_string(),
