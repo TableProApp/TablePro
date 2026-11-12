@@ -187,6 +187,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await AppModuleTermination.stopModuleWork()
             await MCPServerManager.shared.stop()
             await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
+            // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
+            await VaultDatabaseCredentials.shared.revokeAllLeases()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

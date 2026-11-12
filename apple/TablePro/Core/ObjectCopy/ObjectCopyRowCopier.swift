@@ -188,13 +188,13 @@ internal struct ObjectCopyRowCopier: Sendable {
                 format: String(localized: "Could not build an INSERT for %@."), step.qualifiedTargetName
             ))
         }
-        /// The generator's own parameter array rather than the batch flattened again: the two
-        /// agree today, and taking the statement's own leaves no second place for the placeholder
-        /// order to be decided. The round trip is lossless because `PluginCellValue` is text,
-        /// bytes or null and `asAny` maps each to itself.
+        // The generator's own parameter array rather than the batch flattened again, so the placeholder order is
+        // decided in one place. `PluginCellValue` is text, bytes or null and `asAny` maps each to itself. The context
+        // carries each value's target column type: Oracle wrote `00123` into a VARCHAR2 as 123 without it.
         _ = try await driver.executeParameterized(
             query: statement.sql,
-            parameters: statement.parameters.map(PluginDriverAdapter.cellValue(for:))
+            parameters: statement.parameters.map(PluginDriverAdapter.cellValue(for:)),
+            context: statement.context
         )
         return batch.count
     }

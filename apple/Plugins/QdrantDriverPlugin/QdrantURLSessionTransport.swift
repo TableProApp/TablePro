@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import TableProPluginKit
+import TableProQdrantClient
 import TableProQdrantCore
 import TableProTLSClientIdentity
 

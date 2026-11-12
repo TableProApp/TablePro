@@ -103,6 +103,7 @@ targetTemplates:
         COMBINE_HIDPI_IMAGES: YES
         DEVELOPMENT_TEAM: $(TABLEPRO_DEVELOPMENT_TEAM)
         ENABLE_HARDENED_RUNTIME: YES
+        EXPORTED_SYMBOLS_FILE: $(SRCROOT)/Configs/NoExportedSymbols.exp
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Plugins/${folder}/Info.plist
         INFOPLIST_KEY_NSPrincipalClass: $(PRODUCT_MODULE_NAME).${principalClass}
@@ -474,6 +475,8 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: TablePro/TablePro.entitlements
           COPY_PHASE_STRIP: YES
+          # Debug keeps its exports: the test bundle links against the app.
+          EXPORTED_SYMBOLS_FILE: $(SRCROOT)/Configs/NoExportedSymbols.exp
 
   # ─── Plugin ABI ───────────────────────────────────────────────────────────────
 
@@ -518,11 +521,14 @@ targets:
       - TablePro/CLI/BridgeMain.swift
     dependencies:
       - package: TableProMacCore
-        products: [TableProMCP, TableProUtilities]
+        product: TableProMCP
+      - package: TableProCore
+        product: TableProProcess
     scheme: {}
     settings:
       base:
         ENABLE_HARDENED_RUNTIME: YES
+        EXPORTED_SYMBOLS_FILE: $(SRCROOT)/Configs/NoExportedSymbols.exp
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-mcp
         # The app embeds it; installed on its own it turns the app archive into a generic one.
         SKIP_INSTALL: YES
@@ -544,6 +550,7 @@ targets:
     settings:
       base:
         ENABLE_HARDENED_RUNTIME: YES
+        EXPORTED_SYMBOLS_FILE: $(SRCROOT)/Configs/NoExportedSymbols.exp
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-cli
         # The app embeds it; installed on its own it turns the app archive into a generic one.
         SKIP_INSTALL: YES
@@ -1320,6 +1327,8 @@ targets:
       - package: TableProCore
         product: TableProFirebaseCore
       - package: TableProCore
+        product: TableProFirebaseClient
+      - package: TableProCore
         product: TableProLogRedaction
 
   QdrantDriverPlugin:
@@ -1331,6 +1340,8 @@ targets:
       - package: TableProCore
         product: TableProQdrantCore
       - package: TableProCore
+        product: TableProQdrantClient
+      - package: TableProCore
         product: TableProTLSClientIdentity
 
   WeaviateDriverPlugin:
@@ -1341,6 +1352,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProWeaviateCore
+      - package: TableProCore
+        product: TableProWeaviateClient
 
   InfluxDBDriverPlugin:
     templates: [DriverPlugin]

@@ -1,0 +1,2 @@
+# Exports nothing. dyld finds main through LC_MAIN and a plugin's principal class through the Objective-C runtime,
+# and nothing binds to these binaries' symbols, so every public package symbol would only be a dead-strip root.

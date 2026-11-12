@@ -58,6 +58,11 @@ public enum TeradataColumnType {
     }
 
     public static func wireTypeName(_ code: UInt16) -> String {
+        knownWireTypeName(code) ?? "VARCHAR"
+    }
+
+    // Codes from the CLIv2 data type table; JSON's from the embedded SQL SQLDA table, which CLIv2 does not list.
+    public static func knownWireTypeName(_ code: UInt16) -> String? {
         switch code & 0xFFFE {
         case TeradataType.byteint: return "BYTEINT"
         case TeradataType.smallint: return "SMALLINT"
@@ -65,7 +70,7 @@ public enum TeradataColumnType {
         case TeradataType.bigint: return "BIGINT"
         case TeradataType.float: return "FLOAT"
         case TeradataType.decimal: return "DECIMAL"
-        case 604: return "NUMBER"
+        case TeradataType.number: return "NUMBER"
         case TeradataType.char: return "CHAR"
         case TeradataType.varchar: return "VARCHAR"
         case TeradataType.longVarchar: return "LONG VARCHAR"
@@ -76,10 +81,19 @@ public enum TeradataColumnType {
         case 764: return "TIMESTAMP"
         case 768: return "TIME WITH TIME ZONE"
         case 772: return "TIMESTAMP WITH TIME ZONE"
-        case 400: return "BLOB"
-        case 416: return "CLOB"
-        case 880: return "JSON"
-        default: return "VARCHAR"
+        case 776, 780, 784, 788, 792, 796, 800, 804, 808, 812, 816, 820, 824: return "INTERVAL"
+        case 832: return "PERIOD(DATE)"
+        case 836: return "PERIOD(TIME)"
+        case 840: return "PERIOD(TIME WITH TIME ZONE)"
+        case 844: return "PERIOD(TIMESTAMP)"
+        case 848: return "PERIOD(TIMESTAMP WITH TIME ZONE)"
+        case 400, 404, 408, 412: return "BLOB"
+        case 416, 420, 424: return "CLOB"
+        case 432, 436, 440: return "UDT"
+        case 504, 508: return "ARRAY"
+        case 852, 856, 860: return "XML"
+        case 880, 884, 888: return "JSON"
+        default: return nil
         }
     }
 

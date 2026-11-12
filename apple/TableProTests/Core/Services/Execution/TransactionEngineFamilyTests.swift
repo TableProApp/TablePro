@@ -79,6 +79,13 @@ struct TransactionEngineFamilyTests {
         #expect(TransactionEngineFamily.of(.redis) == .redis)
     }
 
+    @Test("Teradata, keyed by the id its plugin registers, reads its own rules")
+    func teradataIsItsOwnFamily() {
+        #expect(TransactionEngineFamily.of(.teradata) == .teradata)
+        #expect(TransactionEngineFamily.of(DatabaseType(rawValue: "Teradata")) == .teradata)
+        #expect(TransactionEngineFamily.teradata.wrapsBatchInTransaction)
+    }
+
     /// Redis is the only engine the app cannot open a transaction on: `MULTI` queues commands until
     /// `EXEC` and answers `+QUEUED` in place of every reply, and `DISCARD` can only drop a queue
     /// nothing has applied.

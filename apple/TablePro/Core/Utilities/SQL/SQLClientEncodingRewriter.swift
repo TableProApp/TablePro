@@ -36,7 +36,7 @@ internal enum SQLClientEncodingRewriter {
             replacements = mysqlClientCharacterSets(&cursor, in: text)
         case .postgres, .redshift, .cockroach:
             replacements = postgresClientEncoding(&cursor, in: text).map { [Replacement(range: $0, text: postgresEncoding)] } ?? []
-        case .sqlite, .duckdb, .sqlServer, .oracle, .redis, .other:
+        case .sqlite, .duckdb, .sqlServer, .oracle, .redis, .teradata, .other:
             return nil
         }
         guard !replacements.isEmpty else { return nil }

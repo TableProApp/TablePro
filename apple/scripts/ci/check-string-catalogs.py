@@ -16,6 +16,7 @@ from pathlib import Path
 CATALOGS = {
     "TablePro": "TablePro/Resources/Localizable.xcstrings",
     "TableProMobile": "TableProMobile/TableProMobile/Localizable.xcstrings",
+    "TableProWidget": "TableProMobile/TableProWidget/Localizable.xcstrings",
 }
 TERMINAL_MARKS = {":": (":", "："), "?": ("?", "？"), ".": (".", "。")}
 # SQL notation, written the way SQL documentation writes it, not a UI ellipsis.

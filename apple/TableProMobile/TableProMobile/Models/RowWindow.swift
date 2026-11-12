@@ -5,7 +5,15 @@ struct RowWindow: Sendable {
     private(set) var rows: [Row]
     private(set) var firstAbsoluteIndex: Int
     private(set) var totalAppended: Int
+    private(set) var clears = 0
     let capacity: Int
+
+    // Changes whenever the first rows may have, so a view can tell without reading them.
+    struct HeadIdentity: Equatable, Sendable {
+        let clears: Int
+        let firstAbsoluteIndex: Int
+        let count: Int
+    }
 
     init(capacity: Int = 200) {
         self.rows = []
@@ -37,6 +45,11 @@ struct RowWindow: Sendable {
         rows = []
         firstAbsoluteIndex = 0
         totalAppended = 0
+        clears += 1
+    }
+
+    func headIdentity(count: Int) -> HeadIdentity {
+        HeadIdentity(clears: clears, firstAbsoluteIndex: firstAbsoluteIndex, count: min(rows.count, count))
     }
 
     var isEmpty: Bool {

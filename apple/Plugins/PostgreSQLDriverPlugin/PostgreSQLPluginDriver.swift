@@ -457,16 +457,44 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         var parts = columnDefs
         parts.append(contentsOf: constraints)
 
-        let shape = PostgreSQLTableDDL.shape(fromRows: shapeRows?.rows.map { $0.map(\.asText) })
+        var shape = PostgreSQLTableDDL.shape(fromRows: shapeRows?.rows.map { $0.map(\.asText) })
         var partitions: [PostgreSQLTableDDL.Partition] = []
+        var partitionIndexes: [String] = []
+        var partitionComments: [String] = []
         if shape.partitionKey != nil {
             let tree = try await catalogRead(PostgreSQLTableDDL.partitionTreeQuery(schema: resolvedSchema, table: table))
             partitions = tree.rows.compactMap { PostgreSQLTableDDL.partition(from: $0.map(\.asText)) }
+            if !partitions.isEmpty {
+                async let elementRows = catalogRead(PostgreSQLTableDDL.partitionElementsQuery(
+                    schema: resolvedSchema, table: table, scope: .below, capabilities: versionedCapabilities
+                ))
+                async let indexRows = catalogRead(PostgreSQLTableDDL.partitionIndexesQuery(schema: resolvedSchema, table: table))
+                async let commentRows = catalogRead(PostgreSQLTableDDL.partitionCommentsQuery(schema: resolvedSchema, table: table))
+                let elements = PostgreSQLTableDDL.elementsByPartition(try await elementRows.rows.map { $0.map(\.asText) })
+                partitions = partitions.map { partition in
+                    var partition = partition
+                    partition.elements = elements[partition.name] ?? []
+                    return partition
+                }
+                partitionIndexes = try await indexRows.rows.compactMap { $0.first?.asText }
+                partitionComments = PostgreSQLTableDDL.partitionComments(try await commentRows.rows.map { $0.map(\.asText) })
+            }
+        } else if shape.partitionOf != nil {
+            let elementRows = try await catalogRead(PostgreSQLTableDDL.partitionElementsQuery(
+                schema: resolvedSchema, table: table, scope: .itself, capabilities: versionedCapabilities
+            ))
+            shape.partitionElements = PostgreSQLTableDDL.elementsByPartition(elementRows.rows.map { $0.map(\.asText) })
+                .values.first ?? []
         }
 
         let quotedSchema = quoteIdentifier(resolvedSchema)
         return PostgreSQLTableDDL.script(
-            name: "\(quotedSchema).\(quotedTable)", definitions: parts, shape: shape, partitions: partitions
+            name: "\(quotedSchema).\(quotedTable)",
+            definitions: parts,
+            shape: shape,
+            partitions: partitions,
+            partitionIndexes: partitionIndexes,
+            partitionComments: partitionComments
         )
     }
 

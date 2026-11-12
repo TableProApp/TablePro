@@ -76,6 +76,15 @@ final class IOSSyncCoordinator {
     @ObservationIgnored private var editGenerations: [EditKey: Int] = [:]
     @ObservationIgnored private var accountChangeObservation: AnyCancellable?
 
+    // A scene activation asks only for what other devices sent, so one download per interval answers every
+    // activation in it. The same rule as the Mac's SyncCoordinator.
+    nonisolated static let activationInterval: Duration = .seconds(60)
+    @ObservationIgnored private let activationClock: any Clock<Duration>
+    @ObservationIgnored private var activationCooldown: Task<Void, Never>?
+    @ObservationIgnored private var activationHeld = false
+    @ObservationIgnored private var activationAwaitsRun = false
+    @ObservationIgnored private var downloadIsAheadInRun = false
+
     // Each returns whether the merged list was saved; false holds the change token for a replay.
     @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Bool)?
     @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Bool)?
@@ -99,13 +108,15 @@ final class IOSSyncCoordinator {
         makeTransport: @escaping () -> any IOSSyncTransport = { CloudKitSyncEngine() },
         isEnabled: @escaping () -> Bool = { AppPreferences.isCloudSyncEnabled },
         notificationCenter: NotificationCenter = .default,
-        networkMonitor: SyncNetworkMonitor? = SyncNetworkMonitor()
+        networkMonitor: SyncNetworkMonitor? = SyncNetworkMonitor(),
+        activationClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.metadata = metadata
         self.recordCache = recordCache
         self.makeTransport = makeTransport
         self.isEnabled = isEnabled
         self.networkMonitor = networkMonitor
+        self.activationClock = activationClock
         self.status = isEnabled() ? metadata.zoneState.initialStatus : .disabled(.userDisabled)
         self.lastSyncDate = metadata.lastSyncDate
         accountChangeObservation = notificationCenter.publisher(for: .CKAccountChanged)
@@ -124,6 +135,7 @@ final class IOSSyncCoordinator {
     deinit {
         debounceTask?.cancel()
         retryTask?.cancel()
+        activationCooldown?.cancel()
     }
 
     private func currentTransport() -> any IOSSyncTransport {
@@ -154,6 +166,7 @@ final class IOSSyncCoordinator {
             debounceTask?.cancel()
             debounceTask = nil
             pendingTriggers = []
+            endActivationHold()
             metadata.lastSyncDate = nil
             lastSyncDate = nil
             decide(.disabled(.userDisabled))
@@ -210,6 +223,54 @@ final class IOSSyncCoordinator {
         await task.value
     }
 
+    // The scene's entry point. A background refresh and every other trigger call `sync(_:)` and are never held.
+    func syncOnSceneActivation() async {
+        if let runningSync {
+            // A run whose download has not started brings what the activation asks for.
+            guard !downloadIsAheadInRun else { return }
+            activationAwaitsRun = true
+            await runningSync.value
+            return
+        }
+        if activationCooldown != nil {
+            activationHeld = true
+            return
+        }
+        await sync(.activation)
+    }
+
+    var isHoldingActivations: Bool {
+        activationCooldown != nil
+    }
+
+    // After a download, activations wait for the interval to end and then run once, so a change made on
+    // another device still arrives.
+    private func startActivationCooldown() {
+        activationCooldown?.cancel()
+        activationHeld = false
+        let clock = activationClock
+        activationCooldown = Task { [weak self] in
+            do {
+                try await clock.sleep(for: Self.activationInterval)
+            } catch {
+                return
+            }
+            // A newer download may have replaced this hold after the sleep ended.
+            guard !Task.isCancelled, let self else { return }
+            activationCooldown = nil
+            guard activationHeld else { return }
+            activationHeld = false
+            await syncOnSceneActivation()
+        }
+    }
+
+    private func endActivationHold() {
+        activationCooldown?.cancel()
+        activationCooldown = nil
+        activationHeld = false
+        activationAwaitsRun = false
+    }
+
     private func runThenPending(_ trigger: SyncTrigger) async {
         var next: SyncTrigger? = trigger
         while let current = next {
@@ -258,6 +319,16 @@ final class IOSSyncCoordinator {
 
     /// The trigger that may do the most among those that arrived during the last run.
     private func takePendingTrigger() -> SyncTrigger? {
+        if activationAwaitsRun {
+            activationAwaitsRun = false
+            // The download began before the activation and may have missed what it asks for, so it runs once the
+            // interval ends rather than now.
+            if activationCooldown != nil {
+                activationHeld = true
+            } else if !pendingTriggers.contains(.activation) {
+                pendingTriggers.append(.activation)
+            }
+        }
         guard !pendingTriggers.isEmpty else { return nil }
         let error = status.error
         /// The network coming back mid-run matters only if the run ended unable to reach iCloud.
@@ -281,6 +352,8 @@ final class IOSSyncCoordinator {
 
     /// Nil when the status moved on while the run was in flight.
     private func perform(_ requested: SyncAdmission, generation: Int) async -> RunResult? {
+        downloadIsAheadInRun = true
+        defer { downloadIsAheadInRun = false }
         let transport = currentTransport()
         var admission = requested
         switch await confirmAccount(using: transport, generation: generation) {
@@ -359,6 +432,7 @@ final class IOSSyncCoordinator {
         }
 
         let pulled: PullResult
+        downloadIsAheadInRun = false
         do {
             pulled = try await fetchChanges(using: transport)
         } catch {
@@ -387,6 +461,7 @@ final class IOSSyncCoordinator {
         guard applied != .notSaved else {
             return RunResult(admission: admission, failure: .pullNotSaved)
         }
+        startActivationCooldown()
         // Committed before the upload, so a failed upload does not make every later run download everything again.
         if applied == .saved, let newToken = pulled.newToken {
             metadata.saveToken(newToken)

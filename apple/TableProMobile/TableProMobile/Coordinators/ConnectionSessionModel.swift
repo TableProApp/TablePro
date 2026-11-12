@@ -5,6 +5,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProLogRedaction
 import TableProModels
+import TableProPluginKit
 import TableProSQLGrammar
 
 // What a window shows of its connection: the model's, or what it showed when the session moved under an unsaved edit.
@@ -78,6 +79,7 @@ final class ConnectionSessionModel {
     @ObservationIgnored private var placementEpoch = 0
     @ObservationIgnored private var switchesInFlight = 0
     @ObservationIgnored private var placementRestored = false
+    @ObservationIgnored private var rememberedDatabaseHung = false
     @ObservationIgnored private var scenes: [WeakScene] = []
 
     private let appState: AppState
@@ -316,30 +318,57 @@ final class ConnectionSessionModel {
         Telemetry.shared.connectionAttempted(databaseType: record.type.rawValue)
 
         do {
-            let outcome = try await appState.sessionRedialer.redial(
-                record,
-                schema: nil,
-                prompter: lead(of: attempt)?.prompts,
-                joining: allowSignIn,
-                consumer: self,
-                stillWanted: { [weak self] in self?.isCurrent(attempt) == true }
-            )
-            let newSession = outcome.session
-            let load = await loadTables(in: nil, on: newSession)
-            if let refusal = load.failure { throw refusal }
+            let saved = record
+            // A remembered database that never answered may hang again, so the next open starts from the saved one and
+            // switches after, as opens did before.
+            let target = rememberedDatabaseHung ? record : openTarget(restoring: wanted)
+            rememberedDatabaseHung = false
+            let landed: OpenLanding
+            var restoring = wanted
+            var refused: RefusedDatabase?
+            do {
+                landed = try await dialForOpen(
+                    target, schema: schemaRestored(by: target, restoring: wanted), by: attempt, joining: allowSignIn
+                )
+            } catch let thrown {
+                let listRefused = thrown as? TableListRefused
+                let error = listRefused?.error ?? thrown
+                if target.database != saved.database, case PostgreSQLError.unreachable = error {
+                    rememberedDatabaseHung = true
+                }
+                // A sign-in is the connection's, not the database's: the saved database would fail the same way.
+                guard target.database != saved.database, isCurrent(attempt),
+                      listRefused != nil || Self.mayBlameDatabase(error),
+                      SignInOffer.method(for: error, connection: saved, secureStore: appState.secureStore) == nil
+                else { throw error }
+                Self.logger.warning("Failed to open remembered database \(target.database, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+                // A dial that landed and then refused its table list leaves a session to tear down first.
+                await appState.connectionManager.disconnect(connectionId)
+                guard isCurrent(attempt) else { return }
+                landed = try await dialForOpen(saved, schema: nil, by: attempt, joining: false)
+                restoring.database = saved.database
+                refused = RefusedDatabase(name: target.database, error: error)
+            }
             guard isCurrent(attempt) else { return }
+            let newSession = landed.outcome.session
             let placement = adoptedPlacement(of: newSession, includingDatabase: true)
             enter(.adopt(newSession, by: attempt))
-            commit(load, at: placement, onFailure: .keep)
-            if outcome.dialedHere {
+            commit(landed.load, at: placement, onFailure: .keep)
+            if landed.outcome.dialedHere {
                 appState.bumpSessionRevision(connectionId)
             }
-            guard await finishOpen(attempt, restoring: wanted) else { return }
+            guard await finishOpen(
+                attempt,
+                restoring: restoring,
+                listedSchemas: landed.outcome.schemas,
+                refused: refused
+            ) else { return }
             Telemetry.shared.connectionSucceeded(databaseType: record.type.rawValue)
             for scene in consumers(of: attempt) {
                 scene.navigateToPendingTable()
             }
-        } catch {
+        } catch let thrown {
+            let error = (thrown as? TableListRefused)?.error ?? thrown
             guard isCurrent(attempt) else { return }
             var failure = error
             // A sign-in that expired is recoverable, so offer it once and retry rather than
@@ -362,17 +391,127 @@ final class ConnectionSessionModel {
         }
     }
 
+    // Where the connection was, so the first table list is already the right one. Only PostgreSQL and Redshift, which
+    // need a second connection to change database. The others dial the saved one and move with USE, as before, so their
+    // refusals, which the app cannot always tell apart from a failed sign-in, never decide between two dials.
+    private func openTarget(restoring wanted: Placement) -> DatabaseConnection {
+        guard redialsToSwitchDatabase, !wanted.database.isEmpty else { return record }
+        var target = record
+        target.database = wanted.database
+        return target
+    }
+
+    // A remembered schema belongs to the remembered database, so the dial restores it only when it lands there.
+    private func schemaRestored(by target: DatabaseConnection, restoring wanted: Placement) -> String? {
+        guard supportsSchemas else { return nil }
+        guard !supportsDatabaseSwitching || wanted.database.isEmpty || target.database == wanted.database else {
+            return nil
+        }
+        return wanted.schema
+    }
+
+    private struct OpenLanding {
+        let outcome: SessionRedialer.Outcome
+        let load: CatalogLoad
+    }
+
+    // The database the open could not go back to, and why.
+    private struct RefusedDatabase {
+        let name: String
+        let error: any Error
+    }
+
+    nonisolated private struct TableListRefused: Error {
+        let error: any Error
+    }
+
+    // A PostgreSQL dial that failed on the way, or on the credentials, fails the same way for the saved database, and
+    // a second one would ask the same host key question or code again, wait out another timeout or count another failed
+    // login. Those come typed, or as libpq's own English text; anything else the server answered, in whatever language
+    // it speaks, may be about the database, so the open tries the saved one.
+    nonisolated static func mayBlameDatabase(_ error: any Error) -> Bool {
+        if error is CancellationError || error is SSHTunnelError || error is SSLHandshakeError
+            || error is LocalNetworkPermissionError || error is ConnectionError || error is URLError
+            || error is POSIXError {
+            return false
+        }
+        if case PostgreSQLError.unreachable = error { return false }
+        let message = error.localizedDescription.lowercased()
+        return !notAboutTheDatabase.contains { message.contains($0) }
+    }
+
+    private nonisolated static let notAboutTheDatabase = [
+        "password authentication failed", "authentication failed", "fe_sendauth", "no password supplied",
+        "could not connect", "connection refused", "timeout expired", "timed out", "could not translate host name",
+        "network is unreachable", "no route to host", "host is down", "software caused connection abort",
+        "server closed the connection", "connection reset",
+        "lost connection", "ssl error", "ssl syscall", "server does not support ssl",
+    ]
+
+    // A table list the new session refuses fails the dial, as it fails a database switch.
+    private func dialForOpen(
+        _ target: DatabaseConnection,
+        schema: String?,
+        by attempt: ConnectionAttempt,
+        joining: Bool
+    ) async throws -> OpenLanding {
+        let outcome = try await appState.sessionRedialer.redial(
+            target,
+            schema: schema,
+            onlyIfListed: true,
+            prompter: lead(of: attempt)?.prompts,
+            joining: joining,
+            consumer: self,
+            stillWanted: { [weak self] in self?.isCurrent(attempt) == true }
+        )
+        let load = await loadTables(in: nil, on: outcome.session)
+        if let refusal = load.failure { throw TableListRefused(error: refusal) }
+        return OpenLanding(outcome: outcome, load: load)
+    }
+
     // The open landed where the session is; this puts it back where the connection was, through the asking window.
+    // A fresh open dialed there already, so this only lists, unless that dial fell back to the saved database.
     @discardableResult
-    private func finishOpen(_ attempt: ConnectionAttempt, restoring wanted: Placement) async -> Bool {
-        await loadDatabases(restoring: wanted.database, from: lead(of: attempt), inside: attempt)
-        await loadSchemas(restoring: wanted.schema, from: lead(of: attempt))
+    private func finishOpen(
+        _ attempt: ConnectionAttempt,
+        restoring wanted: Placement,
+        listedSchemas: [String]? = nil,
+        refused: RefusedDatabase? = nil
+    ) async -> Bool {
+        let landedOn = (driver: session.map { ObjectIdentifier($0.driver) }, database: activeDatabase)
+        let databases = await loadDatabases(restoring: wanted.database, from: lead(of: attempt), inside: attempt)
+        if let refused {
+            settleRefusedDatabase(refused, listed: databases, reportingTo: lead(of: attempt))
+        }
+        // The dial's schema list belongs to the session it read, which a database switch above replaces or moves.
+        let stayed = session.map { ObjectIdentifier($0.driver) } == landedOn.driver && activeDatabase == landedOn.database
+        await loadSchemas(restoring: wanted.schema, from: lead(of: attempt), listed: stayed ? listedSchemas : nil)
         await refreshTransaction()
         // A database restore that failed both ways left the open lost, and it stays lost.
         guard enter(.opened(attempt)) else { return false }
         appState.libraryPreferences.recordConnected(connectionId)
         reportDroppedTransaction(pendingLoss, to: lead(of: attempt))
         return true
+    }
+
+    // A database the server still lists failed to open, so the alert says why, as a failed switch does. One it no
+    // longer lists is gone: the open stays quiet, as it always did for one, and forgets it so the next open skips it.
+    private func settleRefusedDatabase(
+        _ refused: RefusedDatabase,
+        listed: [String]?,
+        reportingTo scene: ConnectionCoordinator?
+    ) {
+        guard let listed, !listed.contains(refused.name) else {
+            scene?.presentFailure(
+                title: ConnectionCoordinator.switchDatabaseFailedTitle,
+                message: classify(refused.error, operation: "switchDatabase").message
+            )
+            return
+        }
+        let key = ConnectionDefaultsKey.lastDB.name(for: connectionId)
+        if UserDefaults.standard.string(forKey: key) == refused.name {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     // A transaction the server aborted refuses catalog reads, yet the session still holds the user's work.
@@ -1164,12 +1303,13 @@ final class ConnectionSessionModel {
 
     // `wanted` is where the connection was; the session may have opened elsewhere, and the asking window switches back,
     // as a step of `open` when an open asks.
+    @discardableResult
     private func loadDatabases(
         restoring wanted: String,
         from scene: ConnectionCoordinator?,
         inside open: ConnectionAttempt? = nil
-    ) async {
-        guard let session, supportsDatabaseSwitching else { return }
+    ) async -> [String]? {
+        guard let session, supportsDatabaseSwitching else { return nil }
         do {
             let listed = try await session.driver.fetchDatabases()
             catalog.databases = listed
@@ -1187,15 +1327,23 @@ final class ConnectionSessionModel {
                     await scene?.switchDatabase(to: reported, inside: open)
                 }
             }
+            return listed
         } catch {
             Self.logger.warning("Failed to load databases: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+            return nil
         }
     }
 
-    private func loadSchemas(restoring wanted: String, from scene: ConnectionCoordinator?) async {
+    // `known` is a list the dial already read on this session.
+    private func loadSchemas(restoring wanted: String, from scene: ConnectionCoordinator?, listed known: [String]? = nil) async {
         guard let session, supportsSchemas else { return }
         do {
-            let listed = try await session.driver.fetchSchemas()
+            let listed: [String]
+            if let known {
+                listed = known
+            } else {
+                listed = try await session.driver.fetchSchemas()
+            }
             catalog.schemas = listed
             let currentSchema = session.driver.currentSchema ?? "public"
             if listed.contains(wanted), wanted != currentSchema {

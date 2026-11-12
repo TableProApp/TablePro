@@ -29,6 +29,8 @@ struct CredentialProfileEditorSheet: View {
     @State private var sourceField: String = ""
     @State private var commandReuseSeconds: Int?
     @State private var vaultAccess = VaultAccessDraft()
+    // A new profile keeps this id when saved, so its first connect signs in as the user Test Source leased.
+    @State private var draftProfileId = UUID()
 
     @State private var secureFieldType: DatabaseType = .mysql
     @State private var secureFieldValues: [String: String] = [:]
@@ -176,6 +178,7 @@ struct CredentialProfileEditorSheet: View {
                     PasswordSourceTestView(
                         source: testedSource,
                         context: { testContext },
+                        leaseOwner: { profileId },
                         refusal: {
                             Self.testRefusal(
                                 for: testedSource,
@@ -233,7 +236,10 @@ struct CredentialProfileEditorSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        Text("Each connection signs in as a new database user. TablePro renews the lease while connected, revokes it on disconnect, and never saves the generated password.")
+        Text(String(localized: """
+            Connections on this profile share one database user. TablePro renews its lease while in use, revokes it \
+            once the last connection disconnects or after 10 minutes unused, and never saves the generated password.
+            """))
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -253,9 +259,13 @@ struct CredentialProfileEditorSheet: View {
         return source
     }
 
+    private var profileId: UUID {
+        existingProfile?.id ?? draftProfileId
+    }
+
     private var testContext: ConnectionScriptContext {
         ConnectionScriptContext(
-            connectionId: existingProfile?.id ?? UUID(),
+            connectionId: profileId,
             connectionName: "",
             host: "",
             port: 0,
@@ -418,7 +428,6 @@ struct CredentialProfileEditorSheet: View {
     }
 
     private func saveProfile() {
-        let profileId = existingProfile?.id ?? UUID()
         let liveFields = secureFieldValues.filter { !$0.value.isEmpty }
         let profile = CredentialProfile(
             id: profileId,

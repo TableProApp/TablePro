@@ -24,8 +24,8 @@ enum ScopedDriverRoute: Equatable {
 }
 
 /// What a table read's turn on the session driver came to.
-private enum TableReadTurn<T: Sendable>: Sendable {
-    case ran(T)
+private enum TableReadTurn: Sendable {
+    case ran(any Sendable)
     /// The route decided once the turn came, which is never the session driver.
     case moved(ScopedDriverRoute)
 }
@@ -118,6 +118,30 @@ extension DatabaseManager {
         readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        try await Self.unboxed(
+            withBoxedScopedDriver(
+                scope: scope,
+                route: route,
+                workload: workload,
+                cancellation: cancellation,
+                ownsSessionState: ownsSessionState,
+                readsOnly: readsOnly
+            ) { driver in
+                try await body(driver)
+            }
+        )
+    }
+
+    // The lease chain under the generic entry points runs boxed, so it is compiled once, not once per result type.
+    private func withBoxedScopedDriver(
+        scope: DatabaseScope,
+        route: ScopedDriverRoute,
+        workload: MetadataConnectionPool.Workload,
+        cancellation: DriverCancellationPolicy,
+        ownsSessionState: Bool,
+        readsOnly: Bool,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> any Sendable {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
         switch route {
         case .unavailable(let message):
@@ -133,6 +157,13 @@ extension DatabaseManager {
         }
     }
 
+    nonisolated private static func unboxed<T: Sendable>(_ value: any Sendable) -> T {
+        guard let result = value as? T else {
+            preconditionFailure("A lease returned \(type(of: value)) where \(T.self) was expected")
+        }
+        return result
+    }
+
     // A read that stops on the server once the task awaiting it is cancelled. It runs under a lease owner of its own,
     // so the cancel reaches this read and nothing else on the connection.
     func withCancellableRead<T: Sendable>(
@@ -143,10 +174,31 @@ extension DatabaseManager {
         readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        try await Self.unboxed(
+            withBoxedCancellableRead(
+                scope: scope,
+                route: route,
+                workload: workload,
+                ownsSessionState: ownsSessionState,
+                readsOnly: readsOnly
+            ) { driver in
+                try await body(driver)
+            }
+        )
+    }
+
+    private func withBoxedCancellableRead(
+        scope: DatabaseScope,
+        route: ScopedDriverRoute,
+        workload: MetadataConnectionPool.Workload,
+        ownsSessionState: Bool,
+        readsOnly: Bool,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> any Sendable {
         let owner = DriverLeaseOwner()
         let connectionId = scope.connectionId
         return try await withTaskCancellationHandler {
-            try await withScopedDriver(
+            try await withBoxedScopedDriver(
                 scope: scope,
                 route: route,
                 workload: workload,
@@ -196,6 +248,18 @@ extension DatabaseManager {
         cancellation: DriverCancellationPolicy,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        try await Self.unboxed(
+            withBoxedTableReadDriver(scope: scope, cancellation: cancellation) { driver in
+                try await body(driver)
+            }
+        )
+    }
+
+    private func withBoxedTableReadDriver(
+        scope: DatabaseScope,
+        cancellation: DriverCancellationPolicy,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> any Sendable {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
         var route = tableReadRoute(for: scope)
         while true {
@@ -388,10 +452,10 @@ extension DatabaseManager {
     /// The route is asked again through `tableReadRoute` itself, so it reads the same inputs the
     /// caller's first answer did, the browsed database among them. The driver's own connection is no
     /// substitute: it carries the database name the connection resolved to, not the one browsed.
-    private func withTableReadSessionDriver<T: Sendable>(
+    private func withTableReadSessionDriver(
         scope: DatabaseScope,
-        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
-    ) async throws -> TableReadTurn<T> {
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
+    ) async throws -> TableReadTurn {
         try await withSessionDriverTurn(scope: scope, ownsSessionState: false, readsOnly: true) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }

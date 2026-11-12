@@ -700,9 +700,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = freeTDSConn else {
             return AsyncThrowingStream { $0.finish(throwing: MSSQLPluginError.notConnected) }
         }
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
-                let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
+                let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error>(
+                    bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)
+                ) { coreContinuation in
                     /// A plain `Task {}` inherits context but is not a child, so cancelling the
                     /// outer task never reaches this one. The abort closure is what does.
                     Task {
@@ -721,21 +723,23 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
                 do {
                     for try await element in coreStream {
+                        let delivered: Bool
                         switch element {
                         case .header(let columns):
-                            continuation.yield(.header(PluginStreamHeader(
+                            delivered = await PluginRowStream.deliver(.header(PluginStreamHeader(
                                 columns: columns.map { $0.name },
                                 columnTypeNames: columns.map { $0.type.canonicalName },
                                 estimatedRowCount: nil
-                            )))
+                            )), to: continuation)
                         case .rows(let batch):
                             let pluginRows: [PluginRow] = batch.map { row in
                                 row.map { $0.asPluginCell }
                             }
-                            continuation.yield(.rows(pluginRows))
+                            delivered = await PluginRowStream.deliver(.rows(pluginRows), to: continuation)
                         case .affectedRows:
-                            break
+                            delivered = true
                         }
+                        guard delivered else { break }
                     }
                     continuation.finish()
                 } catch let error as MSSQLCoreError {

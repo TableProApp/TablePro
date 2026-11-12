@@ -3,18 +3,17 @@ import Foundation
 import os
 import TableProSSHTransport
 
-/// One authenticated libssh2 session forwarding a local port, built by `SSHTunnelFactory`.
-///
-/// A class rather than an actor, the shape `LibSSH2Tunnel` already has on macOS. Every libssh2
-/// call is serialized on `sessionQueue`, the accept loop has a serial queue of its own and the
-/// relays share a concurrent one, so nothing here blocks a thread of Swift's cooperative pool.
-/// An actor gives mutual exclusion but never thread transfer, so a tunnel parked in `poll` held
-/// a cooperative thread for its whole life: measured, 48 tunnels ran 12 at a time in 4,005ms
-/// where queues ran all 48 in 1,003ms. `Task.detached` measured the same 12, because it is the
-/// same pool.
-///
-/// Its socket, session and listening socket are `let`, established before construction, so there
-/// is no mutable state to protect and `close()` is synchronous.
+// One authenticated libssh2 session forwarding a local port, built by `SSHTunnelFactory`.
+//
+// A class rather than an actor, the shape `LibSSH2Tunnel` already has on macOS. Every libssh2 call
+// is serialized on `sessionQueue`, the acceptor has a serial queue of its own and the relays share a
+// concurrent one, so nothing here blocks a thread of Swift's cooperative pool. An actor gives mutual
+// exclusion but never thread transfer, so a tunnel parked in `poll` held a cooperative thread for its
+// whole life: measured, 48 tunnels ran 12 at a time in 4,005ms where queues ran all 48 in 1,003ms.
+// `Task.detached` measured the same 12, because it is the same pool.
+//
+// Its socket, session and listening socket are `let`, established before construction, so `close()`
+// is synchronous.
 nonisolated final class SSHTunnel: @unchecked Sendable {
     let localPort: Int
 
@@ -31,7 +30,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     /// Concurrent: relay loops, which poll, send and recv but make no libssh2 call directly.
     private let relayQueue: DispatchQueue
 
-    /// Serial: the accept loop, which polls the listening socket and nothing else.
+    // Serial: the acceptor's handler, which accepts and makes no libssh2 call.
     private let acceptQueue: DispatchQueue
 
     private let aliveLatch = TeardownLatch()
@@ -44,7 +43,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     /// here, since the relay runs on `relayQueue` outside the task's cancellation scope and stops
     /// on `aliveLatch` rather than on `Task.isCancelled`.
     private let clientRelays = DispatchGroup()
-    private var forwardingTask: Task<Void, Never>?
+    private var acceptor: SSHListenerAcceptor?
     private var keepAliveTask: Task<Void, Never>?
 
     private static let relayBufferSize = 32_768
@@ -55,10 +54,6 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     /// Held strictly below every iOS driver's connect timeout so the reason reaches the log
     /// before the driver reports its own timeout, which names no cause.
     static let channelOpenDeadlineSeconds: TimeInterval = 6
-
-    /// How long the accept loop waits per poll before rechecking the latch. Small enough that
-    /// noticing a client the kernel already accepted costs a slim part of the margin above.
-    static let acceptPollTimeoutMs: Int32 = 200
 
     private static let keepAliveIntervalSeconds = 10
 
@@ -90,30 +85,24 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     func startForwarding(destination: SSHForwardDestination) {
         sessionQueue.sync { libssh2_session_set_blocking(session, 0) }
 
-        forwardingTask = Task.detached { [weak self] in
-            guard let self else { return }
-
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.acceptQueue.async { [weak self] in
-                    defer { continuation.resume() }
-                    guard let self else { return }
-
-                    let target = destination.logDescription
-                    Self.logger.info("Forwarding started on port \(self.localPort) -> \(target)")
-
-                    while self.isRunning {
-                        guard let client = self.acceptClient() else { continue }
-                        self.spawnClient(
-                            clientFD: client.fd,
-                            acceptedAt: client.acceptedAt,
-                            destination: destination
-                        )
-                    }
-
-                    Self.logger.info("Forwarding loop ended for port \(self.localPort)")
-                }
+        // A handler already running when the latch is claimed may still spawn one relay; teardown
+        // waits for the cancel handler before the relay group, so it waits for that relay too.
+        let acceptor = SSHListenerAcceptor(listenFD: listenFD, queue: acceptQueue) { [weak self] client in
+            guard let self, self.isRunning else {
+                Darwin.close(client.descriptor)
+                return
             }
+            self.spawnClient(
+                clientFD: client.descriptor,
+                acceptedAt: client.acceptedAt,
+                destination: destination
+            )
         }
+        self.acceptor = acceptor
+        acceptor.start()
+
+        let target = destination.logDescription
+        Self.logger.info("Forwarding started on port \(self.localPort) -> \(target)")
     }
 
     // MARK: - Keep-Alive
@@ -163,11 +152,11 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     }
 
     // shutdown wakes every poll on the transport but keeps the number, so no other socket can take it mid-poll.
-    // Darwin's shutdown does not wake a poll on a listening socket, so the accept loop ends on the latch instead.
-    // The relays are awaited after the accept loop, the only thing that starts one, so the group can only empty.
+    // The listening socket closes only after the acceptor's cancel handler ran, once no accept handler is running.
+    // The relays are awaited after that, since the accept handler is the only thing that starts one.
     // The hops go last, in the Mac's order.
     private func performTeardown() {
-        forwardingTask?.cancel()
+        acceptor?.cancel()
         keepAliveTask?.cancel()
 
         shutdown(socketFD, SHUT_RDWR)
@@ -180,10 +169,10 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         let listenFD = self.listenFD
         let jumpHops = self.jumpHops
         let localPort = self.localPort
-        let forwardingTask = self.forwardingTask
+        let acceptor = self.acceptor
         let keepAliveTask = self.keepAliveTask
         Task.detached {
-            await forwardingTask?.value
+            await acceptor?.waitForCancellation()
             await keepAliveTask?.value
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 clientRelays.notify(queue: relayQueue) { continuation.resume() }
@@ -205,31 +194,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
 
     // MARK: - Private
 
-    /// The accept timestamp is taken here, not once the open reaches `openAndRelay`, because the
-    /// client's own connect timeout is already running by then and the scheduling hops in between
-    /// would push the deadline past it.
-    private func acceptClient() -> (fd: Int32, acceptedAt: Date)? {
-        var pollFD = pollfd(fd: listenFD, events: Int16(POLLIN), revents: 0)
-        let pollResult = poll(&pollFD, 1, Self.acceptPollTimeoutMs)
-
-        guard pollResult > 0, pollFD.revents & Int16(POLLIN) != 0 else { return nil }
-
-        var clientAddr = sockaddr_in()
-        var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-
-        let clientFD = withUnsafeMutablePointer(to: &clientAddr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                accept(listenFD, $0, &addrLen)
-            }
-        }
-
-        guard clientFD >= 0 else { return nil }
-        return (clientFD, Date())
-    }
-
-    /// Opens the channel and relays one accepted client, off the accept loop so a slow open
-    /// cannot delay the next accept. The loop runs on `relayQueue` (concurrent); individual
-    /// libssh2 calls are dispatched to `sessionQueue` (serial) for thread safety.
+    // On `relayQueue`, off the accept handler, so a slow open cannot delay the next accept.
     private func spawnClient(clientFD: Int32, acceptedAt: Date, destination: SSHForwardDestination) {
         let clientRelays = self.clientRelays
         clientRelays.enter()

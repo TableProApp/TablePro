@@ -74,7 +74,8 @@ public enum PostgreSQLCommentStatements {
         return rows.compactMap { statement(target: target, row: $0) }
     }
 
-    private static func statement(target: String, row: [String?]) -> String? {
+    // `target` is already qualified and quoted.
+    static func statement(target: String, row: [String?]) -> String? {
         guard row.count >= 3,
               let relkind = row[0],
               let keyword = PostgreSQLRelationSQL.commentKeyword(forRelkind: relkind),

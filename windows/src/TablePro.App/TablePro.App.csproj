@@ -43,8 +43,11 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" />
+    <!-- The Toolkit names the metapackage, whose AI, ML, Search, Widgets and DWrite the app never loads (docs/decisions/0005-distribution.md). -->
+    <PrunePackageReference Include="Microsoft.WindowsAppSDK" Version="$(WindowsAppSdkVersion)" />
   </ItemGroup>
 
   <ItemGroup>

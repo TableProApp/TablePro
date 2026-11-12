@@ -78,6 +78,21 @@ internal enum MySQLCheckConstraints {
         return "ALTER TABLE \(quotedTable) \(keyword) \(quotedName)"
     }
 
+    // CHECK_CONSTRAINTS has no TABLE_NAME here. TABLE_CONSTRAINTS also lists keys, whose names are per table, so
+    // without the type another table's key named like this table's check would match.
+    static func joinedCatalogQuery(databaseLiteral: String, tableLiteral: String) -> String {
+        """
+            SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+            FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
+            JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA
+                AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+                AND tc.CONSTRAINT_TYPE = 'CHECK'
+            WHERE cc.CONSTRAINT_SCHEMA = '\(databaseLiteral)' AND tc.TABLE_NAME = '\(tableLiteral)'
+            ORDER BY cc.CONSTRAINT_NAME
+            """
+    }
+
     static func parse(createTable sql: String) -> [PluginCheckConstraintInfo] {
         guard let body = MySQLCreateTableScanner.firstGroup(in: Substring(sql)) else { return [] }
         return MySQLCreateTableScanner.topLevelElements(of: body).compactMap(checkConstraint(in:))

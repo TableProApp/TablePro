@@ -240,10 +240,7 @@ internal struct OracleRowWriter {
 
     // MARK: - Values
 
-    /// Text for a column of a known type that is not a number is quoted here: left as `?`, it would reach the
-    /// placeholder writer, which writes numeric-looking text unquoted, so `00123` would be stored in a VARCHAR2 as
-    /// `123` and a keyless match on it would compare the column as a number. Text over the literal limit stays `?` and
-    /// is bound. A column of no known type keeps the plain `?`.
+    // A column of no known type keeps the plain `?`, which the placeholder writer fills in.
     private func sql(
         for value: PluginCellValue,
         column: String,
@@ -255,37 +252,13 @@ internal struct OracleRowWriter {
             parameters.append(value)
             return "?"
         }
-        let kind = OracleValueKind(typeName: typeName)
-        if kind == .bfile, !value.isNull {
-            return try bfileSQL(for: value, rowIndex: rowIndex)
-        }
-        switch value {
-        case .null:
-            return "NULL"
-        case .bytes:
+        guard let operand = OracleValueKind(typeName: typeName).operand(for: value, bind: {
             parameters.append(value)
             return "?"
-        case .text(let text):
-            if let literal = kind.inlineSQL(for: text) { return literal }
-            if !kind.isNumeric, let quoted = OracleBindPlaceholders.quotedLiteral(text) {
-                return kind.converting(quoted, text: text)
-            }
-            parameters.append(value)
-            return kind.converting("?", text: text)
+        }) else {
+            throw PluginRowWriteRefusal(rowIndex: rowIndex, reason: OracleValueKind.unwritableBFileReason)
         }
-    }
-
-    /// A BFILE reads as the `BFILENAME('DIR', 'file')` call that makes it, and only that call writes one back: the
-    /// text quoted or bound fails with ORA-00932. Anything else in a BFILE cell, such as the `<bfile>` placeholder,
-    /// is refused rather than sent.
-    private func bfileSQL(for value: PluginCellValue, rowIndex: Int) throws -> String {
-        guard let text = value.asText, let call = OracleBFileText.call(from: text) else {
-            throw PluginRowWriteRefusal(
-                rowIndex: rowIndex,
-                reason: String(format: String(localized: "Values of type %@ can't be written."), "BFILE")
-            )
-        }
-        return call
+        return operand
     }
 
     // MARK: - Helpers
@@ -350,6 +323,32 @@ internal enum OracleValueKind: Equatable {
         case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone, .bfile, .nationalText,
              .nationalLOB, .other:
             return false
+        }
+    }
+
+    static var unwritableBFileReason: String {
+        String(format: String(localized: "Values of type %@ can't be written."), "BFILE")
+    }
+
+    // A literal where one carries the value, else `bind()`'s placeholder in the conversion the type needs. Text that
+    // is not a number is quoted here: the placeholder writer would write `00123` bare, and a VARCHAR2 would store 123.
+    // Nil for a BFILE value that is not the `BFILENAME('DIR', 'file')` call it reads as, the only text that writes
+    // one back (anything else fails with ORA-00932).
+    func operand(for value: PluginCellValue, bind: () -> String) -> String? {
+        if self == .bfile, !value.isNull {
+            return value.asText.flatMap(OracleBFileText.call(from:))
+        }
+        switch value {
+        case .null:
+            return "NULL"
+        case .bytes:
+            return bind()
+        case .text(let text):
+            if let literal = inlineSQL(for: text) { return literal }
+            if !isNumeric, let quoted = OracleBindPlaceholders.quotedLiteral(text) {
+                return converting(quoted, text: text)
+            }
+            return converting(bind(), text: text)
         }
     }
 

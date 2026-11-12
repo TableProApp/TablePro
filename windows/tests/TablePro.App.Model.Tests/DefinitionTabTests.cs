@@ -248,6 +248,9 @@ internal sealed class DefinitionSession : ITabSession
     public Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
+    public Task<RowEstimate?> EstimateRowsAsync(TableName table, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     public Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 

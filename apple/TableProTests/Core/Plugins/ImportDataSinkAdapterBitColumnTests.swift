@@ -101,13 +101,14 @@ struct ImportDataSinkAdapterBitColumnTests {
         #expect(sql.last == "UPDATE `devices` SET `name` = ? WHERE `flags` = CAST(? AS UNSIGNED)")
     }
 
+    // Every engine is asked once, for the column types its driver writes each value by.
     @Test
-    func anEngineThatReadsBitsAsDigitsIsNotAsked() async throws {
+    func anEngineThatReadsBitsAsDigitsGetsNoCast() async throws {
         let driver = BitTableDriver()
 
         try await sink(on: driver, type: .postgresql).insertRows([["id": .text("1"), "flags": .text("101")]])
 
-        #expect(driver.columnFetches == 0)
+        #expect(driver.columnFetches == 1)
         #expect(driver.statements.first?.sql.contains("CAST") == false)
     }
 }

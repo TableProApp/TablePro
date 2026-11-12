@@ -16,11 +16,11 @@ final class PasswordSourceTestModel: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private var latest: (source: PasswordSource, environment: [String: String], outcome: Outcome)?
 
-    private let resolve: @Sendable (PasswordSource, ConnectionScriptContext) async throws -> String
+    private let resolve: @Sendable (PasswordSource, ConnectionScriptContext, UUID?) async throws -> String
 
     init(
-        resolve: @escaping @Sendable (PasswordSource, ConnectionScriptContext) async throws -> String = { source, context in
-            try await PasswordSourceResolver.test(source, for: context)
+        resolve: @escaping @Sendable (PasswordSource, ConnectionScriptContext, UUID?) async throws -> String = { source, context, owner in
+            try await PasswordSourceResolver.test(source, for: context, leaseOwner: owner)
         }
     ) {
         self.resolve = resolve
@@ -32,7 +32,7 @@ final class PasswordSourceTestModel: ObservableObject {
         return latest.outcome
     }
 
-    func run(_ source: PasswordSource, context: ConnectionScriptContext, refusal: (any Error)?) async {
+    func run(_ source: PasswordSource, context: ConnectionScriptContext, leaseOwner: UUID?, refusal: (any Error)?) async {
         guard !isRunning else { return }
         if let refusal {
             latest = (source, context.environment, .failed(refusal.localizedDescription))
@@ -41,7 +41,7 @@ final class PasswordSourceTestModel: ObservableObject {
         isRunning = true
         defer { isRunning = false }
         do {
-            let value = try await resolve(source, context)
+            let value = try await resolve(source, context, leaseOwner)
             latest = (source, context.environment, .returned(value))
         } catch {
             latest = (source, context.environment, .failed(error.localizedDescription))
@@ -52,6 +52,9 @@ final class PasswordSourceTestModel: ObservableObject {
 struct PasswordSourceTestView: View {
     let source: PasswordSource
     let context: () -> ConnectionScriptContext
+    // Whose Vault user a database role test signs in as: the profile, or the connection for a source of its own.
+    // Nil for an unsaved connection, whose test user nothing would reuse.
+    let leaseOwner: () -> UUID?
     let refusal: () -> (any Error)?
 
     @StateObject private var model = PasswordSourceTestModel()
@@ -61,8 +64,9 @@ struct PasswordSourceTestView: View {
         HStack {
             Button(String(localized: "Test Source")) {
                 let context = context()
+                let leaseOwner = leaseOwner()
                 let refusal = refusal()
-                Task { await model.run(source, context: context, refusal: refusal) }
+                Task { await model.run(source, context: context, leaseOwner: leaseOwner, refusal: refusal) }
             }
             .disabled(model.isRunning)
             .accessibilityIdentifier("password-source-test")

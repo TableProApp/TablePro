@@ -21,6 +21,15 @@ internal enum JsonReindenter {
         reindentIfValid(source, indent: indent) ?? source
     }
 
+    // An edit keeps the stored value's layout: a value stored on one line stays compact, a formatted one takes the
+    // editor's lines rather than losing every line break.
+    static func staged(_ edited: String, keepingLayoutOf stored: String?) -> String {
+        guard let stored, stored.trimmingCharacters(in: .whitespacesAndNewlines).contains(where: \.isNewline) else {
+            return normalize(edited)
+        }
+        return edited
+    }
+
     static func normalize(_ source: String) -> String {
         guard (source as NSString).length <= maxLength else { return source }
         guard let node = JsonSyntaxParser.parse(source) else { return source }

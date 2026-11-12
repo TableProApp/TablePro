@@ -42,6 +42,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../Shared/WinUiApp.cs" Link="WinUiApp.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/TablePro.DataGrid/TablePro.DataGrid.csproj" />
     <ProjectReference Include="../../src/TablePro.DataGrid.Model/TablePro.DataGrid.Model.csproj" />
     <ProjectReference Include="../../src/TablePro.Graphics/TablePro.Graphics.csproj" />
