@@ -62,6 +62,10 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public TransactionState Transaction { get; private set; } = TransactionState.Idle;
 
+    public QueryOutcome? Outcome { get; private set; }
+
+    public long? RowsAffected { get; private set; }
+
     public GridSort Sort
     {
         get => ResultGrid.Sort;
@@ -110,6 +114,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     public void Clear()
     {
         Release();
+        Outcome = null;
+        RowsAffected = null;
         ErrorBar.IsOpen = false;
         Placeholder.Text = Strings.Get("ResultsEmpty");
         _messages.Reset();
@@ -124,6 +130,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
         ResultSetCount = 0;
+        Outcome = null;
+        RowsAffected = null;
         _milliseconds = null;
         // The last run's messages stay on screen until this one's arrive or it ends, as its rows do.
         _messages.Reset();
@@ -132,6 +140,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         var incoming = new List<HeldSet>();
         var adopted = false;
         long? affected = null;
+        // Only the counts a statement reported, so a run where none did keeps none.
+        long? counted = null;
         void Adopt()
         {
             if (adopted || incoming.Count == 0)
@@ -184,6 +194,11 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                         break;
                     case QueryEvent.CommandCompleted command:
                         affected = (affected ?? 0) + (command.RowsAffected ?? 0);
+                        if (command.RowsAffected is { } rows)
+                        {
+                            counted = (counted ?? 0) + rows;
+                        }
+
                         break;
                     case QueryEvent.Notice or QueryEvent.NoticeLimitReached:
                         _messages.Add(queryEvent);
@@ -193,6 +208,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                         Adopt();
                         RowCount = adopted ? (_picked?.Result.Rows ?? 0) : 0;
                         Transaction = finished.Transaction;
+                        Outcome = finished.Outcome;
+                        RowsAffected = counted;
                         Finish(finished.Outcome, adopted, affected);
                         ShowMessages();
                         SelectView(_messages.ViewAtEnd(adopted, _pickedView));

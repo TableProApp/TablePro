@@ -44,4 +44,15 @@ public sealed class ObjectFoldersTests
         Assert.False(ObjectFolders.HasRows(ObjectKind.Function));
         Assert.False(ObjectFolders.HasRows(ObjectKind.Key));
     }
+
+    [Fact]
+    public void RoutinesTriggersAndSequencesOpenTheirDefinition()
+    {
+        Assert.All(
+            [ObjectKind.Function, ObjectKind.Procedure, ObjectKind.Trigger, ObjectKind.Sequence],
+            kind => Assert.True(ObjectFolders.HasDefinition(kind)));
+        Assert.All(
+            [ObjectKind.Table, ObjectKind.View, ObjectKind.Key, ObjectKind.Dictionary, ObjectKind.Other],
+            kind => Assert.False(ObjectFolders.HasDefinition(kind)));
+    }
 }

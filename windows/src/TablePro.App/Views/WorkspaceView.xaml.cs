@@ -5,8 +5,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
+using TablePro.DataGrid.Model;
 using TablePro.Editor.Model;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
@@ -17,6 +19,8 @@ namespace TablePro.App.Views;
 // The closing and reopening of tabs is WorkspaceTabs'; the tree, the bars and the strip's moves are drawn here.
 public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabViewItem>
 {
+    private const double HistoryPaneWidth = 320;
+
     private readonly Workbench _workbench;
     private readonly OpenConnection _connection;
     private readonly WorkspaceTabs<TabViewItem> _tabs;
@@ -38,6 +42,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private WindowId _tearOutWindow;
     private CancellationTokenSource? _recoveringHostKey;
     private HostKeyFailure? _hostKeyFailure;
+
+    // The pane reads one connection's runs, so a session of another id builds a new one.
+    private HistoryPane? _historyPane;
+    private Guid _historyConnection;
+    private bool _openingHistory;
+    private CancellationTokenSource? _exporting;
 
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
     {
@@ -92,6 +102,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     public bool ObjectsVisible => ObjectsPane.Visibility == Visibility.Visible;
 
     public bool CanReopenTab => _session is not null && _tabs.ClosedCount > 0;
+
+    public bool HistoryVisible => HistoryHost.Visibility == Visibility.Visible;
+
+    // One export at a time, of rows the tab shows now.
+    // Rows still arriving would be written as if they were all of them.
+    public bool CanExport =>
+        _exporting is null
+        && _session is not null
+        && ActiveTab is { IsRunning: false } tab
+        && ResultsOf(tab)?.ShownSet is { IsFinished: true };
 
     internal ITabContent? ActiveTab => (Tabs.SelectedItem as TabViewItem)?.Content as ITabContent;
 
@@ -171,22 +191,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
-        if (restore is { Tabs.Count: > 0 })
+        // Tabs merged from two windows can show one table twice; each comes back.
+        foreach (var tab in restore?.Tabs ?? [])
         {
-            foreach (var tab in restore.Tabs)
-            {
-                if (tab is { Kind: TabKind.Table, Table: { } table })
-                {
-                    // Tabs merged from two windows can show one table twice; each comes back.
-                    AddTable(tab.Schema, table, null, tab);
-                }
-                else
-                {
-                    NewQueryTab(tab.Sql, tab.Title);
-                }
-            }
+            Restore(tab, null);
+        }
 
-            SelectTab(Math.Clamp(restore.SelectedTab, 0, Tabs.TabItems.Count - 1) + 1);
+        // A definition this build cannot read again is left out, which can leave no tab at all.
+        if (Tabs.TabItems.Count > 0)
+        {
+            SelectTab(Math.Clamp(restore?.SelectedTab ?? 0, 0, Tabs.TabItems.Count - 1) + 1);
         }
         else
         {
@@ -194,6 +208,10 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         Start();
+        if (HistoryVisible)
+        {
+            _ = ShowHistoryAsync(focus: false);
+        }
     }
 
     public async void Start()
@@ -270,6 +288,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         // A pending individual close must not create a replacement while disconnect is awaiting it.
         _share = null;
         _session = null;
+        _exporting?.Cancel();
         Tabs.CanTearOutTabs = false;
         _watching?.Cancel();
         _watching = null;
@@ -289,44 +308,93 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void NewQueryTab(string? sql = null, string? title = null)
+    // Also how SQL from elsewhere opens in an editor: a definition's text or a run from the history.
+    public void NewQueryTab(string? sql = null, string? title = null) => AddQuery(sql, title ?? NextQueryTitle(), null);
+
+    // A definition read from another database than the connection's runs there.
+    private void AddQuery(string? sql, string title, int? index, string? database = null)
     {
         if (_share is null)
         {
             return;
         }
 
-        AddTab(new QueryTabView(_workbench, _share, title ?? NextQueryTitle(), sql), Symbol.Document);
+        AddTab(new QueryTabView(_workbench, _share, title, sql, database), Symbol.Document, index);
     }
 
-    public void OpenTable(string? schema, string name, int? index = null, SessionTab? restore = null)
+    // The open tab of the table is brought forward rather than a second one opened.
+    private TableTabView? OpenTable(ObjectEntry entry)
     {
-        if (_share is null)
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>())
         {
-            return;
+            if (item.Content is TableTabView view && view.Shows(entry.Schema, entry.Name))
+            {
+                Tabs.SelectedItem = item;
+                return view;
+            }
         }
 
-        var open = Tabs.TabItems.OfType<TabViewItem>()
-            .FirstOrDefault(item => item.Content is TableTabView view && view.Shows(schema, name));
-        if (open is not null)
-        {
-            Tabs.SelectedItem = open;
-            return;
-        }
-
-        AddTable(schema, name, index, restore);
+        return AddTable(entry.Schema, entry.Name, entry.Kind, null, null);
     }
 
-    private void AddTable(string? schema, string name, int? index, SessionTab? restore)
+    private TableTabView? AddTable(string? schema, string name, ObjectKind kind, int? index, SessionTab? restore)
     {
         if (_share is null)
         {
-            return;
+            return null;
         }
 
-        var table = new TableTabView(_workbench, _share, schema, name, restore);
-        AddTab(table, Symbol.ViewAll, index);
+        var table = new TableTabView(_workbench, _share, schema, name, kind, restore);
+        AddTab(table, IconOf(kind), index);
         table.Run();
+        return table;
+    }
+
+    private void OpenDefinition(ObjectEntry entry)
+    {
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>())
+        {
+            if (item.Content is DefinitionTabView view && view.Shows(entry))
+            {
+                Tabs.SelectedItem = item;
+                return;
+            }
+        }
+
+        AddDefinition(entry, null);
+    }
+
+    private void AddDefinition(ObjectEntry entry, int? index)
+    {
+        if (_share is null)
+        {
+            return;
+        }
+
+        var definition = new DefinitionTabView(_share, entry);
+        AddTab(definition, IconOf(entry.Kind), index);
+        definition.Load();
+    }
+
+    // A restored or reopened tab; a definition this build cannot name again stays closed.
+    private void Restore(SessionTab tab, int? index)
+    {
+        switch (tab)
+        {
+            case { Kind: TabKind.Table, Table: { } table }:
+                AddTable(tab.Schema, table, tab.ObjectKindOr(ObjectKind.Table), index, tab);
+                break;
+            case { Kind: TabKind.Definition }:
+                if (DefinitionTab.EntryOf(tab) is { } entry)
+                {
+                    AddDefinition(entry, index);
+                }
+
+                break;
+            default:
+                AddQuery(tab.Sql, tab.Title, index, tab.Database);
+                break;
+        }
     }
 
     public void CloseActiveTab()
@@ -354,18 +422,187 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
-        var index = Math.Min(closed.Index, Tabs.TabItems.Count);
-        if (closed.Tab is { Kind: TabKind.Table, Table: { } table })
+        Restore(closed.Tab, Math.Min(closed.Index, Tabs.TabItems.Count));
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task ToggleHistoryAsync()
+    {
+        if (HistoryVisible)
         {
-            AddTable(closed.Tab.Schema, table, index, closed.Tab);
+            HideHistory();
+            return;
+        }
+
+        await ShowHistoryAsync(focus: true).ConfigureAwait(true);
+    }
+
+    // The store opens once for the app; a pane without one says the history is unavailable.
+    private async Task ShowHistoryAsync(bool focus)
+    {
+        if (_session is not { } session || _openingHistory)
+        {
+            return;
+        }
+
+        var pane = _historyPane;
+        if (pane is null || _historyConnection != session.Id)
+        {
+            _openingHistory = true;
+            QueryHistory? history;
+            try
+            {
+                history = await _workbench.GetHistoryAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                _openingHistory = false;
+            }
+
+            if (!ReferenceEquals(_session, session))
+            {
+                return;
+            }
+
+            // A file opened without saving gets a new id each time it opens, so its pane lists every connection's runs.
+            var connection = _connection.ConnectionId is null ? (Guid?)null : session.Id;
+            pane = new HistoryPane(history is null ? null : new HistoryList(new CoreHistoryStore(history), connection));
+            pane.OpenRequested += (_, sql) => NewQueryTab(sql);
+            pane.CloseRequested += (_, _) =>
+            {
+                HideHistory();
+                ActiveTab?.FocusContent();
+            };
+            _historyPane = pane;
+            _historyConnection = session.Id;
+            HistoryHost.Child = pane;
+        }
+
+        HistoryColumn.Width = new GridLength(HistoryPaneWidth);
+        HistoryHost.Visibility = Visibility.Visible;
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
+        if (focus)
+        {
+            pane.FocusSearch();
+        }
+
+        await pane.RefreshAsync().ConfigureAwait(true);
+    }
+
+    private void HideHistory()
+    {
+        HistoryHost.Visibility = Visibility.Collapsed;
+        HistoryColumn.Width = new GridLength(0);
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async void OnHistoryRecorded(object? sender, EventArgs e)
+    {
+        if (HistoryVisible && _historyPane is { } pane)
+        {
+            await pane.RefreshAsync().ConfigureAwait(true);
+        }
+    }
+
+    private void OnOpenInEditor(object? sender, ObjectSource source) =>
+        AddQuery(source.Sql, NextQueryTitle(), null, source.Database);
+
+    // The rows the tab shows: the query's result, or the table's page, or the whole table read again.
+    public async Task ExportAsync()
+    {
+        if (!CanExport || _share is not { } share || ActiveTab is not { } tab || ResultsOf(tab) is not { } results)
+        {
+            return;
+        }
+
+        var table = (tab as TableTabView)?.Model.Table;
+        var plan = ExportPlan.For(table, Strings.Get("ExportResultsName"));
+        if (await ExportDialog.AskAsync(this, plan).ConfigureAwait(true) is not { } request
+            || _exporting is not null
+            || !ReferenceEquals(_share, share))
+        {
+            return;
+        }
+
+        // Read now, since the dialogs left the tab free to run again or page meanwhile.
+        using var exporting = new CancellationTokenSource();
+        Task<long> export;
+        if (request.Scope == ExportScope.EntireTable && tab is TableTabView whole)
+        {
+            var sort = results.Sort is { Direction: not SortDirection.None } shown
+                ? new ColumnSort(shown.Column, shown.Direction == SortDirection.Ascending)
+                : null;
+            export = share.Session.ExportTableAsync(
+                whole.Model.Table, sort, whole.Model.Filter, request.Format, request.Path, exporting.Token);
+        }
+        else if (results.ShownSet is { } rows)
+        {
+            export = share.Session.ExportRowsAsync(
+                rows, results.Columns.Count, request.Format, table, request.Path, exporting.Token);
         }
         else
         {
-            AddTab(new QueryTabView(_workbench, _share, closed.Tab.Title, closed.Tab.Sql), Symbol.Document, index);
+            ShowExport(InfoBarSeverity.Error, Strings.Get("ExportRowsGone"), running: false);
+            return;
         }
 
+        var name = Path.GetFileName(request.Path);
+        _exporting = exporting;
+        ShowExport(InfoBarSeverity.Informational, Strings.Format("ExportRunning", name), running: true);
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            var written = await export.ConfigureAwait(true);
+            ShowExport(
+                InfoBarSeverity.Success,
+                Strings.Format(written == 1 ? "ExportDoneOne" : "ExportDoneMany", written, name),
+                running: false);
+        }
+        catch (OperationCanceledException)
+        {
+            ShowExport(InfoBarSeverity.Informational, Strings.Get("ExportCancelled"), running: false);
+        }
+        catch (TableProException exception)
+        {
+            ShowExport(InfoBarSeverity.Error, Strings.Error(exception.Error), running: false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // A new run or a close let go of the rows as the export began.
+            ShowExport(InfoBarSeverity.Error, Strings.Get("ExportRowsGone"), running: false);
+        }
+        finally
+        {
+            _exporting = null;
+            CommandsChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
+
+    private void ShowExport(InfoBarSeverity severity, string message, bool running)
+    {
+        ExportBar.Severity = severity;
+        ExportBar.Message = message;
+        ExportBar.IsClosable = !running;
+        ExportProgress.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        CancelExportButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        // A closed InfoBar keeps its margin, so the bar is collapsed while it is closed.
+        ExportBar.Visibility = Visibility.Visible;
+        // Narrator reads an InfoBar when it opens, not when its text changes.
+        ExportBar.IsOpen = false;
+        ExportBar.IsOpen = true;
+    }
+
+    private void OnExportBarClosed(InfoBar sender, InfoBarClosedEventArgs args) =>
+        ExportBar.Visibility = Visibility.Collapsed;
+
+    private void OnCancelExport(object sender, RoutedEventArgs e) => _exporting?.Cancel();
+
+    private static ResultsPane? ResultsOf(ITabContent? tab) => tab switch
+    {
+        QueryTabView query => query.ResultsView,
+        TableTabView table => table.ResultsView,
+        _ => null,
+    };
 
     public void FocusFilter()
     {
@@ -457,6 +694,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             }
         }
 
+        // A tab asks the workspace that holds it now, which a move to another window changes.
+        if (item.Content is QueryTabView query)
+        {
+            query.HistoryRecorded += OnHistoryRecorded;
+        }
+        else if (item.Content is DefinitionTabView definition)
+        {
+            definition.OpenInEditorRequested += OnOpenInEditor;
+        }
+
         if (index is { } at && at >= 0 && at <= Tabs.TabItems.Count)
         {
             Tabs.TabItems.Insert(at, item);
@@ -485,6 +732,15 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             }
 
             _snapshots.Remove(content);
+        }
+
+        if (item.Content is QueryTabView query)
+        {
+            query.HistoryRecorded -= OnHistoryRecorded;
+        }
+        else if (item.Content is DefinitionTabView definition)
+        {
+            definition.OpenInEditorRequested -= OnOpenInEditor;
         }
 
         Tabs.TabItems.Remove(item);
@@ -1015,16 +1271,19 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             Entry = entry,
             Schema = entry.Schema,
             Detail = showSchema ? entry.Schema ?? string.Empty : string.Empty,
-            Icon = entry.Kind switch
-            {
-                ObjectKind.View or ObjectKind.MaterializedView => Symbol.View,
-                ObjectKind.Sequence => Symbol.Sort,
-                ObjectKind.Function or ObjectKind.Procedure => Symbol.Calculator,
-                ObjectKind.Trigger => Symbol.Flag,
-                ObjectKind.Key => Symbol.Tag,
-                _ => Symbol.ViewAll,
-            },
+            Icon = IconOf(entry.Kind),
         };
+
+    // The tree's row and the object's tab show the same symbol.
+    private static Symbol IconOf(ObjectKind kind) => kind switch
+    {
+        ObjectKind.View or ObjectKind.MaterializedView => Symbol.View,
+        ObjectKind.Sequence => Symbol.Sort,
+        ObjectKind.Function or ObjectKind.Procedure => Symbol.Calculator,
+        ObjectKind.Trigger => Symbol.Flag,
+        ObjectKind.Key => Symbol.Tag,
+        _ => Symbol.ViewAll,
+    };
 
     private async void OnTreeExpanding(TreeView sender, TreeViewExpandingEventArgs args)
     {
@@ -1093,11 +1352,102 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
     }
 
+    // Rows open a table tab, code a definition tab; a key or an unknown kind has nothing to open.
     private void Open(ObjectNode node)
     {
-        if (node.Entry is { } entry && ObjectFolders.HasRows(entry.Kind))
+        if (node.Entry is not { } entry)
         {
-            OpenTable(entry.Schema, entry.Name);
+            return;
+        }
+
+        if (ObjectFolders.HasRows(entry.Kind))
+        {
+            OpenTable(entry);
+        }
+        else if (ObjectFolders.HasDefinition(entry.Kind))
+        {
+            OpenDefinition(entry);
+        }
+    }
+
+    private void OnObjectRowContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        if (sender is TreeViewItem row && ObjectTree.ItemFromContainer(row) is ObjectNode { Entry: { } entry })
+        {
+            args.Handled = true;
+            ShowObjectMenu(row, entry, args);
+        }
+    }
+
+    // A key asks from the focused row, which is the list item around the template, so the list takes the event.
+    private void OnObjectListContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        if (ListItemAt(args.OriginalSource) is { } row
+            && ObjectList.ItemFromContainer(row) is ObjectNode { Entry: { } entry })
+        {
+            args.Handled = true;
+            ShowObjectMenu(row, entry, args);
+        }
+    }
+
+    private static ListViewItem? ListItemAt(object? source)
+    {
+        var element = source as DependencyObject;
+        while (element is not null and not ListViewItem)
+        {
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        return element as ListViewItem;
+    }
+
+    // Built when asked for, as the tab menu is, with the macOS sidebar's commands for the object's kind.
+    private void ShowObjectMenu(FrameworkElement row, ObjectEntry entry, ContextRequestedEventArgs args)
+    {
+        var menu = new MenuFlyout();
+        if (ObjectFolders.HasRows(entry.Kind))
+        {
+            menu.Items.Add(ObjectMenuItem("ObjectMenuOpen", Symbol.OpenFile, () => OpenTable(entry)));
+            menu.Items.Add(ObjectMenuItem(
+                "ObjectMenuShowStructure", Symbol.List, () => OpenTable(entry)?.ShowStructure()));
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
+        else if (ObjectFolders.HasDefinition(entry.Kind))
+        {
+            menu.Items.Add(ObjectMenuItem("ObjectMenuShowDdl", Symbol.Preview, () => OpenDefinition(entry)));
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
+
+        menu.Items.Add(ObjectMenuItem("ObjectMenuCopyName", Symbol.Copy, () => CopyText(entry.Name)));
+        if (args.TryGetPosition(row, out var point))
+        {
+            menu.ShowAt(row, new FlyoutShowOptions { Position = point });
+        }
+        else
+        {
+            menu.ShowAt(row);
+        }
+    }
+
+    private static MenuFlyoutItem ObjectMenuItem(string text, Symbol icon, Action invoke)
+    {
+        var item = new MenuFlyoutItem { Text = Strings.Get(text), Icon = new SymbolIcon(icon) };
+        item.Click += (_, _) => invoke();
+        return item;
+    }
+
+    internal static void CopyText(string text)
+    {
+        var package = new DataPackage();
+        package.SetText(text);
+        try
+        {
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+        }
+        catch (COMException)
+        {
+            // Another program holds the clipboard open; copying again works once it lets go.
         }
     }
 
@@ -1192,18 +1542,5 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     private void OnEditConnection(object sender, RoutedEventArgs e) => EditRequested?.Invoke(this, EventArgs.Empty);
 
-    private void OnCopyDetails(object sender, RoutedEventArgs e)
-    {
-        var package = new DataPackage();
-        package.SetText(_failureDetails);
-        try
-        {
-            Clipboard.SetContent(package);
-            Clipboard.Flush();
-        }
-        catch (COMException)
-        {
-            // Another program holds the clipboard open; pressing the button again copies once it lets go.
-        }
-    }
+    private void OnCopyDetails(object sender, RoutedEventArgs e) => CopyText(_failureDetails);
 }

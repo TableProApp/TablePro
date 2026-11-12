@@ -1977,4 +1977,574 @@ New fingerprint: {2}</value>
   <data name="Error_driver_commit_outcome_unknown" xml:space="preserve">
     <value>The save was sent and no answer came back, so it may have been written.</value>
   </data>
+  <data name="MenuExportResults.Text" xml:space="preserve">
+    <value>Export results...</value>
+  </data>
+  <data name="MenuExportResults.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuShowHistory.Text" xml:space="preserve">
+    <value>Show query history</value>
+  </data>
+  <data name="MenuShowHistory.AccessKey" xml:space="preserve">
+    <value>H</value>
+  </data>
+  <data name="MenuFilterRows.Text" xml:space="preserve">
+    <value>Filter rows</value>
+  </data>
+  <data name="MenuFilterRows.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="ObjectMenuOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="ObjectMenuShowStructure" xml:space="preserve">
+    <value>Show structure</value>
+  </data>
+  <data name="ObjectMenuShowDdl" xml:space="preserve">
+    <value>Show DDL</value>
+  </data>
+  <data name="ObjectMenuCopyName" xml:space="preserve">
+    <value>Copy name</value>
+  </data>
+  <data name="DefinitionTitle_Function" xml:space="preserve">
+    <value>Function: {0}</value>
+  </data>
+  <data name="DefinitionTitle_Procedure" xml:space="preserve">
+    <value>Procedure: {0}</value>
+  </data>
+  <data name="DefinitionTitle_Trigger" xml:space="preserve">
+    <value>Trigger: {0}</value>
+  </data>
+  <data name="DefinitionTitle_Sequence" xml:space="preserve">
+    <value>Sequence: {0}</value>
+  </data>
+  <data name="DefinitionCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Definition commands</value>
+  </data>
+  <data name="DefinitionReadOnly.Text" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="OpenInEditorButton.Label" xml:space="preserve">
+    <value>Open in editor</value>
+  </data>
+  <data name="OpenInEditorButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open the text in a new query tab</value>
+  </data>
+  <data name="CopyDefinitionButton.Label" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="CopyDefinitionButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Copy the definition</value>
+  </data>
+  <data name="ReloadDefinitionButton.Label" xml:space="preserve">
+    <value>Reload</value>
+  </data>
+  <data name="ReloadDefinitionButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Reload from the database</value>
+  </data>
+  <data name="EditorRefusalBar.Message" xml:space="preserve">
+    <value>Run in an editor, this text would not make the object as it is, so it does not open in one.</value>
+  </data>
+  <data name="DefinitionText.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="DefinitionLoading.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the definition</value>
+  </data>
+  <data name="SourceUnavailableTitle.Text" xml:space="preserve">
+    <value>Source unavailable</value>
+  </data>
+  <data name="SourceUnavailableGone" xml:space="preserve">
+    <value>The object is gone, or this login cannot read its definition.</value>
+  </data>
+  <data name="TryAgainButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="HistoryCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query history commands</value>
+  </data>
+  <data name="HistoryHeader.Text" xml:space="preserve">
+    <value>Query history</value>
+  </data>
+  <data name="ClearHistoryButton.Label" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="ClearHistoryButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Clear the query history of every connection</value>
+  </data>
+  <data name="CloseHistoryButton.Label" xml:space="preserve">
+    <value>Close query history</value>
+  </data>
+  <data name="CloseHistoryButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close query history</value>
+  </data>
+  <data name="HistorySearch.PlaceholderText" xml:space="preserve">
+    <value>Search history</value>
+  </data>
+  <data name="HistorySearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search query history</value>
+  </data>
+  <data name="HistoryList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Queries run on this connection</value>
+  </data>
+  <data name="HistoryEmpty" xml:space="preserve">
+    <value>No queries yet</value>
+  </data>
+  <data name="HistoryNoMatches" xml:space="preserve">
+    <value>No matches</value>
+  </data>
+  <data name="HistoryUnavailableTitle" xml:space="preserve">
+    <value>Query history is unavailable</value>
+  </data>
+  <data name="HistoryUnavailableMessage" xml:space="preserve">
+    <value>The history database couldn't be opened, so queries aren't recorded.</value>
+  </data>
+  <data name="HistoryFailedTitle" xml:space="preserve">
+    <value>The history couldn't be read</value>
+  </data>
+  <data name="ClearHistoryTitle" xml:space="preserve">
+    <value>Clear the query history of every connection?</value>
+  </data>
+  <data name="ClearHistoryMessage" xml:space="preserve">
+    <value>Every query run on any connection is removed from the history. This can't be undone.</value>
+  </data>
+  <data name="ClearHistoryAction" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="HistoryMenuOpen" xml:space="preserve">
+    <value>Open in new tab</value>
+  </data>
+  <data name="HistoryMenuCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="HistoryMenuDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="HistoryDetail" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="HistoryDurationMilliseconds" xml:space="preserve">
+    <value>{0:N0} ms</value>
+  </data>
+  <data name="HistoryDurationSeconds" xml:space="preserve">
+    <value>{0:N2} s</value>
+  </data>
+  <data name="HistoryFailed" xml:space="preserve">
+    <value>Failed: {0}</value>
+  </data>
+  <data name="HistoryCancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="ExportTitle" xml:space="preserve">
+    <value>Export results</value>
+  </data>
+  <data name="ExportFormatHeader" xml:space="preserve">
+    <value>Format</value>
+  </data>
+  <data name="ExportScopeHeader" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="ExportAction" xml:space="preserve">
+    <value>Export...</value>
+  </data>
+  <data name="ExportFormat_Csv" xml:space="preserve">
+    <value>CSV</value>
+  </data>
+  <data name="ExportFormat_Json" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="ExportFormat_Excel" xml:space="preserve">
+    <value>Excel</value>
+  </data>
+  <data name="ExportFormat_Markdown" xml:space="preserve">
+    <value>Markdown</value>
+  </data>
+  <data name="ExportFormat_Html" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="ExportFormat_Xml" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="ExportFormat_SqlInsert" xml:space="preserve">
+    <value>SQL INSERT</value>
+  </data>
+  <data name="ExportScope_ShownRows" xml:space="preserve">
+    <value>Rows shown</value>
+  </data>
+  <data name="ExportScope_CurrentPage" xml:space="preserve">
+    <value>Current page</value>
+  </data>
+  <data name="ExportScope_EntireTable" xml:space="preserve">
+    <value>Entire table</value>
+  </data>
+  <data name="ExportResultsName" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="ExportRunning" xml:space="preserve">
+    <value>Exporting to {0}...</value>
+  </data>
+  <data name="ExportDoneOne" xml:space="preserve">
+    <value>Exported {0:N0} row to {1}</value>
+  </data>
+  <data name="ExportDoneMany" xml:space="preserve">
+    <value>Exported {0:N0} rows to {1}</value>
+  </data>
+  <data name="ExportCancelled" xml:space="preserve">
+    <value>The export was cancelled. No file was written.</value>
+  </data>
+  <data name="ExportRowsGone" xml:space="preserve">
+    <value>The rows changed before they were exported. Export them again.</value>
+  </data>
+  <data name="CancelExportButton.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ExportProgress.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Exporting</value>
+  </data>
+  <data name="Error_ffi_export_bad_path" xml:space="preserve">
+    <value>The export needs a full path to a file.</value>
+  </data>
+  <data name="Error_ffi_export_needs_table" xml:space="preserve">
+    <value>SQL INSERT needs the table the rows came from.</value>
+  </data>
+  <data name="Error_ffi_export_io" xml:space="preserve">
+    <value>The file couldn't be written.</value>
+  </data>
+  <data name="Error_ffi_export_sheet_full" xml:space="preserve">
+    <value>These rows don't fit on one Excel sheet, which holds 1,048,575 rows under its header.</value>
+  </data>
+  <data name="Error_ffi_export_sheet_too_wide" xml:space="preserve">
+    <value>These columns don't fit on one Excel sheet, which holds 16,384 columns.</value>
+  </data>
+  <data name="Error_ffi_export_cell_too_long" xml:space="preserve">
+    <value>A value is longer than the 32,767 characters an Excel cell holds.</value>
+  </data>
+  <data name="Error_ffi_export_undecodable" xml:space="preserve">
+    <value>A value couldn't be read from the server, so it can't be written to the file.</value>
+  </data>
+  <data name="Error_ffi_export_not_xml_text" xml:space="preserve">
+    <value>A value holds characters XML can't carry.</value>
+  </data>
+  <data name="Error_ffi_export_several_results" xml:space="preserve">
+    <value>The export read more than one result.</value>
+  </data>
+  <data name="Error_ffi_export_no_result" xml:space="preserve">
+    <value>The read ended before its rows did, so no file was written.</value>
+  </data>
+  <data name="Error_ffi_export_failed" xml:space="preserve">
+    <value>The export stopped on an internal error. No file was written.</value>
+  </data>
+  <data name="Error_ffi_not_connected" xml:space="preserve">
+    <value>The connection is offline.</value>
+  </data>
+  <data name="Error_operation_browse" xml:space="preserve">
+    <value>The table's rows couldn't be read with this filter or sort.</value>
+  </data>
+  <data name="Error_ffi_no_definition" xml:space="preserve">
+    <value>This object has no definition to show.</value>
+  </data>
+  <data name="Error_driver_unsupported" xml:space="preserve">
+    <value>This database doesn't support that.</value>
+  </data>
+  <data name="TableViews.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Data or structure</value>
+  </data>
+  <data name="TableDataItem.Text" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="TableStructureItem.Text" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="FilterButton.Label" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="FilterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Filter rows (Ctrl+Shift+F)</value>
+  </data>
+  <data name="ReloadDiscardFilter" xml:space="preserve">
+    <value>Applying or clearing filters will reload data and discard all unsaved changes.</value>
+  </data>
+  <data name="FilterPanel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter rows</value>
+  </data>
+  <data name="FilterRetryButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="FilterLoadingRing.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the columns</value>
+  </data>
+  <data name="FilterRawSqlLabel.Text" xml:space="preserve">
+    <value>Raw SQL</value>
+  </data>
+  <data name="FilterRawSql.PlaceholderText" xml:space="preserve">
+    <value>WHERE clause</value>
+  </data>
+  <data name="FilterRawSql.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WHERE clause</value>
+  </data>
+  <data name="AddFilterRaw.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Add filter</value>
+  </data>
+  <data name="AddFilterRaw.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add filter</value>
+  </data>
+  <data name="FilterMatch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter logic mode</value>
+  </data>
+  <data name="FilterMatchAll.Content" xml:space="preserve">
+    <value>Match all</value>
+  </data>
+  <data name="FilterMatchAny.Content" xml:space="preserve">
+    <value>Match any</value>
+  </data>
+  <data name="ClearFilterButton.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="ApplyFilterButton.Content" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="FilterOp_Equal" xml:space="preserve">
+    <value>equals</value>
+  </data>
+  <data name="FilterOp_NotEqual" xml:space="preserve">
+    <value>not equals</value>
+  </data>
+  <data name="FilterOp_Less" xml:space="preserve">
+    <value>less than</value>
+  </data>
+  <data name="FilterOp_LessOrEqual" xml:space="preserve">
+    <value>less or equal</value>
+  </data>
+  <data name="FilterOp_Greater" xml:space="preserve">
+    <value>greater than</value>
+  </data>
+  <data name="FilterOp_GreaterOrEqual" xml:space="preserve">
+    <value>greater or equal</value>
+  </data>
+  <data name="FilterOp_Contains" xml:space="preserve">
+    <value>contains</value>
+  </data>
+  <data name="FilterOp_StartsWith" xml:space="preserve">
+    <value>starts with</value>
+  </data>
+  <data name="FilterOp_EndsWith" xml:space="preserve">
+    <value>ends with</value>
+  </data>
+  <data name="FilterOp_Like" xml:space="preserve">
+    <value>like</value>
+  </data>
+  <data name="FilterOp_NotLike" xml:space="preserve">
+    <value>not like</value>
+  </data>
+  <data name="FilterOp_ILike" xml:space="preserve">
+    <value>like, any case</value>
+  </data>
+  <data name="FilterOp_IsNull" xml:space="preserve">
+    <value>is NULL</value>
+  </data>
+  <data name="FilterOp_IsNotNull" xml:space="preserve">
+    <value>is not NULL</value>
+  </data>
+  <data name="FilterOp_In" xml:space="preserve">
+    <value>in list</value>
+  </data>
+  <data name="FilterOp_NotIn" xml:space="preserve">
+    <value>not in list</value>
+  </data>
+  <data name="FilterOp_Between" xml:space="preserve">
+    <value>between</value>
+  </data>
+  <data name="FilterColumnName" xml:space="preserve">
+    <value>Filter {0} column</value>
+  </data>
+  <data name="FilterOperatorName" xml:space="preserve">
+    <value>Filter {0} operator</value>
+  </data>
+  <data name="FilterValueName" xml:space="preserve">
+    <value>Filter {0} value</value>
+  </data>
+  <data name="FilterSecondValueName" xml:space="preserve">
+    <value>Filter {0} second value</value>
+  </data>
+  <data name="FilterAnd" xml:space="preserve">
+    <value>and</value>
+  </data>
+  <data name="FilterValuePlaceholder" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="FilterListPlaceholder" xml:space="preserve">
+    <value>a, b, c</value>
+  </data>
+  <data name="FilterAdd" xml:space="preserve">
+    <value>Add filter</value>
+  </data>
+  <data name="FilterRemove" xml:space="preserve">
+    <value>Remove filter</value>
+  </data>
+  <data name="FilterRemoveName" xml:space="preserve">
+    <value>Remove filter {0}</value>
+  </data>
+  <data name="FilterNoColumn" xml:space="preserve">
+    <value>Select a column.</value>
+  </data>
+  <data name="FilterNoValue" xml:space="preserve">
+    <value>Value is required.</value>
+  </data>
+  <data name="FilterNoSecondValue" xml:space="preserve">
+    <value>Second value is required for between.</value>
+  </data>
+  <data name="StructureSections.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Structure sections</value>
+  </data>
+  <data name="StructureColumnsItem.Text" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="StructureIndexesItem.Text" xml:space="preserve">
+    <value>Indexes</value>
+  </data>
+  <data name="StructureForeignKeysItem.Text" xml:space="preserve">
+    <value>Foreign keys</value>
+  </data>
+  <data name="StructureDdlItem.Text" xml:space="preserve">
+    <value>DDL</value>
+  </data>
+  <data name="CopyDdlButton.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="StructureRefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Refresh structure</value>
+  </data>
+  <data name="StructureRefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Refresh structure</value>
+  </data>
+  <data name="StructureRetryButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="StructureLoadingRing.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the structure</value>
+  </data>
+  <data name="StructureGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Structure</value>
+  </data>
+  <data name="StructureDdl.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>DDL</value>
+  </data>
+  <data name="StructureHeaderName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="StructureHeaderType" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="StructureHeaderNullable" xml:space="preserve">
+    <value>Nullable</value>
+  </data>
+  <data name="StructureHeaderDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="StructureHeaderPrimaryKey" xml:space="preserve">
+    <value>Primary key</value>
+  </data>
+  <data name="StructureHeaderAutoIncrement" xml:space="preserve">
+    <value>Auto increment</value>
+  </data>
+  <data name="StructureHeaderComment" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="StructureHeaderColumns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="StructureHeaderUnique" xml:space="preserve">
+    <value>Unique</value>
+  </data>
+  <data name="StructureHeaderCondition" xml:space="preserve">
+    <value>Condition</value>
+  </data>
+  <data name="StructureHeaderRefTable" xml:space="preserve">
+    <value>Ref table</value>
+  </data>
+  <data name="StructureHeaderRefColumns" xml:space="preserve">
+    <value>Ref columns</value>
+  </data>
+  <data name="StructureHeaderRefSchema" xml:space="preserve">
+    <value>Ref schema</value>
+  </data>
+  <data name="StructureHeaderOnDelete" xml:space="preserve">
+    <value>On delete</value>
+  </data>
+  <data name="StructureHeaderOnUpdate" xml:space="preserve">
+    <value>On update</value>
+  </data>
+  <data name="StructureYes" xml:space="preserve">
+    <value>YES</value>
+  </data>
+  <data name="StructureNo" xml:space="preserve">
+    <value>NO</value>
+  </data>
+  <data name="StructureNoColumns" xml:space="preserve">
+    <value>No columns</value>
+  </data>
+  <data name="StructureNoIndexes" xml:space="preserve">
+    <value>No indexes</value>
+  </data>
+  <data name="StructureNoForeignKeys" xml:space="preserve">
+    <value>No foreign keys</value>
+  </data>
+  <data name="StructureNoDdl" xml:space="preserve">
+    <value>No CREATE statement for this object</value>
+  </data>
+  <data name="Error_filter_unknown_column" xml:space="preserve">
+    <value>The filter names a column this table doesn't have.</value>
+  </data>
+  <data name="Error_filter_missing_value" xml:space="preserve">
+    <value>A filter rule needs a value.</value>
+  </data>
+  <data name="Error_filter_between_missing_bound" xml:space="preserve">
+    <value>Between needs both values.</value>
+  </data>
+  <data name="Error_filter_empty_in_list" xml:space="preserve">
+    <value>In list needs at least one value.</value>
+  </data>
+  <data name="Error_filter_wrong_value_shape" xml:space="preserve">
+    <value>This operator takes a different number of values.</value>
+  </data>
+  <data name="Error_filter_bind" xml:space="preserve">
+    <value>A filter value can't be sent as its column's type.</value>
+  </data>
+  <data name="Error_filter_operator_not_allowed" xml:space="preserve">
+    <value>This operator doesn't apply to the column's type.</value>
+  </data>
+  <data name="Error_filter_combinator_not_allowed" xml:space="preserve">
+    <value>This engine can't use Match any. Use Match all.</value>
+  </data>
+  <data name="Error_filter_raw_predicate" xml:space="preserve">
+    <value>The Raw SQL filter must be one condition, such as age &gt; 30.</value>
+  </data>
+  <data name="Error_filter_raw_document" xml:space="preserve">
+    <value>The filter doesn't read as a document.</value>
+  </data>
+  <data name="Error_filter_raw_not_document" xml:space="preserve">
+    <value>The filter must be a document, such as { qty: { $gt: 1 } }.</value>
+  </data>
+  <data name="Error_filter_unaddressable_field" xml:space="preserve">
+    <value>A filter can't name a field with a dot in its name or one that starts with $.</value>
+  </data>
+  <data name="Error_browse_sort_unsupported" xml:space="preserve">
+    <value>This engine reads a table only in its own order, so it can't be sorted.</value>
+  </data>
+  <data name="Error_ffi_export_unfinished" xml:space="preserve">
+    <value>The rows are still arriving. Export them once the run ends.</value>
+  </data>
+  <data name="Error_filter_raw_unsupported" xml:space="preserve">
+    <value>This engine takes no Raw SQL filter. Clear the filter and add rules instead.</value>
+  </data>
+  <data name="StatusRunsIn" xml:space="preserve">
+    <value>Runs in {0}</value>
+  </data>
+  <data name="HistoryListEvery" xml:space="preserve">
+    <value>Queries run on every connection</value>
+  </data>
+  <data name="HistoryDetailConnection" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
 </root>

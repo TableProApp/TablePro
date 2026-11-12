@@ -56,6 +56,10 @@ public static class ObjectFolders
     public static bool HasRows(ObjectKind kind) => kind is ObjectKind.Table or ObjectKind.PartitionedTable
         or ObjectKind.View or ObjectKind.MaterializedView or ObjectKind.ForeignTable;
 
+    // As the core's ObjectKind::has_definition: it opens as SQL to read rather than rows to page.
+    public static bool HasDefinition(ObjectKind kind) => kind is ObjectKind.Function or ObjectKind.Procedure
+        or ObjectKind.Sequence or ObjectKind.Trigger;
+
     public static IReadOnlyList<ObjectEntry> Filter(IEnumerable<ObjectEntry> objects, string text)
     {
         ArgumentNullException.ThrowIfNull(objects);

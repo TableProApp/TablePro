@@ -109,10 +109,19 @@ async fn seeded(core: &Core, path: &Path) {
     session.close().await.unwrap();
 }
 
-// The page as a table tab reads it, through the core's own statement.
+// The page as a table tab reads it.
+async fn page_of(session: &DatabaseSession, table: TableName) -> Arc<ResultSet> {
+    let read = session
+        .read_table_page(table, None, None, 100, 0, Box::new(Quiet), None)
+        .await
+        .unwrap();
+    let run = read.run();
+    assert!(matches!(run.outcome().await.unwrap(), RunOutcome::Completed { .. }));
+    run.result_set(0).unwrap()
+}
+
 async fn page(session: &DatabaseSession) -> Arc<ResultSet> {
-    let query = session.table_query(people(), None, 100, 0, None).await.unwrap();
-    run(session, &query.sql).await.unwrap()
+    page_of(session, people()).await
 }
 
 async fn rows(session: &DatabaseSession) -> Vec<Vec<Option<String>>> {
@@ -496,8 +505,7 @@ async fn a_page_whose_key_cannot_be_named_exactly_is_locked() {
         name: "readings".to_owned(),
     };
     let editor = session.table_editor(readings.clone(), false, None).await.unwrap();
-    let query = session.table_query(readings, None, 100, 0, None).await.unwrap();
-    let shown = run(&session, &query.sql).await.unwrap();
+    let shown = page_of(&session, readings).await;
     let people_editor = session.table_editor(people(), false, None).await.unwrap();
     let people_page = page(&session).await;
 
@@ -531,8 +539,7 @@ async fn a_new_row_leaves_a_blob_null_and_a_refresh_reads_the_columns_again() {
         name: "files".to_owned(),
     };
     let editor = session.table_editor(files.clone(), false, None).await.unwrap();
-    let query = session.table_query(files.clone(), None, 100, 0, None).await.unwrap();
-    let shown = run(&session, &query.sql).await.unwrap();
+    let shown = page_of(&session, files.clone()).await;
 
     let typed = editor.check(2, text("0x00"), true).unwrap_err();
     let save = editor

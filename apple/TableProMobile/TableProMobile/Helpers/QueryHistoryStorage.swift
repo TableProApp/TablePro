@@ -36,11 +36,29 @@ nonisolated struct QueryHistoryItem: Identifiable, Codable, Hashable {
     }
 }
 
-nonisolated struct QueryHistoryStorage {
+// One per library. The file is read once; every later read comes from the copy in memory, which takes a change only
+// once the file holds it. The lock orders a save running off the main actor with a delete or clear on it.
+nonisolated final class QueryHistoryStorage: Sendable {
     private static let maxEntries = 200
+    // The whole list is encoded on every save, so its text is held to this many bytes; the newest entry always stays,
+    // and no entry is ever cut, since running part of a script from history would run part of it.
+    static let maxTextBytes = 2 * 1_024 * 1_024
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryStorage")
 
     private let directory: URL
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    private nonisolated struct State {
+        // Nil until the file has been read.
+        var items: [QueryHistoryItem]?
+        // Counts the writes, so a list read before a later write is never shown over it.
+        var generation = 0
+    }
+
+    nonisolated struct Listed: Sendable {
+        let items: [QueryHistoryItem]
+        let generation: Int
+    }
 
     init(directory: URL) {
         self.directory = directory
@@ -52,42 +70,91 @@ nonisolated struct QueryHistoryStorage {
 
     @discardableResult
     func save(_ item: QueryHistoryItem) -> Bool {
-        guard var items = readAll() else { return false }
-        if let last = items.last,
-           last.query == item.query,
-           last.connectionId == item.connectionId,
-           last.wasSuccessful == item.wasSuccessful {
-            return false
+        record(item) != nil
+    }
+
+    // The connection's list once the item is saved, read from memory; nil when nothing was saved.
+    func record(_ item: QueryHistoryItem) -> Listed? {
+        state.withLock { state -> Listed? in
+            guard var items = cached(&state) else { return nil }
+            if let last = items.last,
+               last.query == item.query,
+               last.connectionId == item.connectionId,
+               last.wasSuccessful == item.wasSuccessful {
+                return nil
+            }
+            items.append(item)
+            items = Self.withinBudget(items)
+            guard commit(items, to: &state) else { return nil }
+            return Listed(items: items.filter { $0.connectionId == item.connectionId }, generation: state.generation)
         }
-        items.append(item)
-        if items.count > Self.maxEntries {
-            items.removeFirst(items.count - Self.maxEntries)
+    }
+
+    func listed(for connectionId: UUID) -> Listed {
+        state.withLock { state in
+            let items = cached(&state) ?? []
+            return Listed(items: items.filter { $0.connectionId == connectionId }, generation: state.generation)
         }
-        return writeAll(items)
     }
 
     func loadAll() -> [QueryHistoryItem] {
-        readAll() ?? []
+        state.withLock { cached(&$0) } ?? []
     }
 
     func load(for connectionId: UUID) -> [QueryHistoryItem] {
         loadAll().filter { $0.connectionId == connectionId }
     }
 
+    var generation: Int {
+        state.withLock { $0.generation }
+    }
+
     func delete(_ id: UUID) {
-        guard var items = readAll() else { return }
-        items.removeAll { $0.id == id }
-        writeAll(items)
+        state.withLock { state in
+            guard var items = cached(&state) else { return }
+            items.removeAll { $0.id == id }
+            commit(items, to: &state)
+        }
     }
 
     // The set-aside copy holds every connection's history: only a clear asked for after the footer named it removes it.
     func clearAll(for connectionIds: Set<UUID>, removingSetAsideCopies: Bool = false) {
-        guard let items = readAll() else { return }
-        let kept = items.filter { !connectionIds.contains($0.connectionId) }
-        if kept.count != items.count, !writeAll(kept) { return }
-        if removingSetAsideCopies {
-            removeSetAsideCopies()
+        state.withLock { state in
+            guard let items = cached(&state) else { return }
+            let kept = items.filter { !connectionIds.contains($0.connectionId) }
+            if kept.count != items.count {
+                guard commit(kept, to: &state) else { return }
+            }
+            if removingSetAsideCopies {
+                removeSetAsideCopies()
+            }
         }
+    }
+
+    static func withinBudget(_ items: [QueryHistoryItem]) -> [QueryHistoryItem] {
+        var kept: [QueryHistoryItem] = []
+        var bytes = 0
+        for item in items.reversed() {
+            let size = item.query.utf8.count + (item.errorMessage?.utf8.count ?? 0)
+            guard kept.isEmpty || (kept.count < maxEntries && bytes + size <= maxTextBytes) else { break }
+            kept.append(item)
+            bytes += size
+        }
+        return kept.reversed()
+    }
+
+    // nil while the file cannot be read (a locked device), so no write replaces it with a partial list.
+    private func cached(_ state: inout State) -> [QueryHistoryItem]? {
+        if state.items == nil { state.items = readAll() }
+        return state.items
+    }
+
+    @discardableResult
+    private func commit(_ items: [QueryHistoryItem], to state: inout State) -> Bool {
+        guard writeAll(items) else { return false }
+        state.items = items
+        state.generation += 1
+        return true
     }
 
     var hasSetAsideCopies: Bool {
@@ -111,7 +178,6 @@ nonisolated struct QueryHistoryStorage {
         }
     }
 
-    // nil while the file cannot be read (a locked device), so no write replaces it with a partial list.
     private func readAll() -> [QueryHistoryItem]? {
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else { return [] }
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
