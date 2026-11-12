@@ -121,10 +121,7 @@ public enum SurrealCBOR {
             return .bytes(Data(try cursor.next(count)))
         case 3:
             let count = try checkedCount(try readArgument(&cursor, info: info))
-            guard let text = String(bytes: try cursor.next(count), encoding: .utf8) else {
-                throw SurrealCBORError.invalidUTF8
-            }
-            return .string(text)
+            return .string(try exactText(try cursor.next(count)))
         case 4:
             let count = try checkedCount(try readArgument(&cursor, info: info))
             var items: [SurrealValue] = []
@@ -152,6 +149,13 @@ public enum SurrealCBOR {
         default:
             throw SurrealCBORError.truncatedInput
         }
+    }
+
+    // String(bytes:encoding:) drops a leading byte order mark, which names a different record or field.
+    private static func exactText(_ bytes: [UInt8]) throws -> String {
+        let text = String(decoding: bytes, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+        guard text.utf8.elementsEqual(bytes) else { throw SurrealCBORError.invalidUTF8 }
+        return text
     }
 
     private static func fallbackKey(_ value: SurrealValue) -> String {

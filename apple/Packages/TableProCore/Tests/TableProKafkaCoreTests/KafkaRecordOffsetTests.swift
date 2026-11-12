@@ -85,4 +85,81 @@ private func decodeOne(baseOffset: Int64, baseTimestamp: Int64, offsetDelta: Int
         budget: &budget
     )
     #expect(decoded.records.map { $0.offset } == [4, 11, 13])
+    #expect(decoded.nextOffset == 14)
+}
+
+@Test func offsetAfterABatchComesFromItsHeader() {
+    #expect(KafkaOffsetMath.offset(afterBatchAt: 100, lastOffsetDelta: 4) == 105)
+    #expect(KafkaOffsetMath.offset(afterBatchAt: 100, lastOffsetDelta: 0) == 101)
+    #expect(KafkaOffsetMath.offset(afterBatchAt: 100, lastOffsetDelta: -1) == 101)
+    #expect(KafkaOffsetMath.offset(afterBatchAt: .max, lastOffsetDelta: 0) == nil)
+    #expect(KafkaOffsetMath.offset(afterBatchAt: .max - 1, lastOffsetDelta: 2) == nil)
+}
+
+private func decodeBlob(_ blob: Data) throws -> (records: [KafkaRecord], truncated: Bool, nextOffset: Int64?) {
+    var budget = DecompressionBudget.standard
+    return try KafkaRecordBatchDecoder.decode(blob: blob, partition: 0, skipAborted: true, budget: &budget)
+}
+
+private func marker(at offset: Int64, producerId: Int64 = 7) -> Data {
+    KafkaBatchFixture.batch(
+        baseOffset: offset,
+        flags: KafkaBatchFixture.transactional | KafkaBatchFixture.control,
+        producerId: producerId,
+        payload: KafkaBatchFixture.record(value: nil)
+    )
+}
+
+@Test func aReplyOfOnlyACommitMarkerStillMovesTheReadOn() throws {
+    let decoded = try decodeBlob(marker(at: 41))
+    #expect(decoded.records.isEmpty)
+    #expect(decoded.nextOffset == 42)
+}
+
+@Test func aTrailingMarkerMovesTheReadPastIt() throws {
+    let blob = KafkaBatchFixture.batch(
+        baseOffset: 40, flags: KafkaBatchFixture.transactional, producerId: 7,
+        payload: KafkaBatchFixture.record(value: Data("row".utf8))
+    ) + marker(at: 41)
+    let decoded = try decodeBlob(blob)
+    #expect(decoded.records.map { $0.offset } == [40])
+    #expect(decoded.nextOffset == 42)
+}
+
+@Test func anAbortedRunMovesTheReadPastIt() throws {
+    let blob = KafkaBatchFixture.batch(
+        baseOffset: 10, flags: KafkaBatchFixture.transactional, producerId: 7, recordCount: 3,
+        payload: KafkaBatchFixture.record(offsetDelta: 0, value: Data("a".utf8))
+            + KafkaBatchFixture.record(offsetDelta: 1, value: Data("b".utf8))
+            + KafkaBatchFixture.record(offsetDelta: 2, value: Data("c".utf8))
+    ) + marker(at: 13)
+    var budget = DecompressionBudget.standard
+    let decoded = try KafkaRecordBatchDecoder.decode(
+        blob: blob,
+        partition: 0,
+        abortedTransactions: [KafkaAbortedTransaction(producerId: 7, firstOffset: 10)],
+        skipAborted: true,
+        budget: &budget
+    )
+    #expect(decoded.records.isEmpty)
+    #expect(decoded.nextOffset == 14)
+}
+
+// Compaction keeps an emptied batch's header, last offset included (Kafka protocol docs, Record Batch).
+@Test func aBatchCompactionEmptiedMovesTheReadPastItsWholeRange() throws {
+    let decoded = try decodeBlob(KafkaBatchFixture.batch(baseOffset: 200, recordCount: 5, payload: Data()))
+    #expect(decoded.records.isEmpty)
+    #expect(decoded.nextOffset == 205)
+}
+
+@Test func onlyWholeBatchesMoveTheReadOn() throws {
+    let whole = KafkaBatchFixture.batch(baseOffset: 7, payload: KafkaBatchFixture.record(value: Data("x".utf8)))
+    let cut = try decodeBlob(whole + whole.prefix(20))
+    #expect(cut.records.map { $0.offset } == [7])
+    #expect(cut.truncated)
+    #expect(cut.nextOffset == 8)
+
+    let nothingWhole = try decodeBlob(whole.prefix(whole.count - 1))
+    #expect(nothingWhole.records.isEmpty)
+    #expect(nothingWhole.nextOffset == nil)
 }

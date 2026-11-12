@@ -228,7 +228,7 @@ enum RedisScanReply {
         let cursor: String
         switch parts[0] {
         case .string(let value), .status(let value): cursor = value
-        case .data(let value): cursor = String(data: value, encoding: .utf8) ?? "0"
+        case .data(let value): cursor = RedisWireText.decode(value) ?? "0"
         case .integer(let value): cursor = String(value)
         default: cursor = "0"
         }
@@ -236,7 +236,7 @@ enum RedisScanReply {
         let keys = keyReplies.compactMap { item -> String? in
             switch item {
             case .string(let key), .status(let key): return key
-            case .data(let value): return String(data: value, encoding: .utf8)
+            case .data(let value): return RedisWireText.decode(value)
             default: return nil
             }
         }
