@@ -7888,6 +7888,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
+ "deadpool",
  "deadpool-postgres",
  "fallible-iterator 0.2.0",
  "futures-util",

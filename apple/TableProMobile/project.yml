@@ -231,11 +231,11 @@ targets:
   TableProWidgetExtension:
     type: app-extension
     platform: iOS
+    # The folder holds the widget's own Localizable.xcstrings, so the extension ships only its strings.
     sources:
       - path: TableProWidget
         excludes:
           - Info.plist
-      - TableProMobile/Localizable.xcstrings
     configFiles:
       Debug: ../Configs/Version-iOS.xcconfig
       Release: ../Configs/Version-iOS.xcconfig

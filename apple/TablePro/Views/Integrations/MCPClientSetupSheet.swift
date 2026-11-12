@@ -19,6 +19,8 @@ struct MCPClientSetupSheet: View {
         .frame(width: 680, height: sheetHeight)
         .onExitCommand { dismiss() }
         .task { await service.refresh() }
+        // The sheet says "<Client> connected" from the client list, which updates only while a view polls it.
+        .task { await manager.refreshClientsWhileShown() }
         .confirmationDialog(
             removeTitle,
             isPresented: removeBinding,

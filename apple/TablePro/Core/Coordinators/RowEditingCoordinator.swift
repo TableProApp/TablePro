@@ -13,19 +13,29 @@ final class RowEditingCoordinator: ObservableObject {
 
     // Nothing clears the pending changes until the write returns, so a second Cmd+S in the round trip would commit twice.
     private(set) var isSaveInFlight = false
+    // The landing save clears this tab's staged edits and reloads its rows, so nothing may stage there meanwhile.
+    private(set) var savingTabId: UUID?
 
     init(parent: MainContentCoordinator) {
         self.parent = parent
     }
 
-    func beginSaveInFlight() -> Bool {
+    func beginSaveInFlight(tabId: UUID?) -> Bool {
         guard !isSaveInFlight else { return false }
+        parent.objectWillChange.send()
         isSaveInFlight = true
+        savingTabId = tabId
         return true
     }
 
     func endSaveInFlight() {
+        parent.objectWillChange.send()
         isSaveInFlight = false
+        savingTabId = nil
+    }
+
+    func isSaving(tabId: UUID?) -> Bool {
+        tabId != nil && savingTabId == tabId
     }
 
     // A row command selects the row it made. The JSON view reads the selection as "show only these rows".
@@ -104,43 +114,52 @@ final class RowEditingCoordinator: ObservableObject {
         guard parent.canEditActiveResult(.delete), let tabId = parent.tabManager.selectedTabId else { return }
         let deleted = rowIDs.filter { parent.changeManager.isRowDeleted($0) }
         guard !deleted.isEmpty else { return }
-        for rowID in deleted {
-            parent.changeManager.undoRowDeletion(rowID: rowID)
-        }
+        parent.changeManager.restoreDeletedRows(deleted)
         parent.existingGridModel(forTab: tabId)?.repaintRows(deleted)
     }
 
     func duplicateRow(_ rowID: RowID) {
+        duplicateRows([rowID])
+    }
+
+    func duplicateRows(_ rowIDs: [RowID]) {
         guard parent.canEditActiveResult(.insert),
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
-        guard tableRows.hasAuthoritativeSchema,
-              let storageIndex = tableRows.index(of: rowID) else { return }
-        guard parent.unloadedValuesAreLoaded(rowIDs: [rowID], retry: { [weak self] in
-            self?.duplicateRow(rowID)
+        let storageIndices = rowIDs.compactMap { tableRows.index(of: $0) }
+        guard tableRows.hasAuthoritativeSchema, !storageIndices.isEmpty else { return }
+        guard parent.unloadedValuesAreLoaded(rowIDs: rowIDs, retry: { [weak self] in
+            self?.duplicateRows(rowIDs)
         }) else { return }
 
         parent.commitActiveGridEdit()
 
         let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
-        var dupResult: RowOperationsManager.AddNewRowResult?
+        var duplicated: [RowOperationsManager.AddNewRowResult] = []
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.duplicateRow(
-                sourceRowIndex: storageIndex,
+            let result = parent.rowOperationsManager.duplicateRows(
+                sourceRowIndices: storageIndices,
                 tableRows: &rows,
                 uuidKeyForms: uuidKeys
             )
-            dupResult = result
-            return result?.delta ?? .none
+            duplicated = result.rows
+            return result.delta
         }
 
-        guard let result = dupResult else { return }
+        guard let first = duplicated.first else { return }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        selectAndEditInsertedRow(result.rowID, tabId: tabId, skipping: result.prefilledColumns)
+        guard duplicated.count > 1 else {
+            selectAndEditInsertedRow(first.rowID, tabId: tabId, skipping: first.prefilledColumns)
+            return
+        }
+        if selectionPointsTheGrid, let model = parent.existingGridModel(forTab: tabId) {
+            model.selectRows(duplicated.map(\.rowID))
+            model.reveal(rowID: first.rowID)
+        }
     }
 
     // The caret skips a key the row was given a fresh UUID for, so the first keystroke does not replace it.
@@ -286,7 +305,8 @@ final class RowEditingCoordinator: ObservableObject {
         if continuity == .discrete {
             endInspectorEditRun()
         }
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
+        guard !parent.isSavingSelectedTab,
+              let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.columns.indices.contains(columnIndex) else { return }

@@ -29,9 +29,8 @@ internal struct LocalTunnelListener: Sendable {
 internal enum LibSSH2TunnelFactory {
     internal static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2TunnelFactory")
 
-    /// A single session opens more than one connection through the tunnel: the query
-    /// connection plus the metadata pool. A backlog that cannot hold them resets the
-    /// overflow before the accept loop reaches it.
+    // One session opens more than one connection through the tunnel: the query connection plus the
+    // metadata pool. A backlog that cannot hold them resets the overflow before the acceptor reaches it.
     private static let listenBacklogSize: Int32 = 16
 
     // MARK: - Global Init

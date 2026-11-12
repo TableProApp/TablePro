@@ -33,6 +33,10 @@ extension MainContentCoordinator {
         rowEditingCoordinator.duplicateRow(rowID)
     }
 
+    func duplicateRows(_ rowIDs: [RowID]) {
+        rowEditingCoordinator.duplicateRows(rowIDs)
+    }
+
     func handleUndoResult(_ result: UndoResult) {
         rowEditingCoordinator.handleUndoResult(result)
     }

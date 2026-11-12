@@ -179,4 +179,37 @@ struct StringHexDumpTests {
         }
         #expect(roundTripped == original)
     }
+
+    // MARK: - Prefix reads
+
+    @Test("A scalar past U+00FF beyond the shown prefix still makes the whole value UTF-8")
+    func scalarPastLatin1AfterThePrefix() {
+        let value = String(repeating: "\u{E9}", count: 100) + "\u{4E2D}"
+        #expect(value.formattedAsCompactHex(maxBytes: 4) == "0xC3A9C3A9…")
+        #expect(value.formattedAsEditableHex(maxBytes: 2) == "C3 A9 …")
+    }
+
+    @Test("A Latin-1 value counts one byte per character, past the prefix too")
+    func latin1CountsEveryCharacter() throws {
+        let value = String(repeating: "\u{E9}", count: 40)
+        #expect(value.formattedAsCompactHex(maxBytes: 40) == "0x" + String(repeating: "E9", count: 40))
+        #expect(value.formattedAsCompactHex(maxBytes: 39)?.hasSuffix("…") == true)
+        let dump = try #require(value.formattedAsHexDump(maxBytes: 16))
+        #expect(dump.hasSuffix("… (truncated, \(40.formatted(.number)) bytes total)"))
+    }
+
+    @Test("Bytes format the same as the Latin-1 string that carries them", arguments: [0, 1, 16, 17, 64, 65, 300])
+    func bytesMatchTheirLatin1String(_ count: Int) throws {
+        let data = Data((0..<count).map { UInt8(truncatingIfNeeded: $0 &* 37 &+ 11) })
+        let text = try #require(String(data: data, encoding: .isoLatin1))
+        #expect(data.formattedAsCompactHex() == text.formattedAsCompactHex())
+        #expect(data.formattedAsHexDump(maxBytes: 64) == text.formattedAsHexDump(maxBytes: 64))
+        #expect(data.formattedAsEditableHex(maxBytes: 64) == text.formattedAsEditableHex(maxBytes: 64))
+    }
+
+    @Test("A dump line pads a short last line and marks bytes outside printable ASCII")
+    func dumpLineLayout() {
+        let data = Data([0x41, 0x00, 0x7F, 0x20, 0x7E])
+        #expect(data.formattedAsHexDump() == "00000000  41 00 7F 20 7E                                    |A.. ~|")
+    }
 }

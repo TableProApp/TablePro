@@ -79,7 +79,6 @@ internal final class MCPServerManager: ObservableObject {
     @Published private var revocationObserverId: UUID?
     @Published private var dispatchTask: Task<Void, Never>?
     @Published private var stateTask: Task<Void, Never>?
-    @Published private var clientRefreshTask: Task<Void, Never>?
     @Published private var tokenRenewalTask: Task<Void, Never>?
 
     internal var isRunning: Bool {
@@ -289,7 +288,6 @@ internal final class MCPServerManager: ObservableObject {
         await built.start()
         startDispatchLoop(built, generation: generation)
         startStateLoop(built, generation: generation)
-        startClientRefresh(built, generation: generation)
         startBridgeCredentialRenewal(generation: generation)
         await registerRevocationObserver(built, store: store, generation: generation)
 
@@ -317,8 +315,6 @@ internal final class MCPServerManager: ObservableObject {
         dispatchTask = nil
         stateTask?.cancel()
         stateTask = nil
-        clientRefreshTask?.cancel()
-        clientRefreshTask = nil
         tokenRenewalTask?.cancel()
         tokenRenewalTask = nil
 
@@ -438,13 +434,11 @@ internal final class MCPServerManager: ObservableObject {
         }
     }
 
-    private func startClientRefresh(_ built: MCPServerComposition, generation: Int) {
-        clientRefreshTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let self, self.isCurrent(generation) else { return }
-                await self.refreshClients()
-                try? await Task.sleep(for: Self.clientRefreshInterval)
-            }
+    // Only a view showing the list reads it between changes, so the poll lives as long as that view's task.
+    internal func refreshClientsWhileShown() async {
+        while !Task.isCancelled {
+            await refreshClients()
+            try? await Task.sleep(for: Self.clientRefreshInterval)
         }
     }
 

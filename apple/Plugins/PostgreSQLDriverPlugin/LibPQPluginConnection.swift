@@ -1585,7 +1585,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     func streamQuery(_ query: String, readOnly: Bool = false) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             self.queue.async { [self] in
                 let handle = connectionHandle
 
@@ -1706,6 +1706,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let batchSize = 5_000
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
+        let stops = { self.cancellationGate.isCancelled(generation) }
 
         while let result = PQgetResult(conn) {
             let status = PQresultStatus(result)
@@ -1713,7 +1714,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if !headerSent, Self.carriesRowDescription(status) {
                 let described = streamHeader(from: result)
                 columnOids = described.columnOids
-                continuation.yield(.header(described.header))
+                _ = PluginRowStream.deliverBlocking(.header(described.header), to: continuation, stops: stops)
                 headerSent = true
             }
 
@@ -1733,15 +1734,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
                 PQclear(result)
                 batch.append(row)
-                if batch.count >= batchSize {
-                    continuation.yield(.rows(batch))
+                // A reader that left or a Stop is handled just below.
+                if batch.count >= batchSize,
+                   PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops) {
                     batch.removeAll(keepingCapacity: true)
                 }
 
                 if run.abort.isAborted || cancellationGate.isCancelled(generation) {
-                    if !batch.isEmpty {
-                        continuation.yield(.rows(batch))
-                    }
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                     // A Stop leaves the block aborted, as it does for any statement; only a reader that left is undone.
                     let undoing = !cancellationGate.isCancelled(generation)
@@ -1770,9 +1769,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
         }
 
-        if !batch.isEmpty {
-            continuation.yield(.rows(batch))
-        }
+        let delivered = batch.isEmpty || PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops)
 
         let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
         recordTransactionState(of: conn)
@@ -1787,6 +1784,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         if let abandoned = abandonedCopyError(outcome, generation: generation) {
             throw abandoned
         }
+        guard delivered else { throw CancellationError() }
     }
 
     private static let streamSavepoint = "SAVEPOINT tablepro_stream_read"

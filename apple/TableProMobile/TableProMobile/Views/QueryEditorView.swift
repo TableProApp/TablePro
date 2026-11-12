@@ -25,7 +25,7 @@ struct QueryEditorView: View {
     @State private var executeTask: Task<Void, Never>?
 
     private var resultRowCount: Int {
-        viewModel.legacyRows.count
+        viewModel.window.count
     }
     @State private var draft = QueryDraftSaver()
     @State private var deferredAdds: [String] = []
@@ -45,6 +45,7 @@ struct QueryEditorView: View {
     @State private var showShareSheet = false
     @State private var shareText = ""
     @State private var resultsExportError: (any Error)?
+    @State private var isExportingResults = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var containerSize: CGSize = .zero
@@ -436,9 +437,9 @@ struct QueryEditorView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.columns.isEmpty || viewModel.legacyRows.isEmpty && !runCompleted {
+            } else if viewModel.columns.isEmpty || viewModel.window.isEmpty && !runCompleted {
                 commandOutcomeView
-            } else if viewModel.legacyRows.isEmpty {
+            } else if viewModel.window.isEmpty {
                 VStack(spacing: 0) {
                     resultNotices(includesTruncation: false)
                     ContentUnavailableView(
@@ -582,10 +583,11 @@ struct QueryEditorView: View {
 
     private var resultGrid: some View {
         let columns = viewModel.columns
-        let rows = viewModel.legacyRows
+        let window = viewModel.window
+        let rows = window.rows
         return RowGrid(
             columns: columns,
-            rows: rows,
+            window: window,
             keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: [])
         ) { index, line in
             NavigationLink {
@@ -597,7 +599,7 @@ struct QueryEditorView: View {
             .contextMenu {
                 resultRowContextMenu(columns: columns, rowIndex: index)
             } preview: {
-                resultRowCard(columns: columns, row: rows.indices.contains(index) ? rows[index] : [])
+                resultRowCard(columns: columns, row: rows.indices.contains(index) ? rows[index].displayValues() : [])
                     .padding()
                     .frame(maxWidth: 360, alignment: .leading)
             }
@@ -605,18 +607,17 @@ struct QueryEditorView: View {
     }
 
     private var resultList: some View {
-        let indexed = IndexedRow.wrap(viewModel.legacyRows)
+        let columns = viewModel.columns
+        let rows = viewModel.window.rows
         return List {
-            ForEach(indexed) { item in
-                let rowIndex = item.id
-                let row = item.values
+            ForEach(rows.indices, id: \.self) { rowIndex in
                 NavigationLink {
-                    resultRowDetail(columns: viewModel.columns, initialIndex: rowIndex)
+                    resultRowDetail(columns: columns, initialIndex: rowIndex)
                 } label: {
-                    resultRowCard(columns: viewModel.columns, row: row)
+                    resultRowCard(columns: columns, row: rows[rowIndex].displayValues())
                 }
                 .contextMenu {
-                    resultRowContextMenu(columns: viewModel.columns, rowIndex: rowIndex)
+                    resultRowContextMenu(columns: columns, rowIndex: rowIndex)
                 }
             }
         }
@@ -734,34 +735,31 @@ struct QueryEditorView: View {
                 }
             }
 
-            if !viewModel.legacyRows.isEmpty {
+            if !viewModel.window.isEmpty {
                 RowLayoutPicker()
                 Section("Share Results") {
                     ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {
-                            do {
-                                shareText = try exportedResults(as: format)
+                            exportResults(as: format) { text in
+                                shareText = text
                                 showShareSheet = true
-                            } catch {
-                                resultsExportError = error
                             }
                         } label: {
                             Label(format.rawValue, systemImage: "square.and.arrow.up")
                         }
+                        .disabled(isExportingResults)
                     }
                 }
                 Section("Copy Results") {
                     ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {
-                            do {
-                                let text = try exportedResults(as: format)
+                            exportResults(as: format) { text in
                                 ClipboardExporter.copyToClipboard(text)
-                            } catch {
-                                resultsExportError = error
                             }
                         } label: {
                             Label(format.rawValue, systemImage: "doc.on.clipboard")
                         }
+                        .disabled(isExportingResults)
                     }
                 }
             }
@@ -792,15 +790,23 @@ struct QueryEditorView: View {
         }
     }
 
-    private func exportedResults(as format: ExportFormat) throws -> String {
-        guard viewModel.resultsFitExport(availableBytes: MemoryPressureMonitor.shared.availableMemoryBytes()) else {
-            throw ClipboardExporter.TooLarge(source: .queryResult)
+    private func exportResults(as format: ExportFormat, deliver: @escaping (String) -> Void) {
+        guard !isExportingResults else { return }
+        isExportingResults = true
+        let viewModel = viewModel
+        let databaseType = databaseType
+        let driver = coordinator.session?.driver
+        let availableBytes = MemoryPressureMonitor.shared.availableMemoryBytes()
+        Task {
+            defer { isExportingResults = false }
+            do {
+                deliver(try await viewModel.exportResults(
+                    as: format, databaseType: databaseType, driver: driver, availableBytes: availableBytes
+                ))
+            } catch {
+                resultsExportError = error
+            }
         }
-        return try ClipboardExporter.exportRows(
-            columns: viewModel.columns, rows: viewModel.window.rows.map(\.cells),
-            format: format,
-            databaseType: databaseType, driver: coordinator.session?.driver
-        )
     }
 
     // MARK: - Execution
@@ -1047,7 +1053,7 @@ struct QueryEditorView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 if Task.isCancelled { return }
-                guard let count = viewModel?.legacyRows.count else { return }
+                guard let count = viewModel?.window.count else { return }
                 await controller.update(token: token, rowsStreamed: count)
             }
         }

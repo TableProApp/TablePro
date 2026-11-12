@@ -111,9 +111,9 @@ internal enum RowGenerationColumnReader {
            CrossEngineDefaultValue.strippingCast(value).uppercased().hasPrefix("NEXTVAL(") {
             return .assigned
         }
-        // SQLite's INTEGER PRIMARY KEY is the rowid: left out, it takes the next one. A WITHOUT ROWID table has none.
-        if family == .sqlite, hasRowID, primaryKey == [info.name],
-           info.dataType.trimmingCharacters(in: .whitespaces).uppercased() == "INTEGER" {
+        if SQLiteRowidAlias.isAlias(
+            column: info.name, declaredType: info.dataType, primaryKey: primaryKey, family: family, hasRowID: hasRowID
+        ) {
             return .assigned
         }
         return .none

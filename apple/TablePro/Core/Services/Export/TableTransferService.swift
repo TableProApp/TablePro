@@ -177,11 +177,13 @@ final class TableTransferService: ObservableObject {
                 workload: .bulk,
                 cancellation: .protectedWrite
             ) { destinationDriver in
-                try await self.transfer(
-                    request: request,
-                    sourceDriver: sourceDriver,
-                    destinationDriver: destinationDriver
-                )
+                try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                    try await self.transfer(
+                        request: request,
+                        sourceDriver: sourceDriver,
+                        destinationDriver: destinationDriver
+                    )
+                }
             }
         }
     }

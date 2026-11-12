@@ -83,7 +83,7 @@ struct InspectorFocusTraversalTests {
         #expect(registry.fieldsWithoutTabStop.isEmpty)
     }
 
-    /// Field ids are reissued on every selection change, so the registry would otherwise grow.
+    // Editor ids are reissued on every selection change, so the registry would otherwise grow.
     @Test("Ids the list no longer shows are forgotten")
     func reissuedIdsAreForgotten() {
         let registry = InspectorTabStopRegistry()

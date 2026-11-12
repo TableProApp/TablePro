@@ -34,8 +34,9 @@ final class SnowflakeConnection: @unchecked Sendable {
     let params: ResolvedParameters
     private let connectionIdentifier: String
 
-    private let session: URLSession
-    private let connectSession: URLSession
+    private let sessions: SnowflakeURLSessions
+    private var session: URLSession { sessions.query }
+    private var connectSession: URLSession { sessions.connect }
     private let lock = NSLock()
     private let heartbeat = SnowflakeHeartbeat()
     private var sessionToken: String?
@@ -46,6 +47,14 @@ final class SnowflakeConnection: @unchecked Sendable {
     private var renewalTask: Task<Void, Error>?
 
     var sessionFingerprint: String {
+        Self.sessionFingerprint(params: params, account: account, connectionIdentifier: connectionIdentifier)
+    }
+
+    static func sessionFingerprint(
+        params: ResolvedParameters,
+        account: SnowflakeAccount?,
+        connectionIdentifier: String
+    ) -> String {
         SnowflakeSessionKey.fingerprint(
             connectionId: connectionIdentifier,
             host: account?.host ?? params.account,
@@ -53,6 +62,18 @@ final class SnowflakeConnection: @unchecked Sendable {
             authMethod: params.authMethod,
             role: params.role
         )
+    }
+
+    static func connectionIdentifier(of config: DriverConnectionConfig) -> String {
+        config.additionalFields["connectionId"] ?? ""
+    }
+
+    private var _serverVersion: String?
+
+    // Read once per shared session: every pooled driver reports the same server.
+    var serverVersion: String? {
+        get { lock.withLock { _serverVersion } }
+        set { lock.withLock { _serverVersion = newValue } }
     }
 
     /// Statements the connection issues for itself, such as the connect-time `USE` calls, belong to
@@ -76,22 +97,28 @@ final class SnowflakeConnection: @unchecked Sendable {
     var currentWarehouse: String? { lock.withLock { _currentWarehouse } }
     var currentRole: String? { lock.withLock { _currentRole } }
 
-    init(config: DriverConnectionConfig) {
-        self.params = Self.resolveParameters(from: config)
+    convenience init(config: DriverConnectionConfig) {
+        self.init(config: config, params: Self.resolveParameters(from: config))
+    }
+
+    init(config: DriverConnectionConfig, params: ResolvedParameters) {
+        self.params = params
         self.account = SnowflakeAccount(params.account)
-        self.connectionIdentifier = config.additionalFields["connectionId"] ?? ""
+        self.connectionIdentifier = Self.connectionIdentifier(of: config)
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = Self.requestTimeout
         configuration.timeoutIntervalForResource = 600
-        self.session = URLSession(
-            configuration: configuration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
-        )
         let connectConfiguration = URLSessionConfiguration.ephemeral
         connectConfiguration.timeoutIntervalForRequest = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
         connectConfiguration.timeoutIntervalForResource = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
-        self.connectSession = URLSession(
-            configuration: connectConfiguration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+        self.sessions = SnowflakeURLSessions(
+            query: URLSession(
+                configuration: configuration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+            ),
+            connect: URLSession(
+                configuration: connectConfiguration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+            )
         )
 
         self._currentDatabase = params.database.isEmpty ? nil : params.database
@@ -102,7 +129,7 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Parameter Resolution
 
-    private static func resolveParameters(from config: DriverConnectionConfig) -> ResolvedParameters {
+    static func resolveParameters(from config: DriverConnectionConfig) -> ResolvedParameters {
         let fields = config.additionalFields
         func field(_ key: String) -> String {
             fields[key]?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -736,7 +763,7 @@ final class SnowflakeConnection: @unchecked Sendable {
                 continuation.finish()
                 return
             }
-            let task = Task { [session] in
+            let task = Task { [sessions] in
                 do {
                     var buffer: [Int: [[PluginCellValueBox]]] = [:]
                     var nextToYield = 0
@@ -746,7 +773,7 @@ final class SnowflakeConnection: @unchecked Sendable {
                             let index = nextIndex
                             group.addTask {
                                 (index, try await Self.downloadChunk(
-                                    urls[index], headers: headers, session: session, columns: columns
+                                    urls[index], headers: headers, session: sessions.query, columns: columns
                                 ))
                             }
                             nextIndex += 1
@@ -762,7 +789,7 @@ final class SnowflakeConnection: @unchecked Sendable {
                                 let next = nextIndex
                                 group.addTask {
                                     (next, try await Self.downloadChunk(
-                                        urls[next], headers: headers, session: session, columns: columns
+                                        urls[next], headers: headers, session: sessions.query, columns: columns
                                     ))
                                 }
                                 nextIndex += 1
@@ -800,9 +827,9 @@ final class SnowflakeConnection: @unchecked Sendable {
             var nextIndex = 0
             while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
                 let index = nextIndex
-                group.addTask { [session] in
+                group.addTask { [sessions] in
                     (index, try await Self.downloadChunk(
-                        urls[index], headers: headers, session: session, columns: columns
+                        urls[index], headers: headers, session: sessions.query, columns: columns
                     ))
                 }
                 nextIndex += 1
@@ -811,9 +838,9 @@ final class SnowflakeConnection: @unchecked Sendable {
                 rowsByChunk[index] = rows
                 if nextIndex < urls.count {
                     let next = nextIndex
-                    group.addTask { [session] in
+                    group.addTask { [sessions] in
                         (next, try await Self.downloadChunk(
-                            urls[next], headers: headers, session: session, columns: columns
+                            urls[next], headers: headers, session: sessions.query, columns: columns
                         ))
                     }
                     nextIndex += 1
@@ -1071,5 +1098,23 @@ private extension SnowflakeConnection.ResolvedParameters {
             default: break
             }
         }
+    }
+}
+
+// A URLSession keeps its delegate until it is invalidated, so each connection's two sessions are
+// invalidated when the last request path holding them lets go. Invalidating any earlier would make a
+// late request raise instead of fail.
+final class SnowflakeURLSessions: Sendable {
+    let query: URLSession
+    let connect: URLSession
+
+    init(query: URLSession, connect: URLSession) {
+        self.query = query
+        self.connect = connect
+    }
+
+    deinit {
+        query.finishTasksAndInvalidate()
+        connect.finishTasksAndInvalidate()
     }
 }

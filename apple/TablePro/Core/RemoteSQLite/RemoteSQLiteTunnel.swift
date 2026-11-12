@@ -9,15 +9,13 @@ import os
 
 import TableProSSHTransport
 
-/// A loopback listener whose accepted clients each get a fresh exec channel running the SQLite
-/// agent on the SSH server, so the SQLite plugin can reach a live database on that server as if it
-/// were a local port.
-///
-/// It mirrors `LibSSH2Tunnel`, which forwards a TCP port over one authenticated session: the same
-/// accept loop, keepalive, teardown latch and byte counter. What differs is the cargo. A forwarding
-/// tunnel opens a direct-tcpip channel per client; this opens a session channel and runs a command
-/// on it, and it admits a client only after the client presents the per-connection token, because
-/// nothing behind this listener authenticates the way a database port does.
+// A loopback listener whose accepted clients each get a fresh exec channel running the SQLite agent
+// on the SSH server, so the SQLite plugin can reach a live database there as if it were a local port.
+//
+// It mirrors `LibSSH2Tunnel`: the same acceptor, keepalive, teardown latch and byte counter. What
+// differs is the cargo. A forwarding tunnel opens a direct-tcpip channel per client; this opens a
+// session channel and runs a command on it, and it admits a client only after the client presents the
+// per-connection token, because nothing behind this listener authenticates the way a database port does.
 final class RemoteSQLiteTunnel: @unchecked Sendable {
     let connectionId: UUID
     let localPort: Int
@@ -35,7 +33,7 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private var session: OpaquePointer { chain.session }
     private var socketFD: Int32 { chain.socketFD }
 
-    private var forwardingTask: Task<Void, Never>?
+    private var acceptor: SSHListenerAcceptor?
     private var keepAliveTask: Task<Void, Never>?
     private let aliveLatch = TeardownLatch()
 
@@ -56,7 +54,6 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private let byteCounter = TransportByteCounter()
 
     private static let relayBufferSize = 32_768
-    private static let acceptPollTimeoutMs: Int32 = 200
     private static let admissionTimeoutSeconds = 5
 
     init(
@@ -98,26 +95,18 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     func startForwarding() {
         sessionQueue.sync { libssh2_session_set_blocking(session, 0) }
 
-        forwardingTask = Task.detached { [weak self] in
-            guard let self else { return }
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.acceptQueue.async { [weak self] in
-                    defer { continuation.resume() }
-                    guard let self else { return }
-                    Self.logger.info("Remote SQLite listener started on 127.0.0.1:\(self.localPort)")
-                    while self.isRunning {
-                        guard let clientFD = self.acceptClient() else {
-                            if self.isRunning { continue }
-                            break
-                        }
-                        self.spawnClient(
-                            clientFD: clientFD,
-                            budget: self.relayDeadlines.next()
-                        )
-                    }
-                }
+        // A handler already running when the latch is claimed may still spawn one relay; teardown
+        // waits for the cancel handler before the relay group, so it waits for that relay too.
+        let acceptor = SSHListenerAcceptor(listenFD: listenFD, queue: acceptQueue) { [weak self] client in
+            guard let self, self.isRunning else {
+                Darwin.close(client.descriptor)
+                return
             }
+            self.spawnClient(clientFD: client.descriptor, budget: self.relayDeadlines.next())
         }
+        self.acceptor = acceptor
+        acceptor.start()
+        Self.logger.info("Remote SQLite listener started on 127.0.0.1:\(self.localPort)")
     }
 
     func startKeepAlive() {
@@ -149,12 +138,11 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         performTeardown()
     }
 
-    /// Synchronous cleanup for app termination, which waits for nothing because the process is
-    /// exiting. No descriptor is closed and the session is not freed: the relays and the accept
-    /// loop may still be polling them, and the OS reclaims every one of them anyway.
+    // App termination: waits for nothing, closes no descriptor and frees no session, since a relay or
+    // the accept handler may still be using them and the OS reclaims them all.
     func closeSync() {
         guard aliveLatch.claim() else { return }
-        forwardingTask?.cancel()
+        acceptor?.cancel()
         keepAliveTask?.cancel()
         shutdown(socketFD, SHUT_RDWR)
     }
@@ -165,17 +153,12 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         onDeath?(connectionId)
     }
 
-    /// Breaks every blocking wait first, then frees the session and the descriptors only once
-    /// every task that could still be polling them has exited. `shutdown` unblocks a poll at
-    /// once without releasing the descriptor number, which another thread would otherwise be
-    /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
-    /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
-    /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
-    ///
-    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
-    /// is the only thing that starts one: once it has ended, the group can only empty.
+    // `shutdown` wakes every poll on the transport but keeps the descriptor number, so no other
+    // socket can take it mid-poll. The listening socket closes only after the acceptor's cancel
+    // handler ran, which GCD runs once no accept handler is running. The relays are awaited after
+    // that, because the accept handler is the only thing that starts one: the group can only empty.
     private func performTeardown() {
-        forwardingTask?.cancel()
+        acceptor?.cancel()
         keepAliveTask?.cancel()
 
         shutdown(socketFD, SHUT_RDWR)
@@ -184,11 +167,11 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         let relayQueue = self.relayQueue
         let clientRelays = self.clientRelays
         let listenFD = self.listenFD
-        let forwardingTask = self.forwardingTask
+        let acceptor = self.acceptor
         let keepAliveTask = self.keepAliveTask
         let connectionId = self.connectionId
         Task.detached {
-            await forwardingTask?.value
+            await acceptor?.waitForCancellation()
             await keepAliveTask?.value
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 clientRelays.notify(queue: relayQueue) { continuation.resume() }
@@ -201,19 +184,6 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     }
 
     // MARK: - Accept
-
-    private func acceptClient() -> Int32? {
-        var pollFD = pollfd(fd: listenFD, events: Int16(POLLIN), revents: 0)
-        guard poll(&pollFD, 1, Self.acceptPollTimeoutMs) > 0, pollFD.revents & Int16(POLLIN) != 0 else {
-            return nil
-        }
-        var clientAddr = sockaddr_in()
-        var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-        let clientFD = withUnsafeMutablePointer(to: &clientAddr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(listenFD, $0, &addrLen) }
-        }
-        return clientFD >= 0 ? clientFD : nil
-    }
 
     private func spawnClient(
         clientFD: Int32,

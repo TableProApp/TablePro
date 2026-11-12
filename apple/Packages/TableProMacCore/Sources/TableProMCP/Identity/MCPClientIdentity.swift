@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import TableProUtilities
 
 public enum MCPClientTransport: Sendable, Equatable, Hashable {
     // The credential every stdio client shares through the tablepro-mcp helper; it rotates on its own.
@@ -73,7 +72,7 @@ public struct MCPClientIdentity: Sendable, Equatable, Hashable, Identifiable {
         let fields = [clientName, clientInfoName ?? "", clientVersion ?? ""] + credential + [address.displayValue]
         let joined = fields.joined(separator: "\u{1F}")
         let digest = SHA256.hash(data: Data(joined.utf8))
-        return String(digest.hexEncoded.prefix(16))
+        return String(digest.map { String(format: "%02x", $0) }.joined().prefix(16))
     }
 }
 

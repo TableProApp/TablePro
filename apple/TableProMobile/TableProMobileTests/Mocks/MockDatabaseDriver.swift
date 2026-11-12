@@ -45,6 +45,11 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var didRollbackTransaction = false
     private(set) var pingCount = 0
     private(set) var switchedDatabases: [String] = []
+    private(set) var switchedSchemas: [String] = []
+    private(set) var fetchTablesSchemas: [String?] = []
+    private(set) var fetchSchemasCalls = 0
+    private(set) var fetchDatabasesCalls = 0
+    private(set) var transactionStateReads = 0
 
     var supportsSchemas: Bool = false
     var currentSchema: String?
@@ -95,6 +100,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
+        fetchTablesSchemas.append(schema)
         await beforeFetchTables?()
         if let fetchTablesError { throw fetchTablesError }
         return scriptedTables
@@ -116,8 +122,15 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
         return scriptedForeignKeys
     }
 
-    func fetchDatabases() async throws -> [String] { scriptedDatabases }
-    func fetchSchemas() async throws -> [String] { scriptedSchemas }
+    func fetchDatabases() async throws -> [String] {
+        fetchDatabasesCalls += 1
+        return scriptedDatabases
+    }
+
+    func fetchSchemas() async throws -> [String] {
+        fetchSchemasCalls += 1
+        return scriptedSchemas
+    }
     var currentDatabase: String? { scriptedCurrentDatabase }
 
     var refusedDatabases: Set<String> = []
@@ -128,6 +141,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
         switchedDatabases.append(name)
     }
     func switchSchema(to name: String) async throws {
+        switchedSchemas.append(name)
         currentSchema = name
     }
     func beginTransaction() async throws { didBeginTransaction = true }
@@ -153,6 +167,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func sessionTransactionState() async -> DriverTransactionState {
+        transactionStateReads += 1
         await beforeTransactionState?()
         guard !scriptedTransactionStates.isEmpty else { return scriptedTransactionState }
         return scriptedTransactionStates.removeFirst()

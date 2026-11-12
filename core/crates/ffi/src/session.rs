@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use tablepro_core::browse::{PageRequest, PagingMode, SortKey, build_count, build_page, paging_mode, read_page};
 use tablepro_core::filter::FilterSet;
-use tablepro_core::meta::{ObjectInfo, ObjectScope, PagePosition, RowIdentity, TableRef};
+use tablepro_core::meta::{ObjectInfo, ObjectScope, PagePosition, RowCountEstimate, RowIdentity, TableRef};
 use tablepro_core::sql_syntax::{SortReference, sort_reference, with_order_by};
 use tablepro_core::{ByteLimit, ColumnInfo, EditorSessionOptions, QueryResult, ResultEvent, ResultSink, Truncation};
 use tablepro_session::runtime::{Tasks, catch_panic};
@@ -59,6 +59,25 @@ impl std::fmt::Debug for TablePageRead {
             .field("visible_columns", &self.visible_columns)
             .field("can_seek", &self.can_seek)
             .finish_non_exhaustive()
+    }
+}
+
+// The engine's own idea of a table's rows, read from its statistics with no scan. Exact where it keeps the count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RowEstimate {
+    Exact { rows: u64 },
+    Approximate { rows: u64 },
+    // No statistics for the table, as SQLite before ANALYZE.
+    Unknown,
+}
+
+impl From<RowCountEstimate> for RowEstimate {
+    fn from(estimate: RowCountEstimate) -> Self {
+        match estimate {
+            RowCountEstimate::Exact(rows) => Self::Exact { rows },
+            RowCountEstimate::Approximate(rows) => Self::Approximate { rows },
+            RowCountEstimate::Unknown => Self::Unknown,
+        }
     }
 }
 
@@ -259,6 +278,27 @@ impl DatabaseSession {
                     }
                 })
                 .await?)
+        })
+        .await
+    }
+
+    // Of the whole table, so it says nothing exact about a filtered view; the app decides from it whether to count.
+    pub async fn table_row_estimate(
+        &self,
+        table: TableName,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<RowEstimate, CoreError> {
+        let session = self.session.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            let table: TableRef = table.into();
+            let estimate = session
+                .run_cancellable(OperationKind::Metadata, &cancel, |lease, options| {
+                    let table = table.clone();
+                    async move { Ok(lease.table_estimate(&table, options).await?) }
+                })
+                .await?;
+            Ok(RowEstimate::from(estimate.rows))
         })
         .await
     }

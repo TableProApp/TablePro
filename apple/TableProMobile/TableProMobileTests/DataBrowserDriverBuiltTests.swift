@@ -44,7 +44,55 @@ struct DataBrowserDriverBuiltTests {
         #expect(page.request.searchText == nil)
         #expect(driver.countRequests.count == 1)
         #expect(viewModel.pagination.totalRows == 420)
-        #expect(viewModel.legacyRows.count == viewModel.pagination.pageSize)
+        #expect(viewModel.window.shownValues.count == viewModel.pagination.pageSize)
+    }
+
+    @Test("A page turn while the count runs keeps that count instead of starting another")
+    func pageTurnKeepsTheRunningCount() async {
+        let driver = MockQueryBuildingDriver()
+        driver.scriptedCount = 5_000
+        let counting = TestGate()
+        driver.beforeCount = { await counting.enter() }
+        let viewModel = browser(driver)
+        driver.scriptedRows = fullPage(viewModel)
+
+        let firstLoad = Task { await viewModel.load(isInitial: true) }
+        await counting.waitUntilEntered()
+        #expect(viewModel.isLoading == false)
+        await viewModel.goToNextPage()
+        #expect(viewModel.pagination.currentPage == 1)
+        #expect(driver.countRequests.count == 1)
+
+        await counting.open()
+        await firstLoad.value
+        #expect(viewModel.pagination.totalRows == 5_000)
+        #expect(driver.countRequests.count == 1)
+    }
+
+    @Test("A page past the last row keeps the pager and sets no total, and the count still lands")
+    func pagePastTheEndSetsNoTotal() async {
+        let driver = MockQueryBuildingDriver()
+        let counting = TestGate()
+        driver.beforeCount = { await counting.enter() }
+        let viewModel = browser(driver)
+        let pageSize = viewModel.pagination.pageSize
+        driver.scriptedCount = pageSize
+        driver.scriptedRows = fullPage(viewModel)
+
+        let firstLoad = Task { await viewModel.load(isInitial: true) }
+        await counting.waitUntilEntered()
+        driver.scriptedRows = []
+        await viewModel.goToNextPage()
+
+        #expect(viewModel.isPastTheEnd)
+        #expect(viewModel.pagination.totalRows == nil)
+        #expect(viewModel.showsPaginationBar)
+        #expect(viewModel.canGoToPreviousPage)
+        #expect(!viewModel.canGoToNextPage)
+
+        await counting.open()
+        await firstLoad.value
+        #expect(viewModel.pagination.totalRows == pageSize)
     }
 
     @Test("Search and the enabled filters reach the driver; binary columns are not searched")

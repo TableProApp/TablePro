@@ -189,6 +189,14 @@ internal static class Mapping
             key.OnUpdate))],
         structure.Ddl);
 
+    // Null where the engine keeps no statistics for the table, as SQLite before ANALYZE.
+    public static RowEstimate? Estimate(Native.RowEstimate estimate) => estimate switch
+    {
+        Native.RowEstimate.Exact exact => new RowEstimate(Count(exact.Rows), IsExact: true),
+        Native.RowEstimate.Approximate approximate => new RowEstimate(Count(approximate.Rows), IsExact: false),
+        _ => null,
+    };
+
     public static ObjectSource Source(Native.ObjectSource source) =>
         new(source.Sql, source.Database, source.OpensInEditor);
 

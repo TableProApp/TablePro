@@ -23,8 +23,10 @@ struct AppStateLibraryTests {
         let widgetWrites = widgetWrites
         return ConnectionLibraryPublisher(
             searchIndex: searchIndex,
+            readWidgetItems: { [] },
             writeWidgetItems: { _ in widgetWrites.total += 1 },
-            refreshShortcutParameters: {}
+            refreshShortcutParameters: {},
+            defaults: fixture.defaults
         )
     }
 

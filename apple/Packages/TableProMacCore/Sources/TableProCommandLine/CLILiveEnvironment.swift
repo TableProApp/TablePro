@@ -3,7 +3,6 @@ import Darwin
 import Foundation
 import TableProMCP
 import TableProProcess
-import TableProUtilities
 
 public extension CLIEnvironment {
     static func live(console: any CLIConsole) -> CLIEnvironment {

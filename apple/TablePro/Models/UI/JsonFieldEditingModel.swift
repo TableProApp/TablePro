@@ -13,9 +13,9 @@ import Foundation
 ///
 /// The rule is ``lastSynced``: the editor's text and the stored value are known to agree at that
 /// string, so a value arriving from the store that still means the same thing is this editor's own
-/// write coming back and is ignored. What the field stages is a compacted form of what the editor
-/// shows, so the two agree in meaning rather than in bytes, and a comparison against the editor's
-/// displayed text cannot tell an echo from an external change on its own.
+/// write coming back and is ignored. A value stored on one line is staged compacted, so the two agree
+/// in meaning rather than in bytes, and a comparison against the editor's displayed text cannot tell
+/// an echo from an external change on its own.
 ///
 /// Adopting an echo is what let a keystroke be overwritten by the value it had just replaced, and
 /// then pushed back, forever: one keystroke produced 6,944 body evaluations in 30 seconds at 100%

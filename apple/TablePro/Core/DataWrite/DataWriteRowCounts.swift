@@ -20,7 +20,19 @@ enum DataWriteRowCounts {
         .mssql, .oracle,
     ]
 
+    // An UPDATE's count there is the rows it matched, including rows already holding the value; the MySQL family
+    // reports the rows it changed, so 0 there is also an UPDATE that wrote what the row held.
+    private static let enginesCountingMatchedRows: Set<DatabaseType> = [
+        .postgresql, .redshift, .cockroachdb, .pglite, .kingbasees,
+        .sqlite, .libsql, .turso, .duckdb,
+        .mssql, .oracle,
+    ]
+
     static func areMeaningful(for databaseType: DatabaseType) -> Bool {
         enginesReportingRealCounts.contains(databaseType)
+    }
+
+    static func countsMatchedRows(for databaseType: DatabaseType) -> Bool {
+        enginesCountingMatchedRows.contains(databaseType)
     }
 }

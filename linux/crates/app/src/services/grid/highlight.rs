@@ -126,6 +126,52 @@ struct Compiled {
     column: usize,
     kind: ColumnKind,
     rule: HighlightRule,
+    sensitive: bool,
+    operands: Operands,
+}
+
+impl Compiled {
+    fn new(column: usize, definition: &GridColumn, rule: &HighlightRule) -> Self {
+        // ILIKE ignores case whatever the rule asks.
+        let sensitive = rule.case_sensitive && rule.op != FilterOp::Ilike;
+        let operand = |typed: &String| Operand::new(typed, sensitive);
+        let operands = match &rule.value {
+            None => Operands::Absent,
+            Some(FilterValue::Single(typed)) => Operands::Single(operand(typed)),
+            Some(FilterValue::Pair(low, high)) => Operands::Pair(operand(low), operand(high)),
+            Some(FilterValue::List(items)) => Operands::List(items.iter().map(operand).collect()),
+        };
+        Self {
+            column,
+            kind: definition.column_type.kind.clone(),
+            rule: rule.clone(),
+            sensitive,
+            operands,
+        }
+    }
+}
+
+/// A rule's operand, read once as the rules compile rather than for
+/// every cell they are matched against.
+struct Operand {
+    folded: String,
+    number: Option<SqlDecimal>,
+}
+
+impl Operand {
+    fn new(typed: &str, sensitive: bool) -> Self {
+        Self {
+            folded: fold(typed, sensitive).into_owned(),
+            number: typed.trim().parse().ok(),
+        }
+    }
+}
+
+enum Operands {
+    Absent,
+    Single(Operand),
+    Pair(Operand, Operand),
+    List(Vec<Operand>),
 }
 
 #[derive(Default)]
@@ -145,11 +191,7 @@ impl HighlightRules {
                     .enumerate()
                     .filter(|(_, column)| column.name == rule.column)
                     .nth(rule.column_occurrence)
-                    .map(|(column, definition)| Compiled {
-                        column,
-                        kind: definition.column_type.kind.clone(),
-                        rule: rule.clone(),
-                    })
+                    .map(|(column, definition)| Compiled::new(column, definition, rule))
             })
             .collect();
         let mut columns: Vec<usize> = compiled.iter().map(|rule| rule.column).collect();
@@ -172,7 +214,7 @@ impl HighlightRules {
             let Some(value) = cells.get(compiled.column) else {
                 continue;
             };
-            if !matches(&compiled.rule, &compiled.kind, value) {
+            if !matches(compiled, value) {
                 continue;
             }
             match compiled.rule.target {
@@ -187,73 +229,67 @@ impl HighlightRules {
     }
 }
 
-fn matches(rule: &HighlightRule, kind: &ColumnKind, value: &HighlightValue<'_>) -> bool {
+fn matches(compiled: &Compiled, value: &HighlightValue<'_>) -> bool {
     let text = match value {
         HighlightValue::Unavailable => return false,
-        HighlightValue::Null => return rule.op == FilterOp::IsNull,
-        HighlightValue::NonText => return rule.op == FilterOp::IsNotNull,
+        HighlightValue::Null => return compiled.rule.op == FilterOp::IsNull,
+        HighlightValue::NonText => return compiled.rule.op == FilterOp::IsNotNull,
         HighlightValue::Text(text) => text.as_ref(),
     };
-    let sensitive = rule.case_sensitive;
-    let same = |a: &str, b: &str| compare(a, b, sensitive, kind.is_numeric()) == std::cmp::Ordering::Equal;
-    let single = || match &rule.value {
-        Some(FilterValue::Single(operand)) => Some(operand.as_str()),
+    let sensitive = compiled.sensitive;
+    let numeric = compiled.kind.is_numeric();
+    let same = |operand: &Operand| compare(text, operand, sensitive, numeric).is_eq();
+    let order = |operand: &Operand| compare(text, operand, sensitive, true);
+    let single = || match &compiled.operands {
+        Operands::Single(operand) => Some(operand),
         _ => None,
     };
-    match rule.op {
+    let list = || match &compiled.operands {
+        Operands::List(items) => Some(items),
+        _ => None,
+    };
+    match compiled.rule.op {
         FilterOp::IsNull => false,
         FilterOp::IsNotNull => true,
-        FilterOp::Eq => single().is_some_and(|operand| same(text, operand)),
-        FilterOp::NotEq => single().is_some_and(|operand| !same(text, operand)),
-        FilterOp::Lt => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_lt()),
-        FilterOp::LtEq => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_le()),
-        FilterOp::Gt => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_gt()),
-        FilterOp::GtEq => single().is_some_and(|operand| compare(text, operand, sensitive, true).is_ge()),
-        FilterOp::Contains => single().is_some_and(|operand| fold(text, sensitive).contains(&fold(operand, sensitive))),
-        FilterOp::StartsWith => {
-            single().is_some_and(|operand| fold(text, sensitive).starts_with(&fold(operand, sensitive)))
-        }
-        FilterOp::EndsWith => {
-            single().is_some_and(|operand| fold(text, sensitive).ends_with(&fold(operand, sensitive)))
-        }
-        FilterOp::Like => single().is_some_and(|pattern| like(text, pattern, sensitive)),
-        FilterOp::NotLike => single().is_some_and(|pattern| !like(text, pattern, sensitive)),
-        FilterOp::Ilike => single().is_some_and(|pattern| like(text, pattern, false)),
-        FilterOp::In => match &rule.value {
-            Some(FilterValue::List(items)) => items.iter().any(|item| same(text, item)),
-            _ => false,
-        },
-        FilterOp::NotIn => match &rule.value {
-            Some(FilterValue::List(items)) => !items.is_empty() && !items.iter().any(|item| same(text, item)),
-            _ => false,
-        },
-        FilterOp::Between => match &rule.value {
-            Some(FilterValue::Pair(low, high)) => {
-                compare(text, low, sensitive, true).is_ge() && compare(text, high, sensitive, true).is_le()
-            }
+        FilterOp::Eq => single().is_some_and(same),
+        FilterOp::NotEq => single().is_some_and(|operand| !same(operand)),
+        FilterOp::Lt => single().is_some_and(|operand| order(operand).is_lt()),
+        FilterOp::LtEq => single().is_some_and(|operand| order(operand).is_le()),
+        FilterOp::Gt => single().is_some_and(|operand| order(operand).is_gt()),
+        FilterOp::GtEq => single().is_some_and(|operand| order(operand).is_ge()),
+        FilterOp::Contains => single().is_some_and(|operand| fold(text, sensitive).contains(&operand.folded)),
+        FilterOp::StartsWith => single().is_some_and(|operand| fold(text, sensitive).starts_with(&operand.folded)),
+        FilterOp::EndsWith => single().is_some_and(|operand| fold(text, sensitive).ends_with(&operand.folded)),
+        FilterOp::Like | FilterOp::Ilike => single().is_some_and(|pattern| like(text, &pattern.folded, sensitive)),
+        FilterOp::NotLike => single().is_some_and(|pattern| !like(text, &pattern.folded, sensitive)),
+        FilterOp::In => list().is_some_and(|items| items.iter().any(same)),
+        FilterOp::NotIn => list().is_some_and(|items| !items.is_empty() && !items.iter().any(same)),
+        FilterOp::Between => match &compiled.operands {
+            Operands::Pair(low, high) => order(low).is_ge() && order(high).is_le(),
             _ => false,
         },
     }
 }
 
-fn fold(text: &str, sensitive: bool) -> String {
+fn fold(text: &str, sensitive: bool) -> Cow<'_, str> {
     if sensitive {
-        text.to_owned()
+        Cow::Borrowed(text)
     } else {
-        text.to_lowercase()
+        Cow::Owned(text.to_lowercase())
     }
 }
 
-fn compare(a: &str, b: &str, sensitive: bool, numeric: bool) -> std::cmp::Ordering {
-    if numeric && let (Ok(x), Ok(y)) = (a.trim().parse::<SqlDecimal>(), b.trim().parse::<SqlDecimal>()) {
-        return x.cmp_numeric(&y);
+fn compare(text: &str, operand: &Operand, sensitive: bool, numeric: bool) -> std::cmp::Ordering {
+    if numeric && let (Ok(x), Some(y)) = (text.trim().parse::<SqlDecimal>(), operand.number.as_ref()) {
+        return x.cmp_numeric(y);
     }
-    fold(a, sensitive).cmp(&fold(b, sensitive))
+    Ord::cmp(&*fold(text, sensitive), operand.folded.as_str())
 }
 
+/// `pattern` comes folded as the rule compiled it; only `text` folds here.
 fn like(text: &str, pattern: &str, sensitive: bool) -> bool {
     let text = fold(text, sensitive);
-    let pattern: Vec<char> = fold(pattern, sensitive).chars().collect();
+    let pattern: Vec<char> = pattern.chars().collect();
     // Each prefix is visited once per character, so repeated wildcards cannot branch exponentially.
     let mut reachable = vec![false; pattern.len() + 1];
     reachable[0] = true;
@@ -334,6 +370,18 @@ mod tests {
         assert!(highlights(rule(FilterOp::Like, single("e%r")), Some("error")));
         assert!(highlights(rule(FilterOp::Like, single("e_ror")), Some("error")));
         assert!(!highlights(rule(FilterOp::NotLike, single("e%")), Some("error")));
+    }
+
+    #[test]
+    fn ilike_ignores_case_even_in_a_case_sensitive_rule() {
+        let mut ilike = rule(FilterOp::Ilike, single("ER%"));
+        ilike.case_sensitive = true;
+        let mut like = rule(FilterOp::Like, single("ER%"));
+        like.case_sensitive = true;
+
+        assert!(highlights(ilike, Some("error")));
+        assert!(!highlights(like.clone(), Some("error")));
+        assert!(highlights(like, Some("ERROR")));
     }
 
     #[test]

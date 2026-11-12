@@ -1,7 +1,7 @@
 import Foundation
 import os
 import TableProMCP
-import TableProUtilities
+import TableProProcess
 
 @main
 struct TableProMcpBridge {

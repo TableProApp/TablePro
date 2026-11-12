@@ -8,7 +8,6 @@
 //  change subject, so nothing the app draws with moves.
 //
 
-import AppKit
 import Combine
 import Foundation
 @testable import TablePro
@@ -21,7 +20,6 @@ struct ThemeEngineTests {
     @MainActor
     private final class Harness {
         let root: URL
-        let center = NotificationCenter()
         let changes = PassthroughSubject<ThemeChange, Never>()
         let catalog: ThemeCatalog
         let engine: ThemeEngine
@@ -44,7 +42,6 @@ struct ThemeEngineTests {
             catalog = ThemeCatalog(
                 userDirectory: folder,
                 bundleDirectory: nil,
-                notificationCenter: center,
                 fileTrash: ThemeFileTrash { url in
                     let destination = trash.appendingPathComponent(url.lastPathComponent)
                     try FileManager.default.moveItem(at: url, to: destination)
@@ -113,17 +110,18 @@ struct ThemeEngineTests {
         try await waitUntil { harness.engine.pair.dark == night }
     }
 
-    @Test("A file changed on disk repaints once TablePro becomes active")
-    func activationReloadRepaints() async throws {
+    @Test("A file changed on disk repaints once the watching catalog sees the change")
+    func diskChangeRepaints() async throws {
         let night = try Self.theme("user.night", .dark, background: "#101010")
         let harness = try Harness(themes: [night])
         defer { harness.remove() }
         harness.engine.select(lightThemeId: BuiltInThemes.defaultLightId, darkThemeId: night.id)
+        harness.catalog.startWatchingUserDirectory()
+        defer { harness.catalog.stopWatchingUserDirectory() }
 
         var fixed = night
         fixed.overrides[.editorBackground] = try ThemeColor(validating: "#303030")
         try ThemeFileFormat.encode(fixed).write(to: harness.themes.appendingPathComponent("\(night.id).json"))
-        harness.center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
 
         try await waitUntil { harness.engine.pair.dark == fixed }
     }

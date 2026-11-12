@@ -54,7 +54,7 @@ struct TableProMobileApp: App {
                 if appState.onboarding.isCloudSyncEnabled && appState.loadStatus == .ready {
                     syncTask?.cancel()
                     syncTask = Task {
-                        await appState.syncCoordinator.sync(.activation)
+                        await appState.syncCoordinator.syncOnSceneActivation()
                     }
                 }
                 Telemetry.shared.sceneBecameActive()

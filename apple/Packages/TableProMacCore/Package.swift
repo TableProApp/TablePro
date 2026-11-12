@@ -59,7 +59,6 @@ let package = Package(
         .target(
             name: "TableProMCP",
             dependencies: [
-                "TableProUtilities",
                 .product(name: "TableProCoreTypes", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),
@@ -77,7 +76,6 @@ let package = Package(
             name: "TableProCommandLine",
             dependencies: [
                 "TableProMCP",
-                "TableProUtilities",
                 .product(name: "TableProCoreTypes", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
@@ -128,7 +126,7 @@ let package = Package(
             dependencies: [
                 "TableProMCP",
                 "TableProMCPTestSupport",
-                "TableProUtilities",
+                .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             path: "Tests/TableProMCPTests",

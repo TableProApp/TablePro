@@ -1,6 +1,6 @@
 import Foundation
 import os
-import TableProUtilities
+import TableProProcess
 
 public struct BridgeDiscovery: Sendable {
     let supportedVersions: [String]
