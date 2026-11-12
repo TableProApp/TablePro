@@ -21,6 +21,17 @@ struct SQLCatalogEffectClassifierTests {
         #expect(kinds("CREATE TABLE copy AS SELECT * FROM t") == .tables)
     }
 
+    @Test("An event changes the triggers and the server objects, an extension reaches the server objects")
+    func serverObjects() {
+        #expect(kinds("CREATE EVENT nightly ON SCHEDULE EVERY 1 DAY DO DELETE FROM log", "MySQL") == [.triggers, .serverObjects])
+        #expect(kinds("ALTER EVENT nightly DISABLE", "MySQL") == [.triggers, .serverObjects])
+        #expect(kinds("DROP EVENT IF EXISTS nightly", "MySQL") == [.triggers, .serverObjects])
+        #expect(kinds("CREATE EXTENSION IF NOT EXISTS pgcrypto").contains(.serverObjects))
+        #expect(kinds("DROP EXTENSION pgcrypto").contains(.serverObjects))
+        #expect(SQLCatalogObjectKinds.objects.contains(.serverObjects))
+        #expect(!kinds("CREATE TABLE t (id int)").contains(.serverObjects))
+    }
+
     @Test("Row work and reads leave the catalog alone, except SELECT INTO")
     func rowsAndReads() {
         #expect(kinds("INSERT INTO t VALUES (1)").isEmpty)

@@ -79,15 +79,14 @@ extension DatabaseManager {
         rollsBack: Bool,
         connectionId: UUID
     ) async throws {
-        /// No transaction is opened over one the session already holds: on this shared session an
-        /// app-owned `COMMIT` commits the user's pending work, and MySQL's `START TRANSACTION`
-        /// commits it implicitly. Joining it instead leaves the statements pending, which is what
-        /// the failure then reports.
+        // Joins a transaction the session holds: an app COMMIT, or MySQL's START TRANSACTION, would commit the user's work.
+        // `.automatic`: this runs outside a session turn, so a hold it opened would never reach the bar.
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: .automatic
         )
-        let useTransaction = owner.opensTransaction && rollsBack
+        let useTransaction = owner.sendsBegin && owner.commitsAtEnd && rollsBack
         if useTransaction {
             try await driver.beginTransaction(mode: .readWrite)
         }

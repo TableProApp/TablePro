@@ -13,8 +13,10 @@ public struct SQLCatalogObjectKinds: OptionSet, Sendable, Hashable {
     public static let types = SQLCatalogObjectKinds(rawValue: 1 << 3)
     public static let schemas = SQLCatalogObjectKinds(rawValue: 1 << 4)
     public static let databases = SQLCatalogObjectKinds(rawValue: 1 << 5)
+    // The kinds a driver declares for the sidebar, such as MySQL events and PostgreSQL extensions.
+    public static let serverObjects = SQLCatalogObjectKinds(rawValue: 1 << 6)
 
-    public static let objects: SQLCatalogObjectKinds = [.tables, .routines, .triggers, .types]
+    public static let objects: SQLCatalogObjectKinds = [.tables, .routines, .triggers, .types, .serverObjects]
     public static let everything: SQLCatalogObjectKinds = [.objects, .schemas, .databases]
 }
 
@@ -200,7 +202,7 @@ public enum SQLCatalogEffectClassifier {
         "SYNONYM": .tables, "FIELD": .tables,
         "FUNCTION": .routines, "PROCEDURE": .routines, "PROC": .routines, "ROUTINE": .routines,
         "AGGREGATE": .routines, "MACRO": .routines, "PACKAGE": .routines, "OPERATOR": .routines,
-        "TRIGGER": .triggers, "EVENT": .triggers,
+        "TRIGGER": .triggers, "EVENT": [.triggers, .serverObjects],
         "TYPE": .types, "DOMAIN": .types, "ENUM": .types,
         "SCHEMA": [.schemas, .objects], "NAMESPACE": [.schemas, .objects], "OWNED": [.schemas, .objects],
         "DATABASE": .everything, "KEYSPACE": .everything, "CATALOG": .everything,

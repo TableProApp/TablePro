@@ -36,6 +36,15 @@ internal enum VersionHistoryFactory {
                     confirmButton: String(localized: "Restore")
                 )
             }
+        case .queryTab(let id):
+            viewModel = VersionHistoryViewModel(
+                subject: subject,
+                provider: MainContentCoordinator.hostedQueryTabVersionProvider(for: id),
+                refreshSignal: AppEvents.shared.queryTabVersionsDidUpdate
+                    .filter { $0 == nil || $0 == id }
+                    .map { _ in () }
+                    .eraseToAnyPublisher()
+            )
         }
         viewModel.reportRestoreFailure = { message in
             AlertHelper.showErrorSheet(

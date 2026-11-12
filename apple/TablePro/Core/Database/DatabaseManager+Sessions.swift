@@ -151,6 +151,7 @@ extension DatabaseManager {
                     from: connection,
                     preservingSessionFieldsFrom: session.connection
                 )
+                session.commitMode = session.connection.commitMode
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
@@ -345,6 +346,7 @@ extension DatabaseManager {
         guard let stored = connectionStorage.loadConnection(id: connection.id) else { return connection }
         var resolved = connection
         resolved.preferredSafeModeLevel = stored.preferredSafeModeLevel
+        resolved.commitMode = stored.commitMode
         return resolved
     }
 
@@ -916,6 +918,7 @@ extension DatabaseManager {
                   let stored = connectionStorage.loadConnection(id: id) else { continue }
             adoptDisplayFields(from: stored, into: session, for: id)
             setSafeModeLevel(stored.preferredSafeModeLevel, for: id)
+            setCommitMode(stored.commitMode, for: id)
         }
     }
 
@@ -949,6 +952,7 @@ extension DatabaseManager {
     ) -> DatabaseConnection {
         var adopted = connection(attempted, adoptingDisplayFieldsFrom: current)
         adopted.preferredSafeModeLevel = current.preferredSafeModeLevel
+        adopted.commitMode = current.commitMode
         return adopted
     }
 
@@ -1002,6 +1006,22 @@ extension DatabaseManager {
         session.safeModeLevel = AgentModeSafeModeFloor.level(for: session.connection)
         setSession(session, for: connectionId)
         _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
+    }
+
+    // Written to the connection, as the Safe Mode level is, so the form and the Database menu are one setting.
+    func setCommitMode(_ mode: ConnectionCommitMode, for connectionId: UUID) {
+        guard var session = activeSessions[connectionId] else { return }
+        guard session.connection.commitMode != mode || session.commitMode != mode else { return }
+        session.connection.commitMode = mode
+        session.commitMode = mode
+        setSession(session, for: connectionId)
+        connectionStorage.mutateConnections(ids: [connectionId]) { $0.commitMode = mode }
+    }
+
+    // What writes run under: a stored Manual Commit on an engine that can't hold runs as automatic.
+    func commitMode(for connectionId: UUID) -> ConnectionCommitMode {
+        guard let session = activeSessions[connectionId] else { return .automatic }
+        return ManualCommit.effectiveMode(session.commitMode, databaseType: session.connection.type)
     }
 
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {

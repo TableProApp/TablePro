@@ -5,21 +5,12 @@
 
 import SwiftUI
 
-extension ERDiagramForeignKeyDraft {
-    // The referenced column follows the referenced table, so both change in one write.
-    func referencing(_ table: String, column: String) -> ERDiagramForeignKeyDraft {
-        var draft = self
-        draft.referencedTable = table
-        draft.referencedColumn = column
-        return draft
-    }
-}
-
 struct ERDiagramForeignKeySheet: View {
     @State private var draft: ERDiagramForeignKeyDraft
+    @State private var selection: Set<UUID> = []
     private let tables: [String]
     private let columns: (String) -> [String]
-    private let defaultReferencedColumn: (String) -> String
+    private let referencedKeyColumns: (String) -> [String]
     private let isNameTaken: (String) -> Bool
     private let dialect: ForeignKeyDialect
     private let onAdd: (ERDiagramForeignKeyDraft) -> Void
@@ -29,7 +20,7 @@ struct ERDiagramForeignKeySheet: View {
         draft: ERDiagramForeignKeyDraft,
         tables: [String],
         columns: @escaping (String) -> [String],
-        defaultReferencedColumn: @escaping (String) -> String,
+        referencedKeyColumns: @escaping (String) -> [String],
         isNameTaken: @escaping (String) -> Bool,
         dialect: ForeignKeyDialect,
         onAdd: @escaping (ERDiagramForeignKeyDraft) -> Void,
@@ -38,7 +29,7 @@ struct ERDiagramForeignKeySheet: View {
         _draft = State(initialValue: draft)
         self.tables = tables
         self.columns = columns
-        self.defaultReferencedColumn = defaultReferencedColumn
+        self.referencedKeyColumns = referencedKeyColumns
         self.isNameTaken = isNameTaken
         self.dialect = dialect
         self.onAdd = onAdd
@@ -54,14 +45,18 @@ struct ERDiagramForeignKeySheet: View {
     }
 
     private var canAdd: Bool {
-        !draft.column.isEmpty && !draft.referencedTable.isEmpty && !draft.referencedColumn.isEmpty
-            && !trimmedName.isEmpty && !nameIsTaken
+        draft.issue == nil && !draft.referencedTable.isEmpty && !trimmedName.isEmpty && !nameIsTaken
     }
 
     private var referencedTable: Binding<String> {
         Binding(
             get: { draft.referencedTable },
-            set: { draft = draft.referencing($0, column: defaultReferencedColumn($0)) }
+            set: { table in
+                draft = draft.referencing(
+                    table, keyColumns: referencedKeyColumns(table), sourceColumns: columns(draft.table)
+                )
+                selection = []
+            }
         )
     }
 
@@ -74,16 +69,20 @@ struct ERDiagramForeignKeySheet: View {
             Form {
                 Section {
                     LabeledContent(String(localized: "Table"), value: draft.table)
-                    Picker(String(localized: "Column"), selection: $draft.column) {
-                        ForEach(columns(draft.table), id: \.self) { Text($0).tag($0) }
-                    }
                 }
                 Section(String(localized: "References")) {
                     Picker(String(localized: "Table"), selection: referencedTable) {
                         ForEach(tables, id: \.self) { Text($0).tag($0) }
                     }
-                    Picker(String(localized: "Column"), selection: $draft.referencedColumn) {
-                        ForEach(columns(draft.referencedTable), id: \.self) { Text($0).tag($0) }
+                }
+                Section {
+                    pairList
+                } header: {
+                    Text(String(localized: "Column → Referenced Column"))
+                } footer: {
+                    if let issue = draft.issue {
+                        Text(issue.message)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Section {
@@ -121,9 +120,136 @@ struct ERDiagramForeignKeySheet: View {
             }
             .padding()
         }
-        .frame(width: 440)
+        .frame(width: 480)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("er-diagram-foreign-key-sheet")
+    }
+
+    // MARK: - Column pairs
+
+    private var pairList: some View {
+        List(selection: $selection) {
+            ForEach(draft.pairs) { pair in
+                ERDiagramColumnPairRow(
+                    column: columnBinding(for: pair.id),
+                    referencedColumn: referencedColumnBinding(for: pair.id),
+                    columns: columns(draft.table),
+                    referencedColumns: columns(draft.referencedTable),
+                    onMoveUp: { move(pair.id, by: -1) },
+                    onMoveDown: { move(pair.id, by: 1) }
+                )
+                .tag(pair.id)
+            }
+            .onMove { source, destination in
+                draft = draft.movingPairs(fromOffsets: source, toOffset: destination)
+            }
+        }
+        .listStyle(.bordered(alternatesRowBackgrounds: false))
+        .frame(height: listHeight)
+        .onDeleteCommand { removeSelection() }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Divider()
+                HStack(spacing: 0) {
+                    AddRemoveControlGroup(
+                        addLabel: String(localized: "Add Column Pair"),
+                        removeLabel: String(localized: "Remove Column Pair"),
+                        canRemove: canRemoveSelection,
+                        addIdentifier: "er-diagram-foreign-key-add-pair",
+                        removeIdentifier: "er-diagram-foreign-key-remove-pair",
+                        onAdd: addPair,
+                        onRemove: removeSelection
+                    )
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            }
+            .background(.bar)
+        }
+    }
+
+    private let rowHeight: CGFloat = 26
+    private let buttonBarHeight: CGFloat = 32
+
+    // No cap: a List in a grouped Form never scrolls, so it shows every pair and the Form scrolls.
+    private var listHeight: CGFloat {
+        CGFloat(max(draft.pairs.count, 2)) * rowHeight + buttonBarHeight + 8
+    }
+
+    private var canRemoveSelection: Bool {
+        !selection.isEmpty && selection.count < draft.pairs.count
+    }
+
+    private func columnBinding(for id: UUID) -> Binding<String> {
+        Binding(
+            get: { draft.pairs.first { $0.id == id }?.column ?? "" },
+            set: { draft = draft.settingColumn($0, of: id) }
+        )
+    }
+
+    private func referencedColumnBinding(for id: UUID) -> Binding<String> {
+        Binding(
+            get: { draft.pairs.first { $0.id == id }?.referencedColumn ?? "" },
+            set: { draft = draft.settingReferencedColumn($0, of: id) }
+        )
+    }
+
+    private func addPair() {
+        draft = draft.addingPair()
+        if let added = draft.pairs.last?.id {
+            selection = [added]
+        }
+    }
+
+    private func removeSelection() {
+        guard canRemoveSelection else { return }
+        draft = draft.removingPairs(selection)
+        selection = []
+    }
+
+    private func move(_ id: UUID, by offset: Int) {
+        guard let index = draft.pairs.firstIndex(where: { $0.id == id }) else { return }
+        let target = index + offset
+        guard draft.pairs.indices.contains(target) else { return }
+        draft = draft.movingPairs(fromOffsets: IndexSet(integer: index), toOffset: offset > 0 ? target + 1 : target)
+    }
+}
+
+private struct ERDiagramColumnPairRow: View {
+    @Binding var column: String
+    @Binding var referencedColumn: String
+    let columns: [String]
+    let referencedColumns: [String]
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            picker(String(localized: "Column"), selection: $column, options: columns)
+            Image(systemName: "arrow.right")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            picker(String(localized: "Referenced Column"), selection: $referencedColumn, options: referencedColumns)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityActions {
+            Button(String(localized: "Move Up"), action: onMoveUp)
+            Button(String(localized: "Move Down"), action: onMoveDown)
+        }
+    }
+
+    // A blank side names nothing until it is chosen, so it gets an item of its own rather than an invalid selection.
+    private func picker(_ title: String, selection: Binding<String>, options: [String]) -> some View {
+        Picker(title, selection: selection) {
+            if selection.wrappedValue.isEmpty {
+                Text(String(localized: "None")).tag("")
+            }
+            ForEach(options, id: \.self) { Text($0).tag($0) }
+        }
+        .labelsHidden()
+        .accessibilityLabel(title)
+        .frame(maxWidth: .infinity)
     }
 }
 

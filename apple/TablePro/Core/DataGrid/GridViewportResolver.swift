@@ -11,37 +11,74 @@ internal struct GridViewportSnapshot: Equatable {
     let firstVisiblePosition: Int
     let firstVisibleOffset: CGFloat
     let firstVisibleKey: [String: String]?
-    var selectedKeys: [[String: String]] = []
+    // Row ids are positional per page, so each row the selection names travels as its key.
+    var selection: GridSelectionSnapshot = .empty
+    var selectionKeys: [RowID: [String: String]] = [:]
 
     static let top = GridViewportSnapshot(firstVisiblePosition: 0, firstVisibleOffset: 0, firstVisibleKey: nil)
 
+    var selectedKeys: [[String: String]] {
+        selection.rowIDs.compactMap { selectionKeys[$0] }
+    }
+
     // For a re-read that starts at the first row but keeps what is selected.
     var selectionOnly: GridViewportSnapshot {
-        GridViewportSnapshot(firstVisiblePosition: 0, firstVisibleOffset: 0, firstVisibleKey: nil, selectedKeys: selectedKeys)
+        GridViewportSnapshot(
+            firstVisiblePosition: 0,
+            firstVisibleOffset: 0,
+            firstVisibleKey: nil,
+            selection: selection,
+            selectionKeys: selectionKeys
+        )
     }
 }
 
 internal struct GridViewportPlacement: Equatable {
     let firstVisibleRow: RowID?
     let firstVisibleOffset: CGFloat
-    let selectedRows: [RowID]
+    let selection: GridSelectionSnapshot
     let revealsSelection: Bool
+
+    init(
+        firstVisibleRow: RowID?,
+        firstVisibleOffset: CGFloat,
+        selection: GridSelectionSnapshot,
+        revealsSelection: Bool
+    ) {
+        self.firstVisibleRow = firstVisibleRow
+        self.firstVisibleOffset = firstVisibleOffset
+        self.selection = selection
+        self.revealsSelection = revealsSelection
+    }
+
+    init(firstVisibleRow: RowID?, firstVisibleOffset: CGFloat, selectedRows: [RowID], revealsSelection: Bool) {
+        self.init(
+            firstVisibleRow: firstVisibleRow,
+            firstVisibleOffset: firstVisibleOffset,
+            selection: selectedRows.isEmpty
+                ? .empty
+                : GridSelectionSnapshot(rowIDs: selectedRows, rectangles: [], activeCell: nil, anchor: nil),
+            revealsSelection: revealsSelection
+        )
+    }
+
+    var selectedRows: [RowID] { selection.rowIDs }
 
     static let firstRow = GridViewportPlacement(
         firstVisibleRow: nil,
         firstVisibleOffset: 0,
-        selectedRows: [],
+        selection: .empty,
         revealsSelection: false
     )
 }
 
 extension GridViewportPlacement {
-    func selecting(_ rows: [RowID]) -> GridViewportPlacement {
-        guard !rows.isEmpty else { return self }
+    func selecting(_ selection: GridSelectionSnapshot) -> GridViewportPlacement {
+        guard selection != .empty else { return self }
         return GridViewportPlacement(
             firstVisibleRow: firstVisibleRow,
             firstVisibleOffset: firstVisibleOffset,
-            selectedRows: rows,
+            selection: selection,
             revealsSelection: revealsSelection
         )
     }
@@ -60,21 +97,27 @@ internal enum GridViewportResolver {
         displayIDs: [RowID]?,
         firstVisibleDisplayRow: Int,
         firstVisibleOffset: CGFloat,
-        selectedDisplayRows: [Int] = [],
+        selection: GridSelectionSnapshot = .empty,
         keyColumns: [String],
         isCellModified: (RowID, Int) -> Bool = { _, _ in false }
     ) -> GridViewportSnapshot {
         let isKeyed = !keyColumns.isEmpty && tableRows.count <= keyedRowLimit
         let order = DataGridRowOrder(filteredIDs: displayIDs, revision: 0)
-        func key(_ displayRow: Int) -> [String: String]? {
-            order.row(at: displayRow, in: tableRows)
-                .flatMap { savedKey(of: $0, in: tableRows, keyColumns: keyColumns, isCellModified: isCellModified) }
+        func key(of row: Row?) -> [String: String]? {
+            row.flatMap { savedKey(of: $0, in: tableRows, keyColumns: keyColumns, isCellModified: isCellModified) }
+        }
+        var selectionKeys: [RowID: [String: String]] = [:]
+        if isKeyed {
+            for rowID in selection.namedRowIDs {
+                selectionKeys[rowID] = key(of: tableRows.row(withID: rowID))
+            }
         }
         return GridViewportSnapshot(
             firstVisiblePosition: max(0, firstVisibleDisplayRow),
             firstVisibleOffset: max(0, firstVisibleOffset),
-            firstVisibleKey: isKeyed ? key(firstVisibleDisplayRow) : nil,
-            selectedKeys: isKeyed ? selectedDisplayRows.sorted().compactMap { key($0) } : []
+            firstVisibleKey: isKeyed ? key(of: order.row(at: firstVisibleDisplayRow, in: tableRows)) : nil,
+            selection: isKeyed ? selection : .empty,
+            selectionKeys: selectionKeys
         )
     }
 
@@ -89,10 +132,10 @@ internal enum GridViewportResolver {
         switch intent {
         case .firstRow:
             return GridViewportPlacement.firstRow
-                .selecting(rows(matching: snapshot.selectedKeys, in: incoming, keyColumns: keyColumns))
+                .selecting(remappedSelection(snapshot, in: incoming, keyColumns: keyColumns))
         case .keepPlace:
             return keptPlace(from: snapshot, in: incoming, displayIDs: displayIDs, keyColumns: keyColumns)
-                .selecting(rows(matching: snapshot.selectedKeys, in: incoming, keyColumns: keyColumns))
+                .selecting(remappedSelection(snapshot, in: incoming, keyColumns: keyColumns))
         case .restoreRow(let anchor):
             guard let row = uniqueRow(matching: anchor, in: incoming) else { return .firstRow }
             return GridViewportPlacement(
@@ -153,14 +196,14 @@ internal enum GridViewportResolver {
     }
 
     // One pass, so a large selection does not rescan per row; a repeated key matches nothing, as in uniqueRow(matching:in:).
-    private static func rows(
-        matching keys: [[String: String]],
+    private static func remappedSelection(
+        _ snapshot: GridViewportSnapshot,
         in incoming: TableRows,
         keyColumns: [String]
-    ) -> [RowID] {
-        guard !keys.isEmpty, !keyColumns.isEmpty, incoming.count <= keyedRowLimit else { return [] }
+    ) -> GridSelectionSnapshot {
+        guard !snapshot.selectionKeys.isEmpty, !keyColumns.isEmpty, incoming.count <= keyedRowLimit else { return .empty }
         let indices = keyColumns.compactMap { incoming.columns.firstIndex(of: $0) }
-        guard indices.count == keyColumns.count else { return [] }
+        guard indices.count == keyColumns.count else { return .empty }
 
         var rowByKey: [[String]: RowID] = [:]
         var repeated = Set<[String]>()
@@ -171,11 +214,13 @@ internal enum GridViewportResolver {
                 repeated.insert(values)
             }
         }
-        return keys.compactMap { key in
+        var incomingRows: [RowID: RowID] = [:]
+        for (outgoing, key) in snapshot.selectionKeys {
             let values = keyColumns.compactMap { key[$0] }
-            guard values.count == keyColumns.count, !repeated.contains(values) else { return nil }
-            return rowByKey[values]
+            guard values.count == keyColumns.count, !repeated.contains(values), let row = rowByKey[values] else { continue }
+            incomingRows[outgoing] = row
         }
+        return snapshot.selection.mappingRows { incomingRows[$0] }
     }
 
     private static func uniqueRow(matching values: [String: String], in incoming: TableRows) -> RowID? {

@@ -130,8 +130,7 @@ internal final class WindowSidebarState: ObservableObject {
         isLoaded = true
     }
 
-    /// The kind rides as its raw string. Decoding it as `SidebarObjectKind` throws on a value this
-    /// build does not know, and one throw inside this blob discards every other expansion set.
+    // The kind rides as its persistence name, so a value this build does not know drops only that entry.
     private struct PersistedObjectGroup: Codable {
         let database: String
         let schema: String?
@@ -195,7 +194,7 @@ internal final class WindowSidebarState: ObservableObject {
         from persisted: [PersistedObjectGroup]
     ) -> [DatabaseTreeObjectGroup: Bool] {
         persisted.reduce(into: [:]) { result, entry in
-            guard let kind = SidebarObjectKind(rawValue: entry.kind) else { return }
+            guard let kind = SidebarObjectKind(persistenceName: entry.kind) else { return }
             let group = DatabaseTreeObjectGroup(database: entry.database, schema: entry.schema, kind: kind)
             result[group] = entry.expanded
         }
@@ -208,7 +207,7 @@ internal final class WindowSidebarState: ObservableObject {
             PersistedObjectGroup(
                 database: group.database,
                 schema: group.schema,
-                kind: group.kind.rawValue,
+                kind: group.kind.persistenceName,
                 expanded: expanded
             )
         }

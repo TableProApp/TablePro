@@ -8,10 +8,8 @@ import Foundation
 import TableProPluginKit
 
 extension DatabaseManager {
-    /// A connection running a turn is skipped, because asking it waits for that turn. One that has
-    /// not answered within a second counts as holding nothing, so a close never hangs on a busy or
-    /// dead server. An aborted transaction counts: a savepoint taken before the failure can still
-    /// bring its earlier work back to a commit.
+    // A busy lane is not asked and a slow one counts as idle, so a close never hangs; what the tracker
+    // last read covers both. An aborted transaction counts: a savepoint can still bring earlier work back.
     internal func databasesHoldingTransaction(
         for connectionId: UUID,
         among databases: Set<String>? = nil,
@@ -37,12 +35,19 @@ extension DatabaseManager {
                     state: Task { await Self.boundedTransactionState(of: candidate.driver, clock: clock) }
                 )
             }
+        let browsedDatabase = session.resolvedBrowseDatabase
         var holding: [String] = []
         for read in reads {
             let state = await read.state.value
             if state == .inTransaction || state == .abortedTransaction {
                 holding.append(read.database)
             }
+        }
+        let tracked = sessionTransactions.holds(for: connectionId)
+            .map { $0.key.lane ?? browsedDatabase }
+            .filter { databases?.contains($0) ?? true }
+        for database in tracked where !holding.contains(database) {
+            holding.append(database)
         }
         return holding
     }

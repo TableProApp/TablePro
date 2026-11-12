@@ -397,16 +397,22 @@ internal actor DatabaseAccessBridge {
 
         let manager = await databaseManager
         let route = await MainActor.run { manager.executionRoute(for: scope) }
+        let commitMode = await MainActor.run { manager.commitMode(for: connectionId) }
+        let agentGuard = AgentTransactionGuard(
+            commitMode: commitMode, databaseType: databaseType, grammar: grammar, connectionId: connectionId
+        )
+        let writes = classification.tier != .safe
         let startTime = CFAbsoluteTimeGetCurrent()
         let statementRan = CatalogEvent.statementsRan(
             connectionId: connectionId, statements: [sql], databaseType: databaseType
         )
 
         // A write that timed out or failed may still have committed, so the catalog is refreshed rather than trusted.
-        let result: QueryResult
+        var result: QueryResult
         let tableEdits: SucceededStatements?
+        let transactionNotice: String?
         do {
-            (result, tableEdits) = try await runRacingTimeout(
+            (result, tableEdits, transactionNotice) = try await runRacingTimeout(
                 scope: scope,
                 route: route,
                 policy: policy,
@@ -415,18 +421,20 @@ internal actor DatabaseAccessBridge {
                 onLateCompletion: { CatalogChangeService.post(statementRan) }
             ) { driver in
                 reach.mark()
-                // Before it runs, so a statement that fails or a connection lost under it is still noted.
-                await manager.noteSessionStatements([sql], ranOn: driver, scope: scope)
-                let answer = try await driver.executeUserQuery(
-                    query: sql,
-                    rowCap: fetchCap,
-                    parameters: statement.parameters.isEmpty ? nil : statement.boundValues,
-                    context: context
-                )
+                let ran = try await agentGuard.running([sql], writes: writes, on: driver) { _ in
+                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                    await manager.noteSessionStatements([sql], ranOn: driver, scope: scope)
+                    return try await driver.executeUserQuery(
+                        query: sql,
+                        rowCap: fetchCap,
+                        parameters: statement.parameters.isEmpty ? nil : statement.boundValues,
+                        context: context
+                    )
+                }
                 let edits = await SucceededStatements.single(
                     sql, scope: scope, databaseType: databaseType, grammar: grammar, ranOn: driver
                 )
-                return (answer, edits)
+                return (ran.value, edits, ran.notice)
             }
         } catch {
             if classification.tier != .safe {
@@ -438,6 +446,9 @@ internal actor DatabaseAccessBridge {
         CatalogChangeService.post(statementRan)
         if let tableEdits {
             CatalogChangeService.post(.statementsSucceeded(tableEdits))
+        }
+        if let transactionNotice {
+            result.statusMessage = [result.statusMessage, transactionNotice].compactMap { $0 }.joined(separator: " ")
         }
         let executionTimeMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
         let rules = await maskingPolicy(for: connectionId)
@@ -546,6 +557,14 @@ internal actor DatabaseAccessBridge {
         let manager = await databaseManager
         // No cancel handler: the inserts run under a `.protectedWrite` lease, which nothing may abort.
         let route = await MainActor.run { manager.executionRoute(for: scope) }
+        let agentGuard = await MainActor.run {
+            AgentTransactionGuard(
+                commitMode: manager.commitMode(for: scope.connectionId),
+                databaseType: databaseType,
+                grammar: SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: scope.connectionId),
+                connectionId: scope.connectionId
+            )
+        }
         let statements = operation.statements
         let context = operation.context
         return try await manager.withScopedDriver(
@@ -554,16 +573,22 @@ internal actor DatabaseAccessBridge {
             cancellation: .protectedWrite
         ) { driver -> Int in
             reach.mark()
-            var affected = 0
-            for statement in statements {
-                let result = try await driver.executeParameterized(
-                    query: statement.sql,
-                    parameters: statement.boundValues,
-                    context: context
-                )
-                affected += max(result.rowsAffected, 0)
+            // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
+            let ran = try await agentGuard.running(
+                statements.map(\.sql), writes: true, asOneUnit: statements.count > 1, on: driver
+            ) { _ in
+                var affected = 0
+                for statement in statements {
+                    let result = try await driver.executeParameterized(
+                        query: statement.sql,
+                        parameters: statement.boundValues,
+                        context: context
+                    )
+                    affected += max(result.rowsAffected, 0)
+                }
+                return affected
             }
-            return affected
+            return ran.value
         }
     }
 
@@ -632,6 +657,10 @@ internal actor DatabaseAccessBridge {
         guard supported else {
             throw DatabaseAccessError.dataSourceError(String(localized: "This engine does not support transactions."))
         }
+        // The user commits a Manual Commit connection's work; an agent's begin, commit or rollback would end or bury it.
+        guard await MainActor.run(body: { manager.commitMode(for: scope.connectionId) }) == .automatic else {
+            throw DatabaseAccessError.dataSourceError(ManualCommit.transactionControlRefusalMessage)
+        }
         try await manager.withScopedDriver(
             scope: scope,
             route: .sessionDriver,
@@ -639,7 +668,12 @@ internal actor DatabaseAccessBridge {
         ) { driver in
             reach.mark()
             switch action {
-            case "begin": try await driver.beginTransaction(mode: .readWrite)
+            case "begin":
+                // MySQL's START TRANSACTION commits a transaction already open; PostgreSQL's BEGIN warns and joins it.
+                guard await driver.heldSessionTransactionState() == .idle else {
+                    throw DatabaseAccessError.dataSourceError(ManualCommit.openTransactionRefusalMessage)
+                }
+                try await driver.beginTransaction(mode: .readWrite)
             case "commit": try await driver.commitTransaction()
             case "rollback": try await driver.rollbackTransaction()
             default:
@@ -731,7 +765,7 @@ internal actor DatabaseAccessBridge {
         ) { driver in
             reach.mark()
             try await before(driver, ownsConnection)
-            return try await DataWriteExecutor.run(plan, on: driver, context: context)
+            return try await DataWriteExecutor.run(plan, commitMode: .automatic, on: driver, context: context)
         }
     }
 
@@ -970,7 +1004,8 @@ internal enum ServerErrorText {
     // The app's own refusals, timeouts and cancels name no value; whatever a driver or a server wrote might.
     static func mayRepeatAValue(_ error: Error) -> Bool {
         switch error {
-        case is CancellationError, is DatabaseAccessError, is ExternalStatementGateError, is ShortcutsActionError:
+        case is CancellationError, is DatabaseAccessError, is ExternalStatementGateError, is ShortcutsActionError,
+             is any ManualCommitRefusing:
             return false
         case let failure as DatabaseError:
             if case .queryFailed = failure { return true }
