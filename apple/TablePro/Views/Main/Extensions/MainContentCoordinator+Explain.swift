@@ -139,8 +139,7 @@ extension MainContentCoordinator {
                                 )
                             }
                             return try await queryExecutor.executeQuery(
-                                driver: driver, sql: request.sql, parameters: nil, rowCap: nil,
-                                safeModeIsReadOnly: safeModeIsReadOnly
+                                driver: driver, sql: request.sql, parameters: nil, rowCap: nil, safeModeIsReadOnly: safeModeIsReadOnly
                             )
                         }
                     }
