@@ -27,7 +27,26 @@ internal extension AutocommitOnlyStatement {
         case "DELETE":
             return following == "DATABASE" || following == "USER"
         case "SET":
-            return teradataSessionSettings.contains(following)
+            guard following == "QUERY_BAND" else { return teradataSessionSettings.contains(following) }
+            return queryBandScope(&cursor) != "TRANSACTION"
+        default:
+            return false
+        }
+    }
+
+    // DATABASE, SET SESSION DATABASE and its SS abbreviation move the session's default database.
+    static func movesDatabase(_ statement: String, family: TransactionEngineFamily, grammar: SQLLexicalGrammar) -> Bool {
+        guard family == .teradata else { return false }
+        var cursor = SQLTokenCursor(statement as NSString, grammar: grammar)
+        guard let keyword = cursor.next()?.word else { return false }
+        switch keyword {
+        case "DATABASE":
+            return true
+        case "SET":
+            guard cursor.next()?.word == "SESSION" else { return false }
+            return cursor.next()?.word == "DATABASE"
+        case "SS":
+            return cursor.next()?.word == "DATABASE"
         default:
             return false
         }
@@ -45,5 +64,15 @@ private extension AutocommitOnlyStatement {
 
     static let teradataStatisticsWords: Set<String> = ["STATISTICS", "STATS", "STAT", "SUMMARY"]
 
-    static let teradataSessionSettings: Set<String> = ["SESSION", "ROLE", "QUERY_BAND", "TIME", "TRANSFORM"]
+    static let teradataSessionSettings: Set<String> = ["SESSION", "ROLE", "TIME", "TRANSFORM"]
+
+    // SET QUERY_BAND ... FOR TRANSACTION is DML and FOR SESSION is DDL, and the FOR clause follows the band.
+    static func queryBandScope(_ cursor: inout SQLTokenCursor) -> String? {
+        var scope: String?
+        while let token = cursor.next() {
+            guard token.word == "FOR", cursor.parenDepth == 0 else { continue }
+            scope = cursor.next()?.word
+        }
+        return scope
+    }
 }

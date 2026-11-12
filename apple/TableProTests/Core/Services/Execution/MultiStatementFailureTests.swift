@@ -370,4 +370,134 @@ struct MultiStatementFailureTests {
         #expect(MultiStatementFailure.batch(sql: "x").ranStatementCount(executedCount: 2, totalCount: 3) == 2)
         #expect(MultiStatementFailure.statement(sql: "x").ranStatementCount(executedCount: 2, totalCount: 3) == 3)
     }
+
+    // MARK: - A run stopped to wait for the commit
+
+    @Test(
+        "A run stopped after DDL tells the user to commit, and names the statement it stopped before",
+        arguments: [BatchTransactionPlan.autocommit, .sessionTransaction]
+    )
+    func awaitsCommitTellsTheUserToCommit(plan: BatchTransactionPlan) {
+        let report = Self.report(
+            .awaitsCommit(sql: "CREATE TABLE t (a INTEGER)"),
+            executed: 2,
+            total: 4,
+            error: "",
+            plan: plan,
+            sessionState: .inTransaction
+        )
+        #expect(report.message == """
+            Statement 2/4 is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. \
+            The run stopped before statement 3. Click Commit on the Transaction Open bar, then run the rest.
+            """)
+        #expect(!report.message.contains("still open"))
+        #expect(!report.message.localizedCaseInsensitiveContains("failed"))
+        #expect(report.resultLabel == "Stopped")
+        #expect(report.failedStatementIndex == 2)
+        #expect(report.failedSQL == nil)
+    }
+
+    @Test("A run stopped to wait for the commit counts only the statements that ran")
+    func awaitsCommitCountsWhatRan() {
+        #expect(MultiStatementFailure.awaitsCommit(sql: "x").ranStatementCount(executedCount: 2, totalCount: 4) == 2)
+        #expect(
+            MultiStatementFailure.databaseMoveAwaitsCommit(sql: "DATABASE y").ranStatementCount(executedCount: 1, totalCount: 3)
+                == 1
+        )
+    }
+
+    // A new run is pinned back to the tab's database, so the rest needs the move again.
+    @Test("A stop after DDL that followed a database move says to begin the rest with the move")
+    func awaitsCommitAfterAMoveNamesTheMove() {
+        let report = Self.report(
+            .awaitsCommit(sql: "CREATE TABLE t (a INTEGER)", databaseMove: "  DATABASE sales_dev\n"),
+            executed: 3,
+            total: 5,
+            error: "",
+            plan: .autocommit,
+            sessionState: .inTransaction
+        )
+        #expect(report.message == """
+            Statement 3/5 is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. \
+            The run stopped before statement 4. Click Commit on the Transaction Open bar. A new run starts in \
+            the tab's database, so begin the rest with “DATABASE sales_dev”.
+            """)
+        #expect(report.resultLabel == "Stopped")
+        #expect(report.failedStatementIndex == 3)
+        #expect(report.failedSQL == nil)
+    }
+
+    @Test(
+        "A run stopped before a database move says to end the transaction and run again from the move",
+        arguments: [BatchTransactionPlan.autocommit, .sessionTransaction]
+    )
+    func databaseMoveTellsTheUserToEndTheTransaction(plan: BatchTransactionPlan) {
+        let report = Self.report(
+            .databaseMoveAwaitsCommit(sql: "DATABASE sales_dev"),
+            executed: 1,
+            total: 3,
+            error: "",
+            plan: plan,
+            sessionState: .inTransaction
+        )
+        #expect(report.message == """
+            Statement 2/3 moves the session to another database, which this session takes only outside a \
+            transaction. The run stopped before it. Click Commit or Roll Back on the Transaction Open bar, then run \
+            the script again from statement 2.
+            """)
+        #expect(!report.message.contains("still open"))
+        #expect(!report.message.localizedCaseInsensitiveContains("failed"))
+        #expect(report.resultLabel == "Stopped")
+        #expect(report.failedStatementIndex == 1)
+        #expect(report.failedSQL == nil)
+    }
+
+    // The script's own BT would be left behind by a rerun from the move, and its ET would then fail.
+    @Test("A stop before a database move inside the script's BT says to roll back and move it above the BT")
+    func databaseMoveInsideTheScriptsBlock() {
+        let report = Self.report(
+            .databaseMoveAwaitsCommit(sql: "DATABASE sales_dev"),
+            executed: 2,
+            total: 4,
+            error: "",
+            plan: .scriptTransaction,
+            sessionState: .inTransaction
+        )
+        #expect(report.message == """
+            Statement 3/4 moves the session to another database, which this session takes only outside a \
+            transaction. The run stopped before it. Click Roll Back on the Transaction Open bar, move the statement \
+            above the script's BT, then run the script again from there.
+            """)
+        #expect(report.resultLabel == "Stopped")
+        #expect(report.failedStatementIndex == 2)
+        #expect(report.failedSQL == nil)
+    }
+
+    // The rest has to open the block again, or its ET would end one the app opened around it.
+    @Test("A stop after DDL inside the script's BT says to begin the rest with BT, after the move if there was one")
+    func awaitsCommitInsideTheScriptsBlock() {
+        let plain = Self.report(
+            .awaitsCommit(sql: "CREATE TABLE t (a INTEGER)"),
+            executed: 2,
+            total: 4,
+            error: "",
+            plan: .scriptTransaction,
+            sessionState: .inTransaction
+        )
+        #expect(plain.message == """
+            Statement 2/4 is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. \
+            The run stopped before statement 3. Click Commit on the Transaction Open bar, then begin the rest with \
+            “BT”.
+            """)
+        let moved = Self.report(
+            .awaitsCommit(sql: "CREATE TABLE t (a INTEGER)", databaseMove: "DATABASE sales_dev;"),
+            executed: 3,
+            total: 5,
+            error: "",
+            plan: .scriptTransaction,
+            sessionState: .inTransaction
+        )
+        #expect(moved.message.hasSuffix("then begin the rest with “DATABASE sales_dev; BT”."))
+        #expect(moved.failedStatementIndex == 3)
+    }
 }

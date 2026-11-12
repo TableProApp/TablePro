@@ -21,7 +21,7 @@ internal struct ConnectionTransactionBarContent: Equatable {
         isAborted ? Self.abortedSymbolName : Self.openSymbolName
     }
 
-    init(isAborted: Bool, connectionName: String, database: String?, safeModeLevel: SafeModeLevel) {
+    init(isAborted: Bool, connectionName: String, database: String?, effectiveSafeModeLevel: SafeModeLevel) {
         self.isAborted = isAborted
         let database = database.flatMap { $0.isEmpty ? nil : $0 }
         if isAborted {
@@ -42,7 +42,7 @@ internal struct ConnectionTransactionBarContent: Equatable {
         accessibilityLabel = database.map {
             String(format: String(localized: "Transaction open on %1$@, %2$@"), $0, connectionName)
         } ?? String(format: String(localized: "Transaction open on %@"), connectionName)
-        offersCommit = !safeModeLevel.blocksAllWrites
+        offersCommit = ConnectionTransactionActions.offersCommit(.open, effectiveLevel: effectiveSafeModeLevel)
     }
 }
 
@@ -51,7 +51,8 @@ internal struct ConnectionTransactionBar: View {
     let connectionId: UUID
     @ObservedObject var transactions: SessionTransactionTracker
     let databaseManager: DatabaseManager
-    // Passed from the toolbar state the window observes: the session's own level publishes nothing.
+    // Passed from the toolbar state the window observes, so the bar redraws when the level changes; the session's own
+    // level publishes nothing. Commit follows the gate's level, read in `content(for:in:)`.
     let safeModeLevel: SafeModeLevel
 
     @State private var actingOn: SessionTransactionTracker.Key?
@@ -75,7 +76,7 @@ internal struct ConnectionTransactionBar: View {
             isAborted: hold.state == .aborted,
             connectionName: session.connection.name,
             database: hold.key.lane ?? namedDatabase(of: session),
-            safeModeLevel: safeModeLevel
+            effectiveSafeModeLevel: ExecutionGateProvider.effectiveSafeModeLevel(for: connectionId, in: databaseManager)
         )
     }
 

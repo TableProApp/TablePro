@@ -265,6 +265,21 @@ struct BatchTransactionPolicyTests {
         #expect(Self.plan(["BEGIN TRANSACTION", "INSERT INTO t VALUES (1)", "END TRANSACTION"], .teradata) == .scriptTransaction)
     }
 
+    // A wrap around BT would nest it, so its ET would close only the inner level.
+    @Test("BT opens a Teradata script's own transaction, and nothing on another engine")
+    func teradataBTIsTransactionControl() {
+        #expect(Self.plan(["BT", "INSERT INTO t VALUES (1)", "ET"], .teradata) == .scriptTransaction)
+        #expect(Self.plan(["bt;", "CREATE TABLE t (a INTEGER)", "ET"], .teradata) == .scriptTransaction)
+        #expect(Self.plan(["BT", "INSERT INTO t VALUES (1)"], .postgresql) == .appTransaction)
+    }
+
+    // SET QUERY_BAND ... FOR TRANSACTION is DML, legal inside the wrap.
+    @Test("A transaction query band keeps a Teradata batch wrapped, and a session one does not")
+    func teradataQueryBandScope() {
+        #expect(Self.plan(["SET QUERY_BAND = 'job=x;' FOR TRANSACTION", "UPDATE t SET a = 1"], .teradata) == .appTransaction)
+        #expect(Self.plan(["SET QUERY_BAND = 'job=x;' FOR SESSION", "UPDATE t SET a = 1"], .teradata) == .autocommit)
+    }
+
     @Test("A SQLite savepoint opens a transaction, so the script owns it after all")
     func savepointAfterAnUnwrappingStatement() {
         #expect(Self.plan(["VACUUM", "SAVEPOINT a", "INSERT INTO t VALUES (1)"], .sqlite) == .scriptTransaction)

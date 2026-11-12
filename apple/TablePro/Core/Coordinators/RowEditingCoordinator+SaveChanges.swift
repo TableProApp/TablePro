@@ -352,18 +352,19 @@ extension RowEditingCoordinator {
                 }
 
                 if clearTableOps {
-                    /// On an engine whose DDL commits as it runs, a TRUNCATE before the failure has
-                    /// already emptied its table, and nothing reports which ones ran. Queuing them
-                    /// again would empty the table a second time on the next Save, rows added since
-                    /// included, so they are left for the user to stage again.
+                    // The executor throws every refusal before its first statement.
+                    let ranNothing = error is any ManualCommitRefusing
+                    // Where DDL commits as it runs a failed save may have emptied a table, and a requeued truncate empties it again.
                     let ddlRolledBack = DatabaseManager.shared.driver(for: conn.id)?.supportsTransactionalDDL ?? false
                     restorePendingTableOperations(
                         connectionId: conn.id,
-                        truncates: ddlRolledBack ? truncatedTables : [],
+                        truncates: ranNothing || ddlRolledBack ? truncatedTables : [],
                         deletes: deletedTables,
                         options: capturedOptions
                     )
-                    reconcileDropsAfterFailedSave(deletedTables, scope: scope)
+                    if !ranNothing {
+                        reconcileDropsAfterFailedSave(deletedTables, scope: scope)
+                    }
                 }
 
                 failSave(

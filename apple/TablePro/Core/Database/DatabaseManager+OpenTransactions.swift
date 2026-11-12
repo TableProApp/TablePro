@@ -103,6 +103,13 @@ extension DatabaseManager {
         return safety
     }
 
+    // A turn running on the hold's own connection, which a commit would have to wait behind.
+    internal func isLaneBusy(holding hold: SessionTransactionTracker.Hold) -> Bool {
+        let key = hold.key.lane.map { SessionDriverGate.Key(connectionId: hold.connectionId, database: $0) }
+            ?? browsedGateKey(for: hold.connectionId)
+        return sessionDriverGate.isHeld(key)
+    }
+
     /// Ends the transaction a hold shows, on the connection that holds it. Refused when that
     /// connection was replaced, or when other work ran there after the hold was read: the user
     /// confirmed what they saw, not a transaction someone opened since.

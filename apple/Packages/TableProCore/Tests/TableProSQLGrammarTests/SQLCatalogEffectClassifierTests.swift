@@ -56,6 +56,7 @@ struct SQLCatalogEffectClassifierTests {
         #expect(SQLCatalogEffectClassifier.effect(of: "rollback", grammar: grammar("MySQL")).endsTransaction)
         #expect(SQLCatalogEffectClassifier.effect(of: "ROLLBACK TO SAVEPOINT a", grammar: grammar("PostgreSQL")) == .none)
         #expect(SQLCatalogEffectClassifier.effect(of: "BEGIN", grammar: grammar("PostgreSQL")) == .none)
+        #expect(SQLCatalogEffectClassifier.effect(of: "ET", grammar: grammar("Teradata")).endsTransaction)
     }
 
     @Test("Code the text cannot show refreshes every kind")

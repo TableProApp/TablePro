@@ -160,7 +160,8 @@ public enum SQLCatalogEffectClassifier {
         sql.range(of: #"\bINTO\b"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    private static let transactionEndKeywords: Set<String> = ["COMMIT", "END", "ROLLBACK", "ABORT"]
+    // ET is Teradata's END TRANSACTION.
+    private static let transactionEndKeywords: Set<String> = ["COMMIT", "END", "ROLLBACK", "ABORT", "ET"]
 
     // PostgreSQL's `DISCARD TEMP` and `DISCARD ALL` drop the session's temporary tables.
     private static let discardedTableTargets: Set<String> = ["TEMP", "TEMPORARY", "ALL"]
