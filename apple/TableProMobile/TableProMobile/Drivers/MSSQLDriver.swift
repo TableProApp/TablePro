@@ -20,7 +20,7 @@ nonisolated private extension MSSQLRawResult {
     }
 }
 
-nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLDriver")
 
     nonisolated(unsafe) private var conn: FreeTDSConnection
@@ -33,8 +33,15 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
     var sendsBatchesWhole: Bool { true }
+    var reportsDatabaseWithoutStatement: Bool { false }
 
     nonisolated(unsafe) private(set) var currentSchema: String? = "dbo"
+    // A connection that names no database opens in the login's default one, which only the server knows.
+    private let sessionDatabaseName = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+    var currentDatabase: String? {
+        sessionDatabaseName.withLock { $0 }
+    }
     nonisolated(unsafe) private(set) var serverVersion: String?
 
     // This form collects no CA for FreeTDS, so a verify mode from the Mac or an import cannot be honoured here.
@@ -105,6 +112,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                 )
             }
         }
+
+        _ = try? await sessionDatabase()
 
         if let serverSchema = try? await runQuery(MSSQLSchemaQueries.currentSchema).rows.first?.first ?? nil,
            !serverSchema.isEmpty {
@@ -281,6 +290,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         } catch let error as MSSQLCoreError {
             throw mapToConnectionError(error)
         }
+        sessionDatabaseName.withLock { $0 = name }
     }
 
     func fetchSchemas() async throws -> [String] {
@@ -290,6 +300,12 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func switchSchema(to name: String) async throws {
         currentSchema = name
+    }
+
+    func sessionDatabase() async throws -> String? {
+        let name = try await runQuery(MSSQLPrincipalQueries.currentDatabase).rows.first?.first ?? nil
+        sessionDatabaseName.withLock { $0 = name }
+        return name
     }
 
     // MARK: - Table Metadata

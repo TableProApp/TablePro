@@ -124,8 +124,8 @@ public sealed class RowEditTests
 
     private static async Task<Page> PageAsync(SqliteDatabase database, CancellationToken cancellationToken)
     {
-        var query = await database.Session.GetTableQueryAsync(People, null, 100, cancellationToken: cancellationToken);
-        var run = database.Editor.Run(query.Sql, cancellationToken: cancellationToken);
+        var page = await database.Session.ReadTablePageAsync(People, null, null, 100, cancellationToken: cancellationToken);
+        var run = page.Run;
         Assert.IsType<QueryOutcome.Completed>(await run.Completion);
         return new Page(run, run.GetResultSet(0) ?? throw new InvalidOperationException("The page read no set."));
     }

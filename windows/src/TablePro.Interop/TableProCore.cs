@@ -48,6 +48,14 @@ public sealed class TableProCore : IDisposable
         return Mapping.Url(CoreCall.Run(() => Native.CoreMethods.ParseConnectionUrl(url)));
     }
 
+    // Opened once per core and shared. Throws TableProException with code ffi.no_storage without a storage directory.
+    public async Task<QueryHistory> OpenHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var store = await CoreCall.RunAsync(() => _core.History()).ConfigureAwait(false);
+        return new QueryHistory(store);
+    }
+
     public async Task<DatabaseSession> OpenFileAsync(
         FileOpenOptions options,
         CancellationToken cancellationToken = default)

@@ -2,8 +2,8 @@
 //  QueryBatchResultTests.swift
 //  TableProTests
 //
-//  `GO n` sends a batch n times, and the editor and every external caller fold the answers into one with
-//  `followed(by:)`, so the ceiling, the counts and the place of each error are decided in one place.
+//  `GO n` sends a batch n times, and every caller folds the answers into one here, so the ceiling, the counts and
+//  the place of each error are decided in one place. The editor keeps the newest result sets past the ceiling.
 //
 
 import Foundation
@@ -50,5 +50,18 @@ struct QueryBatchResultTests {
         let combined = answer(resultSets: 2).followed(by: answer(resultSets: 1, errorAfter: 1))
 
         #expect(combined.errors.map(\.precedingResultSetCount) == [3])
+    }
+
+    @Test("Keeping the latest, result sets past the ceiling push out the oldest and are counted as superseded")
+    func latestPastTheCeiling() {
+        let limit = QueryBatchResult.keptResultSetLimit
+        let combined = answer(resultSets: limit - 1).followedKeepingLatest(by: answer(resultSets: 3, errorAfter: 3))
+
+        #expect(combined.resultSets.count == limit)
+        #expect(combined.resultSets.last?.columns == ["c2"])
+        #expect(combined.resultSets.dropLast(3).last?.columns == ["c\(limit - 2)"])
+        #expect(combined.supersededResultSetCount == 2)
+        #expect(combined.discardedResultSetCount == 0)
+        #expect(combined.errors.map(\.precedingResultSetCount) == [limit])
     }
 }
