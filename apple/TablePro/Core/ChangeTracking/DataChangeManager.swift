@@ -351,6 +351,13 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             wasExpression: pending.isExpression(rowID: rowID, columnIndex: columnIndex),
             isExpression: isExpression
         )
+        // The grid's row shows the row's other pending cells; an undo that has to stage the row again needs it as read.
+        var absence = absence
+        let originalRow = originalRow.map { shown in
+            let image = pending.imageAsRead(ofRow: rowID, current: shown, absentColumns: absence.originalRow)
+            absence.originalRow = image.absentColumns
+            return image.row
+        }
         let action = coalescesWithPrevious ? typingRunAction() : commandAction ?? Self.newActionID()
         objectWillChange.send()
         let recorded = pending.recordCellChange(
@@ -571,10 +578,47 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     // MARK: - Undo Operations
 
     func undoRowDeletion(rowID: RowID) {
-        guard pending.isRowDeleted(rowID) else { return }
+        restoreDeletedRows([rowID])
+    }
+
+    // A step of its own, so Undo deletes the rows again rather than replaying the delete under it the wrong way round.
+    func restoreDeletedRows(_ rowIDs: [RowID]) {
+        let restored = rowIDs.compactMap { rowID -> (rowID: RowID, originalRow: [PluginCellValue], absent: Set<Int>)? in
+            guard let delete = pending.change(forRow: rowID, type: .delete) else { return nil }
+            return (rowID, completedImage(delete.originalRow ?? [], of: rowID), delete.absentColumns)
+        }
+        guard !restored.isEmpty else { return }
         objectWillChange.send()
-        guard pending.undoRowDeletion(rowID: rowID) else { return }
+        for row in restored {
+            _ = pending.undoRowDeletion(rowID: row.rowID)
+        }
+        if restored.count == 1, let row = restored.first {
+            registerUndo(actionName: Self.restoreRowActionName) { target in
+                target.applyDataUndo(.rowDeletion(rowID: row.rowID, originalRow: row.originalRow, absentColumns: row.absent))
+            }
+        } else {
+            let rows = restored.map { (rowID: $0.rowID, originalRow: $0.originalRow) }
+            let absentColumns = Dictionary(
+                restored.filter { !$0.absent.isEmpty }.map { ($0.rowID, $0.absent) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            registerUndo(actionName: Self.restoreRowsActionName) { target in
+                target.applyDataUndo(.batchRowDeletion(rows: rows, absentColumns: absentColumns))
+            }
+        }
         hasChanges = !pending.isEmpty
+    }
+
+    private static var restoreRowActionName: String { String(localized: "Restore Row") }
+    private static var restoreRowsActionName: String { String(localized: "Restore Rows") }
+
+    // A delete and a restore replay through one step, which keeps the name of the command that made it.
+    private func rowDeletionStepName(rowIsDeleted: Bool, batch: Bool) -> String {
+        let isUndoing = undoManagerProvider?()?.isUndoing ?? false
+        if isUndoing == rowIsDeleted {
+            return batch ? String(localized: "Delete Rows") : String(localized: "Delete Row")
+        }
+        return batch ? Self.restoreRowsActionName : Self.restoreRowActionName
     }
 
     func undoBatchRowInsertion(rows: [InsertedRowLocation]) {
@@ -668,7 +712,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             pending.reapplyCellChange(
                 rowID: rowID,
                 columnIndex: columnIndex, columnName: columnName,
-                originalDBValue: newValue, newValue: previousValue, originalRow: originalRow,
+                originalDBValue: newValue, newValue: previousValue,
+                originalRow: originalRow.map { completedImage($0, of: rowID) },
                 absence: absence.reversed, expression: expression.reversed,
                 action: actionID
             )
@@ -716,7 +761,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     ) {
         // The pending deletion's image, which a value loaded since the delete has completed.
         let image = completedImage(pending.change(forRow: rowID, type: .delete)?.originalRow ?? originalRow, of: rowID)
-        registerUndo(actionName: String(localized: "Delete Row")) { target in
+        let stepName = rowDeletionStepName(rowIsDeleted: pending.isRowDeleted(rowID), batch: false)
+        registerUndo(actionName: stepName) { target in
             target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: image, absentColumns: absentColumns))
         }
 
@@ -744,7 +790,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             let image = pending.change(forRow: row.rowID, type: .delete)?.originalRow ?? row.originalRow
             return (rowID: row.rowID, originalRow: completedImage(image, of: row.rowID))
         }
-        registerUndo(actionName: String(localized: "Delete Rows")) { target in
+        let stepName = rowDeletionStepName(rowIsDeleted: rows.contains { pending.isRowDeleted($0.rowID) }, batch: true)
+        registerUndo(actionName: stepName) { target in
             target.applyDataUndo(.batchRowDeletion(rows: images, absentColumns: absentColumns))
         }
 

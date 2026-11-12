@@ -29,9 +29,6 @@ struct TableSchema {
         primaryKeyColumns.compactMap { columns.firstIndex(of: $0) }
     }
 
-    /// Get index of first primary key column
-    var primaryKeyIndex: Int? { primaryKeyIndices.first }
-
     /// Check if a column name exists
     func hasColumn(_ name: String) -> Bool {
         columns.contains(name)

@@ -55,7 +55,8 @@ internal final class JSONViewerWindowController: ValueViewerWindowController {
     /// Nil when Save would write back what is stored. A NULL baseline reads as empty text, so an
     /// empty Save leaves the cell NULL rather than writing an empty string over it.
     nonisolated static func valueToCommit(saved: String, baseline: String?) -> String? {
-        saved == JsonReindenter.normalize(baseline ?? "") ? nil : saved
+        guard JsonReindenter.normalize(saved) != JsonReindenter.normalize(baseline ?? "") else { return nil }
+        return JsonReindenter.staged(saved, keepingLayoutOf: baseline)
     }
 }
 

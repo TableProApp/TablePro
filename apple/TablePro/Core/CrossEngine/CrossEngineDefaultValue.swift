@@ -66,6 +66,18 @@ internal enum CrossEngineDefaultValue {
         return head.trimmingCharacters(in: .whitespaces)
     }
 
+    // A default built on the current date or time, UTC forms and time zone conversions included.
+    internal static func readsTheClock(_ value: String) -> Bool {
+        let upper = value.uppercased()
+        return clockNames.contains { upper.contains($0) }
+    }
+
+    private static let clockNames = [
+        "NOW(", "CURRENT_TIMESTAMP", "LOCALTIMESTAMP", "CURRENT_DATE", "CURDATE(", "CURTIME(", "TODAY(",
+        "GETDATE(", "GETUTCDATE(", "SYSDATETIME(", "SYSUTCDATETIME(", "SYSDATETIMEOFFSET(", "UTC_TIMESTAMP",
+        "SYSDATE", "SYSTIMESTAMP", "STATEMENT_TIMESTAMP(", "TRANSACTION_TIMESTAMP(", "CLOCK_TIMESTAMP(",
+    ]
+
     private static func currentTimestamp(_ upper: String, target: SQLTypeFamily) -> String? {
         let names = [
             "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()", "NOW()", "GETDATE()", "GETUTCDATE()",

@@ -54,6 +54,7 @@ extension MainContentCommandActions {
         if isUsersRolesTab { return coordinator?.usersRolesActions?.canUndo() ?? false }
         if isDiagramTab { return selectedDiagram?.canUndoStagedEdit ?? false }
         if showsStructureEditor { return structureHistory?.canUndo ?? false }
+        if coordinator?.isSavingSelectedTab == true { return false }
         if coordinator?.changeManager.hasCoalescedUndoRun == true { return true }
         return windowUndoManager?.canUndo ?? false
     }
@@ -62,6 +63,7 @@ extension MainContentCommandActions {
         if isUsersRolesTab { return coordinator?.usersRolesActions?.canRedo() ?? false }
         if isDiagramTab { return selectedDiagram?.canRedoStagedEdit ?? false }
         if showsStructureEditor { return structureHistory?.canRedo ?? false }
+        if coordinator?.isSavingSelectedTab == true { return false }
         return windowUndoManager?.canRedo ?? false
     }
 
@@ -106,6 +108,7 @@ extension MainContentCommandActions {
             structureHistory?.undo()
             return
         }
+        guard coordinator?.isSavingSelectedTab != true else { return }
         windowUndoManager?.undo()
     }
 
@@ -123,6 +126,7 @@ extension MainContentCommandActions {
             structureHistory?.redo()
             return
         }
+        guard coordinator?.isSavingSelectedTab != true else { return }
         windowUndoManager?.redo()
     }
 }

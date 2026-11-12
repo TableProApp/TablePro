@@ -46,6 +46,17 @@ struct MultiRowEditStateJsonTests {
         #expect(state.fields[0].pendingValue == "{\"a\":2}")
     }
 
+    @Test("A value stored across lines keeps the typed lines; only a one-line value is compacted")
+    func formattedValueKeepsItsLayout() {
+        let stored = "{\n    \"retries\": 3,\n    \"host\": \"db\"\n}"
+        let typed = "{\n    \"retries\": 5,\n    \"host\": \"db\"\n}"
+        let state = makeState(value: stored, type: .text(rawType: "text"), column: "config")
+
+        state.updateField(at: 0, value: typed)
+
+        #expect(state.fields[0].pendingValue == typed)
+    }
+
     @Test("Editing back to the original content clears the pending change")
     func jsonRevertClearsChange() {
         let original = "{\"a\":1}"
