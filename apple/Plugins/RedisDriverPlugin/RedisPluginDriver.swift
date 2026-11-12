@@ -307,6 +307,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ]
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
         let columns = try await fetchColumns(table: "", schema: schema)

@@ -390,11 +390,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
         deadline: LibPQConnectDeadline
     ) throws {
         logUnexpectedClientEncoding(of: connection)
-        try runSessionSetupStatement(
-            LibPQStringConformance.enableStatement,
-            on: connection,
-            deadline: deadline
-        )
+        // Every server since 8.2 reports the setting and PgBouncer tracks it, so a reported `on` needs no round trip.
+        if reportedStandardConformingStrings(on: connection) != true {
+            try runSessionSetupStatement(
+                LibPQStringConformance.enableStatement,
+                on: connection,
+                deadline: deadline
+            )
+        }
         let standardConformingStrings = try (
             reportedStandardConformingStrings(on: connection)
                 ?? queriedStandardConformingStrings(on: connection, deadline: deadline)
@@ -476,21 +479,37 @@ final class LibPQPluginConnection: @unchecked Sendable {
         on connection: OpaquePointer,
         deadline: LibPQConnectDeadline
     ) throws -> OpaquePointer {
+        // One element: only the last result is kept, and no result at all throws.
+        try bootstrapResults(for: statement, on: connection, deadline: deadline, keepsOnlyLast: true)[0]
+    }
+
+    private func bootstrapResults(
+        for statements: String,
+        on connection: OpaquePointer,
+        deadline: LibPQConnectDeadline,
+        keepsOnlyLast: Bool
+    ) throws -> [OpaquePointer] {
         do {
-            return try uncheckedBootstrapResult(for: statement, on: connection, deadline: deadline)
+            return try uncheckedBootstrapResults(
+                for: statements,
+                on: connection,
+                deadline: deadline,
+                keepsOnlyLast: keepsOnlyLast
+            )
         } catch {
             bootstrapTransportFailed = true
             throw error
         }
     }
 
-    private func uncheckedBootstrapResult(
-        for statement: String,
+    private func uncheckedBootstrapResults(
+        for statements: String,
         on connection: OpaquePointer,
-        deadline: LibPQConnectDeadline
-    ) throws -> OpaquePointer {
+        deadline: LibPQConnectDeadline,
+        keepsOnlyLast: Bool
+    ) throws -> [OpaquePointer] {
         try checkBootstrapState(connection, deadline: deadline)
-        let sent = statement.withCString { PQsendQuery(connection, $0) }
+        let sent = statements.withCString { PQsendQuery(connection, $0) }
         guard sent != 0 else { throw connectionError(from: connection) }
 
         while true {
@@ -501,10 +520,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
             try pollBootstrapSocket(connection, reads: false, writes: true, deadline: deadline)
         }
 
-        var finalResult: OpaquePointer?
-        var returnsFinalResult = false
+        var results: [OpaquePointer] = []
+        var returnsResults = false
         defer {
-            if !returnsFinalResult, let finalResult { PQclear(finalResult) }
+            if !returnsResults { results.forEach { PQclear($0) } }
         }
         while true {
             while PQisBusy(connection) != 0 {
@@ -515,13 +534,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
 
             guard let result = PQgetResult(connection) else { break }
-            if let finalResult { PQclear(finalResult) }
-            finalResult = result
+            if keepsOnlyLast, let earlier = results.popLast() { PQclear(earlier) }
+            results.append(result)
         }
 
-        guard let finalResult else { throw connectionError(from: connection) }
-        returnsFinalResult = true
-        return finalResult
+        guard !results.isEmpty else { throw connectionError(from: connection) }
+        returnsResults = true
+        return results
     }
 
     private func pollBootstrapSocket(
@@ -757,6 +776,17 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // Nil once the connect has finished, when a block of the user's may be open: the caller then scopes each read alone.
+    func executeConnectStatements(_ statements: String) async throws -> [Result<LibPQPluginQueryResult, Error>]? {
+        let statementsToRun = String(statements)
+
+        return try await pluginDispatchAsync(on: queue) { [self] () throws -> [Result<LibPQPluginQueryResult, Error>]? in
+            guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            guard let deadline = activeConnectDeadline else { return nil }
+            return try executeConnectStatementsSync(statementsToRun, deadline: deadline)
+        }
+    }
+
     // A catalog query the driver sends on its own while reading a result, on the connection's queue, scoped the way
     // `executeTransactionScopedRead` scopes one. The caller clears the result. Inside an aborted block it hands back
     // the savepoint's own `25P02` failure.
@@ -958,6 +988,38 @@ final class LibPQPluginConnection: @unchecked Sendable {
             cancelsOutput: cancelsOutput,
             allowsSideQueries: false
         )
+        try checkBootstrapState(connection, deadline: deadline)
+        return decoded
+    }
+
+    // One simple Query: the server answers each statement in order and runs none after the first that fails.
+    private func executeConnectStatementsSync(
+        _ statements: String,
+        deadline: LibPQConnectDeadline
+    ) throws -> [Result<LibPQPluginQueryResult, Error>] {
+        guard !isShuttingDown, let connection = connectionHandle else {
+            throw LibPQPluginError.notConnected
+        }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: connection) }
+
+        let cancelsOutput = cancelsAbandonedOutput(connection)
+        if let ended = sessionEndedBeforeSending(connection) { throw ended }
+        let results = try bootstrapResults(for: statements, on: connection, deadline: deadline, keepsOnlyLast: false)
+        recordTransactionState(of: connection)
+        let decoded = results.map { result in
+            Result<LibPQPluginQueryResult, Error> {
+                try queryResult(
+                    from: result,
+                    connection: connection,
+                    generation: generation,
+                    cancelsOutput: cancelsOutput,
+                    allowsSideQueries: false
+                )
+            }
+        }
         try checkBootstrapState(connection, deadline: deadline)
         return decoded
     }

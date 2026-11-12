@@ -11,17 +11,21 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// The pager and the edits over a table's rows; the page, its count, every reload and every save are TableTab's.
+// Data and Structure over one table; the page, its count and filter, every reload and every save are TableTab's.
 public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView
 {
     private readonly TableTab _model;
     private bool _messagesIsTarget;
+    private bool _showsStructure;
+    private FilterBar? _filters;
+    private StructureView? _structure;
 
     internal TableTabView(
         Workbench workbench,
         SessionShare<DatabaseSession> share,
         string? schema,
         string table,
+        ObjectKind kind,
         SessionTab? restore = null)
     {
         InitializeComponent();
@@ -36,6 +40,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             this,
             Results,
             new TableName(schema, table),
+            restore?.ObjectKindOr(kind) ?? kind,
             () => workbench.Settings,
             restore);
         _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
@@ -60,6 +65,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         grid.ContextRequested += OnGridContextRequested;
         UpdatePager();
         UpdateEditing();
+        // A restored filter shows in its bar, as one applied here does.
+        if (_model.Filter is not null)
+        {
+            ShowFilter(true, focus: false);
+        }
     }
 
     public event EventHandler? StateChanged;
@@ -76,12 +86,34 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     public SqlEditor? Editor => null;
 
-    public DataGridView Grid => Results.GridView;
+    // Copy and Select All reach the grid shown, the structure's while Structure shows.
+    public DataGridView? Grid => _showsStructure && _structure is { } structure ? structure.Grid : Results.GridView;
 
     public bool GridIsTarget => true;
 
-    public TextBox? MessagesTarget =>
-        _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
+    public TextBox? MessagesTarget
+    {
+        get
+        {
+            if (_showsStructure)
+            {
+                return _structure?.TextTarget;
+            }
+
+            return _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible
+                ? Results.MessagesBox
+                : null;
+        }
+    }
+
+    public bool ShowsStructure => _showsStructure;
+
+    public bool ShowsFilter => FilterHost.Visibility == Visibility.Visible;
+
+    // For the export dialog: the tab's table, filter and sort, and the rows it shows.
+    internal TableTab Model => _model;
+
+    internal ResultsPane ResultsView => Results;
 
     public bool CanSave => _model.CanSave;
 
@@ -107,7 +139,29 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     public void Stop() => _model.Stop();
 
-    public void FocusContent() => Results.GridView.Focus(FocusState.Programmatic);
+    public void FocusContent()
+    {
+        if (_showsStructure && _structure is { } structure)
+        {
+            structure.FocusContent();
+            return;
+        }
+
+        Results.GridView.Focus(FocusState.Programmatic);
+    }
+
+    // The workspace's Show structure opens a table here.
+    public void ShowStructure() => ShowView(structure: true);
+
+    public void ShowData() => ShowView(structure: false);
+
+    // The menu's Filter rows, as the command bar's toggle; from Structure it brings the rows back with the bar open.
+    public void ToggleFilter()
+    {
+        var show = _showsStructure || !ShowsFilter;
+        ShowView(structure: false);
+        ShowFilter(show, focus: true);
+    }
 
     public SessionTab Snapshot() => _model.Snapshot();
 
@@ -174,6 +228,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     {
         RefreshButton.IsEnabled = !running && !_model.IsSaving;
         StopButton.IsEnabled = running;
+        _filters?.SetBusy(running || _model.IsSaving);
         UpdatePager();
         UpdateEditing();
     }
@@ -206,6 +261,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     void ITableTabView.ShowSaving(bool saving)
     {
         RefreshButton.IsEnabled = !saving && !_model.IsRunning;
+        _filters?.SetBusy(saving || _model.IsRunning);
         if (saving)
         {
             StatusText.Text = Strings.Get("StatusSaving");
@@ -237,6 +293,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         {
             ReloadReason.Refresh => "ReloadDiscardRefresh",
             ReloadReason.Sort => "ReloadDiscardSort",
+            ReloadReason.Filter => "ReloadDiscardFilter",
             _ => "ReloadDiscardPage",
         }));
 
@@ -256,6 +313,91 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     Task ITableTabView.ShowSaveFailedAsync(CoreError failure, bool incomplete) =>
         RowEditDialogs.ShowSaveFailedAsync(Owner, Strings.Error(failure), incomplete);
+
+    // Only the structure view asks for a read, so there is one to say it in.
+    void ITableTabView.ShowStructureFailed(CoreError failure) => _structure?.ShowFailure(failure);
+
+    void ITableTabView.ShowFilterChoicesFailed(CoreError failure) => _filters?.ShowChoicesFailed(failure);
+
+    // SelectorBar raises SelectionChanged for ShowView's own change too, which finds the view already shown.
+    private void ShowView(bool structure)
+    {
+        if (structure == _showsStructure)
+        {
+            return;
+        }
+
+        _showsStructure = structure;
+        ViewBar.SelectedItem = structure ? StructureItem : DataItem;
+        DataArea.Visibility = structure ? Visibility.Collapsed : Visibility.Visible;
+        StructureHost.Visibility = structure ? Visibility.Visible : Visibility.Collapsed;
+        if (structure)
+        {
+            // A structure read before comes back at once, unless a refresh made it stale.
+            LoadStructure(_structure ??= CreateStructure());
+        }
+
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Hiding the bar keeps the filter applied; the status still counts the rows it picks.
+    private void ShowFilter(bool show, bool focus)
+    {
+        if (show)
+        {
+            var filters = _filters ??= CreateFilters();
+            FilterHost.Visibility = Visibility.Visible;
+            LoadFilters(filters, focus);
+        }
+        else if (ShowsFilter)
+        {
+            var hadFocus = _filters?.HasFocus == true;
+            FilterHost.Visibility = Visibility.Collapsed;
+            if (hadFocus)
+            {
+                Results.GridView.Focus(FocusState.Programmatic);
+            }
+        }
+
+        // The toggle's own event comes back to OnFilterToggled, which finds the bar already as it should be.
+        FilterButton.IsChecked = show;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private FilterBar CreateFilters()
+    {
+        var filters = new FilterBar(_model);
+        filters.SetBusy(_model.IsRunning || _model.IsSaving);
+        FilterHost.Child = filters;
+        return filters;
+    }
+
+    private StructureView CreateStructure()
+    {
+        var structure = new StructureView(_model);
+        StructureHost.Child = structure;
+        return structure;
+    }
+
+    private static async void LoadFilters(FilterBar filters, bool focus) =>
+        await filters.LoadAsync(focus).ConfigureAwait(true);
+
+    private static async void LoadStructure(StructureView structure) =>
+        await structure.LoadAsync(refresh: false).ConfigureAwait(true);
+
+    // A refresh leaves the structure and the filter choices stale, so the ones on screen are read again.
+    private async Task ReloadShownAsync()
+    {
+        if (ShowsFilter && _filters is { } filters)
+        {
+            await filters.LoadAsync(focus: false).ConfigureAwait(true);
+        }
+
+        if (_showsStructure && _structure is { } structure)
+        {
+            await structure.LoadAsync(refresh: false).ConfigureAwait(true);
+        }
+    }
 
     private void UpdatePager()
     {
@@ -512,9 +654,30 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     private async void OnLastPage(object sender, RoutedEventArgs e) => await _model.LastPageAsync().ConfigureAwait(true);
 
-    private async void OnRefresh(object sender, RoutedEventArgs e) => await _model.RefreshAsync().ConfigureAwait(true);
+    private async void OnRefresh(object sender, RoutedEventArgs e)
+    {
+        await _model.RefreshAsync().ConfigureAwait(true);
+        await ReloadShownAsync().ConfigureAwait(true);
+    }
 
     private void OnStop(object sender, RoutedEventArgs e) => Stop();
+
+    private void OnViewChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        if (sender.SelectedItem is { } item)
+        {
+            ShowView(ReferenceEquals(item, StructureItem));
+        }
+    }
+
+    private void OnFilterToggled(object sender, RoutedEventArgs e)
+    {
+        var show = FilterButton.IsChecked == true;
+        if (show != ShowsFilter)
+        {
+            ShowFilter(show, focus: true);
+        }
+    }
 
     private void OnAddRow(object sender, RoutedEventArgs e) => AddRow();
 

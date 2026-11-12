@@ -11,6 +11,9 @@ nonisolated enum SessionLocalStatements {
         // A `USE`, a role or a search path moved the session off what the catalog connection sees, or a procedure or
         // dynamic SQL may have made a table only the session sees.
         var leavesCatalog = false
+        // A `USE` ran, the one statement that moves a MySQL or SQL Server session to another database: a procedure or
+        // dynamic SQL cannot, and SQL Server puts the database back when its `EXEC` or procedure ends.
+        var usesDatabase = false
     }
 
     private static let identifier = #"(`(?:[^`]|``)+`|"(?:[^"]|"")+"|\[[^\]]+\]|[\w$#]+)"#
@@ -66,8 +69,10 @@ nonisolated enum SessionLocalStatements {
                 effect.temporaryTables.insert(name)
             }
             let range = NSRange(location: 0, length: (code as NSString).length)
+            let uses = usePattern?.firstMatch(in: code, range: range) != nil
+            if uses { effect.usesDatabase = true }
             // A MySQL executable comment can hide any statement, a temporary table among them, from the patterns.
-            if usePattern?.firstMatch(in: code, range: range) != nil
+            if uses
                 || contextPattern?.firstMatch(in: code, range: range) != nil
                 || SQLLeadingComments.conditionalCommentOpeners.contains(where: {
                     (code as NSString).range(of: $0, options: .literal).location != NSNotFound

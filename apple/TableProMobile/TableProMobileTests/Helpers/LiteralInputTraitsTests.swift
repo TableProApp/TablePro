@@ -40,6 +40,20 @@ struct LiteralInputTraitsTests {
         #expect(textView.writingToolsBehavior == UIWritingToolsBehavior.none)
     }
 
+    @Test("The table search types what the keyboard sends, so a name with an apostrophe still matches")
+    func searchFieldTraits() {
+        let bar = UISearchBar()
+
+        LiteralSearchField.configure(bar)
+
+        let field = bar.searchTextField
+        #expect(field.smartQuotesType == .no)
+        #expect(field.smartDashesType == .no)
+        #expect(field.autocorrectionType == .no)
+        #expect(field.autocapitalizationType == UITextAutocapitalizationType.none)
+        #expect(bar.returnKeyType == .search)
+    }
+
     @Test("The traits leave the keyboard type the field asked for")
     func keyboardTypeKept() {
         let field = UITextField()

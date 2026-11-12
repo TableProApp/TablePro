@@ -559,6 +559,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let ks = resolveKeyspace(schema)
         let query = """
