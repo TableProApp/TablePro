@@ -58,6 +58,8 @@ public struct CLIPairingRequest: Sendable, Equatable {
 public enum CLIPairingCallback: Sendable, Equatable {
     case approved(code: String)
     case denied
+    // Approved in TablePro, which then could not issue the token.
+    case failed
     // Another path, or a `state` from some other request.
     case ignored
 
@@ -74,6 +76,13 @@ public enum CLIPairingCallback: Sendable, Equatable {
         if let code = value("code"), !code.isEmpty {
             return .approved(code: code)
         }
-        return value("error") == nil ? .ignored : .denied
+        switch value("error") {
+        case nil:
+            return .ignored
+        case "access_denied"?, "denied"?:
+            return .denied
+        default:
+            return .failed
+        }
     }
 }

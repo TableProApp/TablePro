@@ -5,8 +5,8 @@
 # The plugin links libduckdb.a, so no test bundle can hold its staging database. This compiles
 # DuckDBStagingDatabase.swift against the shipped library, stages a table holding the values the
 # export used to change (binary, a zero-length blob, bit(8), BIGINT UNSIGNED above 2^63, a TIME
-# past 24 hours, an Oracle DATE with a time, text in an integer column), writes the file and reads
-# it back.
+# past 24 hours, an Oracle DATE with a time, text in an integer column, timestamps and a time
+# with a UTC offset), writes the file and reads it back.
 #
 # Usage:
 #   scripts/probes/check-parquet-export-values.sh
@@ -74,7 +74,12 @@ enum ParquetValuesProbe {
             ("seen", "DATE", "Oracle"),
             ("count", "int", "SQLite"),
             ("day", "date", "PostgreSQL"),
-            ("note", "text", "PostgreSQL")
+            ("note", "text", "PostgreSQL"),
+            ("zoned", "timestamp with time zone", "PostgreSQL"),
+            ("instant", "timestamptz", "PostgreSQL"),
+            ("clock", "time with time zone", "PostgreSQL"),
+            ("oracle_tz", "TIMESTAMP(6) WITH TIME ZONE", "Oracle"),
+            ("oracle_ltz", "TIMESTAMP(6) WITH LOCAL TIME ZONE", "Oracle")
         ]
         let types = declared.map { ParquetTypeMapper.duckDBType(forColumnType: $0.type, databaseTypeId: $0.engine) }
 
@@ -83,15 +88,21 @@ enum ParquetValuesProbe {
         try staging.insert(rows: [
             [
                 .text("1"), .bytes(Data([0x41, 0x42, 0x43])), .text("10101010"), .text("18446744073709551615"),
-                .text("100:00:00"), .text("2024-01-01 12:30:00"), .text("7"), .text("2024-03-01"), .text("it's")
+                .text("100:00:00"), .text("2024-01-01 12:30:00"), .text("7"), .text("2024-03-01"), .text("it's"),
+                .text("2024-01-01 12:00:00+07"), .text("2024-10-27 02:30:00+02"), .text("12:00:00+07"),
+                .text("2026-10-06 15:22:20.000001-05:30"), .text("2026-10-06 15:22:20.000001+07:00")
             ],
             [
                 .text("2"), .bytes(Data()), .text("1"), .text("5"),
-                .text("10:00:00"), .text("2024-01-02 00:00:00"), .text("seven"), .text("2024-03-02"), .text("")
+                .text("10:00:00"), .text("2024-01-02 00:00:00"), .text("seven"), .text("2024-03-02"), .text(""),
+                .null, .text("2024-10-27 02:30:00+01"), .null, .null, .null
             ]
         ])
         try staging.insert(rows: [
-            [.text("3"), .bytes(Data([0x00, 0xFF, 0x5C, 0x78])), .null, .null, .null, .null, .null, .null, .null]
+            [
+                .text("3"), .bytes(Data([0x00, 0xFF, 0x5C, 0x78])), .null, .null, .null, .null, .null, .null, .null,
+                .null, .null, .null, .null, .null
+            ]
         ])
         let fallbacks = try staging.copyToParquet(fileURL: file, compression: "SNAPPY", rowGroupSize: 122_880)
 
@@ -106,7 +117,14 @@ enum ParquetValuesProbe {
             ("bit", "PostgreSQL", "BOOLEAN"), ("bit(1)", "MySQL", "BOOLEAN"), ("bit", "SQL Server", "BOOLEAN"),
             ("bit(8)", "MySQL", "VARCHAR"), ("bit varying(8)", "PostgreSQL", "VARCHAR"),
             ("int unsigned", "MySQL", "BIGINT"), ("BIGINT(20) UNSIGNED", "MySQL", "UBIGINT"),
-            ("bigint", "MySQL", "BIGINT"), ("date", "MySQL", "DATE"), ("DATE", "Oracle", "TIMESTAMP")
+            ("bigint", "MySQL", "BIGINT"), ("date", "MySQL", "DATE"), ("DATE", "Oracle", "TIMESTAMP"),
+            ("timestamp with time zone", "PostgreSQL", "TIMESTAMPTZ"), ("timestamptz", "PostgreSQL", "TIMESTAMPTZ"),
+            ("timestamp(3) with time zone", "PostgreSQL", "TIMESTAMPTZ"),
+            ("TIMESTAMP(6) WITH TIME ZONE", "Oracle", "TIMESTAMPTZ"), ("TIMESTAMP WITH TIME ZONE", "DuckDB", "TIMESTAMPTZ"),
+            ("time with time zone", "PostgreSQL", "TIMETZ"), ("timetz", "PostgreSQL", "TIMETZ"),
+            ("timestamp", "PostgreSQL", "TIMESTAMP"), ("timestamp without time zone", "PostgreSQL", "TIMESTAMP"),
+            ("time", "PostgreSQL", "TIME"), ("TIMESTAMP(6) WITH LOCAL TIME ZONE", "Oracle", "TIMESTAMPTZ"),
+            ("timestamp", "MySQL", "TIMESTAMP"), ("datetimeoffset", "SQL Server", "VARCHAR")
         ]
         for entry in mapped {
             expect(
@@ -126,7 +144,9 @@ enum ParquetValuesProbe {
         let typeIds = try reader.columnTypes("SELECT * FROM \(source)")
         let expectedTypes: [duckdb_type] = [
             DUCKDB_TYPE_BIGINT, DUCKDB_TYPE_BLOB, DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_UBIGINT, DUCKDB_TYPE_VARCHAR,
-            DUCKDB_TYPE_TIMESTAMP, DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_DATE, DUCKDB_TYPE_VARCHAR
+            DUCKDB_TYPE_TIMESTAMP, DUCKDB_TYPE_VARCHAR, DUCKDB_TYPE_DATE, DUCKDB_TYPE_VARCHAR,
+            DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIMESTAMP_TZ, DUCKDB_TYPE_TIME_TZ, DUCKDB_TYPE_TIMESTAMP_TZ,
+            DUCKDB_TYPE_TIMESTAMP_TZ
         ]
         for (index, column) in declared.enumerated() {
             expect("type of \(column.name)", "\(typeIds[index].rawValue)", "\(expectedTypes[index].rawValue)")
@@ -149,6 +169,12 @@ enum ParquetValuesProbe {
         expect("quoted text", try cell("note", id: 1), "it's")
         expect("empty text", try cell("note = ''", id: 2), "true")
         expect("null", try cell("note IS NULL AND big IS NULL AND seen IS NULL", id: 3), "true")
+        expect("timestamp with time zone in UTC", try cell("timezone('UTC', zoned)", id: 1), "2024-01-01 05:00:00")
+        expect("first 02:30 of the fall-back hour", try cell("timezone('UTC', instant)", id: 1), "2024-10-27 00:30:00")
+        expect("second 02:30 of the fall-back hour", try cell("timezone('UTC', instant)", id: 2), "2024-10-27 01:30:00")
+        expect("time with time zone in UTC", try cell("clock", id: 1), "05:00:00+00")
+        expect("Oracle timestamp with time zone", try cell("timezone('UTC', oracle_tz)", id: 1), "2026-10-06 20:52:20.000001")
+        expect("Oracle timestamp with local time zone", try cell("timezone('UTC', oracle_ltz)", id: 1), "2026-10-06 08:22:20.000001")
 
         if failures > 0 { exit(1) }
         print("PASS: the Parquet file holds every staged value")

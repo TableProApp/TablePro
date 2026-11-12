@@ -1,13 +1,8 @@
-//
-//  MCPTokenStoreTests.swift
-//  TableProTests
-//
 //  Minting a token is a grant, so the store makes the caller state the grant: `generate` takes the
 //  connection scope and the expiry with no defaults, because the defaults it used to carry handed
 //  every caller that forgot them a token over every connection that never expired. Two tokens may
 //  share a name; pairing no longer revokes an existing token because a new client claimed the same
 //  one, which let any caller name an installed client and take its access away.
-//
 
 import Foundation
 import TableProMCP
@@ -76,10 +71,15 @@ struct MCPTokenStoreTests {
         MCPTokenStore(credentialStore: credentialStore)
     }
 
-    private func makeToken(isActive: Bool = true, expiresAt: Date? = nil) -> MCPAuthToken {
+    private func makeToken(
+        name: String = "test-token",
+        isActive: Bool = true,
+        expiresAt: Date? = nil,
+        isClaudeAgentCredential: Bool = false
+    ) -> MCPAuthToken {
         MCPAuthToken(
             id: UUID(),
-            name: "test-token",
+            name: name,
             prefix: "tp_abc12",
             tokenHash: "fakehash",
             salt: "fakesalt",
@@ -88,7 +88,8 @@ struct MCPTokenStoreTests {
             createdAt: Date.now,
             lastUsedAt: nil,
             expiresAt: expiresAt,
-            isActive: isActive
+            isActive: isActive,
+            isClaudeAgentCredential: isClaudeAgentCredential
         )
     }
 
@@ -490,6 +491,110 @@ struct MCPTokenStoreTests {
         #expect(await store.validate(bearerToken: result.plaintext) == nil)
     }
 
+    @Test("A token the Keychain did not save is never handed out")
+    func unsavedTokenIsRefused() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        credentials.failsWrites = true
+
+        await #expect(throws: MCPTokenStoreError.notSaved) {
+            _ = try await store.generate(
+                name: "Raycast",
+                permissions: .readOnly,
+                connectionAccess: .all,
+                expiresAt: nil,
+                isBridgeCredential: false,
+                isClaudeAgentCredential: false,
+                extraScopes: []
+            )
+        }
+
+        #expect(await store.list().isEmpty)
+    }
+
+    @Test("The bridge credential is still minted when the Keychain refuses the write")
+    func bridgeCredentialLivesInMemory() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        credentials.failsWrites = true
+
+        let bridge = try await store.generate(
+            name: MCPTokenStore.stdioBridgeTokenName,
+            permissions: MCPTokenStore.bridgeTokenPermissions,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(3_600),
+            isBridgeCredential: true,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+
+        #expect(await store.validate(bearerToken: bridge.plaintext)?.id == bridge.token.id)
+    }
+
+    @Test("Deleting reports whether the Keychain took the change")
+    func deleteReportsPersistence() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "settings",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+
+        credentials.failsWrites = true
+        #expect(await store.delete(tokenId: result.token.id) == false)
+        #expect(await store.validate(bearerToken: result.plaintext) == nil)
+
+        let reloaded = makeStore(credentials)
+        await reloaded.loadFromDisk()
+        #expect(await reloaded.token(id: result.token.id) != nil)
+
+        credentials.failsWrites = false
+        let second = try await store.generate(
+            name: "second",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        #expect(await store.delete(tokenId: second.token.id))
+        let afterSave = makeStore(credentials)
+        await afterSave.loadFromDisk()
+        #expect(await afterSave.list().isEmpty)
+    }
+
+    @Test("Only the Claude Agent's own mint may take its token name")
+    func agentNameIsReserved() async throws {
+        let store = makeStore()
+        let paired = try await store.generate(
+            name: MCPTokenStore.claudeAgentTokenName,
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let agent = try await store.generate(
+            name: MCPTokenStore.claudeAgentTokenName,
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(900),
+            isBridgeCredential: false,
+            isClaudeAgentCredential: true,
+            extraScopes: []
+        )
+
+        #expect(paired.token.name != MCPTokenStore.claudeAgentTokenName)
+        #expect(agent.token.name == MCPTokenStore.claudeAgentTokenName)
+    }
+
     @Test("A superseded bridge credential stops working at once and no revocation observer hears of it")
     func supersededBridgeCredentialIsDroppedWithoutARevocation() async throws {
         let store = makeStore()
@@ -632,6 +737,28 @@ struct MCPTokenStoreTests {
         let names = await reader.list().map(\.name)
         #expect(names == ["user token"])
         #expect(await reader.token(id: survivor.token.id) != nil)
+    }
+
+    @Test("A token an older build let a client name like the Claude Agent is renamed and saved at load")
+    func claimedAgentNameIsReleasedAtLoad() async throws {
+        let claimed = makeToken(name: MCPTokenStore.claudeAgentTokenName)
+        let agent = makeToken(name: MCPTokenStore.claudeAgentTokenName, isClaudeAgentCredential: true)
+        let credentials = InMemoryCredentialStore(
+            seed: try MCPTokenStore.encodeStored(tokens: [claimed, agent], undecoded: [])
+        )
+
+        let store = makeStore(credentials)
+        await store.loadFromDisk()
+
+        let renamed = try #require(await store.token(id: claimed.id))
+        #expect(renamed.name == MCPTokenStore.claudeAgentTokenName + " (client)")
+        #expect(renamed.tokenHash == claimed.tokenHash)
+        #expect(renamed.isClaudeAgentCredential == false)
+        #expect(await store.token(id: agent.id)?.name == MCPTokenStore.claudeAgentTokenName)
+
+        let saved = MCPTokenStore.decodeStored(Data(credentials.storedText.utf8)).tokens
+        #expect(saved.first { $0.id == claimed.id }?.name == MCPTokenStore.claudeAgentTokenName + " (client)")
+        #expect(saved.first { $0.id == agent.id }?.name == MCPTokenStore.claudeAgentTokenName)
     }
 
     @Test("An optional grant survives a reload and adds to the tier's scopes")

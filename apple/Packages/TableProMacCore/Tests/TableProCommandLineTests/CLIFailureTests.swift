@@ -34,4 +34,24 @@ struct CLIFailureTests {
     func rpcErrors(code: Int, expected: CLIExitCode) {
         #expect(CLIFailure.fromRpcError(code: code, message: "m").exitCode == expected)
     }
+
+    @Test("A server that is on but failed to start sends the reader to Settings > MCP, said once")
+    func failedStartNamesSettings() {
+        let failure = CLILive.failure(acquiring: MCPHandshakeAcquisitionError.serverFailedToStart)
+        #expect(failure.exitCode == .failure)
+        #expect(failure.message.contains("Settings > MCP"))
+        #expect(!failure.message.contains("did not start its MCP server:"))
+    }
+
+    @Test("A server that is turned off is a refusal")
+    func turnedOffIsARefusal() {
+        #expect(CLILive.failure(acquiring: MCPHandshakeAcquisitionError.serverTurnedOff).exitCode == .refused)
+    }
+
+    @Test("Any other launch failure keeps its own reason")
+    func otherLaunchFailureKeepsItsReason() {
+        let failure = CLILive.failure(acquiring: MCPHandshakeAcquisitionError.launchFailed("no app"))
+        #expect(failure.exitCode == .failure)
+        #expect(failure.message.contains("no app"))
+    }
 }

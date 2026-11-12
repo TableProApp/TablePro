@@ -311,6 +311,9 @@ targets:
       - path: TablePro/Resources/ThirdPartyLicenses
         type: folder
         buildPhase: resources
+      # The MCP client catalog, one file the Linux app reads too.
+      - path: ../core/crates/mcp/clients.json
+        buildPhase: resources
       - path: TablePro/CLI/tablepro
         buildPhase:
           copyFiles:
@@ -415,7 +418,7 @@ targets:
       - package: TableProCore
         products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
-        products: [TableProCloudAPI, TableProMCP, TableProSSHConfig, TableProUtilities]
+        products: [TableProCloudAPI, TableProMCP, TableProMCPClients, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
     postCompileScripts:
       - name: Write WhatsNew.md

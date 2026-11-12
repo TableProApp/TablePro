@@ -317,9 +317,13 @@ struct SQLStatementGenerator {
     }
 
     private func allDefaultsInsertStatement() -> ParameterizedStatement? {
-        let firstWritable = columns.first { !generatedColumns.contains($0) }.map(quoteIdentifierFn)
-        return AllDefaultsInsert.sql(
-            into: qualifiedTableName, databaseType: databaseType, firstWritableColumn: firstWritable
+        allDefaultsInsertStatement(firstColumn: columns.first { !generatedColumns.contains($0) })
+    }
+
+    // For a generator built without the table's columns, the caller names the one Oracle needs.
+    func allDefaultsInsertStatement(firstColumn: String?) -> ParameterizedStatement? {
+        AllDefaultsInsert.sql(
+            into: qualifiedTableName, databaseType: databaseType, firstWritableColumn: firstColumn.map(quoteIdentifierFn)
         ).map { ParameterizedStatement(sql: $0, parameters: []) }
     }
 

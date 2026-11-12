@@ -133,7 +133,8 @@ extension MainContentView {
                 case .text(let s):
                     raw = s
                 case .bytes(let data):
-                    raw = BlobFormattingService.shared.format(data, for: .copy) ?? ""
+                    // The grid's form stops at 64 bytes, under the cut below; a full copy would hex the whole value.
+                    raw = BlobFormattingService.shared.format(data, for: .grid) ?? ""
                 }
                 return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "…" : raw
             }

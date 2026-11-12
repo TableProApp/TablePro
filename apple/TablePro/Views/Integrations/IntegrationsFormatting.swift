@@ -1,16 +1,26 @@
-//
-//  IntegrationsFormatting.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
+import TableProMCP
 
 enum IntegrationsFormatting {
+    // MCPTokenStore keeps both reserved names for TablePro's own tokens, at mint and at load, so a paired
+    // client cannot borrow these labels.
     static func displayTokenName(_ name: String) -> String {
-        name == MCPTokenStore.stdioBridgeTokenName
-            ? String(localized: "Built-in CLI")
-            : name
+        switch name {
+        case MCPTokenStore.stdioBridgeTokenName:
+            String(localized: "Built-in CLI")
+        case MCPTokenStore.claudeAgentTokenName:
+            AIProviderType.claudeAgent.displayName
+        default:
+            name
+        }
+    }
+
+    // The tablepro command names itself "Command Line"; the window calls it what Settings calls it.
+    static func displayClientName(_ client: MCPServerManager.SessionSnapshot) -> String {
+        client.clientInfoName == CLIClientIdentity.name
+            ? String(localized: "tablepro command")
+            : client.clientName
     }
 
     static func outcomeSymbol(_ outcome: AuditOutcome?) -> String {

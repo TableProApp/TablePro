@@ -560,16 +560,25 @@ The assistant reads no rows: the structure comes from the catalog, and a stateme
 
 ## MCP server
 
-MCP clients on this computer, such as Claude Code, can use your saved connections through TablePro ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). The server is off until you turn on **Preferences > MCP > Enable MCP Server**, and runs while TablePro is open. It listens on `127.0.0.1` only, on port 23508 unless you change it there.
+MCP clients on this computer, such as Claude Code, can use your saved connections through TablePro ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). The server is off until you turn on **Preferences > MCP > Enable MCP Server**, and runs while TablePro is open. It listens on `127.0.0.1` only, on port 23508 unless you change it there, and answers only programs running as your user: another account on the computer is refused even with the access token.
 
-Copy the address and the access token from the same page into the client. With Claude Code:
+**Clients** on that page lists the clients TablePro knows, the ones set up or found on this computer first, each with its state, such as Not set up, Set up, or set up with an old access token:
+
+- **Install** and **Update** write TablePro's entry into the client's own configuration file and keep the rest of it, comments included. **Update** changes only what TablePro sets in its entry and keeps your other settings there. The file as it was is kept beside it as `<file>.tablepro-backup`, and a file that holds the token is readable only by you.
+- Claude Code is set up through its own `claude mcp add` command, which TablePro runs without a shell. The Flatpak cannot start it, so there you copy the command instead.
+- Select a client for its configuration file, the setup to paste by hand with **Copy**, and **Remove**. The page shows the access token masked; **Copy** includes it.
+- A toast says when a client connects.
+
+A client that only starts programs on this computer, such as Claude Desktop, cannot use the server, which is reached at an address.
+
+To set up a client by hand, copy the address and the authorization header from the same page. With Claude Code:
 
 ```bash
-claude mcp add --transport http tablepro http://127.0.0.1:23508/mcp \
+claude mcp add --scope user --transport http tablepro http://127.0.0.1:23508/mcp \
   --header "Authorization: Bearer <access token>"
 ```
 
-**Regenerate Access Token** on that page turns the old token away from the next request.
+**Regenerate Access Token** on that page, with the server on or off, turns the old token away from the next request. While the server runs, the clients set up with the old token show **Update**.
 
 Each connection's **External Clients** level, under Options in its connect dialog, decides what a client may do there:
 
@@ -583,7 +592,7 @@ Read Only stops statements that write. A function the connection's login may cal
 
 A client works on a connection open in a TablePro window; its `connect` tool opens one there, and anything the connect needs, such as a password, is asked in that window. A read runs on a read-only connection. A write runs one statement per call, never under Safe Mode Read-Only, and only after you click **Run** in Safe Mode's dialog in the connection's window, whatever the Safe Mode level. What a client runs with `execute_query` goes into the query history as the editor's runs do.
 
-The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows` and `execute_query`. An answer keeps at most 20 result sets of 1,000 rows each, and a statement stops at 300 seconds.
+The 11 tools are `list_connections`, `connect`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows`, `execute_query` and `export_data`. An answer keeps at most 20 result sets of 1,000 rows each and about 4 MB, a value longer than 64 KB is cut, a statement stops at 300 seconds, and an export takes at most 20 tables.
 
 ## TablePro account
 

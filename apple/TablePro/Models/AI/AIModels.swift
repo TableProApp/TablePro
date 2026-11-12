@@ -104,21 +104,21 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     /// The types `OpenAICompatibleProvider` serves, which share one registration.
     static let openAICompatibleFamily: [AIProviderType] = [.openRouter, .openCode, .ollama, .llamaCpp, .mlx, .custom]
 
-    var symbolName: String {
+    var icon: BrandIcon {
         switch self {
-        case .copilot:      return "chevron.left.forwardslash.chevron.right"
-        case .chatgptCodex: return "bubble.left.and.bubble.right"
-        case .claude:       return "brain"
-        case .claudeAgent:  return "terminal"
-        case .openAI:       return "cpu"
-        case .openRouter:   return "globe"
-        case .gemini:       return "wand.and.stars"
-        case .xai:          return "x.circle"
-        case .ollama:       return "desktopcomputer"
-        case .llamaCpp:     return "memorychip"
-        case .mlx:          return "m.square"
-        case .openCode:     return "sparkles"
-        case .custom:       return "server.rack"
+        case .copilot:      return BrandIcon(slug: "githubcopilot", fallbackSystemImage: "chevron.left.forwardslash.chevron.right")
+        case .chatgptCodex: return BrandIcon(slug: "openai", fallbackSystemImage: "bubble.left.and.bubble.right")
+        case .claude:       return BrandIcon(slug: "claude", fallbackSystemImage: "brain")
+        case .claudeAgent:  return BrandIcon(slug: "claudecode", fallbackSystemImage: "terminal")
+        case .openAI:       return BrandIcon(slug: "openai", fallbackSystemImage: "cpu")
+        case .openRouter:   return BrandIcon(slug: "openrouter", fallbackSystemImage: "globe")
+        case .gemini:       return BrandIcon(slug: "googlegemini", fallbackSystemImage: "wand.and.stars")
+        case .xai:          return BrandIcon(slug: "xai", fallbackSystemImage: "x.circle")
+        case .ollama:       return BrandIcon(slug: "ollama", fallbackSystemImage: "desktopcomputer")
+        case .llamaCpp:     return BrandIcon(slug: "llamacpp", fallbackSystemImage: "memorychip")
+        case .mlx:          return BrandIcon(slug: "mlx", fallbackSystemImage: "m.square")
+        case .openCode:     return BrandIcon(slug: "opencode", fallbackSystemImage: "sparkles")
+        case .custom:       return BrandIcon(slug: nil, fallbackSystemImage: "server.rack")
         }
     }
 }
@@ -195,7 +195,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         name.isEmpty ? kindName : name
     }
 
-    var symbolName: String { preset?.symbolName ?? type.symbolName }
+    var icon: BrandIcon { preset?.icon ?? type.icon }
 
     var authStyle: AIProviderType.AuthStyle { preset?.authStyle ?? type.authStyle }
 

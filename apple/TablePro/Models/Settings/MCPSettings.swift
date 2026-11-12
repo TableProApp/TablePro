@@ -10,6 +10,9 @@ struct MCPSettings: Codable, Equatable {
     var connectionApproval: MCPConnectionApproval
     var allowsHiddenConnectionListing: Bool
 
+    // Linux takes the same range, so one client setup works against either app.
+    static let portRange: ClosedRange<Int> = 1_024...65_535
+
     static let `default` = MCPSettings(
         enabled: false,
         port: 23_508,
@@ -46,7 +49,7 @@ struct MCPSettings: Codable, Equatable {
         let fallback = Self.default
         enabled = container.decodeSetting(.enabled, default: fallback.enabled)
         let rawPort = container.decodeSetting(.port, default: fallback.port)
-        port = (1...65_535).contains(rawPort) ? rawPort : fallback.port
+        port = Self.portRange.contains(rawPort) ? rawPort : fallback.port
         defaultRowLimit = container.decodeSetting(.defaultRowLimit, default: fallback.defaultRowLimit)
         maxRowLimit = container.decodeSetting(.maxRowLimit, default: fallback.maxRowLimit)
         queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
@@ -59,6 +62,10 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit = validatedMaxRowLimit
         defaultRowLimit = validatedDefaultRowLimit
         queryTimeoutSeconds = validatedQueryTimeoutSeconds
+    }
+
+    var validatedPort: Int {
+        port.clamped(to: Self.portRange)
     }
 
     var validatedMaxRowLimit: Int {

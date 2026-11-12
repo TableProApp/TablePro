@@ -169,6 +169,7 @@ final class AppSettingsManager: ObservableObject {
         didSet {
             guard !isValidating else { return }
             var validated = mcp
+            validated.port = mcp.validatedPort
             validated.maxRowLimit = mcp.validatedMaxRowLimit
             validated.defaultRowLimit = mcp.validatedDefaultRowLimit
             validated.queryTimeoutSeconds = mcp.validatedQueryTimeoutSeconds

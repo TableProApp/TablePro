@@ -1,14 +1,8 @@
-//
-//  LaunchIntentFailureOwnershipTests.swift
-//  TableProTests
-//
-//  Opening a database file or URL builds its connection inside the router, so the launch intent
-//  names no connection. A connect that failed there was then alerted over the window that already
-//  showed the same failure, covering the button that fixed it.
-//
+// A file or URL open builds its connection in the router, so its failure must not be alerted over the window showing it.
 
 import Foundation
 @testable import TablePro
+import TableProMCP
 import Testing
 
 @MainActor
@@ -44,5 +38,36 @@ struct LaunchIntentFailureOwnershipTests {
         let error = TabRouterError.connectFailedInWindow(connectionId: UUID(), underlying: Self.underlying)
 
         #expect(error.localizedDescription == Self.underlying.localizedDescription)
+    }
+
+    @Test("A background launch made only for MCP quits when the server fails to start, as it does when MCP is off")
+    func failedMCPStartEndsAnIdleLaunch() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcp-launch-\(UUID().uuidString)", isDirectory: true)
+        // Too long for a socket path, so the server falls back to the temporary folder, which is a file here.
+        let directory = root.appendingPathComponent(String(repeating: "d", count: 110), isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let notAFolder = root.appendingPathComponent("tmp-file", isDirectory: false)
+        try Data().write(to: notAFolder)
+        let manager = MCPServerManager(
+            handshake: MCPHandshakeFile(directory: directory, temporaryDirectory: notAFolder),
+            isEnabled: { true }
+        )
+
+        #expect(await LaunchIntentRouter.startMCPServerLeavesNothingToDo(manager: manager, isIdleMachineSession: { true }))
+        #expect(manager.state == .failed(.socketFolderUnusable))
+        #expect(!(await LaunchIntentRouter.startMCPServerLeavesNothingToDo(manager: manager, isIdleMachineSession: { false })))
+        await manager.stop()
+    }
+
+    @Test("A background launch made only for MCP quits when MCP is off")
+    func refusedMCPStartEndsAnIdleLaunch() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcp-launch-off-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let manager = MCPServerManager(handshake: MCPHandshakeFile(directory: directory), isEnabled: { false })
+
+        #expect(await LaunchIntentRouter.startMCPServerLeavesNothingToDo(manager: manager, isIdleMachineSession: { true }))
+        #expect(manager.state == .stopped)
     }
 }

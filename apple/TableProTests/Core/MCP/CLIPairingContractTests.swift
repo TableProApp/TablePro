@@ -30,7 +30,7 @@ struct CLIPairingContractTests {
         #expect(PairingExchangeStore.sha256Base64Url(of: request.verifier) == request.challenge)
     }
 
-    @Test("The app's approve and deny redirects reach the command as approved and denied")
+    @Test("The app's approve, deny and failure redirects reach the command as approved, denied and failed")
     func redirectsRoundTrip() throws {
         let request = CLIPairingRequest.random()
         let parsed = try pairingRequest(request)
@@ -44,6 +44,11 @@ struct CLIPairingContractTests {
             base: parsed.redirectURL, state: parsed.state, mode: parsed.responseMode
         ))
         #expect(CLIPairingCallback.parse(requestTarget: Self.target(of: denied), state: request.state) == .denied)
+
+        let failed = try #require(PairingRedirectBuilder.failed(
+            base: parsed.redirectURL, state: parsed.state, mode: parsed.responseMode
+        ))
+        #expect(CLIPairingCallback.parse(requestTarget: Self.target(of: failed), state: request.state) == .failed)
     }
 
     // What a browser puts on the request line for the URL it was handed.

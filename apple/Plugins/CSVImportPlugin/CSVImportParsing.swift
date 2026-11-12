@@ -103,8 +103,25 @@ enum CSVImportParsing {
         }
     }
 
-    static func isBlank(_ fields: [String]) -> Bool {
+    // RFC 4180 makes an empty line a record of one empty field, which is how CSV export writes a NULL in a one-column
+    // file. A record of several empty fields, `,,`, is an all-NULL row.
+    static func isBlank(_ fields: [String], columnCount: Int) -> Bool {
+        columnCount > 1 && fields.count == 1 && fields[0].isEmpty
+    }
+
+    // A record with nothing in it adds no sample to detection.
+    static func holdsNoValue(_ fields: [String]) -> Bool {
         fields.allSatisfy { $0.isEmpty }
+    }
+
+    // A spreadsheet saves the empty rows under its data as lines of delimiters, the same text as all-NULL rows at
+    // the very end of an export. Only that trailing run is left out; empty records between rows are rows.
+    static func dataEnd(recordCount: Int, fields: (Int) -> [String]) -> Int {
+        var end = recordCount
+        while end > 0, holdsNoValue(fields(end - 1)) {
+            end -= 1
+        }
+        return end
     }
 
     static func detectFields(
@@ -141,7 +158,7 @@ enum CSVImportParsing {
             for range in dataRanges {
                 if sampled >= limit { break }
                 let fields = parser.parseRow(buffer, range: range)
-                if isBlank(fields) { continue }
+                if holdsNoValue(fields) { continue }
                 for column in 0..<columnCount {
                     let raw = column < fields.count ? fields[column] : ""
                     guard let value = sampleText(from: raw, options: options) else { continue }

@@ -21,6 +21,10 @@ public actor MCPProtocolDispatcher {
 
     public static let deadlineExemptMethods: Set<String> = ["subscriptions/listen"]
 
+    // Needs no scope and opens no connection. The bridge and the tablepro command probe with it before
+    // every session, so recording it listed them as clients of their own.
+    public static let activityExemptMethods: Set<String> = ["server/discover"]
+
     internal static let legacyInitializeMethod = "initialize"
     internal static let legacySessionHeader = "Mcp-Session-Id"
     internal static let cancelledNotificationMethod = "notifications/cancelled"
@@ -95,6 +99,16 @@ public actor MCPProtocolDispatcher {
         let count = await inflight.cancelAll(matchingTokenId: tokenId, reason: .credentialRevoked)
         if count > 0 {
             Self.logger.info("Cancelled \(count, privacy: .public) in-flight request(s) for a revoked token")
+        }
+        return count
+    }
+
+    // Ends one client's requests without touching the credential it shares with other stdio clients.
+    @discardableResult
+    public func cancelInflight(matchingClientId clientId: String) async -> Int {
+        let count = await inflight.cancelAll(matchingClientId: clientId, reason: .clientDisconnected)
+        if count > 0 {
+            Self.logger.info("Cancelled \(count, privacy: .public) in-flight request(s) for a disconnected client")
         }
         return count
     }

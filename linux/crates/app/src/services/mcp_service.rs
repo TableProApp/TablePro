@@ -8,7 +8,7 @@ use gtk4::prelude::ObjectExt;
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_linux_platform::AppSettings;
 use tablepro_linux_platform::settings::keys;
-use tablepro_mcp::{AccessToken, McpServer, TokenVault, ToolContext};
+use tablepro_mcp::{AccessToken, McpServer, SeenClient, TokenVault, ToolContext};
 use tablepro_session::runtime::Tasks;
 use tokio::sync::{Mutex, watch};
 
@@ -27,6 +27,9 @@ struct Inner {
     tokens: Arc<dyn TokenVault>,
     context: ToolContext,
     status: watch::Sender<McpStatus>,
+    // The clients the running server has seen; empty while it is off.
+    seen: watch::Sender<Vec<SeenClient>>,
+    forwarding: RefCell<Option<glib::JoinHandle<()>>>,
     // Every start, stop and token change takes this lock in turn, so a
     // stop has freed the port before the next start binds it.
     slot: Arc<Mutex<Option<Live>>>,
@@ -39,7 +42,7 @@ struct Live {
     server: McpServer,
 }
 
-type Started = Option<Result<(u16, AccessToken), McpFailure>>;
+type Started = Option<Result<(u16, AccessToken, watch::Receiver<Vec<SeenClient>>), McpFailure>>;
 
 impl McpService {
     pub fn start(settings: Rc<AppSettings>, tasks: Tasks, tokens: Arc<dyn TokenVault>, context: ToolContext) -> Self {
@@ -50,6 +53,8 @@ impl McpService {
                 tokens,
                 context,
                 status: watch::channel(McpStatus::Off).0,
+                seen: watch::channel(Vec::new()).0,
+                forwarding: RefCell::new(None),
                 slot: Arc::new(Mutex::new(None)),
                 generation: Arc::new(AtomicU64::new(0)),
                 token: RefCell::new(None),
@@ -72,6 +77,31 @@ impl McpService {
 
     pub fn status(&self) -> watch::Receiver<McpStatus> {
         self.inner.status.subscribe()
+    }
+
+    pub fn seen_clients(&self) -> watch::Receiver<Vec<SeenClient>> {
+        self.inner.seen.subscribe()
+    }
+
+    pub(crate) fn tasks(&self) -> Tasks {
+        self.inner.tasks.clone()
+    }
+
+    // The token whether or not the server runs. While it is off this reads
+    // the keyring, and makes and stores a token if it holds none.
+    pub async fn access_token(&self) -> Result<SecretString, McpFailure> {
+        if let Some(token) = self.token() {
+            return Ok(token);
+        }
+        let (slot, tokens) = (self.inner.slot.clone(), self.inner.tokens.clone());
+        let reading = self.inner.tasks.spawn_task(async move {
+            let _serialized = slot.lock().await;
+            let token = tablepro_mcp::obtain_token(&*tokens).await?;
+            Ok::<_, McpFailure>(SecretString::from(token.secret().expose_secret().to_owned()))
+        });
+        reading
+            .await
+            .map_err(|failure| McpFailure::Interrupted(failure.to_string()))?
     }
 
     /// The token clients present, while the server runs.
@@ -120,6 +150,7 @@ impl McpService {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
         self.inner.token.replace(None);
         self.inner.status.send_replace(McpStatus::Off);
+        forget_clients(&self.inner);
         let slot = self.inner.slot.clone();
         drop(self.inner.tasks.spawn_task(async move {
             if let Some(live) = slot.lock().await.take() {
@@ -134,6 +165,7 @@ impl McpService {
         let enabled = inner.settings.mcp_server_enabled();
         let port = inner.settings.mcp_server_port();
         inner.token.replace(None);
+        forget_clients(inner);
         inner.status.send_replace(match enabled {
             true => McpStatus::Starting,
             false => McpStatus::Off,
@@ -181,9 +213,34 @@ async fn restart(
     .await;
     Some(started.map(|(server, token)| {
         let bound = server.address().port();
+        let sightings = server.seen_clients();
         *live = Some(Live { server });
-        (bound, token)
+        (bound, token, sightings)
     }))
+}
+
+fn forget_clients(inner: &Inner) {
+    if let Some(forwarding) = inner.forwarding.take() {
+        forwarding.abort();
+    }
+    inner.seen.send_replace(Vec::new());
+}
+
+// Ends with the server, whose sender then drops.
+fn forward_clients(inner: &Rc<Inner>, mut sightings: watch::Receiver<Vec<SeenClient>>) {
+    let weak = Rc::downgrade(inner);
+    let forwarding = glib::spawn_future_local(async move {
+        while sightings.changed().await.is_ok() {
+            let clients = sightings.borrow_and_update().clone();
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            inner.seen.send_replace(clients);
+        }
+    });
+    if let Some(previous) = inner.forwarding.replace(Some(forwarding)) {
+        previous.abort();
+    }
 }
 
 fn deliver(
@@ -200,8 +257,9 @@ fn deliver(
     }
     match outcome {
         Ok(None) => {}
-        Ok(Some(Ok((port, token)))) => {
+        Ok(Some(Ok((port, token, sightings)))) => {
             inner.token.replace(Some(token));
+            forward_clients(&inner, sightings);
             inner.status.send_replace(McpStatus::Running { port });
         }
         Ok(Some(Err(failure))) => {
@@ -419,13 +477,83 @@ pub(crate) mod tests {
         let newer = crate::test_support::finish_on_main(WAIT, start(3, newer_port)).expect("the newer start");
         let stale = crate::test_support::finish_on_main(WAIT, start(2, stale_port)).expect("the stale start");
 
-        assert!(matches!(newer, Ok(Some(Ok((port, _)))) if port == newer_port));
+        assert!(matches!(newer, Ok(Some(Ok((port, _, _)))) if port == newer_port));
         assert!(matches!(stale, Ok(None)));
         assert!(
             std::net::TcpListener::bind(("127.0.0.1", newer_port)).is_err(),
             "the stale change stopped the newer server"
         );
         assert!(std::net::TcpListener::bind(("127.0.0.1", stale_port)).is_ok());
+        runtime.shutdown();
+    }
+
+    // An initialize as a client sends it, on a connection of its own.
+    fn initialize(port: u16, token: &str, name: &str) {
+        use std::io::{Read as _, Write as _};
+
+        let body = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2025-06-18","capabilities":{{}},"clientInfo":{{"name":"{name}","version":"1"}}}}}}"#
+        );
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("a connection");
+        write!(
+            stream,
+            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nAuthorization: Bearer {token}\r\n\
+Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\n\
+Content-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .expect("the request");
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).expect("the reply");
+        assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
+    }
+
+    #[gtk4::test]
+    fn a_client_that_initializes_is_seen_until_the_server_stops() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        let port = free_port();
+        settings.get().set_mcp_server_port(port).expect("the port");
+        settings.get().set_mcp_server_enabled(true).expect("the switch");
+        let service = McpService::start(
+            settings.get().clone(),
+            runtime.tasks(),
+            Arc::new(MemoryTokens::default()),
+            context(root.path()),
+        );
+        wait_until(WAIT, || status(&service) == McpStatus::Running { port }).expect("the server to run");
+        let token = service.token().expect("the token");
+
+        initialize(port, token.expose_secret(), "claude-code");
+
+        let seen = service.seen_clients();
+        wait_until(WAIT, || !seen.borrow().is_empty()).expect("the client seen");
+        assert_eq!(seen.borrow()[0].name, "claude-code");
+        settings.get().set_mcp_server_enabled(false).expect("the switch");
+        assert!(seen.borrow().is_empty(), "a stopped server still lists its clients");
+        runtime.shutdown();
+    }
+
+    #[gtk4::test]
+    fn the_token_is_read_from_the_keyring_while_the_server_is_off() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        let tokens = Arc::new(MemoryTokens(StdMutex::new(Some("tp_stored".to_owned()))));
+        let service = McpService::start(settings.get().clone(), runtime.tasks(), tokens, context(root.path()));
+        assert_eq!(status(&service), McpStatus::Off);
+
+        let read = Rc::new(RefCell::new(None));
+        let (sink, reading) = (read.clone(), service.clone());
+        glib::spawn_future_local(async move {
+            let token = reading.access_token().await;
+            sink.replace(Some(token.map(|token| token.expose_secret().to_owned())));
+        });
+        wait_until(WAIT, || read.borrow().is_some()).expect("the token");
+
+        assert!(matches!(read.borrow().as_ref(), Some(Ok(token)) if token == "tp_stored"));
+        assert!(service.token().is_none(), "reading the token started nothing");
         runtime.shutdown();
     }
 

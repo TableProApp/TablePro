@@ -135,4 +135,32 @@ struct InClauseConverterTests {
         let result = converter.generateInClause(rows: [["alice", "1"], ["bob", "2"]])
         #expect(result == "(1, 2)")
     }
+
+    @Test("An engine without TRUE and FALSE gets 1 and 0")
+    func numericBooleans() {
+        var converter = makeConverter(columnIndex: 0, columnTypes: [.boolean(rawType: "bit")])
+        converter.booleanLiteralStyle = .numeric
+        #expect(converter.generateInClause(rows: [["1"], ["false"], ["yes"]]) == "(1, 0, 1)")
+    }
+
+    @Test("Binary values are written as the engine's binary literal, not dropped")
+    func binaryValues() {
+        var converter = makeConverter(columnIndex: 0, columnTypes: [.blob(rawType: "BINARY(16)")])
+        converter.databaseType = .mysql
+        let rows: [[PluginCellValue]] = [[.bytes(Data([0x41, 0x42]))], [.bytes(Data([0x00]))], [.null]]
+        #expect(converter.generateInClause(rows: rows) == "(X'4142', X'00')")
+
+        converter.databaseType = .mssql
+        #expect(converter.generateInClause(rows: rows) == "(0x4142, 0x00)")
+
+        converter.databaseType = .postgresql
+        #expect(converter.generateInClause(rows: [[.bytes(Data([0x41]))]]) == "(decode('41', 'hex'))")
+    }
+
+    // SQLite keeps text in a BLOB column, and text never equals a blob there.
+    @Test("Text in a binary column stays text, and with no engine bytes take the standard literal")
+    func binaryColumnTextWithoutEngine() {
+        let converter = makeConverter(columnIndex: 0, columnTypes: [.blob(rawType: "blob")])
+        #expect(converter.generateInClause(rows: [["AB"], [.bytes(Data([0xFF]))]]) == "('AB', X'FF')")
+    }
 }

@@ -52,7 +52,7 @@ struct AIProviderPresetTests {
         #expect(config.name == "Requesty")
         #expect(config.endpoint == "https://router.requesty.ai")
         #expect(config.kindName == "Requesty")
-        #expect(config.symbolName == AIProviderPreset.requesty.symbolName)
+        #expect(config.icon == AIProviderPreset.requesty.icon)
         #expect(config.authStyle == .apiKey)
     }
 
@@ -68,7 +68,7 @@ struct AIProviderPresetTests {
         let config = AIProviderConfig(type: .custom, endpoint: "https://api.z.ai/api/paas/v4")
         #expect(config.preset == nil)
         #expect(config.kindName == AIProviderType.custom.displayName)
-        #expect(config.symbolName == AIProviderType.custom.symbolName)
+        #expect(config.icon == AIProviderType.custom.icon)
         #expect(config.authStyle == .optionalApiKey)
         #expect(config.defaultEndpoint.isEmpty)
     }

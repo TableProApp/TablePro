@@ -144,6 +144,9 @@ public final class CLICallbackListener: @unchecked Sendable {
         case .denied:
             status = "200 OK"
             message = "Pairing was declined. You can close this tab."
+        case .failed:
+            status = "200 OK"
+            message = "TablePro could not finish pairing. You can close this tab."
         case .ignored:
             status = "404 Not Found"
             message = "Nothing here."
