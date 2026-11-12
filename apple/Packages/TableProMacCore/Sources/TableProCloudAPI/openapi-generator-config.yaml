@@ -3,3 +3,13 @@ generate:
   - client
 accessModifier: public
 namingStrategy: idiomatic
+# The operations the app calls, and the schemas they reference. A new call adds its operation id here.
+filter:
+  operations:
+    - get-me
+    - list-devices
+    - register-device
+    - delete-device
+    - issue-entitlement
+    - list-library-changes
+    - push-library-changes

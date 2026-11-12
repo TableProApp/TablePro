@@ -14,7 +14,7 @@ let package = Package(
         .package(path: "../TableProCore"),
         .package(url: "https://github.com/ChimeHQ/TextStory", from: "0.9.0"),
         .package(url: "https://github.com/ChimeHQ/TextFormation", from: "0.8.2"),
-        .package(url: "https://github.com/apple/swift-collections.git", .upToNextMajor(from: "1.0.0"))
+        .package(url: "https://github.com/apple/swift-collections.git", .upToNextMajor(from: "1.6.0"))
     ],
     targets: [
         .target(
@@ -27,7 +27,7 @@ let package = Package(
             dependencies: [
                 "TableProTextEngineObjC",
                 "TextStory",
-                .product(name: "Collections", package: "swift-collections")
+                .product(name: "DequeModule", package: "swift-collections")
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
@@ -36,7 +36,8 @@ let package = Package(
             dependencies: [
                 "TableProTextEngine",
                 "TableProGrammars",
-                "TextFormation"
+                "TextFormation",
+                .product(name: "_RopeModule", package: "swift-collections")
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

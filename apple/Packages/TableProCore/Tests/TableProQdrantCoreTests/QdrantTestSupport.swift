@@ -1,4 +1,5 @@
 import Foundation
+@testable import TableProQdrantClient
 @testable import TableProQdrantCore
 
 final class RecordingTransport: QdrantTransport, @unchecked Sendable {

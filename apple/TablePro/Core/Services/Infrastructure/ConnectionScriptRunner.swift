@@ -6,7 +6,6 @@
 import Darwin
 import Foundation
 import TableProProcess
-import TableProUtilities
 
 enum ConnectionScriptOutcome: Equatable, Sendable {
     case succeeded
