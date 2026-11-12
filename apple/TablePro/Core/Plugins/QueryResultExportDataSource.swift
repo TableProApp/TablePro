@@ -172,32 +172,10 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         streamExportRows(table: object.name, databaseName: object.databaseName)
     }
 
+    // Pulled rather than pumped by a task of its own, which kept every filled chunk the writer had not taken yet.
     func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
-        let stream = streamRows(table: table, databaseName: databaseName)
-        let documents = exportDocuments
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                var offset = 0
-                do {
-                    for try await element in stream {
-                        switch element {
-                        case .header(let header):
-                            continuation.yield(.header(header))
-                        case .rows(let rows):
-                            let end = offset + rows.count
-                            let aligned = end <= documents.count ? Array(documents[offset..<end]) : []
-                            let complete = aligned.compactMap { $0 }
-                            continuation.yield(.rows(rows, documents: complete.count == rows.count ? complete : nil))
-                            offset = end
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        let source = DocumentAligningSource(streamRows(table: table, databaseName: databaseName), documents: exportDocuments)
+        return AsyncThrowingStream(unfolding: { try await source.next() })
     }
 
     // Pulled a chunk at a time, so a chunk is read only once the exporter has written the one before.
@@ -290,6 +268,32 @@ private final class ExportChunkCursor: @unchecked Sendable {
             let range = start..<min(start + chunkSize, total)
             start = range.upperBound
             return .rows(range)
+        }
+    }
+}
+
+// One consumer reads an export stream, so one call at a time reaches the iterator.
+private final class DocumentAligningSource: @unchecked Sendable {
+    private var iterator: AsyncThrowingStream<PluginStreamElement, Error>.AsyncIterator
+    private let documents: [PluginExportDocument?]
+    private var offset = 0
+
+    init(_ stream: AsyncThrowingStream<PluginStreamElement, Error>, documents: [PluginExportDocument?]) {
+        iterator = stream.makeAsyncIterator()
+        self.documents = documents
+    }
+
+    func next() async throws -> PluginExportStreamElement? {
+        guard let element = try await iterator.next() else { return nil }
+        switch element {
+        case .header(let header):
+            return .header(header)
+        case .rows(let rows):
+            let end = offset + rows.count
+            let aligned = end <= documents.count ? Array(documents[offset..<end]) : []
+            let complete = aligned.compactMap { $0 }
+            offset = end
+            return .rows(rows, documents: complete.count == rows.count ? complete : nil)
         }
     }
 }

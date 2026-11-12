@@ -451,10 +451,11 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
+        PluginRowStream.make { continuation, abort in
+            let task = Task {
                 do {
-                    let result = try await perform { [self] () -> PluginQueryResult in
+                    try Task.checkCancellation()
+                    let result = try await self.perform { [self] () -> PluginQueryResult in
                         if let bql = Self.extractBQLQuery(from: query) {
                             return try executeBQL(query: bql)
                         }
@@ -473,6 +474,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
+            abort.onAbort { task.cancel() }
         }
     }
 

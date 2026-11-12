@@ -89,14 +89,14 @@ nonisolated internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataD
         }
         guard !isFailure else { return }
 
-        continuation.yield(data)
-        let shouldSuspend = lock.withLock { () -> Bool in
-            guard !isTransferSuspended else { return false }
+        // Suspended before the reader sees the chunk: a reader done with a short chunk first would find nothing to
+        // resume, and the suspend after it would stop the transfer for good.
+        lock.withLock {
+            guard !isTransferSuspended else { return }
             isTransferSuspended = true
-            return true
+            dataTask.suspend()
         }
-        guard shouldSuspend else { return }
-        dataTask.suspend()
+        continuation.yield(data)
     }
 
     internal func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {

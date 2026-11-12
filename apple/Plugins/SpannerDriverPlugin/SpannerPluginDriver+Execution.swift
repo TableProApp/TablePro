@@ -40,8 +40,10 @@ extension SpannerPluginDriver {
                 }
             }
             let id = self.registerUserOperation { task.cancel() }
-            abort.onAbort {
-                task.cancel()
+            abort.onAbort { task.cancel() }
+            // A stream its producer finishes never aborts, so the entry goes when the task ends.
+            Task {
+                await task.value
                 self.unregisterUserOperation(id)
             }
         }

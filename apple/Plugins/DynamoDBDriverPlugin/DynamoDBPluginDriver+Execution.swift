@@ -340,14 +340,11 @@ extension DynamoDBPluginDriver {
 
     // MARK: - Streaming
 
-    /// Streams every item a read returns, for an export, a copy or a compare.
-    ///
-    /// A stream states its columns once, before its first row, and a DynamoDB item may carry an
-    /// attribute no earlier item had. The items are therefore written to a temporary file while the
-    /// union of their attributes is collected, and the rows are sent once the read has finished, so
-    /// an attribute first seen on the last page still gets its column.
+    // A stream states its columns before its first row, and an item may carry an attribute no earlier item had, so
+    // the items go to a temporary file while their attributes are collected and the rows follow once the read ends.
+    // The rows are read back from the file only as fast as the consumer takes them.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     try await self.run { session in
@@ -358,7 +355,7 @@ extension DynamoDBPluginDriver {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 
@@ -415,8 +412,9 @@ extension DynamoDBPluginDriver {
             } ?? sorted.count
             let slice = source.window.offset < end ? Array(sorted[source.window.offset..<end]) : []
             for start in stride(from: 0, to: slice.count, by: 1_000) {
+                try Task.checkCancellation()
                 let batch = slice[start..<min(start + 1_000, slice.count)]
-                continuation.yield(.rows(batch.map { item in columns.map { DynamoDBCellCodec.cell(for: item[$0]) } }))
+                _ = await PluginRowStream.deliver(.rows(batch.map { item in columns.map { DynamoDBCellCodec.cell(for: item[$0]) } }), to: continuation)
             }
             return
         }
@@ -430,11 +428,11 @@ extension DynamoDBPluginDriver {
             let item = try DynamoDBItem(wireItem: DynamoDBJSON.parse(line))
             batch.append(columns.map { DynamoDBCellCodec.cell(for: item[$0]) })
             if batch.count == 1_000 {
-                continuation.yield(.rows(batch))
+                _ = await PluginRowStream.deliver(.rows(batch), to: continuation)
                 batch.removeAll(keepingCapacity: true)
             }
         }
-        if !batch.isEmpty { continuation.yield(.rows(batch)) }
+        if !batch.isEmpty { _ = await PluginRowStream.deliver(.rows(batch), to: continuation) }
     }
 
     private static let notAReadMarker = "\u{0}not-a-read"
@@ -551,8 +549,10 @@ private struct SpoolLines {
                 start = buffer.count
                 return rest
             }
-            let chunk = try handle.read(upToCount: Self.chunkSize) ?? Data()
-            buffer = Data(buffer[start...]) + chunk
+            // Each read hands back an autoreleased buffer, which a loop with no pool of its own keeps until it ends.
+            let chunk = try autoreleasepool { try handle.read(upToCount: Self.chunkSize) } ?? Data()
+            buffer = buffer.subdata(in: start..<buffer.endIndex)
+            buffer.append(chunk)
             start = 0
             reachedEnd = chunk.isEmpty
         }
