@@ -415,13 +415,27 @@ nonisolated extension MongoDBConnection {
         return (docs: results, isTruncated: truncated)
     }
 
+    private static let streamBatchSize = 1_000
+
+    // The server reaps a cursor that sees no getMore for cursorTimeoutMillis, 10 min by default. A server batch of
+    // `serverBatchSize` documents drains in at most 10 pauses, so a stalled consumer still asks within that limit.
+    private static let idleCursorPause: TimeInterval = 30
+    private static let serverBatchSize: UInt32 = 10_000
+
     func iterateCursorStreaming(
         cursor: OpaquePointer,
         continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort,
         streamState: MongoStreamState,
         census: () throws -> MongoFieldCensus?
     ) {
         defer { cleanup(streamState) }
+        // A paced read drains a server batch as slowly as its consumer, and an unset batch runs to 16 MB.
+        if mongoc_cursor_get_batch_size(cursor) == 0 {
+            mongoc_cursor_set_batch_size(cursor, Self.serverBatchSize)
+        }
+        var rows: [PluginRow] = []
+        var documents: [PluginExportDocument] = []
         do {
             var docPtr: OpaquePointer?
             var sample: [[String: Any]] = []
@@ -440,7 +454,8 @@ nonisolated extension MongoDBConnection {
                 }
                 if projection == nil, sample.count >= MongoStreamProjection.sampleSize {
                     projection = try openStream(
-                        sample: sample, texts: sampleTexts, census: try census(), continuation: continuation
+                        sample: sample, texts: sampleTexts, census: try census(),
+                        continuation: continuation, abort: abort
                     )
                     emitted += sample.count
                     sample = []
@@ -459,7 +474,13 @@ nonisolated extension MongoDBConnection {
                     documents: [dict], columns: projection.columns, kinds: projection.kinds,
                     representation: uuidRepresentation, storedTexts: [text]
                 )[0]
-                continuation.yield(.rows([row], documents: [document]))
+                rows.append(row)
+                documents.append(document)
+                if rows.count >= Self.streamBatchSize {
+                    abort.send(rows, documents: documents, to: continuation, maximumPause: Self.idleCursorPause)
+                    rows.removeAll(keepingCapacity: true)
+                    documents.removeAll(keepingCapacity: true)
+                }
                 unannounced.formUnion(projection.unannouncedFields(in: dict))
                 emitted += 1
                 if emitted >= PluginRowLimits.emergencyMax {
@@ -467,14 +488,25 @@ nonisolated extension MongoDBConnection {
                     break
                 }
             }
+            if !rows.isEmpty {
+                continuation.yield(.rows(rows, documents: documents))
+                rows = []
+                documents = []
+            }
             logUnannouncedFields(unannounced)
             var error = bson_error_t()
             if mongoc_cursor_error(cursor, &error) { throw makeError(error) }
             if projection == nil {
-                _ = try openStream(sample: sample, texts: sampleTexts, census: nil, continuation: continuation)
+                _ = try openStream(
+                    sample: sample, texts: sampleTexts, census: nil, continuation: continuation, abort: abort
+                )
             }
             continuation.finish()
         } catch {
+            // The documents read before a failure reach the reader ahead of it, as they did one at a time.
+            if !rows.isEmpty, !streamState.lock.withLock({ streamState.cancelled }) {
+                continuation.yield(.rows(rows, documents: documents))
+            }
             continuation.finish(throwing: error)
         }
     }
@@ -512,7 +544,8 @@ nonisolated extension MongoDBConnection {
         sample: [[String: Any]],
         texts: [String],
         census: MongoFieldCensus?,
-        continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) throws -> MongoStreamProjection {
         let projection = MongoStreamProjection(sample: sample, census: census, representation: uuidRepresentation)
         let documents = try MongoExportDocument.read(
@@ -527,7 +560,7 @@ nonisolated extension MongoDBConnection {
                 documents: sample, columns: projection.columns, kinds: projection.kinds,
                 representation: uuidRepresentation, storedTexts: texts
             )
-            continuation.yield(.rows(rows, documents: documents))
+            abort.send(rows, documents: documents, to: continuation, maximumPause: Self.idleCursorPause)
         }
         return projection
     }

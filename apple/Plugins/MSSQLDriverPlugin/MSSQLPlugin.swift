@@ -701,26 +701,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return AsyncThrowingStream { $0.finish(throwing: MSSQLPluginError.notConnected) }
         }
         return PluginRowStream.make { continuation, abort in
-            let streamTask = Task {
-                let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
-                    /// A plain `Task {}` inherits context but is not a child, so cancelling the
-                    /// outer task never reaches this one. The abort closure is what does.
-                    Task {
-                        do {
-                            try await conn.streamQuery(
-                                query,
-                                isAborted: { abort.isAborted },
-                                continuation: coreContinuation
-                            )
-                        } catch let error as MSSQLCoreError {
-                            coreContinuation.finish(throwing: MSSQLPluginError(coreError: error))
-                        } catch {
-                            coreContinuation.finish(throwing: error)
-                        }
-                    }
-                }
+            // Never cancelled: cancelling reaches `cancelCurrentQuery`, which sends an attention whatever the session
+            // holds, while the `isAborted` poll ends the request the way `MSSQLRequestEnding` allows.
+            Task {
                 do {
-                    for try await element in coreStream {
+                    try await conn.streamQuery(query, isAborted: { abort.isAborted }, onElement: { element in
                         switch element {
                         case .header(let columns):
                             continuation.yield(.header(PluginStreamHeader(
@@ -732,11 +717,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                             let pluginRows: [PluginRow] = batch.map { row in
                                 row.map { $0.asPluginCell }
                             }
-                            continuation.yield(.rows(pluginRows))
+                            abort.send(pluginRows, to: continuation)
                         case .affectedRows:
                             break
                         }
-                    }
+                    })
                     continuation.finish()
                 } catch let error as MSSQLCoreError {
                     continuation.finish(throwing: MSSQLPluginError(coreError: error))
@@ -744,7 +729,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            abort.onAbort { streamTask.cancel() }
         }
     }
 

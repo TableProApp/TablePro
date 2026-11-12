@@ -3,24 +3,29 @@ import Foundation
 extension SpannerExecutor {
     func queryStream(_ statement: SpannerPreparedStatement) -> AsyncThrowingStream<SpannerStreamOutput, Error> {
         makeStream { continuation in
-            if await self.transactions.isIdle {
-                try await self.streamOnReadSession(statement, into: continuation)
-                return
-            }
-            try await self.transactions.queue.run {
-                switch try await self.transactions.claim() {
-                case .idle:
-                    try await self.streamOnReadSession(statement, into: continuation)
-                case .open(let context):
-                    try await self.streamInTransaction(statement, context: context, into: continuation)
-                }
-            }
+            try await self.streamQuery(statement) { continuation.yield($0) }
         }
     }
 
     func readStream(_ statement: SpannerPreparedStatement) -> AsyncThrowingStream<SpannerStreamOutput, Error> {
         makeStream { continuation in
-            try await self.streamOnReadSession(statement, into: continuation)
+            try await self.streamOnReadSession(statement) { continuation.yield($0) }
+        }
+    }
+
+    // The response is read on only once `emit` returns, so a caller that waits in it stops the read where it is.
+    func streamQuery(_ statement: SpannerPreparedStatement, into emit: @escaping SpannerStreamEmit) async throws {
+        if await transactions.isIdle {
+            try await streamOnReadSession(statement, into: emit)
+            return
+        }
+        try await transactions.queue.run {
+            switch try await self.transactions.claim() {
+            case .idle:
+                try await self.streamOnReadSession(statement, into: emit)
+            case .open(let context):
+                try await self.streamInTransaction(statement, context: context, into: emit)
+            }
         }
     }
 
@@ -45,16 +50,16 @@ extension SpannerExecutor {
 
     private func streamOnReadSession(
         _ statement: SpannerPreparedStatement,
-        into continuation: AsyncThrowingStream<SpannerStreamOutput, Error>.Continuation
+        into emit: SpannerStreamEmit
     ) async throws {
         let resolved = try await queryParameterTypes(for: statement)
         var progress = SpannerStreamProgress()
         do {
-            try await streamReadAttempt(statement, types: resolved.types, progress: &progress, into: continuation)
+            try await streamReadAttempt(statement, types: resolved.types, progress: &progress, into: emit)
         } catch let error as SpannerAPIError where progress.isPristine && resolved.cached && error.isInvalidArgument {
             await typeCache.evict(statement.sql)
             let rediscovered = try await queryParameterTypes(for: statement)
-            try await streamReadAttempt(statement, types: rediscovered.types, progress: &progress, into: continuation)
+            try await streamReadAttempt(statement, types: rediscovered.types, progress: &progress, into: emit)
         }
     }
 
@@ -62,30 +67,30 @@ extension SpannerExecutor {
         _ statement: SpannerPreparedStatement,
         types: [SpannerType],
         progress: inout SpannerStreamProgress,
-        into continuation: AsyncThrowingStream<SpannerStreamOutput, Error>.Continuation
+        into emit: SpannerStreamEmit
     ) async throws {
         let request = try executeRequest(statement, types: types, transaction: .singleUseStrongReadOnly, seqno: nil)
         let session = try await sessions.readSessionName()
         do {
-            try await forward(try await client.executeStreamingSql(session: session, request), progress: &progress, into: continuation)
+            try await forward(try await client.executeStreamingSql(session: session, request), progress: &progress, into: emit)
         } catch let error as SpannerAPIError where error.isSessionNotFound && progress.isPristine {
             await sessions.discardReadSession(session)
             let fresh = try await sessions.readSessionName()
-            try await forward(try await client.executeStreamingSql(session: fresh, request), progress: &progress, into: continuation)
+            try await forward(try await client.executeStreamingSql(session: fresh, request), progress: &progress, into: emit)
         }
     }
 
     private func streamInTransaction(
         _ statement: SpannerPreparedStatement,
         context: SpannerTransactionContext,
-        into continuation: AsyncThrowingStream<SpannerStreamOutput, Error>.Continuation
+        into emit: SpannerStreamEmit
     ) async throws {
         let types = try await queryParameterTypes(for: statement).types
         let request = try executeRequest(statement, types: types, transaction: .id(context.transactionId), seqno: nil)
         var progress = SpannerStreamProgress()
         do {
             let events = try await client.executeStreamingSql(session: context.session, request)
-            try await forward(events, progress: &progress, into: continuation)
+            try await forward(events, progress: &progress, into: emit)
         } catch let error as SpannerAPIError where error.isAborted || error.isSessionNotFound {
             await transactions.markAborted(context)
             throw error
@@ -95,24 +100,24 @@ extension SpannerExecutor {
     private func forward(
         _ events: AsyncThrowingStream<SpannerStreamEvent, Error>,
         progress: inout SpannerStreamProgress,
-        into continuation: AsyncThrowingStream<SpannerStreamOutput, Error>.Continuation
+        into emit: SpannerStreamEmit
     ) async throws {
         for try await event in events {
             switch event {
             case .metadata(let metadata):
                 progress.fields = metadata.fields
                 progress.headerSent = true
-                continuation.yield(.header(metadata.fields))
+                await emit(.header(metadata.fields))
             case .rows(let rows):
                 progress.rowsSent = true
-                continuation.yield(.rows(SpannerValueDecoder.rows(rows, fields: progress.fields)))
+                await emit(.rows(SpannerValueDecoder.rows(rows, fields: progress.fields)))
             case .stats:
                 continue
             }
         }
         if !progress.headerSent {
             progress.headerSent = true
-            continuation.yield(.header([]))
+            await emit(.header([]))
         }
     }
 

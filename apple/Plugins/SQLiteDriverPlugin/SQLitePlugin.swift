@@ -692,17 +692,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func stream(_ query: String, scope: SQLiteStatementScope) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(queryToRun, scope: scope, continuation: continuation)
+                    try await self.backend.streamQuery(
+                        queryToRun, scope: scope, continuation: continuation, abort: abort
+                    )
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

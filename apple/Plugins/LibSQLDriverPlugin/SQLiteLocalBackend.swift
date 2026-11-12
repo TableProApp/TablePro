@@ -151,7 +151,8 @@ actor SQLiteLocalBackend {
 
     func streamQuery(
         _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) throws {
         guard let db else {
             throw LibSQLError.notConnected
@@ -188,7 +189,8 @@ actor SQLiteLocalBackend {
 
             batch.append(rowValues(of: statement, count: columnCount))
             if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
+                // Blocks the actor's thread: an await here would let another call reach the handle mid-statement.
+                abort.send(batch, to: continuation)
                 batch.removeAll(keepingCapacity: true)
             }
             stepResult = sqlite3_step(statement)

@@ -206,7 +206,8 @@ actor DuckDBConnectionActor {
 
     func streamQuery(
         _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) throws {
         try ensureOpen()
         guard let conn = connection else {
@@ -216,7 +217,7 @@ actor DuckDBConnectionActor {
         noteActivity(query)
         var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandon)
         defer { duckdb_destroy_result(&opened.result) }
-        try streamResultRows(opened, continuation: continuation)
+        try streamResultRows(opened, continuation: continuation, abort: abort)
     }
 
     // The state check, the BEGIN, the statement and the ROLLBACK share one actor turn, so nothing lands in between.
@@ -233,13 +234,14 @@ actor DuckDBConnectionActor {
 
     func streamReadOnly(
         _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) throws {
         let conn = try readOnlyConnection()
         try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
             var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandon)
             defer { duckdb_destroy_result(&opened.result) }
-            try streamResultRows(opened, continuation: continuation)
+            try streamResultRows(opened, continuation: continuation, abort: abort)
         }
     }
 
@@ -683,7 +685,8 @@ actor DuckDBConnectionActor {
 
     private func streamResultRows(
         _ opened: OpenedResult,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) throws {
         continuation.yield(.header(PluginStreamHeader(
             columns: opened.schema.names,
@@ -693,8 +696,11 @@ actor DuckDBConnectionActor {
 
         var cancelled = false
         try readRows(of: opened) { batch in
-            cancelled = Task.isCancelled
-                || !DuckDBBoundedStream.deliver(PluginStreamElement.rows(batch), to: continuation)
+            if !Task.isCancelled, !abort.isAborted {
+                // Blocks the actor's thread: an await here would let another call reach the connection mid-result.
+                abort.send(batch, to: continuation)
+            }
+            cancelled = Task.isCancelled || abort.isAborted
             return !cancelled
         }
         if cancelled {

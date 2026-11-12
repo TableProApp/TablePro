@@ -1672,7 +1672,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 PQclear(result)
                 batch.append(row)
                 if batch.count >= batchSize {
-                    continuation.yield(.rows(batch))
+                    run.abort.send(batch, to: continuation)
                     batch.removeAll(keepingCapacity: true)
                 }
 

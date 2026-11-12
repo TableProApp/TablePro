@@ -180,7 +180,7 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let driver = self
             let producer = Task {
                 do {
-                    try await driver.produce(sql, into: continuation, report: report)
+                    try await driver.produce(sql, into: continuation, abort: abort, report: report)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -195,6 +195,7 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func produce(
         _ sql: String,
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort,
         report: HanaStreamReport
     ) async throws {
         if HanaExplainStatement.explainedStatement(in: sql) != nil {
@@ -223,7 +224,7 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 },
                 onBatch: { batch in
                     report.record(truncatedLargeObjects: batch.truncatedLobCount)
-                    continuation.yield(.rows(HanaResultMapping.pluginRows(batch.rows)))
+                    abort.send(HanaResultMapping.pluginRows(batch.rows), to: continuation)
                 }
             )
         } catch let failure as HanaBridgeFailure {

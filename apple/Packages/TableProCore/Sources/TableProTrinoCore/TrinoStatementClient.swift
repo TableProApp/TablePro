@@ -1,11 +1,6 @@
 import Foundation
 import os
 
-public enum TrinoStreamElement: Sendable {
-    case columns([TrinoColumnDescriptor])
-    case rows([[TrinoValue]])
-}
-
 public final class TrinoStatementClient: @unchecked Sendable {
     private let transport: TrinoTransport
     private let config: TrinoClientConfig
@@ -53,26 +48,18 @@ public final class TrinoStatementClient: @unchecked Sendable {
         )
     }
 
-    /// The paging loop runs in an unstructured task, so terminating the stream has to cancel it
-    /// explicitly. Without that the loop keeps fetching pages nobody reads, and its own
-    /// `abortIfCancelled` never fires because nothing ever cancels the task it runs in.
-    public func executeStreamed(_ sql: String) -> AsyncThrowingStream<TrinoStreamElement, Error> {
-        AsyncThrowingStream { continuation in
-            let client = self
-            let statementTask = Task {
-                do {
-                    _ = try await client.runStatement(
-                        sql,
-                        onColumns: { continuation.yield(.columns(client.descriptors(from: $0))) },
-                        onPage: { continuation.yield(.rows($0)) }
-                    )
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in statementTask.cancel() }
-        }
+    // The next page is asked for only once `onPage` returns, so a caller that waits there holds the query where it is.
+    // A cancelled caller stops at the next request and sends Trino the DELETE.
+    public func executeStreamed(
+        _ sql: String,
+        onColumns: ([TrinoColumnDescriptor]) async -> Void,
+        onPage: ([[TrinoValue]]) async -> Void
+    ) async throws {
+        _ = try await runStatement(
+            sql,
+            onColumns: { await onColumns(self.descriptors(from: $0)) },
+            onPage: onPage
+        )
     }
 
     /// Stops every statement running on this client, not only the one that started last: the app
@@ -93,8 +80,8 @@ public final class TrinoStatementClient: @unchecked Sendable {
 
     private func runStatement(
         _ sql: String,
-        onColumns: ([TrinoColumn]) -> Void,
-        onPage: ([[TrinoValue]]) -> Void
+        onColumns: ([TrinoColumn]) async -> Void,
+        onPage: ([[TrinoValue]]) async -> Void
     ) async throws -> StatementOutcome {
         guard let statementURL = config.statementURL else {
             throw TrinoError.invalidConfiguration("Invalid \(config.flavor.productName) server URL")
@@ -118,8 +105,8 @@ public final class TrinoStatementClient: @unchecked Sendable {
         _ statement: TrinoRunningStatement,
         url statementURL: URL,
         sql: String,
-        onColumns: ([TrinoColumn]) -> Void,
-        onPage: ([[TrinoValue]]) -> Void
+        onColumns: ([TrinoColumn]) async -> Void,
+        onPage: ([[TrinoValue]]) async -> Void
     ) async throws -> StatementOutcome {
         var httpResponse = try await sendWithRetry(
             makeRequest(method: .post, url: statementURL, headers: initialHeaders(), body: Data(sql.utf8)),
@@ -134,10 +121,10 @@ public final class TrinoStatementClient: @unchecked Sendable {
         var columns = results.columns
         var columnsEmitted = false
         if let columns {
-            onColumns(columns)
+            await onColumns(columns)
             columnsEmitted = true
         }
-        emitRows(results, columns: columns, onPage: onPage)
+        await emitRows(results, columns: columns, onPage: onPage)
         var updateType = results.updateType
         var updateCount = results.updateCount
         let queryId = results.id
@@ -159,10 +146,10 @@ public final class TrinoStatementClient: @unchecked Sendable {
                 columns = results.columns
             }
             if !columnsEmitted, let columns {
-                onColumns(columns)
+                await onColumns(columns)
                 columnsEmitted = true
             }
-            emitRows(results, columns: columns, onPage: onPage)
+            await emitRows(results, columns: columns, onPage: onPage)
             if let type = results.updateType {
                 updateType = type
             }
@@ -175,7 +162,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
         return StatementOutcome(updateType: updateType, updateCount: updateCount, queryId: queryId)
     }
 
-    private func emitRows(_ results: TrinoQueryResults, columns: [TrinoColumn]?, onPage: ([[TrinoValue]]) -> Void) {
+    private func emitRows(_ results: TrinoQueryResults, columns: [TrinoColumn]?, onPage: ([[TrinoValue]]) async -> Void) async {
         guard let data = results.data, let columns, !data.isEmpty else { return }
         var page: [[TrinoValue]] = []
         page.reserveCapacity(data.count)
@@ -188,7 +175,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
             }
             page.append(decoded)
         }
-        onPage(page)
+        await onPage(page)
     }
 
     private func descriptors(from columns: [TrinoColumn]) -> [TrinoColumnDescriptor] {

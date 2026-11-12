@@ -619,29 +619,29 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.make { continuation, abort in
             let task = Task {
                 do {
                     guard let conn = self.connection else { throw SnowflakeError.notConnected }
                     let trimmed = query.replacingOccurrences(of: ";\\s*\\z", with: "", options: .regularExpression)
-                    let streamed = try await conn.queryStreamed(trimmed, owner: queryOwner)
+                    let streamed = try await conn.queryStreamed(trimmed, owner: self.queryOwner)
                     continuation.yield(.header(PluginStreamHeader(
                         columns: streamed.columns.map(\.name),
                         columnTypeNames: streamed.columns.map(SnowflakeTypeMapper.displayType),
                         estimatedRowCount: streamed.estimatedRowCount
                     )))
                     if !streamed.inlineRows.isEmpty {
-                        continuation.yield(.rows(streamed.inlineRows.map { row in row.map(Self.cellValue) }))
+                        await abort.send(streamed.inlineRows.map { row in row.map(Self.cellValue) }, to: continuation)
                     }
-                    for try await batch in streamed.batches {
-                        continuation.yield(.rows(batch.map { row in row.map(Self.cellValue) }))
+                    try await conn.forEachChunk(of: streamed) { batch in
+                        await abort.send(batch.map { row in row.map(Self.cellValue) }, to: continuation)
                     }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 

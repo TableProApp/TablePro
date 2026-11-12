@@ -48,7 +48,8 @@ protocol SQLiteExecutionBackend: Actor {
     func streamQuery(
         _ query: String,
         scope: SQLiteStatementScope,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) async throws
 }
 
@@ -74,9 +75,10 @@ extension SQLiteExecutionBackend {
 
     func streamQuery(
         _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) async throws {
-        try await streamQuery(query, scope: .unrestricted, continuation: continuation)
+        try await streamQuery(query, scope: .unrestricted, continuation: continuation, abort: abort)
     }
 }
 
@@ -432,10 +434,11 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
     func streamQuery(
         _ query: String,
         scope: SQLiteStatementScope,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) throws {
         try withStatementHandle(scope) { handle, mustRead in
-            try stream(query, on: handle, mustRead: mustRead, continuation: continuation)
+            try stream(query, on: handle, mustRead: mustRead, continuation: continuation, abort: abort)
         }
     }
 
@@ -443,7 +446,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         _ query: String,
         on db: OpaquePointer,
         mustRead: Bool,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
     ) throws {
         let statement = try Self.prepareOnlyStatement(query, db: db)
         // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
@@ -474,7 +478,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             }
             batch.append(Self.readRow(statement, columnCount: columnCount))
             if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
+                // Blocks the actor's thread: an await here would let another call reach the handle mid-statement.
+                abort.send(batch, to: continuation)
                 batch.removeAll(keepingCapacity: true)
             }
             stepResult = sqlite3_step(statement)

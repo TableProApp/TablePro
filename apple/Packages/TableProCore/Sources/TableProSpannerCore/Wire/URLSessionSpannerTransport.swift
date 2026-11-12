@@ -2,6 +2,9 @@ import Foundation
 
 public final class URLSessionSpannerTransport: SpannerTransport, @unchecked Sendable {
     private let session: URLSession
+    // A streamed read holds one response for as long as its reader takes, and a suspended task still counts toward
+    // the resource limit, so streams run on a session that keeps the system default.
+    private let streamSession: URLSession
     private let requestTimeout: @Sendable () -> TimeInterval
     private let lock = NSLock()
     private var isClosed = false
@@ -15,6 +18,13 @@ public final class URLSessionSpannerTransport: SpannerTransport, @unchecked Send
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
         self.session = URLSession(
+            configuration: configuration,
+            delegate: SpannerRedirectRefusingDelegate(),
+            delegateQueue: nil
+        )
+        // The session made its own copy of the configuration above.
+        configuration.timeoutIntervalForResource = URLSessionConfiguration.default.timeoutIntervalForResource
+        self.streamSession = URLSession(
             configuration: configuration,
             delegate: SpannerRedirectRefusingDelegate(),
             delegateQueue: nil
@@ -55,7 +65,7 @@ public final class URLSessionSpannerTransport: SpannerTransport, @unchecked Send
                 receiver.awaitResponse(continuation)
                 do {
                     try startTask(cancellation: cancellation) {
-                        let task = self.session.dataTask(with: prepared)
+                        let task = self.streamSession.dataTask(with: prepared)
                         task.delegate = receiver
                         return task
                     }
@@ -66,7 +76,8 @@ public final class URLSessionSpannerTransport: SpannerTransport, @unchecked Send
         } onCancel: {
             cancellation.cancel()
         }
-        return (response, body)
+        let reader = SpannerResponseBody(body, receiver: receiver, cancellation: cancellation)
+        return (response, AsyncThrowingStream(unfolding: { try await reader.next() }))
     }
 
     public func close() async {
@@ -77,6 +88,7 @@ public final class URLSessionSpannerTransport: SpannerTransport, @unchecked Send
         }
         guard shouldInvalidate else { return }
         session.finishTasksAndInvalidate()
+        streamSession.finishTasksAndInvalidate()
     }
 
     private func prepare(_ request: URLRequest) -> URLRequest {
@@ -143,12 +155,46 @@ internal final class SpannerRedirectRefusingDelegate: NSObject, URLSessionTaskDe
     }
 }
 
+// One reader pulls the body, so one call at a time reaches the iterator. The transfer runs only while that reader
+// waits for its next piece, so a reader that stops reading stops the download instead of piling the body up.
+private final class SpannerResponseBody: @unchecked Sendable {
+    private var iterator: AsyncThrowingStream<Data, Error>.AsyncIterator
+    private let receiver: SpannerStreamingTaskDelegate
+    private let cancellation: SpannerTaskCancellation
+
+    init(
+        _ body: AsyncThrowingStream<Data, Error>,
+        receiver: SpannerStreamingTaskDelegate,
+        cancellation: SpannerTaskCancellation
+    ) {
+        iterator = body.makeAsyncIterator()
+        self.receiver = receiver
+        self.cancellation = cancellation
+    }
+
+    // A reader that walks away would otherwise leave the transfer suspended, holding the connection.
+    deinit {
+        cancellation.cancel()
+    }
+
+    func next() async throws -> Data? {
+        receiver.resumeTransfer()
+        let piece = try await iterator.next()
+        if piece != nil {
+            receiver.pieceTaken()
+        }
+        return piece
+    }
+}
+
 internal final class SpannerStreamingTaskDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     static let maximumChunkSize = 64 * 1_024
 
     private let lock = NSLock()
     private let body: AsyncThrowingStream<Data, Error>.Continuation
     private var responseContinuation: CheckedContinuation<HTTPURLResponse, Error>?
+    private var suspendedTask: URLSessionDataTask?
+    private var unreadPieces = 0
 
     init(body: AsyncThrowingStream<Data, Error>.Continuation) {
         self.body = body
@@ -178,12 +224,24 @@ internal final class SpannerStreamingTaskDelegate: NSObject, URLSessionDataDeleg
         return .allow
     }
 
+    // Counted and suspended under the lock before the reader sees any piece, so its resume can never come first.
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        var pieces: [Data] = []
         var start = data.startIndex
         while start < data.endIndex {
             let end = data.index(start, offsetBy: Self.maximumChunkSize, limitedBy: data.endIndex) ?? data.endIndex
-            body.yield(Data(data[start..<end]))
+            pieces.append(Data(data[start..<end]))
             start = end
+        }
+        guard !pieces.isEmpty else { return }
+        lock.withLock {
+            unreadPieces += pieces.count
+            guard suspendedTask == nil else { return }
+            suspendedTask = dataTask
+            dataTask.suspend()
+        }
+        for piece in pieces {
+            body.yield(piece)
         }
     }
 
@@ -206,6 +264,19 @@ internal final class SpannerStreamingTaskDelegate: NSObject, URLSessionDataDeleg
         newRequest request: URLRequest
     ) async -> URLRequest? {
         nil
+    }
+
+    // One delivery can be several pieces; the transfer stays suspended until the reader has taken all of them.
+    func resumeTransfer() {
+        lock.withLock {
+            guard unreadPieces == 0 else { return }
+            suspendedTask?.resume()
+            suspendedTask = nil
+        }
+    }
+
+    func pieceTaken() {
+        lock.withLock { unreadPieces -= 1 }
     }
 
     private func takeResponseContinuation() -> CheckedContinuation<HTTPURLResponse, Error>? {

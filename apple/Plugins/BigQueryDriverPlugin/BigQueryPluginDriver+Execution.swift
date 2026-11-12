@@ -83,19 +83,17 @@ extension BigQueryPluginDriver {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.runningStatements.run {
-                        try await self.performStreamRows(query: query, continuation: continuation)
+                        try await self.performStreamRows(query: query, abort: abort, continuation: continuation)
                     }
                 } catch {
                     continuation.finish(throwing: BigQueryError.wrap(error))
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -227,6 +225,7 @@ extension BigQueryPluginDriver {
 
     private func performStreamRows(
         query: String,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let conn = try requireConnection()
@@ -260,7 +259,7 @@ extension BigQueryPluginDriver {
 
         let firstRows = BigQueryTypeMapper.flattenRows(from: firstPage, schema: schema)
         if !firstRows.isEmpty {
-            continuation.yield(.rows(firstRows))
+            await abort.send(firstRows, to: continuation)
         }
 
         var pageToken = firstPage.pageToken
@@ -273,7 +272,7 @@ extension BigQueryPluginDriver {
             )
             let nextRows = BigQueryTypeMapper.flattenRows(from: nextPage, schema: schema)
             if !nextRows.isEmpty {
-                continuation.yield(.rows(nextRows))
+                await abort.send(nextRows, to: continuation)
             }
             pageToken = nextPage.pageToken
         }

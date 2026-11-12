@@ -313,7 +313,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let task = Task {
                 do {
                     if let spec {
-                        try await self.streamBrowse(spec, into: continuation)
+                        try await self.streamBrowse(spec, abort: abort, into: continuation)
                     } else {
                         let result = try await self.execute(query: query)
                         var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
@@ -332,6 +332,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func streamBrowse(
         _ spec: MemcachedBrowseSpec,
+        abort: PluginStreamAbort,
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let page = try await browsePage(spec, on: try liveConnection())
@@ -347,7 +348,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 try Task.checkCancellation()
                 let end = min(start + Self.rowsPerStreamBatch, page.entries.endIndex)
                 let rows = try await self.rows(of: page.entries[start ..< end], serverTime: page.serverTime, on: connection)
-                if !rows.isEmpty { continuation.yield(.rows(rows)) }
+                if !rows.isEmpty { await abort.send(rows, to: continuation) }
                 start = end
             }
         }

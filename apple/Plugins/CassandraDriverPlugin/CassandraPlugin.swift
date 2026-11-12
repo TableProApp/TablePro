@@ -492,7 +492,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                     continuation.finish(throwing: error)
                 }
             }
-            _ = streamTask
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

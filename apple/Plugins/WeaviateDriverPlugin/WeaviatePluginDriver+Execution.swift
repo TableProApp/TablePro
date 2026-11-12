@@ -41,28 +41,28 @@ extension WeaviatePluginDriver {
 
     static let exportPageSize = 500
 
-    /// Exports one collection by walking it a page at a time, yielding each page instead of
-    /// holding the whole collection. The protocol default runs `execute` once and buffers
-    /// everything, which is fine for a grid page and not for an export.
+    // An export walks the collection a page at a time instead of holding it whole. The protocol default runs
+    // `execute` once and buffers everything, fine for a grid page and not for an export.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let collectionName = WeaviateOperations.decodeExport(query) else {
             return defaultStreamRows(query: query)
         }
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let task = Task {
                 do {
-                    try await self.streamCollection(collectionName, continuation: continuation)
+                    try await self.streamCollection(collectionName, abort: abort, continuation: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 
     private func streamCollection(
         _ name: String,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let client = try requireClient()
@@ -75,11 +75,12 @@ extension WeaviatePluginDriver {
         )))
 
         for try await objects in client.objectPages(collection: name, pageSize: Self.exportPageSize) {
-            continuation.yield(.rows(objects.map { object in
+            let rows: [PluginRow] = objects.map { object in
                 WeaviateObjectCodec.row(for: object, columns: columns).map { value in
                     value.map(PluginCellValue.text) ?? .null
                 }
-            }))
+            }
+            await abort.send(rows, to: continuation)
         }
     }
 

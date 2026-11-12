@@ -188,7 +188,12 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     private var _serverProfile = ClickHouseServerProfile.bootstrap
 
     let lock = NSLock()
-    var session: URLSession?
+    var session: URLSession? {
+        didSet { replaceStreamingSession() }
+    }
+    // A streamed read holds one response for as long as its consumer takes, and a suspended task still counts toward
+    // the resource limit, so streams run on a copy of `session` that keeps the system default.
+    private var streamingSession: URLSession?
     var currentTask: URLSessionDataTask?
     var _currentDatabase: String
     var _lastQueryId: String?
@@ -331,6 +336,16 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         session?.invalidateAndCancel()
         session = nil
         lock.unlock()
+    }
+
+    // Called from `session`'s didSet, so it runs under whatever lock the write holds.
+    private func replaceStreamingSession() {
+        streamingSession?.invalidateAndCancel()
+        streamingSession = session.map { base in
+            let configuration = base.configuration
+            configuration.timeoutIntervalForResource = URLSessionConfiguration.default.timeoutIntervalForResource
+            return URLSession(configuration: configuration, delegate: base.delegate, delegateQueue: nil)
+        }
     }
 
     func ping() async throws {
@@ -588,6 +603,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                         query: query,
                         rowCap: rowCap,
                         isOutputCut: isOutputCut,
+                        abort: abort,
                         continuation: continuation
                     )
                 } catch {
@@ -612,10 +628,11 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         query: String,
         rowCap: Int,
         isOutputCut: OSAllocatedUnfairLock<Bool>,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let queryId = UUID().uuidString
-        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
+        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId, paced: false)
         var request = try buildRequest(
             query: query,
             database: database,
@@ -630,6 +647,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 session: session,
                 batchSize: min(5_000, rowCap + 1),
                 boundedOutputCut: isOutputCut,
+                abort: abort,
                 continuation: continuation
             )
         }
@@ -649,6 +667,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         session: URLSession,
         batchSize: Int,
         boundedOutputCut: OSAllocatedUnfairLock<Bool>? = nil,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         var decoder = ClickHouseTabSeparatedRowDecoder()
@@ -696,7 +715,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 }
                 batch.append(contentsOf: rows)
                 guard batch.count >= batchSize else { return }
-                continuation.yield(.rows(batch))
+                await abort.send(batch, to: continuation, maximumPause: Self.unreadResponsePause)
                 batch.removeAll(keepingCapacity: true)
             }
         } catch is OtherFormatBodyFull {}
@@ -736,6 +755,9 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     /// value cut, so reading stops at the first chunk over it.
     private static let otherFormatByteCap = 1_048_576
 
+    // The server ends a response it could not send for http_send_timeout, 30 s by default.
+    private static let unreadResponsePause: TimeInterval = 10
+
     private struct OtherFormatBodyFull: Error {}
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -747,27 +769,31 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     }
 
     private func stream(_ query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, readOnly: readOnly, continuation: continuation)
+                    try await self.performStreamRows(
+                        query: query,
+                        readOnly: readOnly,
+                        abort: abort,
+                        continuation: continuation
+                    )
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
     private func performStreamRows(
         query: String,
         readOnly: Bool,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let queryId = UUID().uuidString
-        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
+        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId, paced: true)
         var request = try buildRequest(
             query: query,
             database: database,
@@ -783,6 +809,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                     request: request,
                     session: session,
                     batchSize: 5_000,
+                    abort: abort,
                     continuation: continuation
                 )
             } catch {
@@ -791,11 +818,13 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         }
     }
 
+    // A capped grid read finishes as fast as it arrives, so only the paced stream leaves the one-hour session cap.
     private func streamingContext(
-        queryId: String
+        queryId: String,
+        paced: Bool
     ) throws -> (session: URLSession, database: String, executionTimeLimit: Int?) {
         try lock.withLock {
-            guard let session = self.session else { throw ClickHouseError.notConnected }
+            guard let session = paced ? self.streamingSession : self.session else { throw ClickHouseError.notConnected }
             _lastQueryId = queryId
             return (session, _currentDatabase, acceptedExecutionTimeLimit)
         }

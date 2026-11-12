@@ -933,7 +933,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
         let timeout = conn.queryTimeoutMS
 
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.makeExport { continuation, abort in
             let work = Task {
                 do {
                     switch try await runtime.exportPlan(for: trimmed, database: db, access: access, shell: shell) {
@@ -965,7 +965,12 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                         do {
                             for try await element in inner {
                                 try Task.checkCancellation()
-                                continuation.yield(element)
+                                switch element {
+                                case .rows(let rows, let documents):
+                                    await abort.send(rows, documents: documents, to: continuation)
+                                default:
+                                    continuation.yield(element)
+                                }
                             }
                         } catch {
                             throw MongoScriptStatementFailure.carrying(
@@ -983,7 +988,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             }
             // A consumer that stops reading has to stop the cursor too, or it keeps draining the
             // whole query and holds the leased driver busy.
-            continuation.onTermination = { @Sendable _ in work.cancel() }
+            abort.onAbort { work.cancel() }
         }
     }
 

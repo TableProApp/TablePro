@@ -469,21 +469,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let batching = OracleRowBatcher(rowsPerBatch: OracleRowBatcher.batchRows, rowBudget: rowBudget)
 
         return PluginRowStream.make { continuation, abort in
+            // A plain `Task {}` is not a child of this one, so only the explicit cancel on abort stops oracle-nio.
             let streamTask = Task {
-                // A plain `Task {}` is not a child of this one, so only the explicit cancel on abort stops oracle-nio.
-                let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
-                    let coreTask = Task {
-                        do {
-                            try await core.streamQuery(query, batching: batching, continuation: coreContinuation)
-                        } catch {
-                            coreContinuation.finish(throwing: error)
-                        }
-                    }
-                    abort.onAbort { coreTask.cancel() }
-                    coreContinuation.onTermination = { @Sendable _ in coreTask.cancel() }
-                }
                 do {
-                    for try await element in coreStream {
+                    try await core.streamQuery(query, batching: batching, onElement: { element in
                         switch element {
                         case .header(let columns):
                             continuation.yield(.header(PluginStreamHeader(
@@ -491,13 +480,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                                 columnTypeNames: columns.map(\.typeName)
                             )))
                         case .rows(let batch):
-                            continuation.yield(.rows(batch.map { $0.map(\.asPluginCell) }))
+                            await abort.send(batch.map { $0.map(\.asPluginCell) }, to: continuation)
                         case .affectedRows:
                             // The plugin stream carries rows only. The app sends writes and DDL through
                             // `execute`, which reports the count, and bounds only reads through this stream.
                             break
                         }
-                    }
+                    })
                     continuation.finish()
                 } catch let error as OracleCoreError {
                     continuation.finish(throwing: error.asPluginError)

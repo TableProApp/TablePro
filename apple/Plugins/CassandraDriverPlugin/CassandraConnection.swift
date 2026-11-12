@@ -955,10 +955,8 @@ actor CassandraConnectionActor {
         return "Unknown error"
     }
 
-    /// The whole loop is one non-suspending actor job holding the cooperative-pool thread, and
-    /// cass_future_wait blocks it, so nothing outside can interrupt a page. `abort` is the only
-    /// way the consumer's departure reaches this body, and it is read between pages and between
-    /// rows rather than mid-request.
+    // One non-suspending actor job, blocked in cass_future_wait and in `abort.send`, so the consumer's departure
+    // reaches it only through `abort`, read between pages and between rows rather than mid-request.
     func streamQuery(
         _ cql: String,
         consistency: CassandraConsistency?,
@@ -1036,6 +1034,7 @@ actor CassandraConnectionActor {
 
             let colCount = cass_result_column_count(result)
             let iterator = cass_iterator_from_result(result)
+            var page: [PluginRow] = []
 
             if let iterator {
                 var rowsThisPage = 0
@@ -1047,7 +1046,7 @@ actor CassandraConnectionActor {
                     }
                     let row = cass_iterator_get_row(iterator)
                     guard let row else { continue }
-                    continuation.yield(.rows([Self.decodeRow(row, columnCount: colCount)]))
+                    page.append(Self.decodeRow(row, columnCount: colCount))
                 }
                 cass_iterator_free(iterator)
             }
@@ -1059,6 +1058,10 @@ actor CassandraConnectionActor {
             }
 
             cass_result_free(result)
+
+            if !page.isEmpty, !aborted {
+                abort.send(page, to: continuation)
+            }
 
             if !hasMore || aborted { break }
         }

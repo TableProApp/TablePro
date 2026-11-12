@@ -738,6 +738,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     private static let killTimeoutSeconds: UInt32 = 5
 
+    // The server drops a connection it could not write a result to for net_write_timeout, 60 s by default.
+    private static let unreadResultPause: TimeInterval = 20
+
     // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
     private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
         MariaDBTLSMode.apply(mode, serverName: tlsServerName, to: handle)
@@ -1542,7 +1545,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
             batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
             if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
+                abort.send(batch, to: continuation, maximumPause: Self.unreadResultPause)
                 batch.removeAll(keepingCapacity: true)
             }
         }

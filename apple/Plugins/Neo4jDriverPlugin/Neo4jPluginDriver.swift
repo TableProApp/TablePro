@@ -236,22 +236,23 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // Pulls a batch at a time, so an export never holds the whole result.
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream { continuation in
+        PluginRowStream.make { continuation, abort in
             let task = Task {
                 do {
-                    try await self.stream(query, context: context, into: continuation)
+                    try await self.stream(query, context: context, abort: abort, into: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 
     private func stream(
         _ query: String,
         context: PluginStatementContext,
+        abort: PluginStreamAbort,
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let connection = try requireConnection()
@@ -278,8 +279,8 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 continuation.yield(.header(PluginStreamHeader(columns: table.columns, columnTypeNames: table.typeNames)))
             }
             guard !table.rows.isEmpty else { return true }
-            if case .terminated = continuation.yield(.rows(Self.cells(table.rows))) { return false }
-            return true
+            await abort.send(Self.cells(table.rows), to: continuation)
+            return !abort.isAborted
         }
     }
 

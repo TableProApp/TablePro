@@ -556,7 +556,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProPluginKitTests",
-            dependencies: ["TableProPluginKit", "TableProSQLQuoting"],
+            dependencies: ["TableProPluginKit", "TableProSQLQuoting", "TableProTestSupport"],
             path: "Tests/TableProPluginKitTests"
         ),
         .testTarget(

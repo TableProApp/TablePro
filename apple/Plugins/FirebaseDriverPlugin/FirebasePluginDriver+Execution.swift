@@ -234,11 +234,11 @@ extension FirebasePluginDriver {
     // MARK: - Export
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.make { continuation, abort in
             let task = Task {
                 do {
                     if case .browse(let spec)? = try? FirebaseStatement.parse(query), spec.limit == 0 {
-                        try await self.export(spec, continuation: continuation)
+                        try await self.export(spec, abort: abort, continuation: continuation)
                     } else {
                         let result = try await self.execute(query: query)
                         continuation.yield(.header(PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames,
@@ -250,11 +250,15 @@ extension FirebasePluginDriver {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 
-    private func export(_ spec: FirebaseBrowseSpec, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) async throws {
+    private func export(
+        _ spec: FirebaseBrowseSpec,
+        abort: PluginStreamAbort,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
         var header: [String]?
         var types: [String] = []
         try await forEachExportPage(spec) { columns, columnTypes, rows in
@@ -264,7 +268,7 @@ extension FirebasePluginDriver {
                 continuation.yield(.header(PluginStreamHeader(columns: header ?? [], columnTypeNames: types, estimatedRowCount: nil)))
             }
             let fixed = header ?? []
-            continuation.yield(.rows(rows.map { row in Self.align(row, columns: columns, to: fixed) }))
+            await abort.send(rows.map { row in Self.align(row, columns: columns, to: fixed) }, to: continuation)
         }
         if header == nil {
             continuation.yield(.header(PluginStreamHeader(columns: [Self.extraColumn], columnTypeNames: ["map"], estimatedRowCount: nil)))
@@ -282,7 +286,7 @@ extension FirebasePluginDriver {
 
     private func forEachExportPage(
         _ spec: FirebaseBrowseSpec,
-        page: ([String], [String], [[PluginCellValue]]) throws -> Void
+        page: ([String], [String], [[PluginCellValue]]) async throws -> Void
     ) async throws {
         switch variant {
         case .firestore:
@@ -309,13 +313,13 @@ extension FirebasePluginDriver {
                                                           operation: String(format: String(localized: "export %@"), spec.table))
                 guard !documents.isEmpty else { return }
                 let rows = FirestoreRowSet(documents: documents, target: target)
-                try page(rows.columns, rows.columnTypes, rows.rows.map { $0.map(Self.cell) })
+                try await page(rows.columns, rows.columnTypes, rows.rows.map { $0.map(Self.cell) })
                 cursor = documents.count == Self.exportPageSize ? documents.last?.path : nil
             } while cursor != nil
         case .realtimeDatabase:
             guard spec.filters.isEmpty else {
                 let result = try await browse(spec)
-                try page(result.columns, result.columnTypeNames, result.rows)
+                try await page(result.columns, result.columnTypeNames, result.rows)
                 return
             }
             let client = try requireRealtimeDatabase()
@@ -330,7 +334,7 @@ extension FirebasePluginDriver {
                 let children = try await client.children(node, plan: plan)
                 guard !children.isEmpty else { return }
                 let rows = RealtimeDatabaseRowSet(children: children, nodePath: node)
-                try page(rows.columns, rows.columnTypes, rows.rows.map { $0.map(PluginCellValue.fromOptional) })
+                try await page(rows.columns, rows.columnTypes, rows.rows.map { $0.map(PluginCellValue.fromOptional) })
                 lastKey = children.count == Self.exportPageSize ? children.last?.key : nil
             } while lastKey != nil
         }

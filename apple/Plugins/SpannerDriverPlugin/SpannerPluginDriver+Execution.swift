@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TableProPluginKit
 import TableProSpannerCore
 
@@ -15,23 +16,26 @@ extension SpannerPluginDriver {
         try await boundedQueryFromStream(query: query, rowCap: rowCap)
     }
 
+    // Spanner may abort a read-write transaction left idle for about 10 s, and a stream can run inside one.
+    private static let unreadStreamPause: TimeInterval = 5
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         PluginRowStream.make { continuation, abort in
             let task = Task {
                 do {
                     let executor = try self.requireExecutor()
-                    var headerSent = false
-                    for try await output in self.outputStream(for: query, executor: executor) {
+                    let headerSent = OSAllocatedUnfairLock(initialState: false)
+                    try await self.streamOutput(for: query, executor: executor) { output in
                         switch output {
                         case .header(let fields):
                             continuation.yield(.header(Self.streamHeader(fields)))
-                            headerSent = true
+                            headerSent.withLock { $0 = true }
                         case .rows(let rows):
-                            continuation.yield(.rows(rows.map(Self.pluginRow)))
+                            await abort.send(rows.map(Self.pluginRow), to: continuation, maximumPause: Self.unreadStreamPause)
                         }
                     }
                     try Task.checkCancellation()
-                    if !headerSent {
+                    if !headerSent.withLock({ $0 }) {
                         continuation.yield(.header(PluginStreamHeader(columns: [], columnTypeNames: [])))
                     }
                     continuation.finish()
@@ -47,14 +51,16 @@ extension SpannerPluginDriver {
         }
     }
 
-    private func outputStream(
+    private func streamOutput(
         for query: String,
-        executor: SpannerExecutor
-    ) -> AsyncThrowingStream<SpannerStreamOutput, Error> {
+        executor: SpannerExecutor,
+        into emit: @escaping SpannerStreamEmit
+    ) async throws {
         if let request = SpannerBrowseRequest.decode(query) {
-            return executor.stream(SpannerBrowseRenderer.select(resolved(request), dialect: executor.dialect))
+            try await executor.stream(SpannerBrowseRenderer.select(resolved(request), dialect: executor.dialect), into: emit)
+            return
         }
-        return executor.stream(query, hostParameters: nil)
+        try await executor.stream(query, hostParameters: nil, into: emit)
     }
 
     private func executeStatement(_ query: String, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {

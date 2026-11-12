@@ -1092,15 +1092,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return streamRows(query: query, readOnlySessionState: readOnlySessionState)
     }
 
-    /// The bridge task is retained and cancelled from `onTermination`. Without that, a consumer
-    /// that stops reading, which an export or a copy does on cancel, leaves this task draining the
-    /// whole result and holding the connection open: the inner stream's abort never fires because
-    /// nothing ever cancels the task awaiting it.
+    // The bridge task is cancelled on abort: a consumer that stops reading otherwise leaves it draining the whole
+    // result, since nothing cancels the task awaiting the inner stream. It forwards rows through `send`, so it waits
+    // with the consumer instead of reading the inner stream into its own buffer.
     private func streamRows(
         query: String,
         readOnlySessionState: (@Sendable (Bool) -> PluginSessionTransactionState)?
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream { continuation in
+        PluginRowStream.make { [self] continuation, abort in
             let task = Task {
                 do {
                     try await retryingAfterStop {
@@ -1108,7 +1107,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         defer { self.endOperation(on: conn) }
                         noteActivity(query)
                         for try await element in conn.streamQuery(query, readOnlySessionState: readOnlySessionState) {
-                            continuation.yield(element)
+                            switch element {
+                            case .header: continuation.yield(element)
+                            case .rows(let rows): await abort.send(rows, to: continuation)
+                            }
                         }
                     }
                     continuation.finish()
@@ -1116,7 +1118,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 

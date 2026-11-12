@@ -235,7 +235,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     return
                 }
                 do {
-                    // Each reply's rows go out as it arrives, before the next one is asked for.
+                    // Each reply's rows go out as it arrives, and the next one is asked for once the reader has room.
                     try await connection.stream(
                         query,
                         onColumns: { columns in
@@ -246,8 +246,8 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         },
                         onRows: { rows in
                             guard !abort.isAborted else { return false }
-                            continuation.yield(.rows(rows.map { row in row.map { $0.asPluginCell } }))
-                            return true
+                            abort.send(rows.map { row in row.map { $0.asPluginCell } }, to: continuation)
+                            return !abort.isAborted
                         }
                     )
                     continuation.finish()

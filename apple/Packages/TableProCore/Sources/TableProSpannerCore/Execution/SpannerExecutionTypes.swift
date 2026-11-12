@@ -33,6 +33,8 @@ public enum SpannerStreamOutput: Sendable, Equatable {
     case rows([[SpannerCell]])
 }
 
+public typealias SpannerStreamEmit = @Sendable (SpannerStreamOutput) async -> Void
+
 public enum SpannerExecutionError: Error, Sendable, Equatable {
     case transactionAlreadyOpen
     case noTransactionOpen

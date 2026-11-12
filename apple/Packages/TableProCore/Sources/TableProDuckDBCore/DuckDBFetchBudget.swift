@@ -55,31 +55,3 @@ public enum DuckDBRenderSettings {
         }
     }
 }
-
-// Hands a row batch to a stream whose buffer is bounded. A buffering policy alone drops what does not fit, so the
-// producer keeps the refused batch and offers it again once the consumer has read one.
-public enum DuckDBBoundedStream {
-    public static let bufferedBatches = 64
-
-    // Returns false when the stream has ended and the producer should stop.
-    public static func deliver<Element: Sendable>(
-        _ element: Element,
-        to continuation: AsyncThrowingStream<Element, Error>.Continuation,
-        pause: () -> Void = { _ = usleep(2_000) }
-    ) -> Bool {
-        var pending = element
-        while true {
-            switch continuation.yield(pending) {
-            case .enqueued:
-                return true
-            case .dropped(let refused):
-                pending = refused
-                pause()
-            case .terminated:
-                return false
-            @unknown default:
-                return false
-            }
-        }
-    }
-}

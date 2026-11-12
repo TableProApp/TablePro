@@ -185,24 +185,23 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, context: context, continuation: continuation)
+                    try await self.performStreamRows(query: query, context: context, abort: abort, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
 
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
     private func performStreamRows(
         query: String,
         context: PluginStatementContext,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         guard let client = httpClient else {
@@ -217,6 +216,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sortAscending: parsed.sortAscending,
                 filter: parsed.filter,
                 client: client,
+                abort: abort,
                 continuation: continuation
             )
             return
@@ -239,6 +239,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sortAscending: Bool,
         filter: EtcdRowFilter,
         client: EtcdHttpClient,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let matcher = try filter.matcher()
@@ -267,19 +268,31 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         continuation.yield(.header(header))
+        // The scan hands each batch over synchronously, so a batch goes out just before the next is read, where the
+        // read can wait for the consumer.
+        var unsent: [PluginRow] = []
         do {
-            try await scanKeyValues(in: range, client: client) { kvs in
-                let rows = kvs.map(Self.filterRow).filter(matcher.matches).map(\.cells)
-                if !rows.isEmpty {
-                    continuation.yield(.rows(rows))
+            try await scanKeyValues(
+                in: range,
+                client: client,
+                beforeNextBatch: {
+                    guard !unsent.isEmpty else { return }
+                    await abort.send(unsent, to: continuation)
+                    unsent = []
+                },
+                body: { kvs in
+                    unsent = kvs.map(Self.filterRow).filter(matcher.matches).map(\.cells)
+                    return true
                 }
-                return true
-            }
+            )
         } catch let error where error.isEtcdRevisionCompacted {
             // Rows already went out, so the read cannot start over at a newer revision without repeating them.
             throw EtcdError.serverError(String(
                 localized: "etcd compacted the revision this export started from, so it stopped part way. Run it again."
             ))
+        }
+        if !unsent.isEmpty {
+            continuation.yield(.rows(unsent))
         }
         continuation.finish()
     }
@@ -1001,6 +1014,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func scanKeyValues(
         in range: EtcdKeyRange,
         client: EtcdHttpClient,
+        beforeNextBatch: () async -> Void = {},
         body: ([EtcdKeyValue]) throws -> Bool
     ) async throws {
         try await EtcdRangeScan.scan(
@@ -1009,6 +1023,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             maxItems: Self.maxKeys,
             key: { $0.key },
             fetch: { range, limit, revision in
+                await beforeNextBatch()
                 var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: limit)
                 req.revision = revision
                 let response = try await client.rangeRequest(req)

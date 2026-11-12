@@ -685,38 +685,40 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         return MSSQLRequestEnding(sessionAnswer: answer.errors.isEmpty ? answer.resultSets.first : nil)
     }
 
-    /// `isAborted` is how a consumer that stopped reaches this loop. It is a closure rather than a
-    /// PluginKit type because this file is compiled into the iOS app too and may not import
-    /// PluginKit. It is polled instead of `Task.isCancelled`, which is always false here: the body
-    /// runs inside a bare `queue.async` with no task context. A consumer that stops ends the request
-    /// the way a capped read does.
-    ///
-    /// Only the request's first result set is streamed. A later one is read past, so the statements behind it still
-    /// run, and a server error anywhere in the request finishes the stream with that error.
     func streamQuery(
         _ query: String,
         isAborted: (@Sendable () -> Bool)? = nil,
         continuation: AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation
     ) async throws {
+        do {
+            try await streamQuery(query, isAborted: isAborted, onElement: { continuation.yield($0) })
+            continuation.finish()
+        } catch {
+            continuation.finish(throwing: error)
+        }
+    }
+
+    // `isAborted` is a closure because the iOS app compiles this file without PluginKit, and is polled because
+    // `Task.isCancelled` is always false on the bare queue. Only the first result set streams; later ones are read
+    // past. `onElement` runs on the connection queue, so a caller that waits in it for its reader holds the session.
+    func streamQuery(
+        _ query: String,
+        isAborted: (@Sendable () -> Bool)? = nil,
+        onElement: @escaping @Sendable (MSSQLStreamElement) -> Void
+    ) async throws {
         let queryToRun = String(query)
         let call = requestGate.enqueue()
         try await withTaskCancellationHandler {
             try await freetdsDispatchAsync(on: queue) { [self] in
-                do {
-                    let readout = try self.readSync(
-                        queryToRun,
-                        call: call,
-                        plan: .stream,
-                        sink: .stream(continuation),
-                        isAborted: isAborted
-                    )
-                    if let error = readout.errors.first {
-                        continuation.finish(throwing: MSSQLCoreError.queryFailed(error.message.text))
-                        return
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
+                let readout = try self.readSync(
+                    queryToRun,
+                    call: call,
+                    plan: .stream,
+                    sink: .stream(onElement),
+                    isAborted: isAborted
+                )
+                if let error = readout.errors.first {
+                    throw MSSQLCoreError.queryFailed(error.message.text)
                 }
             }
         } onCancel: { [weak self] in
@@ -876,7 +878,7 @@ nonisolated private struct FreeTDSReadPlan: Sendable {
 
 nonisolated private enum FreeTDSRowSink {
     case buffer
-    case stream(AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation)
+    case stream(@Sendable (MSSQLStreamElement) -> Void)
 }
 
 /// Reads one request to its end, or ends it early, so the connection is never left with results nobody will read.
@@ -999,8 +1001,8 @@ nonisolated private struct FreeTDSBatchReader {
 
     private mutating func readResultSet(columnCount: Int, errorsBefore: Int) throws -> ResultSetEnd {
         let descriptors = (1...columnCount).map(describeColumn)
-        if case .stream(let continuation) = sink {
-            continuation.yield(.header(columns: descriptors))
+        if case .stream(let emit) = sink {
+            emit(.header(columns: descriptors))
             headerStreamed = true
         }
 
@@ -1124,20 +1126,20 @@ nonisolated private struct FreeTDSBatchReader {
     }
 
     private func streamIfFull(_ rows: inout [[MSSQLRawCell]]) {
-        guard case .stream(let continuation) = sink, rows.count >= MSSQLRowLimits.streamBatchSize else { return }
-        continuation.yield(.rows(rows))
+        guard case .stream(let emit) = sink, rows.count >= MSSQLRowLimits.streamBatchSize else { return }
+        emit(.rows(rows))
         rows.removeAll(keepingCapacity: true)
     }
 
     private func streamRemaining(_ rows: inout [[MSSQLRawCell]]) {
-        guard case .stream(let continuation) = sink, !rows.isEmpty else { return }
-        continuation.yield(.rows(rows))
+        guard case .stream(let emit) = sink, !rows.isEmpty else { return }
+        emit(.rows(rows))
         rows.removeAll()
     }
 
     private func finishCountOnlyStream() {
-        guard case .stream(let continuation) = sink, !headerStreamed, errorTotal == 0 else { return }
-        continuation.yield(.affectedRows(rowsAffected))
+        guard case .stream(let emit) = sink, !headerStreamed, errorTotal == 0 else { return }
+        emit(.affectedRows(rowsAffected))
     }
 
     private mutating func absorbMessages() {

@@ -188,16 +188,20 @@ internal struct CompareRowService {
                         String(localized: "The target driver cannot stream rows for a comparison.")
                     )
                 }
-                let sides = RowSides(
-                    source: sourceRead.provider(driver: sourcePlugin),
-                    target: targetRead.provider(driver: targetPlugin),
-                    resolver: KeyLookupResolver(
-                        source: (sourceRead, sourcePlugin),
-                        target: (targetRead, targetPlugin)
-                    ),
-                    targetDriver: targetPlugin
-                )
-                return try await body(engine, sides)
+                // Lifted before the providers exist: a stream starts its statement when it is built, and the lift
+                // would queue behind that statement on the same connection.
+                return try await BulkReadTimeout.lifted(on: [sourceDriver, targetDriver]) {
+                    let sides = RowSides(
+                        source: sourceRead.provider(driver: sourcePlugin),
+                        target: targetRead.provider(driver: targetPlugin),
+                        resolver: KeyLookupResolver(
+                            source: (sourceRead, sourcePlugin),
+                            target: (targetRead, targetPlugin)
+                        ),
+                        targetDriver: targetPlugin
+                    )
+                    return try await body(engine, sides)
+                }
             }
         }
     }
