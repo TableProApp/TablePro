@@ -174,9 +174,12 @@ struct RemoteSQLiteAgentPipeTests {
         private var buffer: [UInt8] = []
 
         init(pythonPath: String) throws {
-            let encoded = Data(RemoteSQLiteAgentSource.python.utf8).base64EncodedString()
+            // Launch the program the way the launcher ships it: the compressed, base64 blob through
+            // the same bootstrap, so this suite also covers the decompression round-trip.
             process.executableURL = URL(fileURLWithPath: pythonPath)
-            process.arguments = ["-I", "-S", "-c", "import base64,sys;exec(base64.b64decode(sys.argv[1]))", encoded]
+            process.arguments = [
+                "-I", "-S", "-c", RemoteSQLiteAgentSource.interpreterBootstrap, RemoteSQLiteAgentSource.encodedProgram,
+            ]
             process.standardInput = toAgent
             process.standardOutput = fromAgent
             process.standardError = FileHandle.nullDevice
