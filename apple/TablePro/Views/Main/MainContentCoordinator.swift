@@ -1396,9 +1396,7 @@ final class MainContentCoordinator: ObservableObject {
                         prepared: prepared
                     )
                     // A re-read (a sort, a reload after a write) is not a run, so the log keeps describing the last one.
-                    if recordsRun {
-                        queryExecutionCoordinator.recordStatementRun(sql, tabId: tabId, startedAt: claim.startedAt)
-                    }
+                    if recordsRun { queryExecutionCoordinator.recordStatementRun(sql, tabId: tabId, startedAt: claim.startedAt) }
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
                     reportFetchedQuery(claim: claim, trigger: trigger, result: fetchResult)
