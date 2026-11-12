@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use tablepro_core::dml::BuildSqlError;
@@ -19,8 +19,24 @@ use crate::workspace::{PendingState, SaveOutcome, SaveRejection, SaveSnapshot};
 pub struct TabTrackerHandle(Rc<RefCell<TabChangeTracker>>);
 
 impl TabTrackerHandle {
+    // Every change goes through here, so the version moves with each one.
+    fn write(&self) -> RefMut<'_, TabChangeTracker> {
+        let mut tracker = self.0.borrow_mut();
+        tracker.note_change();
+        tracker
+    }
+
+    /// Moves on every change, for a cache of what the tracker held.
+    pub fn version(&self) -> u64 {
+        self.0.borrow().version()
+    }
+
     pub fn cell_overlay(&self, row_key: &RowKey, col: usize) -> CellOverlay {
         self.0.borrow().cell_overlay(row_key, col)
+    }
+
+    pub fn pending_input(&self, row_key: &RowKey, col: usize) -> Option<CellInput> {
+        self.0.borrow().pending_input(row_key, col)
     }
 
     pub fn cell_marks(&self, row_key: &RowKey, col: usize) -> CellMarks {
@@ -37,12 +53,12 @@ impl TabTrackerHandle {
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn apply(&self, edit: TrackerEdit) -> TrackerDelta {
-        self.0.borrow_mut().apply(edit)
+        self.write().apply(edit)
     }
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn apply_all(&self, edits: Vec<TrackerEdit>) -> TrackerDelta {
-        self.0.borrow_mut().apply_all(edits)
+        self.write().apply_all(edits)
     }
 
     pub fn cell_is_saving(&self, row_key: &RowKey, col: usize) -> bool {
@@ -56,12 +72,12 @@ impl TabTrackerHandle {
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn undo(&self) -> Option<TrackerDelta> {
-        self.0.borrow_mut().undo()
+        self.write().undo()
     }
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn redo(&self) -> Option<TrackerDelta> {
-        self.0.borrow_mut().redo()
+        self.write().redo()
     }
 
     pub fn pending_count(&self) -> usize {
@@ -102,12 +118,12 @@ impl TabTrackerHandle {
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn discard(&self) -> TrackerDelta {
-        self.0.borrow_mut().discard()
+        self.write().discard()
     }
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn mark_error_row(&self, row_key: RowKey) -> TrackerDelta {
-        self.0.borrow_mut().mark_error_row(row_key)
+        self.write().mark_error_row(row_key)
     }
 
     pub fn is_error_row(&self, row_key: &RowKey) -> bool {
@@ -118,7 +134,7 @@ impl TabTrackerHandle {
     /// against.
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub(crate) fn set_target(&self, target: SaveTarget) -> TrackerDelta {
-        self.0.borrow_mut().set_target(target)
+        self.write().set_target(target)
     }
 
     pub(crate) fn pending_state(&self) -> PendingState {
@@ -130,12 +146,12 @@ impl TabTrackerHandle {
     }
 
     pub(crate) fn begin_save(&self) -> Result<Option<SaveBatch>, SaveRejection> {
-        self.0.borrow_mut().begin_save()
+        self.write().begin_save()
     }
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub(crate) fn settle_save(&self, outcome: &SaveOutcome, snapshot: SaveSnapshot) -> TrackerDelta {
-        self.0.borrow_mut().settle_save(outcome, snapshot)
+        self.write().settle_save(outcome, snapshot)
     }
 }
 
@@ -360,6 +376,25 @@ mod tests {
         assert_eq!(undone.changed, vec![row(1)]);
         assert_eq!(undone.pending_count, 1);
         assert_eq!(tracker.cell_overlay(&row(1), 1).shown(fetched), Value::Text("b".into()));
+    }
+
+    #[test]
+    fn every_change_moves_the_version_and_a_read_does_not() {
+        let tracker = TabTrackerHandle::default();
+        let start = tracker.version();
+        let _ = tracker.cell_marks(&row(1), 1);
+        assert_eq!(tracker.version(), start);
+
+        edit_cell(&tracker, 1, 2);
+        let edited = tracker.version();
+        let _ = tracker.discard();
+
+        assert_ne!(edited, start);
+        assert_ne!(
+            tracker.version(),
+            edited,
+            "a discard whose delta nobody applies still moves it"
+        );
     }
 
     #[test]

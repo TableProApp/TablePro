@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use deadpool_postgres::{Pool, PoolError, TimeoutType, Timeouts};
+use deadpool_postgres::{PoolError, TimeoutType, Timeouts};
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
@@ -31,7 +31,7 @@ use crate::errors::{map_error, map_pool_error};
 use crate::metadata;
 use crate::pg_call::PgCall;
 use crate::physical::PgEndpoint;
-use crate::pool::{probe_timeouts, workspace_timeouts};
+use crate::pool::{PgObject, PgPool, probe_timeouts, workspace_timeouts};
 use crate::standalone::Standalone;
 use crate::stream_read::stream;
 use crate::workspace_call::{
@@ -43,7 +43,7 @@ use crate::write_batch::{WritePlan, perform, precheck};
 /// connections behind the sidebar, the grid and every save.
 pub(crate) struct PgConnection {
     endpoint: Arc<PgEndpoint>,
-    pool: Pool,
+    pool: PgPool,
     calls: OwnedCalls,
     tracker: TaskTracker,
     settings: WorkspaceSettings,
@@ -56,7 +56,7 @@ pub(crate) struct PgConnection {
 impl PgConnection {
     pub(crate) fn new(
         endpoint: Arc<PgEndpoint>,
-        pool: Pool,
+        pool: PgPool,
         tracker: TaskTracker,
         settings: WorkspaceSettings,
         server: ServerInfo,
@@ -229,6 +229,35 @@ impl PgConnection {
     }
 }
 
+// A member that has not answered may sit on a dead route, so it leaves the pool instead of going back, also when the
+// probe's deadline drops it mid-question.
+struct Asking(Option<PgObject>);
+
+impl Asking {
+    async fn answer(mut self) -> Result<(), DriverError> {
+        let answered = match self.0.as_ref() {
+            Some(object) => object
+                .simple_query("SELECT 1")
+                .await
+                .map(|_| ())
+                .map_err(|error| map_error(&error)),
+            None => Ok(()),
+        };
+        if answered.is_ok() {
+            drop(self.0.take());
+        }
+        answered
+    }
+}
+
+impl Drop for Asking {
+    fn drop(&mut self) {
+        if let Some(object) = self.0.take() {
+            drop(PgObject::take(object));
+        }
+    }
+}
+
 /// A failure that may mean the route is gone rather than one statement:
 /// a lost connection, a transport error, or a timeout the server never
 /// acknowledged.
@@ -292,11 +321,12 @@ impl Connection for PgConnection {
         let probing = async {
             let quick: Timeouts = probe_timeouts(self.liveness());
             match self.pool.timeout_get(&quick).await {
-                Ok(object) => object
-                    .simple_query("SELECT 1")
-                    .await
-                    .map(|_| ())
-                    .map_err(|error| map_error(&error)),
+                Ok(object) => match Asking(Some(object)).answer().await {
+                    // Only this member may have gone stale; a login of its own clears the route, and otherwise the
+                    // member's answer stands.
+                    Err(error) if suspects_link(&error) => self.probe_standalone(deadline).await.map_err(|_| error),
+                    answered => answered,
+                },
                 // Every slot is busy, which is not the server being gone.
                 Err(PoolError::Timeout(TimeoutType::Wait)) => self.probe_standalone(deadline).await,
                 Err(error) => Err(map_pool_error(&error)),

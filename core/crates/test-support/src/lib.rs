@@ -26,6 +26,7 @@ mod fake_secret_vault;
 mod fault;
 pub mod history_cases;
 mod replies;
+mod round_trip_counter;
 mod snippet_text;
 mod stream_end;
 
@@ -45,6 +46,7 @@ pub use fake_run::{FakeRun, RunWait};
 pub use fake_secret_vault::{Call, FakeSecretVault};
 pub use fault::FaultTransport;
 pub use replies::Replies;
+pub use round_trip_counter::{RoundTripCounter, StreamTally};
 pub use snippet_text::expand_snippet;
 pub use stream_end::StreamEnd;
 
