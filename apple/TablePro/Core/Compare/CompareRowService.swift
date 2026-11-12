@@ -132,6 +132,18 @@ internal struct CompareRowService {
 
     // MARK: - Plumbing
 
+    // The sides are built inside the lift: a stream starts its statement when it is built, and a bounded one parks
+    // its connection once its buffer is full, so a lift sent after it would wait behind that statement for good.
+    internal static func readingBothSides<Sides, T>(
+        liftingTimeoutOn drivers: [DatabaseDriver],
+        sides makeSides: () -> Sides,
+        _ body: (Sides) async throws -> T
+    ) async throws -> T {
+        try await BulkReadTimeout.lifted(on: drivers) {
+            try await body(makeSides())
+        }
+    }
+
     private func withBothSides<T: Sendable>(
         source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
@@ -188,10 +200,8 @@ internal struct CompareRowService {
                         String(localized: "The target driver cannot stream rows for a comparison.")
                     )
                 }
-                // Lifted before the providers exist: a stream starts its statement when it is built, and the lift
-                // would queue behind that statement on the same connection.
-                return try await BulkReadTimeout.lifted(on: [sourceDriver, targetDriver]) {
-                    let sides = RowSides(
+                return try await Self.readingBothSides(liftingTimeoutOn: [sourceDriver, targetDriver]) {
+                    RowSides(
                         source: sourceRead.provider(driver: sourcePlugin),
                         target: targetRead.provider(driver: targetPlugin),
                         resolver: KeyLookupResolver(
@@ -200,7 +210,8 @@ internal struct CompareRowService {
                         ),
                         targetDriver: targetPlugin
                     )
-                    return try await body(engine, sides)
+                } _: { sides in
+                    try await body(engine, sides)
                 }
             }
         }
