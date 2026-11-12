@@ -422,6 +422,7 @@ struct RowDetailView: View {
     }
 
     private func handleSave() async {
+        guard !refusesWhileDatabaseMoves() else { return }
         let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.saveChanges()
         }
@@ -437,6 +438,7 @@ struct RowDetailView: View {
     }
 
     private func executePendingSave() async {
+        guard !refusesWhileDatabaseMoves() else { return }
         let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.executePendingSave()
         }
@@ -445,6 +447,13 @@ struct RowDetailView: View {
         } else {
             hapticError.toggle()
         }
+    }
+
+    private func refusesWhileDatabaseMoves() -> Bool {
+        guard let refusal = connectionCoordinator.databaseMoveRefusal else { return false }
+        viewModel.operationError = refusal
+        hapticError.toggle()
+        return true
     }
 
     // Names the cell rather than carrying its text, so the route stays cheap to compare.

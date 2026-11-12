@@ -305,6 +305,12 @@ struct InsertRowView: View {
     }
 
     private func executeInsert(_ write: PlannedRowWrite) async {
+        if let refusal = coordinator.databaseMoveRefusal {
+            operationError = refusal
+            showOperationError = true
+            hapticError.toggle()
+            return
+        }
         isSaving = true
         defer { isSaving = false }
 
