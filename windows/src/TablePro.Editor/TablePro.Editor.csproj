@@ -16,7 +16,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <InternalsVisibleTo Include="TablePro.Editor.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
     <PackageReference Include="TerraFX.Interop.Windows" />
   </ItemGroup>

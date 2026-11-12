@@ -24,7 +24,7 @@ Read this when a `verify.sh` verdict needs interpreting for the Windows app, bef
 
 - **A filter that matches nothing exits 8**, "Zero tests ran". The wrapper reports it as INCONCLUSIVE; check the executed count anyway.
 - **A bare filter word matches part of a test's full name**, namespace and class included, through `--filter-method "*<word>*"`. xunit's own options go after `--`: `--filter-class`, `--filter-trait "Needs=Core"`, `--filter-query`.
-- **`TablePro.DataGrid.Tests` runs on Windows only.** Its csproj turns `IsTestProject` off elsewhere, so the solution's run on a Mac compiles it and runs the other four projects: fewer cases than CI counts on Windows.
+- **`TablePro.DataGrid.Tests` and `TablePro.Editor.Tests` run on Windows only.** Their csproj files turn `IsTestProject` off elsewhere, so the solution's run on a Mac compiles them and runs the other four projects: fewer cases than CI counts on Windows.
 - **The `Needs=Core` tests load the real core** that the build copied beside the test assembly. They run on every runner.
 - **Cargo exits 101 for a compile error and for a failed test.** The `core` step tells them apart by whether a test binary ran. A filter that matches nothing exits 0 with "0 passed", which the wrapper reports as INCONCLUSIVE.
 - **`core` passes `--target <host triple>`**, as the csproj and `core.yml` do, so it reuses the build instead of compiling the core again into `target/debug`.

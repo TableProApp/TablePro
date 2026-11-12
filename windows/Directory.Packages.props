@@ -8,7 +8,10 @@
     <PackageVersion Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.251219" />
     <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools.MSIX" Version="1.7.251221100" />
+    <!-- The test hosts only, which ship nothing; the app and its libraries take the WinUI component (docs/decisions/0005-distribution.md). -->
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.4" />
     <PackageVersion Include="TerraFX.Interop.Windows" Version="10.0.26100.6" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>

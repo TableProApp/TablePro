@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -26,10 +27,11 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private readonly WorkspaceTabs<TabViewItem> _tabs;
     private SessionShare<DatabaseSession>? _share;
     private DatabaseSession? _session;
-    private IReadOnlyList<ObjectEntry>? _everyObject;
+    private ObjectCatalog? _everyObject;
     private bool _singleSchema;
     private string _failureDetails = string.Empty;
     private int _filterGeneration;
+    private CancellationTokenSource? _filtering;
 
     // Schemas a refresh reads again, the next time each one opens.
     private readonly HashSet<string> _stale = [];
@@ -294,6 +296,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         _watching = null;
         _loadingTree?.Cancel();
         _loadingTree = null;
+        _filtering?.Cancel();
+        _filtering = null;
         HealthBar.IsOpen = false;
         ElsewhereBar.IsOpen = false;
         HideChangesOnConnect();
@@ -344,9 +348,9 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return null;
         }
 
+        // Its first page is read when the tab first shows, so a restored session reads only the tab it shows.
         var table = new TableTabView(_workbench, _share, schema, name, kind, restore);
         AddTab(table, IconOf(kind), index);
-        table.Run();
         return table;
     }
 
@@ -1148,7 +1152,9 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                     : await session.GetObjectsAsync(ObjectScope.DefaultSchema, loading.Token).ConfigureAwait(true);
                 // The core may answer after the cancel, and its answer then is the replaced load's.
                 loading.Token.ThrowIfCancellationRequested();
-                AddFolders(Objects, shown.FirstOrDefault()?.Name, objects);
+                var folders = await GroupAsync(objects).ConfigureAwait(true);
+                loading.Token.ThrowIfCancellationRequested();
+                AddFolders(Objects, shown.FirstOrDefault()?.Name, folders);
                 foreach (var folder in Objects.Where(node => node.Folder?.Kind == FolderKind.Tables))
                 {
                     RealizeFolder(folder);
@@ -1215,18 +1221,26 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         var objects = _stale.Remove(node.Schema)
             ? await _session.RefreshObjectsAsync(scope).ConfigureAwait(true)
             : await _session.GetObjectsAsync(scope).ConfigureAwait(true);
+        var folders = await GroupAsync(objects).ConfigureAwait(true);
         node.Children.Clear();
-        AddFolders(node.Children, node.Schema, objects);
+        AddFolders(node.Children, node.Schema, folders);
     }
 
-    private static void AddFolders(ObservableCollection<ObjectNode> target, string? schema, IReadOnlyList<ObjectEntry> objects)
+    // A schema can hold tens of thousands of objects, and a culture-aware sort of them would stall the UI thread.
+    private static Task<IReadOnlyList<ObjectFolder>> GroupAsync(IReadOnlyList<ObjectEntry> objects)
     {
-        foreach (var folder in ObjectFolders.Group(objects))
+        var culture = CultureInfo.CurrentCulture;
+        return Task.Run(() => ObjectFolders.Group(objects, culture));
+    }
+
+    private static void AddFolders(ObservableCollection<ObjectNode> target, string? schema, IReadOnlyList<ObjectFolder> folders)
+    {
+        foreach (var folder in folders)
         {
             target.Add(new ObjectNode(ObjectNodeKind.Folder, Strings.Get("Folder_" + folder.Kind))
             {
                 Icon = Symbol.Folder,
-                Detail = folder.Objects.Count.ToString(System.Globalization.CultureInfo.CurrentCulture),
+                Detail = folder.Objects.Count.ToString(CultureInfo.CurrentCulture),
                 Schema = schema,
                 Folder = folder,
                 HasUnrealizedChildren = folder.Objects.Count > 0,
@@ -1451,43 +1465,73 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
     }
 
+    // Each keystroke scans the catalog on the thread pool and stops the scan it replaces.
     private async void OnFilterChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
         var text = sender.Text;
         var generation = ++_filterGeneration;
+        _filtering?.Cancel();
+        _filtering = null;
         if (string.IsNullOrWhiteSpace(text))
         {
             ShowTree();
             return;
         }
 
-        if (_session is null)
+        if (_session is not { } session)
         {
             return;
         }
 
+        using var filtering = new CancellationTokenSource();
+        _filtering = filtering;
         try
         {
-            _everyObject ??= await _session
-                .GetObjectsAsync(_singleSchema ? ObjectScope.DefaultSchema : ObjectScope.AllSchemas)
+            var catalog = _everyObject;
+            if (catalog is null)
+            {
+                var objects = await session
+                    .GetObjectsAsync(_singleSchema ? ObjectScope.DefaultSchema : ObjectScope.AllSchemas)
+                    .ConfigureAwait(true);
+                var culture = CultureInfo.CurrentCulture;
+                catalog = await Task.Run(() => new ObjectCatalog(objects, culture)).ConfigureAwait(true);
+                _everyObject ??= catalog;
+            }
+
+            // Typing on while the catalog loads leaves only the newest text to show.
+            if (generation != _filterGeneration)
+            {
+                return;
+            }
+
+            var showSchema = !_singleSchema;
+            var token = filtering.Token;
+            var nodes = await Task.Run(
+                    () => catalog.Filter(text, token).Select(entry => EntryNode(entry, showSchema)).ToList(),
+                    token)
                 .ConfigureAwait(true);
+            if (generation != _filterGeneration || token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            ShowList(nodes, Strings.Format("FilterMatches", nodes.Count));
+        }
+        catch (OperationCanceledException) when (filtering.IsCancellationRequested)
+        {
+            // A newer keystroke took over the list.
         }
         catch (TableProException exception)
         {
             ShowListMessage(Strings.Error(exception.Error));
-            return;
         }
-
-        // Typing on while the catalog loads leaves only the newest text to show.
-        if (generation != _filterGeneration)
+        finally
         {
-            return;
+            if (ReferenceEquals(_filtering, filtering))
+            {
+                _filtering = null;
+            }
         }
-
-        var matches = ObjectFolders.Filter(_everyObject, text);
-        ShowList(
-            [.. matches.Select(entry => EntryNode(entry, showSchema: !_singleSchema))],
-            Strings.Format("FilterMatches", matches.Count));
     }
 
     private void OnBackToTree(object sender, RoutedEventArgs e)

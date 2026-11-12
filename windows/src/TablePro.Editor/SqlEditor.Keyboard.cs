@@ -21,6 +21,7 @@ public sealed partial class SqlEditor
             base.OnKeyDown(e);
             return;
         }
+        RestartBlink();
         _tsf?.FlushPendingComposition();
         // While the IME composes, its keys are its own; it hands back the ones it does not use after.
         if (IsComposing || e.Key == (VirtualKey)229)

@@ -26,6 +26,12 @@ public sealed partial class SqlEditor
         {
             return;
         }
+        // Another editor on this thread found the shared device lost.
+        if (!_device.IsCurrent)
+        {
+            RecoverDevice(lost: false);
+            return;
+        }
         if (!_device.TryBeginFrame())
         {
             RenderOnNextTick();
@@ -107,7 +113,7 @@ public sealed partial class SqlEditor
         var matches = FindMatchesIn(first, last);
         var spanIndex = 0;
         var primaryLine = Document.GetLineFromOffset(_model.Primary.Active);
-        var caretOn = _focused && _caretOn;
+        var caretOn = _blink.CaretVisible;
         var caretWidth = CaretWidth();
         for (var line = first; line <= last; line++)
         {
@@ -207,8 +213,7 @@ public sealed partial class SqlEditor
         var created = _layouts.CreatedThisFrame;
         if (!_device.EndDrawAndPresent())
         {
-            ReleaseDevice();
-            CreateDevice();
+            RecoverDevice(lost: true);
             return;
         }
         _layouts.EndFrame();

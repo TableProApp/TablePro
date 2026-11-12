@@ -33,6 +33,13 @@ internal sealed class Palette
     // Indexed by TablePro.Interop.SyntaxKind.
     public Color?[] Syntax { get; private init; } = [];
 
+    // Next to the fields, so a new color is compared too: a tab shown again rebuilds its brushes only when one changed.
+    public bool SameAs(Palette other) =>
+        other.HighContrast == HighContrast && other.Dark == Dark && other.Background == Background && other.Text == Text
+        && other.LineNumber == LineNumber && other.CurrentLine == CurrentLine && other.Selection == Selection
+        && other.SelectionText == SelectionText && other.Caret == Caret && other.FindMatch == FindMatch
+        && other.Syntax.SequenceEqual(Syntax);
+
     public static Palette Resolve(ElementTheme theme)
     {
         var highContrast = new AccessibilitySettings().HighContrast;

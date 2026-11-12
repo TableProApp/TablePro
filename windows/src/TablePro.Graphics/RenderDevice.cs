@@ -11,6 +11,10 @@ namespace TablePro.Graphics;
 // The Basic Render Driver is WARP behind a hardware device type, as on VMs and CI runners without a GPU.
 internal sealed unsafe class RenderDevice : IDisposable
 {
+    // Per thread, so a test on the UI thread does not count the font warm-up's device on a pool thread.
+    [ThreadStatic]
+    private static int s_created;
+
     private ID3D11Device* _d3d;
     private IDXGIFactory2* _dxgiFactory;
     private ID2D1Factory1* _d2dFactory;
@@ -61,7 +65,10 @@ internal sealed unsafe class RenderDevice : IDisposable
         {
             dxgiDevice->Release();
         }
+        s_created++;
     }
+
+    internal static int CreatedOnThisThread => s_created;
 
     public bool IsSoftware { get; }
 

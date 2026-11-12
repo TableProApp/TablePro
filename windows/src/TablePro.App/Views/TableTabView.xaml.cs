@@ -63,13 +63,10 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         grid.CellEditCommitting += OnCellEditCommitting;
         grid.DeleteRequested += (_, _) => DeleteRows();
         grid.ContextRequested += OnGridContextRequested;
+        // TabView loads only the content it shows, so a restored tab reads nothing until it first shows.
+        Loaded += OnFirstLoaded;
         UpdatePager();
         UpdateEditing();
-        // A restored filter shows in its bar, as one applied here does.
-        if (_model.Filter is not null)
-        {
-            ShowFilter(true, focus: false);
-        }
     }
 
     public event EventHandler? StateChanged;
@@ -420,6 +417,9 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             ? Strings.Format("PageOf", page.Number, count)
             : Strings.Format("PageNumber", page.Number);
         GoToPageButton.IsEnabled = !busy && page.Count is > 1;
+        CountRowsButton.Visibility = _model.OffersCount ? Visibility.Visible : Visibility.Collapsed;
+        CountRowsButton.IsEnabled = _model.CanCountRows;
+        CountRowsButton.Label = Strings.Get(_model.IsCounting ? "CountingRows" : "CountRows");
         if (!_model.IsSaving && RowsStatus() is { } status)
         {
             StatusText.Text = status;
@@ -440,9 +440,33 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             return Strings.Format(run.Truncated ? "StatusRowsLimited" : "StatusRows", page.Rows, run.Milliseconds);
         }
 
-        return page.Total is { } total
-            ? Strings.Format("StatusPageOf", page.FirstRow, page.LastRow, total, run.Milliseconds)
+        if (page.Total is { } total)
+        {
+            return Strings.Format("StatusPageOf", page.FirstRow, page.LastRow, total, run.Milliseconds);
+        }
+
+        return page.Estimate is { } estimate
+            ? Strings.Format("StatusPageOfAbout", page.FirstRow, page.LastRow, estimate, run.Milliseconds)
             : Strings.Format("StatusPage", page.FirstRow, page.LastRow, run.Milliseconds);
+    }
+
+    // The first page, and a restored filter's bar with its choices, wait for the first show.
+    private async void OnFirstLoaded(object sender, RoutedEventArgs e)
+    {
+        // Selected only in passing, as each restored tab is, a tab may hear Loaded once it has left the tree.
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        Loaded -= OnFirstLoaded;
+        // A restored filter shows in its bar, as one applied here does.
+        if (_model.Filter is not null && !ShowsFilter)
+        {
+            ShowFilter(true, focus: false);
+        }
+
+        await _model.ShowAsync().ConfigureAwait(true);
     }
 
     // An editor opening or closing counts as a change for Save and the menus.
@@ -653,6 +677,9 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     private async void OnNextPage(object sender, RoutedEventArgs e) => await _model.NextPageAsync().ConfigureAwait(true);
 
     private async void OnLastPage(object sender, RoutedEventArgs e) => await _model.LastPageAsync().ConfigureAwait(true);
+
+    private async void OnCountRows(object sender, RoutedEventArgs e) =>
+        await _model.CountRowsAsync().ConfigureAwait(true);
 
     private async void OnRefresh(object sender, RoutedEventArgs e)
     {
