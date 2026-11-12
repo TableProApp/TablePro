@@ -34,17 +34,22 @@ enum ERDiagramSceneRenderer {
         return bounds
     }
 
-    static func draw(_ scene: ERDiagramScene, palette: ERDiagramPalette, dirtyRect: CGRect, on canvas: some ERDiagramCanvas) {
-        ERDiagramEdgeRenderer.drawEdges(
-            edges: scene.edges,
-            nodeRects: scene.nodeRects,
-            nodeIndex: scene.nodeIndex,
+    static func draw(
+        _ scene: ERDiagramScene,
+        palette: ERDiagramPalette,
+        dirtyRect: CGRect,
+        routes: [ERDiagramEdgeRenderer.Route]? = nil,
+        on canvas: some ERDiagramCanvas
+    ) {
+        ERDiagramEdgeRenderer.drawRoutes(
+            routes ?? ERDiagramEdgeRenderer.routes(edges: scene.edges, nodeRects: scene.nodeRects, nodeIndex: scene.nodeIndex),
             colors: ERDiagramEdgeRenderer.Colors(
                 stroke: palette.edge,
                 selection: palette.selectionRule,
                 dropped: palette.droppedEdge
             ),
             selectedEdgeId: scene.selectedEdgeId,
+            dirtyRect: dirtyRect,
             on: canvas
         )
 

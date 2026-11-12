@@ -17,7 +17,7 @@ internal enum RowValueCopyFormatter {
             }
             return value
         case .bytes(let data):
-            return String(data: data, encoding: .isoLatin1)?.formattedAsCompactHex() ?? ""
+            return data.formattedAsCompactHex() ?? ""
         }
     }
 

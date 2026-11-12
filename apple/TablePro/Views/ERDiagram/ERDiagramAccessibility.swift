@@ -54,6 +54,10 @@ final class ERDiagramNodeElement: NSAccessibilityElement, @unchecked Sendable {
         builtColumns = nil
     }
 
+    fileprivate func move(to rect: CGRect) {
+        self.rect = rect
+    }
+
     fileprivate func rowRect(at index: Int) -> CGRect {
         CGRect(
             x: rect.minX,
@@ -145,8 +149,25 @@ final class ERDiagramAccessibilityTree {
     /// yet, so a notification has nowhere to land, and asking for one is itself what builds them.
     private(set) var hasBeenAsked = false
 
-    func invalidate() {
-        isStale = true
+    // A drag moves a table on every pointer event and changes nothing else, so the elements a client
+    // holds take the new rects in place instead of rebuilding every label and relationship.
+    func sceneDidChange(from old: ERDiagramScene, to new: ERDiagramScene) {
+        guard !isStale else { return }
+        guard old.nodes == new.nodes,
+              old.edges == new.edges,
+              old.selectedNodeIds == new.selectedNodeIds,
+              old.nodeRects.count == new.nodeRects.count
+        else {
+            isStale = true
+            return
+        }
+        for (id, element) in byNode {
+            guard let rect = new.nodeRects[id] else {
+                isStale = true
+                return
+            }
+            element.move(to: rect)
+        }
     }
 
     func elements(for scene: ERDiagramScene, owner: NSView) -> [ERDiagramNodeElement] {

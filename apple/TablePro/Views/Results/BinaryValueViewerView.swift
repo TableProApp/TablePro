@@ -241,7 +241,7 @@ internal struct BinaryValueViewerView: View {
         let (decoded, dump) = await Task.detached(priority: .userInitiated) {
             (
                 BinaryValueDecoding.document(data, format: format),
-                String(data: data, encoding: .isoLatin1)?.formattedAsHexDump() ?? ""
+                data.formattedAsHexDump() ?? ""
             )
         }.value
         guard !Task.isCancelled else { return }

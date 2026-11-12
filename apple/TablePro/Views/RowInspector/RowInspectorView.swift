@@ -138,7 +138,7 @@ internal struct RowInspectorView: View {
 
     private func popOut(field: FieldEditState, text: String, kind: FieldEditorKind) {
         let isEditable = context.isEditable && !context.isRowDeleted && !field.isServerOwned
-        // Captured, not looked up per keystroke: the field's id is reissued on every selection change.
+        // Captured, not looked up per keystroke: the window outlives the selection it opened on.
         let columnIndex = field.columnIndex
         let rowIDs = state.editState.rowIDs
         let commit: ((String) -> Void)? = isEditable
