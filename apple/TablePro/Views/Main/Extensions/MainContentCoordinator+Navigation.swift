@@ -688,10 +688,13 @@ extension MainContentCoordinator {
                 try await dropContainer(target)
                 services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
-                navigationLogger.error(
-                    "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
-                )
-                failures.append((target.name, error.localizedDescription))
+                let failure = GatedOperationFailure(error)
+                if failure.reportsFailure {
+                    navigationLogger.error(
+                        "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
+                    )
+                }
+                if let message = failure.message { failures.append((target.name, message)) }
             }
         }
 

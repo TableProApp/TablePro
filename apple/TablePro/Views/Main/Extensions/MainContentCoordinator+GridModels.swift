@@ -185,6 +185,7 @@ extension MainContentCoordinator {
         configuration.namesDeclaredColumnTypes = tab.tabType == .table
         configuration.appliesRowSortPreferences = true
         configuration.appliesRowCopyFormat = true
+        configuration.colorsValuesByType = true
         configuration.supportsColumnSort = tab.tabType != .table || supportsColumnSort
         configuration.isEditable = isEditable
         configuration.editRefusalMessage = isSelected ? activeResultEditRefusal?.message : nil

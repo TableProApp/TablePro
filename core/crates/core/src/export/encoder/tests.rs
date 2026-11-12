@@ -377,7 +377,11 @@ fn csv_neutralises_text_not_negative_numbers_through_encoder() {
         vec![Value::Text("-12".into())],
     ];
 
-    let out = streamed(CsvEncoder::new(columns, CsvOptions::default()), &rows);
+    let options = CsvOptions {
+        sanitize_formulas: true,
+        ..CsvOptions::default()
+    };
+    let out = streamed(CsvEncoder::new(columns, options), &rows);
 
     assert_eq!(
         out,

@@ -44,6 +44,15 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
 
     public IRawElementProviderSimple Provider(AutomationPeer peer) => ProviderFromPeer(peer);
 
+    // After the edits or the data changed; each held cell whose ItemStatus moved raises the change.
+    public void RefreshStatuses(bool raise)
+    {
+        foreach (var cell in _cells.Values)
+        {
+            cell.RefreshStatus(raise);
+        }
+    }
+
     // Any cell, on screen or not. ScrollItem on the cell brings it into view.
     public IRawElementProviderSimple? GetItem(int row, int column) =>
         row < 0 || row >= RowCount || column < 0 || column >= ColumnCount ? null : ProviderFromPeer(Cell(row, column));
@@ -131,6 +140,8 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
 internal sealed partial class CellAutomationPeer(DataGridView grid, DataGridAutomationPeer gridPeer, int row, int column)
     : AutomationPeer, IGridItemProvider, ITableItemProvider, ISelectionItemProvider, IScrollItemProvider
 {
+    private string _status = grid.CellStatus(row, column);
+
     public int Row => row;
 
     public int Column => column;
@@ -183,11 +194,29 @@ internal sealed partial class CellAutomationPeer(DataGridView grid, DataGridAuto
         }
     }
 
+    public void RefreshStatus(bool raise)
+    {
+        var status = grid.CellStatus(row, column);
+        if (string.Equals(status, _status, StringComparison.Ordinal))
+        {
+            return;
+        }
+        var previous = _status;
+        _status = status;
+        if (raise)
+        {
+            RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty, previous, status);
+        }
+    }
+
     protected override string GetClassNameCore() => "DataGridCell";
 
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.DataItem;
 
     protected override string GetNameCore() => grid.CellName(row, column);
+
+    // The pending change, as the macOS grid's VoiceOver suffixes; the name stays the value.
+    protected override string GetItemStatusCore() => _status = grid.CellStatus(row, column);
 
     protected override bool IsContentElementCore() => true;
 
@@ -288,8 +317,11 @@ internal sealed partial class PaneAutomationPeer(PaneContent owner, DataGridView
 
     protected override bool IsContentElementCore() => false;
 
-    // The grid's peer lists the cells.
-    protected override IList<AutomationPeer>? GetChildrenCore() => null;
+    // The grid's peer lists the cells; a pane holds only an open editor.
+    protected override IList<AutomationPeer>? GetChildrenCore() =>
+        grid.EditorIn(owner.IsFrozen) is { } editor && CreatePeerForElement(editor) is { } peer
+            ? new List<AutomationPeer> { peer }
+            : null;
 
     // XAML passes physical pixels from the window's client area here (ElementProviderFromPointImpl, UIAWindow.cpp).
     protected override object? GetElementFromPointCore(Windows.Foundation.Point pointInWindowCoordinates) =>

@@ -541,7 +541,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTLSClientIdentityTests",
-            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures"],
+            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures", "TableProTestSupport"],
             path: "Tests/TableProTLSClientIdentityTests"
         ),
         .testTarget(

@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../TablePro.DataGrid.Model/TablePro.DataGrid.Model.csproj" />
     <ProjectReference Include="../TablePro.Interop/TablePro.Interop.csproj" />
   </ItemGroup>
 

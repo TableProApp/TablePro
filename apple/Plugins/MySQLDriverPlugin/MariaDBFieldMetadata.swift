@@ -41,7 +41,8 @@ nonisolated internal func mariaDBTypeName(
 
     switch typeRaw {
     case 0: return "DECIMAL"
-    case 1: return "TINYINT"
+    // A BOOLEAN column arrives as TINY with length 1.
+    case 1: return length == 1 ? "TINYINT(1)" : "TINYINT"
     case 2: return "SMALLINT"
     case 3: return "INT"
     case 4: return "FLOAT"
@@ -56,7 +57,8 @@ nonisolated internal func mariaDBTypeName(
     case 13: return "YEAR"
     case 14: return "NEWDATE"
     case 15: return "VARCHAR"
-    case 16: return "BIT"
+    // The width is what tells a one-bit flag from a BIT(8) that reads as a number.
+    case 16: return length > 1 ? "BIT(\(length))" : "BIT"
     case 245: return "JSON"
     case 246: return "DECIMAL"
     case 247: return "ENUM"

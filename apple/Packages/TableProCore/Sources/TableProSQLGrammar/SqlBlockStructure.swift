@@ -23,7 +23,8 @@ public enum SqlBlockStructure {
 
     /// What an `END` means, given the word after it.
     public enum EndFollower: Equatable, Sendable {
-        /// `END IF`, `END LOOP` and their kin close a construct that never opened a block, and the word is theirs.
+        /// `END IF`, `END LOOP` and their kin close a construct that never opened a block, and T-SQL's
+        /// `END CONVERSATION` is a statement that closes nothing. Either way the word is theirs.
         case closesControlFlow
         /// `END CASE` closes the `CASE` that opened a block, and the word is theirs.
         case closesCaseStatement
@@ -48,6 +49,10 @@ public enum SqlBlockStructure {
     /// second opener.
     private static let controlFlowFollowers: Set<String> = ["IF", "LOOP", "WHILE", "FOR", "REPEAT"]
 
+    // T-SQL's `BEGIN DIALOG`, `BEGIN CONVERSATION TIMER` and `END CONVERSATION` are statements, not a block's ends.
+    private static let serviceBrokerFollowers: Set<String> = ["DIALOG", conversationKeyword]
+    private static let conversationKeyword = "CONVERSATION"
+
     /// The keywords a statement has to open with before a `BEGIN` inside it is read as a routine body.
     ///
     /// Only ``SQLRoutineBodyTracker`` consults this, and the reason is safety rather than grammar. An anonymous
@@ -56,7 +61,9 @@ public enum SqlBlockStructure {
     /// single statement whose first word is `BEGIN`, and `QueryClassifier` tiers a statement by its leading keyword,
     /// so a swallowed `DROP` would be tiered a plain write and skip the destructive confirmation. Folding cannot
     /// execute anything, so it takes every block. Oracle, whose anonymous blocks are the everyday form, has its own
-    /// grammar in ``PLSQLUnitTracker`` and a classifier that reads the whole block.
+    /// grammar in ``PLSQLUnitTracker`` and a classifier that reads the whole block. T-SQL reserves `BEGIN`, so its
+    /// blocks open outside a routine too, and the gate tiers every statement inside one through
+    /// ``SQLUnterminatedStatements``.
     private static let routineDefinitionOpeners: Set<String> = ["CREATE", "ALTER", "REPLACE"]
 
     /// What such a statement has to define, for the same reason. `BEGIN` is not reserved on PostgreSQL, MySQL or
@@ -109,6 +116,28 @@ public enum SqlBlockStructure {
     public static func beginStartsTransaction(followedBy keyword: String?) -> Bool {
         guard let keyword else { return true }
         return transactionFollowers.contains(keyword)
+    }
+
+    public static func beginStartsStatement(followedBy keyword: String?, grammar: SQLLexicalGrammar) -> Bool {
+        if beginStartsTransaction(followedBy: keyword) { return true }
+        return readsTSQLBlocks(grammar) && keyword.map(serviceBrokerFollowers.contains) == true
+    }
+
+    // T-SQL closes every block with a bare `END`: in `END IF @x = 1 ...` the `IF` begins the next statement.
+    public static func endingFollowedBy(
+        _ keyword: String,
+        closesCaseExpression: Bool,
+        grammar: SQLLexicalGrammar
+    ) -> EndFollower {
+        guard readsTSQLBlocks(grammar) else {
+            return endingFollowedBy(keyword, closesCaseExpression: closesCaseExpression)
+        }
+        return !closesCaseExpression && keyword == conversationKeyword ? .closesControlFlow : .closesBlock
+    }
+
+    // The grammar whose statements need no `;` between them is T-SQL's, which reserves `BEGIN`, `CASE` and `END`.
+    private static func readsTSQLBlocks(_ grammar: SQLLexicalGrammar) -> Bool {
+        grammar.contains(.unterminatedStatements)
     }
 
     /// What an `END` followed by `keyword` closes.
@@ -260,7 +289,7 @@ public enum SqlBlockStructure {
         let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
         guard cursor < length else { return true }
         guard text.character(at: cursor) != SqlLexer.semicolon else { return true }
-        return beginStartsTransaction(followedBy: readKeyword(text, at: cursor, length: length).text)
+        return beginStartsStatement(followedBy: readKeyword(text, at: cursor, length: length).text, grammar: grammar)
     }
 
     /// Goes by the word after the `END` alone: only folding asks, and it keeps no record of which `CASE` is open.
@@ -273,7 +302,7 @@ public enum SqlBlockStructure {
         let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
         guard cursor < length else { return .closesBlock(resumeAt: offset) }
         let follower = readKeyword(text, at: cursor, length: length)
-        switch endingFollowedBy(follower.text, closesCaseExpression: false) {
+        switch endingFollowedBy(follower.text, closesCaseExpression: false, grammar: grammar) {
         case .closesControlFlow:
             return .none
         case .closesCaseStatement:

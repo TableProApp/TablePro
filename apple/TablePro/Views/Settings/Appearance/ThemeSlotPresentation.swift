@@ -82,25 +82,69 @@ internal struct ThemeSlotPresentation: Equatable {
 internal enum ThemeContrastNote {
     internal static let minimumRatio = 4.5
 
-    internal static func pair(for section: ThemeSlotSection) -> (text: ThemeSlot, background: ThemeSlot)? {
+    // NULL draws a placeholder, not a value. An unset value color is the grid text, which the Data Grid note checks.
+    private static func checks(
+        for section: ThemeSlotSection,
+        in theme: ThemeDefinition
+    ) -> (texts: [ThemeSlot], surfaces: [ThemeColor])? {
         switch section {
-        case .editor: return (.editorText, .editorBackground)
-        case .dataGrid: return (.gridText, .gridBackground)
-        case .window, .syntax, .selection, .changes: return nil
+        case .editor:
+            return ([.editorText], [color(.editorBackground, in: theme).opaque])
+        case .dataGrid:
+            return ([.gridText], [color(.gridBackground, in: theme).opaque])
+        case .values:
+            let explicit = ThemeSlotSection.values.slots.filter { $0 != .gridNullValue && theme.hasExplicitColor($0) }
+            return (explicit, rowSurfaces(in: theme))
+        case .window, .syntax, .selection, .changes:
+            return nil
         }
     }
 
-    internal static func ratio(for section: ThemeSlotSection, in theme: ThemeDefinition) -> Double? {
-        guard let pair = pair(for: section) else { return nil }
-        let background = ThemeSlotPresentation.displayColor(for: pair.background, in: theme).opaque
-        let text = ThemeSlotPresentation.displayColor(for: pair.text, in: theme).composited(over: background)
-        return text.contrastRatio(with: background)
+    // Alternate rows are on by default, and a modified cell or an inserted row washes either row.
+    private static func rowSurfaces(in theme: ThemeDefinition) -> [ThemeColor] {
+        let background = color(.gridBackground, in: theme).opaque
+        let rows = [background, color(.gridAlternateRow, in: theme).composited(over: background)]
+        let washes = [color(.gridModified, in: theme), color(.gridInserted, in: theme)]
+        return rows + washes.flatMap { wash in rows.map { wash.composited(over: $0) } }
+    }
+
+    internal static func lowest(for section: ThemeSlotSection, in theme: ThemeDefinition) -> (slot: ThemeSlot, ratio: Double)? {
+        guard let checks = checks(for: section, in: theme) else { return nil }
+        return checks.texts
+            .map { slot in
+                let text = color(slot, in: theme)
+                let ratios = checks.surfaces.map { text.composited(over: $0).contrastRatio(with: $0) }
+                return (slot: slot, ratio: ratios.min() ?? .infinity)
+            }
+            .min { $0.ratio < $1.ratio }
+    }
+
+    private static func color(_ slot: ThemeSlot, in theme: ThemeDefinition) -> ThemeColor {
+        ThemeSlotPresentation.displayColor(for: slot, in: theme)
     }
 
     internal static func message(for section: ThemeSlotSection, in theme: ThemeDefinition) -> String? {
-        guard let ratio = ratio(for: section, in: theme), ratio < minimumRatio else { return nil }
-        let formatted = ratio.formatted(.number.precision(.fractionLength(1)))
-        return String(format: String(localized: "Text contrast is %@:1. Aim for at least 4.5:1."), formatted)
+        guard let lowest = lowest(for: section, in: theme), lowest.ratio < minimumRatio else { return nil }
+        let formatted = lowest.ratio.formatted(.number.precision(.fractionLength(1)))
+        switch section {
+        case .values:
+            return String(
+                format: String(localized: "%1$@ contrast is %2$@:1. Aim for at least 4.5:1."),
+                lowest.slot.label,
+                formatted
+            )
+        case .window, .editor, .syntax, .dataGrid, .selection, .changes:
+            return String(format: String(localized: "Text contrast is %@:1. Aim for at least 4.5:1."), formatted)
+        }
+    }
+}
+
+internal enum ThemeValueColorsNote {
+    internal static func message(for section: ThemeSlotSection, colorsValuesByType: Bool) -> String? {
+        guard section == .values, !colorsValuesByType else { return nil }
+        return String(
+            localized: "Except NULL and booleans, these colors show in the grid only while Color values by type is on in Settings > Data."
+        )
     }
 }
 

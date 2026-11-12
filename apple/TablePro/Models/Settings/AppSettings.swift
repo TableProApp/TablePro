@@ -74,7 +74,6 @@ struct AppearanceSettings: Codable, Equatable {
 
 // MARK: - Data Grid Settings
 
-/// Row height options for data grid
 enum DataGridRowHeight: Int, Codable, CaseIterable, Identifiable {
     case compact = 20
     case normal = 24
@@ -132,7 +131,6 @@ enum RowCopyFormat: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Data grid settings
 struct DataGridSettings: Codable, Equatable {
     var rowHeight: DataGridRowHeight
     var dateFormat: DateFormatOption
@@ -259,25 +257,22 @@ struct DataGridSettings: Codable, Equatable {
 
     // MARK: - Validated Properties
 
-    /// Validated and sanitized nullDisplay (max 20 chars, no newlines)
     var validatedNullDisplay: String {
         let sanitized = nullDisplay.sanitized
         let maxLength = SettingsValidationRules.nullDisplayMaxLength
 
         if sanitized.isEmpty {
-            return "NULL" // Fallback to default
+            return "NULL"
         } else if sanitized.count > maxLength {
             return String(sanitized.prefix(maxLength))
         }
         return sanitized
     }
 
-    /// Validated defaultPageSize (10 to 100,000)
     var validatedDefaultPageSize: Int {
         defaultPageSize.clamped(to: SettingsValidationRules.defaultPageSizeRange)
     }
 
-    /// Validation error for nullDisplay (for UI feedback)
     var nullDisplayValidationError: String? {
         let sanitized = nullDisplay.sanitized
         let maxLength = SettingsValidationRules.nullDisplayMaxLength
@@ -292,7 +287,6 @@ struct DataGridSettings: Codable, Equatable {
         return nil
     }
 
-    /// Validation error for defaultPageSize (for UI feedback)
     var defaultPageSizeValidationError: String? {
         let range = SettingsValidationRules.defaultPageSizeRange
         if defaultPageSize < range.lowerBound || defaultPageSize > range.upperBound {
@@ -301,13 +295,11 @@ struct DataGridSettings: Codable, Equatable {
         return nil
     }
 
-    /// Validated queryResultRowCap (100 to 500,000; 0 means unlimited)
     var validatedQueryResultRowCap: Int {
         if queryResultRowCap == 0 { return 0 }
         return queryResultRowCap.clamped(to: SettingsValidationRules.queryResultRowCapRange)
     }
 
-    /// Validation error for queryResultRowCap (for UI feedback)
     var queryResultRowCapValidationError: String? {
         let range = SettingsValidationRules.queryResultRowCapRange
         if queryResultRowCap != 0 && (queryResultRowCap < range.lowerBound || queryResultRowCap > range.upperBound) {
@@ -321,18 +313,31 @@ struct DataGridSettings: Codable, Equatable {
     }
 }
 
+// MARK: - Value Color Settings
+
+struct ValueColorSettings: Codable, Equatable {
+    var colorsValuesByType: Bool
+
+    static let `default` = ValueColorSettings()
+
+    init(colorsValuesByType: Bool = false) {
+        self.colorsValuesByType = colorsValuesByType
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        colorsValuesByType = container.decodeSetting(.colorsValuesByType, default: Self.default.colorsValuesByType)
+    }
+}
+
 // MARK: - History Settings
 
-/// History settings
 struct HistorySettings: Codable, Equatable {
     var maxEntries: Int // 0 = unlimited
     var maxDays: Int // 0 = unlimited
     var autoCleanup: Bool
 
-    /// Keep what rows looked like before each save, so a committed save can be restored.
-    ///
-    /// This is the only setting in the app that governs storing real row values on disk, which is
-    /// why it is a switch rather than an assumption.
+    // The only setting that governs storing real row values on disk, so it is a switch rather than an assumption.
     var keepRewindHistory: Bool
 
     static let `default` = HistorySettings(
@@ -359,17 +364,14 @@ struct HistorySettings: Codable, Equatable {
 
     // MARK: - Validated Properties
 
-    /// Validated maxEntries (>= 0)
     var validatedMaxEntries: Int {
         max(0, maxEntries)
     }
 
-    /// Validated maxDays (>= 0)
     var validatedMaxDays: Int {
         max(0, maxDays)
     }
 
-    /// Validation error for maxEntries
     var maxEntriesValidationError: String? {
         if maxEntries < 0 {
             return String(localized: "Maximum entries cannot be negative")
@@ -377,7 +379,6 @@ struct HistorySettings: Codable, Equatable {
         return nil
     }
 
-    /// Validation error for maxDays
     var maxDaysValidationError: String? {
         if maxDays < 0 {
             return String(localized: "Maximum days cannot be negative")
@@ -388,11 +389,9 @@ struct HistorySettings: Codable, Equatable {
 
 // MARK: - Tab Settings
 
-/// Tab behavior settings
 struct TabSettings: Codable, Equatable {
     var enablePreviewTabs: Bool = true
-    /// What the strip does once the tabs stop fitting. `scroll` is the system's answer and the
-    /// default: every tab bar Apple ships keeps one row and scrolls it.
+    // `scroll` is the system's answer: every tab bar Apple ships keeps one row and scrolls it.
     var overflow: EditorTabStripOverflow = .scroll
     /// Off by default: the location makes a table tab's title several times longer than the
     /// table's name, and a tab at its minimum width then truncates it.

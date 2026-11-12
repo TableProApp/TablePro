@@ -14,7 +14,8 @@ extension DatabaseManager {
     func executePrincipalChanges(
         changes: [PrincipalChange],
         databaseType: DatabaseType,
-        connectionId: UUID
+        connectionId: UUID,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
@@ -39,7 +40,7 @@ extension DatabaseManager {
                 ? .destructiveQuery
                 : .schemaMutation
 
-            let authorization = await ExecutionGateProvider.shared.authorize(
+            let authorization = await gate.authorize(
                 OperationRequest(
                     connectionId: connectionId,
                     databaseType: databaseType,
@@ -50,12 +51,7 @@ extension DatabaseManager {
                     operationDescription: String(localized: "Apply User and Role Changes")
                 )
             )
-            guard case .authorized = authorization else {
-                throw DatabaseError.queryFailed(
-                    authorization.deniedReason
-                        ?? String(localized: "User and role changes were not authorized")
-                )
-            }
+            if let denial = authorization.denialError { throw denial }
 
             /// Reported whether or not every statement ran: an engine that cannot roll principal
             /// statements back keeps the ones before a failure, and `DROP OWNED` among them drops objects.

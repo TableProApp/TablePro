@@ -63,7 +63,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        var supported: PluginCapabilities = [.truncateTable, .cancelQuery]
+        var supported: PluginCapabilities = [.truncateTable, .cancelQuery, .columnDefaultMarks]
         if redisConnection?.supportsTransactions ?? true { supported.insert(.transactions) }
         return supported
     }
@@ -561,11 +561,13 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         default:
             let startTime = Date()
             let result = try await executeOperation(operation, connection: conn, startTime: startTime)
-            continuation.yield(.header(PluginStreamHeader(
+            var header = PluginStreamHeader(
                 columns: result.columns,
                 columnTypeNames: result.columnTypeNames,
                 estimatedRowCount: nil
-            )))
+            )
+            if result.isTruncated { header.rowLimit = result.rows.count }
+            continuation.yield(.header(header))
             if !result.rows.isEmpty {
                 continuation.yield(.rows(result.rows))
             }
@@ -655,6 +657,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
         let partitioned = redisConnection?.partitionsKeyspace == true
         let generator = RedisStatementGenerator(
             namespaceName: table,

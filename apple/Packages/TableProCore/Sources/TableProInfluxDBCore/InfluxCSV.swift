@@ -6,43 +6,55 @@ import Foundation
 enum InfluxCSV {
     static func records(_ data: Data) -> [[String]] {
         var reader = Reader()
-        data.withUnsafeBytes { reader.read($0) }
+        reader.read(data)
         return reader.finish()
     }
 
-    private struct Reader {
-        var records: [[String]] = []
-        var record: [String] = []
-        var field: [UInt8] = []
-        var inQuotes = false
-        var lineHasContent = false
+    // Holds its state between reads, so a body can be split anywhere: inside a quoted field, between the two quotes of
+    // an escaped one, or between the CR and LF of one line end.
+    struct Reader {
+        private var records: [[String]] = []
+        private var record: [String] = []
+        private var field: [UInt8] = []
+        private var inQuotes = false
+        // A quote right after the one that closed a quoted field is an escaped quote inside it.
+        private var closedQuote = false
+        // An LF right after the CR that ended a record is the same line end.
+        private var endedOnCarriageReturn = false
+        private var lineHasContent = false
+
+        mutating func read(_ data: Data) {
+            data.withUnsafeBytes { read($0) }
+        }
 
         mutating func read(_ bytes: UnsafeRawBufferPointer) {
-            var index = 0
-            while index < bytes.count {
-                let byte = bytes[index]
-                index += 1
+            for byte in bytes {
+                if endedOnCarriageReturn {
+                    endedOnCarriageReturn = false
+                    if byte == Self.lineFeed { continue }
+                }
                 if inQuotes {
-                    if byte == Self.quote, index < bytes.count, bytes[index] == Self.quote {
-                        field.append(Self.quote)
-                        index += 1
-                    } else if byte == Self.quote {
+                    if byte == Self.quote {
                         inQuotes = false
+                        closedQuote = true
                     } else {
                         field.append(byte)
                     }
                     continue
                 }
+                let afterClosingQuote = closedQuote
+                closedQuote = false
                 switch byte {
                 case Self.quote:
+                    if afterClosingQuote { field.append(Self.quote) }
                     inQuotes = true
                     lineHasContent = true
                 case Self.comma:
                     endField()
                     lineHasContent = true
                 case Self.carriageReturn:
-                    if index < bytes.count, bytes[index] == Self.lineFeed { index += 1 }
                     endRecord()
+                    endedOnCarriageReturn = true
                 case Self.lineFeed:
                     endRecord()
                 default:
@@ -52,9 +64,16 @@ enum InfluxCSV {
             }
         }
 
+        // The records completed so far. One still open stays for the next read.
+        mutating func drain() -> [[String]] {
+            let completed = records
+            records = []
+            return completed
+        }
+
         mutating func finish() -> [[String]] {
             if lineHasContent || !record.isEmpty { endRecord() }
-            return records
+            return drain()
         }
 
         private mutating func endField() {

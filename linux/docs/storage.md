@@ -136,7 +136,7 @@ nothing reaches outside it.
 |---|---|
 | `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
 | `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
-| `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
+| `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json`, version 2: each table's filter, and the schemas each connection's sidebar lists, per database. Version 1 had no sidebar filters |
 | `highlight_rules_file()` | `$XDG_CONFIG_HOME/<dir>/highlight_rules.json`: ordered rules for each table |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |
@@ -340,6 +340,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `window-width` | `i` | `1200` | 360 to 32767 |
 | `window-height` | `i` | `760` | 294 to 32767 |
 | `is-maximized` | `b` | `false` | |
+| `sidebar-width` | `d` | `280` | 220 to 1200, in sp: the most the sidebar takes |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `show-alternate-rows` | `b` | `true` | |
 | `show-row-numbers` | `b` | `true` | |
@@ -379,7 +380,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `csv-null-to-empty` | `b` | `true` | |
 | `csv-line-break-to-space` | `b` | `false` | |
 | `csv-header-row` | `b` | `true` | |
-| `csv-sanitize-formulas` | `b` | `true` | |
+| `csv-sanitize-formulas` | `b` | `false` | |
 | `csv-delimiter` | enum | `comma` | comma, semicolon, tab, pipe |
 | `csv-quote` | enum | `if-needed` | always, if-needed, never |
 | `csv-line-break` | enum | `lf` | lf, crlf, cr |

@@ -38,7 +38,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.parameterizedQueries, .cancelQuery, .truncateTable, .multiSchema]
+        [.parameterizedQueries, .cancelQuery, .truncateTable, .multiSchema, .columnDefaultMarks]
     }
 
     var serverVersion: String? {

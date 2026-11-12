@@ -216,6 +216,8 @@ extension QueryExecutionCoordinator {
                     route: DatabaseManager.shared.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
                 ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
+                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                    await DatabaseManager.shared.noteSessionStatements([statement.sql], ranOn: driver, scope: scope)
                     let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,
@@ -291,6 +293,7 @@ extension QueryExecutionCoordinator {
                         if let loggedStatement {
                             recordStatementCancelled(loggedStatement, tabId: tabId, startedAt: claim.startedAt)
                         }
+                        parent.reportStopRollback(error, tabId: tabId)
                         return
                     }
                     parent.tabManager.mutate(tabId: tabId) { tab in
@@ -304,6 +307,7 @@ extension QueryExecutionCoordinator {
                         if let loggedStatement {
                             recordStatementCancelled(loggedStatement, tabId: tabId, startedAt: claim.startedAt)
                         }
+                        parent.reportStopRollback(error, tabId: tabId)
                         return
                     }
                     handleQueryExecutionError(
@@ -445,7 +449,7 @@ extension QueryExecutionCoordinator {
             case .completed(let ran), .cancelled(let ran), .failed(let ran, _, _):
                 results = ran
             }
-            let built = await buildStatementRows(zip(sent, results).map { (sql: $0.originalSQL as String?, result: $1) }, tabId: tabId)
+            let built = await buildShownStatementRows(sent, results: results, tabId: tabId)
 
             switch outcome {
             case .cancelled(let results):
@@ -579,6 +583,10 @@ extension QueryExecutionCoordinator {
                         )
                     }
                 }
+                let sent = await running.prepared
+                await DatabaseManager.shared.noteSessionStatements(
+                    sent.prefix(outcome.ranCount(of: sent.count)).map(\.sentSQL), ranOn: driver, scope: scope
+                )
                 guard sessionPlan == .sessionTransaction else {
                     let endState: PluginSessionTransactionState = asksEndState
                         ? await driver.heldSessionTransactionState()
@@ -637,6 +645,21 @@ extension QueryExecutionCoordinator {
         )
     }
 
+    // Only the statements the plan shows on a result of their own have their rows built.
+    private func buildShownStatementRows(
+        _ sent: [PreparedStatement],
+        results: [QueryResult],
+        tabId: UUID
+    ) async -> StatementRowsBuild {
+        let resultPlan = RunResultPlan(producesRows: results.map { !$0.columns.isEmpty })
+        return await buildStatementRows(
+            zip(sent, results).enumerated().map { index, pair in
+                resultPlan.showsRows(ofStatement: index) ? (sql: pair.0.originalSQL as String?, result: pair.1) : nil
+            },
+            tabId: tabId
+        )
+    }
+
     /// A Stop cannot take back what a plan without a transaction already committed, so the results
     /// and the history of the statements that ran stay rather than being dropped with the run.
     private func keepStoppedStatements(
@@ -651,8 +674,9 @@ extension QueryExecutionCoordinator {
             return
         }
         recordExecutedStatements(history, tabId: tabId, commitOutcomeIsUnknown: false)
-        let resultSets = statementResultSets(history, tabId: tabId, built: built)
-        let finished = Self.runLogEntries(history.prepared, resultSets: resultSets)
+        let mapped = statementResultSets(history, tabId: tabId, built: built)
+        let resultSets = mapped.all
+        let finished = Self.runLogEntries(history, resultSets: resultSets, plan: mapped.plan)
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming.batch(of: history.results),
@@ -681,9 +705,26 @@ extension QueryExecutionCoordinator {
     }
 
     // Read before the run's notice is added to each result, so the log carries the notice once rather than per statement.
-    private static func runLogEntries(_ prepared: [PreparedStatement], resultSets: [ResultSet]) -> [QueryRunLogEntry] {
-        zip(prepared, resultSets).map { statement, resultSet in
-            QueryRunLogEntry(statement: statement.originalSQL, resultSet: resultSet)
+    private static func runLogEntries(
+        _ history: ExecutedStatementHistory,
+        resultSets: [ResultSet],
+        plan: RunResultPlan
+    ) -> [QueryRunLogEntry] {
+        let summary = zip(plan.entries, resultSets).first { entry, _ in
+            if case .summary = entry { return true }
+            return false
+        }?.1
+        return zip(history.prepared, history.results).enumerated().map { index, pair in
+            let (statement, result) = pair
+            if let position = plan.position(ofStatement: index), resultSets.indices.contains(position) {
+                var entry = QueryRunLogEntry(statement: statement.originalSQL, resultSet: resultSets[position])
+                // The plan's dropped-results notice is on every result; the log keeps the statement's own message.
+                entry.statusMessage = result.statusMessage
+                return entry
+            }
+            var entry = QueryRunLogEntry(statement: statement.originalSQL, result: result)
+            entry.resultSetId = plan.summarizes(statement: index) ? summary?.id : nil
+            return entry
         }
     }
 
@@ -709,8 +750,9 @@ extension QueryExecutionCoordinator {
             )
         )
         recordExecutedStatements(history, tabId: tabId, commitOutcomeIsUnknown: false)
-        let resultSets = statementResultSets(history, tabId: tabId, built: built)
-        let finished = Self.runLogEntries(history.prepared, resultSets: resultSets)
+        let mapped = statementResultSets(history, tabId: tabId, built: built)
+        let resultSets = mapped.all
+        let finished = Self.runLogEntries(history, resultSets: resultSets, plan: mapped.plan)
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming.batch(of: history.results),
@@ -721,25 +763,39 @@ extension QueryExecutionCoordinator {
         recordRunLog(finished, tabId: tabId, startedAt: claim.startedAt, notice: sessionNotice)
     }
 
-    private func statementResultSets(_ history: ExecutedStatementHistory, tabId: UUID, built: StatementRowsBuild) -> [ResultSet] {
+    // Only the statements the plan keeps become results, so a long script builds a few, not one per statement.
+    private func statementResultSets(
+        _ history: ExecutedStatementHistory,
+        tabId: UUID,
+        built: StatementRowsBuild
+    ) -> (all: [ResultSet], plan: RunResultPlan) {
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
         let reading = parent.tableNameReading
-        return zip(history.prepared, history.results).enumerated().map { index, pair in
-            let (statement, result) = pair
-            return makeStatementResultSet(
-                result: result,
-                sql: statement.originalSQL,
-                index: firstNumber + index,
-                baseQuery: statement.executableSQL,
-                baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
-                namedParameterStatement: statement.parameterValues == nil
-                    ? nil
-                    : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
-                tabId: tabId,
-                anchor: statement.anchor,
-                built: built.statement(at: index, readBy: reading)
-            )
+        let ran = Array(zip(history.prepared, history.results))
+        let plan = RunResultPlan(producesRows: ran.map { !$0.1.columns.isEmpty })
+        let resultSets = plan.entries.enumerated().map { position, entry -> ResultSet in
+            switch entry {
+            case .summary(let indices):
+                return makeRunSummaryResultSet(indices.map { RunSummaryPart(ran[$0].1) })
+            case .statement(let index):
+                let (statement, result) = ran[index]
+                return makeStatementResultSet(
+                    result: result,
+                    sql: statement.originalSQL,
+                    index: firstNumber + position,
+                    baseQuery: statement.executableSQL,
+                    baseQueryParameterValues: statement.parameterValues?.map(TypedParameterValue.kept),
+                    namedParameterStatement: statement.parameterValues == nil
+                        ? nil
+                        : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
+                    tabId: tabId,
+                    anchor: statement.anchor,
+                    built: built.statement(at: index, readBy: reading)
+                )
+            }
         }
+        appendDroppedNotice(of: plan, to: resultSets)
+        return (resultSets, plan)
     }
 
     /// A commit whose connection died before the answer leaves every statement of the batch in a
@@ -844,7 +900,7 @@ extension QueryExecutionCoordinator {
                 recordStatementRun(originalSQL ?? sql, tabId: tabId, startedAt: claim.startedAt)
             }
 
-            let parameterValues = nativeParameters.map { $0 as? String }
+            let parameterValues = nativeParameters.map(TypedParameterValue.kept)
             let statement = originalSQL.map { NamedParameterStatement(sql: $0, parameters: originalParameters) }
             parent.tabManager.mutate(tabId: tabId) {
                 $0.pagination.baseQueryParameterValues = parameterValues
@@ -896,7 +952,8 @@ extension QueryExecutionCoordinator {
         )
 
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
-        let resultSets = statementResultSets(history, tabId: tabId, built: built)
+        let mapped = statementResultSets(history, tabId: tabId, built: built)
+        let resultSets = mapped.all
         parent.tabManager.mutate(tabId: tabId) { tab in
             // The Error result carries the failure, so the banner stays on it rather than over every other result.
             tab.execution.errorMessage = nil
@@ -919,7 +976,7 @@ extension QueryExecutionCoordinator {
         recordRunLog(
             QueryRunLog.entries(
                 statements: history.prepared.map(\.originalSQL),
-                finished: Self.runLogEntries(history.prepared, resultSets: resultSets),
+                finished: Self.runLogEntries(history, resultSets: resultSets, plan: mapped.plan),
                 ending: .failed(
                     statement: report.failedStatementIndex
                         .flatMap { history.prepared.indices.contains($0) ? history.prepared[$0].originalSQL : nil }

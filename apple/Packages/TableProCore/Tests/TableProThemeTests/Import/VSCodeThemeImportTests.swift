@@ -169,13 +169,38 @@ struct VSCodeThemeImportTests {
             {"colors": {
               "editor.background": "#202020",
               "editor.foreground": "#E0E0E0"
-            }, "tokenColors": [{"scope": "constant.language.boolean", "settings": {"foreground": "#E0E0E0"}}]}
+            }, "tokenColors": [
+              {"scope": "constant.language.boolean", "settings": {"foreground": "#E0E0E0"}},
+              {"scope": "string", "settings": {"foreground": "#E0E0E0"}}
+            ]}
             """
         )
 
         #expect(theme.hex(.gridBoolTrue) == nil)
         #expect(theme.hex(.gridBoolFalse) == nil)
+        #expect(theme.hex(.gridString) == nil)
         #expect(theme.value(for: .gridBoolTrue) == .themed(ThemeColor(red: 0xE0, green: 0xE0, blue: 0xE0)))
+        #expect(theme.value(for: .gridString) == .themed(ThemeColor(red: 0xE0, green: 0xE0, blue: 0xE0)))
+    }
+
+    @Test("String and number rules color the grid's strings and numbers, and the other value types follow the text")
+    func stringAndNumberRulesColorGridValues() throws {
+        let theme = try Self.theme(
+            """
+            {"colors": {"editor.background": "#1E1E1E", "editor.foreground": "#D4D4D4"}, "tokenColors": [
+              {"scope": "string", "settings": {"foreground": "#CE9178"}},
+              {"scope": "constant.numeric", "settings": {"foreground": "#B5CEA8"}}
+            ]}
+            """
+        )
+        let text = ThemeColor(red: 0xD4, green: 0xD4, blue: 0xD4)
+
+        #expect(theme.hex(.gridString) == "#CE9178")
+        #expect(theme.hex(.gridNumber) == "#B5CEA8")
+        for slot in [ThemeSlot.gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum] {
+            #expect(theme.hex(slot) == nil, "\(slot)")
+            #expect(theme.value(for: slot) == .themed(text), "\(slot)")
+        }
     }
 
     @Test("A VS Code theme's table header, list selection and focus colors import as set, even where they match the grid")

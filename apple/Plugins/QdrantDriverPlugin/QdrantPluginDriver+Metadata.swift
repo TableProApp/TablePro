@@ -184,11 +184,16 @@ extension QdrantPluginDriver {
         switch change.type {
         case .insert:
             guard insertedRowIndices.contains(change.rowIndex) else { return nil }
+            // A cell left to the default has no text, so the point leaves it out and a defaulted id gets a new one.
             let cells: [QdrantCell]
             if let row = insertedRowData[change.rowIndex] {
-                cells = zip(columns, row).map { QdrantCell(column: $0, text: $1.asText) }
+                cells = zip(columns, row).enumerated().map { index, cell in
+                    QdrantCell(column: cell.0, text: change.isColumnDefault(index) ? nil : cell.1.asText)
+                }
             } else {
-                cells = change.cellChanges.map { QdrantCell(column: $0.columnName, text: $0.newValue.asText) }
+                cells = change.cellChanges.map {
+                    QdrantCell(column: $0.columnName, text: change.isColumnDefault($0.columnIndex) ? nil : $0.newValue.asText)
+                }
             }
             return QdrantRowChange(kind: .insert, rowIndex: change.rowIndex, id: nil, cells: cells)
         case .update:

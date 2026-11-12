@@ -18,6 +18,7 @@ final class DataBrowserViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DataBrowserViewModel")
 
     private let buffer: StreamingResultBuffer
+    private let textBudgetBytes: @MainActor () -> Int
     private(set) var totalRows: Int?
     private(set) var phase: Phase = .idle
     private(set) var executionTime: TimeInterval = 0
@@ -63,8 +64,12 @@ final class DataBrowserViewModel {
         case found
     }
 
-    init(windowCapacity: Int = 1_000) {
+    init(
+        windowCapacity: Int = 1_000,
+        textBudgetBytes: @escaping @MainActor () -> Int = { MemoryPressureMonitor.shared.textBudgetBytes() }
+    ) {
         self.buffer = StreamingResultBuffer(capacity: windowCapacity)
+        self.textBudgetBytes = textBudgetBytes
         self.pagination = PaginationState(pageSize: AppPreferences.defaultPageSize, currentPage: 0)
     }
 
@@ -259,7 +264,9 @@ final class DataBrowserViewModel {
             pagination.totalRows = page.totalCount
 
             let result = page.result
-            await loadPage(options: pageOptions(lazyContext: nil), startedAt: start, generation: generation) { options in
+            // A key's values have no key of their own to be read again by, so they stay whole within a budget.
+            let keyOptions = pageOptions(lazyContext: nil, textBudget: TextBudget(bytes: textBudgetBytes()))
+            await loadPage(options: keyOptions, startedAt: start, generation: generation) { options in
                 QueryResultStreaming.stream(options: options) { result }
             }
             guard isCurrent(generation) else { return }
@@ -284,12 +291,13 @@ final class DataBrowserViewModel {
         pagination.totalRows = pagination.currentOffset + legacyRows.count
     }
 
-    private func pageOptions(lazyContext: LazyContext?) -> StreamOptions {
+    private func pageOptions(lazyContext: LazyContext?, textBudget: TextBudget? = nil) -> StreamOptions {
         StreamOptions(
             textTruncationBytes: 4_096,
             inlineBinary: false,
             maxRows: pagination.pageSize,
-            lazyContext: lazyContext
+            lazyContext: lazyContext,
+            textBudget: textBudget
         )
     }
 
@@ -327,14 +335,24 @@ final class DataBrowserViewModel {
         )
     }
 
-    // SQL Server's `OFFSET FETCH` requires `ORDER BY`. Without a user sort, a key column keeps paging stable.
+    // The whole key orders the page, after the user's sort as its tiebreak. PostgreSQL and ClickHouse return an
+    // unpredictable subset for LIMIT and OFFSET without an order, so Next Page repeats and skips rows; a ClickHouse key
+    // need not be unique, so rows that share one can still trade places. SQL Server and Oracle `OFFSET FETCH` needs an
+    // ORDER BY, so a keyless table there sorts by its first column. Redshift keys are not enforced and its sort is a full
+    // sort, so it pages as it scans.
     private func effectiveSortState() -> SortState {
-        if sortState.isSorting { return sortState }
-        guard databaseType == .mssql || databaseType == .oracle else { return sortState }
-        let fallback = columnDetails.first(where: \.isPrimaryKey)?.name ?? columnDetails.first?.name
-        guard let fallback else { return sortState }
-        return SortState(columns: [SortColumn(name: fallback, ascending: true)])
+        guard Self.keyOrderedPaging.contains(databaseType) else { return sortState }
+        var keyColumns = columnDetails.filter(\.isPrimaryKey).map(\.name)
+        if keyColumns.isEmpty, !sortState.isSorting, databaseType == .mssql || databaseType == .oracle,
+           let first = columnDetails.first {
+            keyColumns = [first.name]
+        }
+        let tiebreak = keyColumns.filter { key in !sortState.columns.contains { $0.name == key } }
+        guard !tiebreak.isEmpty else { return sortState }
+        return SortState(columns: sortState.columns + tiebreak.map { SortColumn(name: $0, ascending: true) })
     }
+
+    private static let keyOrderedPaging: Set<DatabaseType> = [.postgresql, .clickhouse, .mssql, .oracle]
 
     private func readRequest(table: TableInfo) -> TableReadRequest {
         TableReadRequest(
@@ -349,11 +367,7 @@ final class DataBrowserViewModel {
     }
 
     private func searchableColumns() -> [ColumnInfo] {
-        columns.filter { col in
-            let upper = col.typeName.uppercased()
-            return !upper.contains("BLOB") && !upper.contains("BYTEA") && !upper.contains("BINARY")
-                && !upper.contains("VARBINARY") && !upper.contains("IMAGE")
-        }
+        columns.filter { !Cell.holdsBytes(typeName: $0.typeName) }
     }
 
     private func fetchTotalRows(session: ConnectionSession, table: TableInfo, generation: Int) async {
@@ -486,6 +500,29 @@ final class DataBrowserViewModel {
             recovery: nil,
             underlying: nil
         )
+    }
+
+    // Where the rows on screen were read. Another window's switch re-attaches the browser to another schema, where the
+    // same key names another row.
+    struct RowSource: Equatable {
+        let driver: ObjectIdentifier?
+        let schema: String?
+    }
+
+    var rowSource: RowSource {
+        RowSource(driver: session.map { ObjectIdentifier($0.driver) }, schema: schema)
+    }
+
+    func refusesDelete(raisedOn source: RowSource) -> Bool {
+        guard source != rowSource else { return false }
+        operationError = AppError(
+            category: .query,
+            title: String(localized: "Row Not Deleted"),
+            message: String(localized: "The connection moved to another database or schema. Choose the row again."),
+            recovery: nil,
+            underlying: nil
+        )
+        return true
     }
 
     func deleteRow(_ locator: RowLocator) async -> Bool {

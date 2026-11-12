@@ -59,6 +59,22 @@
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="NewWindow" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
+                <!-- A table tab's pending changes; the keys live here only, so one press never runs twice. -->
+                <MenuFlyoutItem x:Uid="MenuSaveChanges" x:Name="MenuSaveChanges" Click="OnSaveChanges" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="S" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuDiscardChanges" x:Name="MenuDiscardChanges" Click="OnDiscardChanges" IsEnabled="False" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuExportResults" x:Name="MenuExportResults" Click="OnExportResults" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Download" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="E" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuSettings" x:Name="MenuSettings" Click="OnShowSettings">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Setting" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
@@ -88,6 +104,23 @@
                 <MenuFlyoutItem x:Uid="MenuFind" x:Name="MenuFind" Click="OnFind" KeyboardAcceleratorTextOverride="Ctrl+F">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Find" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuAddRow" x:Name="MenuAddRow" Click="OnAddRow" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="N" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuDuplicateRow" x:Name="MenuDuplicateRow" Click="OnDuplicateRow" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Copy" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="D" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <!-- The grid takes Delete itself, so the menu only names the key. -->
+                <MenuFlyoutItem x:Uid="MenuDeleteRows" x:Name="MenuDeleteRows" Click="OnDeleteRows" IsEnabled="False" KeyboardAcceleratorTextOverride="Delete">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Delete" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
             </MenuBarItem>
 
             <MenuBarItem x:Uid="ViewMenu" x:Name="ViewMenu">
@@ -107,6 +140,7 @@
                         <KeyboardAccelerator Modifiers="Control" Key="P" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
+                <ToggleMenuFlyoutItem x:Uid="MenuShowHistory" x:Name="MenuShowHistory" Click="OnToggleHistory" IsEnabled="False" />
             </MenuBarItem>
 
             <MenuBarItem x:Uid="DatabaseMenu" x:Name="DatabaseMenu">
@@ -140,6 +174,19 @@
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Stop" /></MenuFlyoutItem.Icon>
                     <MenuFlyoutItem.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Shift" Key="F5" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Filter" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="F" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuPreviewSql" x:Name="MenuPreviewSql" Click="OnPreviewSql" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Preview" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="P" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
             </MenuBarItem>

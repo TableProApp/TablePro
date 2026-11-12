@@ -103,10 +103,10 @@ internal struct TableListingTabView: View {
     // A shell command's rows, such as a Redis SCAN page, name no object: they stay plain values in the grid.
     private var rowsGrid: some View {
         DataGridView(model: model.grid.model)
-            .onAppear { model.grid.model.configuration = configuration }
+            .onAppear { model.grid.model.configuration = Self.gridConfiguration(databaseType: databaseType) }
     }
 
-    private var configuration: DataGridConfiguration {
+    static func gridConfiguration(databaseType: DatabaseType) -> DataGridConfiguration {
         var configuration = DataGridConfiguration()
         configuration.traits = DataGridEngineTraits(databaseType: databaseType)
         configuration.showRowNumbers = true

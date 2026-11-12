@@ -5,6 +5,8 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("Credential lease routing", .serialized)
@@ -60,6 +62,35 @@ struct CredentialLeaseRoutingTests {
         #expect(manager.activeSessions[connection.id]?.driver === home)
     }
 
+    @Test("A lane closed for its ending lease reports the session state the user set up on it")
+    func vaultRotationReportsSessionState() async {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let home = MockDatabaseDriver(connection: connection)
+        let lane = MockDatabaseDriver(connection: connection)
+        lane.sessionTransactionStateToReturn = .idle
+        var session = ConnectionSession(connection: connection)
+        session.driver = home
+        session.status = .connected
+        let manager = DatabaseManager.shared
+        manager.injectSession(session, for: connection.id)
+        manager.sessionLanes.park(lane, database: "logs", for: connection.id)
+        defer {
+            manager.sessionLanes.closeAll(for: connection.id)
+            manager.removeSession(for: connection.id)
+        }
+        let key = SessionTransactionTracker.Key(connectionId: connection.id, lane: "logs")
+        manager.sessionStateLedger.record(SQLSessionStateEffect(creates: .preparedStatements), on: lane, for: key)
+
+        await manager.credentialLeaseEnding(ending(connection.id, lane))
+
+        #expect(lane.disconnectCallCount == 1)
+        #expect(manager.sessionStateLedger.state(heldBy: lane, for: connection.id).isEmpty)
+        #expect(
+            manager.sessionLanes.takeLoss(database: "logs", for: connection.id)
+                == SessionLoss(transaction: false, state: .preparedStatements)
+        )
+    }
+
     @Test("A browsed driver replaced while it held a transaction reports the loss to the next statement, once")
     func reportsLostBrowsedTransaction() async throws {
         let connection = TestFixtures.makeConnection(database: "app", type: .mysql)
@@ -69,7 +100,7 @@ struct CredentialLeaseRoutingTests {
         let manager = DatabaseManager.shared
         manager.injectSession(session, for: connection.id)
         defer { manager.removeSession(for: connection.id) }
-        manager.sessionLanes.markTransactionLost(database: "app", for: connection.id)
+        manager.sessionLanes.markLost(database: "app", transaction: true, for: connection.id)
         let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
 
         let error = await #expect(throws: DatabaseError.self) {
@@ -89,14 +120,14 @@ struct CredentialLeaseRoutingTests {
         defer { manager.removeSession(for: connection.id) }
         let scope = DatabaseScope(connectionId: connection.id, database: "", schema: nil)
         #expect(manager.metadataRoute(for: scope) == .sessionDriver)
-        manager.sessionLanes.markTransactionLost(database: "", for: connection.id)
+        manager.sessionLanes.markLost(database: "", transaction: true, for: connection.id)
 
         try await manager.withMetadataDriver(scope: scope) { _ in }
 
-        #expect(manager.sessionLanes.hasTransactionLoss(database: "", for: connection.id))
+        #expect(manager.sessionLanes.hasLoss(database: "", for: connection.id))
         await #expect(throws: DatabaseError.self) {
             try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { _ in }
         }
-        #expect(!manager.sessionLanes.hasTransactionLoss(database: "", for: connection.id))
+        #expect(!manager.sessionLanes.hasLoss(database: "", for: connection.id))
     }
 }

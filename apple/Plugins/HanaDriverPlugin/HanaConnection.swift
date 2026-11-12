@@ -21,6 +21,7 @@ final class HanaConnection: HanaSession, @unchecked Sendable {
         var hasLostConnection = false
     }
 
+    private static let cursorBatchRows = 1_000
     private static let logger = Logger(subsystem: "com.TablePro", category: "HanaConnection")
 
     private let bridge: any HanaNativeBridge
@@ -102,6 +103,28 @@ final class HanaConnection: HanaSession, @unchecked Sendable {
         let requestJSON = try JSONEncoder().encode(HanaExplainRequest(sql: sql, timeoutSeconds: queryTimeoutSeconds))
         return try await statement(cancellation) { bridge, ticket in
             try bridge.explain(ticket, request: requestJSON)
+        }
+    }
+
+    func stream(
+        sql: String,
+        cancellation: HanaOperationSlot,
+        onHeader: @escaping @Sendable (HanaCursorHeader) -> Void,
+        onBatch: @escaping @Sendable (HanaCursorBatch) -> Void
+    ) async throws {
+        let request = HanaCursorRequest(sql: sql, timeoutSeconds: queryTimeoutSeconds, batchRows: Self.cursorBatchRows)
+        let requestJSON = try JSONEncoder().encode(request)
+        // Every fetch stays in this one queue item. The cursor holds the helper's operation slot, so a read queued
+        // between two fetches would wait on that slot while the next fetch waited behind it on this queue.
+        try await perform(.connected, cancellation: cancellation) { bridge, ticket in
+            try self.drainCursor(
+                bridge,
+                ticket: ticket,
+                request: requestJSON,
+                cancellation: cancellation,
+                onHeader: onHeader,
+                onBatch: onBatch
+            )
         }
     }
 
@@ -192,6 +215,65 @@ final class HanaConnection: HanaSession, @unchecked Sendable {
                 self.markLost(ticket.session)
             }
             return envelope
+        }
+    }
+
+    private func drainCursor(
+        _ bridge: any HanaNativeBridge,
+        ticket: HanaOperationTicket,
+        request: Data,
+        cancellation: HanaOperationSlot,
+        onHeader: (HanaCursorHeader) -> Void,
+        onBatch: (HanaCursorBatch) -> Void
+    ) throws {
+        let opened = try bridge.openCursor(ticket, request: request)
+        // A failure reply means the helper already closed the cursor. Any other exit leaves it open until closed here.
+        var holdsCursor = true
+        defer {
+            if holdsCursor {
+                closeCursor(bridge, ticket: ticket)
+            }
+        }
+        let opening = try Self.decode(HanaCursorOpening.self, from: opened)
+        onHeader(opening.header)
+        var batch = opening.batch
+        while true {
+            if batch.sessionLost {
+                Self.logger.error("SAP HANA session was lost while its cursor was open")
+                markLost(ticket.session)
+            }
+            if !batch.rows.isEmpty {
+                onBatch(batch)
+            }
+            if batch.done {
+                holdsCursor = false
+                return
+            }
+            guard !cancellation.isCancelled else {
+                throw HanaBridgeFailure(kind: .cancelled)
+            }
+            let fetched: Data
+            do {
+                fetched = try bridge.fetch(ticket)
+            } catch {
+                holdsCursor = false
+                throw error
+            }
+            batch = try Self.decode(HanaCursorBatch.self, from: fetched)
+        }
+    }
+
+    private func closeCursor(_ bridge: any HanaNativeBridge, ticket: HanaOperationTicket) {
+        do {
+            let closing = try JSONDecoder().decode(HanaCursorClosing.self, from: bridge.closeCursor(ticket))
+            if closing.sessionLost {
+                markLost(ticket.session)
+            }
+        } catch {
+            if (error as? HanaBridgeFailure)?.kind == .connectionLost {
+                markLost(ticket.session)
+            }
+            Self.logger.error("SAP HANA cursor did not close: \(error.localizedDescription, privacy: .private)")
         }
     }
 

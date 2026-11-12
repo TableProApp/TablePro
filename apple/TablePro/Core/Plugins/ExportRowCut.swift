@@ -58,6 +58,17 @@ final class ExportRowCut<Element: Sendable>: @unchecked Sendable {
     }
 }
 
+// One wording for every reader of a cut stream: export, Table Transfer, Object Copy and Data Compare.
+enum StreamRowCutWarning {
+    static func text(table: String, limit: Int) -> String {
+        String(
+            format: String(localized: "%1$@: only the first %2$lld rows were read, the most this database returns from one query."),
+            table,
+            limit
+        )
+    }
+}
+
 extension ExportRowCut where Element == PluginStreamElement {
     static func reporting(
         _ upstream: AsyncThrowingStream<PluginStreamElement, Error>,

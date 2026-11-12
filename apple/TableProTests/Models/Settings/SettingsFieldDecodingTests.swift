@@ -169,6 +169,24 @@ struct SettingsFieldDecodingTests {
         #expect(decoded.titleShowsLocation == true)
     }
 
+    @Test("Color values by type is off by default and in stored value colors without it, and a choice round-trips")
+    func valueColorsDefaultOff() throws {
+        #expect(ValueColorSettings.default.colorsValuesByType == false)
+        #expect(try decode(ValueColorSettings.self, "{}").colorsValuesByType == false)
+        #expect(try decode(ValueColorSettings.self, #"{"colorsValuesByType":"yes"}"#).colorsValuesByType == false)
+
+        let chosen = ValueColorSettings(colorsValuesByType: true)
+        let encoded = String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self)
+        #expect(try decode(ValueColorSettings.self, encoded) == chosen)
+    }
+
+    // An older build rewrites the Data Grid blob with only the keys it knows.
+    @Test("The Data Grid settings no longer carry Color values by type")
+    func dataGridBlobLeavesValueColorsOut() throws {
+        let encoded = String(decoding: try JSONEncoder().encode(DataGridSettings.default), as: UTF8.self)
+        #expect(!encoded.contains("colorsValuesByType"))
+    }
+
     @Test("A bad MCP value falls back alone and keeps the secure default")
     func mcpKeepsOtherFields() throws {
         let settings = try decode(

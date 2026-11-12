@@ -47,11 +47,9 @@ enum AIModelOverlay {
             id: modelID,
             maxOutputTokens: entry.maxOutputTokens,
             modalities: [.text, .image],
-            reasoning: AIReasoningSupport(
-                mode: .effortOnly,
-                effortLevels: entry.effortLevels,
-                defaultEffort: .medium
-            )
+            reasoning: entry.effortLevels.isEmpty
+                ? .unsupported
+                : AIReasoningSupport(mode: .effortOnly, effortLevels: entry.effortLevels, defaultEffort: .medium)
         )
     }
 
@@ -78,7 +76,14 @@ enum AIModelOverlay {
         let maxOutputTokens: Int?
     }
 
+    // First match wins. The models without reasoning come first: OpenAI rejects a reasoning
+    // effort for them, and `gpt-5-chat-latest` would otherwise match `gpt-5`.
     private static let openAITable: [OpenAIEntry] = [
+        OpenAIEntry(
+            patterns: ["chat-latest", "chatgpt-4o", "gpt-4", "gpt-3.5"],
+            effortLevels: [],
+            maxOutputTokens: nil
+        ),
         OpenAIEntry(
             patterns: ["gpt-5.6", "gpt-5-6"],
             effortLevels: ReasoningEffort.allCases,

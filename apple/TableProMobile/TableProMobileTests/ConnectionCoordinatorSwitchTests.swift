@@ -155,6 +155,34 @@ struct ConnectionCoordinatorSwitchTests {
         #expect(coordinator.displayStatus == .lost(cause: ScriptedFailure.unreachable.localizedDescription))
     }
 
+    @Test("An open whose saved database cannot be restored, and whose way back fails too, is lost and redials on the next trigger")
+    func failedRestoreDuringAnOpenIsLost() async {
+        let lastDB = ConnectionDefaultsKey.lastDB.name(for: warehouse.id)
+        UserDefaults.standard.set("staging", forKey: lastDB)
+        defer { UserDefaults.standard.removeObject(forKey: lastDB) }
+        let first = driver(tables: ["facts"])
+        first.scriptedDatabases = ["analytics", "staging"]
+        factory.queue(first)
+        factory.queue(refusingDriver())
+        factory.queue(refusingDriver())
+        let coordinator = ConnectionCoordinator(connection: warehouse, appState: appState)
+        coordinator.restorePersistedState()
+
+        await coordinator.connect()
+
+        #expect(factory.dialed.suffix(2).map { $0.database } == ["staging", "analytics"])
+        #expect(coordinator.session == nil)
+        #expect(coordinator.displayStatus == .lost(cause: ScriptedFailure.unreachable.localizedDescription))
+
+        let recovered = driver(tables: ["facts"])
+        factory.queue(recovered)
+        await coordinator.reconnectIfNeeded()
+
+        #expect(factory.dialed.last?.database == "analytics")
+        #expect(coordinator.session?.driver === recovered)
+        #expect(coordinator.displayStatus == .connected)
+    }
+
     @Test("A refresh that fails on a dead session redials and shows the new list without an alert")
     func refreshOnADeadSessionRedials() async throws {
         let first = driver(tables: ["orders"])

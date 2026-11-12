@@ -218,7 +218,7 @@ final class RowEditingCoordinator: ObservableObject {
 
     private static func sampleText(atColumn index: Int, in tableRows: TableRows) -> String? {
         for row in tableRows.rows where row.values.indices.contains(index) {
-            if case .text(let text) = row.values[index], text != "__DEFAULT__" { return text }
+            if case .text(let text) = row.values[index], row.values[index] != .columnDefault { return text }
         }
         return nil
     }
@@ -296,46 +296,48 @@ final class RowEditingCoordinator: ObservableObject {
 
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
         var removedCells: Set<CellPosition> = []
-        for (rowID, value) in valuesByRow {
-            guard let storageRow = tableRows.index(of: rowID) else { continue }
-            let row = tableRows.rows[storageRow]
-            guard row.unloadedByteCount(columnIndex) == nil else { continue }
-            let values = Array(row.values)
-            let removesField = removedRowIDs.contains(rowID) && parent.changeManager.supportsFieldRemoval
-            let absence = FieldAbsence(
-                wasAbsent: row.isAbsent(columnIndex), isAbsent: removesField, originalRow: row.absentColumns
-            )
-            let isExpression = expressionRowIDs.contains(rowID) && !removesField
-            let wasExpression = parent.changeManager.isExpression(rowID: rowID, columnIndex: columnIndex)
-            guard values.indices.contains(columnIndex),
-                  values[columnIndex] != value || absence.wasAbsent != absence.isAbsent
-                    || wasExpression != isExpression else { continue }
-            if continuity == .typing {
-                parent.changeManager.recordTypedCellChange(
-                    rowID: rowID,
-                    columnIndex: columnIndex,
-                    columnName: columnName,
-                    oldValue: values[columnIndex],
-                    newValue: value,
-                    originalRow: values,
-                    absence: absence,
-                    isExpression: isExpression
+        parent.changeManager.recordAsOneAction {
+            for (rowID, value) in valuesByRow {
+                guard let storageRow = tableRows.index(of: rowID) else { continue }
+                let row = tableRows.rows[storageRow]
+                guard row.unloadedByteCount(columnIndex) == nil else { continue }
+                let values = Array(row.values)
+                let removesField = removedRowIDs.contains(rowID) && parent.changeManager.supportsFieldRemoval
+                let absence = FieldAbsence(
+                    wasAbsent: row.isAbsent(columnIndex), isAbsent: removesField, originalRow: row.absentColumns
                 )
-            } else {
-                parent.changeManager.recordCellChange(
-                    rowID: rowID,
-                    columnIndex: columnIndex,
-                    columnName: columnName,
-                    oldValue: values[columnIndex],
-                    newValue: value,
-                    originalRow: values,
-                    absence: absence,
-                    isExpression: isExpression
-                )
-            }
-            edits.append((row: storageRow, column: columnIndex, value: value))
-            if removesField {
-                removedCells.insert(CellPosition(row: storageRow, column: columnIndex))
+                let isExpression = expressionRowIDs.contains(rowID) && !removesField
+                let wasExpression = parent.changeManager.isExpression(rowID: rowID, columnIndex: columnIndex)
+                guard values.indices.contains(columnIndex),
+                      values[columnIndex] != value || absence.wasAbsent != absence.isAbsent
+                        || wasExpression != isExpression else { continue }
+                if continuity == .typing {
+                    parent.changeManager.recordTypedCellChange(
+                        rowID: rowID,
+                        columnIndex: columnIndex,
+                        columnName: columnName,
+                        oldValue: values[columnIndex],
+                        newValue: value,
+                        originalRow: values,
+                        absence: absence,
+                        isExpression: isExpression
+                    )
+                } else {
+                    parent.changeManager.recordCellChange(
+                        rowID: rowID,
+                        columnIndex: columnIndex,
+                        columnName: columnName,
+                        oldValue: values[columnIndex],
+                        newValue: value,
+                        originalRow: values,
+                        absence: absence,
+                        isExpression: isExpression
+                    )
+                }
+                edits.append((row: storageRow, column: columnIndex, value: value))
+                if removesField {
+                    removedCells.insert(CellPosition(row: storageRow, column: columnIndex))
+                }
             }
         }
         guard !edits.isEmpty else { return }
@@ -351,21 +353,23 @@ final class RowEditingCoordinator: ObservableObject {
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
         var removedCells: Set<CellPosition> = []
-        for edit in resolved {
-            guard let storageRow = tableRows.index(of: edit.rowID) else { continue }
-            changeManager.recordCellChange(
-                rowID: edit.rowID,
-                columnIndex: edit.dataIndex,
-                columnName: edit.columnName,
-                oldValue: edit.oldValue,
-                newValue: edit.newValue,
-                originalRow: edit.originalRow,
-                absence: edit.absence,
-                isExpression: edit.isExpression
-            )
-            edits.append((row: storageRow, column: edit.dataIndex, value: edit.newValue))
-            if edit.absence.isAbsent {
-                removedCells.insert(CellPosition(row: storageRow, column: edit.dataIndex))
+        changeManager.recordAsOneAction {
+            for edit in resolved {
+                guard let storageRow = tableRows.index(of: edit.rowID) else { continue }
+                changeManager.recordCellChange(
+                    rowID: edit.rowID,
+                    columnIndex: edit.dataIndex,
+                    columnName: edit.columnName,
+                    oldValue: edit.oldValue,
+                    newValue: edit.newValue,
+                    originalRow: edit.originalRow,
+                    absence: edit.absence,
+                    isExpression: edit.isExpression
+                )
+                edits.append((row: storageRow, column: edit.dataIndex, value: edit.newValue))
+                if edit.absence.isAbsent {
+                    removedCells.insert(CellPosition(row: storageRow, column: edit.dataIndex))
+                }
             }
         }
         guard !edits.isEmpty else { return false }
@@ -430,10 +434,12 @@ final class RowEditingCoordinator: ObservableObject {
             self?.copyRowsAsJson(rowIDs)
         }) else { return }
         let model = parent.gridModel(forTab: tab.id)
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         let output = ResultJsonSerializer.serialize(
-            tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
+            tableRows: tableRows,
             displayIDs: model.displayedRowIDs,
             selectedDisplayIndices: Set(rowIDs.compactMap { model.displayIndex(of: $0) }),
+            defaultedCells: parent.changeManager.defaultedCells(in: tableRows),
             columns: VisibleColumnProjection(indices: presentedColumnIndices(tabId: tab.id))
         )
         guard output.rowCount > 0 else { return }

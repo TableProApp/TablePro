@@ -128,6 +128,30 @@ struct ResultsJsonViewTests {
         }
     }
 
+    @Test("A cell a pending edit set to the default renders as null, and stored text that reads DEFAULT stays text")
+    func pendingDefaultRendersAsNull() {
+        let inserted = RowID.inserted(UUID())
+        let tableRows = TableRows(
+            rows: [
+                Row(id: .existing(0), values: [.text("DEFAULT"), .text("a")]),
+                Row(id: inserted, values: [.columnDefault, .text("b")]),
+            ],
+            columns: ["status", "name"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+        )
+
+        let result = ResultsJsonView.computeJson(
+            tableRows: tableRows,
+            displayIDs: nil,
+            selectedIndices: [],
+            defaultedCells: [inserted: [0]],
+            columnLayout: ColumnLayoutState()
+        )
+
+        #expect(result.json.contains("\"status\": \"DEFAULT\""))
+        #expect(result.json.contains("\"status\": null"))
+    }
+
     @Test("an empty result renders an empty array")
     func emptyResultRendersEmptyArray() {
         let result = ResultsJsonView.computeJson(

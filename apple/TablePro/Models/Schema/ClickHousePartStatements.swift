@@ -2,15 +2,10 @@
 //  ClickHousePartStatements.swift
 //  TablePro
 //
-//  The statements the Parts tab issues, built from the tab's own container.
-//
 
 import Foundation
 
-/// ClickHouse carries the database as a request parameter rather than in the session, and the app
-/// moves that parameter whenever any tab runs somewhere else. An unqualified name therefore names
-/// whichever database the connection was last pinned to, which for `DROP PARTITION` is data loss in
-/// a database the user was not looking at.
+// ClickHouse takes the database from a request parameter any tab can move, so every statement names its own.
 internal enum ClickHousePartStatements {
     internal static func qualifiedName(
         database: String,
@@ -32,42 +27,49 @@ internal enum ClickHousePartStatements {
     internal static func dropPartition(
         database: String,
         table: String,
-        partition: String,
-        quote: (String) -> String,
-        escape: (String) -> String
-    ) -> String {
+        partitionId: String,
+        quote: (String) -> String
+    ) -> String? {
+        guard isValidPartitionId(partitionId) else { return nil }
         let name = qualifiedName(database: database, table: table, quote: quote)
-        return "ALTER TABLE \(name) DROP PARTITION '\(escape(partition))'"
+        return "ALTER TABLE \(name) DROP PARTITION ID '\(partitionId)'"
     }
 
     internal static func detachPartition(
         database: String,
         table: String,
-        partition: String,
-        quote: (String) -> String,
-        escape: (String) -> String
-    ) -> String {
+        partitionId: String,
+        quote: (String) -> String
+    ) -> String? {
+        guard isValidPartitionId(partitionId) else { return nil }
         let name = qualifiedName(database: database, table: table, quote: quote)
-        return "ALTER TABLE \(name) DETACH PARTITION '\(escape(partition))'"
+        return "ALTER TABLE \(name) DETACH PARTITION ID '\(partitionId)'"
     }
 
-    /// A connection saved with no database of its own has none to name, and ClickHouse then resolves
-    /// an unqualified request against its own configured default, which `currentDatabase()` reports.
-    /// Comparing against an empty string instead matches nothing and empties the tab.
+    // The server's own rule (MergeTreePartInfo::validatePartitionID); it also keeps quotes out of the literal.
+    internal static func isValidPartitionId(_ id: String) -> Bool {
+        !id.isEmpty && id.unicodeScalars.allSatisfy { scalar in
+            switch scalar {
+            case "0"..."9", "a"..."z", "A"..."Z", "-": true
+            default: false
+            }
+        }
+    }
+
+    // With no database of its own, ClickHouse resolves a request against its configured default.
     private static func databasePredicate(_ database: String, escape: (String) -> String) -> String {
         guard !database.isEmpty else { return "currentDatabase()" }
         return "'\(escape(database))'"
     }
 
-    /// Filtered on the named database rather than `currentDatabase()`, which answers with the
-    /// request parameter and so listed another database's parts under this table's name.
+    // `partition` renders a tuple key as `(202401,'eu')` and no key as `tuple()`, so statements name `partition_id`.
     internal static func parts(
         database: String,
         table: String,
         escape: (String) -> String
     ) -> String {
         """
-        SELECT partition, name, rows, bytes_on_disk,
+        SELECT partition, partition_id, name, rows, bytes_on_disk,
                toString(modification_time) AS mod_time, active
         FROM system.parts
         WHERE database = \(databasePredicate(database, escape: escape)) AND table = '\(escape(table))'

@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#EEE8D5",
     "background": "#FDF6E3",
-    "boolFalse": "#DC322F",
-    "boolTrue": "#859900",
+    "binary": "#940053",
+    "boolFalse": "#C2000D",
+    "boolTrue": "#586500",
+    "dateTime": "#00639E",
     "deleted": "#DC322F26",
     "deletedText": "#DC322F80",
+    "enum": "#5257AC",
     "focusBorder": "#268BD2",
     "gridLine": "#DDD6C1",
     "headerBackground": "#EEE8D5",
     "headerText": "#586E75",
     "inactiveSelection": "#EEE0B5",
     "inserted": "#85990026",
+    "json": "#795B00",
     "modified": "#B5890026",
     "nullValue": "#93A1A1",
+    "number": "#B90B6A",
     "rowNumber": "#93A1A1",
     "selection": "#DFCA88",
     "selectionText": "#073642",
-    "text": "#657B83"
+    "string": "#006B65",
+    "text": "#657B83",
+    "uuid": "#AC3800"
   },
   "editor": {
     "background": "#FDF6E3",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.solarized-light",
   "name": "Solarized Light",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#FDF6E3"
   }

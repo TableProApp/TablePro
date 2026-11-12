@@ -6,10 +6,10 @@ use sqlparser::dialect::{
     SQLiteDialect,
 };
 use sqlparser::tokenizer::{Token, Tokenizer, TokenizerError};
-use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{
     BatchErrorPolicy, LexicalSettings, OpenConstruct, ScriptDiagnostic, ScriptPlan, ScriptTokenKind, text_offsets,
 };
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 
 fn plan(grammar: SqlGrammar, text: &str) -> ScriptPlan {
     ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar))
@@ -836,6 +836,130 @@ fn mongo_each_statement_is_its_own_batch_and_a_failure_stops_the_script() {
 
     assert_eq!(batch_texts(&plan, text), ["db.a.find()", "db.b.find()"]);
     assert_eq!(plan.batch_error_policy(), BatchErrorPolicy::StopScript);
+}
+
+fn mongo_access(text: &str) -> StatementAccess {
+    statement_access(text, SqlGrammar::Mongo)
+}
+
+#[test]
+fn mongo_a_rename_that_drops_its_target_is_destructive() {
+    for text in [
+        "db.orders_new.renameCollection('orders', true)",
+        "db.orders_new.renameCollection('orders', {dropTarget: true})",
+        "db.adminCommand({renameCollection: 'shop.orders_new', to: 'shop.orders', dropTarget: true})",
+        "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: false, dropTarget: true})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.orders_new.renameCollection('orders')",
+        "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: true, dropTarget: false})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_dropping_an_index_is_destructive() {
+    for text in [
+        "db.orders.dropIndex('qty_1')",
+        "db.orders.dropIndexes()",
+        "db.orders.dropSearchIndex('default')",
+        "db.runCommand({dropIndexes: 'orders', index: '*'})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+}
+
+#[test]
+fn mongo_dropping_a_user_or_a_role_is_destructive() {
+    for text in [
+        "db.dropUser('ann')",
+        "db.dropRole('auditor')",
+        "db.dropAllUsers()",
+        "db.dropAllRoles()",
+        "db.runCommand({dropUser: 'ann'})",
+        "db.runCommand({dropRole: 'auditor'})",
+        "db.runCommand({dropAllUsersFromDatabase: 1})",
+        "db.adminCommand({dropAllRolesFromDatabase: 1})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_validate_that_repairs_is_a_write() {
+    for text in [
+        "db.runCommand({validate: 'orders', repair: true})",
+        "db.runCommand({validate: 'orders', repair: true, fixMultikey: true})",
+        "db.runCommand({validate: 'orders', fixMultikey: 1})",
+        "db.runCommand({validate: 'orders', repair: false, repair: true})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+    for text in [
+        "db.runCommand({validate: 'orders', full: true})",
+        "db.runCommand({validate: 'orders', repair: true, repair: false})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Read, "{text}");
+    }
+}
+
+#[test]
+fn mongo_what_replaces_a_collection_is_destructive() {
+    for text in [
+        "db.orders.aggregate([{$match: {}}, {$out: 'orders_copy'}])",
+        "db.runCommand({aggregate: 'orders', pipeline: [{$out: 'orders_copy'}], cursor: {}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: 'totals'})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {replace: 'totals'}})",
+        "db.adminCommand({applyOps: [{op: 'd', ns: 'shop.orders', o: {_id: 1}}]})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.orders.aggregate([{$merge: {into: 'totals'}}])",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {merge: 'totals'}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {reduce: 'totals'}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {inline: 1}})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_merge_into_its_own_collection_is_destructive() {
+    for text in [
+        "db.users.aggregate([{$match: {}}, {$merge: {into: 'users', whenMatched: 'replace'}}])",
+        "db.users.aggregate([{$merge: 'users'}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'shop', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.users.aggregate([{$merge: {into: 'users_archive', whenMatched: 'replace'}}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'archive', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_bulk_write_that_reaches_every_document_is_destructive() {
+    for ops in [
+        "{delete: 0, filter: {}, multi: true}",
+        "{update: 0, filter: {}, updateMods: {$set: {a: 1}}, multi: true}",
+    ] {
+        let text = format!("db.adminCommand({{bulkWrite: 1, ops: [{ops}], nsInfo: [{{ns: 'shop.orders'}}]}})");
+        assert_eq!(mongo_access(&text), StatementAccess::Destructive, "{text}");
+    }
+    for ops in [
+        "{delete: 0, filter: {}}",
+        "{update: 0, filter: {_id: 1}, updateMods: {$set: {a: 1}}, multi: true}",
+    ] {
+        let text = format!("db.adminCommand({{bulkWrite: 1, ops: [{ops}], nsInfo: [{{ns: 'shop.orders'}}]}})");
+        assert_eq!(mongo_access(&text), StatementAccess::Write, "{text}");
+    }
 }
 
 const AGREED_CASES: &[(SqlGrammar, &str)] = &[

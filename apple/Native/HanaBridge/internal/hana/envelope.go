@@ -154,12 +154,8 @@ func tabularEnvelope(columns []columnInfo) *resultEnvelope {
 }
 
 func (e *resultEnvelope) appendJSON(buffer []byte) []byte {
-	buffer = append(buffer, `{"columns":`...)
-	buffer = appendStringArray(buffer, e.columns)
-	buffer = append(buffer, `,"columnTypeNames":`...)
-	buffer = appendStringArray(buffer, e.columnTypeNames)
-	buffer = append(buffer, `,"columnClassifications":`...)
-	buffer = appendOptionalStringArray(buffer, e.columnClassifications)
+	buffer = append(buffer, '{')
+	buffer = e.appendColumnFields(buffer)
 	buffer = append(buffer, `,"rows":[`...)
 	for index, row := range e.rows {
 		if index > 0 {
@@ -179,6 +175,72 @@ func (e *resultEnvelope) appendJSON(buffer []byte) []byte {
 	buffer = strconv.AppendInt(buffer, int64(e.truncatedLobCount), 10)
 	buffer = append(buffer, `,"sessionLost":`...)
 	buffer = strconv.AppendBool(buffer, e.sessionLost)
+	return append(buffer, '}')
+}
+
+func (e *resultEnvelope) appendColumnFields(buffer []byte) []byte {
+	buffer = append(buffer, `"columns":`...)
+	buffer = appendStringArray(buffer, e.columns)
+	buffer = append(buffer, `,"columnTypeNames":`...)
+	buffer = appendStringArray(buffer, e.columnTypeNames)
+	buffer = append(buffer, `,"columnClassifications":`...)
+	return appendOptionalStringArray(buffer, e.columnClassifications)
+}
+
+type rowBatch struct {
+	maxRows       int
+	maxBytes      int
+	encodedRows   []byte
+	count         int
+	truncatedLobs int
+	done          bool
+}
+
+func (b *rowBatch) full() bool {
+	return b.count >= b.maxRows || len(b.encodedRows) >= b.maxBytes
+}
+
+func (b *rowBatch) add(row []cell, truncatedLobs int) {
+	if b.count > 0 {
+		b.encodedRows = append(b.encodedRows, ',')
+	}
+	b.encodedRows = appendRow(b.encodedRows, row)
+	b.count++
+	b.truncatedLobs += truncatedLobs
+}
+
+func appendCursorOpenedJSON(buffer []byte, header *resultEnvelope, batch *rowBatch) []byte {
+	buffer = append(buffer, '{')
+	buffer = header.appendColumnFields(buffer)
+	buffer = append(buffer, `,"rowsAffected":`...)
+	buffer = strconv.AppendInt(buffer, header.rowsAffected, 10)
+	buffer = append(buffer, `,"hasResultSet":`...)
+	buffer = strconv.AppendBool(buffer, header.hasResultSet)
+	buffer = append(buffer, ',')
+	buffer = appendBatchFields(buffer, batch, header.sessionLost)
+	return append(buffer, '}')
+}
+
+func appendCursorBatchJSON(buffer []byte, batch *rowBatch, sessionLost bool) []byte {
+	buffer = append(buffer, '{')
+	buffer = appendBatchFields(buffer, batch, sessionLost)
+	return append(buffer, '}')
+}
+
+func appendBatchFields(buffer []byte, batch *rowBatch, sessionLost bool) []byte {
+	buffer = append(buffer, `"rows":[`...)
+	buffer = append(buffer, batch.encodedRows...)
+	buffer = append(buffer, `],"truncatedLobCount":`...)
+	buffer = strconv.AppendInt(buffer, int64(batch.truncatedLobs), 10)
+	buffer = append(buffer, `,"done":`...)
+	buffer = strconv.AppendBool(buffer, batch.done)
+	buffer = append(buffer, `,"sessionLost":`...)
+	return strconv.AppendBool(buffer, sessionLost)
+}
+
+func appendCursorClosedJSON(buffer []byte, sessionLost bool) []byte {
+	buffer = append(buffer, `{"sessionLost":`...)
+	buffer = strconv.AppendBool(buffer, sessionLost)
 	return append(buffer, '}')
 }
 

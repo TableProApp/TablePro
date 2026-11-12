@@ -15,6 +15,7 @@ import TableProCoreTypes
 import TableProKerberos
 import TableProPluginKit
 import TableProPostgreSQLCore
+import TableProTLSClientIdentity
 
 private final class LibPQCancelRequest: @unchecked Sendable {
     private let cancelObject: OpaquePointer
@@ -32,11 +33,11 @@ private final class LibPQCancelRequest: @unchecked Sendable {
 
 // MARK: - Connection Class
 
-/// libpq allows one thread at a time on a `PGconn`, so every libpq call on `conn` runs on `queue`,
-/// and a member that other files can reach and that makes such a call opens with
-/// `preconditionOnQueue()`. `stateLock` guards `conn`, `serverMessages` and the underscored state,
-/// is never held across a libpq call, and is taken in this file only. Cancelling a running query
-/// is the one path that calls libpq off the queue.
+// libpq allows one thread at a time on a `PGconn`, so every libpq call on `conn` runs on `queue`,
+// and a member that other files can reach and that makes such a call opens with
+// `preconditionOnQueue()`. `stateLock` guards `conn`, `serverMessages` and the underscored state,
+// is never held across a libpq call, and is taken in this file only. Cancelling a running query
+// is the one path that calls libpq off the queue.
 final class LibPQPluginConnection: @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "LibPQPluginConnection")
 
@@ -77,7 +78,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _interruptsBlockedCallOnDisconnect = false
     private var serverMessages: Unmanaged<LibPQServerMessageSink>?
     private var _standardConformingStrings = true
-    /// Queue-confined. Non-nil until every schema/flavor/catalog bootstrap probe has completed.
+    // Queue-confined. Non-nil until every schema/flavor/catalog bootstrap probe has completed.
     private var activeConnectDeadline: LibPQConnectDeadline?
     private var bootstrapTransportFailed = false
     // Queue-confined. Nil until a probe, sent while no block was open, showed whether the server takes savepoints:
@@ -204,7 +205,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 KerberosTicket.discard(cachePath)
             }
         }
-        let conninfo = try connectionString()
+        // libpq reads the roots file while it polls, and every reconnect writes a new one.
+        let trustAnchors = try systemTrustAnchorsFile()
+        defer { trustAnchors?.remove() }
+        let conninfo = try connectionString(systemTrustAnchorsPath: trustAnchors?.url.path)
         let connection = try signingIn(until: deadline) { () throws -> OpaquePointer in
             guard let connection = conninfo.withCString({ PQconnectStart($0) }) else {
                 throw LibPQPluginError.connectionFailed
@@ -242,6 +246,18 @@ final class LibPQPluginConnection: @unchecked Sendable {
         adopted = true
     }
 
+    // A failure fails the connect: without sslrootcert libpq would look for a file that is not there.
+    private func systemTrustAnchorsFile() throws -> SystemTrustAnchorFile? {
+        guard LibPQConnectionString.rootCertificateSource(for: sslConfig, host: host) == .systemTrustAnchors else {
+            return nil
+        }
+        do {
+            return try SystemTrustAnchors.shared.writeFile()
+        } catch {
+            throw LibPQPluginError(message: error.localizedDescription, sqlState: nil, detail: nil)
+        }
+    }
+
     // PQconnectStart can already acquire the GSS credential, so the whole start sits in the scope.
     private func signingIn<T>(until deadline: LibPQConnectDeadline, _ body: () throws -> T) throws -> T {
         guard let kerberos else { return try body() }
@@ -257,8 +273,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    /// The core calls this only after schema and flavor-specific catalog probes. Until then every
-    /// statement uses libpq's nonblocking API and the original absolute connect deadline.
+    // The core calls this only after schema and flavor-specific catalog probes. Until then every
+    // statement uses libpq's nonblocking API and the original absolute connect deadline.
     func finishConnecting() async throws {
         try await pluginDispatchAsync(on: queue) { [self] in
             try checkConnectCancellation()
@@ -325,9 +341,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    /// `PGRES_POLLING_*` only says whether the socket wants a read or a write, so it cannot tell
-    /// a TLS handshake from an authentication exchange. `PQstatus` can, and reading it costs one
-    /// pointer dereference per poll slice.
+    // `PGRES_POLLING_*` only says whether the socket wants a read or a write, so it cannot tell
+    // a TLS handshake from an authentication exchange. `PQstatus` can, and reading it costs one
+    // pointer dereference per poll slice.
     private func reportHandshakeStage(
         of connection: OpaquePointer,
         last: inout ConnStatusType?,
@@ -354,6 +370,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     private func connectionError(from connection: OpaquePointer) -> Error {
         let error = getError(from: connection)
+        if let missingRoots = LibPQSSLMapping.missingRootCertificateError(error.message, sslConfig: sslConfig) {
+            return missingRoots
+        }
         if let sslError = LibPQSSLClassifier.classifySSLError(error.message) {
             return sslError
         }
@@ -449,9 +468,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return LibPQStringConformance.isOn(String(cString: value))
     }
 
-    /// Executes a bootstrap statement without ever entering libpq's blocking `PQexec` path. A
-    /// statement can produce more than one result, so this mirrors `PQexec` by returning the last
-    /// one while still polling every byte under the same connect deadline.
+    // Executes a bootstrap statement without ever entering libpq's blocking `PQexec` path. A
+    // statement can produce more than one result, so this mirrors `PQexec` by returning the last
+    // one while still polling every byte under the same connect deadline.
     private func bootstrapResult(
         for statement: String,
         on connection: OpaquePointer,
@@ -582,7 +601,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         Self.logger.warning("standard_conforming_strings is off; string literals escape backslashes")
     }
 
-    private func connectionString() throws -> String {
+    private func connectionString(systemTrustAnchorsPath: String?) throws -> String {
         try LibPQConnectionString.build(
             host: host,
             port: port,
@@ -594,7 +613,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             applicationName: applicationName,
             connectTimeoutSeconds: connectTimeout.nativeSeconds,
             kerberos: kerberos,
-            serverName: serverName
+            serverName: serverName,
+            systemTrustAnchorsPath: systemTrustAnchorsPath
         )
     }
 
@@ -700,20 +720,18 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    /// Runs a read whose statement changes session settings with `SET LOCAL`, and confines those
-    /// settings to the read whether or not the session has a transaction block open.
-    ///
-    /// With no block open, the settings and the read are one implicit transaction that ends with it.
-    /// Inside a block they would outlast the read, so a savepoint scopes them and is rolled back
-    /// straight after. The status check and every statement run in one block on this connection's
-    /// queue. Split into separate dispatches, another caller sharing the session could run between
-    /// the savepoint and its rollback, and the rollback silently undid that caller's work. PGlite has
-    /// no pooled connection, so a query tab and the metadata reads share one session.
-    ///
-    /// The `ROLLBACK TO` is its own `PQexec`, because `PQexec` returns only a string's last result
-    /// and the rows are the read's. A rollback that fails after a read that succeeded is reported
-    /// rather than the rows: the session would otherwise keep the read's settings for the rest of
-    /// the user's transaction.
+    // Runs a read whose statement changes session settings with `SET LOCAL`, and confines those
+    // settings to the read whether or not the session has a transaction block open.
+    // With no block open, the settings and the read are one implicit transaction that ends with it.
+    // Inside a block they would outlast the read, so a savepoint scopes them and is rolled back
+    // straight after. The status check and every statement run in one block on this connection's
+    // queue. Split into separate dispatches, another caller sharing the session could run between
+    // the savepoint and its rollback, and the rollback silently undid that caller's work. PGlite has
+    // no pooled connection, so a query tab and the metadata reads share one session.
+    // The `ROLLBACK TO` is its own `PQexec`, because `PQexec` returns only a string's last result
+    // and the rows are the read's. A rollback that fails after a read that succeeded is reported
+    // rather than the rows: the session would otherwise keep the read's settings for the rest of
+    // the user's transaction.
     func executeTransactionScopedRead(_ statement: String) async throws -> LibPQPluginQueryResult {
         let statementToRun = String(statement)
 
@@ -739,9 +757,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    /// A catalog query the driver sends on its own while reading a result, on the connection's queue, scoped the way
-    /// `executeTransactionScopedRead` scopes one. The caller clears the result. Inside an aborted block it hands back
-    /// the savepoint's own `25P02` failure.
+    // A catalog query the driver sends on its own while reading a result, on the connection's queue, scoped the way
+    // `executeTransactionScopedRead` scopes one. The caller clears the result. Inside an aborted block it hands back
+    // the savepoint's own `25P02` failure.
     func pinnedCatalogSideQueryOnQueue(_ statement: String, conn: OpaquePointer) -> OpaquePointer? {
         preconditionOnQueue()
         guard pinsCatalogSearchPath else { return statement.withCString { PQexec(conn, $0) } }
@@ -791,11 +809,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private static let scopedReadSavepoint = "SAVEPOINT tablepro_scoped_read"
     private static let scopedReadRollback = "ROLLBACK TO SAVEPOINT tablepro_scoped_read; RELEASE SAVEPOINT tablepro_scoped_read"
 
-    /// Runs one of the driver's own session-setting statements so a failure cannot abort a transaction block the
-    /// user has open. Inside one, a savepoint holds the statement: rolled back when it fails, released when it
-    /// succeeds, which keeps what it set in the block. One dispatch, for the reason `executeTransactionScopedRead`
-    /// gives. In an aborted block the statement goes as it is and the server answers `25P02`. `requiresIdleSession`
-    /// refuses in the same dispatch, so no transaction can open between the check and the statement.
+    // Runs one of the driver's own session-setting statements so a failure cannot abort a transaction block the
+    // user has open. Inside one, a savepoint holds the statement: rolled back when it fails, released when it
+    // succeeds, which keeps what it set in the block. One dispatch, for the reason `executeTransactionScopedRead`
+    // gives. In an aborted block the statement goes as it is and the server answers `25P02`. `requiresIdleSession`
+    // refuses in the same dispatch, so no transaction can open between the check and the statement.
     func executeSessionSetting(
         _ statement: String,
         parameters: [PluginCellValue],
@@ -829,19 +847,18 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private static let sessionSettingRollback =
         "ROLLBACK TO SAVEPOINT tablepro_session_setting; RELEASE SAVEPOINT tablepro_session_setting"
 
-    /// Whether the session is inside a transaction block, including one a failed statement has
-    /// aborted, so a statement sent now joins it. Called on the connection's queue only: one `PGconn`
-    /// may not be used from two threads at once, and the lock guards the pointer rather than the call.
+    // Whether the session is inside a transaction block, including one a failed statement has
+    // aborted, so a statement sent now joins it. Called on the connection's queue only: one `PGconn`
+    // may not be used from two threads at once, and the lock guards the pointer rather than the call.
     private func isInsideTransactionBlockOnQueue() -> Bool {
         let state = transactionStateOnQueue()
         return state == .inTransaction || state == .inError
     }
 
-    /// What the session has open, from the `ReadyForQuery` status libpq keeps from the last reply.
-    ///
-    /// No round trip and no server work: measured against PostgreSQL 17.11, a million calls took
-    /// 1.5ms, and the answer is local enough to survive a backend another session terminated
-    /// (`PQtransactionStatus` still reported `INTRANS` with `PQstatus` OK).
+    // What the session has open, from the `ReadyForQuery` status libpq keeps from the last reply.
+    // No round trip and no server work: measured against PostgreSQL 17.11, a million calls took
+    // 1.5ms, and the answer is local enough to survive a backend another session terminated
+    // (`PQtransactionStatus` still reported `INTRANS` with `PQstatus` OK).
     func transactionState() async -> LibPQTransactionState {
         do {
             return try await pluginDispatchAsync(on: queue) { [self] in
@@ -858,10 +875,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return Self.transactionState(PQtransactionStatus(conn))
     }
 
-    /// libpq has no round trip that sends no statement, so the socket is read first: that sees a
-    /// server that closed the session, and inside a transaction block it is the whole check
-    /// (`LibPQSessionCheck.sendsStatement`). A statement the server refuses still proves the
-    /// backend answered, so it does not fail the ping.
+    // libpq has no round trip that sends no statement, so the socket is read first: that sees a
+    // server that closed the session, and inside a transaction block it is the whole check
+    // (`LibPQSessionCheck.sendsStatement`). A statement the server refuses still proves the
+    // backend answered, so it does not fail the ping.
     func ping() async throws {
         try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
@@ -1444,9 +1461,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Pending Results
 
-    /// A statement the user did not get to see is worse than a slow one, so a COPY ended by any
-    /// drain is reported rather than swallowed: `INSERT INTO t VALUES (1); COPY t FROM STDIN` used
-    /// to come back as "INSERT 0 1" with the COPY discarded.
+    // A statement the user did not get to see is worse than a slow one, so a COPY ended by any
+    // drain is reported rather than swallowed: `INSERT INTO t VALUES (1); COPY t FROM STDIN` used
+    // to come back as "INSERT 0 1" with the COPY discarded.
     private func abandonedCopyError(_ outcome: LibPQDrainOutcome, generation: Int) -> Error? {
         guard let copy = outcome.abandonedCopy else { return nil }
         if cancellationGate.isCancelled(generation) { return CancellationError() }
@@ -1468,9 +1485,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         LibPQPluginError(message: copy.direction.unsupportedMessage, sqlState: nil, detail: nil)
     }
 
-    /// Reading `COPY TO STDOUT` to its end defeats the row cap the bounded read exists for, so the
-    /// statement is cancelled first wherever a cancel is safe. Inside a transaction block it is not,
-    /// because a cancel aborts the transaction the user opened.
+    // Reading `COPY TO STDOUT` to its end defeats the row cap the bounded read exists for, so the
+    // statement is cancelled first wherever a cancel is safe. Inside a transaction block it is not,
+    // because a cancel aborts the transaction the user opened.
     private func cancelsAbandonedOutput(_ conn: OpaquePointer) -> Bool {
         !suppressServerSideCancel && PQtransactionStatus(conn) != PQTRANS_INTRANS
     }
@@ -1500,9 +1517,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return finishPendingResults(conn, cancellingOutput: false)
     }
 
-    /// The abort is polled by the producer rather than acted on from `onTermination`, because both
-    /// run on one serial queue: a drain enqueued from the handler sits behind the producer and runs
-    /// only once the whole result has been read, which is no abort at all.
+    // The abort is polled by the producer rather than acted on from `onTermination`, because both
+    // run on one serial queue: a drain enqueued from the handler sits behind the producer and runs
+    // only once the whole result has been read, which is no abort at all.
     func streamQuery(_ query: String, readOnly: Bool = false) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
@@ -1519,15 +1536,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 defer { cancellationGate.endQuery(generation) }
                 defer { refreshStandardConformingStrings(from: conn) }
 
-                /// The consumer can go away before this block is scheduled, in which case the
-                /// query is never sent at all.
+                // The consumer can go away before this block is scheduled, in which case the
+                // query is never sent at all.
                 guard !abort.isAborted else {
                     continuation.finish()
                     return
                 }
 
-                /// Read before the query goes out: once it is in flight the status is
-                /// PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
+                // Read before the query goes out: once it is in flight the status is
+                // PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
                 let cancelsOutput = cancelsAbandonedOutput(conn)
                 finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
                 if let ended = sessionEndedBeforeSending(conn) {
@@ -1777,12 +1794,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     private func sessionEndedBeforeSending(_ conn: OpaquePointer) -> LibPQConnectionLostError? {
         recordTransactionState(of: conn)
-        /// All three calls earn their place, measured against a terminated backend on 9.1.24 and
-        /// 17.11. One `PQconsumeInput` leaves the status `CONNECTION_OK`, so a single read never
-        /// sees the loss; the second one turns it `CONNECTION_BAD`. `PQisBusy` never moves the
-        /// status, but it is what parses the buffered message: without it every closed-session
-        /// case loses the server's FATAL and its SQLSTATE and reports libpq's own "server closed
-        /// the connection unexpectedly" instead.
+        // All three calls earn their place, measured against a terminated backend on 9.1.24 and
+        // 17.11. One `PQconsumeInput` leaves the status `CONNECTION_OK`, so a single read never
+        // sees the loss; the second one turns it `CONNECTION_BAD`. `PQisBusy` never moves the
+        // status, but it is what parses the buffered message: without it every closed-session
+        // case loses the server's FATAL and its SQLSTATE and reports libpq's own "server closed
+        // the connection unexpectedly" instead.
         if PQstatus(conn) == CONNECTION_OK {
             _ = PQconsumeInput(conn)
             _ = PQisBusy(conn)

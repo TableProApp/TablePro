@@ -1928,6 +1928,9 @@
     "A number in %@ is larger than a 64-bit integer. Write it as a decimal, such as {\"$numberDecimal\": \"12345678901234567890\"}." : {
 
     },
+    "A query that switches the database is running on this connection. Try again once it ends." : {
+
+    },
     "A renamed column's foreign key is rewritten, so its MATCH and DEFERRABLE clauses are not carried over." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -7217,6 +7220,10 @@
         }
       }
     },
+    "Could not read this Mac's trusted certificates to verify the server. Choose the server's CA certificate under SSL, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not run the credential_process command for profile \"%@\": %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -7734,6 +7741,9 @@
           }
         }
       }
+    },
+    "Database Switch Running" : {
+
     },
     "Database Type" : {
       "localizations" : {
@@ -20729,6 +20739,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Session in Another Database" : {
+
+    },
     "Session Token" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -21150,6 +21163,9 @@
         }
       }
     },
+    "Shown in part. Run a query that returns fewer rows or columns to see it in full." : {
+
+    },
     "SID" : {
       "localizations" : {
         "ko" : {
@@ -21455,6 +21471,9 @@
 
     },
     "Some documents may already have been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "Some long values are shown in part to stay within memory." : {
 
     },
     "Sort" : {
@@ -24442,6 +24461,9 @@
         }
       }
     },
+    "The connection moved to another database or schema. Choose the row again." : {
+
+    },
     "The connection moved to another database or schema. Choose the table again." : {
 
     },
@@ -24938,6 +24960,9 @@
     "The FreeTDS configuration could not be written: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The full values in this result need more memory than this device has free. Run a query that returns fewer rows and try again." : {
+
     },
     "The full values on this page need more memory than this device has free. Choose a smaller page size and try again." : {
 
@@ -25725,6 +25750,26 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The query moved the session to “%@” and it could not go back to “%@”. To save the unsaved changes, run USE %@ in the Query tab of the window that holds them." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The query moved the session to “%1$@” and it could not go back to “%2$@”. To save the unsaved changes, run USE %3$@ in the Query tab of the window that holds them."
+          }
+        }
+      }
+    },
+    "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The query moved the session to “%1$@” and it could not go back to “%2$@”. Unsaved changes still save to “%3$@”."
+          }
+        }
+      }
+    },
     "The query names its own output format, %@. Remove its FORMAT clause to read it as rows." : {
 
     },
@@ -26317,6 +26362,16 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The session is in “%@”, not “%@”, so this change cannot be saved now." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The session is in “%1$@”, not “%2$@”, so this change cannot be saved now."
+          }
+        }
+      }
+    },
     "The shell drops a field named __proto__ from a new document. Remove the field, then set it on the saved document." : {
 
     },
@@ -26443,6 +26498,10 @@
     },
     "The statement before it stays applied." : {
 
+    },
+    "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The table \"%@\" and all its data will be permanently deleted." : {
       "localizations" : {
@@ -27176,6 +27235,10 @@
           }
         }
       }
+    },
+    "This database has no column defaults, so a cell cannot be left to one. Enter a value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This database has no Create Table form" : {
       "extractionState" : "manual",
@@ -27912,6 +27975,9 @@
           }
         }
       }
+    },
+    "This window has unsaved changes on this connection, so the session stayed on its database. Save or discard them before switching database." : {
+
     },
     "Ticket" : {
       "extractionState" : "manual",
@@ -29446,6 +29512,9 @@
 
     },
     "View as JSON" : {
+
+    },
+    "View Full Value" : {
 
     },
     "Views" : {

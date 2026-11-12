@@ -21,6 +21,7 @@ final class DataGridCellPresenter {
         let scope: ThemeScope
         let databaseType: DatabaseType?
         let showsInvisibleCharacters: Bool
+        let colorsValuesByType: Bool
         let nullDisplayString: String
     }
 
@@ -30,11 +31,12 @@ final class DataGridCellPresenter {
     private let visualIndex = RowVisualIndex()
     private var visualIndexSource: ObjectIdentifier?
     private var highlightRuleSet = HighlightRuleSet.empty
-    private var presentations: [Int: DataGridColumnPresentation] = [:]
+    // Indexed by data index: the draw path reads it once per cell.
+    private var presentations: [DataGridColumnPresentation] = []
 
-    init(model: DataGridModel) {
+    init(model: DataGridModel, valueColors: ValueColorSettings = AppSettingsManager.shared.valueColors) {
         self.model = model
-        registry = DataGridCellRegistry(scope: model.themeScope)
+        registry = DataGridCellRegistry(scope: model.themeScope, valueColors: valueColors)
     }
 
     func adopt(_ model: DataGridModel) {
@@ -48,19 +50,22 @@ final class DataGridCellPresenter {
         guard let model else { return nil }
         registry.preparePalette(in: appearance)
         let rows = model.rows
+        let configuration = model.configuration
         prepareRowState(rows: rows)
         return Pass(
             rows: rows,
             formats: model.store.displayFormats,
             selection: model.selection,
             findMatch: model.find.currentMatch,
-            isEditable: model.configuration.isEditable,
-            checkboxColumns: model.configuration.checkboxColumns,
-            marksEmptyText: model.configuration.marksEmptyText,
+            isEditable: configuration.isEditable,
+            checkboxColumns: configuration.checkboxColumns,
+            marksEmptyText: configuration.marksEmptyText,
             palette: registry.palette,
             scope: model.themeScope,
-            databaseType: model.configuration.traits.databaseType,
+            databaseType: configuration.traits.databaseType,
             showsInvisibleCharacters: registry.showsInvisibleCharacters,
+            colorsValuesByType: configuration.colorsValuesByType
+                && (registry.colorsValuesByType || configuration.overridesValueColorSetting),
             nullDisplayString: registry.nullDisplayString
         )
     }
@@ -125,22 +130,28 @@ final class DataGridCellPresenter {
         guard let model else { return [] }
         let rows = model.rows
         let configuration = model.configuration
-        var next: [Int: DataGridColumnPresentation] = [:]
+        var next: [DataGridColumnPresentation] = []
         next.reserveCapacity(rows.columns.count)
         var changed = IndexSet()
         for (dataIndex, name) in rows.columns.enumerated() {
             let type = dataIndex < rows.columnTypes.count ? rows.columnTypes[dataIndex] : nil
+            let enumValues = rows.columnEnumValues[name]
+            let valueTone = configuration.colorsValuesByType
+                ? DataGridColumnTone(columnType: type, declaresEnumLabels: enumValues?.isEmpty == false)
+                : .plain
             let presentation = DataGridColumnPresentation.resolve(
                 columnType: type,
                 isForeignKey: rows.columnForeignKeys[name] != nil,
                 isDropdown: configuration.dropdownColumns?.contains(dataIndex) == true,
                 isTypePicker: configuration.typePickerColumns?.contains(dataIndex) == true,
-                isEnumOrSet: Self.picksFromList(type: type, enumValues: rows.columnEnumValues[name]),
+                isEnumOrSet: Self.picksFromList(type: type, enumValues: enumValues),
                 isEditable: configuration.isEditable,
-                isCheckbox: configuration.checkboxColumns.contains(dataIndex)
+                isCheckbox: configuration.checkboxColumns.contains(dataIndex),
+                valueTone: valueTone
             )
-            next[dataIndex] = presentation
-            if presentations[dataIndex] != presentation {
+            next.append(presentation)
+            let previous = dataIndex < presentations.count ? presentations[dataIndex] : nil
+            if previous?.kind != presentation.kind || previous?.accessory != presentation.accessory {
                 changed.insert(dataIndex)
             }
         }
@@ -149,7 +160,7 @@ final class DataGridCellPresenter {
     }
 
     func presentation(forDataIndex dataIndex: Int) -> DataGridColumnPresentation {
-        presentations[dataIndex] ?? .plain
+        presentations.indices.contains(dataIndex) ? presentations[dataIndex] : .plain
     }
 
     private static func picksFromList(type: ColumnType?, enumValues: [String]?) -> Bool {
@@ -167,10 +178,6 @@ final class DataGridCellPresenter {
 
     // MARK: - Text
 
-    func displayText(of row: Row, dataIndex: Int, type: ColumnType?, pass: Pass) -> String {
-        displayText(of: row, dataIndex: dataIndex, type: type, formats: pass.formats, databaseType: pass.databaseType, columnCount: pass.rows.columns.count)
-    }
-
     func displayText(
         of row: Row,
         dataIndex: Int,
@@ -179,19 +186,32 @@ final class DataGridCellPresenter {
         databaseType: DatabaseType?,
         columnCount: Int
     ) -> String {
-        guard dataIndex >= 0, dataIndex < row.values.count, let cache = model?.display.cache else { return "" }
+        display(of: row, dataIndex: dataIndex, type: type, formats: formats, databaseType: databaseType, columnCount: columnCount).text
+    }
+
+    // The text and whether its display format produced it come from one cache entry, written and cleared together.
+    private func display(
+        of row: Row,
+        dataIndex: Int,
+        type: ColumnType?,
+        formats: [ValueDisplayFormat?],
+        databaseType: DatabaseType?,
+        columnCount: Int
+    ) -> (text: String, isFormatted: Bool) {
+        guard dataIndex >= 0, dataIndex < row.values.count, let cache = model?.display.cache else { return ("", false) }
         let existing = cache.box(forID: row.id)
         if let existing, dataIndex < existing.values.count, let cached = existing.values[dataIndex] {
-            return cached
+            return (cached, existing.isFormatted(at: dataIndex))
         }
         let rawValue = row.values[dataIndex]
         let format = dataIndex < formats.count ? formats[dataIndex] : nil
-        let formatted = CellDisplayFormatter.format(
+        let formatted = CellDisplayFormatter.display(
             rawValue,
             columnType: type,
             displayFormat: format,
             databaseType: databaseType
-        ) ?? rawValue.asText ?? ""
+        )
+        let text = formatted.text ?? rawValue.asText ?? ""
 
         let neededCount = max(dataIndex + 1, columnCount)
         let box: RowDisplayBox
@@ -203,27 +223,28 @@ final class DataGridCellPresenter {
         } else {
             box = RowDisplayBox(ContiguousArray<String?>(repeating: nil, count: neededCount))
         }
-        box.values[dataIndex] = formatted
+        box.setText(text, at: dataIndex, isFormatted: formatted.isFormatted)
         cache.setBox(box, forID: row.id)
-        return formatted
+        return (text, formatted.isFormatted)
     }
 
     // Formats a whole row ahead of the viewport, for the background prewarm.
     func cacheText(of row: Row, rows: TableRows, formats: [ValueDisplayFormat?], databaseType: DatabaseType?) {
         guard let cache = model?.display.cache, cache.box(forID: row.id) == nil else { return }
         let columnCount = rows.columns.count
-        var values = ContiguousArray<String?>(repeating: nil, count: columnCount)
+        let box = RowDisplayBox(ContiguousArray<String?>(repeating: nil, count: columnCount))
         for dataIndex in 0..<min(row.values.count, columnCount) {
             let type = dataIndex < rows.columnTypes.count ? rows.columnTypes[dataIndex] : nil
             let format = dataIndex < formats.count ? formats[dataIndex] : nil
-            values[dataIndex] = CellDisplayFormatter.format(
+            let formatted = CellDisplayFormatter.display(
                 row.values[dataIndex],
                 columnType: type,
                 displayFormat: format,
                 databaseType: databaseType
-            ) ?? row.values[dataIndex].asText ?? ""
+            )
+            box.setText(formatted.text ?? row.values[dataIndex].asText ?? "", at: dataIndex, isFormatted: formatted.isFormatted)
         }
-        cache.setBox(RowDisplayBox(values), forID: row.id)
+        cache.setBox(box, forID: row.id)
     }
 
     // MARK: - Appearance
@@ -239,17 +260,33 @@ final class DataGridCellPresenter {
         let dataIndex = column.dataIndex
         guard dataIndex >= 0, dataIndex < row.values.count else { return nil }
         let rawValue = row.values[dataIndex]
-        let text = displayText(of: row, dataIndex: dataIndex, type: column.type, pass: pass)
+        let shown = display(
+            of: row,
+            dataIndex: dataIndex,
+            type: column.type,
+            formats: pass.formats,
+            databaseType: pass.databaseType,
+            columnCount: pass.rows.columns.count
+        )
         let isFindMatch = pass.findMatch.map { $0.rowID == row.id && $0.columnID == column.id } ?? false
+        let presentation = self.presentation(forDataIndex: dataIndex)
+        let valueTone: DataGridValueTone
+        if pass.colorsValuesByType {
+            let format = dataIndex < pass.formats.count ? pass.formats[dataIndex] : nil
+            valueTone = presentation.valueTone.tone(displayedAs: format, isFormatted: shown.isFormatted)
+        } else {
+            valueTone = .plain
+        }
 
         return DataGridCellAppearance.resolve(
-            kind: presentation(forDataIndex: dataIndex).kind,
+            kind: presentation.kind,
             content: DataGridCellContent(
-                displayText: text,
+                displayText: shown.text,
                 rawValue: rawValue.asText,
                 placeholder: DataGridCellContent.placeholder(
                     for: rawValue,
                     isAbsent: row.isAbsent(dataIndex),
+                    isExpression: visualState.isExpression(columnIndex: dataIndex),
                     unloadedByteCount: row.unloadedByteCount(dataIndex),
                     marksEmptyText: pass.marksEmptyText
                 )
@@ -266,6 +303,7 @@ final class DataGridCellPresenter {
             onEmphasizedSelection: onEmphasizedSelection,
             checkboxMark: checkboxMark(of: row, column: column, checkboxColumns: pass.checkboxColumns),
             textTone: model?.dataSource?.gridTextTone(for: row.id, column: column),
+            valueTone: valueTone,
             revealsInvisibleCharacters: pass.showsInvisibleCharacters
         )
     }
@@ -297,6 +335,7 @@ final class DataGridCellPresenter {
         switch DataGridCellContent.placeholder(
             for: rawValue,
             isAbsent: row.isAbsent(dataIndex),
+            isExpression: model.changeState?.isExpression(rowID: row.id, columnIndex: dataIndex) ?? false,
             unloadedByteCount: row.unloadedByteCount(dataIndex),
             marksEmptyText: model.configuration.marksEmptyText
         ) {

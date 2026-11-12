@@ -27,7 +27,10 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .cancelQuery, .materializedViews, .dataCompare, .rowWrites, .cellExpressions, .uuidCellText]
+        [
+            .multiSchema, .cancelQuery, .materializedViews, .dataCompare, .rowWrites, .cellExpressions, .uuidCellText,
+            .columnDefaultMarks,
+        ]
     }
 
     func cacheColumnTypes(_ types: [String: String], key: String) {
@@ -129,8 +132,10 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await Self.$hostSplit.withValue(context.hostSplit) {
-            try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        try await PluginParameterBinder.withHostContext(context) {
+            try await Self.$hostSplit.withValue(context.hostSplit) {
+                try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+            }
         }
     }
 
@@ -139,8 +144,10 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await Self.$hostSplit.withValue(context.hostSplit) {
-            try await executeParameterized(query: query, parameters: parameters)
+        try await PluginParameterBinder.withHostContext(context) {
+            try await Self.$hostSplit.withValue(context.hostSplit) {
+                try await executeParameterized(query: query, parameters: parameters)
+            }
         }
     }
 

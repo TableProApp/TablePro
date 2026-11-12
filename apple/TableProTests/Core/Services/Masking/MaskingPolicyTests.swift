@@ -43,6 +43,57 @@ struct MaskingPolicyTests {
         #expect(policy.style(table: "hosts", column: "address", typeName: nil) == nil)
     }
 
+    // MySQL results name `TINYINT(1)` and `BIT(8)`, and a `tinyint` rule showed those columns in the clear.
+    @Test("A type rule matches the type a result names with its parameters or a wrapper, ignoring case")
+    func typeRuleMatchesTheBaseTypeName() {
+        let policy = MaskingPolicy(rules: [
+            MaskingRule(pattern: "tinyint", target: .type),
+            MaskingRule(pattern: "bit", target: .type, style: .null),
+            MaskingRule(pattern: "String", target: .type, style: .hash),
+            MaskingRule(pattern: "var*", target: .type, style: .lastFour),
+        ])
+        #expect(policy.style(table: "users", column: "active", typeName: "TINYINT(1)") == .full)
+        #expect(policy.style(table: "users", column: "age", typeName: "tinyint(4) unsigned") == .full)
+        #expect(policy.style(table: "users", column: "flags", typeName: "BIT(8)") == .null)
+        #expect(policy.style(table: "users", column: "flag", typeName: "BIT") == .null)
+        #expect(policy.style(table: "events", column: "token", typeName: "LowCardinality(Nullable(String))") == .hash)
+        #expect(policy.style(table: "users", column: "name", typeName: "VARCHAR(255)") == .lastFour)
+        #expect(policy.style(table: "users", column: "id", typeName: "INT") == nil)
+        #expect(policy.style(table: "users", column: "bits", typeName: "BITSTRING(8)") == nil)
+    }
+
+    @Test("A type rule that names parameters still matches only those parameters")
+    func parameterizedTypeRuleStaysExact() {
+        let policy = MaskingPolicy(rules: [MaskingRule(pattern: "tinyint(1)", target: .type)])
+        #expect(policy.style(table: "users", column: "active", typeName: "TINYINT(1)") == .full)
+        #expect(policy.style(table: "users", column: "age", typeName: "TINYINT(4)") == nil)
+        #expect(policy.style(table: "users", column: "age", typeName: "TINYINT") == nil)
+    }
+
+    @Test("A column rule after a type rule still wins when the type rule matches only the base name")
+    func exactMatchesBeatBaseNameMatches() {
+        let policy = MaskingPolicy(rules: [
+            MaskingRule(pattern: "varchar", target: .type, style: .lastFour),
+            MaskingRule(pattern: "ssn", target: .column),
+        ])
+        #expect(policy.style(table: "people", column: "ssn", typeName: "VARCHAR(11)") == .full)
+        #expect(policy.style(table: "people", column: "name", typeName: "VARCHAR(11)") == .lastFour)
+        #expect(policy.style(table: "people", column: "ssn", typeName: "varchar") == .lastFour)
+    }
+
+    @Test("Column masks match a type rule against the classified type's raw name")
+    func columnMasksMatchTypeRulesOnParameterizedTypes() {
+        let policy = MaskingPolicy(rules: [MaskingRule(pattern: "tinyint", target: .type)])
+        let classifier = ColumnTypeClassifier(family: .mysql)
+        let masks = policy.columnMasks(
+            table: "users",
+            columns: ["id", "active"],
+            columnTypes: [classifier.classify(rawTypeName: "INT"), classifier.classify(rawTypeName: "TINYINT(1)")]
+        )
+        #expect(masks.maskedColumns == [1])
+        #expect(masks.row([.text("7"), .text("1")]) == [.text("7"), .text("••••")])
+    }
+
     @Test("The first matching rule wins, and an empty pattern is ignored")
     func firstRuleWins() {
         let policy = MaskingPolicy(rules: [

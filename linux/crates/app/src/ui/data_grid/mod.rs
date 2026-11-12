@@ -142,10 +142,14 @@ impl DataGrid {
         }
     }
 
+    /// The connection's dialect, SQL or not.
+    pub(crate) fn dialect(&self) -> Option<Arc<dyn SqlDialect>> {
+        (self.config()?.dialect.as_ref()?)()
+    }
+
     /// The connection's dialect, where the rows have an SQL spelling.
     pub(crate) fn sql_dialect(&self) -> Option<Arc<dyn SqlDialect>> {
-        let dialect = (self.config()?.dialect.as_ref()?)()?;
-        dialect.grammar().is_sql().then_some(dialect)
+        self.dialect().filter(|dialect| dialect.grammar().is_sql())
     }
 
     pub fn connect_request<F: Fn(&Self, GridRequest) + 'static>(&self, f: F) -> glib::SignalHandlerId {

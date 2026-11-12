@@ -7,9 +7,7 @@ import AppKit
 import os
 import SwiftUI
 
-/// Hosts the settings panes in an AppKit window so the app no longer needs a SwiftUI `Settings`
-/// scene. One instance is kept for the app's lifetime, matching the single-window scene it
-/// replaces.
+// An AppKit window, so the app needs no SwiftUI Settings scene.
 @MainActor
 internal final class SettingsWindowController: NSWindowController {
     private static var shared: SettingsWindowController?
@@ -35,9 +33,7 @@ internal final class SettingsWindowController: NSWindowController {
     internal convenience init(registryClient: RegistryClient) {
         let panes = SettingsPaneTabViewController(registryClient: registryClient)
 
-        /// `NSWindow(contentViewController:)` binds the window title to the content view
-        /// controller's own title, so the selected pane publishes the title and nothing writes
-        /// `window.title` directly.
+        // NSWindow(contentViewController:) binds the title to the panes controller's, so nothing writes window.title.
         let window = NSWindow(contentViewController: panes)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
         window.keepsKeyViewLoopCurrent()
@@ -47,8 +43,7 @@ internal final class SettingsWindowController: NSWindowController {
         window.contentMinSize = SettingsPaneTabViewController.paneSize
         window.setContentSize(SettingsPaneTabViewController.paneSize)
         window.applyAutosaveName(WindowIdentifier.settings)
-        /// `contentMinSize` only constrains a user drag, so a frame saved before the window had
-        /// a minimum is grown back to the pane minimum on restore.
+        // contentMinSize only limits a drag, so a frame saved before the window had a minimum is grown back here.
         window.setContentSize(
             NSSize(
                 width: max(window.contentLayoutRect.width, SettingsPaneTabViewController.paneSize.width),
@@ -60,8 +55,7 @@ internal final class SettingsWindowController: NSWindowController {
 }
 
 internal final class SettingsPaneTabViewController: NSTabViewController {
-    /// Wide enough for twelve items in a `.preference` toolbar. At 720 the last of them
-    /// falls into an overflow chevron, which is where a pane nobody can find comes from.
+    // Fits twelve items in a .preference toolbar; at 720 the last one hides behind an overflow chevron.
     internal static let paneSize = NSSize(width: 800, height: 500)
     internal static let paneOrder: [SettingsPane] = SettingsPane.allCases
 
@@ -85,8 +79,7 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
     }
 
     internal func select(_ pane: SettingsPane?) {
-        /// `loadViewIfNeeded()` is macOS 14. Reading `view` is what it does: the getter loads
-        /// the view when it has not been loaded yet.
+        // Before macOS 14, reading view loads it, which is all loadViewIfNeeded() does.
         if #available(macOS 14.0, *) {
             loadViewIfNeeded()
         } else {
@@ -103,8 +96,7 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         tabStyle = .toolbar
-        /// Adding the first item selects it, which persists `.general` over the pane a caller
-        /// asked for, so the pane to restore is read while no item exists yet.
+        // Adding the first item selects and persists .general, so the saved pane is read before any item exists.
         let restored = persistedPane
         for pane in Self.paneOrder {
             addTabViewItem(makeTabViewItem(for: pane))
@@ -129,9 +121,7 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
             )
             .environment(\.appServices, .live)
         let hosting = NSHostingController(rootView: content)
-        /// A tab child publishes no size to the window, which owns its minimum through
-        /// `contentMinSize`. Its title does travel: `NSTabViewController` mirrors the selected
-        /// child's title into its own, and the window's title is bound to that.
+        // The window owns the minimum size; the title still reaches it, as NSTabViewController mirrors the selected child's.
         hosting.sizingOptions = []
         hosting.title = pane.title
 
@@ -177,6 +167,7 @@ private struct SettingsPaneContent: View {
         case .data:
             DataResultsSettingsView(
                 dataGrid: $settingsManager.dataGrid,
+                valueColors: $settingsManager.valueColors,
                 history: $settingsManager.history,
                 editor: $settingsManager.editor,
                 typography: $settingsManager.typography

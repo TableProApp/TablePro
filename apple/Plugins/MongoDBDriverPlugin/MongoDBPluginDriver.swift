@@ -35,7 +35,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     func quoteIdentifier(_ name: String) -> String { name }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .statementPolicy]
+        [.cancelQuery, .statementPolicy, .columnDefaultMarks]
     }
 
     func defaultExportQuery(table: String) -> String? {
@@ -1031,10 +1031,9 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             }
         )
         if !result.columns.isEmpty {
-            continuation.yield(.header(PluginStreamHeader(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames
-            )))
+            var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
+            if result.isTruncated { header.rowLimit = result.rows.count }
+            continuation.yield(.header(header))
         }
         if !result.rows.isEmpty {
             continuation.yield(.rows(result.rows, documents: result.exportDocuments))

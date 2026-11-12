@@ -123,7 +123,7 @@ extension DatabaseManager {
                 attempt: attempt,
                 for: connection.id
             )
-            await applyTimeoutAndStartupCommands(
+            let startupFailures = await applyTimeoutAndStartupCommands(
                 on: driver,
                 queryTimeoutSeconds: effectiveQueryTimeoutSeconds,
                 startupCommands: resolvedConnection.startupCommands,
@@ -154,7 +154,7 @@ extension DatabaseManager {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
-                session.connectionWarning = driver.connectionWarning
+                session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)
                 // A connect answers whatever went wrong before it, including a reconnect that gave up on this entry.
                 session.liveness = .live
                 session.recovery = nil
@@ -574,21 +574,21 @@ extension DatabaseManager {
         )
     }
 
-    /// The connection parked for `database`, if it still answers. One that died is closed, and if it
-    /// was holding a transaction, the next work on that database is told the server rolled it back.
-    /// A turn running on it right now is answer enough, and asking would wait for that turn.
+    // The connection parked for `database`, if it still answers. One that died is closed, and if it held a transaction
+    // or session state, the next work on that database is told what the server dropped. A turn running on it right now
+    // is answer enough, and asking would wait for that turn.
     private func answeringParkedDriver(database: String, for connectionId: UUID) async -> DatabaseDriver? {
         let key = SessionDriverGate.Key(connectionId: connectionId, database: database)
         guard var parked = sessionLanes.parkedDriver(for: connectionId, database: database) else { return nil }
-        /// A check already running decides for this switch too: once it ends it has either confirmed
-        /// the driver or parked a replacement, and that is what gets promoted.
+        // A check already running decides for this switch too: once it ends it has either confirmed the driver or
+        // parked a replacement, and that is what gets promoted.
         if sessionLanes.isVerifying(parked) {
             await sessionLanes.waitForVerification(of: parked)
             guard let settled = sessionLanes.parkedDriver(for: connectionId, database: database) else { return nil }
             parked = settled
         }
         if sessionLanes.isFresh(parked) || sessionDriverGate.isHeld(key) { return parked }
-        /// Read before the ping, which on a closed socket leaves libpq reporting no state at all.
+        // Read before the ping, which on a closed socket leaves libpq reporting no state at all.
         let held = await parked.heldSessionTransactionState()
         do {
             try await sessionDriverGate.withExclusiveAccess(key) {
@@ -598,10 +598,13 @@ extension DatabaseManager {
             return parked
         } catch {
             guard sessionLanes.parkedDriver(for: connectionId, database: database) === parked else { return nil }
+            sessionLanes.markLost(
+                database: database,
+                transaction: !held.permitsAppTransaction,
+                state: sessionStateLedger.state(heldBy: parked, for: connectionId),
+                for: connectionId
+            )
             sessionLanes.close(database: database, for: connectionId, supersedingOpens: false)
-            if !held.permitsAppTransaction {
-                sessionLanes.markTransactionLost(database: database, for: connectionId)
-            }
             return nil
         }
     }
@@ -657,7 +660,7 @@ extension DatabaseManager {
         let previousSavedSchema = appSettingsStorage.loadLastSchema(for: connectionId)
 
         // Noted under the database being left, before the session names the target.
-        noteTransactionLost(with: previous.driver, for: connectionId)
+        noteSessionLost(with: previous.driver, for: connectionId, includingState: false)
         updateSession(connectionId) { session in
             session.connection.database = database
             session.browseDatabase = database
@@ -1014,6 +1017,7 @@ extension DatabaseManager {
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
         sessionTransactions.prune(connectionId)
+        sessionStateLedger.prune(connectionId)
         AppEvents.shared.connectionStatusChanged.send(
             ConnectionStatusChange(connectionId: connectionId, status: session.reportedStatus)
         )
@@ -1190,6 +1194,7 @@ extension DatabaseManager {
         monitorPingedDrivers.removeValue(forKey: connectionId)
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
+        reportedStartupFailures.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)
         aiAccessApprovals.revoke(connectionId)
         AppEvents.shared.connectionStatusChanged.send(

@@ -156,6 +156,27 @@ final class RowDetailViewModel {
         }
     }
 
+    // Past this the row shows an excerpt, and the whole value opens on a screen of its own.
+    static let inlineByteLimit = Cell.previewByteLimit
+
+    static func excerpt(of value: String) -> String {
+        Cell.preview(of: value, maxBytes: inlineByteLimit)
+    }
+
+    func longValue(forRow rowIndex: Int, at index: Int) -> String? {
+        guard let value = completeValue(forRow: rowIndex, at: index), value.utf8.count > Self.inlineByteLimit else {
+            return nil
+        }
+        return value
+    }
+
+    // Cut with no key to read it again by: a query result past its memory budget, or a table without a primary key.
+    func isShownInPart(forRow rowIndex: Int, at index: Int) -> Bool {
+        let rowCells = cells(at: rowIndex)
+        guard rowCells.indices.contains(index), case .truncatedText(_, _, .none) = rowCells[index] else { return false }
+        return true
+    }
+
     // MariaDB's catalog names a JSON column longtext while its result column says JSON, so either type decides.
     func isJSON(at index: Int) -> Bool {
         guard index >= 0, index < columns.count else { return false }

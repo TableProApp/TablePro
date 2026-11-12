@@ -17,8 +17,6 @@ nonisolated enum ClickHouseRowWrites {
         let delete: (_ table: String, _ predicate: String) -> String
     }
 
-    static let defaultMarker = PluginCellValue.text("__DEFAULT__")
-
     static func writes(
         table: String,
         schema: String?,
@@ -52,7 +50,8 @@ nonisolated enum ClickHouseRowWrites {
                       let values = insertedRowData[change.rowIndex] else { continue }
                 writes.append(insert(
                     into: target, columns: columns, values: values, expressions: change.expressionColumns ?? [],
-                    serverOwned: context.serverOwnedColumns, rowIndex: change.rowIndex
+                    defaults: change.defaultColumns ?? [], serverOwned: context.serverOwnedColumns,
+                    rowIndex: change.rowIndex
                 ))
             case .update:
                 guard !change.cellChanges.isEmpty else { continue }
@@ -78,13 +77,14 @@ nonisolated enum ClickHouseRowWrites {
         columns: [String],
         values: [PluginCellValue],
         expressions: Set<Int>,
+        defaults: Set<Int> = [],
         serverOwned: Set<String> = [],
         rowIndex: Int
     ) -> PluginRowWrite {
         var names: [String] = []
         var placeholders: [String] = []
         var parameters: [PluginCellValue] = []
-        for (index, value) in values.enumerated() where index < columns.count && value != defaultMarker {
+        for (index, value) in values.enumerated() where index < columns.count && !defaults.contains(index) {
             names.append(clickHouseQuotedIdentifier(columns[index]))
             if expressions.contains(index), case .text(let sql) = value {
                 placeholders.append(sql)

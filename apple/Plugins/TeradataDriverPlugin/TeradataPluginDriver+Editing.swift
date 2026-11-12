@@ -36,7 +36,8 @@ extension TeradataPluginDriver {
                     target: target,
                     columns: columns,
                     values: values,
-                    expressionColumns: change.expressionColumns ?? []
+                    expressionColumns: change.expressionColumns ?? [],
+                    defaultColumns: change.defaultColumns ?? []
                 )
                 statements.append((insert, []))
             case .update:
@@ -45,7 +46,8 @@ extension TeradataPluginDriver {
                     TeradataRowEditSQL.assignment(
                         column: $0.columnName,
                         value: $0.newValue,
-                        isExpression: expressionColumns.contains($0.columnIndex)
+                        isExpression: expressionColumns.contains($0.columnIndex),
+                        isDefault: change.isColumnDefault($0.columnIndex)
                     )
                 }
                 guard !assignments.isEmpty,

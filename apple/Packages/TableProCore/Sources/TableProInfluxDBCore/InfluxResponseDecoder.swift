@@ -6,24 +6,38 @@ public enum InfluxResponseDecoder {
         var records = InfluxCSV.records(data)[...]
         guard let columns = records.popFirst() else { return .empty }
         try CellBudget.perByte(of: data).check(rows: records.count, columns: columns.count)
-        let rows: [[String?]] = records.map { record in
-            columns.indices.map { index in
+        let layout = V3Layout(columns: columns)
+        return layout.table(records.map(layout.row))
+    }
+
+    // A 3.x CSV record as a row under its header. The stream maps records with this too, so a cell reads the same.
+    struct V3Layout {
+        let columns: [String]
+        // Only `time` is inferred as a timestamp, so it is the one column whose zone-less values get a `Z`.
+        private let timeColumns: [Int]
+
+        init(columns: [String]) {
+            self.columns = columns
+            timeColumns = columns.indices.filter { columns[$0] == InfluxTypeName.timeColumn }
+        }
+
+        func row(_ record: [String]) -> [String?] {
+            var row: [String?] = columns.indices.map { index in
                 guard index < record.count, !record[index].isEmpty else { return nil }
                 return record[index]
             }
-        }
-        let typeNames = columns.indices.map { index in
-            InfluxTypeName.inferred(column: columns[index], values: rows.map { $0[index] })
-        }
-        let timestampColumns = typeNames.indices.filter { typeNames[$0] == InfluxTypeName.timestamp }
-        let normalized = timestampColumns.isEmpty ? rows : rows.map { row in
-            var row = row
-            for index in timestampColumns {
+            for index in timeColumns {
                 row[index] = row[index].map(InfluxTypeName.normalizedTimestamp)
             }
             return row
         }
-        return InfluxResultTable(columns: columns, typeNames: typeNames, rows: normalized)
+
+        func table(_ rows: [[String?]]) -> InfluxResultTable {
+            let typeNames = columns.indices.map { index in
+                InfluxTypeName.inferred(column: columns[index], values: rows.map { $0[index] })
+            }
+            return InfluxResultTable(columns: columns, typeNames: typeNames, rows: rows)
+        }
     }
 
     // InfluxQL over `/query` (1.x and the 2.x compatibility API). Every series of every statement lands in one grid: a
@@ -159,12 +173,16 @@ public enum InfluxResponseDecoder {
     }
 
     // Rows are as wide as every header together, so a short record costs more cells than bytes.
-    private struct CellBudget {
+    struct CellBudget {
         let limit: Int
 
         // Every v3 CSV row carries every column, a byte per cell at least: 16 cells per byte, or a million at any size.
         static func perByte(of data: Data) -> CellBudget {
-            let (scaled, overflow) = data.count.multipliedReportingOverflow(by: 16)
+            perByte(bytes: data.count)
+        }
+
+        static func perByte(bytes: Int) -> CellBudget {
+            let (scaled, overflow) = bytes.multipliedReportingOverflow(by: 16)
             return CellBudget(limit: overflow ? .max : max(scaled, 1 << 20))
         }
 

@@ -412,8 +412,11 @@ struct DatabaseManagerDatabaseSwitchTests {
         let pluginDriver = DatabaseSwitchingDriver()
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
 
-        await DatabaseManager.shared.restoreSchemaAndDatabase(on: adapter, savedSchema: "idb", savedDatabase: "ice")
+        let warning = await DatabaseManager.shared.restoreSchemaAndDatabase(
+            on: adapter, savedSchema: "idb", savedDatabase: "ice"
+        )
 
         #expect(pluginDriver.switches == ["database ice", "schema idb"])
+        #expect(warning == nil)
     }
 }

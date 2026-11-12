@@ -384,7 +384,12 @@ final class MainContentCoordinator: ObservableObject {
     // Guards re-entrant confirm dialogs (nested run loop during runModal).
     internal var isShowingConfirmAlert = false
 
-    internal var isShowingSafeModePrompt = false
+    // Lowered by whichever run raised it, so a table load it turned away is retried whatever path asked.
+    internal var isShowingSafeModePrompt = false {
+        didSet { safeModePromptDidChange(wasShowing: oldValue) }
+    }
+
+    var tableLoadTurnedAwayByPrompt: ParkedTableLoad?
 
     @Published internal var rewindPlan: RewindPlan?
 
@@ -1133,7 +1138,7 @@ final class MainContentCoordinator: ObservableObject {
            tab.execution.lastExecutedAt == nil
         {
             guard !isShowingSafeModePrompt else {
-                traceNavigationAbandoned(tabId: tab.id, outcome: .safeModePromptAlreadyOpen)
+                turnAwayTableLoad(tabId: tab.id, trigger: trigger)
                 return nil
             }
             isShowingSafeModePrompt = true
@@ -1311,7 +1316,9 @@ final class MainContentCoordinator: ObservableObject {
                     scope: scope,
                     isTableTab: isTableTab,
                     lease: lease
-                ) { [queryExecutor] driver in
+                ) { [queryExecutor, manager = services.databaseManager] driver in
+                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                    if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
                     let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,

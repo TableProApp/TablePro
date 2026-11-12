@@ -39,7 +39,7 @@ final class ResultSet: ObservableObject, Identifiable {
     @Published var isPinned: Bool = false
     @Published var isTruncated: Bool = false
     @Published var baseQuery: String?
-    @Published var baseQueryParameterValues: [String?]?
+    @Published var baseQueryParameterValues: [TypedParameterValue?]?
 
     /// The statement a parameterized run produced these rows from, as written, with the values it bound. `baseQuery`
     /// and `baseQueryParameterValues` are the same run in the driver's positional form, which Fetch All sends as it

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml.Hosting;
+using TablePro.DataGrid.Model;
 using TablePro.Graphics;
 using TerraFX.Interop.DirectX;
 using Windows.Foundation;
@@ -26,6 +27,8 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
     private int _cellCount;
     private nint _numberLayout;
     private int _numberRow = -1;
+    private bool _numberDeleted;
+    private bool _washed;
     private int _layoutVersion = -1;
     private int _inkVersion = -1;
     private int _generation = -1;
@@ -63,6 +66,9 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
     public SizeInt32 SurfacePixels => _surface?.Pixels ?? default;
 
     public int CellCount => _cellCount;
+
+    // A wash covers the selection box beneath the row, so the row draws the selection's tint and follows it.
+    public bool IsWashed => _washed;
 
     public void SetRow(int row)
     {
@@ -123,12 +129,14 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         var device = painter.Device;
         painter.EnsureBrushes();
         var layoutVersion = _grid.LayoutVersion;
-        var inkVersion = _grid.InkVersion(_frozen);
+        var inkVersion = _grid.InkVersion(_frozen || _washed);
         if (Row == DrawnRowIndex && first == DrawnFirst && last == DrawnLast && layoutVersion == _layoutVersion
             && inkVersion == _inkVersion && _generation == device.Generation)
         {
             return;
         }
+        var mark = _grid.MarkOf(Row);
+        _washed = mark != RowMark.None && !painter.Colors.HighContrast;
         var started = Stopwatch.GetTimestamp();
         if (layoutVersion != _layoutVersion || DrawnRowIndex != Row)
         {
@@ -185,18 +193,29 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         context->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
         var selection = _grid.SelectionRange;
         var rowSelected = Row >= selection.FirstRow && Row <= selection.LastRow;
+        var tinted = _washed && _grid.SelectionBoxShown;
         if (_frozen)
         {
-            DrawRowNumber(context, painter, rowHeight, rowSelected && selection.FirstColumn == 0 && selection.LastColumn == columns.Count - 1);
+            DrawRowNumber(context, painter, rowHeight, mark, rowSelected && selection.FirstColumn == 0 && selection.LastColumn == columns.Count - 1);
         }
         for (var i = 0; i < _cellCount; i++)
         {
             ref var cell = ref _cells[i];
             var x = (float)(columns.PaneX(cell.Column) - x0);
             var w = (float)columns.Width(cell.Column);
+            var selected = rowSelected && cell.Column >= selection.FirstColumn && cell.Column <= selection.LastColumn;
+            var fill = _washed ? painter.FillBrush(cell.Marks) : null;
+            if (fill != null)
+            {
+                var area = new D2D_RECT_F(x, 0, x + w, rowHeight);
+                context->FillRectangle(&area, fill);
+                if (selected && tinted)
+                {
+                    context->FillRectangle(&area, painter.SelectionBrush);
+                }
+            }
             if (cell.Layout != 0)
             {
-                var selected = rowSelected && cell.Column >= selection.FirstColumn && cell.Column <= selection.LastColumn;
                 context->DrawTextLayout(new D2D_POINT_2F(x + CellPainter.Padding, 0), (IDWriteTextLayout*)cell.Layout,
                     painter.InkBrush(cell.Ink, selected), D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
             }
@@ -222,28 +241,32 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         DrawnRowIndex = Row;
         DrawnFirst = first;
         DrawnLast = last;
-        _inkVersion = inkVersion;
+        _inkVersion = _grid.InkVersion(_frozen || _washed);
         _generation = device.Generation;
         _grid.Counters.RowsDrawn++;
         _grid.Counters.DrawMilliseconds += Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
 
-    private void DrawRowNumber(ID2D1DeviceContext* context, CellPainter painter, float rowHeight, bool selected)
+    private void DrawRowNumber(ID2D1DeviceContext* context, CellPainter painter, float rowHeight, RowMark mark, bool selected)
     {
         var width = (float)_grid.Columns.RowHeaderWidth;
         var back = new D2D_RECT_F(0, 0, width, rowHeight);
-        context->FillRectangle(&back, painter.HeaderBrush);
-        if (_numberRow != Row || _numberLayout == 0)
+        var deleted = mark == RowMark.Deleted;
+        var fill = painter.FillBrush(deleted ? CellState.Deleted : mark == RowMark.Inserted ? CellState.Inserted : CellState.None);
+        context->FillRectangle(&back, fill != null ? fill : painter.HeaderBrush);
+        if (_numberRow != Row || _numberLayout == 0 || _numberDeleted != deleted)
         {
             ReleaseNumber();
             (Row + 1).TryFormat(_number, out var length, provider: CultureInfo.CurrentCulture);
-            _numberLayout = (nint)painter.CreateRowNumber(_number.AsSpan(0, length), width - CellPainter.RowNumberPadding * 2, rowHeight);
+            _numberLayout = (nint)painter.CreateRowNumber(_number.AsSpan(0, length), width - CellPainter.RowNumberPadding * 2, rowHeight,
+                deleted);
             _numberRow = Row;
+            _numberDeleted = deleted;
         }
         if (_numberLayout != 0)
         {
             context->DrawTextLayout(new D2D_POINT_2F(CellPainter.RowNumberPadding, 0), (IDWriteTextLayout*)_numberLayout,
-                painter.InkBrush(CellInk.RowNumber, selected), D2D1_DRAW_TEXT_OPTIONS_NONE);
+                painter.InkBrush(deleted ? CellInk.Deleted : CellInk.RowNumber, selected), D2D1_DRAW_TEXT_OPTIONS_NONE);
         }
         var edge = new D2D_RECT_F(width - 1, 0, width, rowHeight);
         context->FillRectangle(&edge, painter.DividerBrush);
@@ -263,6 +286,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
             Column = column,
             Layout = (nint)layout,
             Ink = ink,
+            Marks = cell.State & (CellState.Modified | CellState.Inserted | CellState.Deleted),
             Hash = string.GetHashCode(cell.Text),
             Length = cell.Text.Length,
         };
@@ -332,6 +356,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         public int Column;
         public nint Layout;
         public CellInk Ink;
+        public CellState Marks;
         public int Hash;
         public int Length;
     }

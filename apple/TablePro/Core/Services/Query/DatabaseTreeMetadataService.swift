@@ -66,7 +66,11 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let commit: ReferenceWritableKeyPath<DatabaseTreeMetadataService, ListCommitState<Key>>
         let dedup: OnceTask<ListFetchKey<Key>, Value>
         let label: String
+        // What a read uses while nothing is on screen; a reread of rows already shown always goes bulk.
+        let workload: MetadataConnectionPool.Workload
     }
+
+    private typealias ListFetch<Value> = @Sendable (MetadataConnectionPool.Workload) async throws -> Value
 
     @Published private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
     @Published private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
@@ -109,31 +113,31 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private init() {}
 
     private var schemaLists: TreeList<DatabaseKey, [String]> {
-        TreeList(state: \.schemaList, commit: \.schemaListCommit, dedup: schemaDedup, label: "schemas")
+        TreeList(state: \.schemaList, commit: \.schemaListCommit, dedup: schemaDedup, label: "schemas", workload: .interactive)
     }
 
     private var tableLists: TreeList<ObjectsKey, [TableInfo]> {
-        TreeList(state: \.tablesState, commit: \.tablesCommit, dedup: tablesDedup, label: "tables")
+        TreeList(state: \.tablesState, commit: \.tablesCommit, dedup: tablesDedup, label: "tables", workload: .interactive)
     }
 
     private var routineLists: TreeList<ObjectsKey, [RoutineInfo]> {
-        TreeList(state: \.routinesState, commit: \.routinesCommit, dedup: routinesDedup, label: "routines")
+        TreeList(state: \.routinesState, commit: \.routinesCommit, dedup: routinesDedup, label: "routines", workload: .bulk)
     }
 
     private var triggerLists: TreeList<ObjectsKey, [TriggerInfo]> {
-        TreeList(state: \.triggersState, commit: \.triggersCommit, dedup: triggersDedup, label: "triggers")
+        TreeList(state: \.triggersState, commit: \.triggersCommit, dedup: triggersDedup, label: "triggers", workload: .bulk)
     }
 
     private var typeLists: TreeList<ObjectsKey, [UserDefinedTypeInfo]> {
-        TreeList(state: \.typesState, commit: \.typesCommit, dedup: typesDedup, label: "types")
+        TreeList(state: \.typesState, commit: \.typesCommit, dedup: typesDedup, label: "types", workload: .bulk)
     }
 
     private var partitionLists: TreeList<PartitionsKey, [PartitionInfo]> {
-        TreeList(state: \.partitionsState, commit: \.partitionsCommit, dedup: partitionsDedup, label: "partitions")
+        TreeList(state: \.partitionsState, commit: \.partitionsCommit, dedup: partitionsDedup, label: "partitions", workload: .interactive)
     }
 
     private var tableDetailLists: TreeList<TableDetailsKey, TableDetailList> {
-        TreeList(state: \.tableDetailsState, commit: \.tableDetailsCommit, dedup: tableDetailsDedup, label: "table details")
+        TreeList(state: \.tableDetailsState, commit: \.tableDetailsCommit, dedup: tableDetailsDedup, label: "table details", workload: .interactive)
     }
 
     // MARK: - Reads
@@ -501,10 +505,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
     }
 
-    private func fetchDatabaseList(connectionId: UUID, databaseType: DatabaseType) async throws -> [DatabaseMetadata] {
+    private func fetchDatabaseList(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        workload: MetadataConnectionPool.Workload = .interactive
+    ) async throws -> [DatabaseMetadata] {
         let systemNames = Set(PluginManager.shared.systemDatabaseNames(for: databaseType))
         return try await databaseDedup.execute(key: connectionId) { [self] in
-            try await withDriver(connectionId: connectionId, database: nil) { driver in
+            try await withDriver(connectionId: connectionId, database: nil, workload: workload) { driver in
                 try await driver.fetchDatabases().sorted().map {
                     DatabaseMetadata.minimal(name: $0, isSystem: systemNames.contains($0))
                 }
@@ -592,7 +600,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
         guard isConnected(connectionId) else { return }
         do {
-            let list = try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType)
+            let list = try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType, workload: .bulk)
             guard databaseListFence.isCurrent(token, for: connectionId) else { return }
             databaseList[connectionId] = .loaded(list)
         } catch is CancellationError {
@@ -758,7 +766,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         connectionId: UUID,
         in list: TreeList<Key, Value>,
         token explicitToken: Int? = nil,
-        fetch: @Sendable @escaping () async throws -> Value
+        fetch: @escaping ListFetch<Value>
     ) async {
         guard isConnected(connectionId) else { return }
         let token = explicitToken ?? self[keyPath: list.commit].fence.token(for: key)
@@ -766,15 +774,24 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
               !self[keyPath: list.commit].freshness.isCurrent(key) else { return }
         let revision = self[keyPath: list.commit].freshness.revision(for: key)
         self[keyPath: list.commit].freshness.noteFetchStarted(revision, for: key)
+        // Rows on screen mean nobody waits on this read, so completion goes ahead of it.
+        let workload: MetadataConnectionPool.Workload
         switch self[keyPath: list.state][key] ?? .idle {
-        case .loaded, .loading: break
-        case .idle, .failed: self[keyPath: list.state][key] = .loading
+        case .loaded:
+            workload = .bulk
+        case .loading:
+            workload = list.workload
+        case .idle, .failed:
+            workload = list.workload
+            self[keyPath: list.state][key] = .loading
         }
 
         let outcome: MetadataFetchOutcome<Value>
         var failure: Error?
         do {
-            outcome = .fetched(try await list.dedup.execute(key: ListFetchKey(key: key, revision: revision), work: fetch))
+            outcome = .fetched(try await list.dedup.execute(key: ListFetchKey(key: key, revision: revision)) {
+                try await fetch(workload)
+            })
         } catch is CancellationError {
             outcome = .cancelled
         } catch {
@@ -825,7 +842,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         _ key: Key,
         connectionId: UUID,
         in list: TreeList<Key, Value>,
-        fetch: @Sendable @escaping () async throws -> Value
+        fetch: @escaping ListFetch<Value>
     ) async -> Bool {
         let token = self[keyPath: list.commit].fence.supersede(key)
         self[keyPath: list.commit].freshness.markChanged(key)
@@ -835,66 +852,66 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         return !self[keyPath: list.commit].fence.isCurrent(token, for: key)
     }
 
-    private func schemaListFetch(_ key: DatabaseKey) -> @Sendable () async throws -> [String] {
-        { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+    private func schemaListFetch(_ key: DatabaseKey) -> ListFetch<[String]> {
+        { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchSchemas()
             }
         }
     }
 
-    private func tableListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [TableInfo] {
+    private func tableListFetch(_ key: ObjectsKey) -> ListFetch<[TableInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchTables(schema: schema)
             }
         }
     }
 
-    private func routineListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [RoutineInfo] {
+    private func routineListFetch(_ key: ObjectsKey) -> ListFetch<[RoutineInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchRoutines(schema: schema)
             }
         }
     }
 
-    private func triggerListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [TriggerInfo] {
+    private func triggerListFetch(_ key: ObjectsKey) -> ListFetch<[TriggerInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchAllTriggers(schema: schema)
             }
         }
     }
 
-    private func typeListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [UserDefinedTypeInfo] {
+    private func typeListFetch(_ key: ObjectsKey) -> ListFetch<[UserDefinedTypeInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchUserDefinedTypes(schema: schema)
             }
         }
     }
 
-    private func partitionListFetch(_ key: PartitionsKey) -> @Sendable () async throws -> [PartitionInfo] {
+    private func partitionListFetch(_ key: PartitionsKey) -> ListFetch<[PartitionInfo]> {
         let schema = key.schema
         let table = key.table
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchPartitionDetails(table: table, schema: schema)
             }
         }
     }
 
-    private func tableDetailFetch(_ key: TableDetailsKey) -> @Sendable () async throws -> TableDetailList {
+    private func tableDetailFetch(_ key: TableDetailsKey) -> ListFetch<TableDetailList> {
         let table = key.table
         let schema = key.schema
         let kind = key.kind
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await Self.fetchTableDetails(kind, table: table, schema: schema, from: driver)
             }
         }

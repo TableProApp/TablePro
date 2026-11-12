@@ -55,7 +55,9 @@ enum SQLParameterExtractor {
             }
 
             if let param = paramLookup[name] {
-                values.append(param.isNull ? nil : param.value)
+                values.append(
+                    param.isNull ? nil : TypedParameterValue(text: param.value, kind: param.type.pluginKind(for: param.value))
+                )
             } else {
                 values.append(nil)
             }

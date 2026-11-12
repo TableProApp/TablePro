@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
@@ -16,19 +16,20 @@ use tablepro_session::{
 };
 use tablepro_ssh::{InProcessSsh, SshAuth};
 use tablepro_storage::{ConnectionStore, CredentialDemand, KeyringCredentials, SavedConnection, StoragePaths};
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::cancel_token::{CancelToken, token};
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
+use crate::history::QueryHistoryStore;
 use crate::host::{HostConfig, HostSecretStore, HostSecrets};
 use crate::library::{ConnectionLibrary, ConnectionRecord, ConnectionSecrets, apply, blank, parse_id, tls_config};
 use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
 use crate::session::DatabaseSession;
 
-/// The library's root: the linked engines, the runtime and what the app
-/// passed in. An app makes one and keeps it.
+// An app makes one and keeps it.
 #[derive(uniffi::Object)]
 pub struct Core {
     registry: Arc<DriverRegistry>,
@@ -36,21 +37,22 @@ pub struct Core {
     deadlines: Arc<DefaultDeadlines>,
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
+    paths: Option<StoragePaths>,
     store: Option<ConnectionStore>,
+    // Opened on first use, so a core that never shows history never migrates or prunes it.
+    history: Arc<OnceCell<Arc<QueryHistoryStore>>>,
     pub(crate) tasks: Tasks,
     pub(crate) ssh: Arc<InProcessSsh>,
 }
 
-/// A database file to open.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FileOpenRequest {
-    /// An absolute path.
+    // Absolute.
     pub path: String,
-    /// The engine to open it with. `None` lets the file's first bytes
-    /// decide, then its name.
+    // None lets the file's first bytes decide the engine, then its name.
     pub driver_id: Option<String>,
     pub read_only: bool,
-    /// Make a new database at `path`, which must not exist yet.
+    // `path` must not exist yet.
     pub create: bool,
 }
 
@@ -71,7 +73,6 @@ impl Core {
         Ok(Self::build(config, vault, items, tasks))
     }
 
-    /// Every engine linked in, by name.
     pub fn drivers(&self) -> Vec<DriverInfo> {
         let mut drivers: Vec<DriverInfo> = self
             .registry
@@ -89,6 +90,20 @@ impl Core {
             self.vault.clone(),
             self.tasks.clone(),
         )))
+    }
+
+    // Every caller shares one store. A failed open is tried again on the next call.
+    pub async fn history(&self) -> Result<Arc<QueryHistoryStore>, CoreError> {
+        let paths = self.paths.clone().ok_or_else(no_storage)?;
+        let history = self.history.clone();
+        let tasks = self.tasks.clone();
+        on_runtime(&self.tasks, async move {
+            history
+                .get_or_try_init(|| QueryHistoryStore::open(paths, tasks))
+                .await
+                .cloned()
+        })
+        .await
     }
 
     pub async fn open_file(
@@ -277,17 +292,20 @@ impl Core {
             ssh: ssh.clone(),
             liveness,
         };
-        let store = config
+        let paths = config
             .storage_dir
             .filter(|dir| !dir.trim().is_empty())
-            .map(|dir| ConnectionStore::new(&storage_paths(Path::new(&dir))));
+            .map(|dir| storage_paths(Path::new(&dir)));
+        let store = paths.as_ref().map(ConnectionStore::new);
         Arc::new(Self {
             registry: Arc::new(drivers::registry()),
             connector: Arc::new(DriverConnector::new(services, deadlines.clone())),
             deadlines,
             vault,
             items,
+            paths,
             store,
+            history: Arc::default(),
             tasks,
             ssh,
         })
@@ -421,7 +439,7 @@ fn fill(request: &mut ConnectRequest, typed: &[(SecretKind, SecretString)]) {
         return;
     };
     for (kind, secret) in typed {
-        let secret = SecretString::from(secret.expose_secret().to_owned());
+        let secret = secret.clone();
         match (kind, &mut *credentials, ssh.as_mut().map(|ssh| &mut ssh.auth)) {
             (SecretKind::DatabasePassword, Credentials::Password { password, .. }, _) => *password = secret,
             (SecretKind::SshPassword, _, Some(SshAuth::Password { password })) => *password = secret,
@@ -492,6 +510,7 @@ mod tests {
     use std::sync::Mutex;
 
     use async_trait::async_trait;
+    use secrecy::ExposeSecret;
     use tablepro_core::credentials::{
         CredentialPrompt, PromptPurpose, PromptReason, PromptReply, SecretError, SecretItem, SecretLookup,
     };
@@ -575,7 +594,7 @@ mod tests {
         stored.options.dns_seed_list = true;
         core.store.as_ref().unwrap().upsert_blocking(stored.clone()).unwrap();
         let typed = || ConnectionSecrets {
-            database_password: Some("typed".to_owned()),
+            database_password: Some(SecretString::from("typed")),
             ..ConnectionSecrets::default()
         };
 
@@ -635,9 +654,9 @@ mod tests {
 
     fn secrets(value: &str) -> ConnectionSecrets {
         ConnectionSecrets {
-            database_password: Some(value.to_owned()),
-            ssh_password: Some(value.to_owned()),
-            ssh_passphrase: Some(value.to_owned()),
+            database_password: Some(SecretString::from(value)),
+            ssh_password: Some(SecretString::from(value)),
+            ssh_passphrase: Some(SecretString::from(value)),
         }
     }
 

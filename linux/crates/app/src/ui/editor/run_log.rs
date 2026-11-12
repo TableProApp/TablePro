@@ -1,7 +1,7 @@
 use tablepro_core::sql_syntax::script::BatchErrorPolicy;
 use tablepro_core::{
-    DriverError, EditorSessionState, ErrorCategory, ResultEvent, RunEnd, RunSummary, TransactionState, Truncation,
-    UserSql,
+    ByteLimit, DriverError, EditorSessionState, ErrorCategory, ResultEvent, RunEnd, RunSummary, TransactionState,
+    Truncation, UserSql,
 };
 
 use super::script_runner::sql_preview;
@@ -103,13 +103,19 @@ pub struct RowRoom {
     /// The statement was sent with `left` as its row limit, below its
     /// own, so a result the driver cut short was cut by the run's limit.
     pub limits_statement: bool,
+    // The run's byte limit, which a result it cuts short names, and the bytes of rows the run can still keep.
+    pub run_bytes: u64,
+    pub bytes_left: u64,
 }
 
 impl RowRoom {
+    // A result the session cut for size without a room from the run names the editor's own limit.
     pub const UNLIMITED: Self = Self {
         run_limit: u64::MAX,
         left: u64::MAX,
         limits_statement: false,
+        run_bytes: ByteLimit::EDITOR_DEFAULT.get(),
+        bytes_left: u64::MAX,
     };
 }
 
@@ -161,13 +167,19 @@ impl BatchCollector {
                     tracing::warn!(rows = rows.len(), "rows arrived before their result set");
                     return;
                 }
-                let kept = usize::try_from(self.room.left).unwrap_or(usize::MAX).min(rows.len());
+                // The session keeps the row that crosses its limit, so a statement with no bytes left still brings one.
+                let full = self.room.bytes_left == 0;
+                let room = if full { 0 } else { self.room.left };
+                let kept = usize::try_from(room).unwrap_or(usize::MAX).min(rows.len());
                 self.room.left -= kept as u64;
-                let cut_by = (kept < rows.len()).then_some(self.room.run_limit);
+                let cut = kept < rows.len();
+                let cut_by = (cut && !full).then_some(self.room.run_limit);
+                let cut_for_size = (cut && full).then_some(self.room.run_bytes);
                 if let Some(result) = self.last_set() {
                     result.rows.extend(rows.into_iter().take(kept).map(Into::into));
                     result.summary.retained = result.rows.len() as u64;
                     result.summary.run_limit = result.summary.run_limit.or(cut_by);
+                    result.summary.size_limit = result.summary.size_limit.or(cut_for_size);
                 }
             }
             // Until the set ends and says how far the read went, all
@@ -180,6 +192,19 @@ impl BatchCollector {
                         total_rows: None,
                         truncation: Truncation::ServerStopped,
                         run_limit: result.summary.run_limit.or(cut_by),
+                        size_limit: result.summary.size_limit,
+                    };
+                }
+            }
+            ResultEvent::ByteLimitReached { .. } => {
+                let size = self.room.run_bytes;
+                if let Some(result) = self.last_set() {
+                    result.summary = ResultSummary {
+                        retained: result.rows.len() as u64,
+                        total_rows: None,
+                        truncation: Truncation::ByteLimit,
+                        run_limit: result.summary.run_limit,
+                        size_limit: result.summary.size_limit.or(Some(size)),
                     };
                 }
             }
@@ -188,12 +213,14 @@ impl BatchCollector {
             } => {
                 let cut_by = (self.room.limits_statement && truncation == Truncation::ReadPastLimit)
                     .then_some(self.room.run_limit);
+                let cut_for_size = (truncation == Truncation::ByteLimit).then_some(self.room.run_bytes);
                 if let Some(result) = self.last_set() {
                     result.summary = ResultSummary {
                         retained: result.rows.len() as u64,
                         total_rows,
                         truncation,
                         run_limit: result.summary.run_limit.or(cut_by),
+                        size_limit: result.summary.size_limit.or(cut_for_size),
                     };
                 }
             }
@@ -603,6 +630,7 @@ mod tests {
                 total_rows: Some(5),
                 truncation: Truncation::ServerStopped,
                 run_limit: None,
+                size_limit: None,
             }
         );
         assert_eq!(result.statement.as_str(), "SELECT a FROM t");
@@ -657,6 +685,7 @@ mod tests {
             run_limit: 100,
             left: 1,
             limits_statement: true,
+            ..RowRoom::UNLIMITED
         };
         let mut collector = BatchCollector::new(UserSql::new("SELECT a FROM t")).within(room);
         for event in [
@@ -680,6 +709,85 @@ mod tests {
         };
         assert_eq!(result.row_count(), 1);
         assert_eq!(result.summary.run_limit, Some(100));
+    }
+
+    fn first_summary(entries: &[EntryKind]) -> ResultSummary {
+        match entries.first() {
+            Some(EntryKind::ResultSet(result)) => result.summary,
+            other => panic!("expected rows: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_set_cut_for_size_says_so_before_and_after_it_ends() {
+        let cut = || {
+            vec![
+                ResultEvent::ResultSetStarted {
+                    columns: columns(&["a"]),
+                },
+                ResultEvent::Rows(vec![vec![Value::Int(1)], vec![Value::Int(2)]]),
+                ResultEvent::ByteLimitReached { retained: 2 },
+            ]
+        };
+        let mut finished = cut();
+        finished.push(ResultEvent::ResultSetFinished {
+            retained: 2,
+            total_rows: Some(9),
+            truncation: Truncation::ByteLimit,
+        });
+
+        let (stopped, _) = collect(cut(), RunEnd::Cancelled);
+        let (ended, _) = collect(finished, RunEnd::Completed);
+
+        let size_limit = Some(ByteLimit::EDITOR_DEFAULT.get());
+        assert_eq!(
+            first_summary(&stopped),
+            ResultSummary {
+                retained: 2,
+                total_rows: None,
+                truncation: Truncation::ByteLimit,
+                run_limit: None,
+                size_limit,
+            }
+        );
+        assert_eq!(
+            first_summary(&ended),
+            ResultSummary {
+                retained: 2,
+                total_rows: Some(9),
+                truncation: Truncation::ByteLimit,
+                run_limit: None,
+                size_limit,
+            }
+        );
+    }
+
+    #[test]
+    fn a_batch_with_no_bytes_left_keeps_no_rows_and_says_why() {
+        let room = RowRoom {
+            run_bytes: 1_000,
+            bytes_left: 0,
+            ..RowRoom::UNLIMITED
+        };
+        let mut collector = BatchCollector::new(UserSql::new("SELECT a FROM t")).within(room);
+        for event in [
+            ResultEvent::ResultSetStarted {
+                columns: columns(&["a"]),
+            },
+            ResultEvent::Rows(vec![vec![Value::Int(1)]]),
+            ResultEvent::ByteLimitReached { retained: 1 },
+            ResultEvent::ResultSetFinished {
+                retained: 1,
+                total_rows: Some(3),
+                truncation: Truncation::ByteLimit,
+            },
+        ] {
+            collector.record(event);
+        }
+        let (entries, _, _) = collector.finish(summary(RunEnd::Completed), EditorSessionState::Ready, false, 0);
+
+        let kept = first_summary(&entries);
+        assert_eq!((kept.retained, kept.size_limit, kept.run_limit), (0, Some(1_000), None));
     }
 
     #[test]
@@ -714,12 +822,14 @@ mod tests {
             total_rows: None,
             truncation: Truncation::ServerStopped,
             run_limit: None,
+            size_limit: None,
         };
         let counted = ResultSummary {
             retained: 100,
             total_rows: Some(250),
             truncation: Truncation::ReadPastLimit,
             run_limit: None,
+            size_limit: None,
         };
         let history = |entries: Vec<EntryKind>| {
             let mut log = RunLog::new(vec![UserSql::new("SELECT a FROM t")], Vec::new());

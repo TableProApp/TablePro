@@ -1,7 +1,9 @@
 import Foundation
 
 public enum ThemeSchema {
-    public static let current = 3
+    public static let current = 4
+    // Every release before format 4 reads and writes format 3 only.
+    public static let oldestReadable = 3
 }
 
 public enum ThemeIdentifier {
@@ -45,12 +47,12 @@ public enum ThemeFileFormat {
 
         guard let schema = root[MetadataKey.schema.rawValue]?.intValue else {
             if let legacy = root["version"]?.intValue {
-                throw ThemeLoadError.schemaTooOld(found: legacy, supported: ThemeSchema.current)
+                throw ThemeLoadError.schemaTooOld(found: legacy, supported: ThemeSchema.oldestReadable)
             }
             throw ThemeLoadError.missingSchema
         }
-        guard schema >= ThemeSchema.current else {
-            throw ThemeLoadError.schemaTooOld(found: schema, supported: ThemeSchema.current)
+        guard schema >= ThemeSchema.oldestReadable else {
+            throw ThemeLoadError.schemaTooOld(found: schema, supported: ThemeSchema.oldestReadable)
         }
         guard schema <= ThemeSchema.current else {
             throw ThemeLoadError.schemaTooNew(found: schema, supported: ThemeSchema.current)
@@ -80,7 +82,7 @@ public enum ThemeFileFormat {
             name: name,
             author: author,
             appearance: appearance,
-            overrides: try colors(in: root)
+            overrides: try colors(in: root, schema: schema)
         )
     }
 
@@ -89,7 +91,7 @@ public enum ThemeFileFormat {
         let name = try validatedName(theme.name, policy: .strict)
 
         var root: [String: Any] = [
-            MetadataKey.schema.rawValue: ThemeSchema.current,
+            MetadataKey.schema.rawValue: schema(of: theme),
             MetadataKey.id.rawValue: theme.id,
             MetadataKey.name.rawValue: name,
             MetadataKey.author.rawValue: try validatedAuthor(theme.author, policy: .strict),
@@ -108,6 +110,11 @@ public enum ThemeFileFormat {
         )
     }
 
+    // The oldest format holding the theme's keys, so an older build still reads a theme that sets no newer key.
+    private static func schema(of theme: ThemeDefinition) -> Int {
+        theme.overrides.keys.reduce(ThemeSchema.oldestReadable) { max($0, $1.introducedInSchema) }
+    }
+
     // MARK: - Reading
 
     // `JSONDecoder` over `JSONSerialization`: its error names the character and where it is.
@@ -122,7 +129,7 @@ public enum ThemeFileFormat {
         }
     }
 
-    private static func colors(in root: [String: ThemeJSONNode]) throws -> [ThemeSlot: ThemeColor] {
+    private static func colors(in root: [String: ThemeJSONNode], schema: Int) throws -> [ThemeSlot: ThemeColor] {
         let leaves = root
             .filter { MetadataKey(rawValue: $0.key) == nil }
             .flatMap { key, node in node.leaves(prefix: key) }
@@ -130,10 +137,16 @@ public enum ThemeFileFormat {
 
         var parsed: [ThemeSlot: ThemeColor] = [:]
         var unknown: [String] = []
+        var newer: [ThemeSlot] = []
 
         for leaf in leaves {
             guard let slot = ThemeSlot(rawValue: leaf.path) else {
                 unknown.append(leaf.path)
+                continue
+            }
+            // Every build that reads the file's format has to read all of it.
+            guard slot.introducedInSchema <= schema else {
+                newer.append(slot)
                 continue
             }
             guard parsed[slot] == nil else { throw ThemeLoadError.duplicateKey(leaf.path) }
@@ -143,6 +156,9 @@ public enum ThemeFileFormat {
         }
 
         guard unknown.isEmpty else { throw ThemeLoadError.unknownKeys(unknown) }
+        if let needed = newer.map(\.introducedInSchema).max() {
+            throw ThemeLoadError.keysNeedNewerFormat(newer.map(\.rawValue), format: needed)
+        }
         return parsed
     }
 

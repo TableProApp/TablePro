@@ -146,8 +146,7 @@ pub(crate) fn projected_columns(projection: &Document) -> Columns {
         let column = match aliased_field(value) {
             Some(name) => NamedColumn {
                 key: key.clone(),
-                name,
-                json: false,
+                ..NamedColumn::field(name)
             },
             None => NamedColumn::field(key.split('.').next().unwrap_or(key)),
         };

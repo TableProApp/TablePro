@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TableProPluginKit
 
 enum HanaResultMapping {
@@ -6,13 +7,21 @@ enum HanaResultMapping {
         PluginQueryResult(
             columns: envelope.columns,
             columnTypeNames: envelope.columnTypeNames,
-            rows: envelope.rows.map { row in row.map(\.pluginValue) },
+            rows: pluginRows(envelope.rows),
             rowsAffected: Int(clamping: envelope.rowsAffected),
             timing: PluginQueryTiming(total: envelope.executionTime),
             isTruncated: envelope.isTruncated,
             statusMessage: statusMessage(truncatedLobCount: envelope.truncatedLobCount),
-            columnMeta: columnMeta(for: envelope)
+            columnMeta: columnMeta(
+                columns: envelope.columns,
+                columnTypeNames: envelope.columnTypeNames,
+                classifications: envelope.columnClassifications
+            )
         )
+    }
+
+    static func pluginRows(_ rows: [[HanaBridgeCell]]) -> [PluginRow] {
+        rows.map { row in row.map(\.pluginValue) }
     }
 
     static func statusMessage(truncatedLobCount: Int) -> String? {
@@ -23,17 +32,20 @@ enum HanaResultMapping {
         )
     }
 
-    static func columnMeta(for envelope: HanaResultEnvelope) -> [PluginColumnInfo]? {
-        let hints = envelope.columnClassifications
+    static func columnMeta(
+        columns: [String],
+        columnTypeNames: [String],
+        classifications hints: [String?]
+    ) -> [PluginColumnInfo]? {
         guard hints.contains(where: { $0 != nil }),
-              hints.count == envelope.columns.count,
-              envelope.columnTypeNames.count == envelope.columns.count else {
+              hints.count == columns.count,
+              columnTypeNames.count == columns.count else {
             return nil
         }
-        return envelope.columns.indices.map { index in
+        return columns.indices.map { index in
             PluginColumnInfo(
-                name: envelope.columns[index],
-                dataType: envelope.columnTypeNames[index],
+                name: columns[index],
+                dataType: columnTypeNames[index],
                 isNullable: true,
                 isPrimaryKey: false,
                 defaultValue: nil,
@@ -53,5 +65,51 @@ enum HanaResultMapping {
                 classificationTypeName: hints[index]
             )
         }
+    }
+}
+
+final class HanaStreamReport: @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "HanaPluginDriver")
+
+    private let lock = NSLock()
+    private var header: HanaCursorHeader?
+    private var truncatedLargeObjects = 0
+
+    func record(_ header: HanaCursorHeader) {
+        lock.withLock { self.header = header }
+    }
+
+    func record(truncatedLargeObjects count: Int) {
+        guard count > 0 else { return }
+        lock.withLock { truncatedLargeObjects += count }
+    }
+
+    // A stream header has no field for the warning a result carries in statusMessage, so an export only logs it.
+    func logTruncatedLargeObjects() {
+        let count = lock.withLock { truncatedLargeObjects }
+        guard count > 0 else { return }
+        Self.logger.warning("SAP HANA cut \(count) large object values in a streamed result at 64 MiB")
+    }
+
+    func completing(_ collected: PluginQueryResult) -> PluginQueryResult {
+        let (header, count) = lock.withLock { (self.header, self.truncatedLargeObjects) }
+        var result = PluginQueryResult(
+            columns: collected.columns,
+            columnTypeNames: collected.columnTypeNames,
+            rows: collected.rows,
+            rowsAffected: collected.rowsAffected,
+            timing: collected.timing,
+            isTruncated: collected.isTruncated,
+            statusMessage: HanaResultMapping.statusMessage(truncatedLobCount: count),
+            columnMeta: header.flatMap {
+                HanaResultMapping.columnMeta(
+                    columns: $0.columns,
+                    columnTypeNames: $0.columnTypeNames,
+                    classifications: $0.columnClassifications
+                )
+            }
+        )
+        result.columnOrigins = collected.columnOrigins
+        return result
     }
 }

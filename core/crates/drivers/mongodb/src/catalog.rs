@@ -1,12 +1,19 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Mutex, PoisonError};
 
-use bson::{Bson, Document, doc};
+use bson::spec::BinarySubtype;
+use bson::{Binary, Bson, Document, doc};
 use mongodb::{Client, ClientSession};
+use tablepro_core::column::ColumnKind;
+use tablepro_core::document::NUMBER_TYPE;
 use tablepro_core::meta::{IndexInfo, IndexKey, ObjectInfo, ObjectKind, RowCountEstimate, SchemaInfo, TableEstimate};
 use tablepro_core::{ColumnInfo, DriverError, LossPhase};
 
+use crate::call::ReadStop;
+use crate::cursor_rows::Read;
 use crate::endpoint::MongoEndpoint;
 use crate::field_types::{field_column, type_alias};
+use crate::shell_command::Plan;
 
 /// How many documents a collection's fields are found from, in their
 /// natural order. Enough to meet the fields a collection's documents
@@ -16,17 +23,20 @@ const CENSUS_DOCUMENTS: i32 = 1_000;
 /// Databases MongoDB keeps for itself.
 const SYSTEM_DATABASES: [&str; 3] = ["admin", "config", "local"];
 
-/// What one catalogue read needs: the client, the call's own session and
-/// the server's time limit for it.
+/// What one catalogue read needs: the client, the call's own session, the
+/// server's time limit for it and the call's stop, which every command
+/// and `getMore` checks first.
 pub(crate) struct Reader<'a> {
     pub(crate) endpoint: &'a MongoEndpoint,
     pub(crate) client: &'a Client,
     pub(crate) session: &'a mut ClientSession,
     pub(crate) max_time: Option<i64>,
+    pub(crate) stop: &'a ReadStop,
 }
 
 impl Reader<'_> {
     async fn command(&mut self, database: &str, mut command: Document) -> Result<Document, DriverError> {
+        self.stop.before_command().await?;
         if let Some(millis) = self.max_time {
             command.insert("maxTimeMS", Bson::Int64(millis));
         }
@@ -43,6 +53,7 @@ impl Reader<'_> {
     }
 
     async fn documents(&mut self, database: &str, mut command: Document) -> Result<Vec<Document>, DriverError> {
+        self.stop.before_command().await?;
         if let Some(millis) = self.max_time {
             command.insert("maxTimeMS", Bson::Int64(millis));
         }
@@ -52,18 +63,16 @@ impl Reader<'_> {
             .run_cursor_command(command)
             .session(&mut *self.session)
             .await;
-        let mut cursor = match opened {
+        let cursor = match opened {
             Ok(cursor) => cursor,
             Err(error) => return Err(self.endpoint.explain(&error, LossPhase::Statement).await),
         };
+        let mut read = Read::new(self.endpoint, cursor, &mut *self.session, self.stop);
         let mut documents = Vec::new();
-        loop {
-            match cursor.advance(self.session).await {
-                Ok(true) => documents.push(crate::nested_document::current_document(&cursor)?),
-                Ok(false) => return Ok(documents),
-                Err(error) => return Err(self.endpoint.explain(&error, LossPhase::Statement).await),
-            }
+        while let Some(document) = read.next().await? {
+            documents.push(document);
         }
+        Ok(documents)
     }
 
     /// The databases the login may see, `default` among them even
@@ -145,22 +154,15 @@ impl Reader<'_> {
     /// in the order the documents place them: `_id` first. The server
     /// tallies them, so no document crosses the wire.
     pub(crate) async fn fields(&mut self, database: &str, collection: &str) -> Result<Vec<ColumnInfo>, DriverError> {
-        let pipeline = vec![
-            doc! { "$limit": CENSUS_DOCUMENTS },
-            doc! { "$project": { "_id": 0_i32, "field": { "$objectToArray": "$$ROOT" } } },
-            doc! { "$unwind": { "path": "$field", "includeArrayIndex": "position" } },
-            doc! { "$group": {
-                "_id": { "name": "$field.k", "type": { "$type": "$field.v" } },
-                "position": { "$min": "$position" },
-            } },
-        ];
+        let mut pipeline = vec![doc! { "$limit": CENSUS_DOCUMENTS }];
+        pipeline.extend(census_stages());
         let tallies = self
             .documents(
                 database,
                 doc! { "aggregate": collection, "pipeline": pipeline, "cursor": {} },
             )
             .await?;
-        Ok(columns_from(&tallies))
+        Ok(collection_columns(&tallies))
     }
 
     /// The collection's indexes, `_id`'s first.
@@ -190,6 +192,68 @@ impl Reader<'_> {
     }
 }
 
+/// Each collection's columns as this connection last read them, so a
+/// page or an export of it shows the JSON ones as Extended JSON straight
+/// from the BSON, which keeps an `int` apart from a `long`, and an export
+/// keeps the tab's column order.
+#[derive(Debug, Default)]
+pub(crate) struct KnownFields(Mutex<BTreeMap<(String, String), Fields>>);
+
+/// A collection's columns, as the last census of its fields found them.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Fields {
+    /// Every column's field, in the columns' order.
+    pub(crate) order: Vec<String>,
+    /// The fields shown as JSON.
+    pub(crate) json: BTreeSet<String>,
+    /// The JSON fields of numbers of more than one type, `NUMBER_TYPE`.
+    pub(crate) numbers: BTreeSet<String>,
+}
+
+impl KnownFields {
+    pub(crate) fn remember(&self, database: &str, collection: &str, columns: &[ColumnInfo]) -> Fields {
+        let fields = Fields {
+            order: columns.iter().map(|column| column.name.clone()).collect(),
+            json: columns
+                .iter()
+                .filter(|column| matches!(column.column_type.kind, ColumnKind::Json { .. }))
+                .map(|column| column.name.clone())
+                .collect(),
+            numbers: columns
+                .iter()
+                .filter(|column| column.column_type.name == NUMBER_TYPE)
+                .map(|column| column.name.clone())
+                .collect(),
+        };
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert((database.to_owned(), collection.to_owned()), fields.clone());
+        fields
+    }
+
+    /// The columns of the collection `planned` reads. A connection that
+    /// has not read them, as a new one after a reconnect has not, takes the
+    /// census first in the same call, so it shows the fields the columns it
+    /// was handed show as JSON.
+    pub(crate) async fn of(&self, planned: &Plan, reader: &mut Reader<'_>) -> Result<Fields, DriverError> {
+        let Some((database, collection)) = planned.collection() else {
+            return Ok(Fields::default());
+        };
+        let known = self
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&(database.to_owned(), collection.to_owned()))
+            .cloned();
+        if let Some(fields) = known {
+            return Ok(fields);
+        }
+        let columns = reader.fields(database, collection).await?;
+        Ok(self.remember(database, collection, &columns))
+    }
+}
+
 /// What a collection is, as `listCollections` says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CollectionType {
@@ -209,8 +273,55 @@ impl CollectionType {
     }
 }
 
-/// The columns a tally of fields and types makes.
-fn columns_from(tallies: &[Document]) -> Vec<ColumnInfo> {
+/// The stages that tally the fields of the documents before them, each
+/// with the types it holds and the least position a document puts it at,
+/// for `columns_from`.
+pub(crate) fn census_stages() -> [Document; 3] {
+    [
+        doc! { "$project": { "_id": 0_i32, "field": { "$objectToArray": "$$ROOT" } } },
+        doc! { "$unwind": { "path": "$field", "includeArrayIndex": "position" } },
+        doc! { "$group": {
+            "_id": { "name": "$field.k", "type": census_type() },
+            "position": { "$min": "$position" },
+        } },
+    ]
+}
+
+/// A field value's `$type`, or `uuid` for a UUID. `$type` names every
+/// binary subtype `binData` and `$subtype` is new in MongoDB 8.3, but BSON
+/// orders binary data by length, then subtype, then bytes, so a UUID is
+/// a value between the least and the greatest 16-byte subtype 4 values.
+fn census_type() -> Document {
+    let uuid = |byte: u8| {
+        Bson::Binary(Binary {
+            subtype: BinarySubtype::Uuid,
+            bytes: vec![byte; 16],
+        })
+    };
+    doc! { "$cond": {
+        "if": { "$and": [
+            { "$eq": [{ "$type": "$field.v" }, "binData"] },
+            { "$gte": ["$field.v", uuid(0x00)] },
+            { "$lte": ["$field.v", uuid(0xff)] },
+        ] },
+        "then": "uuid",
+        "else": { "$type": "$field.v" },
+    } }
+}
+
+/// The columns of a collection whose first documents tallied `tallies`,
+/// `_id` among them even when they hold none, as every document has one.
+fn collection_columns(tallies: &[Document]) -> Vec<ColumnInfo> {
+    let mut columns = columns_from(tallies);
+    if !columns.iter().any(|column| column.name == "_id") {
+        columns.insert(0, field_column("_id", &["objectId"].into_iter().collect()));
+    }
+    columns
+}
+
+/// The columns the fields a census tallied make, in the order the
+/// documents place them, `_id` first where they hold one.
+pub(crate) fn columns_from(tallies: &[Document]) -> Vec<ColumnInfo> {
     let mut fields: BTreeMap<String, (i64, BTreeSet<&'static str>)> = BTreeMap::new();
     for tally in tallies {
         let Ok(key) = tally.get_document("_id") else {
@@ -233,14 +344,10 @@ fn columns_from(tallies: &[Document]) -> Vec<ColumnInfo> {
     ordered.sort_by(|(left_name, (left, _)), (right_name, (right, _))| {
         (left_name != "_id", left, left_name).cmp(&(right_name != "_id", right, right_name))
     });
-    let mut columns: Vec<ColumnInfo> = ordered
+    ordered
         .iter()
         .map(|(name, (_, aliases))| field_column(name, aliases))
-        .collect();
-    if !columns.iter().any(|column| column.name == "_id") {
-        columns.insert(0, field_column("_id", &["objectId"].into_iter().collect()));
-    }
-    columns
+        .collect()
 }
 
 /// A `$type` name the server reported, as one of the names the types
@@ -258,6 +365,7 @@ fn alias_named(name: &str) -> &'static str {
         "int" => Bson::Int32(0),
         "long" => Bson::Int64(0),
         "decimal" => Bson::Decimal128(bson::Decimal128::from_bytes([0; 16])),
+        "uuid" => return "uuid",
         "binData" => return "binData",
         "timestamp" => return "timestamp",
         "regex" => return "regex",
@@ -307,8 +415,6 @@ fn index_info(entry: &Document) -> Option<IndexInfo> {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::column::ColumnKind;
-
     use super::*;
 
     fn tally(name: &str, kind: &str, position: i64) -> Document {
@@ -330,20 +436,48 @@ mod tests {
 
         let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
         assert_eq!(names, ["_id", "a", "c", "b"]);
-        assert_eq!(columns[1].column_type.name, "long");
+        assert!(
+            matches!(columns[1].column_type.kind, ColumnKind::Json { .. }),
+            "an int and a long"
+        );
         assert!(
             matches!(columns[2].column_type.kind, ColumnKind::Json { .. }),
             "a mixed field"
         );
+        assert_eq!(columns[3].column_type.name, "string");
         assert!(columns[0].primary_key);
     }
 
     #[test]
+    fn a_uuid_tally_is_a_uuid_column_unless_other_binary_data_shares_it() {
+        let tallies = [
+            tally("_id", "uuid", 0),
+            tally("blob", "uuid", 1),
+            tally("blob", "binData", 1),
+        ];
+
+        let columns = columns_from(&tallies);
+
+        assert_eq!(columns[0].column_type.kind, ColumnKind::Uuid);
+        assert!(matches!(columns[1].column_type.kind, ColumnKind::Json { .. }));
+    }
+
+    #[test]
     fn an_empty_collection_still_has_its_id() {
-        let columns = columns_from(&[]);
+        let columns = collection_columns(&[]);
 
         assert_eq!(columns.len(), 1);
         assert_eq!(columns[0].name, "_id");
+    }
+
+    #[test]
+    fn a_census_of_documents_without_an_id_names_only_their_fields() {
+        let names = |tallies: &[Document]| -> Vec<String> {
+            columns_from(tallies).into_iter().map(|column| column.name).collect()
+        };
+
+        assert!(names(&[]).is_empty());
+        assert_eq!(names(&[tally("total", "int", 0)]), ["total"]);
     }
 
     #[test]

@@ -99,6 +99,17 @@ struct SyncCoordinatorThemeTests {
         )
     }
 
+    nonisolated private static func valueTheme(_ id: String) throws -> ThemeDefinition {
+        var values = try theme(id)
+        values.overrides[.gridString] = try ThemeColor(validating: "#F1FA8C")
+        values.overrides[.gridNumber] = try ThemeColor(validating: "#BD93F9")
+        return values
+    }
+
+    nonisolated private static func schema(of payload: Data) throws -> Int? {
+        try (JSONSerialization.jsonObject(with: payload) as? [String: Any])?["schema"] as? Int
+    }
+
     private static func themeRecord(_ theme: ThemeDefinition) throws -> CKRecord {
         SyncRecordMapper.toCKRecord(
             category: ThemeCatalog.syncCategory(for: theme.id),
@@ -140,6 +151,20 @@ struct SyncCoordinatorThemeTests {
         try await waitUntil { harness.engine.pair.dark == synced }
         #expect(harness.settings.appearance.preferredDarkThemeId == synced.id)
         #expect(harness.fileExists(synced.id))
+        #expect(harness.tracker.dirtyRecords(for: .settings).isEmpty)
+    }
+
+    @Test("A pulled format 4 theme record lands with its value colors")
+    func pulledFormatFourThemeKeepsItsValueColors() async throws {
+        let harness = try Harness(label: "theme-values-arrival")
+        let synced = try Self.valueTheme("user.values")
+
+        let acknowledged = await harness.coordinator.applyPullResult(Self.pull([try Self.themeRecord(synced)]))
+
+        #expect(acknowledged)
+        #expect(harness.catalog.storedTheme(id: synced.id) == synced)
+        let onDisk = try Data(contentsOf: harness.themes.appendingPathComponent("\(synced.id).json"))
+        #expect(try Self.schema(of: onDisk) == 4)
         #expect(harness.tracker.dirtyRecords(for: .settings).isEmpty)
     }
 
@@ -232,6 +257,32 @@ struct SyncCoordinatorThemeTests {
         let deletions = await harness.transport.pushedDeletions
         #expect(deletions.contains(Self.deletion(ofTheme: night.id)))
         #expect(harness.tracker.tombstonedIds(for: .settings).isEmpty)
+    }
+
+    @Test("Each theme pushes one record, theme.<id>: format 4 holding its value colors, or format 3 without them")
+    func pushWritesTheOldestFormatHoldingTheTheme() async throws {
+        let harness = try Harness(label: "theme-push-format")
+        let night = try Self.theme("user.night")
+        let values = try Self.valueTheme("user.values")
+        try harness.catalog.save(night)
+        try harness.catalog.save(values)
+
+        #expect(await harness.coordinator.runSyncCycle() == nil)
+
+        let pushed = await harness.transport.pushedRecords
+        let themes = Dictionary(pushed.compactMap { record -> (String, Data)? in
+            guard let category = SyncRecordMapper.settingsCategory(from: record),
+                  ThemeCatalog.themeId(forSyncCategory: category) != nil,
+                  let data = SyncRecordMapper.settingsData(from: record)
+            else { return nil }
+            return (category, data)
+        }, uniquingKeysWith: { _, last in last })
+        #expect(Set(themes.keys) == [ThemeCatalog.syncCategory(for: night.id), ThemeCatalog.syncCategory(for: values.id)])
+        let plain = try #require(themes[ThemeCatalog.syncCategory(for: night.id)])
+        #expect(try Self.schema(of: plain) == 3)
+        let colored = try #require(themes[ThemeCatalog.syncCategory(for: values.id)])
+        #expect(try Self.schema(of: colored) == 4)
+        #expect(try ThemeFileFormat.decode(colored) == values)
     }
 
     @Test("Turning sync on marks every theme on this Mac")

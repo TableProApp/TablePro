@@ -92,6 +92,125 @@ internal static class Mapping
 
     public static Native.TableName Table(TableName table) => new(table.Schema, table.Name);
 
+    public static Native.ColumnSort? Sort(ColumnSort? sort) =>
+        sort is null ? null : new Native.ColumnSort(checked((uint)sort.Column), sort.Ascending);
+
+    public static Native.TableFilterArg Filter(TableFilter filter) => new(
+        filter.Combinator switch
+        {
+            FilterCombinator.Or => Native.CombinatorTag.Or,
+            _ => Native.CombinatorTag.And,
+        },
+        [.. filter.Rules.Select(rule =>
+            new Native.FilterRuleArg(rule.Column, Operator(rule.Operator), Value(rule.Value)))],
+        filter.RawSql);
+
+    private static Native.FilterValueArg? Value(FilterValue? value) => value switch
+    {
+        FilterValue.One single => new Native.FilterValueArg.Single(single.Value),
+        FilterValue.Pair pair => new Native.FilterValueArg.Pair(pair.Low, pair.High),
+        FilterValue.List list => new Native.FilterValueArg.List([.. list.Values]),
+        _ => null,
+    };
+
+    private static Native.FilterOpTag Operator(FilterOperator op) => op switch
+    {
+        FilterOperator.Equal => Native.FilterOpTag.Eq,
+        FilterOperator.NotEqual => Native.FilterOpTag.NotEq,
+        FilterOperator.Less => Native.FilterOpTag.Lt,
+        FilterOperator.LessOrEqual => Native.FilterOpTag.LtEq,
+        FilterOperator.Greater => Native.FilterOpTag.Gt,
+        FilterOperator.GreaterOrEqual => Native.FilterOpTag.GtEq,
+        FilterOperator.Contains => Native.FilterOpTag.Contains,
+        FilterOperator.StartsWith => Native.FilterOpTag.StartsWith,
+        FilterOperator.EndsWith => Native.FilterOpTag.EndsWith,
+        FilterOperator.Like => Native.FilterOpTag.Like,
+        FilterOperator.NotLike => Native.FilterOpTag.NotLike,
+        FilterOperator.ILike => Native.FilterOpTag.Ilike,
+        FilterOperator.IsNull => Native.FilterOpTag.IsNull,
+        FilterOperator.IsNotNull => Native.FilterOpTag.IsNotNull,
+        FilterOperator.In => Native.FilterOpTag.In,
+        FilterOperator.NotIn => Native.FilterOpTag.NotIn,
+        FilterOperator.Between => Native.FilterOpTag.Between,
+        _ => throw new ArgumentOutOfRangeException(nameof(op), op, "A filter operator the core does not know."),
+    };
+
+    private static FilterOperator Operator(Native.FilterOpTag op) => op switch
+    {
+        Native.FilterOpTag.Eq => FilterOperator.Equal,
+        Native.FilterOpTag.NotEq => FilterOperator.NotEqual,
+        Native.FilterOpTag.Lt => FilterOperator.Less,
+        Native.FilterOpTag.LtEq => FilterOperator.LessOrEqual,
+        Native.FilterOpTag.Gt => FilterOperator.Greater,
+        Native.FilterOpTag.GtEq => FilterOperator.GreaterOrEqual,
+        Native.FilterOpTag.Contains => FilterOperator.Contains,
+        Native.FilterOpTag.StartsWith => FilterOperator.StartsWith,
+        Native.FilterOpTag.EndsWith => FilterOperator.EndsWith,
+        Native.FilterOpTag.Like => FilterOperator.Like,
+        Native.FilterOpTag.NotLike => FilterOperator.NotLike,
+        Native.FilterOpTag.Ilike => FilterOperator.ILike,
+        Native.FilterOpTag.IsNull => FilterOperator.IsNull,
+        Native.FilterOpTag.IsNotNull => FilterOperator.IsNotNull,
+        Native.FilterOpTag.In => FilterOperator.In,
+        Native.FilterOpTag.NotIn => FilterOperator.NotIn,
+        Native.FilterOpTag.Between => FilterOperator.Between,
+        _ => throw new InvalidOperationException($"The core sent a filter operator this build does not know: {op}"),
+    };
+
+    public static FilterChoices Choices(Native.FilterChoices choices) => new(
+        [.. choices.Columns.Select(column =>
+            new FilterColumn(column.Name, [.. column.Operators.Select(op => Operator(op))]))],
+        [.. choices.Combinators.Select(combinator => combinator switch
+        {
+            Native.CombinatorTag.Or => FilterCombinator.Or,
+            _ => FilterCombinator.And,
+        })],
+        choices.AcceptsRawSql);
+
+    public static TableStructure Structure(Native.TableStructure structure) => new(
+        [.. structure.Columns.Select(column => new StructureColumn(
+            column.Name,
+            column.TypeName,
+            column.Nullable,
+            column.DefaultValue,
+            column.PrimaryKey,
+            column.AutoIncrement,
+            column.Generated,
+            column.Comment))],
+        [.. structure.Indexes.Select(index =>
+            new StructureIndex(index.Name, index.Keys, index.Unique, index.Primary, index.Predicate))],
+        [.. structure.ForeignKeys.Select(key => new StructureForeignKey(
+            key.Name,
+            key.Columns,
+            key.RefSchema,
+            key.RefTable,
+            key.RefColumns,
+            key.OnDelete,
+            key.OnUpdate))],
+        structure.Ddl);
+
+    public static ObjectSource Source(Native.ObjectSource source) =>
+        new(source.Sql, source.Database, source.OpensInEditor);
+
+    public static Native.ObjectEntry Entry(ObjectEntry entry) =>
+        new(entry.Schema, entry.Name, Tag(entry.Kind), entry.ParentTable);
+
+    public static Native.ObjectKindTag Tag(ObjectKind kind) => kind switch
+    {
+        Interop.ObjectKind.Table => Native.ObjectKindTag.Table,
+        Interop.ObjectKind.PartitionedTable => Native.ObjectKindTag.PartitionedTable,
+        Interop.ObjectKind.View => Native.ObjectKindTag.View,
+        Interop.ObjectKind.MaterializedView => Native.ObjectKindTag.MaterializedView,
+        Interop.ObjectKind.ForeignTable => Native.ObjectKindTag.ForeignTable,
+        Interop.ObjectKind.Sequence => Native.ObjectKindTag.Sequence,
+        Interop.ObjectKind.Function => Native.ObjectKindTag.Function,
+        Interop.ObjectKind.Procedure => Native.ObjectKindTag.Procedure,
+        Interop.ObjectKind.Trigger => Native.ObjectKindTag.Trigger,
+        Interop.ObjectKind.Dictionary => Native.ObjectKindTag.Dictionary,
+        Interop.ObjectKind.Key => Native.ObjectKindTag.Key,
+        _ => Native.ObjectKindTag.Other,
+    };
+
     public static ColumnEntry Column(Native.ColumnEntry column) => new(
         column.Name,
         column.TypeName,
@@ -107,7 +226,8 @@ internal static class Mapping
 
     public static Native.RunSettings Settings(QueryOptions options) => new(
         options.RowLimit is { } limit ? checked((ulong)limit) : null,
-        options.Timeout is { } timeout ? checked((ulong)timeout.TotalMilliseconds) : null);
+        options.Timeout is { } timeout ? checked((ulong)timeout.TotalMilliseconds) : null,
+        options.ByteLimit is { } bytes ? checked((ulong)bytes) : null);
 
     public static QueryEvent Event(Native.RunEvent nativeEvent) => nativeEvent switch
     {
@@ -118,15 +238,22 @@ internal static class Mapping
         Native.RunEvent.RowsAppended rows => new QueryEvent.RowsAppended(Index(rows.SetIndex), Count(rows.RowCount)),
         Native.RunEvent.RowLimitReached limit =>
             new QueryEvent.RowLimitReached(Index(limit.SetIndex), Count(limit.Retained)),
+        Native.RunEvent.ByteLimitReached bytes => new QueryEvent.ByteLimitReached(
+            Index(bytes.SetIndex),
+            Count(bytes.Retained),
+            Count(bytes.LimitBytes)),
         Native.RunEvent.ResultSetFinished finished => new QueryEvent.ResultSetFinished(
             Index(finished.SetIndex),
             Count(finished.RowCount),
             finished.TotalRows is { } total ? Count(total) : null,
             finished.Truncation switch
             {
+                Native.TruncationTag.Complete => Truncation.Complete,
                 Native.TruncationTag.ServerStopped => Truncation.ServerStopped,
                 Native.TruncationTag.ReadPastLimit => Truncation.ReadPastLimit,
-                _ => Truncation.Complete,
+                Native.TruncationTag.ByteLimit => Truncation.ByteLimit,
+                _ => throw new InvalidOperationException(
+                    $"The core sent a truncation this build does not know: {finished.Truncation}"),
             }),
         Native.RunEvent.CommandCompleted command =>
             new QueryEvent.CommandCompleted(command.RowsAffected is { } affected ? Count(affected) : null),
@@ -413,5 +540,44 @@ internal static class Mapping
         Native.ObjectKindTag.Dictionary => Interop.ObjectKind.Dictionary,
         Native.ObjectKindTag.Key => Interop.ObjectKind.Key,
         _ => Interop.ObjectKind.Other,
+    };
+
+    public static Native.CellEdit Edit(CellEdit edit) => edit switch
+    {
+        CellEdit.Text text => new Native.CellEdit.Text(text.Value),
+        CellEdit.Null => new Native.CellEdit.Null(),
+        _ => new Native.CellEdit.Default(),
+    };
+
+    public static CellEdit Edit(Native.CellEdit edit) => edit switch
+    {
+        Native.CellEdit.Text text => new CellEdit.Text(text.TextValue),
+        Native.CellEdit.Null => CellEdit.Null.Instance,
+        _ => CellEdit.ServerDefault.Instance,
+    };
+
+    public static Native.RowEdit Edit(RowEdit edit) => edit switch
+    {
+        RowEdit.Update update => new Native.RowEdit.Update(
+            checked((ulong)update.Row),
+            [.. update.Cells.Select(cell => new Native.CellChange(checked((uint)cell.Column), Edit(cell.Edit)))]),
+        RowEdit.Insert insert => new Native.RowEdit.Insert([.. insert.Cells.Select(Edit)]),
+        RowEdit.Delete delete => new Native.RowEdit.Delete(checked((ulong)delete.Row)),
+        _ => throw new ArgumentException("A row edit of a kind the core does not know.", nameof(edit)),
+    };
+
+    public static EditLock Lock(Native.EditLock locked) => locked switch
+    {
+        Native.EditLock.ReadOnlyConnection => EditLock.ReadOnlyConnection,
+        Native.EditLock.NoPrimaryKey => EditLock.NoPrimaryKey,
+        Native.EditLock.KeyUnreadable => EditLock.KeyUnreadable,
+        _ => EditLock.ColumnsChanged,
+    };
+
+    public static SaveGate Gate(Native.SaveGate gate) => gate switch
+    {
+        Native.SaveGate.Run => SaveGate.Run,
+        Native.SaveGate.Confirm => SaveGate.Confirm,
+        _ => SaveGate.Refuse,
     };
 }

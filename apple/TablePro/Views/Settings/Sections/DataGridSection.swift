@@ -7,6 +7,7 @@ import SwiftUI
 
 struct DataGridSection: View {
     @Binding var settings: DataGridSettings
+    @Binding var valueColors: ValueColorSettings
 
     var body: some View {
         Section {
@@ -41,6 +42,9 @@ struct DataGridSection: View {
                 .help(String(localized: "Mark zero-width, control and special space characters in cells and value fields"))
             Toggle("Show the result bar above the grid", isOn: $settings.resultBarAtTop)
                 .help(String(localized: "Moves the bar with the row count, view switcher and pages from below the results to above them."))
+            Toggle("Color values by type", isOn: $valueColors.colorsValuesByType)
+                .help(String(localized: "Draw strings, numbers, dates and other typed values in the colors of the theme's Values section"))
+                .accessibilityIdentifier("color-values-by-type-toggle")
 
             Picker("Default row sort:", selection: $settings.defaultSortBehavior) {
                 ForEach(DefaultSortBehavior.allCases) { behavior in

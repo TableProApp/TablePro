@@ -11,43 +11,88 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <CommandBar
-            x:Name="Commands"
-            x:Uid="TableCommands"
-            AutomationProperties.AutomationId="TableCommands"
-            DefaultLabelPosition="Right"
-            IsDynamicOverflowEnabled="True"
-            VerticalContentAlignment="Center">
-            <CommandBar.Content>
-                <TextBlock
-                    x:Name="StatusText"
-                    Margin="12,0"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="TableStatus"
-                    AutomationProperties.LiveSetting="Polite"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Style="{StaticResource CaptionTextBlockStyle}" />
-            </CommandBar.Content>
-            <!-- Labels are set as the page changes; the menus and the flyout are built each time they open. -->
-            <AppBarButton x:Uid="PageSizeButton" x:Name="PageSizeButton" AutomationProperties.AutomationId="PageSizeButton" Click="OnPageSize">
-                <AppBarButton.Icon><FontIcon Glyph="&#xE8FD;" /></AppBarButton.Icon>
-            </AppBarButton>
-            <AppBarButton x:Uid="FirstPageButton" x:Name="FirstPageButton" AutomationProperties.AutomationId="FirstPageButton" Icon="Previous" Click="OnFirstPage" Visibility="Collapsed" />
-            <AppBarButton x:Uid="PreviousPageButton" x:Name="PreviousPageButton" AutomationProperties.AutomationId="PreviousPageButton" Click="OnPreviousPage" Visibility="Collapsed">
-                <AppBarButton.Icon><FontIcon Glyph="&#xE76B;" /></AppBarButton.Icon>
-            </AppBarButton>
-            <AppBarButton x:Uid="GoToPageButton" x:Name="GoToPageButton" AutomationProperties.AutomationId="GoToPageButton" Click="OnGoToPage" Visibility="Collapsed">
-                <AppBarButton.Icon><FontIcon Glyph="&#xE7C3;" /></AppBarButton.Icon>
-            </AppBarButton>
-            <AppBarButton x:Uid="NextPageButton" x:Name="NextPageButton" AutomationProperties.AutomationId="NextPageButton" Click="OnNextPage" Visibility="Collapsed">
-                <AppBarButton.Icon><FontIcon Glyph="&#xE76C;" /></AppBarButton.Icon>
-            </AppBarButton>
-            <AppBarButton x:Uid="LastPageButton" x:Name="LastPageButton" AutomationProperties.AutomationId="LastPageButton" Icon="Next" Click="OnLastPage" Visibility="Collapsed" />
-            <AppBarSeparator />
-            <AppBarButton x:Uid="RefreshTableButton" x:Name="RefreshButton" AutomationProperties.AutomationId="RefreshTableButton" Icon="Refresh" Click="OnRefresh" />
-            <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopTableButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
-        </CommandBar>
+        <SelectorBar
+            x:Name="ViewBar"
+            x:Uid="TableViews"
+            Margin="4,0"
+            AutomationProperties.AutomationId="TableViews"
+            SelectionChanged="OnViewChanged">
+            <SelectorBarItem
+                x:Name="DataItem"
+                x:Uid="TableDataItem"
+                AutomationProperties.AutomationId="TableDataItem"
+                IsSelected="True" />
+            <SelectorBarItem
+                x:Name="StructureItem"
+                x:Uid="TableStructureItem"
+                AutomationProperties.AutomationId="TableStructureItem" />
+        </SelectorBar>
 
-        <local:ResultsPane x:Name="Results" Grid.Row="1" />
+        <Grid x:Name="DataArea" Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <CommandBar
+                x:Name="Commands"
+                x:Uid="TableCommands"
+                AutomationProperties.AutomationId="TableCommands"
+                DefaultLabelPosition="Right"
+                IsDynamicOverflowEnabled="True"
+                VerticalContentAlignment="Center">
+                <CommandBar.Content>
+                    <TextBlock
+                        x:Name="StatusText"
+                        Margin="12,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="TableStatus"
+                        AutomationProperties.LiveSetting="Polite"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                </CommandBar.Content>
+                <!-- Labels are set as the page changes; the menus and the flyout are built each time they open. -->
+                <AppBarButton x:Uid="PageSizeButton" x:Name="PageSizeButton" AutomationProperties.AutomationId="PageSizeButton" Click="OnPageSize">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8FD;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Uid="FirstPageButton" x:Name="FirstPageButton" AutomationProperties.AutomationId="FirstPageButton" Icon="Previous" Click="OnFirstPage" Visibility="Collapsed" />
+                <AppBarButton x:Uid="PreviousPageButton" x:Name="PreviousPageButton" AutomationProperties.AutomationId="PreviousPageButton" Click="OnPreviousPage" Visibility="Collapsed">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE76B;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Uid="GoToPageButton" x:Name="GoToPageButton" AutomationProperties.AutomationId="GoToPageButton" Click="OnGoToPage" Visibility="Collapsed">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE7C3;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Uid="NextPageButton" x:Name="NextPageButton" AutomationProperties.AutomationId="NextPageButton" Click="OnNextPage" Visibility="Collapsed">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE76C;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Uid="LastPageButton" x:Name="LastPageButton" AutomationProperties.AutomationId="LastPageButton" Icon="Next" Click="OnLastPage" Visibility="Collapsed" />
+                <AppBarSeparator />
+                <AppBarButton x:Uid="RefreshTableButton" x:Name="RefreshButton" AutomationProperties.AutomationId="RefreshTableButton" Icon="Refresh" Click="OnRefresh" />
+                <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopTableButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
+                <AppBarToggleButton
+                    x:Uid="FilterButton"
+                    x:Name="FilterButton"
+                    AutomationProperties.AutomationId="FilterButton"
+                    Checked="OnFilterToggled"
+                    Icon="Filter"
+                    Unchecked="OnFilterToggled" />
+                <!-- Last, so a narrow bar moves them to the overflow first and keeps the pager; the keys are the menus'. -->
+                <AppBarSeparator />
+                <AppBarButton x:Uid="AddRowButton" x:Name="AddRowButton" AutomationProperties.AutomationId="AddRowButton" Icon="Add" IsEnabled="False" Click="OnAddRow" />
+                <AppBarButton x:Uid="DuplicateRowButton" x:Name="DuplicateRowButton" AutomationProperties.AutomationId="DuplicateRowButton" Icon="Copy" IsEnabled="False" Click="OnDuplicateRow" />
+                <AppBarButton x:Uid="DeleteRowsButton" x:Name="DeleteRowsButton" AutomationProperties.AutomationId="DeleteRowsButton" Icon="Delete" IsEnabled="False" Click="OnDeleteRows" />
+                <AppBarButton x:Uid="SaveChangesButton" x:Name="SaveChangesButton" AutomationProperties.AutomationId="SaveChangesButton" Icon="Save" IsEnabled="False" Click="OnSaveChanges" />
+                <AppBarButton x:Uid="DiscardChangesButton" x:Name="DiscardChangesButton" AutomationProperties.AutomationId="DiscardChangesButton" Icon="Undo" IsEnabled="False" Click="OnDiscardChanges" />
+                <AppBarButton x:Uid="PreviewSqlButton" x:Name="PreviewSqlButton" AutomationProperties.AutomationId="PreviewSqlButton" Icon="Preview" IsEnabled="False" Click="OnPreviewSql" />
+            </CommandBar>
+
+            <!-- The filter bar and the structure are made the first time they show. -->
+            <Border x:Name="FilterHost" Grid.Row="1" Visibility="Collapsed" />
+
+            <local:ResultsPane x:Name="Results" Grid.Row="2" />
+        </Grid>
+
+        <Border x:Name="StructureHost" Grid.Row="1" Visibility="Collapsed" />
     </Grid>
 </UserControl>

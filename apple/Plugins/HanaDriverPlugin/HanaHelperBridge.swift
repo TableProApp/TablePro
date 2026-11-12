@@ -152,6 +152,18 @@ final class HanaHelperBridge: HanaNativeBridge, @unchecked Sendable {
         try call(.explain, ticket: ticket) { HanaHelperMessage.statement($0, request: request) }
     }
 
+    func openCursor(_ ticket: HanaOperationTicket, request: Data) throws -> Data {
+        try call(.openCursor, ticket: ticket) { HanaHelperMessage.statement($0, request: request) }
+    }
+
+    func fetch(_ ticket: HanaOperationTicket) throws -> Data {
+        try call(.fetch, ticket: ticket) { HanaHelperMessage.operation($0) }
+    }
+
+    func closeCursor(_ ticket: HanaOperationTicket) throws -> Data {
+        try call(.closeCursor, ticket: ticket) { HanaHelperMessage.operation($0) }
+    }
+
     func ping(_ ticket: HanaOperationTicket) throws {
         _ = try call(.ping, ticket: ticket) { HanaHelperMessage.operation($0) }
     }

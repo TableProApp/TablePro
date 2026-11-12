@@ -30,3 +30,35 @@ pub enum BuildSqlError {
     #[error(transparent)]
     Bind(#[from] BindError),
 }
+
+impl BuildSqlError {
+    // Stable across releases, for an app outside Rust that words the error itself.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NoRowIdentity => "build.no_row_identity",
+            Self::ReadOnlyRows => "build.read_only_rows",
+            Self::UnknownKeyColumn { .. } => "build.unknown_key_column",
+            Self::NothingToUpdate => "build.nothing_to_update",
+            Self::NoInsertValues => "build.no_insert_values",
+            Self::LengthMismatch { .. } => "build.length_mismatch",
+            Self::UndecodableKey => "build.undecodable_key",
+            Self::UnaddressableField { .. } => "build.unaddressable_field",
+            Self::ServerComputedValue { .. } => "build.server_computed_value",
+            Self::Bind(_) => "build.bind",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_code_names_its_variant_under_build() {
+        assert_eq!(BuildSqlError::NoRowIdentity.code(), "build.no_row_identity");
+        assert_eq!(
+            BuildSqlError::ServerComputedValue { name: "id".to_owned() }.code(),
+            "build.server_computed_value"
+        );
+    }
+}

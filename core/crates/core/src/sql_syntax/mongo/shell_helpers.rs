@@ -37,6 +37,10 @@ pub(crate) fn check_helper(kind: ShellConstructor, args: &[ShellValue], at: usiz
             matches!(args, [String(_)] | [String(_), String(_)]),
             "a pattern and flags in quotes",
         ),
+        ShellConstructor::BsonRegExp => (
+            matches!(args, [String(_)] | [String(_), String(_)]),
+            "a pattern and options in quotes",
+        ),
         ShellConstructor::Code => (matches!(args, [String(_)]), "JavaScript in quotes"),
     };
     match accepted {

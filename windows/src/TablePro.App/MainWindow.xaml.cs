@@ -702,7 +702,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         if (reconnecting is not null)
         {
-            if (!await ConfirmDisconnectAsync(reconnecting))
+            if (!await ConfirmDisconnectAsync(reconnecting, offerSave: result.Saved.SafeMode != SafeMode.ReadOnly))
             {
                 ShowChangesOnConnect(reconnecting, result.Saved);
                 return;
@@ -756,7 +756,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                 continue;
             }
 
-            if (await window.ConfirmDisconnectAsync(each))
+            // Pending edits are not written on a connection the user is making read only.
+            if (await window.ConfirmDisconnectAsync(each, offerSave: saved.SafeMode != SafeMode.ReadOnly))
             {
                 DropSpare();
                 await each.DisconnectAsync(keepTabs: true);
@@ -772,12 +773,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private static void ShowChangesOnConnect(OpenConnection open, SavedConnection saved) =>
         open.View.ShowChangesOnConnect(saved.SafeMode == SafeMode.ReadOnly && open.Session is { IsReadOnly: false });
 
-    // Disconnecting ends each tab's own connection, so a held transaction is asked about first, as closing its tab
-    // asks. The connection shows first, since the question names one of its tabs.
-    private async Task<bool> ConfirmDisconnectAsync(OpenConnection open)
+    // Disconnecting ends each tab's own connection and its pending edits, so both are asked about first, as closing a
+    // tab asks. The connection shows first, since the question names one of its tabs.
+    private async Task<bool> ConfirmDisconnectAsync(OpenConnection open, bool offerSave = true)
     {
-        var confirmed = new HashSet<ITabContent>();
-        if (!open.View.HasUnconfirmedTransactions(confirmed))
+        var confirmed = new HashSet<IWorkspaceTab>();
+        if (!open.View.HasUnconfirmed(confirmed))
         {
             return true;
         }
@@ -792,7 +793,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             Show(open);
         }
 
-        return await open.View.ConfirmCloseAsync(confirmed);
+        return await open.View.ConfirmCloseAsync(confirmed, offerSave);
     }
 
     private void OnRailSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -857,12 +858,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         RefreshTabTransfers();
         try
         {
-            var confirmed = new HashSet<ITabContent>();
+            var confirmed = new HashSet<IWorkspaceTab>();
             // Apart from confirmed, so a run that ends during the question and leaves a transaction open is asked about.
-            var stopped = new HashSet<ITabContent>();
+            var stopped = new HashSet<IWorkspaceTab>();
             while (true)
             {
-                if (!await ConfirmTransactionsAsync(windows, confirmed))
+                if (!await ConfirmTabsAsync(windows, confirmed))
                 {
                     return;
                 }
@@ -900,13 +901,14 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    private static async Task<bool> ConfirmTransactionsAsync(List<MainWindow> windows, HashSet<ITabContent> confirmed)
+    // Held transactions and unsaved changes, tab by tab in every window; a save chosen there runs before the close.
+    private static async Task<bool> ConfirmTabsAsync(List<MainWindow> windows, HashSet<IWorkspaceTab> confirmed)
     {
-        while (windows.SelectMany(window => window._open).Any(open => open.View.HasUnconfirmedTransactions(confirmed)))
+        while (windows.SelectMany(window => window._open).Any(open => open.View.HasUnconfirmed(confirmed)))
         {
             foreach (var window in windows)
             {
-                foreach (var open in window._open.Where(open => open.View.HasUnconfirmedTransactions(confirmed)).ToList())
+                foreach (var open in window._open.Where(open => open.View.HasUnconfirmed(confirmed)).ToList())
                 {
                     window.Activate();
                     if (window.IsPrimary)
@@ -929,15 +931,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         return true;
     }
 
-    private static List<(string Connection, ITabContent Tab)> RunningQueries(
-        List<MainWindow> windows, HashSet<ITabContent> confirmed, HashSet<ITabContent> stopped) =>
+    private static List<(string Connection, IWorkspaceTab Tab)> RunningQueries(
+        List<MainWindow> windows, HashSet<IWorkspaceTab> confirmed, HashSet<IWorkspaceTab> stopped) =>
         [.. windows.SelectMany(window => window._open)
             .SelectMany(open => open.View.RunningQueries()
                 .Where(tab => !confirmed.Contains(tab) && !stopped.Contains(tab))
                 .Select(tab => (Connection: open.Name, Tab: tab)))];
 
     // One question for every query still running, as the macOS app asks before it quits; Cancel keeps every window.
-    private async Task<bool> ConfirmStopRunningAsync(List<(string Connection, ITabContent Tab)> running)
+    private async Task<bool> ConfirmStopRunningAsync(List<(string Connection, IWorkspaceTab Tab)> running)
     {
         Activate();
         var one = running.Count == 1;
@@ -1148,13 +1150,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private SessionState SessionSnapshot()
     {
-        var connections = _open.Select(open => open.Snapshot()).ToList();
+        var connections = _open.Select(open => Persisted(open.Snapshot())).ToList();
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
         var windows = _tabWindows
             .Where(window => window._front is not null)
             .Select(window => new TabWindowState
             {
-                Connection = window._front!.Snapshot(),
+                Connection = Persisted(window._front!.Snapshot()),
                 Placement = WindowInterop.Placement(window),
             })
             .Where(window => window.Connection.Tabs.Count > 0)
@@ -1169,6 +1171,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         };
     }
 
+    // Only session.json leaves definition tabs out; a reconnect and a tab window keep them.
+    private static SessionConnection Persisted(SessionConnection connection)
+    {
+        var (tabs, selected) = SessionTabs.Persisted(connection.Tabs, connection.SelectedTab);
+        return connection with { Tabs = tabs, SelectedTab = selected };
+    }
+
     private void UpdateCommands()
     {
         var workspace = Workspace;
@@ -1181,13 +1190,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuShowObjects.IsEnabled = workspace is not null;
         MenuShowObjects.IsChecked = workspace?.ObjectsVisible ?? true;
         MenuFilterObjects.IsEnabled = workspace is not null;
+        MenuShowHistory.IsEnabled = workspace is not null;
+        MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
+        MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuRefresh.IsEnabled = workspace is not null;
         MenuEditConnection.IsEnabled = front?.ConnectionId is not null;
         MenuReconnect.IsEnabled = front is { State: ConnectionState.Connected or ConnectionState.Failed };
         MenuDisconnect.IsEnabled = front is not null;
-        MenuRun.IsEnabled = tab is { IsRunning: false };
+        // A definition tab reads its text with Reload, not Run, and has nothing to stop.
+        MenuRun.IsEnabled = tab is QueryTabView { IsRunning: false } or TableTabView { IsRunning: false };
         MenuRunStatement.IsEnabled = tab is QueryTabView { IsRunning: false };
-        MenuStop.IsEnabled = tab is { IsRunning: true };
+        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
         foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind })
         {
@@ -1196,6 +1209,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         MenuCopy.IsEnabled = tab is not null;
         MenuSelectAll.IsEnabled = tab is not null;
+        // A query tab never edits; a table tab says what its page can do now.
+        var table = tab as TableTabView;
+        MenuFilterRows.IsEnabled = table is not null;
+        MenuSaveChanges.IsEnabled = table is { CanSave: true };
+        MenuDiscardChanges.IsEnabled = table is { CanDiscard: true };
+        MenuPreviewSql.IsEnabled = table is { CanPreview: true };
+        MenuAddRow.IsEnabled = table is { CanAddRow: true };
+        MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true };
+        MenuDeleteRows.IsEnabled = table is { CanChangeRows: true };
     }
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => NewConnection();
@@ -1230,8 +1252,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             case { MessagesTarget: { } messages }:
                 messages.CopySelectionToClipboard();
                 break;
-            case { GridIsTarget: true } tab:
-                await tab.Grid.CopySelectionAsync();
+            case { GridIsTarget: true, Grid: { } grid }:
+                await grid.CopySelectionAsync();
                 break;
             case { Editor: { } editor }:
                 editor.Copy();
@@ -1258,10 +1280,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        if (Workspace?.ActiveTab is { GridIsTarget: true } tab)
+        if (Workspace?.ActiveTab is { GridIsTarget: true, Grid: { } grid })
         {
-            tab.Grid.SelectAll();
-            tab.Grid.Focus(FocusState.Programmatic);
+            grid.SelectAll();
+            grid.Focus(FocusState.Programmatic);
             return;
         }
 
@@ -1300,6 +1322,26 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     private void OnFilterObjects(object sender, RoutedEventArgs e) => Workspace?.FocusFilter();
+
+    private async void OnToggleHistory(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ToggleHistoryAsync();
+        }
+
+        UpdateCommands();
+    }
+
+    private async void OnExportResults(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ExportAsync();
+        }
+    }
+
+    private void OnFilterRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.ToggleFilter();
 
     private async void OnRefresh(object sender, RoutedEventArgs e)
     {
@@ -1340,6 +1382,36 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void OnRunStatement(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as QueryTabView)?.RunStatement();
 
     private void OnStop(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Stop();
+
+    private async void OnSaveChanges(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is TableTabView table)
+        {
+            await table.SaveAsync();
+        }
+    }
+
+    private async void OnDiscardChanges(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is TableTabView table)
+        {
+            await table.DiscardAsync();
+        }
+    }
+
+    private async void OnPreviewSql(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is TableTabView table)
+        {
+            await table.PreviewAsync();
+        }
+    }
+
+    private void OnAddRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.AddRow();
+
+    private void OnDuplicateRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DuplicateRows();
+
+    private void OnDeleteRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DeleteRows();
 
     private async void OnDocumentation(object sender, RoutedEventArgs e) =>
         await Launcher.LaunchUriAsync(SettingsView.DocumentationUri);

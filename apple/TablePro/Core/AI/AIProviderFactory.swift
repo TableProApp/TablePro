@@ -69,6 +69,25 @@ enum AIProviderFactory {
         }
     }
 
+    // `onlyWhereRequired` is for inline suggestions: they send an effort only where a model always reasons.
+    static func reasoningEffort(
+        _ requested: ReasoningEffort?,
+        config: AIProviderConfig,
+        model: String,
+        onlyWhereRequired: Bool = false,
+        catalog: AIModelCatalog = .shared
+    ) -> ReasoningEffort? {
+        guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else {
+            return onlyWhereRequired ? nil : requested
+        }
+        let fetched = catalog.fetchedInfo(providerID: config.id, modelID: model)
+        if onlyWhereRequired,
+           !descriptor.reasoning(forModelID: model, fetched: fetched, preset: config.preset).isMandatory {
+            return nil
+        }
+        return descriptor.effort(requested, forModelID: model, fetched: fetched, preset: config.preset)
+    }
+
     static func resolve(
         settings: AISettings,
         overrideProviderId: UUID? = nil,
@@ -76,11 +95,14 @@ enum AIProviderFactory {
     ) -> ResolvedProvider? {
         guard settings.enabled else { return nil }
         let config: AIProviderConfig?
+        // A model picked for a provider that was since removed belongs to that provider, not the active one.
+        var model = overrideModel
         if let overrideProviderId,
            let match = settings.providers.first(where: { $0.id == overrideProviderId }) {
             config = match
         } else {
             config = settings.activeProvider
+            if overrideProviderId != nil { model = nil }
         }
         guard let config else { return nil }
         let apiKey: String?
@@ -91,7 +113,6 @@ enum AIProviderFactory {
             apiKey = nil
         }
         let provider = createProvider(for: config, apiKey: apiKey)
-        let model = overrideModel ?? config.model
-        return ResolvedProvider(provider: provider, model: model, config: config)
+        return ResolvedProvider(provider: provider, model: model ?? config.model, config: config)
     }
 }

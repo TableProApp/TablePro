@@ -235,7 +235,7 @@ struct StructureSaveConfirmationTests {
         ).authorize(request)
 
         let error = try #require(decision.denialError)
-        #expect(StructureApplyFailure(error) == .cancelledByUser)
+        #expect(GatedOperationFailure(error) == .cancelledByUser)
     }
 
     @Test("A declined Touch ID is a refusal that says why, not a quiet Cancel")
@@ -252,7 +252,7 @@ struct StructureSaveConfirmationTests {
         ).authorize(request)
 
         let error = try #require(decision.denialError)
-        let failure = StructureApplyFailure(error)
+        let failure = GatedOperationFailure(error)
         #expect(failure.outcome == .refused)
         #expect(failure.message != nil)
         #expect(!failure.reportsFailure)
@@ -404,7 +404,7 @@ struct StructureSaveConfirmationTests {
 
     @Test("A Cancel leaves the edits staged and shows nothing")
     func cancelIsQuiet() {
-        let failure = StructureApplyFailure(ExecutionGateError.cancelledByUser("Operation cancelled by user"))
+        let failure = GatedOperationFailure(ExecutionGateError.cancelledByUser("Operation cancelled by user"))
 
         #expect(failure == .cancelledByUser)
         #expect(failure.outcome == .refused)
@@ -414,7 +414,7 @@ struct StructureSaveConfirmationTests {
 
     @Test("A Safe Mode refusal leaves the edits staged and says why, and is not a failed operation")
     func refusalExplainsItself() {
-        let failure = StructureApplyFailure(ExecutionGateError.denied("Safe Mode is read-only"))
+        let failure = GatedOperationFailure(ExecutionGateError.denied("Safe Mode is read-only"))
 
         #expect(failure.outcome == .refused)
         #expect(failure.message == "Safe Mode is read-only")
@@ -423,7 +423,7 @@ struct StructureSaveConfirmationTests {
 
     @Test("A statement the server rejected is a failed save")
     func serverRejectionIsAFailure() {
-        let failure = StructureApplyFailure(ServerRejection())
+        let failure = GatedOperationFailure(ServerRejection())
 
         #expect(failure.outcome == .failed("Duplicate column name 'notes'"))
         #expect(failure.message == "Duplicate column name 'notes'")

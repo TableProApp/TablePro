@@ -320,3 +320,42 @@ struct UnenforcedStatementPolicyTests {
         #expect(adapter(ContextRecordingDriver(capabilities: .readOnlyStatements)).runsReadOnlyStatements)
     }
 }
+
+struct PluginDriverAdapterParameterKindTests {
+    private func adapter(_ driver: ContextRecordingDriver) -> PluginDriverAdapter {
+        PluginDriverAdapter(connection: DatabaseConnection(name: "Test", type: .postgresql), pluginDriver: driver)
+    }
+
+    @Test("A panel value reaches the driver with the type the user gave it")
+    func panelTypesReachTheDriver() async throws {
+        let driver = ContextRecordingDriver()
+        let values: [Any?] = [
+            TypedParameterValue(text: "00123", kind: .text), nil, TypedParameterValue(text: "7", kind: .integer),
+        ]
+
+        _ = try await adapter(driver).executeUserQuery(
+            query: "SELECT $1, $2, $3", rowCap: nil, parameters: values, context: PluginStatementContext()
+        )
+        _ = try await adapter(driver).executeParameterized(
+            query: "SELECT $1, $2, $3", parameters: values, context: PluginStatementContext()
+        )
+
+        #expect(driver.contexts.map { $0.parameterKinds } == [[.text, nil, .integer], [.text, nil, .integer]])
+    }
+
+    @Test("Values with no type, such as a grid save's, carry none")
+    func untypedValuesCarryNoKinds() async throws {
+        let driver = ContextRecordingDriver()
+
+        _ = try await adapter(driver).executeParameterized(
+            query: "UPDATE t SET a = $1", parameters: ["42"], context: PluginStatementContext()
+        )
+
+        #expect(driver.contexts.map { $0.parameterKinds } == [nil])
+    }
+
+    @Test("A typed value is written to the driver as its text")
+    func typedValueIsItsText() {
+        #expect(PluginDriverAdapter.cellValue(for: TypedParameterValue(text: "1E5", kind: .text)) == .text("1E5"))
+    }
+}

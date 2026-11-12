@@ -63,8 +63,8 @@ struct ConnectionSecretScopeTests {
         #expect(keychain.localValue(forKey: passwordKey(connection.id)) == nil)
     }
 
-    @Test("Marking a connection Local only copies its secrets to this Mac and leaves the synced ones for other devices")
-    func markingLocalOnlyCopiesAndKeepsTheSyncedSecrets() {
+    @Test("Marking a connection Local only moves its secrets to this Mac and off iCloud Keychain")
+    func markingLocalOnlyMovesTheSecretsOffICloud() {
         let connection = makeConnection(localOnly: false)
         #expect(storage.addConnection(connection, password: "hunter2"))
         storage.saveSSLClientKeyPassphrase("passphrase", for: connection.id)
@@ -74,8 +74,78 @@ struct ConnectionSecretScopeTests {
 
         #expect(keychain.localValue(forKey: passwordKey(connection.id)) == "hunter2")
         #expect(keychain.localValue(forKey: sslKey(connection.id)) == "passphrase")
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == nil)
+        #expect(keychain.syncedValue(forKey: sslKey(connection.id)) == nil)
+    }
+
+    @Test("A local write that fails keeps the synced copy")
+    func aLocalWriteThatFailsKeepsTheSyncedCopy() {
+        let connection = makeConnection(localOnly: false)
+        #expect(storage.addConnection(connection, password: "hunter2"))
+        keychain.failWrites(to: passwordKey(connection.id))
+
+        _ = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = true }
+
+        #expect(keychain.localValue(forKey: passwordKey(connection.id)) == nil)
         #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "hunter2")
-        #expect(keychain.syncedValue(forKey: sslKey(connection.id)) == "passphrase")
+    }
+
+    @Test("A secret that cannot be read keeps its synced copy")
+    func anUnreadableSecretKeepsItsSyncedCopy() {
+        let connection = makeConnection(localOnly: false)
+        #expect(storage.addConnection(connection, password: "hunter2"))
+        keychain.makeUnreadable(passwordKey(connection.id))
+
+        _ = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = true }
+
+        keychain.makeReadable(passwordKey(connection.id))
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "hunter2")
+    }
+
+    @Test("A synced copy the keychain refused to remove is removed at the next launch")
+    func aRefusedSyncedRemovalIsRetriedAtLaunch() {
+        let connection = makeConnection(localOnly: false)
+        #expect(storage.addConnection(connection, password: "hunter2"))
+        keychain.failSyncedRemoval(of: passwordKey(connection.id))
+        _ = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = true }
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "hunter2")
+
+        keychain.allowSyncedRemoval(of: passwordKey(connection.id))
+        storage.keepLocalOnlySecretsOnDeviceIfNeeded()
+
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == nil)
+        #expect(keychain.localValue(forKey: passwordKey(connection.id)) == "hunter2")
+    }
+
+    @Test("A refused removal is dropped once the connection is back in sync")
+    func aRefusedRemovalIsDroppedWhenBackInSync() {
+        let connection = makeConnection(localOnly: false)
+        #expect(storage.addConnection(connection, password: "hunter2"))
+        keychain.failSyncedRemoval(of: passwordKey(connection.id))
+        _ = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = true }
+        _ = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = false }
+        // A local copy would let a stale retry go through, so its absence is not what keeps the synced one.
+        keychain.seedLocal("hunter2", forKey: passwordKey(connection.id))
+
+        keychain.allowSyncedRemoval(of: passwordKey(connection.id))
+        storage.keepLocalOnlySecretsOnDeviceIfNeeded()
+
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "hunter2")
+    }
+
+    @Test("A synced copy that cannot be removed leaves the other secrets moved")
+    func aFailedSyncedRemovalStillMovesTheOtherSecrets() {
+        let connection = makeConnection(localOnly: false)
+        #expect(storage.addConnection(connection, password: "hunter2"))
+        storage.saveTOTPSecret("JBSWY3DP", for: connection.id)
+        keychain.failSyncedRemoval(of: passwordKey(connection.id))
+
+        _ = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = true }
+
+        #expect(keychain.localValue(forKey: passwordKey(connection.id)) == "hunter2")
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "hunter2")
+        #expect(keychain.localValue(forKey: totpKey(connection.id)) == "JBSWY3DP")
+        #expect(keychain.syncedValue(forKey: totpKey(connection.id)) == nil)
     }
 
     @Test("A Local only connection reads and changes its own copy, never the one another device synced")
@@ -98,7 +168,7 @@ struct ConnectionSecretScopeTests {
         let marked = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = true }
         #expect(marked)
         storage.savePassword("v2", for: connection.id)
-        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "v1")
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == nil)
 
         let unmarked = storage.mutateConnections(ids: [connection.id]) { $0.localOnly = false }
         #expect(unmarked)
@@ -134,7 +204,8 @@ struct ConnectionSecretScopeTests {
         #expect(marked)
 
         #expect(storage.loadPassword(for: connection.id) == "in-use")
-        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == "in-use")
+        #expect(keychain.localValue(forKey: passwordKey(connection.id)) == "in-use")
+        #expect(keychain.syncedValue(forKey: passwordKey(connection.id)) == nil)
     }
 
     @Test("The launch move copies an older Local only connection's secrets and leaves the synced ones in place")

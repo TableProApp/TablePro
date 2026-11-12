@@ -275,7 +275,7 @@ tablepro_test_support::document_conformance_suite! {
 }
 ```
 
-The cases: collections are listed in their database; fields become columns with the key first; pages read every document in order; a filter and a sort are read on the server; a field edit saves and reads back; a save on a document that is gone changes nothing; an insert and a delete land; a read-only connection refuses a save, an editor write, a read that writes and an export that writes before sending; a stopped statement ends and the session runs again; a dropped run stops the statement; a timed-out statement is stopped by the server; an editor result keeps the row limit; `stream_read` streams every document; a probe answers while a statement runs; `close` is idempotent; and a dropped route reports `ConnectionLost`. `document_suite_matches_driver_capabilities` is never ignored and fails when the driver's `data_model` is not `Document`. The engine also runs the TLS suite.
+The cases: collections are listed in their database; fields become columns with the key first; pages read every document in order; a filter and a sort are read on the server; a field edit saves and reads back; a save on a document that is gone changes nothing; a save that fails at its second step keeps the first, reported as partly applied; an insert and a delete land; a read-only connection refuses a save, an editor write, a read that writes and an export that writes before sending; a stopped statement ends and the session runs again; a stopped workspace read ends, the server lets it go and the connection reads again; a dropped run stops the statement; a timed-out statement is stopped by the server; an editor result keeps the row limit; `stream_read` streams every document; a probe answers while a statement runs; `close` is idempotent; and a dropped route reports `ConnectionLost`. `document_suite_matches_driver_capabilities` is never ignored and fails when the driver's `data_model` is not `Document`. MongoDB runs the suite twice, on a direct route and on a forward, where the driver's relay carries every page and save, and also runs the TLS suite.
 
 ### TLS conformance
 
@@ -324,6 +324,8 @@ meson and distro builds use cargo test, which works too:
 ```bash
 cargo test -p tablepro-driver-postgres -- --ignored --test-threads=1
 ```
+
+The MongoDB seed-list and replica-set tests also need public DNS and host port 27017 free: they reach the MongoDB driver specification's records under `test.build.10gen.cc`, which point at `localhost:27017`.
 
 ### Files from tablepro-cloud
 

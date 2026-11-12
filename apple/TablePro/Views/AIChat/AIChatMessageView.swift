@@ -105,6 +105,13 @@ struct AIChatMessageView: View, Equatable {
                     }
                 }
                 .padding(.horizontal, 8)
+
+                if let limit = message.outputLimit {
+                    Label(limit.note, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                }
             }
 
             if let onRetry {
@@ -243,5 +250,16 @@ struct ChatTypingIndicatorView: View {
             .frame(height: 16)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(String(localized: "Responding"))
+    }
+}
+
+private extension ChatOutputLimit {
+    var note: String {
+        switch self {
+        case .outputTokens:
+            return String(localized: "The response stopped at the model's output token limit.")
+        case .contextWindow:
+            return String(localized: "The response stopped because the conversation filled the model's context window.")
+        }
     }
 }

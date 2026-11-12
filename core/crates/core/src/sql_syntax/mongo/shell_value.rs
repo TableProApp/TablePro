@@ -161,10 +161,11 @@ impl ShellNumber {
             "Infinity" | "+Infinity" => Some(f64::INFINITY),
             "-Infinity" => Some(f64::NEG_INFINITY),
             "NaN" | "-NaN" | "+NaN" => Some(f64::NAN),
-            text => self
-                .as_integer()
-                .map(|integer| integer as f64)
-                .or_else(|| text.parse().ok()),
+            text => match self.as_integer() {
+                Some(0) if text.starts_with('-') => Some(-0.0),
+                Some(integer) => Some(integer as f64),
+                None => text.parse().ok(),
+            },
         }
     }
 }
@@ -185,6 +186,9 @@ pub enum ShellConstructor {
     MinKey,
     MaxKey,
     RegExp,
+    /// A BSON regular expression as it is stored, which mongosh keeps
+    /// whole where a JavaScript `RegExp` drops or refuses some options.
+    BsonRegExp,
     Code,
 }
 
@@ -206,6 +210,7 @@ impl ShellConstructor {
             "MinKey" => Self::MinKey,
             "MaxKey" => Self::MaxKey,
             "RegExp" => Self::RegExp,
+            "BSONRegExp" => Self::BsonRegExp,
             "Code" => Self::Code,
             _ => return None,
         })
@@ -227,6 +232,7 @@ impl ShellConstructor {
             Self::MinKey => "MinKey",
             Self::MaxKey => "MaxKey",
             Self::RegExp => "RegExp",
+            Self::BsonRegExp => "BSONRegExp",
             Self::Code => "Code",
         }
     }
@@ -247,6 +253,12 @@ mod tests {
         assert_eq!(ShellNumber::new("99999999999999999999").as_integer(), None);
         assert_eq!(ShellNumber::new("1e3").as_f64(), Some(1000.0));
         assert!(ShellNumber::new("NaN").as_f64().is_some_and(f64::is_nan));
+        assert!(
+            ShellNumber::new("-0")
+                .as_f64()
+                .is_some_and(|zero| zero == 0.0 && zero.is_sign_negative())
+        );
+        assert!(ShellNumber::new("0").as_f64().is_some_and(f64::is_sign_positive));
     }
 
     #[test]
@@ -273,6 +285,11 @@ mod tests {
         assert_eq!(ShellConstructor::named("ISODate"), Some(ShellConstructor::Date));
         assert_eq!(ShellConstructor::named("NumberLong"), Some(ShellConstructor::Int64));
         assert_eq!(ShellConstructor::named("ObjectID"), Some(ShellConstructor::ObjectId));
+        assert_eq!(
+            ShellConstructor::named("BSONRegExp"),
+            Some(ShellConstructor::BsonRegExp)
+        );
+        assert_eq!(ShellConstructor::BsonRegExp.name(), "BSONRegExp");
         assert_eq!(ShellConstructor::named("eval"), None);
         assert_eq!(ShellConstructor::Decimal128.name(), "NumberDecimal");
     }

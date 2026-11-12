@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
-use tablepro_core::browse::{DeclaredPrecisionSink, ExportRequest, build_count, build_export};
+use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, build_count, build_export};
 use tablepro_core::meta::{ObjectScope, RowIdentity};
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
 use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, changes_catalog, statement_access};
@@ -313,6 +313,8 @@ pub async fn browse_table(
                 filter: &filter,
                 sort: &sort,
                 identity: &identity,
+                // Every field would take a census of the whole collection before the first row.
+                fields: ExportFields::Listed,
             };
             Ok(ReadStatement::Generated(build_export(&*lease.dialect(), &request)?))
         },

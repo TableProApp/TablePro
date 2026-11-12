@@ -23,20 +23,21 @@ enum RowWriteCoverage {
         }
     }
 
+    // By change, not by row: a row edited around another change is written in steps, and each one has to be.
     static func unwrittenChanges(
         _ changes: [RowChange],
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>,
-        writtenRowIDs: Set<RowID>
+        writtenChangeIDs: Set<UUID>
     ) -> [RowChange] {
         changes.filter { change in
             isPending(change, deletedRowIDs: deletedRowIDs, insertedRowIDs: insertedRowIDs)
-                && !writtenRowIDs.contains(change.rowID)
+                && !writtenChangeIDs.contains(change.id)
         }
     }
 }
 
-/// How many changes of each kind a save could not write, which is what the refusal names.
+// How many rows of each kind a save could not write, which is what the refusal names.
 struct UnwrittenRowCounts: Equatable, Sendable {
     let updates: Int
     let inserts: Int
@@ -49,11 +50,10 @@ struct UnwrittenRowCounts: Equatable, Sendable {
     }
 
     init(_ changes: [RowChange]) {
-        self.init(
-            updates: changes.count { $0.type == .update },
-            inserts: changes.count { $0.type == .insert },
-            deletes: changes.count { $0.type == .delete }
-        )
+        func rows(_ type: ChangeType) -> Int {
+            Set(changes.lazy.filter { $0.type == type }.map(\.rowID)).count
+        }
+        self.init(updates: rows(.update), inserts: rows(.insert), deletes: rows(.delete))
     }
 
     var isEmpty: Bool { updates == 0 && inserts == 0 && deletes == 0 }

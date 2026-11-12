@@ -258,7 +258,7 @@ fn row_id_binding(part: EngineRowIdPart, value: &Value) -> Result<Binding, BindE
     Ok(match (part, value) {
         // The page reads tableoid as an integer, and a ctid window may
         // hand one back as text, so both forms bind.
-        (EngineRowIdPart::PostgresTableOid, Value::Int(_) | Value::UInt(_)) => {
+        (EngineRowIdPart::PostgresTableOid, Value::Int32(_) | Value::Int(_) | Value::UInt(_)) => {
             Binding::cast(ParamType::Int64, named("oid"))
         }
         (EngineRowIdPart::PostgresTableOid, _) => Binding::server_text(named("oid")),
@@ -348,6 +348,7 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
     Ok(match value {
         Value::Null => "NULL".to_owned(),
         Value::Bool(flag) => flag.to_string(),
+        Value::Int32(int) => int.to_string(),
         Value::Int(int) => int.to_string(),
         Value::UInt(int) => int.to_string(),
         Value::WideInt(int) => int.to_string(),
