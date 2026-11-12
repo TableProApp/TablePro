@@ -326,6 +326,16 @@ struct AISettings: Codable, Equatable, Sendable {
         composerHighlightEnabled: true
     )
 
+    // A reset keeps the providers, whose keys can be iCloud Keychain items other Macs still use, and the switch that
+    // keeps them from being used.
+    var resetKeepingProviders: AISettings {
+        var reset = AISettings.default
+        reset.enabled = enabled
+        reset.providers = providers
+        reset.activeProviderID = activeProviderID
+        return reset
+    }
+
     init(
         enabled: Bool = true,
         providers: [AIProviderConfig] = [],

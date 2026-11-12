@@ -62562,6 +62562,9 @@
         }
       }
     },
+    "Delete “/%@”?" : {
+
+    },
     "Delete \"%@\"" : {
       "localizations" : {
         "fr" : {
@@ -75170,6 +75173,9 @@
           }
         }
       }
+    },
+    "Every custom shortcut goes back to its default." : {
+
     },
     "Every database you picked is written into this folder." : {
       "localizations" : {
@@ -112345,6 +112351,9 @@
       "generatesSymbol" : false
     },
     "Move “%@” to Connection" : {
+
+    },
+    "Move “%@” to the Trash?" : {
 
     },
     "Move Column Down" : {
@@ -150649,6 +150658,9 @@
         }
       }
     },
+    "Reset All Shortcuts?" : {
+
+    },
     "Reset column widths, order, and visibility to defaults" : {
       "localizations" : {
         "fr" : {
@@ -158536,6 +158548,9 @@
           }
         }
       }
+    },
+    "Saved connection “%@”" : {
+
     },
     "Saved Connections" : {
       "localizations" : {
@@ -187657,6 +187672,9 @@
         }
       }
     },
+    "The command is removed from this Mac and from every Mac that syncs settings. This cannot be undone." : {
+
+    },
     "The command must contain %@, where the local port goes" : {
       "localizations" : {
         "fr" : {
@@ -191752,6 +191770,9 @@
         }
       }
     },
+    "The plugin can't be loaded. You can put it back from the Trash." : {
+
+    },
     "The plugin depends on a component that's missing or incompatible with this Mac." : {
       "localizations" : {
         "fr" : {
@@ -194750,6 +194771,9 @@
     "The SSH port %lld is not between 1 and 65535." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The SSH profile this connection uses now points to another server. Click Reconnect in its window to use it." : {
+
     },
     "The SSH server closed the connection during the handshake." : {
 
@@ -203861,6 +203885,9 @@
           }
         }
       }
+    },
+    "This will reset all settings across every section to their default values. AI providers, their API keys and Enable AI Features are kept." : {
+
     },
     "This workbook has no worksheets." : {
       "localizations" : {

@@ -30,23 +30,26 @@ internal final class ConnectionApprovalStore {
     private let kind: Kind
     private let defaults: UserDefaults
     private let savedConnections: @MainActor () -> [DatabaseConnection]?
+    private let dialedDestination: @MainActor (DatabaseConnection) -> ConnectionDestination
 
     internal init(
         kind: Kind,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         savedConnections: @escaping @MainActor () -> [DatabaseConnection]? = ConnectionApprovalStore
-            .trustedSavedConnections
+            .trustedSavedConnections,
+        dialedDestination: @escaping @MainActor (DatabaseConnection) -> ConnectionDestination = { $0.dialedDestination }
     ) {
         self.kind = kind
         self.defaults = defaults
         self.savedConnections = savedConnections
+        self.dialedDestination = dialedDestination
     }
 
     internal func isApproved(_ connection: DatabaseConnection) -> Bool {
         let items = kind.items(in: connection)
         guard !items.isEmpty else { return true }
         migrateIfNeeded()
-        let approved = approvals()[connection.id.uuidString]?[connection.destination.digest] ?? []
+        let approved = approvals()[connection.id.uuidString]?[dialedDestination(connection).digest] ?? []
         return items.isSubset(of: approved)
     }
 
@@ -100,7 +103,7 @@ internal final class ConnectionApprovalStore {
     private func record(_ connection: DatabaseConnection, in all: inout Approvals) -> Bool {
         let items = kind.items(in: connection)
         guard !items.isEmpty else { return false }
-        let digest = connection.destination.digest
+        let digest = dialedDestination(connection).digest
         let approved = Set(all[connection.id.uuidString]?[digest] ?? []).union(items)
         all[connection.id.uuidString, default: [:]][digest] = approved.sorted()
         return true

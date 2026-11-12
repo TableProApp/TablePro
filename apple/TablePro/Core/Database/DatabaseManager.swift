@@ -120,6 +120,10 @@ final class DatabaseManager: ObservableObject {
     /// before touching shared session state and discards its driver when it lost.
     internal var connectionAttempts = ConnectionAttemptRegistry()
 
+    // What each connection last dialed, kept through a failed connect so an unattended one cannot follow an SSH profile
+    // edit under the window; a disconnect ends it, and the window's own Connect replaces it.
+    internal var dialedConnections: [UUID: DatabaseConnection] = [:]
+
     /// The step each in-flight connect last reported, so a window that joins one already running
     /// can seed itself. `AppEvents.connectionStageChanged` is a `PassthroughSubject`, so it holds
     /// nothing: an observer built after a step was sent could only report the generic fallback,

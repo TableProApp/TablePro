@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProSSHConfig
@@ -267,5 +268,72 @@ struct ExternalConnectionGateTests {
         _ = await gate.authorize(localSiteConnection(), scopeName: "Local", filter: .condition("id > 0"))
         #expect(prompt.callCount == 1)
         #expect(prompt.offeredAlwaysAllow == false)
+    }
+
+    // Each connection with the server or method the alert has to name for it.
+    private func routedConnections() -> [(connection: DatabaseConnection, named: String)] {
+        var socks = ddevConnection()
+        socks.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com"))
+        var command = ddevConnection()
+        command.tunnelCommandMode = .inline(TunnelCommandConfiguration(method: .custom, command: "ssh -N -L {port}:db:3306 prod"))
+        var cloudflare = ddevConnection()
+        cloudflare.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.example.com"))
+        var cloudSQL = ddevConnection()
+        cloudSQL.cloudSQLProxyMode = .inline(CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i"))
+        var profile = ddevConnection()
+        profile.sshTunnelMode = .profile(
+            id: UUID(),
+            snapshot: SSHConfiguration(enabled: true, host: "bastion.example.com", username: "ops")
+        )
+        return [
+            (socks, "proxy.example.com:1080"),
+            (command, TunnelCommandMethod.custom.displayName),
+            (cloudflare, "db.example.com"),
+            (cloudSQL, "p:r:i"),
+            (profile, "bastion.example.com"),
+        ]
+    }
+
+    @Test("A loopback link reached through a proxy, a tunnel command or an SSH profile asks every time")
+    func everyTransportIgnoresTrust() async throws {
+        for (connection, _) in routedConnections() {
+            let store = try makeStore()
+            store.trust(ExternalConnectionTrustKey(connection: ddevConnection(), scopeName: "ddev-shop"))
+            let prompt = SpyPrompt(decision: .alwaysAllow)
+            let gate = ExternalConnectionGate(trustStore: store, prompt: prompt)
+
+            #expect(await gate.authorize(connection, scopeName: "ddev-shop"))
+            #expect(await gate.authorize(connection, scopeName: "ddev-shop"))
+            #expect(prompt.callCount == 2)
+            #expect(prompt.offeredAlwaysAllow == false)
+            #expect(store.entries().count == 1)
+        }
+    }
+
+    @Test("Trust given to a link alone never covers a saved connection, and one saved connection never covers another")
+    func savedConnectionsKeepTheirOwnTrust() async throws {
+        let store = try makeStore()
+        store.trust(ExternalConnectionTrustKey(connection: ddevConnection(), scopeName: "ddev-shop"))
+        let prompt = SpyPrompt(decision: .alwaysAllow)
+        let gate = ExternalConnectionGate(trustStore: store, prompt: prompt)
+        let saved = ddevConnection()
+
+        #expect(await gate.authorize(saved, isSaved: true, scopeName: "ddev-shop"))
+        #expect(prompt.callCount == 1)
+        #expect(prompt.offeredAlwaysAllow == true)
+
+        #expect(await gate.authorize(saved, isSaved: true, scopeName: "ddev-shop"))
+        #expect(prompt.callCount == 1)
+
+        #expect(await gate.authorize(ddevConnection(), isSaved: true, scopeName: "ddev-shop"))
+        #expect(prompt.callCount == 2)
+    }
+
+    @Test("The alert names each transport a loopback link crosses")
+    func alertNamesTheTransports() {
+        for (connection, named) in routedConnections() {
+            let alert = ExternalConnectionAlertPrompt.makeAlert(for: connection, offerAlwaysAllow: false)
+            #expect(alert.informativeText.contains(named))
+        }
     }
 }

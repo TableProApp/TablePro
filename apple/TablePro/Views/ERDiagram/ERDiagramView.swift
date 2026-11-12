@@ -210,7 +210,11 @@ struct ERDiagramView: View {
     private func exportData(_ format: ERDiagramExportFormat) -> Data? {
         switch format {
         case .png:
-            return DiagramExporter.pngData(exportImage())
+            return ERDiagramSceneRenderer.pngData(
+                scene,
+                appearance: viewport.effectiveAppearance,
+                scale: DiagramExporter.renderScale
+            )
         case .svg:
             let svg = ERDiagramSceneRenderer.svgDocument(scene, appearance: viewport.effectiveAppearance, title: exportTitle)
             return Data(svg.utf8)

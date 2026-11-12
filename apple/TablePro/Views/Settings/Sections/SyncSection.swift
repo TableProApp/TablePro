@@ -18,14 +18,6 @@ struct SyncSection: View {
     var body: some View {
         Section {
             Toggle("Sync this Mac with iCloud", isOn: $settingsManager.sync.enabled)
-                .onChange(of: settingsManager.sync.enabled) { newValue in
-                    updatePasswordSyncFlag()
-                    if newValue {
-                        syncCoordinator.enableSync()
-                    } else {
-                        syncCoordinator.disableSync()
-                    }
-                }
                 .help("Syncs connections, table favorites, settings, and SSH profiles across your Macs via iCloud.")
                 .disabled(!isProAvailable)
 
@@ -92,15 +84,11 @@ struct SyncSection: View {
                 .onChange(of: settingsManager.sync.syncConnections) { newValue in
                     if !newValue, settingsManager.sync.syncPasswords {
                         settingsManager.sync.syncPasswords = false
-                        onPasswordSyncChanged(false)
                     }
                 }
 
             if settingsManager.sync.syncConnections {
                 Toggle("Passwords", isOn: $settingsManager.sync.syncPasswords)
-                    .onChange(of: settingsManager.sync.syncPasswords) { newValue in
-                        onPasswordSyncChanged(newValue)
-                    }
                     .help("Syncs passwords via iCloud Keychain (end-to-end encrypted).")
                     .padding(.leading, 20)
 
@@ -120,18 +108,5 @@ struct SyncSection: View {
             Toggle("Database Favorites", isOn: $settingsManager.sync.syncDatabaseFavorites)
             Toggle("Saved Queries", isOn: $settingsManager.sync.syncSQLFavorites)
         }
-    }
-
-    // MARK: - Helpers
-
-    private func onPasswordSyncChanged(_ enabled: Bool) {
-        let effective = settingsManager.sync.enabled && settingsManager.sync.syncConnections && enabled
-        AppStorageEnvironment.shared.defaults.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
-    }
-
-    private func updatePasswordSyncFlag() {
-        let sync = settingsManager.sync
-        let effective = sync.enabled && sync.syncConnections && sync.syncPasswords
-        AppStorageEnvironment.shared.defaults.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
     }
 }

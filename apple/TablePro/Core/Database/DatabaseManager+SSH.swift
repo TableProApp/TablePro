@@ -7,6 +7,7 @@
 
 import Foundation
 
+import TableProConnectionLibrary
 import TableProSSHConfig
 import TableProSSHTransport
 
@@ -16,13 +17,15 @@ extension DatabaseManager {
     // `sshPasswordOverride` is the password Test Connection typed, used instead of the stored one.
     // `ownsAttempt` is asked with nothing suspending before the tunnel is created: tunnels are keyed by
     // connection, and creating one closes whatever a newer attempt opened under the same id.
+    // `pinnedSSHRoute` is the route an open session dialed: a linked profile moved since then is refused, not followed.
     internal func buildEffectiveConnection(
         for original: DatabaseConnection,
         sshPasswordOverride: String? = nil,
+        pinnedSSHRoute: ConnectionDestination.Tunnel? = nil,
         deadline: ConnectionDeadline,
         ownsAttempt: () -> Bool = { true }
     ) async throws -> DatabaseConnection {
-        var connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
+        var connection = try routedThroughLinkedProfile(original, pinnedSSHRoute: pinnedSSHRoute)
         // Only the tunnel this connect opens says it secures the transport or names the server behind it; a saved or
         // imported field never does.
         connection.additionalFields[DatabaseConnection.tunnelSecuresTransportKey] = nil
@@ -125,6 +128,17 @@ extension DatabaseManager {
             localPort: tunnelPort,
             forwardsToUnixSocket: destination.isUnixSocket
         )
+    }
+
+    internal func routedThroughLinkedProfile(
+        _ connection: DatabaseConnection,
+        pinnedSSHRoute: ConnectionDestination.Tunnel?
+    ) throws -> DatabaseConnection {
+        let routed = SSHProfileStorage.shared.refreshingLinkedProfile(connection)
+        if let pinnedSSHRoute, case .profile = routed.sshTunnelMode, routed.destinationTunnel != pinnedSSHRoute {
+            throw ConnectionTunnelError.sshProfileMoved
+        }
+        return routed
     }
 
     // MARK: - SSH Tunnel Recovery

@@ -213,7 +213,7 @@ extension DatabaseManager {
         }
         // A refusal that needs a person gets the same answer on every retry.
         if error is EnvVarReferenceConsentError || error is PreConnectScriptConsentError
-            || error is LocalCredentialConsentError {
+            || error is LocalCredentialConsentError || error is ConnectionTunnelError {
             return .stop(ConnectionFailureClassifier.info(for: error))
         }
         // The lease renewal stops on the same Vault errors; an unreachable or failing Vault is worth another try.
@@ -293,6 +293,7 @@ extension DatabaseManager {
         }
         let connectionForDriver = try await buildEffectiveConnection(
             for: connection,
+            pinnedSSHRoute: session.connection.destinationTunnel,
             deadline: deadline,
             ownsAttempt: { self.isCurrentAttempt(generation, for: connectionId) }
         )
@@ -476,6 +477,7 @@ extension DatabaseManager {
             let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
             let effectiveConnection = try await buildEffectiveConnection(
                 for: connection,
+                pinnedSSHRoute: session.connection.destinationTunnel,
                 deadline: deadline,
                 ownsAttempt: { self.isCurrentAttempt(generation, for: sessionId) }
             )
