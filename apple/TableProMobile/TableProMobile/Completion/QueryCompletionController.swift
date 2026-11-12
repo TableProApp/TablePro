@@ -80,7 +80,8 @@ final class QueryCompletionController {
         readColumns: @escaping QueryColumnReader,
         readCatalogColumns: QueryColumnReader? = nil,
         readSchemaTables: QuerySchemaTableReader? = nil,
-        readCatalogSchemaTables: QuerySchemaTableReader? = nil
+        readCatalogSchemaTables: QuerySchemaTableReader? = nil,
+        readCatalogForeignKeys: QueryForeignKeyReader? = nil
     ) {
         let previous = scope
         guard previous != newScope else { return }
@@ -145,6 +146,7 @@ final class QueryCompletionController {
             readCatalogColumns: readCatalogColumns,
             readSchemaTables: readSchemaTables,
             readCatalogSchemaTables: readCatalogSchemaTables,
+            readCatalogForeignKeys: readCatalogForeignKeys,
             schemas: newScope.schemas,
             databases: newScope.databases
         )
@@ -216,7 +218,7 @@ final class QueryCompletionController {
             )
             show([], answer: nil)
             return edit
-        case .keyword, .operator:
+        case .keyword, .operator, .joinCondition:
             return Self.keywordEdit(for: item, replacing: answer.range, in: source)
         case .function, .favorite:
             let insertion = SQLCompletionInsertion.resolve(for: item)

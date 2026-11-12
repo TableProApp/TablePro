@@ -35,7 +35,18 @@ struct LSPVersionedTextDocumentIdentifier: Codable, Sendable, Equatable {
 }
 
 struct LSPTextDocumentContentChangeEvent: Codable, Sendable, Equatable {
+    let range: LSPRange?
     let text: String
+
+    init(text: String) {
+        self.range = nil
+        self.text = text
+    }
+
+    init(range: LSPRange, text: String) {
+        self.range = range
+        self.text = text
+    }
 }
 
 struct LSPInlineCompletionItem: Codable, Sendable, Equatable {

@@ -165,7 +165,8 @@ struct RedisKeyContentsReadTests {
         let channel = StubRedisChannel([])
         let contents = try await channel.readContents(
             of: ["other:1"],
-            describedAs: [RedisKeyDescription(typeName: nil, ttlSeconds: nil)]
+            describedAs: [RedisKeyDescription(typeName: nil, ttlSeconds: nil)],
+            stringByteLimit: RedisStringPreview.byteLimit
         )
         #expect(contents.count == 1)
         #expect(contents[0] == nil)
@@ -180,7 +181,8 @@ struct RedisKeyContentsReadTests {
         let channel = StubRedisChannel([.integer(1), keyDenied])
         let contents = try await channel.readContents(
             of: ["app:h"],
-            describedAs: [RedisKeyDescription(typeName: "hash", ttlSeconds: -1)]
+            describedAs: [RedisKeyDescription(typeName: "hash", ttlSeconds: -1)],
+            stringByteLimit: RedisStringPreview.byteLimit
         )
         let hash = try #require(contents[0])
         #expect(hash.kind == .hash)
@@ -190,12 +192,13 @@ struct RedisKeyContentsReadTests {
         #expect(channel.sentCommands == [["HLEN", "app:h"], ["HSCAN", "app:h", "0", "COUNT", "100"]])
     }
 
-    @Test("A refused GET leaves the string length the server gave")
+    @Test("A refused string read leaves the string length the server gave")
     func refusedGetKeepsLength() async throws {
         let channel = StubRedisChannel([.integer(1), keyDenied])
         let contents = try await channel.readContents(
             of: ["app:1"],
-            describedAs: [RedisKeyDescription(typeName: "string", ttlSeconds: nil)]
+            describedAs: [RedisKeyDescription(typeName: "string", ttlSeconds: nil)],
+            stringByteLimit: RedisStringPreview.byteLimit
         )
         let string = try #require(contents[0])
         #expect(string.length == 1)
@@ -211,7 +214,8 @@ struct RedisKeyContentsReadTests {
                 RedisKeyDescription(typeName: "string", ttlSeconds: -1),
                 RedisKeyDescription(typeName: nil, ttlSeconds: nil),
                 RedisKeyDescription(typeName: "list", ttlSeconds: -1),
-            ]
+            ],
+            stringByteLimit: nil
         )
         #expect(contents.count == 3)
         #expect(contents[0]?.length == 3)
@@ -223,6 +227,26 @@ struct RedisKeyContentsReadTests {
         #expect(channel.sentCommands.map(\.first) == ["STRLEN", "GET", "LLEN", "LRANGE"])
     }
 
+    @Test("With a byte limit a string is read with GETRANGE over that range, without one with GET")
+    func stringReadFollowsTheLimit() async throws {
+        let limited = StubRedisChannel([.integer(3), .string("abc")])
+        let contents = try await limited.readContents(
+            of: ["a"],
+            describedAs: [RedisKeyDescription(typeName: "string", ttlSeconds: -1)],
+            stringByteLimit: 65_536
+        )
+        #expect(limited.sentCommands == [["STRLEN", "a"], ["GETRANGE", "a", "0", "65535"]])
+        #expect(contents[0]?.stringByteLimit == 65_536)
+
+        let whole = StubRedisChannel([.integer(3), .string("abc")])
+        _ = try await whole.readContents(
+            of: ["a"],
+            describedAs: [RedisKeyDescription(typeName: "string", ttlSeconds: -1)],
+            stringByteLimit: nil
+        )
+        #expect(whole.sentCommands == [["STRLEN", "a"], ["GET", "a"]])
+    }
+
     @Test("A key whose type changed under the probe fails the page rather than showing wrong contents")
     func wrongTypeThrows() async throws {
         let channel = StubRedisChannel([
@@ -232,7 +256,8 @@ struct RedisKeyContentsReadTests {
         await #expect(throws: RedisPluginError.self) {
             try await channel.readContents(
                 of: ["app:h"],
-                describedAs: [RedisKeyDescription(typeName: "hash", ttlSeconds: -1)]
+                describedAs: [RedisKeyDescription(typeName: "hash", ttlSeconds: -1)],
+                stringByteLimit: RedisStringPreview.byteLimit
             )
         }
     }

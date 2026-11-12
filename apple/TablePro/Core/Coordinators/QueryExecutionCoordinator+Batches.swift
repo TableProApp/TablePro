@@ -106,6 +106,7 @@ extension QueryExecutionCoordinator {
     /// The app opens no transaction around the run, as SQL Server's own tools do not: a batch carries on past most
     /// errors, so an app-owned rollback would take back statements that ran after the failure, and the script's own
     /// `BEGIN TRAN`, `TRY...CATCH` and procedures are what decide. A transaction the script leaves open is reported.
+    /// Manual Commit is the exception: the run is held, and a failure or a Stop rolls it back.
     func executeBatches(
         _ batches: [ExecutableBatch],
         parameters: [QueryParameter],
@@ -158,12 +159,24 @@ extension QueryExecutionCoordinator {
             let plan = await batchResultPlan(prepared, outputs: Self.outputs(of: run.outcome), tabId: tabId)
 
             let sessionNotice = Self.runNotice(outcome: run.outcome, sessionState: run.sessionState)
+            guard parent.tabExecution.settle(claim) || reportsUnknownCommitAfterStop(run.outcome, claim: claim) else {
+                await keepBatchesAfterStop(
+                    prepared, run: run, plan: plan, parameters: parameters, claim: claim, sessionNotice: sessionNotice
+                )
+                return
+            }
+            parent.retireQueryTask(.claim(claim))
+
             switch run.outcome {
             case .cancelled(let outputs):
-                guard parent.tabExecution.settle(claim) else { return }
-                parent.retireQueryTask(.claim(claim))
                 keepStoppedBatches(
-                    prepared, outputs: outputs, parameters: parameters, tabId: tabId, sessionNotice: sessionNotice, plan: plan
+                    prepared,
+                    outputs: outputs,
+                    parameters: parameters,
+                    tabId: tabId,
+                    sessionNotice: sessionNotice,
+                    plan: plan,
+                    presentsResults: true
                 )
                 parent.reportEndedExecutions([
                     EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
@@ -253,6 +266,10 @@ extension QueryExecutionCoordinator {
         lease: DriverLeaseOwner
     ) async -> BatchRun {
         let failureOutput = ServerOutputBox()
+        let commitMode = DatabaseManager.shared.commitMode(for: scope.connectionId)
+        let databaseType = parent.connection.type
+        let grammar = parent.lexicalGrammar
+        let statementTexts = prepared.flatMap { $0.batch.statements.map(\.sql) }
         do {
             var run = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
@@ -260,7 +277,16 @@ extension QueryExecutionCoordinator {
                 cancellation: .cancellableRead(lease)
             ) { driver in
                 let startState = await driver.heldSessionTransactionState()
-                let plan = BatchTransactionPlan.autocommit.joining(startState)
+                let manual = ManualCommit.decision(
+                    commitMode: commitMode,
+                    statements: statementTexts,
+                    databaseType: databaseType,
+                    grammar: grammar,
+                    supportsTransactions: driver.supportsTransactions,
+                    sessionState: startState
+                )
+                if let refusal = manual.refusal { throw refusal }
+                let plan = ManualCommit.runPlan(text: .autocommit, decision: manual, sessionState: startState)
                 let outcome = await BatchStatementRun.run(
                     prepared,
                     plan: plan,
@@ -393,9 +419,6 @@ extension QueryExecutionCoordinator {
         sessionNotice: String?,
         plan: BatchResultPlan
     ) {
-        guard parent.tabExecution.settle(claim) else { return }
-        parent.retireQueryTask(.claim(claim))
-
         let totalRowsAffected = outputs.reduce(0) { $0 + $1.rowsAffected }
         reportOperation(
             kind: .queryBatch,
@@ -412,16 +435,49 @@ extension QueryExecutionCoordinator {
         )
     }
 
+    // A Stop during a batch reads as one between batches: the completed ones are kept, with no error result.
+    private func keepBatchesAfterStop(
+        _ prepared: [PreparedBatch],
+        run: BatchRun,
+        plan: BatchResultPlan,
+        parameters: [QueryParameter],
+        claim: TabExecutionClaim,
+        sessionNotice: String?
+    ) async {
+        let kept = run.outcome.keptAfterStop(plan: run.plan)
+        guard !kept.isEmpty else { return }
+        // A failed batch's own results were in the plan, so a run that drops it is planned again.
+        let keptPlan = kept.count == Self.outputs(of: run.outcome).count
+            ? plan
+            : await batchResultPlan(prepared, outputs: kept, tabId: claim.tabId)
+        let presentsResults = stoppedRunCanReplaceResults(onTab: claim.tabId)
+        guard parent.tabExecution.settleStopped(claim, replacingContent: presentsResults) else { return }
+        keepStoppedBatches(
+            prepared,
+            outputs: kept,
+            parameters: parameters,
+            tabId: claim.tabId,
+            sessionNotice: sessionNotice,
+            plan: keptPlan,
+            presentsResults: presentsResults
+        )
+        parent.reportEndedExecutions([
+            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+        ])
+    }
+
     private func keepStoppedBatches(
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
         parameters: [QueryParameter],
         tabId: UUID,
         sessionNotice: String?,
-        plan: BatchResultPlan
+        plan: BatchResultPlan,
+        presentsResults: Bool
     ) {
         guard !outputs.isEmpty else { return }
         recordBatchHistory(prepared, outputs: outputs, parameters: parameters, tabId: tabId, failedIndex: nil)
+        guard presentsResults else { return }
         presentMultiStatementResults(
             tabId: tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
@@ -456,8 +512,6 @@ extension QueryExecutionCoordinator {
         errorResult.failedQuery = report.failedSQL
         errorResult.statementAnchor = failedBatch?.batch.anchor
 
-        guard parent.tabExecution.settle(claim) else { return }
-        parent.retireQueryTask(.claim(claim))
         reportOperation(kind: .queryBatch, claim: claim, outcome: .failed(reason: context.errorDescription))
         recordBatchHistory(
             prepared,

@@ -115,9 +115,11 @@ internal struct ObjectCopyRunner {
     /// pending work. `DataWriteExecutor`, `DatabaseManager+Principals` and
     /// `StructureRebuildPlanRunner` ask the same question for the same reason.
     nonisolated private static func transactionOwner(of driver: DatabaseDriver) async -> WriteTransactionOwner {
+        // `.automatic`: a pooled lease is closed while idle, which would roll a held copy back after it reported success.
         WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: .automatic
         )
     }
 
@@ -272,7 +274,7 @@ internal struct ObjectCopyRunner {
             let owner = await Self.transactionOwner(of: driver)
             // The other two settings keep what ran, and PostgreSQL commits an aborted transaction as a ROLLBACK.
             let usesTransaction = hasCleanup && errorHandling == .stopAndRollback
-                && plugin.supportsTransactionalDDL && owner.opensTransaction
+                && plugin.supportsTransactionalDDL && owner.sendsBegin && owner.commitsAtEnd
             if usesTransaction { try await plugin.beginTransaction(mode: .readWrite) }
 
             var result: DDLResult
@@ -600,7 +602,7 @@ internal struct ObjectCopyRunner {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
             let owner = await Self.transactionOwner(of: targetDriver)
-            let usesTransaction = owner.opensTransaction
+            let usesTransaction = owner.sendsBegin && owner.commitsAtEnd
             if usesTransaction { try await targetPlugin.beginTransaction(mode: .readWrite) }
 
             var result = DataResult()

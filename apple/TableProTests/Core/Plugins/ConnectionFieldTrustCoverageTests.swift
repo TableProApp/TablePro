@@ -10,6 +10,7 @@ private let hostOwnedKeys: [String] = [
     DatabaseConnection.postDisconnectScriptKey,
     DatabaseConnection.scriptTimeoutSecondsKey,
     DatabaseConnection.completionIdentifierCaseKey,
+    DatabaseConnection.commitModeKey,
     DatabaseConnection.binaryInlineLimitKilobytesKey,
     DatabaseConnection.maskingRulesKey,
     DatabaseConnection.sshForwardUnixSocketPathKey,

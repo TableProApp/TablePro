@@ -1041,6 +1041,55 @@ struct DatabaseTreeMenuSpecTests {
         }
     }
 
+    // MARK: - Server objects
+
+    private var eventKind: SidebarServerObjectKind {
+        SidebarServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+        )
+    }
+
+    private func serverObjectRef(_ name: String) -> DatabaseTreeServerObjectRef {
+        DatabaseTreeServerObjectRef(
+            database: "shop", schema: "shop", kind: eventKind,
+            object: ServerObjectInfo(kindId: "event", name: name, schema: "shop", detail: "Recurring")
+        )
+    }
+
+    @Test("A server object row copies its name and shows its DDL, and offers nothing that writes")
+    func serverObjectRowItems() {
+        let ref = serverObjectRef("nightly_cleanup")
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .serverObject(ref)))
+
+        #expect(commands(sections) == [.copyText("nightly_cleanup"), .showObjectSource(ref.objectRef)])
+        #expect(titles(sections) == [String(localized: "Copy Name"), String(localized: "Show DDL")])
+        #expect(ref.objectRef.kind == .serverObject)
+        #expect(ref.objectRef.serverKind?.id == "event")
+    }
+
+    @Test("A server object kind's group offers Refresh and no New Folder or New Type")
+    func serverObjectGroupItems() {
+        let group = DatabaseTreeObjectGroup(database: "shop", schema: nil, kind: .server(eventKind))
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .containerObjectKindSection(group)))
+
+        #expect(commands(sections) == [.refreshContainerObjectKind(group)])
+    }
+
+    @Test("A flat server object section offers Refresh alone")
+    func flatServerObjectSectionItems() {
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.server(eventKind))))
+
+        #expect(commands(sections) == [.refreshObjectKind(.server(eventKind))])
+    }
+
+    @Test("A read-only connection keeps the server object row's menu")
+    func serverObjectRowReadOnly() {
+        let ref = serverObjectRef("nightly_cleanup")
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .serverObject(ref), isReadOnly: true))
+
+        #expect(commands(sections) == [.copyText("nightly_cleanup"), .showObjectSource(ref.objectRef)])
+    }
+
     // MARK: - Types
 
     private func userTypeRef(_ name: String, schema: String? = "public") -> DatabaseTreeUserTypeRef {

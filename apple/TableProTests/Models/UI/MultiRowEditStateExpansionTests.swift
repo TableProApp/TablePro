@@ -22,12 +22,12 @@ struct MultiRowEditStateExpansionTests {
     func expansionSurvivesSelectionChange() {
         let state = MultiRowEditState()
         configure(state, row: 0)
-        let firstID = state.fields[1].id
+        let firstID = state.fields[1].editorID
         state.toggleExpansion(ofColumn: 1)
 
         configure(state, row: 1)
 
-        #expect(state.fields[1].id != firstID)
+        #expect(state.fields[1].editorID != firstID)
         #expect(state.expandedColumn == 1)
     }
 

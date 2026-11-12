@@ -7,12 +7,7 @@ import Combine
 import Foundation
 import os
 
-/// Every agent session the app is holding, for as long as the app is running.
-///
-/// Sessions used to be reached through a field on the window's trailing pane, which made a
-/// session's lifetime the window's: closing a window, disconnecting, or losing a session each
-/// destroyed a transcript the user never asked to lose. They live here instead, so a window is one
-/// of the places a session can be looked at rather than the thing that owns it.
+// Owns every agent session, so closing a window or disconnecting never destroys a transcript.
 @MainActor
 internal final class AgentSessionRegistry: ObservableObject {
     internal static let shared = AgentSessionRegistry()
@@ -24,20 +19,10 @@ internal final class AgentSessionRegistry: ObservableObject {
     private let store: AgentSessionStore
     private let services: AppServices
 
-    /// Serialises writes. `persist()` used to fire an unordered task per mutation, and actor
-    /// reentrancy let a stale snapshot land last.
+    // One writer: unordered tasks let a stale snapshot land last.
     private var writeTask: Task<Void, Never>?
 
-    /// Which session each connection is showing.
-    ///
-    /// Held explicitly rather than derived. Deriving it from `sessions(for:)` answered the oldest
-    /// one every time, so New Session appended a row nothing switched to and Open Session moved a
-    /// timestamp nothing read: both panes stayed bound to the first session for ever.
-    ///
-    /// Showing nothing is a state of its own. Closing or deleting the session on screen with no other
-    /// live one to hand to used to fall back to the last session in the list, which was the one just
-    /// closed, so the column went on drawing a stopped session with a composer that still took
-    /// messages.
+    // `.nothing` is a state of its own, or a closed last session would stay drawn with a live composer.
     private var displayed: [UUID: DisplayedSession] = [:]
 
     private enum DisplayedSession: Equatable {
@@ -45,14 +30,10 @@ internal final class AgentSessionRegistry: ObservableObject {
         case nothing
     }
 
-    /// Going to work moves a session up the rail, and the rail observes this registry rather than
-    /// each session, so the registry has to say so, and write the new stamp so the order survives a
-    /// relaunch.
+    // The rail observes the registry, not each session, so a session going to work is announced here.
     private var activityCancellables: [UUID: AnyCancellable] = [:]
 
-    /// Restore runs here, synchronously, which is the whole point of the store being a plain struct.
-    /// A window that opens while a load is suspended finds nothing, mints a session, and is then
-    /// joined by the stored one; doing it in the initialiser means no window can exist yet.
+    // Restored synchronously, before any window exists to mint a second session beside a stored one.
     internal init(store: AgentSessionStore = AgentSessionStore(), services: AppServices = .live) {
         self.store = store
         self.services = services
@@ -78,8 +59,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         }
     }
 
-    /// `@Published` announces a change before it is stored, so the write waits for the next turn to
-    /// read the new stamp rather than the one it replaces.
+    // `@Published` announces before it stores, so the write reads the stamp on the next turn.
     private func observeActivity(of session: AgentSession) {
         activityCancellables[session.id] = session.$lastActiveAt
             .dropFirst()
@@ -96,8 +76,7 @@ internal final class AgentSessionRegistry: ObservableObject {
 
     // MARK: - Reading
 
-    /// A connection's sessions, the one that last went to work first, which is the order the rail
-    /// lists them in. Two stamped in the same instant keep the order they were added in, newest first.
+    // The rail's order. Two stamped in the same instant list the one added last first.
     internal func sessions(for connectionId: UUID) -> [AgentSession] {
         sessions.enumerated()
             .filter { $0.element.connectionId == connectionId }
@@ -114,15 +93,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         sessions.first { $0.id == id }
     }
 
-    /// The session a connection's two presentations share.
-    ///
-    /// Both the trailing-pane chat and the agent-mode conversation column resolve through here, so
-    /// they cannot end up rendering two different sessions of the same connection. Reading never
-    /// creates: opening a connection window starts no session and loads no transcript.
-    ///
-    /// With nothing named it is the latest live session, then the latest of any, which is how a
-    /// window opened after a relaunch, where every session comes back stopped, carries on with the
-    /// last one rather than starting another.
+    // Falls back to the latest of any, so a window after a relaunch, with every session stopped, carries on.
     internal func currentSession(for connectionId: UUID) -> AgentSession? {
         let owned = sessions(for: connectionId)
         switch displayed[connectionId] {
@@ -138,8 +109,6 @@ internal final class AgentSessionRegistry: ObservableObject {
         return owned.first { !$0.status.isEnded } ?? owned.first
     }
 
-    /// Names the session a connection's two panes render. The pane render key carries it, so a
-    /// switch repaints rather than comparing equal.
     internal func setDisplayedSession(_ sessionId: UUID, for connectionId: UUID) {
         guard sessions.contains(where: { $0.id == sessionId && $0.connectionId == connectionId }) else {
             return
@@ -147,9 +116,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         displayed[connectionId] = .session(sessionId)
     }
 
-    /// Shows the latest live session in place of one that is ending or going away, and nothing when
-    /// no other live one is left. A stopped session is shown only once someone opens it, which
-    /// resumes it.
+    // A stopped session is shown only once someone opens it, which resumes it.
     private func handOverDisplay(from session: AgentSession) {
         let next = sessions(for: session.connectionId).first { $0.id != session.id && !$0.status.isEnded }
         displayed[session.connectionId] = next.map { .session($0.id) } ?? .nothing
@@ -173,7 +140,6 @@ internal final class AgentSessionRegistry: ObservableObject {
         return session
     }
 
-    /// The session to show for a connection, starting one only when the caller means to.
     @discardableResult
     internal func resolveSession(for connectionId: UUID, startingIfNeeded: Bool) -> AgentSession? {
         if let existing = currentSession(for: connectionId) {
@@ -193,11 +159,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         return startSession(for: connectionId)
     }
 
-    /// Ends one session and keeps its transcript. The conversation stays in the history and the
-    /// session stays in the rail, to be opened again.
-    ///
-    /// The session on screen is handed over as it stops, which is what Close Session means. Nothing
-    /// used to tell the panes, so they went on drawing a stopped session with a live composer.
+    // The panes are handed over first, so no window shows the session when its memory is released.
     internal func stopSession(id: UUID) {
         guard let session = session(id: id) else { return }
         let isShown = currentSession(for: session.connectionId) === session
@@ -206,32 +168,33 @@ internal final class AgentSessionRegistry: ObservableObject {
         if isShown {
             handOverDisplay(from: session)
         }
+        session.release()
         persist()
     }
 
-    /// Ends every session on a connection once nothing is showing it any more.
-    ///
-    /// Called from the connection's own teardown rather than from a window's, because a connection
-    /// can be hosted by two windows and one of them closing is not the connection going away.
+    // A connection can be hosted by two windows, and one of them closing is not the connection going away.
     internal func stopSessionsIfUnhosted(for connectionId: UUID) {
         guard WindowManager.shared.workspaces(for: connectionId).isEmpty else { return }
         stopSessions(for: connectionId)
     }
 
-    /// Ends every session on a connection. Disconnect and window close reach this; neither is the
-    /// user discarding a conversation, so nothing is deleted.
+    // Ended sessions are released too: a failed one, or one stopped while on screen, still holds its transcript.
     internal func stopSessions(for connectionId: UUID) {
-        let owned = sessions(for: connectionId).filter { !$0.status.isEnded }
-        guard !owned.isEmpty else { return }
-        for session in owned {
+        let owned = sessions(for: connectionId)
+        let live = owned.filter { !$0.status.isEnded }
+        for session in live {
             session.stop()
             detachRemoteTools(from: session.id)
         }
-        persist()
+        for session in owned {
+            session.release()
+        }
+        if !live.isEmpty {
+            persist()
+        }
     }
 
-    /// Discards a session and the conversation behind it. Only an explicit user action reaches here,
-    /// and it has been asked to confirm by then.
+    // Only an explicit, confirmed user action reaches here.
     internal func removeSession(id: UUID) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         let session = sessions[index]
@@ -246,35 +209,25 @@ internal final class AgentSessionRegistry: ObservableObject {
             handOverDisplay(from: session)
         }
         if let conversationId {
-            let storage = services.aiChatStorage
-            Task { await storage.delete(conversationId) }
+            session.viewModel.deleteStoredConversations([conversationId])
         }
         persist()
     }
 
     // MARK: - Outside MCP servers
 
-    /// Connects the outside MCP servers this session's connection allows, and registers their tools.
-    ///
-    /// Started rather than awaited. A server on the other side of a network is not something a
-    /// session's first paint may wait on, and a session with no remote tools yet is a session the
-    /// model simply has not been offered them in; they appear on the turn after they land.
-    ///
-    /// Attaching an already-attached session is how a resumed one keeps its tools, so this is safe
-    /// to call on every resolve.
+    // Not awaited: a first paint never waits on a remote server. Attaching again keeps a resumed session's tools.
     private func attachRemoteTools(to session: AgentSession) {
         Task { await MCPRemoteToolCoordinator.shared.attach(session: session) }
     }
 
-    /// Drops this session's claim on every server. The tools stay registered while another session
-    /// still holds one, so ending one conversation cannot take them from another mid-turn.
+    // The tools stay registered while another session still holds a server.
     private func detachRemoteTools(from sessionId: UUID) {
         Task { await MCPRemoteToolCoordinator.shared.detach(sessionId: sessionId) }
     }
 
     // MARK: - Persistence
 
-    /// One writer, so the last snapshot taken is the last one written.
     internal func persist() {
         let records = sessions.map(\.record)
         let store = store
@@ -286,10 +239,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         }
     }
 
-    /// Writes now, on this thread, and returns once it is on disk.
-    ///
-    /// `persist()` books the write for the next turn, which is right for an ordinary mutation and
-    /// wrong for anything that has to know the write landed.
+    // For a caller that has to know the write landed; `persist()` books it for the next turn.
     internal func persistNow() {
         writeTask?.cancel()
         writeTask = nil
@@ -299,11 +249,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         store.save(sessions.map(\.record))
     }
 
-    /// Writes on the way out.
-    ///
-    /// An actor hop at terminate may never be scheduled, so a session killed mid-reply used to come
-    /// back with its last turn missing. A session still working when the app went away is recorded
-    /// as failed, because it was: its reply never finished.
+    // A hop at terminate may never run. A session still working is recorded as failed: its reply never finished.
     internal func persistSynchronouslyForTermination() {
         for session in sessions where session.status == .working {
             session.mark(.failed)

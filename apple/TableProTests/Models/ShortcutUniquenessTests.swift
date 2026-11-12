@@ -60,6 +60,7 @@ struct ShortcutUniquenessTests {
             .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
             .showPreviousWindowTab, .showNextWindowTab,
             .toggleBreakpoint,
+            .commitTransaction, .rollbackTransaction,
         ]
         let unbound = Set(ShortcutAction.allCases.filter { KeyboardSettings.defaultShortcuts[$0] == nil })
         let unlisted = unbound.subtracting(listed).map(\.rawValue).sorted()

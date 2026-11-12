@@ -32,6 +32,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         let batches = executionBatches(in: tab.content.query)
         let statements = batches.flatMap(\.statements)
         guard !statements.isEmpty else { return }
+        parent.tabVersions.record(tab, connectionId: parent.connectionId, reason: .run)
 
         if AppSettingsManager.shared.editor.queryParametersEnabled, parent.bindsNamedParameters {
             let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
@@ -206,7 +207,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         }
     }
 
-    /// A run the driver cannot carry out as written says so before anything is sent, rather than running part of it.
+    // A run the driver cannot carry out as written says so before anything is sent, rather than running part of it.
     private func refuses(_ route: QueryExecutionRoute, tabIndex index: Int) -> Bool {
         guard case .needsBatchDriver = route else { return false }
         parent.tabManager.mutate(at: index) {

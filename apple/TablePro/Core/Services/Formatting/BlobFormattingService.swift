@@ -32,8 +32,14 @@ final class BlobFormattingService: Sendable {
     }
 
     func format(_ data: Data, for context: BlobDisplayContext) -> String? {
-        let value = String(data: data, encoding: .isoLatin1) ?? ""
-        return format(value, for: context)
+        switch context {
+        case .grid, .copy:
+            return data.formattedAsCompactHex()
+        case .detail:
+            return data.formattedAsHexDump()
+        case .edit:
+            return data.formattedAsEditableHex()
+        }
     }
 
     func parseHex(_ hexString: String) -> String? {

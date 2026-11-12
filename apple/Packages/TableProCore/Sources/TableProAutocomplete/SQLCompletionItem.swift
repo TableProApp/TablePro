@@ -10,6 +10,7 @@ public enum SQLCompletionKind: String, CaseIterable, Sendable {
     case alias
     case `operator`
     case favorite   // Saved SQL favorite (keyword expansion)
+    case joinCondition
 
     public var iconName: String {
         switch self {
@@ -22,12 +23,14 @@ public enum SQLCompletionKind: String, CaseIterable, Sendable {
         case .alias: return "a.circle.fill"
         case .operator: return "equal.circle.fill"
         case .favorite: return "star.circle.fill"
+        case .joinCondition: return "link.circle.fill"
         }
     }
 
     /// Lower sorts first within the same context.
     public var basePriority: Int {
         switch self {
+        case .joinCondition: return 0
         case .favorite: return 50
         case .column: return 100
         case .table: return 200
@@ -57,6 +60,8 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
     public let caseFolding: SQLCompletionCaseFolding
     // Set on a name the catalog stores, so the connection's identifier rules can spell it.
     public let identifier: SQLCompletionIdentifier?
+    // The `a.x = b.y` pairs of a join condition, so each name is spelled like any other.
+    public let columnPairs: [SQLCompletionColumnPair]
     public var matchedRanges: [Range<Int>] = []
     public var fuzzyPenalty: Int = 0
     // `o.total` names a table and a column; a column literally named `order.total` is one name.
@@ -71,7 +76,8 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         sortPriority: Int? = nil,
         filterText: String? = nil,
         caseFolding: SQLCompletionCaseFolding = .fixed,
-        identifier: SQLCompletionIdentifier? = nil
+        identifier: SQLCompletionIdentifier? = nil,
+        columnPairs: [SQLCompletionColumnPair] = []
     ) {
         self.id = UUID()
         self.label = label
@@ -83,6 +89,7 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         self.filterText = filterText ?? label.lowercased()
         self.caseFolding = caseFolding
         self.identifier = identifier
+        self.columnPairs = columnPairs
     }
 
     private init(recasing item: SQLCompletionItem, label: String, insertText: String) {
@@ -96,6 +103,7 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         self.filterText = item.filterText
         self.caseFolding = item.caseFolding
         self.identifier = item.identifier
+        self.columnPairs = item.columnPairs
         self.matchedRanges = item.matchedRanges
         self.fuzzyPenalty = item.fuzzyPenalty
         self.isQualifiedReference = item.isQualifiedReference

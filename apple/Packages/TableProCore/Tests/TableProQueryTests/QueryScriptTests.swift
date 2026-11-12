@@ -163,6 +163,16 @@ struct QueryScriptTests {
         #expect(QueryScript(units: script.units, unitKind: .statement).replanned(after: 0, session: noEscapes) == nil)
     }
 
+    @Test("A replan after a COPY starts past its rows")
+    func replanAfterACopy() throws {
+        let text = "COPY t FROM stdin;\nDROP TABLE users; COMMIT;\n\\.\nSELECT 1;"
+        let script = QueryScript.plan(text, databaseType: .postgresql, sendsBatchesWhole: false)
+        #expect(script.units.map(\.sql) == ["COPY t FROM stdin", "SELECT 1"])
+        let standard = SQLSessionLexicalFacts(determined: .backslashEscapesInSingleQuotes, enabled: [])
+        let rest = try #require(script.replanned(after: 0, session: standard))
+        #expect(rest.units.map(\.sql) == ["SELECT 1"])
+    }
+
     @Test("Redis text runs one command per line or per semicolon, a quoted value kept whole")
     func redisSplitsIntoCommands() {
         #expect(plan("RPUSH jobs a\nRPUSH jobs b", .redis).units == [

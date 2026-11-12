@@ -2,8 +2,6 @@
 //  ImportDialog.swift
 //  TablePro
 //
-//  Plugin-aware import dialog.
-//
 
 import AppKit
 import Combine
@@ -104,7 +102,10 @@ struct ImportDialog: View {
         }
         .task {
             if let initialURL = initialFileURL, fileURL == nil {
-                await loadFile(initialURL)
+                // Tracked like a picked file, so a pick made during a long decompression cancels this load.
+                let load = Task { await loadFile(initialURL) }
+                loadFileTask = load
+                await load.value
             }
         }
         .onDisappear {
@@ -369,6 +370,7 @@ struct ImportDialog: View {
         guard let url, case .format(let formatId) = ImportFileFormatResolver.match(url, among: options) else { return }
 
         selectedFormatId = formatId
+        loadFileTask?.cancel()
         self.loadFileTask = Task {
             await self.loadFile(url)
         }
@@ -376,6 +378,11 @@ struct ImportDialog: View {
 
     @MainActor
     private func loadFile(_ url: URL) async {
+        // The previous file's count must not land under this one, even when this one fails before counting.
+        countStatementsTask?.cancel()
+        countStatementsTask = nil
+        statementCount = 0
+        isCountingStatements = false
         cleanupTempFiles()
         hasPreviewError = false
 
@@ -401,6 +408,13 @@ struct ImportDialog: View {
         let urlToRead: URL
         do {
             urlToRead = try await FileDecompressor.decompressIfNeeded(url)
+            // A newer pick owns the dialog now; its import must not read this file's copy.
+            guard !Task.isCancelled else {
+                if urlToRead != url {
+                    try? FileManager.default.removeItem(at: urlToRead)
+                }
+                return
+            }
             if urlToRead != url {
                 tempPreviewURL = urlToRead
             }
@@ -466,14 +480,16 @@ struct ImportDialog: View {
         statementCount = 0
 
         do {
-            let encoding = selectedEncoding.encoding
-            let grammar = sessionGrammar
-            let parser = SQLFileParser()
-            let count = try await Task.detached {
-                try await parser.countStatements(url: url, encoding: encoding, grammar: grammar)
-            }.value
+            let count = try await ImportStatementCount.count(
+                url,
+                encoding: selectedEncoding.encoding,
+                grammar: sessionGrammar
+            )
+            // A new file or encoding cancelled this count and started its own, which owns the result.
+            guard !Task.isCancelled else { return }
             statementCount = count
         } catch {
+            guard !Task.isCancelled else { return }
             Self.logger.warning("Failed to count statements: \(error.publicLogShape, privacy: .public)")
             statementCount = 0
         }
@@ -551,6 +567,25 @@ struct ImportDialog: View {
                 )
             }
             tempPreviewURL = nil
+        }
+    }
+}
+
+enum ImportStatementCount {
+    // Detached keeps the scan off the main actor but ignores the caller's cancel, so the cancel is passed on.
+    static func count(
+        _ url: URL,
+        encoding: String.Encoding,
+        grammar: SQLLexicalGrammar,
+        parser: SQLFileParser = SQLFileParser()
+    ) async throws -> Int {
+        let counting = Task.detached {
+            try await parser.countStatements(url: url, encoding: encoding, grammar: grammar)
+        }
+        return try await withTaskCancellationHandler {
+            try await counting.value
+        } onCancel: {
+            counting.cancel()
         }
     }
 }

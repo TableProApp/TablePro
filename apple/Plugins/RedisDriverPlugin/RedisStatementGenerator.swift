@@ -54,6 +54,10 @@ struct RedisStatementGenerator {
         columns.firstIndex(of: "TTL")
     }
 
+    private var lengthColumnIndex: Int? {
+        columns.firstIndex(of: "Length")
+    }
+
     private static let insertableTypes: Set<String> = ["string", "hash", "list", "set", "zset"]
 
     // MARK: - Public API
@@ -114,8 +118,10 @@ struct RedisStatementGenerator {
     ) throws -> [String] {
         var key: String?
         var value: String?
+        var valueCell: PluginCellValue?
         var type: String?
         var ttlText: String?
+        var lengthText: String?
 
         if let values = insertedRowData[change.rowIndex] {
             if let ki = keyColumnIndex, ki < values.count {
@@ -126,17 +132,24 @@ struct RedisStatementGenerator {
             }
             if let vi = valueColumnIndex, vi < values.count {
                 value = Self.encodedArgument(values[vi])
+                valueCell = values[vi]
             }
             if let ttli = ttlColumnIndex, ttli < values.count {
                 ttlText = values[ttli].asText
+            }
+            if let li = lengthColumnIndex, li < values.count {
+                lengthText = values[li].asText
             }
         } else {
             for cellChange in change.cellChanges {
                 switch cellChange.columnName {
                 case "Key": key = cellChange.newValue.asText
                 case "Type": type = cellChange.newValue.asText
-                case "Value": value = Self.encodedArgument(cellChange.newValue)
+                case "Value":
+                    value = Self.encodedArgument(cellChange.newValue)
+                    valueCell = cellChange.newValue
                 case "TTL": ttlText = cellChange.newValue.asText
+                case "Length": lengthText = cellChange.newValue.asText
                 default: break
                 }
             }
@@ -149,6 +162,15 @@ struct RedisStatementGenerator {
         let typeName = type?.lowercased() ?? "string"
         guard typeName.isEmpty || Self.insertableTypes.contains(typeName) else {
             throw Self.notAddable(typeName, rowIndex: change.rowIndex)
+        }
+        if let length = lengthText.flatMap({ Int($0) }), let valueCell,
+           Self.holdsPart(of: length, value: valueCell, typeName: typeName) {
+            throw PluginRowWriteRefusal(
+                rowIndex: change.rowIndex,
+                reason: String(
+                    localized: "This row holds only the part of a value the grid shows, so adding it would store that part. Add the key with a command in the query editor."
+                )
+            )
         }
 
         var ttl: Int?
@@ -186,6 +208,23 @@ struct RedisStatementGenerator {
     }
 
     private static let collectionTypes: Set<String> = ["hash", "list", "set", "zset"]
+
+    // A duplicated row carries the Length the read reported beside the preview it showed.
+    private static func holdsPart(of length: Int, value: PluginCellValue, typeName: String) -> Bool {
+        switch (typeName, value) {
+        case ("string", .text(let text)), ("", .text(let text)):
+            return length > RedisStringPreview.byteLimit && text.hasSuffix(RedisStringPreview.marker)
+                && text.utf8.count - RedisStringPreview.marker.utf8.count <= RedisStringPreview.byteLimit
+        case ("string", .bytes(let bytes)), ("", .bytes(let bytes)):
+            return length > RedisStringPreview.byteLimit && bytes.count <= RedisStringPreview.byteLimit
+        case (_, .text(let text)) where collectionTypes.contains(typeName):
+            guard let parsed = try? JSONSerialization.jsonObject(with: Data(text.utf8)) else { return false }
+            let count = (parsed as? [String: Any])?.count ?? (parsed as? [Any])?.count
+            return count.map { $0 < length } ?? false
+        default:
+            return false
+        }
+    }
 
     private static func notAddable(_ typeName: String, rowIndex: Int) -> PluginRowWriteRefusal {
         PluginRowWriteRefusal(
@@ -289,8 +328,8 @@ struct RedisStatementGenerator {
         return valueCommands + ttlCommands + (rename.map { [$0] } ?? [])
     }
 
-    /// Only a string's value is the whole of what the grid shows. A collection shows a preview,
-    /// and a `SET` over it would replace the structure with that text.
+    // A collection shows a preview and a long string only its start, and a `SET` over either
+    // would replace the value with that text.
     private func valueCommands(
         setting newValue: PluginCellValue,
         of change: PluginRowChange,
@@ -318,10 +357,33 @@ struct RedisStatementGenerator {
                 )
             )
         }
+        guard !isShownInPart(change) else {
+            throw PluginRowWriteRefusal(
+                rowIndex: change.rowIndex,
+                reason: String(
+                    localized: "The grid shows only the start of this value, so it cannot be edited here. Change it with a command in the query editor."
+                )
+            )
+        }
         let set = "SET \(RedisArgumentCodec.quote(key)) \(encodedValue)"
         guard !keepsTTLOnSet else { return ["\(set) KEEPTTL"] }
         guard restoringTTL, let seconds = originalTTL(of: change), seconds > 0 else { return [set] }
         return [set, "EXPIRE \(RedisArgumentCodec.quote(key)) \(seconds)"]
+    }
+
+    // Only the key browse has a Length column, and it reads each string with GETRANGE.
+    private func isShownInPart(_ change: PluginRowChange) -> Bool {
+        guard let lengthIndex = lengthColumnIndex, let originalRow = change.originalRow, lengthIndex < originalRow.count else {
+            return false
+        }
+        let length = originalRow[lengthIndex].asText.flatMap { Int($0) }
+        let shownByteCount: Int
+        switch valueColumnIndex.flatMap({ $0 < originalRow.count ? originalRow[$0] : nil }) {
+        case .text(let text)?: shownByteCount = text.utf8.count
+        case .bytes(let bytes)?: shownByteCount = bytes.count
+        case .null?, nil: shownByteCount = 0
+        }
+        return RedisStringPreview.isShortened(length: length, shownByteCount: shownByteCount)
     }
 
     private func originalTTL(of change: PluginRowChange) -> Int? {

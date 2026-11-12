@@ -236,7 +236,9 @@ public struct TransactionControlTool: MCPToolImplementation {
         localized: """
         Begin, commit, or roll back a transaction on the connection's shared session. The transaction \
         stays open across calls until committed or rolled back, and it is the same session the user's \
-        own tabs run on, so leave nothing open. Needs tools:write.
+        own tabs run on, so leave nothing open. Begin is refused while a transaction is already open, \
+        and every action is refused on a connection with Manual Commit on, where the user commits in \
+        TablePro. Needs tools:write.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]

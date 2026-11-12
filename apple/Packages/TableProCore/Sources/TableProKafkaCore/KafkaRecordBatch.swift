@@ -73,17 +73,20 @@ public enum KafkaRecordBatchDecoder {
     // The blob is a sequence of batches cut at partition_max_bytes, so a trailing partial batch
     // is normal. Control batches hold transaction markers, never rows for the grid.
     // Every batch charges `budget`, so the records kept across the whole blob stay within it.
+    // `nextOffset` follows the last whole batch of any kind, nil when none was whole: a reply of only
+    // markers, aborted or compacted batches still moves the read on.
     public static func decode(
         blob: Data,
         partition: Int32,
         abortedTransactions: [KafkaAbortedTransaction] = [],
         skipAborted: Bool,
         budget: inout DecompressionBudget
-    ) throws -> (records: [KafkaRecord], truncated: Bool) {
+    ) throws -> (records: [KafkaRecord], truncated: Bool, nextOffset: Int64?) {
         let bytes = [UInt8](blob)
         var cursor = 0
         var records: [KafkaRecord] = []
         var truncated = false
+        var nextOffset: Int64?
         // A partition can carry several producers at once, so an aborted run belongs to its
         // producer. Keying this on the offset alone let one producer's commit marker end
         // another's aborted run, and its rolled-back records then reached the grid.
@@ -120,6 +123,7 @@ public enum KafkaRecordBatchDecoder {
                 )
             }
             let attributes = Self.int16(bytes, at: cursor + 21)
+            let lastOffsetDelta = Self.int32(bytes, at: cursor + 23)
             let baseTimestamp = Self.int64(bytes, at: cursor + 27)
             let producerId = Self.int64(bytes, at: cursor + 43)
             let count = Int(Self.int32(bytes, at: cursor + 57))
@@ -140,6 +144,7 @@ public enum KafkaRecordBatchDecoder {
                 // A control batch is its producer's commit or abort marker, and ends only that
                 // producer's run.
                 abortedProducers.remove(producerId)
+                nextOffset = KafkaOffsetMath.offset(afterBatchAt: baseOffset, lastOffsetDelta: lastOffsetDelta)
                 cursor = end
                 continue
             }
@@ -157,11 +162,12 @@ public enum KafkaRecordBatchDecoder {
                     partition: partition
                 ))
             }
+            nextOffset = KafkaOffsetMath.offset(afterBatchAt: baseOffset, lastOffsetDelta: lastOffsetDelta)
             cursor = end
         }
 
         if cursor < bytes.count { truncated = true }
-        return (records, truncated)
+        return (records, truncated, nextOffset)
     }
 
     /// The records inside a batch use ZIG-ZAG signed varints, unlike the unsigned LEB128 the

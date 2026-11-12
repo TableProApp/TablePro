@@ -13,7 +13,7 @@ using Windows.System;
 
 namespace TablePro.App.ConnectionForm;
 
-internal sealed record FormResult(SavedConnection Saved, bool Connect);
+internal sealed record FormResult(SavedConnection Saved, bool Connect, bool ChangesConnect);
 
 // A separate window lets the form stay open while the workspace remains usable.
 public sealed partial class ConnectionFormWindow : Window
@@ -24,6 +24,7 @@ public sealed partial class ConnectionFormWindow : Window
     // Native AOT trims OverlappedPresenter's wrapper, so AppWindow.Presenter reads back as its base type.
     private readonly OverlappedPresenter _presenter = OverlappedPresenter.Create();
     private readonly bool _isNew;
+    private readonly SavedConnection? _existing;
     private ConnectionDraft? _draft;
     private DatabaseEngine? _engine;
     private bool _createFile;
@@ -38,6 +39,7 @@ public sealed partial class ConnectionFormWindow : Window
     {
         _workbench = workbench;
         _isNew = existing is null;
+        _existing = existing;
         Key = Keys(existing?.Id);
         InitializeComponent();
         EngineGrid.ContainerContentChanging += OnEngineContainerChanging;
@@ -739,9 +741,13 @@ public sealed partial class ConnectionFormWindow : Window
                 await CreateFileAsync(draft).ConfigureAwait(true);
             }
 
-            var saved = await _workbench.Library.SaveAsync(draft.ToConnection(), draft.Secrets()).ConfigureAwait(true);
+            var secrets = draft.Secrets();
+            var saved = await _workbench.Library.SaveAsync(draft.ToConnection(), secrets).ConfigureAwait(true);
             _workbench.NotifyLibraryChanged();
-            Completed?.Invoke(this, new FormResult(saved, connect));
+            var changesConnect = _existing is null
+                || secrets != ConnectionSecrets.None
+                || ConnectionDraft.ChangesConnect(_existing, saved);
+            Completed?.Invoke(this, new FormResult(saved, connect, changesConnect));
             Close();
         }
         catch (TableProException exception)

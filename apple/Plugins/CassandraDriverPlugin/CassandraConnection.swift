@@ -347,13 +347,15 @@ actor CassandraConnectionActor {
         return extractResult(from: result, startTime: startTime)
     }
 
-    /// Reads the rows a table browse shows, walking the paging state past the ones before its offset. A page
-    /// is counted by the rows it carried rather than by its size, because ScyllaDB answers a filtered page short.
+    // Reads the rows a table browse shows, walking the paging state past the ones before its offset. A page is
+    // counted by the rows it carried rather than by its size, because ScyllaDB answers a filtered page short.
+    // `fallback` runs instead when the server refuses to prepare `browse`.
     func executeBrowse(
         _ browse: CassandraBrowseStatement,
+        fallback: CassandraBrowseStatement? = nil,
         consistency: CassandraConsistency?,
         cancellation: CassandraCancellation
-    ) throws -> CassandraRawResult {
+    ) throws -> (result: CassandraRawResult, ranFallback: Bool) {
         if let refusal = browse.window.refusal {
             throw CassandraBrowseRefusal(pluginErrorMessage: refusal)
         }
@@ -363,7 +365,18 @@ actor CassandraConnectionActor {
 
         let startTime = Date()
         try cancellation.check()
-        let prepared = try prepare(browse.cql, on: session, cancellation: cancellation)
+        var browse = browse
+        var ranFallback = false
+        let prepared: OpaquePointer
+        do {
+            prepared = try prepare(browse.cql, on: session, cancellation: cancellation)
+        } catch let error where !(error is CancellationError) {
+            guard let fallback else { throw error }
+            Self.logger.info("Browse refused, running it without TTL selectors: \(error.localizedDescription)")
+            browse = fallback
+            ranFallback = true
+            prepared = try prepare(browse.cql, on: session, cancellation: cancellation)
+        }
         defer { cass_prepared_free(prepared) }
 
         let pageSize = CassandraResumePoints.pageSize(forLimit: browse.window.limit)
@@ -385,13 +398,14 @@ actor CassandraConnectionActor {
             read = try self.walk(walk, from: nil, prepared: prepared, session: session, cancellation: cancellation)
         }
 
-        return CassandraRawResult(
+        let result = CassandraRawResult(
             columns: read.header?.columns ?? [],
             columnTypeNames: read.header?.typeNames ?? [],
             rows: read.rows,
             rowsAffected: read.rows.count,
             executionTime: Date().timeIntervalSince(startTime)
         )
+        return (result, ranFallback)
     }
 
     private func walk(
@@ -669,16 +683,8 @@ actor CassandraConnectionActor {
         case CASS_VALUE_TYPE_ASCII, CASS_VALUE_TYPE_TEXT, CASS_VALUE_TYPE_VARCHAR:
             var output: UnsafePointer<CChar>?
             var outputLength: Int = 0
-            let rc = cass_value_get_string(value, &output, &outputLength)
-            if rc == CASS_OK, let output {
-                return String(
-                    bytesNoCopy: UnsafeMutableRawPointer(mutating: output),
-                    length: outputLength,
-                    encoding: .utf8,
-                    freeWhenDone: false
-                )
-            }
-            return nil
+            guard cass_value_get_string(value, &output, &outputLength) == CASS_OK, let output else { return nil }
+            return wireText(output, length: outputLength)
 
         case CASS_VALUE_TYPE_INT:
             var intVal: Int32 = 0
@@ -817,19 +823,17 @@ actor CassandraConnectionActor {
             return CassandraVarint.decimalString(unscaled: Data(bytes: unscaled, count: length), scale: scale)
 
         default:
-            // Fallback: try reading as string
             var output: UnsafePointer<CChar>?
             var outputLength: Int = 0
             if cass_value_get_string(value, &output, &outputLength) == CASS_OK, let output {
-                return String(
-                    bytesNoCopy: UnsafeMutableRawPointer(mutating: output),
-                    length: outputLength,
-                    encoding: .utf8,
-                    freeWhenDone: false
-                )
+                return wireText(output, length: outputLength)
             }
             return "<unsupported type>"
         }
+    }
+
+    private static func wireText(_ pointer: UnsafePointer<CChar>, length: Int) -> String? {
+        CassandraWireText.text(UnsafeRawBufferPointer(start: pointer, count: length))
     }
 
     private static func extractCollectionString(
@@ -871,7 +875,7 @@ actor CassandraConnectionActor {
             var namePointer: UnsafePointer<CChar>?
             var nameLength: Int = 0
             let name = cass_iterator_get_user_type_field_name(iterator, &namePointer, &nameLength) == CASS_OK
-                ? namePointer.flatMap { String(bytes: UnsafeRawBufferPointer(start: $0, count: nameLength), encoding: .utf8) }
+                ? namePointer.flatMap { wireText($0, length: nameLength) }
                 : nil
             let fieldValue = cass_iterator_get_user_type_field_value(iterator).flatMap(nestedText) ?? "null"
             fields.append("\(name ?? "?"): \(fieldValue)")

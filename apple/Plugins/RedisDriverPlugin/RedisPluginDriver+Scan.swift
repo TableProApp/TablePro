@@ -81,12 +81,14 @@ extension RedisPluginDriver {
         startTime: Date
     ) async throws -> PluginQueryResult {
         let outcome = RedisScanPageOutcome(page: page, rowLimit: PluginRowLimits.emergencyMax)
+        // SCAN COUNT is the user's to set, so a page can hold any number of keys.
         return try await buildKeyBrowseResult(
             keys: outcome.keys,
             connection: conn,
             startTime: startTime,
             isTruncated: outcome.isTruncated,
-            statusMessage: outcome.statusMessage
+            statusMessage: outcome.statusMessage,
+            batchSize: Self.keySummaryBatchSize
         )
     }
 }

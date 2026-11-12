@@ -1073,6 +1073,9 @@
         }
       }
     },
+    "“%@” is used more than once." : {
+
+    },
     "“%@” isn't a port or a range of ports, such as 4000-4999." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -17583,6 +17586,9 @@
         }
       }
     },
+    "A transaction is already open on this connection, or it cannot say whether one is. Commit or roll it back first." : {
+
+    },
     "A transaction is already open. Commit or roll it back first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -17595,7 +17601,13 @@
         }
       }
     },
+    "A Transaction Is Open" : {
+
+    },
     "A transaction is open on %@. Switching databases reconnects, and the server would roll it back. Commit or roll back the transaction, then switch again." : {
+
+    },
+    "A transaction is open on this connection, and a failed statement would abort it. Commit or roll back in TablePro first." : {
 
     },
     "A transaction is open on this connection, and its uncommitted rows aren't in these counts." : {
@@ -19731,6 +19743,9 @@
       }
     },
     "Add column “%@”" : {
+
+    },
+    "Add Column Pair" : {
 
     },
     "Add Column…" : {
@@ -29712,6 +29727,33 @@
         }
       }
     },
+    "Auto Refresh" : {
+
+    },
+    "Auto Refresh waits until the connection is back." : {
+
+    },
+    "Auto Refresh waits while a cell is being edited." : {
+
+    },
+    "Auto Refresh waits while a transaction is open." : {
+
+    },
+    "Auto Refresh waits while a value is open in its own window." : {
+
+    },
+    "Auto Refresh waits while rows are selected in a table without a primary key." : {
+
+    },
+    "Auto Refresh waits while rows load." : {
+
+    },
+    "Auto Refresh waits while the table has unsaved changes." : {
+
+    },
+    "Auto Refresh: %@" : {
+
+    },
     "AUTO_INCREMENT columns whose next value has reached 75% of the largest value their type holds." : {
 
     },
@@ -31548,6 +31590,12 @@
     "Before" : {
 
     },
+    "Before Replace" : {
+
+    },
+    "Before Restore" : {
+
+    },
     "BEFORE, AFTER, or INSTEAD OF" : {
       "localizations" : {
         "fr" : {
@@ -31587,6 +31635,9 @@
           }
         }
       }
+    },
+    "Begin, commit, or roll back a transaction on the connection's shared session. The transaction stays open across calls until committed or rolled back, and it is the same session the user's own tabs run on, so leave nothing open. Begin is refused while a transaction is already open, and every action is refused on a connection with Manual Commit on, where the user commits in TablePro. Needs tools:write." : {
+
     },
     "Begin, commit, or roll back a transaction on the connection's shared session. The transaction stays open across calls until committed or rolled back, and it is the same session the user's own tabs run on, so leave nothing open. Needs tools:write." : {
       "localizations" : {
@@ -32519,6 +32570,9 @@
           }
         }
       }
+    },
+    "Browse All Versions…" : {
+
     },
     "Browse needs a TableName" : {
       "extractionState" : "manual",
@@ -37997,6 +38051,9 @@
       }
     },
     "Choose a character set first" : {
+
+    },
+    "Choose a column and a referenced column in every row." : {
 
     },
     "Choose a connection" : {
@@ -44103,6 +44160,9 @@
         }
       }
     },
+    "Column → Referenced Column" : {
+
+    },
     "Column comment" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -45571,6 +45631,9 @@
 
     },
     "Commit the transaction" : {
+
+    },
+    "Commit Transaction" : {
 
     },
     "Commit…" : {
@@ -62077,6 +62140,10 @@
         }
       }
     },
+    "Default Version" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Default view:" : {
       "localizations" : {
         "fr" : {
@@ -62167,6 +62234,10 @@
           }
         }
       }
+    },
+    "Definer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Definition" : {
       "localizations" : {
@@ -65537,6 +65608,10 @@
           }
         }
       }
+    },
+    "Disabled on Replica" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Discard" : {
       "localizations" : {
@@ -72126,6 +72201,8 @@
       }
     },
     "Enabled" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -72431,6 +72508,10 @@
           }
         }
       }
+    },
+    "Ends" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Ends on %@" : {
 
@@ -74693,6 +74774,8 @@
       "generatesSymbol" : false
     },
     "Event" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -74731,6 +74814,10 @@
           }
         }
       }
+    },
+    "Event Scheduler" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Event Streaming" : {
       "localizations" : {
@@ -74813,6 +74900,8 @@
       }
     },
     "Events" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -74833,6 +74922,12 @@
       }
     },
     "Every 5 Minutes" : {
+
+    },
+    "Every 5 Seconds" : {
+
+    },
+    "Every 10 Seconds" : {
 
     },
     "Every 15 minutes" : {
@@ -74857,6 +74952,9 @@
           }
         }
       }
+    },
+    "Every 30 Seconds" : {
+
     },
     "Every call that reaches a connection asks first." : {
       "localizations" : {
@@ -79313,6 +79411,10 @@
           }
         }
       }
+    },
+    "Extension" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Extension File" : {
       "localizations" : {
@@ -95877,6 +95979,9 @@
         }
       }
     },
+    "Insert rows into a table using bound parameters, so values are never spliced into SQL text. Needs tools:write and goes through the connection's Safe Mode approval. With Manual Commit on, the rows stay pending until the user commits in TablePro." : {
+
+    },
     "Insert rows the target is missing" : {
       "localizations" : {
         "fr" : {
@@ -99411,6 +99516,9 @@
         }
       }
     },
+    "Keeps up to %1$d versions from the last %2$d days on this Mac." : {
+
+    },
     "Keeps what rows looked like before each save, on this Mac only, for 7 days. It is encrypted, and never synced." : {
       "localizations" : {
         "fr" : {
@@ -101136,6 +101244,10 @@
           }
         }
       }
+    },
+    "Last Executed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Last Hour" : {
       "localizations" : {
@@ -103462,6 +103574,9 @@
           }
         }
       }
+    },
+    "Line %lld runs COPY FROM STDIN, whose rows TablePro cannot send. Run the file with psql, or dump it again with --inserts." : {
+
     },
     "Line break" : {
       "extractionState" : "manual",
@@ -107755,6 +107870,15 @@
           }
         }
       }
+    },
+    "Manual Commit" : {
+
+    },
+    "Manual Commit is on for this connection, so this change is pending until the user commits it in TablePro." : {
+
+    },
+    "Manual Commit is on for this connection. Commit or roll back in TablePro." : {
+
     },
     "Many Databases, One App" : {
       "localizations" : {
@@ -113019,6 +113143,9 @@
         }
       }
     },
+    "Moving this tab to another database or schema will discard all unsaved changes." : {
+
+    },
     "Moving through this tab's history replaces what it is showing and will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -116206,7 +116333,8 @@
       }
     },
     "No" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No %@" : {
       "localizations" : {
@@ -126535,6 +126663,10 @@
     "On a partitioned table the drop cannot run concurrently, and it removes the index from every partition." : {
 
     },
+    "On Completion" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "On Delete" : {
       "localizations" : {
         "fr" : {
@@ -127152,6 +127284,10 @@
           }
         }
       }
+    },
+    "One Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "One username and password, shared by any number of connections. Change it here and every connection using it signs in with the new one." : {
       "localizations" : {
@@ -131488,6 +131624,8 @@
       }
     },
     "Owner" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -142577,6 +142715,9 @@
     "Quit while work is still running?" : {
 
     },
+    "Quit with an Open Transaction?" : {
+
+    },
     "Quit Without Saving" : {
 
     },
@@ -145459,6 +145600,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Recurring" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Red" : {
       "localizations" : {
         "fr" : {
@@ -145924,6 +146069,9 @@
         }
       }
     },
+    "Referenced Column" : {
+
+    },
     "Referenced row not found" : {
       "localizations" : {
         "fr" : {
@@ -146204,6 +146352,10 @@
           }
         }
       }
+    },
+    "Refresh before changing this item, so the save can check that it has not changed since it was loaded." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Refresh concurrently" : {
       "localizations" : {
@@ -146661,6 +146813,9 @@
     "Relaunch while work is still running?" : {
 
     },
+    "Relaunch with an Open Transaction?" : {
+
+    },
     "Release" : {
       "localizations" : {
         "fr" : {
@@ -147061,6 +147216,10 @@
           }
         }
       }
+    },
+    "Relocatable" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Remote (Quack, experimental)" : {
       "extractionState" : "manual",
@@ -147607,6 +147766,9 @@
           }
         }
       }
+    },
+    "Remove Column Pair" : {
+
     },
     "Remove Comment" : {
       "localizations" : {
@@ -152765,6 +152927,9 @@
     "Revert Changes" : {
 
     },
+    "Revert To" : {
+
+    },
     "review" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -153425,6 +153590,9 @@
 
     },
     "Roll Back the Transaction?" : {
+
+    },
+    "Roll Back Transaction" : {
 
     },
     "Roll it back to continue." : {
@@ -155842,6 +156010,9 @@
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
 
     },
+    "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one. A statement that starts a transaction while one is open is refused. With Manual Commit on, a write stays pending until the user commits it in TablePro, and statements that begin, commit or roll back a transaction are refused. While a transaction is open on PostgreSQL or CockroachDB a statement runs inside a savepoint, so its failure leaves the transaction usable; on Redshift and DuckDB it is refused." : {
+
+    },
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
       "localizations" : {
         "fr" : {
@@ -156276,6 +156447,9 @@
       }
     },
     "Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user approves it before it runs: through your elicitation prompt when your client supports elicitation, otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the user left writable for external clients." : {
+
+    },
+    "Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user approves it before it runs: through your elicitation prompt when your client supports elicitation, otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the user left writable for external clients. The transaction rules of execute_query apply, Manual Commit's among them." : {
 
     },
     "Run Without Limit" : {
@@ -158640,6 +158814,10 @@
       }
     },
     "Scatter Plot" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Schedule" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -174259,6 +174437,10 @@
         }
       }
     },
+    "Starts" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "starts with" : {
       "localizations" : {
         "fr" : {
@@ -175121,6 +175303,8 @@
       }
     },
     "Status" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -186407,6 +186591,9 @@
         }
       }
     },
+    "The change did not run." : {
+
+    },
     "The change to this table's structure will be lost." : {
 
     },
@@ -189410,6 +189597,10 @@
     "The global_instrumentation consumer is disabled, so the server records no index reads." : {
 
     },
+    "The grid shows only the start of this value, so it cannot be edited here. Change it with a command in the query editor." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the group coordinator is not available" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -189611,6 +189802,14 @@
           }
         }
       }
+    },
+    "The item changed since its CAS value was read, so nothing was saved. Refresh to see its current value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The item does not exist, so nothing was saved. Refresh to see the current keys." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The JSON array must contain only objects." : {
 
@@ -190609,6 +190808,9 @@
 
     },
     "The open transaction failed. Roll it back yourself." : {
+
+    },
+    "The open transaction on this connection ended while this statement ran." : {
 
     },
     "The operation failed." : {
@@ -196172,6 +196374,10 @@
     "The value ends early, at byte %lld." : {
 
     },
+    "The value in %@ expired after the grid read it. Refresh, then edit the row again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -196839,6 +197045,9 @@
         }
       }
     },
+    "These rows came from another schema than the one this tab is now using." : {
+
+    },
     "These rows cannot be edited because TablePro cannot tell which table they came from." : {
       "localizations" : {
         "fr" : {
@@ -197234,6 +197443,12 @@
         }
       }
     },
+    "This change runs on its own connection and can wait until you commit or roll back the open transaction." : {
+
+    },
+    "This change sets session options around its statements, so it can't wait for Commit. Turn off Manual Commit in the Database menu to run it." : {
+
+    },
     "This change was not authorized" : {
       "localizations" : {
         "fr" : {
@@ -197430,6 +197645,9 @@
           }
         }
       }
+    },
+    "This connection can't hold this change until you commit, so it did not run. Turn off Manual Commit in the Database menu to run it." : {
+
     },
     "This connection can't open the separate session live messages need." : {
 
@@ -198195,6 +198413,9 @@
         }
       }
     },
+    "This database can't report an open transaction, so it commits each change." : {
+
+    },
     "This database cannot be renamed" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -198394,6 +198615,9 @@
       }
     },
     "This database cannot store a table comment." : {
+
+    },
+    "This database commits schema and maintenance statements on its own, so changes can't wait for Commit." : {
 
     },
     "This database did not return a query plan for the statement." : {
@@ -200005,6 +200229,12 @@
           }
         }
       }
+    },
+    "This import runs each statement on its own, so nothing can wait for Commit. Turn on Wrap in transaction or turn off Manual Commit." : {
+
+    },
+    "This import turns off foreign key checks, which can't wait for Commit. Turn off Disable foreign key checks or Manual Commit to run it." : {
+
     },
     "This index needs a name." : {
       "localizations" : {
@@ -201703,6 +201933,14 @@
         }
       }
     },
+    "This record cannot be found again from what was read. Refresh and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This record's id reads like a UUID, array or object id, so its text does not say which record it is. Open the table to edit it, or use a query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This replaces %@ on this Mac." : {
 
     },
@@ -201760,6 +201998,10 @@
     "This routine takes no arguments." : {
 
     },
+    "This row cannot be found again from what was read. Reload the table." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This row does not name a stored document." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -201797,6 +202039,10 @@
     },
     "This row has no value for this field." : {
 
+    },
+    "This row holds only the part of a value the grid shows, so adding it would store that part. Add the key with a command in the query editor." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names." : {
       "extractionState" : "manual",
@@ -201853,6 +202099,9 @@
           }
         }
       }
+    },
+    "This run mixes changes with a statement that can't run in a transaction. Run that statement on its own, or turn off Manual Commit." : {
+
     },
     "This save also edits key columns, and the counts don't include those edits." : {
 
@@ -202450,6 +202699,9 @@
       }
     },
     "This Tab" : {
+
+    },
+    "This tab is closed. Reopen it to see its history." : {
 
     },
     "This tab is on %@. Switch the connection to that database to run it." : {
@@ -203193,6 +203445,9 @@
           }
         }
       }
+    },
+    "This will permanently delete all query history entries, the saved changes kept for restoring, and the earlier versions of your query tabs. This action cannot be undone." : {
+
     },
     "This will reset all settings across every section to their default values." : {
       "localizations" : {
@@ -207703,6 +207958,12 @@
           }
         }
       }
+    },
+    "Uncommitted changes on “%@” are rolled back when TablePro quits." : {
+
+    },
+    "Uncommitted changes on %@ are rolled back when TablePro quits." : {
+
     },
     "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server" : {
       "localizations" : {
@@ -214043,6 +214304,8 @@
       }
     },
     "Version" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -218579,7 +218842,8 @@
       }
     },
     "Yes" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Yesterday" : {
       "localizations" : {
@@ -219089,6 +219353,9 @@
           }
         }
       }
+    },
+    "Your first change opens a transaction, and nothing is saved until you commit. Structure changes, Users & Roles, Copy To, Generate Rows and Shortcuts actions still save at once." : {
+
     },
     "Your license has expired" : {
       "localizations" : {

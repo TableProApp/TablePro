@@ -8,12 +8,13 @@ import SwiftUI
 
 @MainActor
 internal final class TextViewerWindowController: ValueViewerWindowController {
+    @discardableResult
     static func open(
         text: String?,
         columnName: String?,
         isEditable: Bool,
         onCommit: ((String) -> Void)?
-    ) {
+    ) -> TextViewerWindowController {
         let title: String
         if let columnName {
             title = String(format: String(localized: "Text: %@"), columnName)
@@ -34,6 +35,7 @@ internal final class TextViewerWindowController: ValueViewerWindowController {
                 onDismiss: dismiss
             )
         }
+        return controller
     }
 }
 

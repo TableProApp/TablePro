@@ -1235,6 +1235,25 @@ struct SQLFormatterServiceTests {
         )
     }
 
+    @Test("A pg_dump COPY block keeps its rows, its \\. line and the statements after it")
+    func copyBlockStaysAsWritten() throws {
+        let copy = "COPY public.t (a, b) FROM stdin;\n\tit's\n2\tselect -- x\n\\."
+        let sql = "\\restrict k\n\(copy)\nselect 1;"
+        let formatted = try formatter.format(sql, dialect: .postgresql, options: .default).formattedSQL
+        #expect(formatted.contains(copy + "\n"))
+        #expect(formatted.hasPrefix("\\restrict k\n"))
+        let grammar = DatabaseType.postgresql.lexicalGrammar
+        #expect(SQLStatementScanner.executableStatements(in: formatted, grammar: grammar).map { $0.sql.uppercased() } == [
+            "COPY PUBLIC.T (A, B) FROM STDIN", "SELECT 1",
+        ])
+    }
+
+    @Test("COPY rows that end the text keep a trailing tab")
+    func copyRowsAtTheEndKeepTheirTab() throws {
+        let sql = "COPY t (a, b) FROM stdin;\n1\t"
+        #expect(try formatter.format(sql, dialect: .postgresql, options: .default).formattedSQL == sql)
+    }
+
     @Test("PostgreSQL operators stay whole")
     func postgresOperators() throws {
         try expectFormat(

@@ -17,14 +17,21 @@ import TextStory
 /// If needed, the automatic undo grouping can be overridden using the `beginGrouping()` and `endGrouping()` methods.
 public class CEUndoManager: UndoManager {
     /// Represents a group of mutations that should be treated as one mutation when undoing/redoing.
-    private struct UndoGroup {
+    struct UndoGroup {
         var mutations: [Mutation]
     }
 
     /// A single undo mutation.
-    private struct Mutation {
+    struct Mutation {
         var mutation: TextMutation
         var inverse: TextMutation
+    }
+
+    public struct History {
+        var undoStack: [UndoGroup]
+        var redoStack: [UndoGroup]
+
+        public var isEmpty: Bool { undoStack.isEmpty && redoStack.isEmpty }
     }
 
     private var _isUndoing: Bool = false
@@ -193,6 +200,18 @@ public class CEUndoManager: UndoManager {
     public func clearStack() {
         undoStack.removeAll()
         redoStack.removeAll()
+    }
+
+    public var history: History {
+        History(undoStack: undoStack, redoStack: redoStack)
+    }
+
+    // The next edit starts its own step instead of joining the restored history's last one.
+    public func restore(_ history: History) {
+        undoStack = history.undoStack
+        redoStack = history.redoStack
+        isGrouping = false
+        shouldBreakNextGroup = true
     }
 
     // MARK: - Mutations

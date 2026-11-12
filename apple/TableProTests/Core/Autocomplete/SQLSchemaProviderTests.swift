@@ -1308,3 +1308,127 @@ private final class CallRecorder: @unchecked Sendable {
         return storage
     }
 }
+
+private struct ForeignKeyReadFailure: Error {}
+
+extension SQLSchemaProviderTests {
+    nonisolated private static let orderItemKey = [
+        ForeignKeyInfo(name: "items_order_fk", column: "order_id", referencedTable: "orders", referencedColumn: "id"),
+        ForeignKeyInfo(name: "items_order_fk", column: "tenant_id", referencedTable: "orders", referencedColumn: "tenant_id"),
+    ]
+
+    private static func keySource(
+        recorder: CallRecorder,
+        read: (@Sendable () async throws -> [ForeignKeyInfo])? = nil
+    ) -> SQLSchemaProvider.ColumnMetadataSource {
+        SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in [] },
+            fetchAllColumns: { [:] },
+            fetchForeignKeys: { table, _ in
+                recorder.record(table)
+                return try await read?() ?? Self.orderItemKey
+            }
+        )
+    }
+
+    @Test("A table's foreign keys are read once across keystrokes, a composite key as one")
+    func foreignKeysReadOnce() async {
+        let recorder = CallRecorder()
+        let provider = SQLSchemaProvider(metadataSource: Self.keySource(recorder: recorder))
+
+        let first = await provider.foreignKeys(of: "order_items")
+        _ = await provider.foreignKeys(of: "order_items")
+        _ = await provider.foreignKeys(of: "ORDER_ITEMS")
+
+        #expect(first.count == 1)
+        #expect(first.first?.columns == ["order_id", "tenant_id"])
+        #expect(first.first?.referencedColumns == ["id", "tenant_id"])
+        #expect(recorder.calls == ["order_items"])
+    }
+
+    @Test("Concurrent requests for one table's foreign keys share one read")
+    func foreignKeysShareTheReadInFlight() async {
+        let recorder = CallRecorder()
+        let gate = AsyncGate()
+        let provider = SQLSchemaProvider(metadataSource: Self.keySource(recorder: recorder) {
+            await gate.wait()
+            return Self.orderItemKey
+        })
+
+        let first = Task { await provider.foreignKeys(of: "order_items") }
+        await gate.arrived(1)
+        let second = Task { await provider.foreignKeys(of: "order_items") }
+        await gate.open()
+
+        #expect(await first.value.count == 1)
+        #expect(await second.value.count == 1)
+        #expect(recorder.calls == ["order_items"])
+    }
+
+    @Test("resetForDatabase drops the foreign keys, so the next request reads again")
+    func resetClearsForeignKeys() async {
+        let recorder = CallRecorder()
+        let provider = SQLSchemaProvider(metadataSource: Self.keySource(recorder: recorder))
+
+        _ = await provider.foreignKeys(of: "order_items")
+        await provider.resetForDatabase(
+            "db", tables: [TestFixtures.makeTableInfo(name: "order_items")], driver: MockDatabaseDriver()
+        )
+        _ = await provider.foreignKeys(of: "order_items")
+
+        #expect(recorder.calls == ["order_items", "order_items"])
+    }
+
+    @Test("A failed foreign key read is kept as no keys until the table list is read again")
+    func failedForeignKeyReadIsKeptUntilTheTablesAreReadAgain() async {
+        let recorder = CallRecorder()
+        let driver = MockDatabaseDriver(connection: TestFixtures.makeConnection(type: .postgresql))
+        let provider = SQLSchemaProvider(metadataSource: Self.keySource(recorder: recorder) {
+            guard recorder.calls.count > 1 else { throw ForeignKeyReadFailure() }
+            return Self.orderItemKey
+        })
+
+        let failed = await provider.foreignKeys(of: "order_items")
+        let kept = await provider.foreignKeys(of: "order_items")
+        await provider.resetForDatabase("db", tables: [], driver: driver, connection: driver.connection)
+        let reread = await provider.foreignKeys(of: "order_items")
+
+        #expect(failed.isEmpty)
+        #expect(kept.isEmpty)
+        #expect(reread.count == 1)
+        #expect(recorder.calls == ["order_items", "order_items"])
+    }
+
+    @Test("An engine without foreign keys is never asked for them")
+    func noForeignKeyReadWithoutSupport() async {
+        let recorder = CallRecorder()
+        let driver = MockDatabaseDriver(connection: TestFixtures.makeConnection(type: .mongodb))
+        let provider = SQLSchemaProvider(metadataSource: Self.keySource(recorder: recorder))
+        await provider.resetForDatabase("db", tables: [], driver: driver, connection: driver.connection)
+
+        #expect(await provider.foreignKeys(of: "orders").isEmpty)
+        #expect(recorder.calls.isEmpty)
+    }
+
+    @Test("A join's ON offers the condition from the cached keys")
+    func joinConditionThroughTheProvider() async {
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { table, _ in
+                table == "orders"
+                    ? [TestFixtures.makeColumnInfo(name: "id"), TestFixtures.makeColumnInfo(name: "tenant_id")]
+                    : [TestFixtures.makeColumnInfo(name: "order_id"), TestFixtures.makeColumnInfo(name: "tenant_id")]
+            },
+            fetchAllColumns: { [:] },
+            fetchForeignKeys: { table, _ in table == "order_items" ? Self.orderItemKey : [] }
+        )
+        let schemaProvider = SQLSchemaProvider(metadataSource: source)
+        let provider = SQLCompletionProvider(schemaProvider: schemaProvider)
+        let text = "SELECT * FROM orders o JOIN order_items i ON "
+
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(items.first?.label == "o.id = i.order_id AND o.tenant_id = i.tenant_id")
+        #expect(items.first?.kind == .joinCondition)
+        #expect(items.filter { $0.label == "o.id" }.count == 1)
+    }
+}

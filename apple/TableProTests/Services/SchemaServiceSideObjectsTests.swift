@@ -23,6 +23,10 @@ final class SideObjectsMockDriver: DatabaseDriver, @unchecked Sendable {
     var schemasToReturn: [String] = []
     var routineSchemaRequests: [String?] = []
     var triggerSchemaRequests: [String?] = []
+    var declaredServerKinds: [PluginServerObjectKind] = []
+    var serverObjectsByKind: [String: [ServerObjectInfo]] = [:]
+    var serverObjectsError: Error?
+    var serverObjectRequests: [String] = []
 
     init(connection: DatabaseConnection) {
         self.connection = connection
@@ -93,6 +97,14 @@ final class SideObjectsMockDriver: DatabaseDriver, @unchecked Sendable {
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] {
         triggerSchemaRequests.append(schema)
         return triggersBySchema[schema ?? ""] ?? []
+    }
+
+    var serverObjectKinds: [PluginServerObjectKind] { declaredServerKinds }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo] {
+        serverObjectRequests.append("\(kindId)@\(schema ?? "")")
+        if let serverObjectsError { throw serverObjectsError }
+        return serverObjectsByKind[kindId] ?? []
     }
 }
 
@@ -315,5 +327,97 @@ struct SchemaServiceSideObjectsTests {
 
         #expect(service.routinesLoadState(for: connectionId, schema: "hr") == .idle)
         #expect(!service.isSchemaSettled(for: connectionId, schema: "hr"))
+    }
+
+    // MARK: - Server objects
+
+    private var eventKind: PluginServerObjectKind {
+        PluginServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock"
+        )
+    }
+
+    private func event(_ name: String) -> ServerObjectInfo {
+        ServerObjectInfo(kindId: "event", name: name, schema: "shop", detail: "Recurring")
+    }
+
+    @Test("A connection-wide load reads each declared kind beside the routines")
+    func loadReadsDeclaredKinds() async {
+        let (connectionId, connection, driver) = makeDriver()
+        driver.declaredServerKinds = [eventKind]
+        driver.serverObjectsByKind["event"] = [event("nightly")]
+
+        let service = SchemaService()
+        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+
+        #expect(service.serverObjectsLoadState(for: connectionId, kindId: "event") == .loaded([event("nightly")]))
+        #expect(service.serverObjects(for: connectionId, kindId: "event").map { $0.name } == ["nightly"])
+        #expect(driver.serverObjectRequests == ["event@"])
+    }
+
+    @Test("A driver that declares no kinds is never asked for server objects")
+    func undeclaredKindsAreNotFetched() async {
+        let (connectionId, connection, driver) = makeDriver()
+
+        let service = SchemaService()
+        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+
+        #expect(driver.serverObjectRequests.isEmpty)
+        #expect(service.serverObjectsLoadState(for: connectionId, kindId: "event") == .idle)
+    }
+
+    @Test("A server object fetch that fails is reported, and the tables stay loaded")
+    func failedServerObjectsAreReported() async {
+        let (connectionId, connection, driver) = makeDriver()
+        driver.declaredServerKinds = [eventKind]
+        driver.serverObjectsError = boom
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders", schema: "public")]
+
+        let service = SchemaService()
+        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+
+        #expect(service.serverObjectsLoadState(for: connectionId, kindId: "event") == .failed("boom"))
+        #expect(service.tables(for: connectionId).map { $0.name } == ["orders"])
+    }
+
+    @Test("A failed server object reload keeps the objects already loaded")
+    func failedServerObjectReloadKeepsObjects() async {
+        let (connectionId, connection, driver) = makeDriver()
+        driver.declaredServerKinds = [eventKind]
+        driver.serverObjectsByKind["event"] = [event("nightly")]
+        let service = SchemaService()
+        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+
+        driver.serverObjectsError = boom
+        let reloaded = await service.reloadServerObjects(connectionId: connectionId, driver: driver, scope: nil, kindId: "event")
+
+        #expect(!reloaded)
+        #expect(service.serverObjects(for: connectionId, kindId: "event").map { $0.name } == ["nightly"])
+
+        driver.serverObjectsError = nil
+        driver.serverObjectsByKind["event"] = [event("nightly"), event("hourly")]
+        #expect(await service.reloadServerObjects(connectionId: connectionId, driver: driver, scope: nil, kindId: "event"))
+        #expect(service.serverObjects(for: connectionId, kindId: "event").count == 2)
+    }
+
+    @Test("Expanding a schema reads its container kinds, and a database kind is left to the database")
+    func schemaLoadReadsContainerKindsOnly() async {
+        let (connectionId, _, driver) = makeDriver()
+        driver.declaredServerKinds = [
+            eventKind,
+            PluginServerObjectKind(
+                id: "extension", displayName: "Extension", pluralDisplayName: "Extensions",
+                iconName: "puzzlepiece.extension", scope: .database
+            )
+        ]
+        driver.serverObjectsByKind["event"] = [event("nightly")]
+        let service = SchemaService()
+
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
+
+        #expect(driver.serverObjectRequests == ["event@hr"])
+        #expect(service.serverObjects(for: connectionId, schema: "hr", kindId: "event").map { $0.name } == ["nightly"])
+        #expect(service.serverObjectsByKind(for: connectionId, schema: "hr").keys.sorted() == ["event"])
+        #expect(service.isSchemaSettled(for: connectionId, schema: "hr"))
     }
 }

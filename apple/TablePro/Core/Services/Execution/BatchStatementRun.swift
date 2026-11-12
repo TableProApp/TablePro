@@ -80,10 +80,11 @@ internal enum BatchStatementRun {
         commitOutput: ServerOutputBox = ServerOutputBox(),
         execute: @escaping @MainActor @Sendable (Statement) async throws -> Output
     ) async -> BatchStatementOutcome<Output> {
-        let opensTransaction = plan.opensTransaction && driver.supportsTransactions
-        if opensTransaction {
+        let sentBegin = plan.sendsBegin && driver.supportsTransactions
+        if sentBegin {
             do {
                 try await driver.beginTransaction(mode: mode)
+                if plan == .heldTransaction { ManualCommit.turnHold?.mark(true) }
             } catch {
                 return .failed(results: [], failure: .transactionStart, errorDescription: error.localizedDescription)
             }
@@ -95,7 +96,7 @@ internal enum BatchStatementRun {
         while position < queue.count {
             let statement = queue[position]
             guard !Task.isCancelled, gate.isCurrent() else {
-                await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: opensTransaction)
+                await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: sentBegin)
                 return .cancelled(results: plan.keepsExecutedStatements ? results : [])
             }
             let ran = await runStatement(
@@ -108,12 +109,12 @@ internal enum BatchStatementRun {
             )
             switch ran {
             case .stopped:
-                await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: opensTransaction)
+                await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: sentBegin)
                 return .cancelled(results: plan.keepsExecutedStatements ? results : [])
             case .committed(let result):
                 results.append(result)
                 if let errorDescription = serverError(result) {
-                    await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: opensTransaction)
+                    await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: sentBegin)
                     return .failed(
                         results: results,
                         failure: .batch(sql: failureSQL(statement)),
@@ -127,7 +128,7 @@ internal enum BatchStatementRun {
                     errorDescription: failure.errorDescription
                 )
             case .failed(let failure):
-                await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: opensTransaction)
+                await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: sentBegin)
                 return .failed(
                     results: results,
                     failure: .statement(sql: failureSQL(statement)),
@@ -140,7 +141,7 @@ internal enum BatchStatementRun {
             }
         }
 
-        guard opensTransaction else { return .completed(results: results) }
+        guard plan.commitsAtEnd, sentBegin else { return .completed(results: results) }
         return await commit(
             results: results, driver: driver, connectionId: connectionId, gate: gate, plan: plan, output: commitOutput
         )
@@ -198,7 +199,7 @@ internal enum BatchStatementRun {
 
         switch committed {
         case .stopped:
-            await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: true)
+            await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: true)
             return .cancelled(results: plan.keepsExecutedStatements ? results : [])
         case .committed:
             output.store(await ServerOutputCapture.drain(driver))
@@ -211,7 +212,7 @@ internal enum BatchStatementRun {
                     results: results, failure: .commitOutcomeUnknown, errorDescription: failure.errorDescription
                 )
             }
-            await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: true)
+            await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: true)
             return .failed(results: results, failure: .commit, errorDescription: failure.errorDescription)
         }
     }
@@ -229,15 +230,16 @@ internal enum BatchStatementRun {
         driver: DatabaseDriver,
         connectionId: UUID,
         plan: BatchTransactionPlan,
-        opensTransaction: Bool
+        sentBegin: Bool
     ) async {
         guard plan.rollsBackAfterStop, driver.supportsTransactions else { return }
         let token = DatabaseManager.shared.beginProtectedWrite(on: driver, for: connectionId)
         defer { DatabaseManager.shared.endProtectedWrite(token, for: connectionId) }
         do {
             try await TaskCancellationShield.run { @Sendable in try await driver.rollbackTransaction() }
+            if plan == .heldTransaction { ManualCommit.turnHold?.mark(false) }
         } catch {
-            guard opensTransaction else {
+            guard sentBegin else {
                 batchLog.debug("No open script transaction to roll back: \(error.publicLogShape, privacy: .public)")
                 return
             }

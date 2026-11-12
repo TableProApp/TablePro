@@ -16,6 +16,12 @@ protocol ScopedMetadataProviding: AnyObject, Sendable {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T
 
+    func withMetadataRead<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T
+
     func browseScope(for connectionId: UUID) -> DatabaseScope?
 }
 
@@ -25,6 +31,15 @@ extension ScopedMetadataProviding {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         try await withMetadataDriver(scope: scope, workload: .interactive, body)
+    }
+
+    // A conformer with no session turns has no transaction revision to keep.
+    func withMetadataRead<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        try await withMetadataDriver(scope: scope, workload: workload, body)
     }
 
     /// For reads that belong to the sidebar rather than to a tab: the object list, the
@@ -38,7 +53,7 @@ extension ScopedMetadataProviding {
         guard let scope = browseScope(for: connectionId) else {
             throw DatabaseError.notConnected
         }
-        return try await withMetadataDriver(scope: scope, workload: workload, body)
+        return try await withMetadataRead(scope: scope, workload: workload, body)
     }
 }
 
@@ -56,6 +71,23 @@ extension DatabaseManager {
             workload: workload,
             cancellation: .untracked,
             ownsSessionState: false,
+            body
+        )
+    }
+
+    // Reads only: on the session driver its turn leaves an open transaction's revision alone, unless the state moved.
+    func withMetadataRead<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload = .interactive,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        try await withScopedDriver(
+            scope: scope,
+            route: metadataRoute(for: scope),
+            workload: workload,
+            cancellation: .untracked,
+            ownsSessionState: false,
+            readsOnly: true,
             body
         )
     }

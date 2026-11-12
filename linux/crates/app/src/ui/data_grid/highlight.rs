@@ -10,6 +10,36 @@ use tablepro_linux_platform::settings::DateFormat;
 use super::{DataGrid, GridRow};
 use crate::services::grid::display_text::whole_text;
 use crate::services::grid::{HighlightColor, HighlightRule, HighlightRules, HighlightValue};
+use crate::services::tab_tracker_handle::TabTrackerHandle;
+
+/// A row's highlight, worked out once and drawn by each of its cells.
+pub(super) struct RowTint {
+    basis: TintBasis,
+    colours: Vec<Option<HighlightColor>>,
+    /// What `RowHighlight::color_of` gives a column past the grid's.
+    beyond: Option<HighlightColor>,
+}
+
+impl RowTint {
+    fn colour(&self, column: usize) -> Option<HighlightColor> {
+        self.colours.get(column).copied().unwrap_or(self.beyond)
+    }
+}
+
+/// What a row's highlight was worked out from. Each part moves when what
+/// it reads changes, a tracker change no row was redrawn for included.
+struct TintBasis {
+    revision: u32,
+    // Held, not only compared by address, so no later compile can reuse it.
+    rules: Rc<HighlightRules>,
+    tracker: Option<u64>,
+}
+
+impl TintBasis {
+    fn holds_for(&self, other: &Self) -> bool {
+        self.revision == other.revision && Rc::ptr_eq(&self.rules, &other.rules) && self.tracker == other.tracker
+    }
+}
 
 impl DataGrid {
     pub fn set_highlight_rules(&self, rules: Vec<HighlightRule>) {
@@ -44,12 +74,31 @@ impl DataGrid {
         if rules.is_empty() {
             return None;
         }
+        let basis = TintBasis {
+            revision: row.revision(),
+            rules,
+            tracker: self
+                .config()
+                .and_then(|config| config.tracker.as_ref().map(TabTrackerHandle::version)),
+        };
+        if let Some(tint) = row.tint().borrow().as_ref().filter(|tint| tint.basis.holds_for(&basis)) {
+            return tint.colour(column);
+        }
+        let tint = self.work_out_tint(row, basis);
+        let colour = tint.colour(column);
+        row.tint().replace(Some(tint));
+        colour
+    }
+
+    fn work_out_tint(&self, row: &GridRow, basis: TintBasis) -> RowTint {
+        #[cfg(test)]
+        row.count_tint();
         let columns = self.grid_columns();
         let mut values = vec![HighlightValue::Unavailable; columns.len()];
         let tracked = self.tracked();
         let mut scratch = String::new();
         let stored = row.cells();
-        for read in rules.columns() {
+        for read in basis.rules.columns() {
             let Some(definition) = columns.get(read) else {
                 continue;
             };
@@ -71,7 +120,12 @@ impl DataGrid {
                 }
             });
         }
-        rules.highlight(&values).color_of(column)
+        let found = basis.rules.highlight(&values);
+        RowTint {
+            colours: (0..columns.len()).map(|column| found.color_of(column)).collect(),
+            beyond: found.row,
+            basis,
+        }
     }
 }
 
@@ -82,7 +136,81 @@ mod tests {
 
     use super::*;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::ui::data_grid::test_grid::{Grid, key, two_text_columns};
+    use crate::test_support::drain_main_context;
+    use crate::ui::data_grid::GridCell;
+    use crate::ui::data_grid::test_grid::{Grid, key, two_text_columns, two_text_values};
+
+    fn name_is(value: &str) -> HighlightRule {
+        let mut rule = HighlightRule::new("name");
+        rule.value = Some(FilterValue::Single(value.into()));
+        rule
+    }
+
+    fn tinted(cell: &GridCell) -> bool {
+        cell.has_css_class(HighlightColor::Yellow.css_class())
+    }
+
+    fn rename_first(grid: &Grid, from: &str, to: &str) {
+        let delta = grid.tracker.apply(TrackerEdit::Cell {
+            row_key: key(1),
+            col: 1,
+            original: Value::Text(from.into()),
+            value: CellInput::Value(Value::Text(to.into())),
+        });
+        grid.grid.apply_delta(&delta);
+    }
+
+    #[gtk4::test]
+    fn a_row_works_out_its_highlight_once_for_all_of_its_cells() {
+        let grid = Grid::open(two_text_columns(), two_text_values());
+        grid.grid.set_highlight_rules(vec![name_is("A")]);
+        drain_main_context();
+        let row = grid.grid.store().row(0).expect("a row");
+        let cells = [grid.cell_of(1, 0), grid.cell_of(1, 1)];
+        let drawn: Vec<u32> = cells.iter().map(GridCell::render_count).collect();
+        let worked_out = row.tints_worked_out();
+
+        row.bump_revision();
+
+        for (cell, before) in cells.iter().zip(drawn) {
+            assert_eq!(cell.render_count(), before + 1, "every cell of the row drew again");
+            assert!(tinted(cell), "a cell of the row lost its colour");
+        }
+        assert_eq!(row.tints_worked_out(), worked_out + 1, "each cell ran the rules again");
+    }
+
+    #[gtk4::test]
+    fn an_edit_to_the_rule_column_recolours_the_other_cells_of_its_row() {
+        let grid = Grid::open(two_text_columns(), two_text_values());
+        grid.grid.set_highlight_rules(vec![name_is("A")]);
+        drain_main_context();
+        let id_cell = grid.cell_of(1, 0);
+        assert!(tinted(&id_cell));
+
+        rename_first(&grid, "A", "Z");
+        assert!(
+            !tinted(&id_cell),
+            "the id kept the colour of a name the row no longer has"
+        );
+
+        grid.grid.undo();
+        assert!(tinted(&id_cell), "undo left the id without its colour");
+    }
+
+    #[gtk4::test]
+    fn a_tracker_change_no_row_was_redrawn_for_reaches_the_next_draw() {
+        let grid = Grid::open(two_text_columns(), two_text_values());
+        grid.grid.set_highlight_rules(vec![name_is("Z")]);
+        rename_first(&grid, "A", "Z");
+        let id_cell = grid.cell_of(1, 0);
+        assert!(tinted(&id_cell));
+
+        // As a close prompt's Discard leaves the grid until the next page lands.
+        let _ = grid.tracker.discard();
+        id_cell.render();
+
+        assert!(!tinted(&id_cell), "the draw kept the colour of the discarded edit");
+    }
 
     #[gtk4::test]
     fn highlights_read_past_the_display_cut_and_follow_pending_values() {

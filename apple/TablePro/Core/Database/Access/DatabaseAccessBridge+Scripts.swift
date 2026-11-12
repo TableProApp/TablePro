@@ -114,6 +114,13 @@ extension DatabaseAccessBridge {
 
         let manager = await databaseManager
         let route = await MainActor.run { manager.executionRoute(for: scope) }
+        let commitMode = await MainActor.run { manager.commitMode(for: connectionId) }
+        let statementTexts = batches.flatMap { $0.statements.map(\.sql) }
+        let agentGuard = AgentTransactionGuard(
+            commitMode: commitMode, databaseType: databaseType, grammar: databaseType.lexicalGrammar,
+            connectionId: connectionId
+        )
+        let writes = classification.tier != .safe
         let startLines = BatchErrorText.lines(of: batches.map(\.range.location), in: text)
         let startTime = CFAbsoluteTimeGetCurrent()
         let statementsRan = CatalogEvent.statementsRan(
@@ -134,16 +141,22 @@ extension DatabaseAccessBridge {
                 onLateCompletion: { CatalogChangeService.post(statementsRan) }
             ) { driver in
                 reach.mark()
-                do {
-                    let answered = try await ScriptBatchRun.run(
-                        batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context
-                    )
-                    await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
-                    return answered
-                } catch {
-                    await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
-                    throw error
+                let ran = try await agentGuard.running(statementTexts, writes: writes, on: driver) { opened in
+                    do {
+                        let answered = try await ScriptBatchRun.run(
+                            batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress,
+                            context: context, commitMode: commitMode, heldByApp: opened
+                        )
+                        await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                        return answered
+                    } catch {
+                        await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                        throw error
+                    }
                 }
+                var run = ran.value
+                run.transactionNotice = ran.notice
+                return run
             }
         } catch {
             if classification.tier != .safe {
@@ -234,6 +247,8 @@ final class ScriptBatchProgress: Sendable {
 struct ScriptBatchRun: Sendable {
     let answers: [QueryBatchResult]
     let sessionState: PluginSessionTransactionState
+    // What the agent is told instead of "commit or roll it back": the work is pending, or the transaction ended.
+    var transactionNotice: String?
 
     /// The session is asked what it holds before and after, as the editor asks: the first answer decides how a
     /// failure reads, and the second whether the script left a transaction open. A batch that raised an error ends the
@@ -244,11 +259,15 @@ struct ScriptBatchRun: Sendable {
         rowCap: Int,
         driver: DatabaseDriver,
         progress: ScriptBatchProgress,
-        context: PluginStatementContext? = nil
+        context: PluginStatementContext? = nil,
+        commitMode: ConnectionCommitMode = .automatic,
+        heldByApp: Bool = false
     ) async throws -> ScriptBatchRun {
         let startState = await driver.heldSessionTransactionState()
         progress.begin(in: startState)
-        let plan = BatchTransactionPlan.autocommit.joining(startState)
+        let plan: BatchTransactionPlan = heldByApp
+            ? .heldTransaction
+            : BatchTransactionPlan.autocommit.joining(startState, commitMode: commitMode)
         var answers: [QueryBatchResult] = []
         for (batch, startLine) in zip(batches, startLines) {
             try Task.checkCancellation()
@@ -310,9 +329,10 @@ struct ScriptBatchRun: Sendable {
         primary.columnOrigins = first?.columnOrigins
         let notes = [
             first?.statusMessage,
+            transactionNotice,
             BatchRunNotice.text(
                 discardedResultSetCount: answers.reduce(0) { $0 + $1.discardedResultSetCount },
-                sessionState: sessionState
+                sessionState: transactionNotice == nil ? sessionState : .idle
             )
         ].compactMap { $0 }
         primary.statusMessage = notes.isEmpty ? nil : notes.joined(separator: " ")

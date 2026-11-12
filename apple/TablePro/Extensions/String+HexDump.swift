@@ -37,109 +37,148 @@ extension String {
         data(using: .isoLatin1) ?? Data(utf8)
     }
 
-    /// Returns a classic hex dump representation of this string's bytes, or nil if empty.
-    ///
-    /// Format per line: `OFFSET  HH HH HH HH HH HH HH HH  HH HH HH HH HH HH HH HH  |ASCII...........|`
-    /// - Parameter maxBytes: Maximum bytes to display before truncating (default 10KB).
-    func formattedAsHexDump(maxBytes: Int = 10_240) -> String? {
-        let bytes = storedBytes
+    // The first `maxBytes` of `storedBytes` and how many there are in all, without encoding the rest:
+    // a cell shows 64 bytes of a value that can run to megabytes.
+    private func storedBytesPrefix(_ maxBytes: Int) -> (bytes: Data, count: Int) {
+        // A lead byte of 0xC4 or more starts a scalar past U+00FF. Counting in UInt8 runs of 255 lets the
+        // loop vectorize: under 1 ms for 6 MB against 13 ms with an Int counter, measured.
+        let scan = utf8.withContiguousStorageIfAvailable { buffer -> (fitsLatin1: Bool, scalars: Int) in
+            var highest: UInt8 = 0
+            var continuations = 0
+            var index = 0
+            while index < buffer.count {
+                let end = Swift.min(index + 255, buffer.count)
+                var run: UInt8 = 0
+                while index < end {
+                    let byte = buffer[index]
+                    highest = Swift.max(highest, byte)
+                    run &+= byte >> 6 == 2 ? 1 : 0
+                    index += 1
+                }
+                continuations += Int(run)
+                if highest >= 0xC4 { return (false, 0) }
+            }
+            return (true, buffer.count - continuations)
+        }
+        guard let scan else {
+            let bytes = storedBytes
+            return (bytes.prefix(maxBytes), bytes.count)
+        }
+        guard scan.fitsLatin1 else {
+            return (Data(utf8.prefix(maxBytes)), utf8.count)
+        }
+        var bytes = Data(capacity: Swift.min(maxBytes, scan.scalars))
+        for scalar in unicodeScalars.prefix(maxBytes) {
+            bytes.append(UInt8(truncatingIfNeeded: scalar.value))
+        }
+        return (bytes, scan.scalars)
+    }
 
-        let totalCount = bytes.count
+    func formattedAsHexDump(maxBytes: Int = 10_240) -> String? {
+        let stored = storedBytesPrefix(maxBytes)
+        return HexText.dump(stored.bytes, totalCount: stored.count, maxBytes: maxBytes)
+    }
+
+    func formattedAsEditableHex(maxBytes: Int = 10_240) -> String? {
+        let stored = storedBytesPrefix(maxBytes)
+        return HexText.editable(stored.bytes, totalCount: stored.count, maxBytes: maxBytes)
+    }
+
+    func formattedAsCompactHex(maxBytes: Int = 64) -> String? {
+        let stored = storedBytesPrefix(maxBytes)
+        return HexText.compact(stored.bytes, totalCount: stored.count, maxBytes: maxBytes)
+    }
+}
+
+extension Data {
+    func formattedAsHexDump(maxBytes: Int = 10_240) -> String? {
+        HexText.dump(prefix(maxBytes), totalCount: count, maxBytes: maxBytes)
+    }
+
+    func formattedAsEditableHex(maxBytes: Int = 10_240) -> String? {
+        HexText.editable(prefix(maxBytes), totalCount: count, maxBytes: maxBytes)
+    }
+
+    func formattedAsCompactHex(maxBytes: Int = 64) -> String? {
+        HexText.compact(prefix(maxBytes), totalCount: count, maxBytes: maxBytes)
+    }
+}
+
+// Each takes the first bytes of a value and the value's whole byte count.
+private enum HexText {
+    private static let digits = Array("0123456789ABCDEF".utf8)
+
+    private static func append(_ byte: UInt8, to text: inout [UInt8]) {
+        text.append(digits[Int(byte >> 4)])
+        text.append(digits[Int(byte & 0x0F)])
+    }
+
+    static func dump(_ bytes: Data, totalCount: Int, maxBytes: Int) -> String? {
         guard totalCount > 0 else { return nil }
 
         let displayCount = min(totalCount, maxBytes)
         let bytesArray = [UInt8](bytes.prefix(displayCount))
-
-        var lines: [String] = []
         let bytesPerLine = HexDumpLayout.bytesPerLine
-        lines.reserveCapacity(displayCount / bytesPerLine + 2)
 
+        var text: [UInt8] = []
+        text.reserveCapacity((displayCount / bytesPerLine + 1) * (HexDumpLayout.lineWidthInCharacters + 1))
         var offset = 0
-
         while offset < displayCount {
             let lineEnd = min(offset + bytesPerLine, displayCount)
-            let lineBytes = bytesArray[offset..<lineEnd]
+            if offset > 0 { text.append(UInt8(ascii: "\n")) }
 
-            // Offset column (8-digit hex)
-            var line = String(format: "%08X  ", offset)
+            for shift in stride(from: 28, through: 0, by: -4) {
+                text.append(digits[(offset >> shift) & 0x0F])
+            }
+            text.append(contentsOf: "  ".utf8)
 
-            // Hex columns: two groups of 8 bytes
-            for i in 0..<bytesPerLine {
-                if i == 8 { line += " " }
-                if offset + i < lineEnd {
-                    line += String(format: "%02X ", lineBytes[offset + i])
+            for column in 0..<bytesPerLine {
+                if column == 8 { text.append(UInt8(ascii: " ")) }
+                if offset + column < lineEnd {
+                    append(bytesArray[offset + column], to: &text)
+                    text.append(UInt8(ascii: " "))
                 } else {
-                    line += "   "
+                    text.append(contentsOf: "   ".utf8)
                 }
             }
 
-            // ASCII column
-            line += " |"
-            for byte in lineBytes {
-                if byte >= 0x20, byte <= 0x7E {
-                    line += String(UnicodeScalar(byte))
-                } else {
-                    line += "."
-                }
+            text.append(contentsOf: " |".utf8)
+            for byte in bytesArray[offset..<lineEnd] {
+                text.append(byte >= 0x20 && byte <= 0x7E ? byte : UInt8(ascii: "."))
             }
-            line += "|"
-
-            lines.append(line)
+            text.append(UInt8(ascii: "|"))
             offset += bytesPerLine
         }
 
+        var lines = text.isEmpty ? [] : [String(bytes: text, encoding: .ascii) ?? ""]
         if totalCount > maxBytes {
             let formattedTotal = totalCount.formatted(.number)
             lines.append("… (truncated, \(formattedTotal) bytes total)")
         }
-
         return lines.joined(separator: "\n")
     }
 
-    /// Returns a space-separated hex representation suitable for editing.
-    ///
-    /// Format: `48 65 6C 6C 6F` — one hex byte pair separated by spaces, no offset or ASCII columns.
-    /// - Parameter maxBytes: Maximum bytes to display before truncating (default 10KB).
-    func formattedAsEditableHex(maxBytes: Int = 10_240) -> String? {
-        let bytes = storedBytes
-
-        let totalCount = bytes.count
+    static func editable(_ bytes: Data, totalCount: Int, maxBytes: Int) -> String? {
         guard totalCount > 0 else { return nil }
 
         let displayCount = min(totalCount, maxBytes)
-        let bytesArray = [UInt8](bytes.prefix(displayCount))
+        var text: [UInt8] = []
+        text.reserveCapacity(displayCount * 3 + 4)
+        for (index, byte) in bytes.prefix(displayCount).enumerated() {
+            if index > 0 { text.append(UInt8(ascii: " ")) }
+            append(byte, to: &text)
+        }
 
-        var hex = bytesArray.map { String(format: "%02X", $0) }.joined(separator: " ")
-
+        var hex = String(bytes: text, encoding: .ascii) ?? ""
         if totalCount > maxBytes {
             hex += " …"
         }
-
         return hex
     }
 
-    /// Returns a compact single-line hex representation for data grid cells.
-    ///
-    /// Format: `0x48656C6C6F` for short values, truncated with `…` for longer ones.
-    /// - Parameter maxBytes: Maximum bytes to show before truncating (default 64).
-    func formattedAsCompactHex(maxBytes: Int = 64) -> String? {
-        let bytes = storedBytes
-
-        let totalCount = bytes.count
+    static func compact(_ bytes: Data, totalCount: Int, maxBytes: Int) -> String? {
         guard totalCount > 0 else { return nil }
-
-        let displayCount = min(totalCount, maxBytes)
-        let bytesArray = [UInt8](bytes.prefix(displayCount))
-
-        var hex = "0x"
-        for byte in bytesArray {
-            hex += String(format: "%02X", byte)
-        }
-
-        if totalCount > maxBytes {
-            hex += "…"
-        }
-
-        return hex
+        let hex = "0x" + bytes.uppercaseHex(maxBytes: maxBytes)
+        return totalCount > maxBytes ? hex + "…" : hex
     }
 }

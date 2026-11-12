@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProDocumentPath
 import TableProPluginKit
 
 internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -14,6 +15,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     private let lock = NSLock()
     private var _connection: ElasticsearchConnection?
     private var _mappingCache: [String: [ElasticsearchColumn]] = [:]
+    private var _arrayTextColumns: [String: Set<String>] = [:]
 
     static let logger = Logger(subsystem: "com.TablePro", category: "ElasticsearchPluginDriver")
     static let maxResultWindow = 10_000
@@ -60,6 +62,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
             _connection?.disconnect()
             _connection = nil
             _mappingCache.removeAll()
+            _arrayTextColumns.removeAll()
         }
     }
 
@@ -250,6 +253,24 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
+    }
+
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
         if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes.filter { $0.type != .insert }) {
             throw refusal
         }
@@ -260,7 +281,9 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
             index: table,
             columns: columns,
             columnTypeNames: typeNames,
-            columnPathKeys: columnPathKeys(index: table)
+            columnPathKeys: columnPathKeys(index: table),
+            rowLocators: context.rowLocators,
+            arrayTextColumns: lock.withLock { _arrayTextColumns[table] } ?? []
         )
         return try generator.generateRowWrites(
             from: changes,
@@ -310,7 +333,28 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     /// nothing. The whole cache goes rather than one index: a console request can name a list, a
     /// wildcard or an alias, and refilling it costs one `GET /<index>/_mapping` per index reopened.
     func invalidateMappingCache() {
-        lock.withLock { _mappingCache.removeAll() }
+        lock.withLock {
+            _mappingCache.removeAll()
+            _arrayTextColumns.removeAll()
+        }
+    }
+
+    // The grid shows a string and an array that read the same alike, so a new row's text in such a field stays text.
+    func rememberArrayText(in hits: [[String: Any]], index: String, mappingColumns: [ElasticsearchColumn]) {
+        let stringColumns = mappingColumns.filter { ElasticsearchStatementGenerator.stringTypes.contains($0.type) }
+        guard !stringColumns.isEmpty else { return }
+        var found: Set<String> = []
+        for hit in hits {
+            guard let source = hit["_source"] as? [String: Any] else { continue }
+            for column in stringColumns where !found.contains(column.name) {
+                if let text = DocumentPath.value(in: source, atPath: column.name) as? String,
+                   ElasticsearchStatementGenerator.parsedArray(text) != nil {
+                    found.insert(column.name)
+                }
+            }
+        }
+        guard !found.isEmpty else { return }
+        lock.withLock { _arrayTextColumns[index, default: []].formUnion(found) }
     }
 
     private func columnPathKeys(index: String) -> [String: [String]] {
