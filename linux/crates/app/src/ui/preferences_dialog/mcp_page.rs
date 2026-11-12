@@ -305,8 +305,10 @@ pub(crate) fn failure_text(failure: &McpFailure) -> String {
 /// server cannot do without it.
 fn keyring_text(error: &SecretError) -> String {
     match error {
-        SecretError::Locked | SecretError::UnlockDismissed => crate::i18n::gettext(
-            "The keyring is locked, so the access token cannot be read. Unlock the keyring, accept its prompt and try again. With automatic login, GNOME may have no default keyring yet: create one in Passwords and Keys and make it the default.",
+        SecretError::Locked | SecretError::UnlockDismissed => format!(
+            "{} {}",
+            crate::i18n::gettext("The keyring is locked, so the access token cannot be read."),
+            crate::services::secret_save_report::keyring_locked_recovery(),
         ),
         SecretError::ServiceUnavailable { .. } => crate::i18n::gettext(
             "No keyring is running, so the access token cannot be kept. Start a keyring and try again.",
