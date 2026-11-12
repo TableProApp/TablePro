@@ -83,6 +83,25 @@ struct StructureChangeValidationTests {
         #expect(manager.validationSummary.isEmpty)
     }
 
+    @Test("A key with more columns than referenced columns blocks the save, with Create Table's reason")
+    func unequalColumnCountsBlockTheSave() throws {
+        let manager = loadedManager()
+        let foreignKey = validForeignKey(columns: ["id", "customer_id"], referencedColumns: ["id"])
+        manager.addForeignKey(foreignKey)
+
+        #expect(!manager.canCommit)
+        let staged = try #require(manager.workingForeignKeys.last)
+        #expect(manager.validationErrors[.foreignKey(staged.id)]
+            == "A foreign key needs as many referenced columns as it has columns.")
+    }
+
+    @Test("A key with as many referenced columns as columns can be saved")
+    func equalColumnCountsAllowTheSave() {
+        let manager = loadedManager()
+        manager.addForeignKey(validForeignKey(columns: ["id", "customer_id"], referencedColumns: ["tenant_id", "id"]))
+        #expect(manager.canCommit)
+    }
+
     @Test("A key on a column the table does not have blocks the save")
     func foreignKeyOnMissingColumnBlocksCommit() {
         let manager = loadedManager()

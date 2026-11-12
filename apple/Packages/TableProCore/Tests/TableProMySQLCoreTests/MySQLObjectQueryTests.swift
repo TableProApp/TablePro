@@ -303,6 +303,48 @@ struct MySQLObjectQueryTests {
         #expect(sql.hasSuffix("ORDER BY EVENT_NAME"))
     }
 
+    private func selectedColumns(_ sql: String) throws -> [String] {
+        let select = try #require(sql.components(separatedBy: "FROM").first)
+        return select
+            .replacingOccurrences(of: "SELECT", with: "")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    // Export reads these four by position on every flavor, including ones the sidebar leaves out.
+    @Test("Export's event list keeps the four columns it shipped with")
+    func eventListKeepsItsShippedProjection() throws {
+        let sql = MySQLObjectQueries.eventList(schema: "app", exactSchema: false)
+        #expect(try selectedColumns(sql) == ["EVENT_NAME", "EVENT_TYPE", "STATUS", "EVENT_SCHEMA"])
+        #expect(!sql.contains("@@"))
+    }
+
+    @Test("The sidebar's event read starts with export's columns and appends the schedule columns in order")
+    func eventDetailsAppendsScheduleColumns() throws {
+        let sql = MySQLObjectQueries.eventDetails(schema: "app", exactSchema: true)
+        #expect(try selectedColumns(sql) == [
+            "EVENT_NAME", "EVENT_TYPE", "STATUS", "EVENT_SCHEMA",
+            "EXECUTE_AT", "INTERVAL_VALUE", "INTERVAL_FIELD", "STARTS", "ENDS",
+            "ON_COMPLETION", "LAST_EXECUTED", "DEFINER", "EVENT_COMMENT",
+        ])
+        #expect(sql.contains("EVENT_SCHEMA = 'app' AND CAST(EVENT_SCHEMA AS BINARY) = CAST('app' AS BINARY)"))
+        #expect(!sql.contains("EVENT_NAME ="))
+        #expect(!sql.contains("@@"))
+        #expect(sql.hasSuffix("ORDER BY EVENT_NAME"))
+    }
+
+    @Test("A re-read of one event names it as an escaped literal")
+    func eventDetailsForOneEvent() {
+        let sql = MySQLObjectQueries.eventDetails(schema: "app", name: "it's", exactSchema: false)
+        #expect(sql.contains("AND EVENT_NAME = 'it''s'"))
+        #expect(sql.contains("EVENT_SCHEMA = 'app'"))
+    }
+
+    @Test("The event scheduler is read in a statement of its own")
+    func eventSchedulerIsItsOwnStatement() {
+        #expect(MySQLObjectQueries.eventScheduler == "SELECT @@global.event_scheduler")
+    }
+
     @Test("A routine's recorded mode is read by schema, name and type, with the name selected for an exact match")
     func routineCreationSettings() {
         let sql = MySQLObjectQueries.routineCreationSettings(

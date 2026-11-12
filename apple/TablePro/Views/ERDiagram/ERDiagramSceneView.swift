@@ -57,8 +57,9 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
     /// already has. Before anyone asks, the rebuild waits for the first question.
     var scene = ERDiagramScene() {
         didSet {
+            routes = nil
             needsDisplay = true
-            accessibilityTree.invalidate()
+            accessibilityTree.sceneDidChange(from: oldValue, to: scene)
             if accessibilityTree.hasBeenAsked {
                 _ = accessibilityTree.elements(for: scene, owner: self)
             }
@@ -105,6 +106,8 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
     private var linkDraft: LinkDraft?
     private var isShowingHandCursor = false
     private let accessibilityTree = ERDiagramAccessibilityTree()
+    // A hover or link redraw keeps the scene, so it reuses the routes the last draw computed.
+    private var routes: [ERDiagramEdgeRenderer.Route]?
     private var bakedPalette: ERDiagramPalette?
     private var themeCancellable: AnyCancellable?
 
@@ -145,7 +148,10 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         let canvas = ERDiagramContextCanvas(context: context)
-        ERDiagramSceneRenderer.draw(scene, palette: palette, dirtyRect: dirtyRect, on: canvas)
+        let routes = routes
+            ?? ERDiagramEdgeRenderer.routes(edges: scene.edges, nodeRects: scene.nodeRects, nodeIndex: scene.nodeIndex)
+        self.routes = routes
+        ERDiagramSceneRenderer.draw(scene, palette: palette, dirtyRect: dirtyRect, routes: routes, on: canvas)
         drawLinkAffordances(on: canvas)
     }
 
@@ -461,6 +467,7 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
             }
         } else if press.isDragging {
             actions?.endDrag()
+            announceMove(of: press.nodeId)
         } else if press.togglesSelection {
             if let nodeId = press.nodeId {
                 actions?.toggleSelection(nodeId)
@@ -614,6 +621,12 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
         guard let selected = scene.selectedNodeId else { return nil }
         _ = accessibilityTree.elements(for: scene, owner: self)
         return accessibilityTree.element(for: selected)
+    }
+
+    // Once when the drag ends, not on every pointer event the table moved with.
+    private func announceMove(of nodeId: UUID?) {
+        guard accessibilityTree.hasBeenAsked, let nodeId, let element = accessibilityTree.element(for: nodeId) else { return }
+        NSAccessibility.post(element: self, notification: .layoutChanged, userInfo: [.uiElements: [element]])
     }
 
     private func announceSelectionChange(from previous: [UUID]) {

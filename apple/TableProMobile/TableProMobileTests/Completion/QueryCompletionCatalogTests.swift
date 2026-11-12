@@ -242,7 +242,7 @@ struct QueryCompletionCatalogTests {
         #expect(labels(first) == ["invoices", "Quarterly Totals"])
         #expect(first.map(\.insertText) == ["invoices", "\"Quarterly Totals\""])
         #expect(labels(again) == labels(first))
-        #expect(await reads.count == 1)
+        #expect(await reads.readCount == 1)
     }
 
     @Test("another schema's tables come from the catalog connection first, from the session only while reads are open")
@@ -266,7 +266,7 @@ struct QueryCompletionCatalogTests {
         #expect(labels(sales) == ["from_catalog"])
         #expect(closed.isEmpty)
         #expect(labels(open) == ["log"])
-        #expect(await sessionReads.count == 1)
+        #expect(await sessionReads.readCount == 1)
     }
 
     @Test("closing session reads waits for a schema read already sent on the session")
@@ -304,7 +304,7 @@ struct QueryCompletionCatalogTests {
         #expect(items.map(\.insertText) == ["public", "sales", "\"Sales\""])
         #expect(labels(lower) == ["lower_orders"])
         #expect(labels(upper) == ["upper_orders"])
-        #expect(await reads.count == 2)
+        #expect(await reads.readCount == 2)
     }
 
     @Test("a schema that differs from the active one only in case lists its own tables")
@@ -331,7 +331,7 @@ struct QueryCompletionCatalogTests {
 
         #expect(await catalog.isKnownSchema("ARCHIVE"))
         #expect(labels(await catalog.tableCompletionItems(inSchema: "archive")) == ["orders_2019"])
-        #expect(await reads.count == 1)
+        #expect(await reads.readCount == 1)
     }
 
     @Test("an enum column offers its values: the driver's labels, or the ENUM type MySQL and DuckDB spell out")
@@ -537,7 +537,7 @@ private actor SchemaTableReads {
     private var answersNothing = false
     private var heldReads: [CheckedContinuation<Void, Never>] = []
     private var readWaiters: [CheckedContinuation<Void, Never>] = []
-    private(set) var count = 0
+    private(set) var readCount = 0
     private(set) var finished = 0
 
     init(_ tables: [String: [TableInfo]], held: Bool = false) {
@@ -554,7 +554,7 @@ private actor SchemaTableReads {
     }
 
     func waitForRead() async {
-        guard count == 0 else { return }
+        guard readCount == 0 else { return }
         await withCheckedContinuation { readWaiters.append($0) }
     }
 
@@ -566,7 +566,7 @@ private actor SchemaTableReads {
 
     private func read(_ schema: String) async -> [TableInfo]? {
         guard !answersNothing else { return nil }
-        count += 1
+        readCount += 1
         readWaiters.forEach { $0.resume() }
         readWaiters = []
         if isHeld {
@@ -640,5 +640,85 @@ private actor CatalogColumnSource {
             return nil
         }
         return columns[table] ?? []
+    }
+}
+
+extension QueryCompletionCatalogTests {
+    private func foreignKey(_ column: String, to table: String, _ referenced: String, schema: String? = nil) -> ForeignKeyInfo {
+        ForeignKeyInfo(
+            name: "\(column)_fk", column: column, referencedTable: table, referencedColumn: referenced, referencedSchema: schema
+        )
+    }
+
+    @Test("a table's foreign keys are read once on the catalog connection, and again once marked stale")
+    func foreignKeysReadOncePerGeneration() async {
+        let keys = ForeignKeySource(["orders": [foreignKey("customer_id", to: "customers", "id")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders"), table("customers")], databaseType: .postgresql, schema: "public",
+            readColumns: CatalogColumnSource([:]).reader, readCatalogForeignKeys: keys.reader
+        )
+
+        let first = await catalog.foreignKeys(of: "orders", schema: nil)
+        _ = await catalog.foreignKeys(of: "orders", schema: nil)
+        await catalog.markColumnsStale()
+        _ = await catalog.foreignKeys(of: "orders", schema: nil)
+
+        #expect(first == [SQLCompletionForeignKey(
+            name: "customer_id_fk", columns: ["customer_id"], referencedTable: "customers", referencedColumns: ["id"]
+        )])
+        #expect(await keys.reads == ["orders", "orders"])
+    }
+
+    @Test("a key into another schema is left out, and the session is never asked for keys")
+    func foreignKeysStayInTheSchema() async {
+        let keys = ForeignKeySource(["orders": [
+            foreignKey("customer_id", to: "customers", "id", schema: "public"),
+            foreignKey("auditor_id", to: "auditors", "id", schema: "audit"),
+        ]])
+        let session = CatalogColumnSource([:])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .postgresql, schema: "public",
+            readColumns: session.reader, readCatalogForeignKeys: keys.reader
+        )
+
+        let read = await catalog.foreignKeys(of: "orders", schema: nil)
+
+        #expect(read.map { $0.referencedTable } == ["customers"])
+        #expect(await session.reads.isEmpty)
+    }
+
+    @Test("without a catalog connection no keys are offered")
+    func noForeignKeysWithoutCatalogReader() async {
+        let catalog = catalog(CatalogColumnSource([:]), tables: [table("orders")], type: .postgresql, schema: "public")
+        #expect(await catalog.foreignKeys(of: "orders", schema: nil).isEmpty)
+    }
+
+    @Test("a name is written with the engine's quotes, and a statement name only where it was quoted")
+    func writtenNames() {
+        let postgres = catalog(CatalogColumnSource([:]), tables: [], type: .postgresql, schema: "public")
+        #expect(postgres.writtenText(of: SQLCompletionIdentifier([.statement("O", quoted: true), .catalog("CustomerId")]))
+            == "\"O\".\"CustomerId\"")
+        #expect(postgres.writtenText(of: SQLCompletionIdentifier([.statement("Ord", quoted: false), .catalog("id")]))
+            == "Ord.id")
+        let mysql = catalog(CatalogColumnSource([:]), tables: [], type: .mysql)
+        #expect(mysql.writtenText(of: SQLCompletionIdentifier([.statement("o", quoted: false), .catalog("order")])) == "o.`order`")
+    }
+}
+
+private actor ForeignKeySource {
+    private let keys: [String: [ForeignKeyInfo]]
+    private(set) var reads: [String] = []
+
+    init(_ keys: [String: [ForeignKeyInfo]]) {
+        self.keys = keys
+    }
+
+    nonisolated var reader: QueryForeignKeyReader {
+        { table, _ in await self.read(table) }
+    }
+
+    private func read(_ table: String) -> [ForeignKeyInfo]? {
+        reads.append(table)
+        return keys[table] ?? []
     }
 }

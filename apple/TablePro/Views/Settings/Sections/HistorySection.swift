@@ -35,7 +35,11 @@ struct HistorySection: View {
                         let confirmed = await AlertHelper.confirmDestructive(
                             title: String(localized: "Clear All History?"),
                             message: String(
-                                localized: "This will permanently delete all query history entries, and the saved changes kept for restoring. This action cannot be undone."
+                                localized: """
+                                    This will permanently delete all query history entries, the saved changes kept \
+                                    for restoring, and the earlier versions of your query tabs. This action cannot \
+                                    be undone.
+                                    """
                             ),
                             confirmButton: String(localized: "Clear"),
                             cancelButton: String(localized: "Cancel")
@@ -44,6 +48,7 @@ struct HistorySection: View {
                             Task {
                                 _ = await QueryHistoryManager.shared.clearEverything()
                                 _ = await QueryHistoryManager.shared.clearRewindSnapshots()
+                                _ = await QueryTabVersionStorage.shared.removeAll()
                             }
                         }
                     }

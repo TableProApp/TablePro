@@ -243,6 +243,41 @@ struct ERDiagramAccessibilityTests {
         #expect(held.accessibilityFrame() == NSAccessibility.screenRect(fromView: view, rect: destination))
     }
 
+    @Test("A table whose columns change in place, with its rect unchanged, reports the new columns")
+    func columnChangeWithoutAMoveReachesTheElement() {
+        var scene = makeScene()
+        let (view, _) = makeView(scene)
+        let held = (view.accessibilityChildren() as? [ERDiagramNodeElement] ?? [])
+            .first { $0.accessibilityLabel() == "employees" }
+        #expect(held?.accessibilityValue() as? String == "2 columns")
+
+        guard let index = scene.nodes.firstIndex(where: { $0.tableName == "employees" }) else {
+            Issue.record("no node")
+            return
+        }
+        scene.nodes[index].displayColumns.append(column("name"))
+        view.scene = scene
+
+        #expect(held?.accessibilityValue() as? String == "3 columns")
+        #expect((held?.accessibilityChildren() ?? []).count == 3)
+    }
+
+    @Test("A table added without moving the others gets an element")
+    func addedTableGetsAnElement() {
+        var scene = makeScene()
+        let (view, _) = makeView(scene)
+        #expect((view.accessibilityChildren() ?? []).count == 2)
+
+        let added = node("invoices", columns: [column("id", primaryKey: true)])
+        scene.nodes.append(added)
+        scene.nodeIndex["invoices"] = added.id
+        scene.nodeRects[added.id] = CGRect(x: 600, y: 40, width: ERDiagramLayout.nodeWidth, height: 60)
+        view.scene = scene
+
+        let labels = (view.accessibilityChildren() as? [ERDiagramNodeElement] ?? []).compactMap { $0.accessibilityLabel() }
+        #expect(labels.contains("invoices"))
+    }
+
     @Test("A held element reports a new selection without asking for children again")
     func heldElementFollowsSelection() {
         var scene = makeScene()

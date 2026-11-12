@@ -135,7 +135,8 @@ extension MainContentCoordinator {
         )
     }
 
-    internal func restoreSavedTabs() async {
+    // `keepingEntry`: the window was opened on content, which decides the database it shows, even when it names none.
+    internal func restoreSavedTabs(keepingEntry: Bool = false) async {
         /// The split view controller owns the window and is wired up before the content view is built,
         /// unlike the content view's own window, which arrives from `configureWindow`.
         guard let window = splitViewController?.view.window else {
@@ -180,8 +181,8 @@ extension MainContentCoordinator {
         await applyRestoredGroup(
             restoredTabs,
             selectedTabId: result.selectedTabId ?? restoredTabs.first?.id,
-            activeDatabase: result.lastActiveDatabase,
-            activeSchema: result.lastActiveSchema,
+            activeDatabase: keepingEntry ? nil : result.lastActiveDatabase,
+            activeSchema: keepingEntry ? nil : result.lastActiveSchema,
             loadTiming: window.isKeyWindow ? .immediate : .deferred
         )
     }

@@ -138,7 +138,7 @@ internal struct RowInspectorView: View {
 
     private func popOut(field: FieldEditState, text: String, kind: FieldEditorKind) {
         let isEditable = context.isEditable && !context.isRowDeleted && !field.isServerOwned
-        // Captured, not looked up per keystroke: the field's id is reissued on every selection change.
+        // Captured, not looked up per keystroke: the window outlives the selection it opened on.
         let columnIndex = field.columnIndex
         let rowIDs = state.editState.rowIDs
         let commit: ((String) -> Void)? = isEditable
@@ -149,12 +149,13 @@ internal struct RowInspectorView: View {
 
         switch InspectorPopOutWindow.resolve(for: kind) {
         case .json:
-            JSONViewerWindowController.open(
+            let window = JSONViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,
                 isEditable: isEditable,
                 onCommit: commit
             )
+            if commit != nil { InspectorPopOutRegistry.record(window, openedFrom: paneState) }
         case .php:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
         case .binary(let format):
@@ -165,12 +166,13 @@ internal struct RowInspectorView: View {
                 columnName: field.columnName
             )
         case .text:
-            TextViewerWindowController.open(
+            let window = TextViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,
                 isEditable: isEditable,
                 onCommit: commit
             )
+            if commit != nil { InspectorPopOutRegistry.record(window, openedFrom: paneState) }
         }
     }
 }

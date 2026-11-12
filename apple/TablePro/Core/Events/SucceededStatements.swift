@@ -35,8 +35,15 @@ enum StatementCommitEvidence: Sendable, Equatable {
         plan: BatchTransactionPlan,
         completed: Bool
     ) -> StatementCommitEvidence {
-        guard plan.opensTransaction else { return .runStartedIn(start, endedIn: end, appTransaction: .none) }
-        return .runStartedIn(start, endedIn: end, appTransaction: completed ? .committed : .rolledBack)
+        switch plan {
+        case .appTransaction:
+            return .runStartedIn(start, endedIn: end, appTransaction: completed ? .committed : .rolledBack)
+        // A held run sent no COMMIT, so what it ran is pending until the user ends the transaction.
+        case .heldTransaction:
+            return .runStartedIn(start, endedIn: end, appTransaction: completed ? .none : .rolledBack)
+        case .scriptTransaction, .autocommit, .sessionTransaction:
+            return .runStartedIn(start, endedIn: end, appTransaction: .none)
+        }
     }
 }
 

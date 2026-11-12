@@ -19,7 +19,8 @@ internal sealed class FakeConnector : IConnector<FakeDatabase>
 
     public List<ConnectionSecrets> Attempts { get; } = [];
 
-    public List<ConnectionSecrets> Saved { get; } = [];
+    // What each attempt asked the core to store once it logged in.
+    public List<ConnectionSecrets> Kept { get; } = [];
 
     // Each connect takes the next failure, until none is left.
     public Queue<CoreError> Failures { get; } = new();
@@ -29,20 +30,16 @@ internal sealed class FakeConnector : IConnector<FakeDatabase>
     public async Task<FakeDatabase> ConnectSavedAsync(
         Guid id,
         ConnectionSecrets secrets,
+        ConnectionSecrets keep,
         CancellationToken cancellationToken)
     {
         Attempts.Add(secrets);
+        Kept.Add(keep);
         return await OpenAsync(cancellationToken);
     }
 
     public Task<FakeDatabase> OpenFileAsync(string path, string? engineId, CancellationToken cancellationToken) =>
         OpenAsync(cancellationToken);
-
-    public Task SaveSecretsAsync(Guid id, ConnectionSecrets secrets)
-    {
-        Saved.Add(secrets);
-        return Task.CompletedTask;
-    }
 
     private async Task<FakeDatabase> OpenAsync(CancellationToken cancellationToken)
     {

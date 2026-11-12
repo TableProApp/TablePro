@@ -9,6 +9,8 @@ struct KafkaScanWindow: Sendable {
     let tail: [Int32: Int64]
     /// True when the page is the newest rows of the window rather than the oldest.
     let readsBackward: Bool
+    // The earliest offset of each partition a tail scan may walk back to. Empty for a forward scan.
+    var floor: [Int32: Int64] = [:]
 }
 
 struct KafkaBrowsePage: Sendable {
@@ -37,6 +39,10 @@ enum KafkaBrowseEngine {
     /// slicing is the honest way to answer that, but it has to be bounded or a deep page would
     /// pull an unbounded amount of the log into memory.
     private static let maximumOverFetch = 50_000
+    // Past the page's own range a walk reads at most this many bytes per partition: a tail of aborted transactions,
+    // or a range that runs from an empty stretch into a dense one, would otherwise be read without bound. The page is
+    // then cut short and says so.
+    private static let tailWalkByteBudget = 256 * 1_024 * 1_024
 
     static func consume(_ query: KafkaConsumeQuery, cluster: KafkaCluster) async throws -> KafkaBrowsePage {
         let metadata = try await cluster.metadata(topics: [query.topic])
@@ -58,10 +64,46 @@ enum KafkaBrowseEngine {
         // Each partition contributes at most `wanted` records, because the merge cannot know
         // in advance how the messages are distributed: one partition may hold the whole page.
         var collected: [KafkaRecord] = []
-        var truncated = false
+        var truncated = query.skip + query.limit > maximumOverFetch
+        var walkedStarts = window.start
         for partition in selected {
             try Task.checkCancellation()
             guard let start = window.start[partition] else { continue }
+            // A tail scan must not read past the end it was anchored to, or page two would show
+            // messages produced after page one and the window would not be a window at all.
+            if window.readsBackward, let end = window.tail[partition] {
+                var walk = KafkaTailWalk<KafkaRecord>(
+                    wanted: wanted,
+                    end: end,
+                    firstStart: start,
+                    floor: window.floor[partition] ?? start
+                )
+                // The page's own range is read as before; the ranges past it share the budget.
+                var walkBytesLeft: Int?
+                while let range = walk.nextRange {
+                    try Task.checkCancellation()
+                    let result = try await KafkaFetchRequest.fetch(
+                        topic: query.topic,
+                        partition: partition,
+                        startOffset: range.start,
+                        maximumRecords: walk.needed,
+                        endOffset: range.end,
+                        keepingNewest: walk.needed,
+                        byteBudget: walkBytesLeft,
+                        cluster: cluster
+                    )
+                    if result.stoppedAtByteBudget {
+                        truncated = true
+                        break
+                    }
+                    walkBytesLeft = walkBytesLeft.map { $0 - result.bytesRead } ?? tailWalkByteBudget
+                    if result.truncated { truncated = true }
+                    walk.absorb(result.records)
+                }
+                collected.append(contentsOf: walk.records)
+                walkedStarts[partition] = walk.start
+                continue
+            }
             let result = try await KafkaFetchRequest.fetch(
                 topic: query.topic,
                 partition: partition,
@@ -69,13 +111,7 @@ enum KafkaBrowseEngine {
                 maximumRecords: wanted,
                 cluster: cluster
             )
-            var records = result.records
-            // A tail scan must not read past the end it was anchored to, or page two would show
-            // messages produced after page one and the window would not be a window at all.
-            if let end = window.tail[partition] {
-                records = records.filter { $0.offset < end }
-            }
-            collected.append(contentsOf: records)
+            collected.append(contentsOf: result.records)
             if result.truncated { truncated = true }
         }
 
@@ -87,7 +123,10 @@ enum KafkaBrowseEngine {
             readsBackward: window.readsBackward
         )
         if ordered.count > query.skip + query.limit { truncated = true }
-        return KafkaBrowsePage(records: page, window: window, truncated: truncated)
+        let walked = KafkaScanWindow(
+            start: walkedStarts, tail: window.tail, readsBackward: window.readsBackward, floor: window.floor
+        )
+        return KafkaBrowsePage(records: page, window: walked, truncated: truncated)
     }
 
     /// The partitions to read, or an error naming the ones the topic does not have.
@@ -132,14 +171,16 @@ enum KafkaBrowseEngine {
                 cluster: cluster
             )
             var starts: [Int32: Int64] = [:]
+            var floors: [Int32: Int64] = [:]
             for (partition, end) in kept {
                 // No fallback offset. A partition whose earliest offset did not come back has
                 // an unknown floor, and anchoring it at zero would send the page to the start of
                 // a log whose first surviving message may be far past it.
                 guard let floor = earliest[partition] else { continue }
                 starts[partition] = KafkaOffsetMath.stepBack(from: end, by: step, floor: floor)
+                floors[partition] = floor
             }
-            return KafkaScanWindow(start: starts, tail: kept, readsBackward: true)
+            return KafkaScanWindow(start: starts, tail: kept, readsBackward: true, floor: floors)
 
         case .oldest:
             let starts = try await KafkaOffsetsRequest.listOffsets(
@@ -200,11 +241,13 @@ enum KafkaBrowseEngine {
             // says and what the partition count would otherwise hide.
             var starts: [Int32: Int64] = [:]
             var ends: [Int32: Int64] = [:]
+            var floors: [Int32: Int64] = [:]
             for bound in bounds {
                 starts[bound.partition] = KafkaOffsetMath.stepBack(from: bound.latest, by: step, floor: bound.earliest)
                 ends[bound.partition] = bound.latest
+                floors[bound.partition] = bound.earliest
             }
-            return KafkaScanWindow(start: starts, tail: ends, readsBackward: true)
+            return KafkaScanWindow(start: starts, tail: ends, readsBackward: true, floor: floors)
         }
     }
 }

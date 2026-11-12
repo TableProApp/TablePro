@@ -318,7 +318,6 @@ private struct Lexer {
     private static let tab = UInt16(UnicodeScalar("\t").value)
     private static let punctuationUnits: Set<UInt16> = Set("(),;.".utf16)
     private static let operatorUnits: Set<UInt16> = Set("=<>+-*/%&|^~!@#?:$".utf16)
-    private static let delimiterWord = "DELIMITER"
 
     static func isOperatorUnit(_ unit: UInt16) -> Bool {
         operatorUnits.contains(unit)
@@ -329,6 +328,7 @@ private struct Lexer {
     let grammar: SQLLexicalGrammar
     let tokenizer: SQLTokenizer
     private let batchSeparatorEnds: [Int: Int]
+    private let psqlTextEnds: [Int: Int]
     private var delimiter = ";"
     private var atStatementStart = true
     private var tokens: [SQLToken] = []
@@ -344,6 +344,11 @@ private struct Lexer {
             ends[separator.range.location] = NSMaxRange(separator.range)
         }
         self.batchSeparatorEnds = ends
+        var psqlEnds: [Int: Int] = [:]
+        for range in SQLStatementScanner.psqlScriptText(in: text as String, grammar: grammar) {
+            psqlEnds[range.location] = NSMaxRange(range)
+        }
+        self.psqlTextEnds = psqlEnds
     }
 
     mutating func run() -> [SQLToken] {
@@ -356,18 +361,19 @@ private struct Lexer {
     private mutating func step() {
         let unit = text.character(at: index)
 
-        if isBlank(unit) {
-            let start = index
-            while index < length, isBlank(text.character(at: index)) {
-                index += 1
-            }
-            emit(.whitespace, from: start)
-            return
-        }
-        if let end = batchSeparatorEnds[index] {
+        // A `GO` line, a `COPY ... FROM STDIN` with its rows and a psql `\restrict` line keep their text.
+        if let end = batchSeparatorEnds[index] ?? psqlTextEnds[index] {
             let start = index
             index = end
             emit(.directive, from: start)
+            return
+        }
+        if isBlank(unit) {
+            let start = index
+            while index < length, isBlank(text.character(at: index)), psqlTextEnds[index] == nil {
+                index += 1
+            }
+            emit(.whitespace, from: start)
             return
         }
         if unit == Self.slash, grammar.contains(.slashLineTerminators),
@@ -440,23 +446,16 @@ private struct Lexer {
     // `DELIMITER //` at the start of a statement, on a line of its own, changes what ends a statement, as the mysql
     // client and the import read a script.
     private mutating func readDelimiterDirective() -> Bool {
-        guard grammar.contains(.delimiterDirective), atStatementStart, isAtLineStart(index) else { return false }
-        let wordLength = (Self.delimiterWord as NSString).length
-        guard index + wordLength < length,
-              substring(from: index, to: index + wordLength).uppercased() == Self.delimiterWord,
-              isLineBlank(text.character(at: index + wordLength))
+        guard grammar.contains(.delimiterDirective), atStatementStart, isAtLineStart(index),
+              let directive = SQLDelimiterDirective.line(startingAt: index, in: text, length: length)
         else {
             return false
         }
-        var end = index + wordLength
-        while end < length, text.character(at: end) != Self.newline {
-            end += 1
+        let end = NSMaxRange(directive.range)
+        if let newDelimiter = directive.delimiter {
+            delimiter = newDelimiter
         }
-        let line = substring(from: index, to: end).trimmingCharacters(in: .whitespaces)
-        let newDelimiter = String(line.dropFirst(Self.delimiterWord.count)).trimmingCharacters(in: .whitespaces)
-        guard !newDelimiter.isEmpty else { return false }
-        delimiter = newDelimiter
-        append(SQLToken(type: .directive, value: line))
+        append(SQLToken(type: .directive, value: substring(from: index, to: end).trimmingCharacters(in: .whitespaces)))
         index = end
         return true
     }

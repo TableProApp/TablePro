@@ -26,9 +26,6 @@ struct AgentSessionRegistryTests {
         #expect(registry.sessions.isEmpty)
     }
 
-    /// One session, two presentations. The trailing-pane chat and the agent-mode conversation column
-    /// both resolve through here, so they must land on the same object or the feature is two
-    /// conversations wearing one name.
     @Test("Both presentations resolve to the same session")
     func bothPresentationsShareOneSession() {
         let registry = AgentSessionRegistry(store: makeStore())
@@ -48,9 +45,7 @@ struct AgentSessionRegistryTests {
         #expect(session.viewModel.sessionId == session.id)
     }
 
-    /// The conversation flushes a held prompt from a `task`, and a reparent re-runs that task on the
-    /// same view: a mode toggle and a connection switch are both one. Taking the prompt rather than
-    /// reading it is what keeps each re-run from sending it again.
+    // A reparent re-runs the task that flushes the prompt, so taking it is what sends it once.
     @Test("A held prompt is handed over once, and only once the connection is up")
     func heldPromptIsTakenOnce() throws {
         let registry = AgentSessionRegistry(store: makeStore())
@@ -65,10 +60,9 @@ struct AgentSessionRegistryTests {
         #expect(session.pendingPrompt == nil)
     }
 
-    /// Stopping keeps the transcript. Window close, disconnect and a lost session all reach it, and
-    /// none of them is the user throwing a conversation away.
+    // The transcript leaves memory and stays on disk under the id the session still names.
     @Test("Stopping a session keeps it and its transcript")
-    func stoppingKeepsTheSession() throws {
+    func stoppingKeepsTheSession() async throws {
         let registry = AgentSessionRegistry(store: makeStore())
         let connectionId = UUID()
         let session = try #require(registry.resolveSession(for: connectionId, startingIfNeeded: true))
@@ -77,8 +71,14 @@ struct AgentSessionRegistryTests {
         registry.stopSessions(for: connectionId)
 
         #expect(session.status == .stopped)
-        #expect(session.viewModel.messages.isEmpty == false)
         #expect(registry.sessions(for: connectionId).count == 1)
+        let conversationId = try #require(session.conversationId)
+        await session.viewModel.lastConversationWrite?.value
+        let stored = await AIChatStorage.shared.load(id: conversationId)
+        let storedTexts = stored?.messages.map { $0.plainText }
+        #expect(storedTexts == ["keep me"])
+        #expect(session.viewModel.messages.isEmpty)
+        await AIChatStorage.shared.delete(conversationId)
     }
 
     @Test("Resolving a stopped session resumes it rather than starting another")
@@ -120,9 +120,7 @@ struct AgentSessionRegistryTests {
         #expect(registry.sessions.count == 2)
     }
 
-    /// Restore has to finish before any window exists. A window that opened while a load was
-    /// suspended found nothing, minted a session, and was then joined by the stored one: two
-    /// sessions on one conversation, both persisted, both in the rail.
+    // A window opened while a load was suspended minted a second session beside the stored one.
     @Test("Sessions come back from disk in the registry's own initialiser")
     func restoreIsSynchronous() throws {
         let store = makeStore()
@@ -148,6 +146,32 @@ struct AgentSessionRegistryTests {
         #expect(restored.title == "Earlier work")
         #expect(restored.status == .stopped)
         #expect(restored.viewModel.sessionId == sessionId)
+    }
+
+    // Its record used to be written with no conversation, so the next launch reopened it empty.
+    @Test("A restored session that was never opened keeps its conversation across a save")
+    func unopenedSessionKeepsItsConversation() throws {
+        let store = makeStore()
+        let conversationId = UUID()
+        store.save([
+            AgentSessionRecord(
+                id: UUID(),
+                connectionId: UUID(),
+                conversationId: conversationId,
+                status: .stopped,
+                title: "Earlier work",
+                startedAt: Date(timeIntervalSince1970: 1_000),
+                lastActiveAt: Date(timeIntervalSince1970: 2_000)
+            )
+        ])
+        let registry = AgentSessionRegistry(store: store)
+
+        registry.startSession(for: UUID())
+        registry.persistNow()
+
+        let records = store.load()
+        #expect(records.count == 2)
+        #expect(records.contains { $0.conversationId == conversationId && $0.title == "Earlier work" })
     }
 
     @Test("A restored session keeps its id rather than being minted again")
@@ -179,9 +203,7 @@ struct AgentSessionRegistryTests {
 
     // MARK: - Order
 
-    /// The rail lists the latest first, and going to work is what makes a session the latest. Opening
-    /// one is not work: ordered by that, the row someone double-clicked in the middle of the list
-    /// would jump to the top from under the pointer that opened it.
+    // Opening is not work, or the row double-clicked would jump from under the pointer.
     @Test("The rail lists the session that last went to work first")
     func sessionsAreOrderedByActivity() throws {
         let registry = AgentSessionRegistry(store: makeStore())
@@ -208,7 +230,6 @@ struct AgentSessionRegistryTests {
         #expect(registry.currentSession(for: connectionId) === first)
     }
 
-    /// With nothing named, the latest live session is the one two panes share, not the oldest.
     @Test("The shared session is the latest live one")
     func currentSessionPrefersTheLatestLiveOne() {
         let registry = AgentSessionRegistry(store: makeStore())
@@ -222,8 +243,6 @@ struct AgentSessionRegistryTests {
 
     // MARK: - Closing and deleting the session on screen
 
-    /// Close used to stop the session and tell nothing, so the conversation column went on drawing it
-    /// with a composer that still took messages.
     @Test("Closing the session on screen hands the window the next live one")
     func closingHandsOverToTheNextLiveSession() {
         let registry = AgentSessionRegistry(store: makeStore())
@@ -251,8 +270,6 @@ struct AgentSessionRegistryTests {
         #expect(registry.sessions(for: connectionId).count == 1)
     }
 
-    /// Nothing on screen is a state the user asked for, and entering the mode again is them asking
-    /// for a session; resolving is what mints it.
     @Test("A window with no session open starts one when it is asked to")
     func resolvingAfterClosingStartsAnother() throws {
         let registry = AgentSessionRegistry(store: makeStore())
@@ -292,8 +309,6 @@ struct AgentSessionRegistryTests {
         #expect(registry.currentSession(for: connectionId) === open)
     }
 
-    /// A reply that was still arriving when the app went away did not finish, and saying so is more
-    /// honest than leaving it reading as busy for ever.
     @Test("A session still working at terminate is recorded as failed")
     func terminationMarksWorkingSessionsFailed() throws {
         let store = makeStore()

@@ -45,7 +45,8 @@ pub(crate) async fn catalog_rows(
     table: &'static str,
     binds: &[Option<&str>],
 ) -> Result<Vec<CatalogCells>, DriverError> {
-    let mut query = sqlx::query(sql).persistent(false);
+    // The text is fixed, so the connection keeps it prepared and a later read only executes it.
+    let mut query = sqlx::query(sql).persistent(true);
     for bind in binds {
         query = query.bind(bind.map(str::to_owned));
     }

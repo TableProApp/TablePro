@@ -25,4 +25,5 @@ mod support;
 mod tls;
 mod user_read;
 mod value_corpus;
+mod wire_round_trips;
 mod write_batch;

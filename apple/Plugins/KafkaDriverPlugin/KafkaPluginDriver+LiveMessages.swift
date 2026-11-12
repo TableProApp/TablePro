@@ -99,11 +99,11 @@ final class KafkaLiveSubscription: PluginLiveSubscription, @unchecked Sendable {
                                 for record in page.records {
                                     continuation.yield(KafkaFollowCursor.message(from: record, topic: cursor.topic))
                                 }
-                                if let last = page.records.last {
-                                    guard let next = KafkaOffsetMath.offset(after: last.offset) else { return }
-                                    offset = next
-                                } else if ContinuousClock.now - started < Self.idleWait / 2 {
-                                    // A trailing transaction marker answers at once and reads as no record,
+                                guard let next = page.nextOffset else { return }
+                                let moved = next > offset
+                                offset = next
+                                if !moved, ContinuousClock.now - started < Self.idleWait / 2 {
+                                    // A reply that answers at once with nothing to move past would spin,
                                     // where an idle partition makes the broker wait out the long poll.
                                     try await Task.sleep(for: Self.idleWait)
                                 }

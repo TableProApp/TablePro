@@ -88,7 +88,6 @@ struct SidebarSchemaFilterTests {
         }
         SharedSidebarState.forConnection(connection.id).setSchemaFilter(["attendance"], for: "shop")
         let viewModel = SidebarViewModel(
-            selectedTables: .constant([]),
             pendingTruncates: .constant([]),
             pendingDeletes: .constant([]),
             tableOperationOptions: .constant([:]),
@@ -113,7 +112,6 @@ struct SidebarSchemaFilterTests {
             driver.allSchemaTablesError = DatabaseError.queryFailed("listing timed out")
         }
         let viewModel = SidebarViewModel(
-            selectedTables: .constant([]),
             pendingTruncates: .constant([]),
             pendingDeletes: .constant([]),
             tableOperationOptions: .constant([:]),
@@ -153,7 +151,6 @@ struct SidebarSchemaFilterTests {
         }
         SharedSidebarState.forConnection(connection.id).setSchemaFilter(["attendance"], for: "shop")
         let viewModel = SidebarViewModel(
-            selectedTables: .constant([]),
             pendingTruncates: .constant([]),
             pendingDeletes: .constant([]),
             tableOperationOptions: .constant([:]),
@@ -178,7 +175,6 @@ struct SidebarSchemaFilterTests {
 
     private func makeViewModel(_ connection: DatabaseConnection) -> SidebarViewModel {
         SidebarViewModel(
-            selectedTables: .constant([]),
             pendingTruncates: .constant([]),
             pendingDeletes: .constant([]),
             tableOperationOptions: .constant([:]),

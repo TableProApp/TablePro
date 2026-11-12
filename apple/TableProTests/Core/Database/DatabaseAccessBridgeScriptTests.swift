@@ -53,12 +53,14 @@ struct DatabaseAccessBridgeScriptTests {
     private func makeDriver(
         sendsBatchesWhole: Bool = true,
         transactionState: PluginSessionTransactionState = .idle,
+        transactionStateAfterBatches: PluginSessionTransactionState? = nil,
         answer: @escaping @Sendable (String) -> QueryBatchResult = { _ in .empty }
     ) -> ScriptAnsweringDriver {
         ScriptAnsweringDriver(
             connection: TestFixtures.makeConnection(database: "warehouse", type: .mssql),
             sendsBatchesWhole: sendsBatchesWhole,
             transactionState: transactionState,
+            transactionStateAfterBatches: transactionStateAfterBatches,
             answer: answer
         )
     }
@@ -134,7 +136,8 @@ struct DatabaseAccessBridgeScriptTests {
     @Test("Rows the script changed and a transaction it left open are reported on the first result")
     func scriptTotalsAndNoticesAreReported() async throws {
         let notice = try #require(PluginSessionTransactionState.inTransaction.openTransactionNotice)
-        let driver = makeDriver(transactionState: .inTransaction) { _ in
+        // Idle before the script, as a session is; a BEGIN TRAN over an open transaction is refused.
+        let driver = makeDriver(transactionStateAfterBatches: .inTransaction) { _ in
             ScriptAnsweringDriver.batch(
                 [ScriptAnsweringDriver.resultSet(columns: ["id"], rows: [["1"]], isTruncated: true)],
                 rowsAffected: 3

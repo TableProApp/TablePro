@@ -6,6 +6,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_core::Value;
 
+use super::highlight::RowTint;
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::GridRowId;
 
@@ -64,6 +65,10 @@ mod imp {
         /// Moves only when the slot is given another row, so anything that
         /// captured the row (a menu, an editor) can tell it is gone.
         pub generation: Cell<u64>,
+        /// The row's highlight, worked out once for all of its cells.
+        pub(super) tint: RefCell<Option<RowTint>>,
+        #[cfg(test)]
+        pub(super) tints_worked_out: Cell<u32>,
     }
 
     impl Default for GridRow {
@@ -72,6 +77,9 @@ mod imp {
                 data: RefCell::new(RowData::result(Arc::from([]))),
                 revision: Cell::new(0),
                 generation: Cell::new(0),
+                tint: RefCell::new(None),
+                #[cfg(test)]
+                tints_worked_out: Cell::new(0),
             }
         }
     }
@@ -110,6 +118,12 @@ impl GridRow {
 
     pub fn tracker_key(&self) -> Option<RowKey> {
         self.imp().data.borrow().id.tracker_key()
+    }
+
+    /// Calls `read` with the row's id, lent rather than copied, since a
+    /// draw reads it for every cell.
+    pub fn with_id<R>(&self, read: impl FnOnce(&GridRowId) -> R) -> R {
+        read(&self.imp().data.borrow().id)
     }
 
     pub fn draft_id(&self) -> Option<u64> {
@@ -152,6 +166,21 @@ impl GridRow {
         let revision = &self.imp().revision;
         revision.set(revision.get().wrapping_add(1));
         self.notify_revision();
+    }
+
+    pub(super) fn tint(&self) -> &RefCell<Option<RowTint>> {
+        &self.imp().tint
+    }
+
+    #[cfg(test)]
+    pub(super) fn count_tint(&self) {
+        let count = &self.imp().tints_worked_out;
+        count.set(count.get() + 1);
+    }
+
+    #[cfg(test)]
+    pub(super) fn tints_worked_out(&self) -> u32 {
+        self.imp().tints_worked_out.get()
     }
 
     /// A hold on the row as it is now, which stops resolving once the

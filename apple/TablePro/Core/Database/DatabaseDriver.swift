@@ -174,8 +174,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
-    // False when `fetchAllColumns` degrades to one round trip per table.
+    // One query that also reports every column `fetchColumns` does, so Compare can trust it.
     var providesBulkColumnFetch: Bool { get }
+
+    // Only whether `fetchAllColumns` reads every table in one request, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { get }
 
     /// Dotted field paths a document store exposes for a collection, for query authoring.
     /// Default implementation returns nothing, which is correct for every SQL driver.
@@ -347,6 +350,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch the source of one trigger.
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
+
+    // Mirrors `PluginDatabaseDriver.serverObjectKinds`: asked of the live driver, never of the type.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo]
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -832,6 +840,8 @@ extension DatabaseDriver {
 
     var providesBulkColumnFetch: Bool { false }
 
+    var fetchesAllColumnsInOneRequest: Bool { false }
+
     var providesBulkForeignKeyFetch: Bool { false }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]] {
@@ -1030,6 +1040,17 @@ extension DatabaseDriver {
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         throw PluginObjectSourceError.unsupported(trigger.name)
+    }
+
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
     }
 
     var supportsTransactions: Bool { true }

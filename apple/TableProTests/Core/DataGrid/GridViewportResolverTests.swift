@@ -29,15 +29,50 @@ struct GridViewportResolverTests {
         keyColumns: [String] = keyColumns,
         isCellModified: (RowID, Int) -> Bool = { _, _ in false }
     ) -> GridViewportSnapshot {
+        let order = DataGridRowOrder(filteredIDs: displayIDs, revision: 0)
+        let selection = selectedRows.isEmpty
+            ? GridSelectionSnapshot.empty
+            : GridSelectionSnapshot(
+                rowIDs: selectedRows.compactMap { order.rowID(at: $0, in: tableRows) },
+                rectangles: [],
+                activeCell: nil,
+                anchor: nil
+            )
+        return snapshot(
+            of: tableRows,
+            displayIDs: displayIDs,
+            firstVisibleRow: firstVisibleRow,
+            offset: offset,
+            selection: selection,
+            keyColumns: keyColumns,
+            isCellModified: isCellModified
+        )
+    }
+
+    private static func snapshot(
+        of tableRows: TableRows,
+        displayIDs: [RowID]? = nil,
+        firstVisibleRow: Int,
+        offset: CGFloat = 0,
+        selection: GridSelectionSnapshot,
+        keyColumns: [String] = keyColumns,
+        isCellModified: (RowID, Int) -> Bool = { _, _ in false }
+    ) -> GridViewportSnapshot {
         GridViewportResolver.snapshot(
             of: tableRows,
             displayIDs: displayIDs,
             firstVisibleDisplayRow: firstVisibleRow,
             firstVisibleOffset: offset,
-            selectedDisplayRows: selectedRows,
+            selection: selection,
             keyColumns: keyColumns,
             isCellModified: isCellModified
         )
+    }
+
+    private static let nameColumn = DataGridColumnID(name: "name", occurrence: 0)
+
+    private static func cell(_ row: Int) -> GridSelectionSnapshot.Cell {
+        GridSelectionSnapshot.Cell(rowID: .existing(row), columnID: nameColumn)
     }
 
     private static func placement(
@@ -257,6 +292,49 @@ struct GridViewportResolverTests {
         let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selectedRows: [6])
 
         #expect(Self.placement(.firstRow, from: snapshot, in: Self.rows(ids: [7, 7, 8])).selectedRows.isEmpty)
+    }
+
+    @Test("A re-read keeps a cell cursor a cursor, on its own column, wherever its row lands")
+    func keepPlaceKeepsTheCursorAndItsColumn() {
+        var cursor = GridSelectionSnapshot(rowIDs: [.existing(2)], rectangles: [], activeCell: Self.cell(2), anchor: Self.cell(2))
+        cursor.mode = .cursor
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selection: cursor)
+
+        let placement = Self.placement(.keepPlace, from: snapshot, in: Self.rows(ids: Array((1 ... 10).reversed())))
+
+        #expect(placement.selection.mode == .cursor)
+        #expect(placement.selection.rowIDs == [.existing(7)])
+        #expect(placement.selection.activeCell == Self.cell(7))
+    }
+
+    @Test("A re-read keeps a cell range's columns rather than widening it to whole rows")
+    func keepPlaceKeepsACellRange() {
+        let idColumn = DataGridColumnID(name: "id", occurrence: 0)
+        let range = GridSelectionSnapshot(
+            rowIDs: [.existing(3), .existing(4)],
+            rectangles: [GridSelectionSnapshot.Rectangle(rowIDs: [.existing(3), .existing(4)], columnIDs: [Self.nameColumn])],
+            activeCell: Self.cell(3),
+            anchor: Self.cell(3)
+        )
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selection: range)
+
+        let placement = Self.placement(.keepPlace, from: snapshot, in: Self.rows(ids: Array(0 ... 10)))
+
+        #expect(placement.selection.mode == .cells)
+        #expect(placement.selection.rectangles == [
+            GridSelectionSnapshot.Rectangle(rowIDs: [.existing(4), .existing(5)], columnIDs: [Self.nameColumn])
+        ])
+        #expect(placement.selection.activeCell == Self.cell(4))
+        #expect(!placement.selection.rectangles.contains { $0.columnIDs.contains(idColumn) })
+    }
+
+    @Test("A cursor whose row is gone leaves nothing selected")
+    func cursorOnAGoneRowSelectsNothing() {
+        var cursor = GridSelectionSnapshot(rowIDs: [.existing(5)], rectangles: [], activeCell: Self.cell(5), anchor: Self.cell(5))
+        cursor.mode = .cursor
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selection: cursor)
+
+        #expect(Self.placement(.keepPlace, from: snapshot, in: Self.rows(ids: [1, 2, 3])).selection == .empty)
     }
 
     @Test("Without a key the position is read through the incoming display order")

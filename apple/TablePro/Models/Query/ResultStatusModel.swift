@@ -44,6 +44,7 @@ struct ResultStatusControls: Equatable {
     var showsColumns = false
     var showsHighlightRules = false
     var showsFilters = false
+    var showsAutoRefresh = false
     var showsPagination = false
     /// First, Previous, Next, Last and the page number, which an engine that cannot skip rows has
     /// no use for. The rows-per-page menu stays, because it still sets how many leading rows load.
@@ -130,6 +131,8 @@ struct ResultStatusModel: Equatable {
         controls.showsHighlightRules = viewMode == .data && describesAResult
         controls.showsSelectionSummary = viewMode == .data && describesAResult
         controls.showsFilters = viewMode.showsRowFilters && isTable && snapshot.hasTableName
+        // Data only, the one mode a tick runs in; a query tab's SQL may write, so it never re-runs on a timer.
+        controls.showsAutoRefresh = viewMode == .data && isTable && snapshot.hasTableName
         controls.showsPagination = viewMode.showsResultScope && isTable && snapshot.hasTableName
         controls.showsPageNavigation = controls.showsPagination && snapshot.paginationCapability.allowsSeeking
 

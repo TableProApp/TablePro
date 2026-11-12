@@ -61,6 +61,16 @@ struct HiredisReplyTests {
         #expect(try Self.convert(wire).displayText == expected)
     }
 
+    @Test("A bulk string that starts with a byte order mark reads with it")
+    func bulkStringKeepsByteOrderMark() throws {
+        let reply = try Self.convert("$9\r\n\u{FEFF}user:1\r\n")
+        guard case .string(let text) = reply else {
+            Issue.record("expected text, got \(reply.displayText)")
+            return
+        }
+        #expect(Data(text.utf8) == Data([0xEF, 0xBB, 0xBF] + Array("user:1".utf8)))
+    }
+
     private struct Outcome: Sendable {
         let status: Int32
         let error: Int32

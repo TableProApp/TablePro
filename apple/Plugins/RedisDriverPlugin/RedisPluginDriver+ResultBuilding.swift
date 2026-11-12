@@ -34,18 +34,24 @@ extension RedisPluginDriver {
         )
     }
 
+    static let keySummaryBatchSize = 200
+
+    // Nil sends every key in one pipeline: fine for a grid page the user sized, not for KEYS or SCAN.
     func buildKeyBrowseResult(
         keys: [String],
         connection conn: any RedisCommandChannel,
         startTime: Date,
         isTruncated: Bool = false,
-        statusMessage: String? = nil
+        statusMessage: String? = nil,
+        batchSize: Int? = nil
     ) async throws -> PluginQueryResult {
         guard !keys.isEmpty else {
             return buildEmptyKeyResult(startTime: startTime, statusMessage: statusMessage)
         }
 
-        let rows = try await buildKeySummaryRows(keys: keys, connection: conn)
+        let rows = try await buildKeySummaryRows(
+            keys: keys, connection: conn, stringByteLimit: RedisStringPreview.byteLimit, batchSize: batchSize
+        )
         return PluginQueryResult(
             columns: Self.keyBrowseColumns,
             columnTypeNames: Self.keyBrowseColumnTypeNames,
@@ -57,14 +63,35 @@ extension RedisPluginDriver {
         )
     }
 
+    // A nil byte limit reads every string whole, which only an export wants.
     func buildKeySummaryRows(
         keys: [String],
-        connection conn: any RedisCommandChannel
+        connection conn: any RedisCommandChannel,
+        stringByteLimit: Int?,
+        batchSize: Int? = nil
+    ) async throws -> [PluginRow] {
+        guard let batchSize, batchSize > 0, keys.count > batchSize else {
+            return try await summarizeKeys(keys, connection: conn, stringByteLimit: stringByteLimit)
+        }
+        var rows: [PluginRow] = []
+        rows.reserveCapacity(keys.count)
+        for start in stride(from: 0, to: keys.count, by: batchSize) {
+            try Task.checkCancellation()
+            let batch = Array(keys[start ..< min(start + batchSize, keys.count)])
+            rows += try await summarizeKeys(batch, connection: conn, stringByteLimit: stringByteLimit)
+        }
+        return rows
+    }
+
+    private func summarizeKeys(
+        _ keys: [String],
+        connection conn: any RedisCommandChannel,
+        stringByteLimit: Int?
     ) async throws -> [PluginRow] {
         guard !keys.isEmpty else { return [] }
 
         let descriptions = try await conn.describeKeys(keys)
-        let contents = try await conn.readContents(of: keys, describedAs: descriptions)
+        let contents = try await conn.readContents(of: keys, describedAs: descriptions, stringByteLimit: stringByteLimit)
         return zip(keys, zip(descriptions, contents)).map { key, summary in
             let (description, content) = summary
             return [
@@ -78,7 +105,24 @@ extension RedisPluginDriver {
     }
 
     private func valueCell(for content: RedisKeyContents) -> PluginCellValue? {
-        content.preview.map { previewCell($0, kind: content.kind) }
+        guard let preview = content.preview else { return nil }
+        guard content.kind == .string, let byteLimit = content.stringByteLimit else {
+            return previewCell(preview, kind: content.kind)
+        }
+        return shownStringCell(preview, length: content.length, byteLimit: byteLimit)
+    }
+
+    private func shownStringCell(_ reply: RedisReply, length: Int?, byteLimit: Int) -> PluginCellValue {
+        let bytes: Data
+        switch reply {
+        case .string(let text): bytes = Data(text.utf8)
+        case .data(let data): bytes = data
+        default: return stringCell(from: reply)
+        }
+        switch RedisStringPreview.shown(bytes, length: length, byteLimit: byteLimit) {
+        case .text(let text): return .text(text)
+        case .bytes(let data): return .bytes(data)
+        }
     }
 
     func previewCell(_ reply: RedisReply, kind: RedisKeyKind) -> PluginCellValue {

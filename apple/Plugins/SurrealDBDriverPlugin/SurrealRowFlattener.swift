@@ -49,6 +49,18 @@ public enum SurrealRowFlattener {
         )
     }
 
+    // One per row `flatten` returns: the record's id for a row that is a record, nil for any other row. Nil when the
+    // rows are not records, which `flatten` shows in a single column with no id to edit by.
+    public static func rowLocators(_ value: SurrealValue) -> [String?]? {
+        let records = normalize(value)
+        guard !records.isEmpty, records.allSatisfy({ $0.objectPairs != nil }) else { return nil }
+        let locators = records.map { record -> String? in
+            guard case let .recordId(recordId)? = record[SurrealInfoParser.recordIdColumn] else { return nil }
+            return SurrealRowLocator.locator(for: recordId)
+        }
+        return locators.contains(where: { $0 != nil }) ? locators : nil
+    }
+
     public static func cell(_ value: SurrealValue, length: SurrealTextLength) -> PluginCellValue {
         switch value {
         case .null, .none:
@@ -112,5 +124,19 @@ public enum SurrealRowFlattener {
             }
             return "any"
         }
+    }
+}
+
+// The id cell shows a uuid, an array, an object and a string id that needs quoting all as backticked text, so a row
+// is found again by its id as CBOR: the same record always encodes to the same bytes.
+public enum SurrealRowLocator {
+    public static func locator(for record: SurrealRecordID) -> String {
+        SurrealCBOR.encode(.recordId(record)).base64EncodedString()
+    }
+
+    public static func record(from locator: String) -> SurrealRecordID? {
+        guard let data = Data(base64Encoded: locator),
+              case let .recordId(record)? = try? SurrealCBOR.decode(data) else { return nil }
+        return record
     }
 }

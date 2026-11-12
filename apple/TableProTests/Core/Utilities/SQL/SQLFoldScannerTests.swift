@@ -335,6 +335,55 @@ struct SQLFoldScannerTests {
         #expect(blocks.map { $0.startLine } == [0])
         #expect(blocks.map { $0.endLine } == [3])
     }
+
+    // MARK: - Client lines
+
+    private func statementLines(_ sql: String, grammar: SQLLexicalGrammar) -> [ClosedRange<Int>] {
+        regions(sql, grammar: grammar).filter { $0.kind == .statement }.map { $0.startLine...$0.endLine }
+    }
+
+    @Test("A DELIMITER line folds nothing, and the delimiter ends the routine's fold")
+    func delimiterLines() {
+        let sql = """
+        DELIMITER //
+        CREATE PROCEDURE p()
+        BEGIN
+          SELECT 1;
+        END//
+        DELIMITER ;
+        SELECT 2,
+          3;
+        """
+        #expect(statementLines(sql, grammar: TestGrammar.mysql) == [1...4, 6...7])
+    }
+
+    @Test("A COPY's fold runs through its rows, which open no fold of their own")
+    func copyRows() {
+        let sql = """
+        \\restrict k
+        COPY t (a, b) FROM stdin;
+        1\t(it's
+        2\tBEGIN /*
+        \\.
+        SELECT 2,
+          3;
+        """
+        #expect(statementLines(sql, grammar: TestGrammar.postgres) == [1...4, 5...6])
+        #expect(regions(sql, grammar: TestGrammar.postgres).allSatisfy { $0.kind == .statement })
+    }
+
+    @Test("A ; before an IF's ELSE does not end the IF's fold")
+    func semicolonBeforeElse() {
+        let sql = """
+        IF @a = 1
+          SELECT 1;
+        ELSE
+          SELECT 2;
+        SELECT 3,
+          4;
+        """
+        #expect(statementLines(sql, grammar: TestGrammar.sqlServer) == [0...3, 4...5])
+    }
 }
 
 struct SQLFoldEventOrderingTests {

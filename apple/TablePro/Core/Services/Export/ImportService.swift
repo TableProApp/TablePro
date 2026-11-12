@@ -413,7 +413,13 @@ final class ImportService: ObservableObject {
         policy: RowImportBatchPolicy
     ) async throws -> RowImportBatchReport {
         let started = Date()
-        let owner = ImportDataSinkAdapter(driver: driver, databaseType: connection.type, importRun: run, fileIndex: nil)
+        let owner = ImportDataSinkAdapter(
+            driver: driver,
+            databaseType: connection.type,
+            commitMode: DatabaseManager.shared.commitMode(for: connection.id),
+            importRun: run,
+            fileIndex: nil
+        )
         var sessionScope: PluginSessionScope?
         var outcomes = [RowImportBatchReport.FileOutcome](repeating: .notRun, count: files.count)
         var ending = RowImportBatchReport.Ending.completed
@@ -644,6 +650,7 @@ final class ImportService: ObservableObject {
         let sink = ImportDataSinkAdapter(
             driver: driver, databaseType: connection.type, targetTable: targetTable,
             columnMapping: columnMapping, sourceFields: sourceFields, rowWriting: rowWriting,
+            commitMode: DatabaseManager.shared.commitMode(for: connection.id),
             importRun: run, isCancelled: { progress.isCancelled }
         )
         defer {

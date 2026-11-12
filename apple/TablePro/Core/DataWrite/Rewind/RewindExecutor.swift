@@ -190,6 +190,7 @@ struct RewindExecutor {
         )
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
+        let commitMode = DatabaseManager.shared.commitMode(for: connection.id)
         let run = try await ExecutionGateProvider.shared.authorizing(
             OperationRequest(
                 connectionId: connection.id,
@@ -206,7 +207,7 @@ struct RewindExecutor {
                 route: route,
                 cancellation: .protectedWrite
             ) { driver in
-                try await DataWriteExecutor.run(writePlan, on: driver)
+                try await DataWriteExecutor.run(writePlan, commitMode: commitMode, on: driver)
             }
         }
 

@@ -23,9 +23,7 @@ internal enum DatabaseTreeDoubleClickIntent: Equatable {
 }
 
 internal enum DatabaseTreeDoubleClickResolver {
-    /// Being a table wins over being expandable. A partitioned table is both, and the HIG puts
-    /// disclosure on the triangle and the Right and Left arrows, so the row's own double-click is
-    /// free to mean what it means everywhere else: open the thing you clicked.
+    // Being a table wins over being expandable: the HIG puts disclosure on the triangle and the arrow keys.
     internal static func resolve(node: DatabaseTreeNode) -> DatabaseTreeDoubleClickIntent {
         if let ref = DatabaseTreeSelection.tableRef(of: node) {
             return .openPermanently(ref)
@@ -36,6 +34,8 @@ internal enum DatabaseTreeDoubleClickResolver {
         case .trigger(let ref):
             return .openObjectSource(ref.objectRef)
         case .userType(let ref):
+            return .openObjectSource(ref.objectRef)
+        case .serverObject(let ref):
             return .openObjectSource(ref.objectRef)
         default:
             return node.isExpandable ? .toggleDisclosure : .ignore

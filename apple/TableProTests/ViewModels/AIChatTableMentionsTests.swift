@@ -88,6 +88,44 @@ struct AIChatTableMentionsTests {
         try await waitUntil { vm.tableMentions.names == ["accounts", "invoices"] }
         #expect(!vm.hasUnlistedMentionTables)
     }
+
+    // A cleared source makes any refresh build again, so a build is how a refresh shows.
+    @Test("Only a schema load on the session's own connection refreshes its index")
+    func indexFollowsOnlyItsOwnConnection() async throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let fixture = await AIChatSchemaFixture.loaded(connection: connection, names: ["orders"])
+        let vm = AIChatViewModel(services: fixture.services)
+        vm.connection = connection
+        vm.trackTableMentions()
+        await vm.tableMentionBuild?.value
+        await Self.afterQueuedMainWork()
+        await vm.tableMentionBuild?.value
+        #expect(vm.tableMentions.names == ["orders"])
+        vm.tableMentionSource = []
+
+        let other = TestFixtures.makeConnection(type: .postgresql)
+        let otherDriver = MockDatabaseDriver(connection: other)
+        otherDriver.tablesToReturn = [TestFixtures.makeTableInfo(name: "invoices")]
+        await fixture.schemaService.load(connectionId: other.id, driver: otherDriver, connection: other)
+        await Self.afterQueuedMainWork()
+
+        #expect(vm.tableMentionSource.isEmpty)
+        #expect(vm.tableMentionBuild == nil)
+
+        await fixture.schemaService.reload(connectionId: connection.id, driver: fixture.driver, connection: connection)
+
+        try await waitUntil { vm.tableMentionSource.map { $0.name } == ["orders"] }
+    }
+
+    // Sinks deliver through `RunLoop.main.perform` and answer on the main actor; both have run once this returns.
+    private static func afterQueuedMainWork() async {
+        await withCheckedContinuation { continuation in
+            RunLoop.main.perform { continuation.resume() }
+        }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
 }
 
 @MainActor
