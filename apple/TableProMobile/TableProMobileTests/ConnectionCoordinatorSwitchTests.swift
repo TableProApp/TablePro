@@ -276,6 +276,30 @@ struct ConnectionCoordinatorSwitchTests {
         #expect(UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastDB.name(for: warehouse.id)) == "staging")
     }
 
+    @Test("A remembered database that never answered fails the open once, and the next open starts from the saved one")
+    func hungRememberedDatabaseYieldsToTheSavedOne() async {
+        remember(database: "staging", for: warehouse)
+        defer { forget(warehouse) }
+        let hung = driver()
+        hung.connectError = PostgreSQLError.unreachable("Connection timed out.")
+        factory.queue(hung)
+        let coordinator = ConnectionCoordinator(connection: warehouse, appState: appState)
+        coordinator.restorePersistedState()
+
+        await coordinator.connect()
+
+        #expect(factory.dialed.map { $0.database } == ["staging"])
+        #expect(coordinator.session == nil)
+
+        let saved = driver(tables: ["facts"])
+        factory.queue(saved)
+        await coordinator.connect()
+
+        #expect(factory.dialed.map { $0.database } == ["staging", "analytics"])
+        #expect(coordinator.session?.driver === saved)
+        #expect(coordinator.displayStatus == .connected)
+    }
+
     @Test("A remembered database the open cannot reach fails it after one dial, without dialing the saved one")
     func unreachableRememberedDatabaseDialsOnce() async {
         remember(database: "staging", for: warehouse)

@@ -79,6 +79,7 @@ final class ConnectionSessionModel {
     @ObservationIgnored private var placementEpoch = 0
     @ObservationIgnored private var switchesInFlight = 0
     @ObservationIgnored private var placementRestored = false
+    @ObservationIgnored private var rememberedDatabaseHung = false
     @ObservationIgnored private var scenes: [WeakScene] = []
 
     private let appState: AppState
@@ -318,7 +319,10 @@ final class ConnectionSessionModel {
 
         do {
             let saved = record
-            let target = openTarget(restoring: wanted)
+            // A remembered database that never answered may hang again, so the next open starts from the saved one and
+            // switches after, as opens did before.
+            let target = rememberedDatabaseHung ? record : openTarget(restoring: wanted)
+            rememberedDatabaseHung = false
             let landed: OpenLanding
             var restoring = wanted
             var refused: RefusedDatabase?
@@ -329,6 +333,9 @@ final class ConnectionSessionModel {
             } catch let thrown {
                 let listRefused = thrown as? TableListRefused
                 let error = listRefused?.error ?? thrown
+                if target.database != saved.database, case PostgreSQLError.unreachable = error {
+                    rememberedDatabaseHung = true
+                }
                 // A sign-in is the connection's, not the database's: the saved database would fail the same way.
                 guard target.database != saved.database, isCurrent(attempt),
                       listRefused != nil || Self.mayBlameDatabase(error),
@@ -436,7 +443,8 @@ final class ConnectionSessionModel {
     private nonisolated static let notAboutTheDatabase = [
         "password authentication failed", "authentication failed", "fe_sendauth", "no password supplied",
         "could not connect", "connection refused", "timeout expired", "timed out", "could not translate host name",
-        "network is unreachable", "no route to host", "server closed the connection", "connection reset",
+        "network is unreachable", "no route to host", "host is down", "software caused connection abort",
+        "server closed the connection", "connection reset",
         "lost connection", "ssl error", "ssl syscall", "server does not support ssl",
     ]
 
