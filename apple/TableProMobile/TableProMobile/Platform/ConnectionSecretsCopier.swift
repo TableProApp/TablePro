@@ -11,15 +11,18 @@ nonisolated struct ConnectionSecrets: Sendable {
     let secureStore: any SecureStore
     let certificateStore: any CertificateMaterialStoring
     let bookmarkStore: FileBookmarkStore
+    let materializer: CertificateMaterializer
 
     init(
         secureStore: any SecureStore,
         certificateStore: any CertificateMaterialStoring = CertificateMaterialStore(),
-        bookmarkStore: FileBookmarkStore = FileBookmarkStore()
+        bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
+        materializer: CertificateMaterializer = CertificateMaterializer()
     ) {
         self.secureStore = secureStore
         self.certificateStore = certificateStore
         self.bookmarkStore = bookmarkStore
+        self.materializer = materializer
     }
 
     @discardableResult
@@ -74,6 +77,8 @@ nonisolated struct ConnectionSecrets: Sendable {
             try? secureStore.delete(forKey: prefix + connectionId.uuidString)
         }
         certificateStore.deleteAll(for: connectionId)
+        // A connect wrote the decrypted client key to a file the drivers read.
+        materializer.release(for: connectionId)
         bookmarkStore.delete(for: connectionId)
     }
 }

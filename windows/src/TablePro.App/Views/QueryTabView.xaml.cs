@@ -16,7 +16,12 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     private readonly QueryTab _model;
     private EditTarget _target;
 
-    internal QueryTabView(Workbench workbench, SessionShare<DatabaseSession> share, string title, string? sql)
+    internal QueryTabView(
+        Workbench workbench,
+        SessionShare<DatabaseSession> share,
+        string title,
+        string? sql,
+        string? database = null)
     {
         var engineId = share.Session.EngineId;
         InitializeComponent();
@@ -30,9 +35,15 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
             this,
             Results,
             workbench.Engine(engineId)?.DataModel ?? DataModel.Relational,
-            () => workbench.Settings);
+            () => workbench.Settings,
+            new SharedHistoryRecorder(workbench, share.Session, () => HistoryRecorded?.Invoke(this, EventArgs.Empty)),
+            database);
         _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
         Results.StatusChanged += (_, status) => StatusText.Text = status;
+        if (_model.Database is { } runsIn)
+        {
+            StatusText.Text = Strings.Format("StatusRunsIn", runsIn);
+        }
         Results.SortRequested += async (_, sort) => await _model.SortAsync(sort).ConfigureAwait(true);
         Results.ResultPicked += (_, _) => _model.ResultPicked();
         SqlText.GotFocus += (_, _) => _target = EditTarget.Editor;
@@ -41,6 +52,9 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     }
 
     public event EventHandler? StateChanged;
+
+    // The history kept a run of this tab, so a history pane reads it again.
+    public event EventHandler? HistoryRecorded;
 
     public string Title => _model.Title;
 
@@ -54,12 +68,14 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     public SqlEditor? Editor => SqlText;
 
-    public DataGridView Grid => Results.GridView;
+    public DataGridView? Grid => Results.GridView;
 
     public bool GridIsTarget => _target == EditTarget.Grid;
 
     public TextBox? MessagesTarget =>
         _target == EditTarget.Messages && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
+
+    internal ResultsPane ResultsView => Results;
 
     string IQueryTabView.SelectedText => SqlText.Model.GetSelectedText();
 
@@ -68,6 +84,10 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     string IQueryTabView.DocumentText => SqlText.Document.Snapshot();
 
     int IQueryTabView.Caret => SqlText.Model.Primary.Active;
+
+    string IQueryTabView.TimedOutMessage => Strings.Get("StatusTimedOut");
+
+    string IQueryTabView.WordError(CoreError failure) => Strings.Error(failure);
 
     public async void Run() => await _model.RunAsync().ConfigureAwait(true);
 
@@ -184,5 +204,18 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         Editor,
         Grid,
         Messages,
+    }
+
+    // The history opens on first use, so a tab made before it opened still keeps its runs.
+    private sealed class SharedHistoryRecorder(Workbench workbench, DatabaseSession session, Action recorded)
+        : IHistoryRecorder
+    {
+        public async Task RecordAsync(HistoryRun run)
+        {
+            if (await workbench.GetHistoryAsync().ConfigureAwait(true) is { } history)
+            {
+                await new CoreHistoryRecorder(history, session, recorded).RecordAsync(run).ConfigureAwait(true);
+            }
+        }
     }
 }

@@ -28,3 +28,16 @@ extension UITextView {
         writingToolsBehavior = .none
     }
 }
+
+// The bar keeps traits of its own beside its field's, so both are set.
+extension UISearchBar {
+    func applyLiteralInputTraits() {
+        autocorrectionType = .no
+        autocapitalizationType = .none
+        spellCheckingType = .no
+        smartQuotesType = .no
+        smartDashesType = .no
+        smartInsertDeleteType = .no
+        searchTextField.applyLiteralInputTraits()
+    }
+}

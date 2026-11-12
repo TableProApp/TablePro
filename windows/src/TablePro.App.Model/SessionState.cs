@@ -1,9 +1,14 @@
+using TablePro.Interop;
+
 namespace TablePro.App.Model;
 
 public enum TabKind
 {
     Query,
     Table,
+
+    // A function, procedure, trigger or sequence, shown as its definition.
+    Definition,
 }
 
 public sealed record SessionTab
@@ -22,6 +27,119 @@ public sealed record SessionTab
     public int? PageSize { get; set; }
 
     public long? Offset { get; set; }
+
+    // The ObjectKind name a table or definition tab was opened for.
+    public string? ObjectKind { get; set; }
+
+    // The table a trigger fires on.
+    public string? ParentTable { get; set; }
+
+    public SavedFilter? Filter { get; set; }
+
+    // The database a query tab opened from a definition runs in, where the definition names none.
+    public string? Database { get; set; }
+
+    // A name this build does not define, as from a later build, reads as the fallback.
+    public ObjectKind ObjectKindOr(ObjectKind fallback) =>
+        SavedName.TryParse(ObjectKind, out ObjectKind kind) ? kind : fallback;
+}
+
+// A table tab's filter as the session file keeps it, its operators and combinator by name.
+public sealed record SavedFilter
+{
+    public string Combinator { get; set; } = nameof(FilterCombinator.And);
+
+    public IReadOnlyList<SavedFilterRule> Rules { get; set; } = [];
+
+    public string? RawSql { get; set; }
+
+    public static SavedFilter From(TableFilter filter)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        return new SavedFilter
+        {
+            Combinator = Enum.GetName(filter.Combinator) ?? nameof(FilterCombinator.And),
+            Rules = [.. filter.Rules.Select(rule => new SavedFilterRule
+            {
+                Column = rule.Column,
+                Operator = Enum.GetName(rule.Operator) ?? string.Empty,
+                Values = ValuesOf(rule.Value),
+            })],
+            RawSql = filter.RawSql,
+        };
+    }
+
+    // A rule this build cannot read back, as an operator a later build added, is left out rather than refused.
+    public TableFilter? ToFilter()
+    {
+        List<FilterRule> rules = [];
+        foreach (var saved in Rules ?? [])
+        {
+            if (saved is { Column.Length: > 0 }
+                && SavedName.TryParse(saved.Operator, out FilterOperator op)
+                && TryValue(op, saved.Values ?? [], out var value))
+            {
+                rules.Add(new FilterRule(saved.Column, op, value));
+            }
+        }
+
+        var raw = string.IsNullOrWhiteSpace(RawSql) ? null : RawSql;
+        if (rules.Count == 0 && raw is null)
+        {
+            return null;
+        }
+
+        var combinator = SavedName.TryParse(Combinator, out FilterCombinator named) ? named : FilterCombinator.And;
+        return new TableFilter(combinator, rules, raw);
+    }
+
+    private static string[] ValuesOf(FilterValue? value) => value switch
+    {
+        FilterValue.One single => [single.Value],
+        FilterValue.Pair pair => [pair.Low, pair.High],
+        FilterValue.List list => [.. list.Values],
+        _ => [],
+    };
+
+    // The operator says how many values it takes, as the filter bar reads it.
+    private static bool TryValue(FilterOperator op, IReadOnlyList<string> values, out FilterValue? value)
+    {
+        value = null;
+        switch (TableFilterDraft.ShapeOf(op))
+        {
+            case FilterValueShape.None:
+                return true;
+            case FilterValueShape.One when values.Count == 1:
+                value = new FilterValue.One(values[0]);
+                return true;
+            case FilterValueShape.Two when values.Count == 2:
+                value = new FilterValue.Pair(values[0], values[1]);
+                return true;
+            case FilterValueShape.List when values.Count > 0:
+                value = new FilterValue.List([.. values]);
+                return true;
+            default:
+                return false;
+        }
+    }
+}
+
+public sealed record SavedFilterRule
+{
+    public string Column { get; set; } = string.Empty;
+
+    public string Operator { get; set; } = string.Empty;
+
+    // None for the null tests, one value, the two bounds of Between, or the items of In and Not in.
+    public IReadOnlyList<string> Values { get; set; } = [];
+}
+
+internal static class SavedName
+{
+    // Only a name this build defines, never a number, so a file from another build cannot pick some other value.
+    public static bool TryParse<T>(string? name, out T value)
+        where T : struct, Enum =>
+        Enum.TryParse(name, out value) && string.Equals(Enum.GetName(value), name, StringComparison.Ordinal);
 }
 
 // A saved connection is reopened by id, a file opened without saving by its path.

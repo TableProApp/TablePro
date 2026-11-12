@@ -20,6 +20,12 @@ public interface IResultsView
 
     TransactionState Transaction { get; }
 
+    // Null from the start of each ShowRunAsync until its Finished arrives, so a run that never ends has none.
+    QueryOutcome? Outcome { get; }
+
+    // The counts the run's CommandCompleted events carried, summed; null when none carried one.
+    long? RowsAffected { get; }
+
     ResultSet? ShownSet { get; }
 
     event EventHandler? ShownSetChanged;

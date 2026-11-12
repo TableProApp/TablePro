@@ -1150,13 +1150,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private SessionState SessionSnapshot()
     {
-        var connections = _open.Select(open => open.Snapshot()).ToList();
+        var connections = _open.Select(open => Persisted(open.Snapshot())).ToList();
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
         var windows = _tabWindows
             .Where(window => window._front is not null)
             .Select(window => new TabWindowState
             {
-                Connection = window._front!.Snapshot(),
+                Connection = Persisted(window._front!.Snapshot()),
                 Placement = WindowInterop.Placement(window),
             })
             .Where(window => window.Connection.Tabs.Count > 0)
@@ -1171,6 +1171,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         };
     }
 
+    // Only session.json leaves definition tabs out; a reconnect and a tab window keep them.
+    private static SessionConnection Persisted(SessionConnection connection)
+    {
+        var (tabs, selected) = SessionTabs.Persisted(connection.Tabs, connection.SelectedTab);
+        return connection with { Tabs = tabs, SelectedTab = selected };
+    }
+
     private void UpdateCommands()
     {
         var workspace = Workspace;
@@ -1183,13 +1190,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuShowObjects.IsEnabled = workspace is not null;
         MenuShowObjects.IsChecked = workspace?.ObjectsVisible ?? true;
         MenuFilterObjects.IsEnabled = workspace is not null;
+        MenuShowHistory.IsEnabled = workspace is not null;
+        MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
+        MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuRefresh.IsEnabled = workspace is not null;
         MenuEditConnection.IsEnabled = front?.ConnectionId is not null;
         MenuReconnect.IsEnabled = front is { State: ConnectionState.Connected or ConnectionState.Failed };
         MenuDisconnect.IsEnabled = front is not null;
-        MenuRun.IsEnabled = tab is { IsRunning: false };
+        // A definition tab reads its text with Reload, not Run, and has nothing to stop.
+        MenuRun.IsEnabled = tab is QueryTabView { IsRunning: false } or TableTabView { IsRunning: false };
         MenuRunStatement.IsEnabled = tab is QueryTabView { IsRunning: false };
-        MenuStop.IsEnabled = tab is { IsRunning: true };
+        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
         foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind })
         {
@@ -1200,6 +1211,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuSelectAll.IsEnabled = tab is not null;
         // A query tab never edits; a table tab says what its page can do now.
         var table = tab as TableTabView;
+        MenuFilterRows.IsEnabled = table is not null;
         MenuSaveChanges.IsEnabled = table is { CanSave: true };
         MenuDiscardChanges.IsEnabled = table is { CanDiscard: true };
         MenuPreviewSql.IsEnabled = table is { CanPreview: true };
@@ -1240,8 +1252,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             case { MessagesTarget: { } messages }:
                 messages.CopySelectionToClipboard();
                 break;
-            case { GridIsTarget: true } tab:
-                await tab.Grid.CopySelectionAsync();
+            case { GridIsTarget: true, Grid: { } grid }:
+                await grid.CopySelectionAsync();
                 break;
             case { Editor: { } editor }:
                 editor.Copy();
@@ -1268,10 +1280,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        if (Workspace?.ActiveTab is { GridIsTarget: true } tab)
+        if (Workspace?.ActiveTab is { GridIsTarget: true, Grid: { } grid })
         {
-            tab.Grid.SelectAll();
-            tab.Grid.Focus(FocusState.Programmatic);
+            grid.SelectAll();
+            grid.Focus(FocusState.Programmatic);
             return;
         }
 
@@ -1310,6 +1322,26 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     private void OnFilterObjects(object sender, RoutedEventArgs e) => Workspace?.FocusFilter();
+
+    private async void OnToggleHistory(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ToggleHistoryAsync();
+        }
+
+        UpdateCommands();
+    }
+
+    private async void OnExportResults(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ExportAsync();
+        }
+    }
+
+    private void OnFilterRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.ToggleFilter();
 
     private async void OnRefresh(object sender, RoutedEventArgs e)
     {

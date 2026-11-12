@@ -33,8 +33,7 @@ private struct ForeignKeyPreviewModifier: ViewModifier {
     @State private var openedReference: ForeignKeyReference?
 
     private var currentSchema: String? {
-        guard let coordinator, coordinator.supportsSchemas else { return nil }
-        return coordinator.activeSchema
+        coordinator?.tableQualifier
     }
 
     func body(content: Content) -> some View {

@@ -76,12 +76,54 @@ struct ClipboardExporterFidelityTests {
         }
     }
 
-    @Test("real numbers are still emitted unquoted")
+    @Test("numbers in a numeric column are emitted unquoted")
     func realNumbersStayNumbers() {
-        #expect(json(["1", "0", "x"]).contains("\"zip\": 0"))
-        #expect(json(["1", "-12", "x"]).contains("\"zip\": -12"))
-        #expect(json(["1", "1.5", "x"]).contains("\"zip\": 1.5"))
-        #expect(json(["1", "1e10", "x"]).contains("\"zip\": 1e10"))
+        #expect(json(["0", "1", "x"]).contains("\"id\": 0"))
+        #expect(json(["-12", "1", "x"]).contains("\"id\": -12"))
+        #expect(json(["1.5", "1", "x"]).contains("\"id\": 1.5"))
+        #expect(json(["1e10", "1", "x"]).contains("\"id\": 1e10"))
+    }
+
+    @Test("text that reads like a number or a boolean stays a string in a text column")
+    func textColumnsStayStrings() throws {
+        for value in ["1e10", "12345678901234567890", "0", "true", "false"] {
+            let text = json(["1", value, value])
+            #expect(text.contains("\"zip\": \"\(value)\""), "\(value) should stay quoted")
+            #expect(text.contains("\"note\": \"\(value)\""), "\(value) should stay quoted")
+            _ = try JSONSerialization.jsonObject(with: try #require(text.data(using: .utf8)))
+        }
+    }
+
+    @Test("each column's declared type picks the JSON type")
+    func declaredTypePicksTheJSONType() throws {
+        func value(_ text: String, typeName: String) throws -> String {
+            let output = ClipboardExporter.exportRow(
+                columns: [ColumnInfo(name: "v", typeName: typeName, ordinalPosition: 0)], row: [text], format: .json,
+                tableName: "t", databaseType: .postgresql, driver: nil
+            )
+            _ = try JSONSerialization.jsonObject(with: try #require(output.data(using: .utf8)))
+            let line = try #require(output.split(separator: "\n").first { $0.contains("\"v\"") })
+            return String(line.drop { $0 != ":" }.dropFirst(2))
+        }
+        #expect(try value("t", typeName: "bool") == "true")
+        #expect(try value("f", typeName: "bool") == "false")
+        #expect(try value("TRUE", typeName: "BOOLEAN") == "true")
+        #expect(try value("false", typeName: "Nullable(Bool)") == "false")
+        #expect(try value("yes", typeName: "bool") == "\"yes\"")
+        #expect(try value("42", typeName: "int4") == "42")
+        #expect(try value("12.50", typeName: "numeric(10,2)") == "12.50")
+        #expect(try value("-1.5e3", typeName: "Float64") == "-1.5e3")
+        #expect(try value("18446744073709551615", typeName: "UInt64") == "18446744073709551615")
+        #expect(try value("1", typeName: "bit") == "1")
+        #expect(try value("NaN", typeName: "float8") == "\"NaN\"")
+        #expect(try value("$5.00", typeName: "money") == "\"$5.00\"")
+        #expect(try value("t", typeName: "text") == "\"t\"")
+        #expect(try value("1", typeName: "BOOLEAN") == "true")
+        #expect(try value("0", typeName: "BOOLEAN") == "false")
+        // SQLite reports no type for an expression such as count(*), so its value decides.
+        #expect(try value("42", typeName: "") == "42")
+        #expect(try value("true", typeName: "") == "true")
+        #expect(try value("01234", typeName: "") == "\"01234\"")
     }
 
     @Test("a NULL is emitted as JSON null")
