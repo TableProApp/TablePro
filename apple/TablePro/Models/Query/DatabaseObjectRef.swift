@@ -14,8 +14,10 @@ enum DatabaseObjectKind: String, Codable, Sendable, Hashable {
     case userType
     case view
     case materializedView
+    // A kind the driver declares; the ref's `serverKind` says which one.
+    case serverObject
 
-    var sidebarObjectKind: SidebarObjectKind {
+    var sidebarObjectKind: SidebarObjectKind? {
         switch self {
         case .procedure:        return .procedure
         case .function:         return .function
@@ -23,6 +25,7 @@ enum DatabaseObjectKind: String, Codable, Sendable, Hashable {
         case .userType:         return .type
         case .view:             return .view
         case .materializedView: return .materializedView
+        case .serverObject:     return nil
         }
     }
 
@@ -37,11 +40,30 @@ enum DatabaseObjectKind: String, Codable, Sendable, Hashable {
     }
 
     var displayName: String {
-        sidebarObjectKind.displayName
+        sidebarObjectKind?.displayName ?? String(localized: "Object")
     }
 
     var iconName: String {
-        sidebarObjectKind.iconName
+        sidebarObjectKind?.iconName ?? "shippingbox"
+    }
+}
+
+struct ServerObjectKindRef: Hashable, Codable, Sendable {
+    let id: String
+    let displayName: String
+    let iconName: String
+    // Optional so a ref written without it decodes, and reads as a container kind.
+    let scope: SidebarServerObjectKind.Scope?
+
+    init(id: String, displayName: String, iconName: String, scope: SidebarServerObjectKind.Scope? = nil) {
+        self.id = id
+        self.displayName = displayName
+        self.iconName = iconName
+        self.scope = scope
+    }
+
+    init(_ kind: SidebarServerObjectKind) {
+        self.init(id: kind.id, displayName: kind.displayName, iconName: kind.iconName, scope: kind.scope)
     }
 }
 
@@ -69,6 +91,9 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
     /// re-list an entire schema to recover it, and short enough to persist with the tab.
     let attributes: [ObjectAttribute]
 
+    // Server objects only, and optional so a tab persisted before them still decodes.
+    let serverKind: ServerObjectKindRef?
+
     init(
         kind: DatabaseObjectKind,
         name: String,
@@ -78,7 +103,8 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         identity: String? = nil,
         argumentSignature: String? = nil,
         typeKind: UserDefinedTypeInfo.Kind? = nil,
-        attributes: [ObjectAttribute] = []
+        attributes: [ObjectAttribute] = [],
+        serverKind: ServerObjectKindRef? = nil
     ) {
         self.kind = kind
         self.name = name
@@ -89,6 +115,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         self.argumentSignature = argumentSignature
         self.typeKind = typeKind
         self.attributes = attributes
+        self.serverKind = serverKind
     }
 
     init(routine: RoutineInfo, database: String) {
@@ -132,8 +159,19 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         )
     }
 
-    /// What the tab is titled and what the viewer's header shows: enough to tell two overloads
-    /// apart, and enough to tell two same-named triggers on different tables apart.
+    init(serverObject: ServerObjectInfo, kind: SidebarServerObjectKind, database: String) {
+        self.init(
+            kind: .serverObject,
+            name: serverObject.name,
+            database: database,
+            schema: serverObject.schema,
+            identity: serverObject.identity,
+            attributes: serverObject.attributes,
+            serverKind: ServerObjectKindRef(kind)
+        )
+    }
+
+    // Enough to tell two overloads, or two same-named triggers on different tables, apart.
     var displayIdentity: String {
         switch kind {
         case .procedure, .function:
@@ -144,19 +182,31 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
             return String(format: String(localized: "%1$@ on %2$@"), qualifiedName, table)
         case .userType, .view, .materializedView:
             return qualifiedName
+        case .serverObject:
+            return isDatabaseScoped ? name : qualifiedName
         }
     }
 
-    /// The kind's name for the header capsule. A type says which kind of type it is, because an
-    /// enum and a domain are edited differently and the reader should know which one opened.
+    // A database-wide object's schema is where it keeps its members, never part of its name.
+    var isDatabaseScoped: Bool {
+        kind == .serverObject && serverKind?.scope == .database
+    }
+
+    // A type names its own kind, since an enum and a domain are edited differently.
     var kindDisplayName: String {
-        guard kind == .userType else { return kind.displayName }
-        return (typeKind ?? .other).displayName
+        switch kind {
+        case .userType: return (typeKind ?? .other).displayName
+        case .serverObject: return serverKind?.displayName ?? kind.displayName
+        case .procedure, .function, .trigger, .view, .materializedView: return kind.displayName
+        }
     }
 
     var kindIconName: String {
-        guard kind == .userType else { return kind.iconName }
-        return (typeKind ?? .other).iconName
+        switch kind {
+        case .userType: return (typeKind ?? .other).iconName
+        case .serverObject: return serverKind?.iconName ?? kind.iconName
+        case .procedure, .function, .trigger, .view, .materializedView: return kind.iconName
+        }
     }
 
     var qualifiedName: String {
@@ -164,8 +214,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         return "\(schema).\(name)"
     }
 
-    /// A ref built where no database was selected carries an empty one, and an empty database is
-    /// server-scoped. Resolving it once keeps the tab-dedup key and the loader's scope agreeing.
+    // An empty database is server-scoped; resolving it once keeps the tab-dedup key and the loader's scope agreeing.
     func resolvingDatabase(_ fallback: String) -> DatabaseObjectRef {
         guard database.isEmpty, !fallback.isEmpty else { return self }
         return DatabaseObjectRef(
@@ -177,7 +226,8 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
             identity: identity,
             argumentSignature: argumentSignature,
             typeKind: typeKind,
-            attributes: attributes
+            attributes: attributes,
+            serverKind: serverKind
         )
     }
 
@@ -191,7 +241,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
                 argumentSignature: argumentSignature,
                 identity: identity
             )
-        case .trigger, .userType, .view, .materializedView:
+        case .trigger, .userType, .view, .materializedView, .serverObject:
             return nil
         }
     }
@@ -212,16 +262,26 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         )
     }
 
-    /// Whether two refs name one object. The attributes are what a listing learned and change with
-    /// a comment edit, so they are left out. An identity is only compared, never trusted alone: some
-    /// drivers fill it with the object's kind or its signature, which many objects share.
+    var serverObject: ServerObjectInfo? {
+        guard kind == .serverObject, let serverKind else { return nil }
+        return ServerObjectInfo(
+            kindId: serverKind.id,
+            name: name,
+            schema: schema,
+            identity: identity,
+            attributes: attributes
+        )
+    }
+
+    // Attributes change with a comment edit, and some drivers fill identity with a value many objects share.
     func namesSameObject(as other: DatabaseObjectRef) -> Bool {
         guard kind == other.kind,
               database == other.database,
               name == other.name,
               schema == other.schema,
               table == other.table,
-              argumentSignature == other.argumentSignature
+              argumentSignature == other.argumentSignature,
+              serverKind?.id == other.serverKind?.id
         else { return false }
         guard let identity, let otherIdentity = other.identity else { return true }
         return identity == otherIdentity

@@ -260,6 +260,7 @@ extension RowEditingCoordinator {
         }
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
+        let commitMode = DatabaseManager.shared.commitMode(for: conn.id)
         let serverOwned = serverOwnedColumns(of: savingTabId)
         let columnTypeNames = parent.changeManager.columnTypeNames
 
@@ -277,7 +278,7 @@ extension RowEditingCoordinator {
                     route: route,
                     cancellation: .protectedWrite
                 ) { driver in
-                    try await DataWriteExecutor.run(plan, mode: .readWrite, on: driver)
+                    try await DataWriteExecutor.run(plan, mode: .readWrite, commitMode: commitMode, on: driver)
                 }
 
                 let history = recordSuccessHistory(

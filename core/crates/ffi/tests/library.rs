@@ -543,30 +543,44 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
         .unwrap();
 
     let session = core
-        .connect_saved(saved.id.clone(), ConnectionSecrets::default(), None, None)
+        .connect_saved(
+            saved.id.clone(),
+            ConnectionSecrets::default(),
+            ConnectionSecrets::default(),
+            None,
+            None,
+        )
         .await
         .unwrap();
+    struct Quiet;
+    impl tablepro_ffi::RunListener for Quiet {
+        fn events_pending(&self) {}
+    }
     let objects = session.objects(ObjectScopeArg::DefaultSchema, None).await.unwrap();
     let browse = session
-        .table_query(
+        .read_table_page(
             TableName {
                 schema: None,
                 name: "people".to_owned(),
             },
             None,
+            None,
             100,
             0,
+            Box::new(Quiet),
             None,
         )
         .await
         .unwrap();
+    let outcome = browse.run().outcome().await.unwrap();
+    let rows = browse.run().result_set(0).map(|set| set.row_count());
     session.close().await.unwrap();
     let snapshot = library.snapshot().await.unwrap();
 
     assert!(objects.iter().any(|object| object.name == "people"));
-    assert!(browse.sql.contains("FROM \"people\""), "{browse:?}");
-    assert!(browse.sql.contains("100"), "{browse:?}");
-    assert_eq!(browse.visible_columns, 2);
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    assert_eq!(rows, Some(0));
+    assert_eq!(browse.visible_columns(), 2);
     assert_eq!(snapshot.recent, [saved.id]);
     assert!(snapshot.connections[0].last_opened_ms.is_some());
 }
@@ -600,6 +614,46 @@ async fn a_test_logs_in_and_a_missing_file_fails_by_code() {
 }
 
 #[tokio::test]
+async fn a_typed_secret_is_kept_once_its_connect_logs_in_and_not_when_it_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("people.sqlite");
+    let secrets = MemorySecrets::default();
+    let core = core(dir.path(), secrets.clone());
+    sqlite_file(&core, &path).await;
+    let library = core.library().unwrap();
+    let people = library
+        .save(
+            record("people", "sqlite", &path.display().to_string()),
+            ConnectionSecrets::default(),
+        )
+        .await
+        .unwrap();
+    let mut shop = record("shop", "postgres", "shop");
+    shop.host = "127.0.0.1".to_owned();
+    shop.port = 1;
+    let shop = library.save(shop, ConnectionSecrets::default()).await.unwrap();
+    let typed = || ConnectionSecrets {
+        database_password: Some(SecretString::from("typed")),
+        ..ConnectionSecrets::default()
+    };
+
+    core.connect_saved(people.id.clone(), typed(), typed(), None, None)
+        .await
+        .unwrap();
+    core.connect_saved(shop.id.clone(), typed(), typed(), None, None)
+        .await
+        .unwrap_err();
+
+    let held = secrets.0.lock().unwrap();
+    assert_eq!(
+        held.get(&(people.id, SecretKindTag::DatabasePassword))
+            .map(|secret| secret.expose_secret().to_owned()),
+        Some("typed".to_owned())
+    );
+    assert!(!held.contains_key(&(shop.id, SecretKindTag::DatabasePassword)));
+}
+
+#[tokio::test]
 async fn a_network_login_with_no_saved_password_says_so() {
     let dir = tempfile::tempdir().unwrap();
     let core = core(dir.path(), MemorySecrets::default());
@@ -610,7 +664,13 @@ async fn a_network_login_with_no_saved_password_says_so() {
     let saved = library.save(shop, ConnectionSecrets::default()).await.unwrap();
 
     let error = core
-        .connect_saved(saved.id, ConnectionSecrets::default(), None, None)
+        .connect_saved(
+            saved.id,
+            ConnectionSecrets::default(),
+            ConnectionSecrets::default(),
+            None,
+            None,
+        )
         .await
         .unwrap_err();
 
@@ -638,6 +698,7 @@ async fn a_password_typed_at_connect_is_used_when_none_is_saved() {
                 database_password: Some(SecretString::from("typed")),
                 ..ConnectionSecrets::default()
             },
+            ConnectionSecrets::default(),
             None,
             None,
         )
@@ -769,6 +830,7 @@ async fn an_empty_database_password_survives_a_separately_stored_ssh_password() 
                     database_password: Some(SecretString::from("")),
                     ..ConnectionSecrets::default()
                 },
+                ConnectionSecrets::default(),
                 None,
                 None,
             )

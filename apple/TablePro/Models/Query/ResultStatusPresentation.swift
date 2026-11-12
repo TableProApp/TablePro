@@ -52,6 +52,8 @@ struct ResultStatusPresentation: Equatable {
     /// ("2/4"). It never leaves the bar: Pin and Close live in its menu and have no other one-click
     /// route, which is the same reason nothing that opens a popover may leave.
     let resultSetMenuIsSpelledOut: Bool
+    // Opens a menu, not a popover, and Database > Auto Refresh carries the same choice.
+    let showsAutoRefresh: Bool
 
     init(tier: StatusBarTier) {
         switch tier {
@@ -61,18 +63,21 @@ struct ResultStatusPresentation: Equatable {
             showsEdgePageButtons = true
             pageSizeIsInline = true
             resultSetMenuIsSpelledOut = true
+            showsAutoRefresh = true
         case .compact:
             showsControlTitles = false
             modeSwitcherIsSegmented = true
             showsEdgePageButtons = false
             pageSizeIsInline = true
             resultSetMenuIsSpelledOut = false
+            showsAutoRefresh = true
         case .narrow:
             showsControlTitles = false
             modeSwitcherIsSegmented = false
             showsEdgePageButtons = false
             pageSizeIsInline = false
             resultSetMenuIsSpelledOut = false
+            showsAutoRefresh = false
         }
     }
 }

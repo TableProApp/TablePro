@@ -154,8 +154,9 @@ extension DataGridViewController: NSTableViewDataSource, NSTableViewDelegate {
 extension DataGridViewController: NSMenuDelegate {
     // Built from clickedRow and clickedColumn, so AppKit draws the clicked-row ring and the selection does not move.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
+        // The header menu comes built, and has this delegate only so its opening is seen.
         guard let pane = panes.first(where: { $0.tableView.menu === menu }) else { return }
+        menu.removeAllItems()
         let table = pane.tableView
         let row = table.clickedRow
         let built: NSMenu?
@@ -178,6 +179,16 @@ extension DataGridViewController: NSMenuDelegate {
     func headerMenu(forTableColumn tableColumn: NSTableColumn, in kind: DataGridPane.Kind) -> NSMenu? {
         let pane = container.pane(kind)
         guard let id = pane.columnID(of: tableColumn), let column = model.columns.column(id: id) else { return nil }
-        return headerMenu(for: column)
+        let menu = headerMenu(for: column)
+        menu?.delegate = self
+        return menu
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        isShowingContextMenu = true
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        isShowingContextMenu = false
     }
 }

@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // The primary's alone: it writes the session for every window.
     private readonly SessionWriter? _saves;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer;
+    private readonly SessionEnd? _sessionEnd;
     private TimeSpan _nextRetry = SaveDelay;
     private SettingsView? _settings;
     private OpenConnection? _front;
@@ -71,7 +72,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             timer.Interval = SaveDelay;
             await SaveSessionInBackgroundAsync();
         };
-        var sessionEnd = new SessionEnd(this, OnSessionEnding);
+        var sessionEnd = new SessionEnd(this, OnSessionEnding, ShutdownBlockReason, OnSessionHeld);
+        _sessionEnd = sessionEnd;
         Closed += (_, _) => sessionEnd.Dispose();
 
         // Where the window stood last time, whether or not its connections come back.
@@ -694,6 +696,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         var reconnecting = result.Connect && open is { State: ConnectionState.Connected or ConnectionState.Failed }
             ? open
             : null;
+        if (result.ChangesConnect)
+        {
+            RestartConnects(result.Saved);
+        }
+
         await ApplySafeModeAsync(result.Saved, reconnecting);
         if (!result.Connect)
         {
@@ -708,10 +715,22 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                 return;
             }
 
+            DropSpare();
             await reconnecting.DisconnectAsync(keepTabs: true);
         }
 
         Connect(result.Saved);
+    }
+
+    // The core read the saved connection as each connect under way began, in every window.
+    private void RestartConnects(SavedConnection saved)
+    {
+        List<MainWindow> windows = [this, .. _tabWindows];
+        var matching = windows.SelectMany(window => window._open).Where(item => item.Matches(saved.Id, null));
+        foreach (var each in matching.ToList())
+        {
+            _ = each.RestartConnectAsync();
+        }
     }
 
     // A saved level reaches every window's open sessions of the connection at once, as on Linux. Read only is set
@@ -1061,8 +1080,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             _primary._spare = null;
         }
+        else if (_primary._spare is { _front.Session: { } held }
+            && _open.Any(open => ReferenceEquals(open.Session, held)))
+        {
+            // The hidden spare adopted this window's session on a press on one of its tabs, and would keep it open.
+            _primary.DropSpare();
+        }
 
         _primary.SessionChanged();
+        _primary._sessionEnd?.Update();
         foreach (var open in _open)
         {
             _ = open.DisconnectAsync();
@@ -1148,15 +1174,47 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         });
     }
 
+    // A forced Restart Manager close ends the app with no WM_ENDSESSION after a FALSE, so the session is written first.
+    private void OnSessionHeld()
+    {
+        if (_closing || _saves is null)
+        {
+            return;
+        }
+
+        _ = _saves.Save(SessionSnapshot());
+        _workbench.SaveUnsavedSettings();
+    }
+
+    // A running query does not hold a sign-out: stopping it is the default the shutdown guidance asks for.
+    private string? ShutdownBlockReason()
+    {
+        if (_closing)
+        {
+            return null;
+        }
+
+        var pending = AllWindows
+            .SelectMany(window => window._open)
+            .Aggregate(PendingWork.None, (all, open) => all.Combine(open.View.Pending()));
+        return pending switch
+        {
+            { UnsavedChanges: true, HeldTransaction: true } => Strings.Get("ShutdownBlockedBoth"),
+            { UnsavedChanges: true } => Strings.Get("ShutdownBlockedUnsaved"),
+            { HeldTransaction: true } => Strings.Get("ShutdownBlockedTransaction"),
+            _ => null,
+        };
+    }
+
     private SessionState SessionSnapshot()
     {
-        var connections = _open.Select(open => open.Snapshot()).ToList();
+        var connections = _open.Select(open => Persisted(open.Snapshot())).ToList();
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
         var windows = _tabWindows
             .Where(window => window._front is not null)
             .Select(window => new TabWindowState
             {
-                Connection = window._front!.Snapshot(),
+                Connection = Persisted(window._front!.Snapshot()),
                 Placement = WindowInterop.Placement(window),
             })
             .Where(window => window.Connection.Tabs.Count > 0)
@@ -1171,6 +1229,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         };
     }
 
+    // Only session.json leaves definition tabs out; a reconnect and a tab window keep them.
+    private static SessionConnection Persisted(SessionConnection connection)
+    {
+        var (tabs, selected) = SessionTabs.Persisted(connection.Tabs, connection.SelectedTab);
+        return connection with { Tabs = tabs, SelectedTab = selected };
+    }
+
     private void UpdateCommands()
     {
         var workspace = Workspace;
@@ -1183,13 +1248,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuShowObjects.IsEnabled = workspace is not null;
         MenuShowObjects.IsChecked = workspace?.ObjectsVisible ?? true;
         MenuFilterObjects.IsEnabled = workspace is not null;
+        MenuShowHistory.IsEnabled = workspace is not null;
+        MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
+        MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuRefresh.IsEnabled = workspace is not null;
         MenuEditConnection.IsEnabled = front?.ConnectionId is not null;
         MenuReconnect.IsEnabled = front is { State: ConnectionState.Connected or ConnectionState.Failed };
         MenuDisconnect.IsEnabled = front is not null;
-        MenuRun.IsEnabled = tab is { IsRunning: false };
+        // A definition tab reads its text with Reload, not Run, and has nothing to stop.
+        MenuRun.IsEnabled = tab is QueryTabView { IsRunning: false } or TableTabView { IsRunning: false };
         MenuRunStatement.IsEnabled = tab is QueryTabView { IsRunning: false };
-        MenuStop.IsEnabled = tab is { IsRunning: true };
+        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
         foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind })
         {
@@ -1200,12 +1269,14 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuSelectAll.IsEnabled = tab is not null;
         // A query tab never edits; a table tab says what its page can do now.
         var table = tab as TableTabView;
+        MenuFilterRows.IsEnabled = table is not null;
         MenuSaveChanges.IsEnabled = table is { CanSave: true };
         MenuDiscardChanges.IsEnabled = table is { CanDiscard: true };
         MenuPreviewSql.IsEnabled = table is { CanPreview: true };
         MenuAddRow.IsEnabled = table is { CanAddRow: true };
         MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true };
         MenuDeleteRows.IsEnabled = table is { CanChangeRows: true };
+        _primary._sessionEnd?.Update();
     }
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => NewConnection();
@@ -1240,8 +1311,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             case { MessagesTarget: { } messages }:
                 messages.CopySelectionToClipboard();
                 break;
-            case { GridIsTarget: true } tab:
-                await tab.Grid.CopySelectionAsync();
+            case { GridIsTarget: true, Grid: { } grid }:
+                await grid.CopySelectionAsync();
                 break;
             case { Editor: { } editor }:
                 editor.Copy();
@@ -1268,10 +1339,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        if (Workspace?.ActiveTab is { GridIsTarget: true } tab)
+        if (Workspace?.ActiveTab is { GridIsTarget: true, Grid: { } grid })
         {
-            tab.Grid.SelectAll();
-            tab.Grid.Focus(FocusState.Programmatic);
+            grid.SelectAll();
+            grid.Focus(FocusState.Programmatic);
             return;
         }
 
@@ -1310,6 +1381,26 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     private void OnFilterObjects(object sender, RoutedEventArgs e) => Workspace?.FocusFilter();
+
+    private async void OnToggleHistory(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ToggleHistoryAsync();
+        }
+
+        UpdateCommands();
+    }
+
+    private async void OnExportResults(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ExportAsync();
+        }
+    }
+
+    private void OnFilterRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.ToggleFilter();
 
     private async void OnRefresh(object sender, RoutedEventArgs e)
     {

@@ -22,7 +22,7 @@ struct DataBrowserView: View {
     // Not persisted. This search runs on the server and is applied on submit, so a value restored
     // into the field would name a filter the rows on screen were never fetched under.
     @State private var searchText = ""
-    @FocusState private var searchFocused: Bool
+    @State private var searchFocused = false
     @State private var showInsertSheet = false
     @State private var showFilterSheet = false
     @State private var showShareSheet = false
@@ -31,7 +31,7 @@ struct DataBrowserView: View {
     @State private var showMatchedRow = false
     @State private var showGoToPage = false
     @State private var goToPageInput = ""
-    @State private var deleteTarget: RowLocator?
+    @State private var deleteTarget: PendingRowDelete?
     @State private var fkPreviewItem: FKPreviewItem?
     @State private var shareText = ""
     @State private var isCompletingCells = false
@@ -40,7 +40,7 @@ struct DataBrowserView: View {
     @AppStorage(AppPreferences.rowLayoutKey) private var preferredLayout: RowLayout?
 
     private var activeSchema: String? {
-        coordinator.supportsSchemas ? coordinator.activeSchema : nil
+        coordinator.tableQualifier
     }
 
     private var browserSchema: String? {
@@ -137,6 +137,9 @@ struct DataBrowserView: View {
             }
             // A redial or another window's database switch hands this table a new session; a referenced table keeps its schema.
             .onChange(of: BrowseSource(session: session, schema: browserSchema)) { _, source in
+                // The confirmation names a row of the table this browser showed before.
+                showDeleteConfirmation = false
+                deleteTarget = nil
                 guard source.driver != nil else { return }
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
@@ -249,11 +252,12 @@ struct DataBrowserView: View {
             content
                 .tableTitle(table.name, schema: displaySchema)
                 .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $searchText, prompt: "Search all columns")
-                .searchFocused($searchFocused)
-                .textInputAutocapitalization(.never)
-                .onSubmit(of: .search) {
-                    Task { await viewModel.applySearch(searchText) }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    LiteralSearchField("Search all columns", text: $searchText, isEditing: $searchFocused) {
+                        Task { await viewModel.applySearch(searchText) }
+                    }
+                    .padding(.horizontal, 8)
+                    .background(.bar)
                 }
                 .onChange(of: searchText) { oldValue, newValue in
                     if newValue.isEmpty, !oldValue.isEmpty, viewModel.hasActiveSearch {
@@ -435,7 +439,7 @@ struct DataBrowserView: View {
     }
 
     private func confirmDelete(_ locator: RowLocator) {
-        deleteTarget = locator
+        deleteTarget = PendingRowDelete(locator: locator, source: viewModel.rowSource)
         showDeleteConfirmation = true
     }
 
@@ -674,7 +678,17 @@ struct DataBrowserView: View {
         }
     }
 
-    private func performDelete(_ locator: RowLocator) async {
+    private func performDelete(_ pending: PendingRowDelete) async {
+        if let refusal = coordinator.databaseMoveRefusal {
+            viewModel.operationError = refusal
+            hapticError.toggle()
+            return
+        }
+        guard !viewModel.refusesDelete(raisedOn: pending.source) else {
+            hapticError.toggle()
+            return
+        }
+        let locator = pending.locator
         let success = await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(locator) }
         if success {
             hapticSuccess.toggle()
@@ -682,6 +696,11 @@ struct DataBrowserView: View {
             hapticError.toggle()
         }
     }
+}
+
+private struct PendingRowDelete {
+    let locator: RowLocator
+    let source: DataBrowserViewModel.RowSource
 }
 
 private struct BrowseSource: Equatable {

@@ -26,7 +26,13 @@ enum ERDiagramLayout {
         let size: CGSize
     }
 
-    static func compute(graph: ERDiagramGraph) -> [UUID: CGPoint] {
+    // Off the caller's actor, so a superseded layout's task cancels the work itself and not only its result.
+    @concurrent
+    static func layOut(_ graph: ERDiagramGraph) async throws -> [UUID: CGPoint] {
+        try compute(graph: graph)
+    }
+
+    static func compute(graph: ERDiagramGraph) throws -> [UUID: CGPoint] {
         guard !graph.nodes.isEmpty else { return [:] }
 
         let sizes = nodeSizes(graph: graph)
@@ -45,7 +51,7 @@ enum ERDiagramLayout {
         var blocks: [Block] = []
         for clusterId in componentGroups.keys.sorted() {
             let members = componentGroups[clusterId] ?? []
-            let local = forceDirected(members: members, adjacency: adjacency, sizes: sizes)
+            let local = try forceDirected(members: members, adjacency: adjacency, sizes: sizes)
             blocks.append(makeBlock(centers: local, members: members, sizes: sizes))
         }
         if !singletons.isEmpty {
@@ -83,67 +89,70 @@ enum ERDiagramLayout {
 
     // MARK: - Force-Directed Component Layout
 
+    // A component is indexed by its members' order, so each step reads and writes arrays rather than
+    // hashing a UUID per pair: a 300-table component took 1.1 s that way and takes 11 ms this way, measured.
     private static func forceDirected(
         members: [UUID],
         adjacency: [UUID: [UUID]],
         sizes: [UUID: CGSize]
-    ) -> [UUID: CGPoint] {
+    ) throws -> [UUID: CGPoint] {
         guard let first = members.first else { return [:] }
         guard members.count > 1 else { return [first: .zero] }
 
         let count = members.count
         let spacing = idealDistance(members: members, sizes: sizes)
         let edges = uniqueEdges(members: members, adjacency: adjacency)
-        var degree: [UUID: Int] = [:]
+        var degree = ContiguousArray(repeating: 0, count: count)
         for (source, target) in edges {
-            degree[source, default: 0] += 1
-            degree[target, default: 0] += 1
+            degree[source] += 1
+            degree[target] += 1
         }
-        var positions = circularInit(members: members, idealDistance: spacing)
+        var positions = circularInit(count: count, idealDistance: spacing)
         let iterations = max(60, min(300, 2_000 / count))
         var temperature = spacing * 2
 
         for _ in 0..<iterations {
-            let displacement = forceStep(
-                members: members,
-                edges: edges,
-                degree: degree,
-                positions: positions,
-                idealDistance: spacing
-            )
-            for id in members {
-                let move = displacement[id] ?? .zero
+            try Task.checkCancellation()
+            let displacement = forceStep(edges: edges, degree: degree, positions: positions, idealDistance: spacing)
+            for index in 0..<count {
+                let move = displacement[index]
                 let length = max(hypot(move.dx, move.dy), 0.0001)
                 let limited = min(length, temperature)
-                positions[id] = CGPoint(
-                    x: (positions[id]?.x ?? 0) + move.dx / length * limited,
-                    y: (positions[id]?.y ?? 0) + move.dy / length * limited
+                positions[index] = CGPoint(
+                    x: positions[index].x + move.dx / length * limited,
+                    y: positions[index].y + move.dy / length * limited
                 )
             }
             temperature = max(temperature * 0.95, spacing * 0.05)
         }
 
-        positions = rotateToLandscape(members: members, positions: positions)
-        removeOverlaps(members: members, positions: &positions, sizes: sizes)
-        return positions
+        rotateToLandscape(&positions)
+        let boxes = ContiguousArray(members.map { sizes[$0] })
+        try removeOverlaps(positions: &positions, sizes: boxes)
+
+        var placed: [UUID: CGPoint] = [:]
+        placed.reserveCapacity(count)
+        for (index, id) in members.enumerated() {
+            placed[id] = positions[index]
+        }
+        return placed
     }
 
-    private static func rotateToLandscape(members: [UUID], positions: [UUID: CGPoint]) -> [UUID: CGPoint] {
-        guard members.count > 2 else { return positions }
+    private static func rotateToLandscape(_ positions: inout ContiguousArray<CGPoint>) {
+        guard positions.count > 2 else { return }
         var centerX: CGFloat = 0
         var centerY: CGFloat = 0
-        for id in members {
-            centerX += positions[id]?.x ?? 0
-            centerY += positions[id]?.y ?? 0
+        for position in positions {
+            centerX += position.x
+            centerY += position.y
         }
-        centerX /= CGFloat(members.count)
-        centerY /= CGFloat(members.count)
+        centerX /= CGFloat(positions.count)
+        centerY /= CGFloat(positions.count)
 
         var sxx: CGFloat = 0
         var syy: CGFloat = 0
         var sxy: CGFloat = 0
-        for id in members {
-            guard let position = positions[id] else { continue }
+        for position in positions {
             let dx = position.x - centerX
             let dy = position.y - centerY
             sxx += dx * dx
@@ -154,27 +163,27 @@ enum ERDiagramLayout {
         let theta = 0.5 * atan2(2 * sxy, sxx - syy)
         let cosT = cos(-theta)
         let sinT = sin(-theta)
-        var rotated: [UUID: CGPoint] = [:]
-        for id in members {
-            guard let position = positions[id] else { continue }
-            let dx = position.x - centerX
-            let dy = position.y - centerY
-            rotated[id] = CGPoint(x: centerX + dx * cosT - dy * sinT, y: centerY + dx * sinT + dy * cosT)
+        for index in positions.indices {
+            let dx = positions[index].x - centerX
+            let dy = positions[index].y - centerY
+            positions[index] = CGPoint(x: centerX + dx * cosT - dy * sinT, y: centerY + dx * sinT + dy * cosT)
         }
-        return rotated
     }
 
-    private static func uniqueEdges(members: [UUID], adjacency: [UUID: [UUID]]) -> [(UUID, UUID)] {
-        let memberSet = Set(members)
-        var seen: Set<String> = []
-        var edges: [(UUID, UUID)] = []
-        for source in members {
-            for target in adjacency[source] ?? [] where memberSet.contains(target) {
-                let key = source.uuidString < target.uuidString
-                    ? source.uuidString + target.uuidString
-                    : target.uuidString + source.uuidString
-                guard !seen.contains(key) else { continue }
-                seen.insert(key)
+    // Each pair once, in the order the members first reach it.
+    private static func uniqueEdges(members: [UUID], adjacency: [UUID: [UUID]]) -> [(Int, Int)] {
+        var indexOf: [UUID: Int] = [:]
+        indexOf.reserveCapacity(members.count)
+        for (index, id) in members.enumerated() {
+            indexOf[id] = index
+        }
+        var seen: Set<Int> = []
+        var edges: [(Int, Int)] = []
+        for (source, id) in members.enumerated() {
+            for neighbor in adjacency[id] ?? [] {
+                guard let target = indexOf[neighbor] else { continue }
+                let key = min(source, target) * members.count + max(source, target)
+                guard seen.insert(key).inserted else { continue }
                 edges.append((source, target))
             }
         }
@@ -182,31 +191,27 @@ enum ERDiagramLayout {
     }
 
     private static func forceStep(
-        members: [UUID],
-        edges: [(UUID, UUID)],
-        degree: [UUID: Int],
-        positions: [UUID: CGPoint],
+        edges: [(Int, Int)],
+        degree: ContiguousArray<Int>,
+        positions: ContiguousArray<CGPoint>,
         idealDistance: CGFloat
-    ) -> [UUID: CGVector] {
-        var displacement: [UUID: CGVector] = [:]
-        for id in members { displacement[id] = .zero }
+    ) -> ContiguousArray<CGVector> {
+        let count = positions.count
+        var displacement = ContiguousArray(repeating: CGVector.zero, count: count)
 
         var centerX: CGFloat = 0
         var centerY: CGFloat = 0
-        for id in members {
-            centerX += positions[id]?.x ?? 0
-            centerY += positions[id]?.y ?? 0
+        for position in positions {
+            centerX += position.x
+            centerY += position.y
         }
-        centerX /= CGFloat(members.count)
-        centerY /= CGFloat(members.count)
+        centerX /= CGFloat(count)
+        centerY /= CGFloat(count)
 
-        let count = members.count
         for i in 0..<count {
-            let lhs = members[i]
-            guard let posLhs = positions[lhs] else { continue }
+            let posLhs = positions[i]
             for j in (i + 1)..<count {
-                let rhs = members[j]
-                guard let posRhs = positions[rhs] else { continue }
+                let posRhs = positions[j]
                 var dx = posLhs.x - posRhs.x
                 var dy = posLhs.y - posRhs.y
                 var distance = hypot(dx, dy)
@@ -218,36 +223,37 @@ enum ERDiagramLayout {
                 let repulsion = idealDistance * idealDistance / distance
                 let unitX = dx / distance
                 let unitY = dy / distance
-                displacement[lhs]?.dx += unitX * repulsion
-                displacement[lhs]?.dy += unitY * repulsion
-                displacement[rhs]?.dx -= unitX * repulsion
-                displacement[rhs]?.dy -= unitY * repulsion
+                displacement[i].dx += unitX * repulsion
+                displacement[i].dy += unitY * repulsion
+                displacement[j].dx -= unitX * repulsion
+                displacement[j].dy -= unitY * repulsion
             }
         }
 
         for (source, target) in edges {
-            guard let posSource = positions[source], let posTarget = positions[target] else { continue }
+            let posSource = positions[source]
+            let posTarget = positions[target]
             let dx = posSource.x - posTarget.x
             let dy = posSource.y - posTarget.y
             let distance = max(hypot(dx, dy), 0.01)
             let attraction = distance * distance / idealDistance
             let unitX = dx / distance
             let unitY = dy / distance
-            displacement[source]?.dx -= unitX * attraction
-            displacement[source]?.dy -= unitY * attraction
-            displacement[target]?.dx += unitX * attraction
-            displacement[target]?.dy += unitY * attraction
+            displacement[source].dx -= unitX * attraction
+            displacement[source].dy -= unitY * attraction
+            displacement[target].dx += unitX * attraction
+            displacement[target].dy += unitY * attraction
         }
 
         let gravity: CGFloat = 0.28
-        for id in members {
-            guard let position = positions[id] else { continue }
+        for index in 0..<count {
+            let position = positions[index]
             let dx = centerX - position.x
             let dy = centerY - position.y
             let distance = max(hypot(dx, dy), 0.01)
-            let pull = gravity * CGFloat((degree[id] ?? 0) + 1) * distance
-            displacement[id]?.dx += dx / distance * pull
-            displacement[id]?.dy += dy / distance * pull
+            let pull = gravity * CGFloat(degree[index] + 1) * distance
+            displacement[index].dx += dx / distance * pull
+            displacement[index].dy += dy / distance * pull
         }
 
         return displacement
@@ -260,45 +266,45 @@ enum ERDiagramLayout {
         return (avgWidth + avgHeight) * 0.8 + horizontalGap
     }
 
-    private static func circularInit(members: [UUID], idealDistance: CGFloat) -> [UUID: CGPoint] {
-        let count = members.count
+    private static func circularInit(count: Int, idealDistance: CGFloat) -> ContiguousArray<CGPoint> {
         let radius = idealDistance * CGFloat(count) / (2 * .pi) + idealDistance
-        var positions: [UUID: CGPoint] = [:]
-        for (index, id) in members.enumerated() {
+        var positions = ContiguousArray<CGPoint>()
+        positions.reserveCapacity(count)
+        for index in 0..<count {
             let angle = 2 * CGFloat.pi * CGFloat(index) / CGFloat(count)
-            positions[id] = CGPoint(x: radius * cos(angle), y: radius * sin(angle))
+            positions.append(CGPoint(x: radius * cos(angle), y: radius * sin(angle)))
         }
         return positions
     }
 
     private static func removeOverlaps(
-        members: [UUID],
-        positions: inout [UUID: CGPoint],
-        sizes: [UUID: CGSize]
-    ) {
-        let count = members.count
+        positions: inout ContiguousArray<CGPoint>,
+        sizes: ContiguousArray<CGSize?>
+    ) throws {
+        let count = positions.count
         let padding = horizontalGap * 0.5
         let passes = max(20, min(count, 60))
         for _ in 0..<passes {
+            try Task.checkCancellation()
             var moved = false
             for i in 0..<count {
-                let lhs = members[i]
+                guard let sizeLhs = sizes[i] else { continue }
                 for j in (i + 1)..<count {
-                    let rhs = members[j]
-                    guard let posLhs = positions[lhs], let posRhs = positions[rhs],
-                          let sizeLhs = sizes[lhs], let sizeRhs = sizes[rhs] else { continue }
+                    guard let sizeRhs = sizes[j] else { continue }
+                    let posLhs = positions[i]
+                    let posRhs = positions[j]
                     let overlapX = (sizeLhs.width + sizeRhs.width) / 2 + padding - abs(posLhs.x - posRhs.x)
                     let overlapY = (sizeLhs.height + sizeRhs.height) / 2 + padding - abs(posLhs.y - posRhs.y)
                     guard overlapX > 0, overlapY > 0 else { continue }
                     moved = true
                     if overlapX < overlapY {
                         let shift = overlapX / 2 * (posLhs.x >= posRhs.x ? 1 : -1)
-                        positions[lhs]?.x += shift
-                        positions[rhs]?.x -= shift
+                        positions[i].x += shift
+                        positions[j].x -= shift
                     } else {
                         let shift = overlapY / 2 * (posLhs.y >= posRhs.y ? 1 : -1)
-                        positions[lhs]?.y += shift
-                        positions[rhs]?.y -= shift
+                        positions[i].y += shift
+                        positions[j].y -= shift
                     }
                 }
             }

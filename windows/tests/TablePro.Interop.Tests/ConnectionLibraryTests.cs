@@ -91,14 +91,35 @@ public sealed class ConnectionLibraryTests : IDisposable
         await _core.TestConnectionAsync(saved, ConnectionSecrets.None, cancellationToken: cancellationToken);
         await using var session = await _core.ConnectAsync(saved.Id!.Value, cancellationToken: cancellationToken);
         var objects = await session.GetObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
-        var browse = await session.GetTableQueryAsync(new TableName(null, "people"), null, 100, cancellationToken: cancellationToken);
+        var browse = await session.ReadTablePageAsync(new TableName(null, "people"), null, null, 100, cancellationToken: cancellationToken);
+        using var run = browse.Run;
+        var outcome = await run.Completion;
+        using var rows = run.GetResultSet(0);
         var snapshot = await library.GetSnapshotAsync();
 
         Assert.Contains(objects, entry => entry.Name == "people");
-        Assert.Contains("FROM \"people\"", browse.Sql, StringComparison.Ordinal);
+        Assert.IsType<QueryOutcome.Completed>(outcome);
+        Assert.NotNull(rows);
+        Assert.Equal(SqliteDatabase.PeopleRows, rows.RowCount);
         Assert.Equal(3, browse.VisibleColumns);
         Assert.Equal([saved.Id.Value], snapshot.Recent);
         Assert.NotNull(snapshot.Connections[0].LastOpened);
+    }
+
+    [Fact]
+    public async Task ATypedPasswordToKeepIsStoredOnceItLogsIn()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        var saved = await _core.Library.SaveAsync(
+            new SavedConnection(null, "app", "sqlite", string.Empty, 0, database.Path, string.Empty, TlsSettings.Disabled),
+            ConnectionSecrets.None);
+        var typed = new ConnectionSecrets(DatabasePassword: "typed");
+
+        await using var session = await _core.ConnectAsync(
+            saved.Id!.Value, typed, keep: typed, cancellationToken: cancellationToken);
+
+        Assert.Equal("typed", _secrets.Load(saved.Id.Value, SecretKind.DatabasePassword));
     }
 
     [Fact]

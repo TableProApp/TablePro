@@ -36,12 +36,13 @@ extension RowEditingCoordinator {
 
         let mode: PluginTransactionAccessMode = kind.declaresWrite ? .readWrite : .serverDefault
         let plan = DataWritePlan(scope: scope, databaseType: parent.connection.type, steps: steps)
+        let commitMode = DatabaseManager.shared.commitMode(for: parent.connectionId)
         _ = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
             route: DatabaseManager.shared.executionRoute(for: scope),
             cancellation: .protectedWrite
         ) { driver in
-            _ = try await DataWriteExecutor.run(plan, mode: mode, on: driver)
+            _ = try await DataWriteExecutor.run(plan, mode: mode, commitMode: commitMode, on: driver)
         }
     }
 

@@ -1,11 +1,13 @@
 use std::future::Future;
 use std::io;
+use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
-use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts};
+use deadpool::managed::{self, Metrics, RecycleResult};
+use deadpool_postgres::{ClientWrapper, Manager, ManagerConfig, RecyclingMethod, Runtime, Timeouts};
 use tablepro_core::{DriverError, LivenessPolicy};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::task::JoinHandle;
@@ -50,17 +52,80 @@ impl deadpool_postgres::Connect for PgConnect {
     }
 }
 
-pub(crate) fn build_pool(endpoint: Arc<PgEndpoint>, tracker: TaskTracker) -> Result<Pool, DriverError> {
+pub(crate) type PgPool = managed::Pool<PgManager>;
+pub(crate) type PgObject = managed::Object<PgManager>;
+
+// deadpool-postgres's Fast recycle hands a connection out again while its connection task runs: a server that closed
+// it, or a route whose keepalive failed, has already ended that task.
+pub(crate) struct PgManager {
+    fast: Manager,
+    ask_after_idle: Duration,
+}
+
+// deadpool's own idle time is an Instant, which stops while the machine sleeps, and a sleep is when a route most
+// often drops a connection, so the member also keeps the wall-clock time it was last handed out.
+pub(crate) struct PgMember {
+    client: ClientWrapper,
+    handed_out: SystemTime,
+}
+
+impl PgMember {
+    pub(crate) fn client(&self) -> &Client {
+        &self.client
+    }
+}
+
+impl Deref for PgMember {
+    type Target = ClientWrapper;
+
+    fn deref(&self) -> &ClientWrapper {
+        &self.client
+    }
+}
+
+impl managed::Manager for PgManager {
+    type Type = PgMember;
+    type Error = tokio_postgres::Error;
+
+    async fn create(&self) -> Result<PgMember, tokio_postgres::Error> {
+        Ok(PgMember {
+            client: self.fast.create().await?,
+            handed_out: SystemTime::now(),
+        })
+    }
+
+    // A route can drop an idle connection without a word, and keepalive finds that out only after its idle time, so
+    // a connection idle that long answers the server first.
+    async fn recycle(&self, member: &mut PgMember, metrics: &Metrics) -> RecycleResult<tokio_postgres::Error> {
+        self.fast.recycle(&mut member.client, metrics).await?;
+        let asleep = member.handed_out.elapsed().unwrap_or_default();
+        if metrics.last_used().max(asleep) >= self.ask_after_idle {
+            member.client.simple_query("").await?;
+        }
+        member.handed_out = SystemTime::now();
+        Ok(())
+    }
+
+    fn detach(&self, member: &mut PgMember) {
+        self.fast.detach(&mut member.client);
+    }
+}
+
+pub(crate) fn build_pool(endpoint: Arc<PgEndpoint>, tracker: TaskTracker) -> Result<PgPool, DriverError> {
     let liveness = *endpoint.liveness();
-    let manager = Manager::from_connect(
+    let fast = Manager::from_connect(
         Config::new(),
         PgConnect { endpoint, tracker },
         ManagerConfig {
-            recycling_method: RecyclingMethod::Verified,
+            recycling_method: RecyclingMethod::Fast,
         },
     );
+    let manager = PgManager {
+        fast,
+        ask_after_idle: liveness.tcp_keepalive_idle,
+    };
     let timeouts = workspace_timeouts(&liveness);
-    Pool::builder(manager)
+    PgPool::builder(manager)
         .max_size(WORKSPACE_POOL_MAX_SIZE)
         .wait_timeout(timeouts.wait)
         .create_timeout(timeouts.create)

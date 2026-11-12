@@ -337,6 +337,8 @@ extension DataGridViewController {
     @discardableResult
     private func trackDrag(_ drag: GridSelectionDrag, from start: GridCoord) -> Bool {
         guard let window = view.window else { return false }
+        isTrackingSelectionDrag = true
+        defer { isTrackingSelectionDrag = false }
         var moved = false
         while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if event.type == .leftMouseUp { break }

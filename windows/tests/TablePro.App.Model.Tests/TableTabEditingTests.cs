@@ -12,7 +12,13 @@ public sealed class TableTabEditingTests
 
     public TableTabEditingTests()
     {
-        _tab = new TableTab(_session, _view, _results, new TableName(null, "Artist"), () => new AppSettings());
+        _tab = new TableTab(
+            _session,
+            _view,
+            _results,
+            new TableName(null, "Artist"),
+            ObjectKind.Table,
+            () => new AppSettings());
         _view.Tab = _tab;
     }
 

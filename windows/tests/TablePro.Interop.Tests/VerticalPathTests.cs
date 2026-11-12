@@ -52,9 +52,10 @@ public sealed class VerticalPathTests
         await using var database = await SqliteDatabase.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
 
-        var table = await database.Session.GetTableQueryAsync(
+        var table = await database.Session.ReadTablePageAsync(
             new TableName(null, "people"),
             new ColumnSort(1, Ascending: false),
+            null,
             100,
             cancellationToken: cancellationToken);
         var query = database.Session.SortedQuery("SELECT name FROM people LIMIT 2", ["name"], 0, ascending: true);
@@ -65,7 +66,7 @@ public sealed class VerticalPathTests
             ascending: true);
         var write = database.Session.SortedQuery("UPDATE people SET note = NULL", ["name"], 0, ascending: true);
 
-        Assert.Equal(["Zoë 👋", "Grace", "Ada"], await Column(database, table.Sql, 1));
+        Assert.Equal(["Zoë 👋", "Grace", "Ada"], await Column(table, 1));
         Assert.NotNull(query);
         Assert.Equal(["Ada", "Grace"], await Column(database, query, 0));
         Assert.NotNull(joined);
@@ -81,11 +82,12 @@ public sealed class VerticalPathTests
         var cancellationToken = TestContext.Current.CancellationToken;
         var people = new TableName(null, "people");
 
-        var second = await database.Session.GetTableQueryAsync(people, null, 2, 2, cancellationToken);
-        var count = await database.Session.CountRowsAsync(people, cancellationToken);
+        var second = await database.Session.ReadTablePageAsync(people, null, null, 2, 2, cancellationToken);
+        var count = await database.Session.CountRowsAsync(people, cancellationToken: cancellationToken);
 
         Assert.True(second.CanSeek);
-        Assert.Equal(["3"], await Column(database, second.Sql, 0));
+        Assert.Equal(3, second.VisibleColumns);
+        Assert.Equal(["3"], await Column(second, 0));
         Assert.Equal(SqliteDatabase.PeopleRows, count);
     }
 
@@ -152,6 +154,15 @@ public sealed class VerticalPathTests
         Assert.Equal("Ada", byNote.GetCellText(0, 0));
         Assert.Equal("Ada", set.GetCellText(0, 0));
         await Assert.ThrowsAsync<TableProException>(() => set.SortedAsync(5, ascending: true));
+    }
+
+    private static async Task<List<string?>> Column(TablePageRun page, int column)
+    {
+        using var run = page.Run;
+        Assert.IsType<QueryOutcome.Completed>(await run.Completion);
+        using var set = run.GetResultSet(0);
+        Assert.NotNull(set);
+        return [.. Enumerable.Range(0, (int)set.RowCount).Select(row => set.GetCellText(row, column))];
     }
 
     private static async Task<List<string?>> Column(SqliteDatabase database, string sql, int column)

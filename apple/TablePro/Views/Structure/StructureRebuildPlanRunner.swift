@@ -146,14 +146,12 @@ enum StructureRebuildPlanRunner {
                 throw RunError.schemaChanged
             }
 
-            /// Only the transaction this plan opened is ever rolled back, and none is opened over a
-            /// transaction the session already holds: on the same shared session an app-owned
-            /// `COMMIT` commits the user's pending work, and MySQL's `START TRANSACTION` commits it
-            /// implicitly. A plan that cannot open one falls to its own compensation statements,
-            /// which is what an engine whose DDL commits as it runs already relies on.
+            // Never opens a transaction over one the session holds; a plan that cannot open one falls to its compensation statements.
+            // `.automatic`: the epilogue runs inside the transaction, where SQLite ignores `PRAGMA foreign_keys = on`.
             let owner = WriteTransactionOwner.resolve(
                 supportsTransactions: driver.supportsTransactions,
-                sessionState: await driver.heldSessionTransactionState()
+                sessionState: await driver.heldSessionTransactionState(),
+                commitMode: .automatic
             )
             // Inside a transaction SQLite ignores `PRAGMA foreign_keys = off`, so the rebuild's DROP TABLE cascades.
             if !plan.prologue.isEmpty, plan.isTransactional, owner == .session {
@@ -164,7 +162,7 @@ enum StructureRebuildPlanRunner {
                 _ = try? await driver.execute(query: sql)
             }
 
-            let usesTransaction = plan.isTransactional && owner.opensTransaction
+            let usesTransaction = plan.isTransactional && owner.sendsBegin && owner.commitsAtEnd
             if usesTransaction {
                 try await driver.beginTransaction(mode: .readWrite)
             }

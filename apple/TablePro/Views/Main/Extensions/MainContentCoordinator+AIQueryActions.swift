@@ -146,13 +146,8 @@ extension MainContentCoordinator {
         }
         switch WalkthroughApplyPlan.resolve(beforeSQL: beforeSQL, source: source, tabText: tabText) {
         case .replace(let tabId, let range):
-            guard let owner else { return }
-            owner.tabManager.mutate(tabId: tabId) { tab in
-                let text = tab.content.query as NSString
-                guard NSMaxRange(range) <= text.length else { return }
-                tab.content.query = text.replacingCharacters(in: range, with: afterSQL)
-                tab.hasUserInteraction = true
-            }
+            guard let owner, owner.replaceQueryText(inTab: tabId, range: range, with: afterSQL) else { return }
+            owner.tabManager.mutate(tabId: tabId) { $0.hasUserInteraction = true }
         case .insertAsNewQuery:
             insertQueryFromAI(afterSQL)
         }

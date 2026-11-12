@@ -83,7 +83,7 @@ struct DataWriteExecutorLookupTests {
             steps: steps
         )
         let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .clickhouse), pluginDriver: lookup)
-        _ = try await DataWriteExecutor.run(plan, on: driver)
+        _ = try await DataWriteExecutor.run(plan, commitMode: .automatic, on: driver)
     }
 
     @Test("A write runs on the rows its lookup found, their values bound after its own")

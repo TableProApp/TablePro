@@ -409,21 +409,26 @@ nonisolated struct MongoDBQueryBuilder {
         return (parts[0], parts[1])
     }
 
+    // Equal values come back in any order, so each skip/limit page could repeat or miss documents. `_id` is unique and
+    // makes the order total (MongoDB `cursor.sort()`, Sort Consistency).
     private func buildSortDocument(
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String]
     ) -> String? {
-        guard !sortColumns.isEmpty else { return nil }
-
-        let parts = sortColumns.compactMap { sortCol -> String? in
+        var parts: [String] = []
+        var sortsById = false
+        for sortCol in sortColumns {
             guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count,
-                  Self.isPlainFieldName(columns[sortCol.columnIndex]) else { return nil }
-            let columnName = Self.escapeJsonString(columns[sortCol.columnIndex])
-            let direction = sortCol.ascending ? 1 : -1
-            return "\"\(columnName)\": \(direction)"
+                  Self.isPlainFieldName(columns[sortCol.columnIndex]) else { continue }
+            let column = columns[sortCol.columnIndex]
+            sortsById = sortsById || column == MongoDBCollectionDDL.idField
+            parts.append("\"\(Self.escapeJsonString(column))\": \(sortCol.ascending ? 1 : -1)")
         }
 
         guard !parts.isEmpty else { return nil }
+        if !sortsById {
+            parts.append("\"\(MongoDBCollectionDDL.idField)\": 1")
+        }
         return "{\(parts.joined(separator: ", "))}"
     }
 

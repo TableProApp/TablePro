@@ -21,6 +21,11 @@ private let cursorIndexFixtures = [
     /* c; */ SELECT E'x'
     'y';;
     CREATE RULE r AS ON INSERT TO t DO ALSO (INSERT INTO a VALUES (1); INSERT INTO b VALUES (2));
+    \\restrict k1
+    COPY t (a, b) FROM stdin;
+    1\tit's; here
+    2\t$$ -- x
+    \\.
     SELECT 2
     """),
     CursorIndexFixture(typeId: "MySQL", text: """
@@ -32,6 +37,12 @@ private let cursorIndexFixtures = [
     SELECT 3;;
     # hash; comment
     SELECT `a;b` FROM t;
+    DELIMITER //
+    CREATE PROCEDURE q() BEGIN SELECT 1; END//
+    SELECT 'x//'; SELECT 4//
+    DELIMITER ;;
+    CREATE TRIGGER g BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.a = 1; END ;;
+    DELIMITER ;
     SELECT /*! 1; */ 2
     """),
     CursorIndexFixture(typeId: "SQL Server", text: """
@@ -54,6 +65,10 @@ private let cursorIndexFixtures = [
     SELECT (5; 6);
     SET XACT_ABORT ON
     BEGIN TRY SELECT 7; END TRY BEGIN CATCH THROW; END CATCH
+    IF @y = 1 SELECT 8; -- then
+    ELSE IF @z = 1 SELECT 9; ELSE SELECT 10;
+    DROP TABLE IF EXISTS t;; SELECT 11
+    IF @w = 1 SELECT 12;; ELSE SELECT 13
     """),
     CursorIndexFixture(typeId: "Oracle", text: """
     BEGIN
@@ -81,7 +96,7 @@ private let cursorIndexFixtures = [
 
 private let cursorIndexInsertions = [
     ";", "'", "\nGO\n", "\n/\n", " ", "x", "$$", "BEGIN ", "END;", "--", "/*", "*/", "\n", "GO", "/", "(", ")",
-    "CASE ", "END ",
+    "CASE ", "END ", "ELSE ", "IF ", "DELIMITER ", "//", "\\.", "COPY t FROM stdin;\n", "\\restrict x\n",
 ]
 
 private let longScriptRow = "SELECT id, name FROM users WHERE active = true;\n"

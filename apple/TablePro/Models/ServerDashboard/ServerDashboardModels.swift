@@ -28,7 +28,7 @@ enum DashboardRefreshInterval: Double, CaseIterable, Identifiable {
     var displayLabel: String {
         switch self {
         case .off: return String(localized: "Off")
-        default: return "\(Int(rawValue))s"
+        default: return Duration.seconds(rawValue).formatted(.units(allowed: [.seconds], width: .narrow))
         }
     }
 }

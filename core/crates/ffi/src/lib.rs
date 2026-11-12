@@ -7,9 +7,15 @@ mod connection_url;
 mod core_handle;
 #[cfg(windows)]
 mod credential_manager;
+#[cfg(any(windows, test))]
+mod credential_parts;
+mod definition;
 mod drivers;
 mod editor;
 mod error;
+mod export;
+mod filter;
+mod history;
 mod host;
 mod host_key;
 mod library;
@@ -21,6 +27,7 @@ mod runtime;
 mod safe_mode_gate;
 mod session;
 mod statement_at;
+mod structure;
 mod syntax;
 pub mod window_abi;
 
@@ -29,9 +36,17 @@ pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, Schem
 pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
+pub use definition::ObjectSource;
 pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag, ServerNameOverrideTag};
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{BoxedErrorInfo, CoreError, ErrorInfo, HostKeyFailure, ServerMessage, TlsFailureTag};
+pub use export::ExportFormatTag;
+pub use filter::{
+    CombinatorTag, FilterChoices, FilterColumn, FilterOpTag, FilterRuleArg, FilterValueArg, TableFilterArg,
+};
+pub use history::{
+    HistoryCursorArg, HistoryEntryInfo, HistoryOutcomeTag, HistoryPageInfo, HistoryRun, QueryHistoryStore,
+};
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
@@ -45,8 +60,9 @@ pub use row_edits::{
 };
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
-pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};
+pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TablePageRead};
 pub use statement_at::StatementSpan;
+pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
 
 use secrecy::{ExposeSecret, SecretString};
 

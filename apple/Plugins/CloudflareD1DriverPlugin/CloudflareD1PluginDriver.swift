@@ -361,6 +361,8 @@ nonisolated final class CloudflareD1PluginDriver: PluginDatabaseDriver, @uncheck
         }
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk

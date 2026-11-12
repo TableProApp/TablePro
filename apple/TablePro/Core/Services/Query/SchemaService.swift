@@ -18,6 +18,8 @@ final class SchemaService: ObservableObject {
         var routines: MetadataLoadState<[RoutineInfo]> = .idle
         var triggers: MetadataLoadState<[TriggerInfo]> = .idle
         var userDefinedTypes: MetadataLoadState<[UserDefinedTypeInfo]> = .idle
+        // Keyed by the declared kind's id.
+        var serverObjects: [String: MetadataLoadState<[ServerObjectInfo]>] = [:]
     }
 
     @Published private(set) var states: [CatalogKey: SchemaState] = [:]
@@ -51,7 +53,7 @@ final class SchemaService: ObservableObject {
         generations[connectionId] ?? 0
     }
 
-    private func bumpGeneration(_ connectionId: UUID) {
+    func bumpGeneration(_ connectionId: UUID) {
         generations[connectionId, default: 0] &+= 1
     }
 
@@ -64,6 +66,18 @@ final class SchemaService: ObservableObject {
     private let perSchemaRoutinesDedup = OnceTask<SchemaFetchKey, [RoutineInfo]>()
     private let perSchemaTriggersDedup = OnceTask<SchemaFetchKey, [TriggerInfo]>()
     private let perSchemaTypesDedup = OnceTask<SchemaFetchKey, [UserDefinedTypeInfo]>()
+    let serverObjectsDedup = OnceTask<ServerObjectLoadKey, [ServerObjectInfo]>()
+    private let perSchemaServerObjectsDedup = OnceTask<ServerObjectSchemaFetchKey, [ServerObjectInfo]>()
+
+    struct ServerObjectLoadKey: Hashable, Sendable {
+        let load: LoadKey
+        let kindId: String
+    }
+
+    struct ServerObjectSchemaFetchKey: Hashable, Sendable {
+        let fetch: SchemaFetchKey
+        let kindId: String
+    }
 
     /// A schema is named inside a database, and an engine that changes database on a live
     /// connection reaches a `PUBLIC` in every one of them.
@@ -94,11 +108,15 @@ final class SchemaService: ObservableObject {
     private struct SideKinds {
         let triggers: Bool
         let types: Bool
+        let serverKinds: [SidebarServerObjectKind]
 
-        init(_ type: DatabaseType) {
+        init(_ type: DatabaseType, serverKinds: [SidebarServerObjectKind] = []) {
             triggers = type.supportsDatabaseTriggerBrowse
             types = type.supportsUserDefinedTypeBrowse
+            self.serverKinds = serverKinds
         }
+
+        var serverKindIds: [String] { serverKinds.map(\.id) }
     }
 
     private struct RefreshWaiter {
@@ -138,7 +156,7 @@ final class SchemaService: ObservableObject {
         !unrefreshedCatalogs.contains(shownKey(connectionId))
     }
 
-    private func shownKey(_ connectionId: UUID) -> CatalogKey {
+    func shownKey(_ connectionId: UUID) -> CatalogKey {
         shownCatalogs[connectionId]?.key ?? CatalogKey(connectionId: connectionId, database: "", schema: nil)
     }
 
@@ -337,7 +355,7 @@ final class SchemaService: ObservableObject {
 
     /// Every per-schema read answers for the database `schemas(for:)` was listed from, so the
     /// schema rows and the objects under them describe one database even while a switch settles.
-    private func catalogKey(_ connectionId: UUID, schema: String) -> SchemaKey {
+    func catalogKey(_ connectionId: UUID, schema: String) -> SchemaKey {
         SchemaKey(connectionId: connectionId, database: catalogDatabase(connectionId), schema: schema)
     }
 
@@ -380,7 +398,8 @@ final class SchemaService: ObservableObject {
         let key = catalogKey(connectionId, schema: schema)
         guard hasLoadedContent(key) else { return false }
         let side = perSchemaSideObjects[key] ?? SideObjects()
-        return [side.routines.erased, side.triggers.erased, side.userDefinedTypes.erased]
+        return ([side.routines.erased, side.triggers.erased, side.userDefinedTypes.erased]
+            + side.serverObjects.values.map(\.erased))
             .allSatisfy { $0 == .loaded || $0 == .idle }
     }
 
@@ -551,7 +570,10 @@ final class SchemaService: ObservableObject {
         nextLoadGeneration += 1
         let generation = nextLoadGeneration
         schemaLoadGenerations[key] = generation
-        let kinds = SideKinds(driver.connection.type)
+        let kinds = SideKinds(
+            driver.connection.type,
+            serverKinds: SidebarServerObjectKind.declared(by: driver).filter { $0.scope == .container }
+        )
 
         if !hasLoadedContent(key) {
             setPerSchemaState(.loading, key: key)
@@ -588,6 +610,16 @@ final class SchemaService: ObservableObject {
                 fetch: { try await driver.fetchUserDefinedTypes(schema: schema) }
             )
             : nil
+        async let serverObjectsTask = fetchServerObjectsSafely(
+            kinds: kinds.serverKindIds,
+            keys: Dictionary(uniqueKeysWithValues: kinds.serverKindIds.map {
+                ($0, ServerObjectSchemaFetchKey(fetch: fetchKey, kindId: $0))
+            }),
+            connectionId: connectionId,
+            dedup: perSchemaServerObjectsDedup,
+            schema: schema,
+            driver: driver
+        )
 
         let tablesOutcome: MetadataFetchOutcome<[TableInfo]>
         do {
@@ -606,10 +638,14 @@ final class SchemaService: ObservableObject {
         let routinesOutcome = await routinesTask
         let triggersOutcome = await triggersTask
         let typesOutcome = await typesTask
+        let serverObjectsOutcomes = await serverObjectsTask
         guard schemaLoadGenerations[key] == generation else { return }
         schemaLoadGenerations.removeValue(forKey: key)
         updateSchemaSideObjects(key) { side in
-            side = Self.settled(side, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
+            side = Self.settled(
+                side, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome,
+                serverObjects: serverObjectsOutcomes
+            )
         }
         bumpGeneration(connectionId)
     }
@@ -643,9 +679,10 @@ final class SchemaService: ObservableObject {
         await perSchemaRoutinesDedup.cancel(where: shouldCancel)
         await perSchemaTriggersDedup.cancel(where: shouldCancel)
         await perSchemaTypesDedup.cancel(where: shouldCancel)
+        await perSchemaServerObjectsDedup.cancel { shouldCancel($0.fetch) }
     }
 
-    private func updateSideObjects(_ key: CatalogKey, _ change: (inout SideObjects) -> Void) {
+    func updateSideObjects(_ key: CatalogKey, _ change: (inout SideObjects) -> Void) {
         var side = sideObjects[key] ?? SideObjects()
         change(&side)
         sideObjects[key] = side
@@ -653,14 +690,14 @@ final class SchemaService: ObservableObject {
 
     /// The catalog of the scope the reload reads, not of whatever is shown when it starts: a switch
     /// while it waits for a connection would file one database's objects under another.
-    private func reloadKey(_ connectionId: UUID, scope: DatabaseScope?, driver: DatabaseDriver) -> CatalogKey {
+    func reloadKey(_ connectionId: UUID, scope: DatabaseScope?, driver: DatabaseDriver) -> CatalogKey {
         guard let scope else { return shownKey(connectionId) }
         return catalogKey(for: scope, type: driver.connection.type)
     }
 
     /// A reload that lands after `forget` dropped its catalog writes nothing, rather than bringing
     /// back objects of a database whose entry closed.
-    private func updateKeptSideObjects(_ key: CatalogKey, _ change: (inout SideObjects) -> Void) {
+    func updateKeptSideObjects(_ key: CatalogKey, _ change: (inout SideObjects) -> Void) {
         guard var side = sideObjects[key] else { return }
         change(&side)
         sideObjects[key] = side
@@ -676,10 +713,11 @@ final class SchemaService: ObservableObject {
         _ key: CatalogKey,
         routines: MetadataFetchOutcome<[RoutineInfo]>,
         triggers: MetadataFetchOutcome<[TriggerInfo]>?,
-        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?
+        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?,
+        serverObjects: [String: MetadataFetchOutcome<[ServerObjectInfo]>] = [:]
     ) {
         updateSideObjects(key) { side in
-            side = Self.settled(side, routines: routines, triggers: triggers, types: types)
+            side = Self.settled(side, routines: routines, triggers: triggers, types: types, serverObjects: serverObjects)
         }
     }
 
@@ -698,6 +736,7 @@ final class SchemaService: ObservableObject {
             side.routines = side.routines.settled(by: .cancelled, discardingValue: false)
             side.triggers = side.triggers.settled(by: .cancelled, discardingValue: false)
             side.userDefinedTypes = side.userDefinedTypes.settled(by: .cancelled, discardingValue: false)
+            side.serverObjects = side.serverObjects.mapValues { $0.settled(by: .cancelled, discardingValue: false) }
         }
         bumpGeneration(key.connectionId)
     }
@@ -707,6 +746,9 @@ final class SchemaService: ObservableObject {
         next.routines = side.routines.enteringLoad
         if kinds.triggers { next.triggers = side.triggers.enteringLoad }
         if kinds.types { next.userDefinedTypes = side.userDefinedTypes.enteringLoad }
+        for id in kinds.serverKindIds {
+            next.serverObjects[id] = (side.serverObjects[id] ?? .idle).enteringLoad
+        }
         return next
     }
 
@@ -715,7 +757,8 @@ final class SchemaService: ObservableObject {
         _ side: SideObjects,
         routines: MetadataFetchOutcome<[RoutineInfo]>,
         triggers: MetadataFetchOutcome<[TriggerInfo]>?,
-        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?
+        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?,
+        serverObjects: [String: MetadataFetchOutcome<[ServerObjectInfo]>] = [:]
     ) -> SideObjects {
         var next = side
         next.routines = side.routines.settled(by: routines, discardingValue: false)
@@ -724,6 +767,9 @@ final class SchemaService: ObservableObject {
         }
         if let types {
             next.userDefinedTypes = side.userDefinedTypes.settled(by: types, discardingValue: false)
+        }
+        for (id, outcome) in serverObjects {
+            next.serverObjects[id] = (side.serverObjects[id] ?? .idle).settled(by: outcome, discardingValue: false)
         }
         return next
     }
@@ -818,6 +864,7 @@ final class SchemaService: ObservableObject {
         await routinesDedup.cancel { $0.connectionId == connectionId }
         await triggersDedup.cancel { $0.connectionId == connectionId }
         await typesDedup.cancel { $0.connectionId == connectionId }
+        await serverObjectsDedup.cancel { $0.load.connectionId == connectionId }
         await schemasDedup.cancel { $0.connectionId == connectionId }
         await cancelSchemaLoads { $0.schemaKey.connectionId == connectionId }
     }
@@ -885,13 +932,17 @@ final class SchemaService: ObservableObject {
             }
         }
         if settleTablesFailed(key, message: message) {
-            let kinds = type.map(SideKinds.init)
+            let kinds = type.map { SideKinds($0) }
+            let serverKindIds = SidebarServerObjectKind.declared(by: DatabaseManager.shared.driver(for: connectionId)).map(\.id)
             updateSideObjects(key) { side in
                 side = Self.settled(
                     side,
                     routines: .failed(message),
                     triggers: kinds?.triggers == true ? .failed(message) : nil,
-                    types: kinds?.types == true ? .failed(message) : nil
+                    types: kinds?.types == true ? .failed(message) : nil,
+                    serverObjects: Dictionary(uniqueKeysWithValues: serverKindIds.map {
+                        ($0, MetadataFetchOutcome<[ServerObjectInfo]>.failed(message))
+                    })
                 )
             }
         } else if !moved {
@@ -924,7 +975,12 @@ final class SchemaService: ObservableObject {
         if !hasLoadedContent(key) {
             states[key] = .loading
         }
-        let kinds = SideKinds(type)
+        let grouping = PluginManager.shared.databaseGroupingStrategy(for: type)
+        // A hierarchical engine lists its declared kinds per schema, in `runSchemaLoad`.
+        let kinds = SideKinds(
+            type,
+            serverKinds: grouping == .hierarchicalSchema ? [] : SidebarServerObjectKind.declared(by: driver)
+        )
         updateSideObjects(key) { $0 = Self.enteringLoad($0, kinds: kinds) }
         bumpGeneration(connectionId)
 
@@ -938,7 +994,6 @@ final class SchemaService: ObservableObject {
         }
 
         let loadKey = LoadKey(connectionId: connectionId, scope: scope)
-        let grouping = PluginManager.shared.databaseGroupingStrategy(for: type)
         if grouping == .hierarchicalSchema {
             await runHierarchicalLoad(
                 key: key,
@@ -979,6 +1034,16 @@ final class SchemaService: ObservableObject {
                 fetch: { try await driver.fetchUserDefinedTypes(schema: nil) }
             )
             : nil
+        async let serverObjectsTask = fetchServerObjectsSafely(
+            kinds: kinds.serverKindIds,
+            keys: Dictionary(uniqueKeysWithValues: kinds.serverKindIds.map {
+                ($0, ServerObjectLoadKey(load: loadKey, kindId: $0))
+            }),
+            connectionId: connectionId,
+            dedup: serverObjectsDedup,
+            schema: nil,
+            driver: driver
+        )
         async let schemasTask: [String]? = supportsSchemas || listsAttached
             ? Self.fetchSchemasSafely(
                 key: loadKey,
@@ -1021,10 +1086,14 @@ final class SchemaService: ObservableObject {
         let routinesOutcome = await routinesTask
         let triggersOutcome = await triggersTask
         let typesOutcome = await typesTask
+        let serverObjectsOutcomes = await serverObjectsTask
         guard isCurrentLoadGeneration(generation, for: key, phase: "side-objects-loaded") else {
             return
         }
-        commitSideObjects(key, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
+        commitSideObjects(
+            key, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome,
+            serverObjects: serverObjectsOutcomes
+        )
 
         if let loadedSchemas = await schemasTask {
             guard isCurrentLoadGeneration(generation, for: key, phase: "schemas-loaded") else {
@@ -1198,11 +1267,44 @@ final class SchemaService: ObservableObject {
         }
     }
 
+    // One fetch per declared kind, side by side; each settles its own group.
+    private func fetchServerObjectsSafely<Key: Hashable & Sendable>(
+        kinds: [String],
+        keys: [String: Key],
+        connectionId: UUID,
+        dedup: OnceTask<Key, [ServerObjectInfo]>,
+        schema: String?,
+        driver: DatabaseDriver
+    ) async -> [String: MetadataFetchOutcome<[ServerObjectInfo]>] {
+        guard !kinds.isEmpty else { return [:] }
+        return await withTaskGroup(of: (String, MetadataFetchOutcome<[ServerObjectInfo]>)?.self) { group in
+            for kindId in kinds {
+                guard let key = keys[kindId] else { continue }
+                group.addTask {
+                    let outcome = await Self.fetchObjectsSafely(
+                        key: key,
+                        connectionId: connectionId,
+                        label: "server objects",
+                        dedup: dedup,
+                        fetch: { try await driver.fetchServerObjects(ofKind: kindId, schema: schema) }
+                    )
+                    return (kindId, outcome)
+                }
+            }
+            var outcomes: [String: MetadataFetchOutcome<[ServerObjectInfo]>] = [:]
+            for await result in group {
+                guard let result else { continue }
+                outcomes[result.0] = result.1
+            }
+            return outcomes
+        }
+    }
+
     /// A failure comes back as a failure, never as an empty list. An empty list made a refresh that
     /// failed indistinguishable from a database with no routines, and the caller committed it over
     /// the loaded one: a single dropped connection emptied the sidebar's procedures and functions
     /// while the refresh reported success, with nothing scheduled to put them back.
-    private static func fetchObjectsSafely<Key: Hashable & Sendable, Value: Sendable>(
+    static func fetchObjectsSafely<Key: Hashable & Sendable, Value: Sendable>(
         key: Key,
         connectionId: UUID,
         label: String,
