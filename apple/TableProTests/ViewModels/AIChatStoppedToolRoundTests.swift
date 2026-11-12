@@ -274,13 +274,16 @@ struct AIChatStoppedToolRoundTests {
         }
     }
 
-    private static func storedWaitingCard() -> AIConversation {
-        AIConversation(messages: [
-            ChatTurnWire(role: .user, blocks: [.text("raise every price by ten percent")]),
-            ChatTurnWire(role: .assistant, blocks: [
-                .toolUse(ToolUseBlock(id: "call_7", name: "execute_query", input: .object([:]), approvalState: .pending))
-            ])
-        ])
+    private static func storedWaitingCard(connectionId: UUID? = nil) -> AIConversation {
+        AIConversation(
+            messages: [
+                ChatTurnWire(role: .user, blocks: [.text("raise every price by ten percent")]),
+                ChatTurnWire(role: .assistant, blocks: [
+                    .toolUse(ToolUseBlock(id: "call_7", name: "execute_query", input: .object([:]), approvalState: .pending))
+                ])
+            ],
+            connectionId: connectionId
+        )
     }
 
     @Test("Stop while a tool call waits for approval leaves a result for that call")
@@ -388,10 +391,13 @@ struct AIChatStoppedToolRoundTests {
 
         viewModel.startNewConversation()
         await task?.value
+        await viewModel.lastConversationWrite?.value
 
         #expect(viewModel.messages.isEmpty)
-        let stored = try #require(viewModel.conversations.first)
-        let storedStates = stored.messages.flatMap { toolUseStates(in: $0) }
+        let summary = try #require(viewModel.conversations.first)
+        let stored = await viewModel.chatStorage.load(id: summary.id)
+        await viewModel.chatStorage.delete(summary.id)
+        let storedStates = (stored?.messages ?? []).flatMap { toolUseStates(in: $0) }
         #expect(storedStates == [.cancelled])
         #expect(!ToolApprovalCenter.shared.hasPending(sessionId: viewModel.sessionId))
     }
@@ -411,20 +417,15 @@ struct AIChatStoppedToolRoundTests {
 
     @Test("A conversation saved with a waiting card by an earlier launch reopens with it cancelled")
     func restoreSettlesAStoredWaitingCard() async throws {
-        let stored = Self.storedWaitingCard()
-        AIChatStorage.shared.saveSynchronously(stored)
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let stored = Self.storedWaitingCard(connectionId: connection.id)
         let viewModel = AIChatViewModel(restoringConversation: stored.id)
+        await viewModel.chatStorage.save(stored)
+        viewModel.connection = connection
 
         viewModel.restoreConversationsIfNeeded()
-        // The delete awaits the storage actor, so it runs after a caught wait instead of in a defer.
-        var waitFailure: (any Error)?
-        do {
-            try await waitUntil { !viewModel.messages.isEmpty }
-        } catch {
-            waitFailure = error
-        }
-        await AIChatStorage.shared.delete(stored.id)
-        if let waitFailure { throw waitFailure }
+        await viewModel.transcriptLoad?.value
+        await viewModel.chatStorage.delete(stored.id)
 
         let states = viewModel.messages.flatMap { toolUseStates(in: $0) }
         #expect(states == [.cancelled])
