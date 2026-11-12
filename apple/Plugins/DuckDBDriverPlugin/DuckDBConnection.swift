@@ -215,7 +215,7 @@ actor DuckDBConnectionActor {
         }
 
         noteActivity(query)
-        var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandon)
+        var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandonWhenIdle)
         defer { duckdb_destroy_result(&opened.result) }
         try streamResultRows(opened, continuation: continuation, abort: abort)
     }
@@ -669,8 +669,8 @@ actor DuckDBConnectionActor {
             rows.append(contentsOf: kept == batch.count ? batch[...] : batch.prefix(kept))
             return !budget.isExceeded
         }
-        if !reachedEnd, opened.isStreaming, !opened.abandonsUnreadRows {
-            try Self.drain(opened.result)
+        if !reachedEnd {
+            try finishUnreadRows(of: opened)
         }
 
         return DuckDBRawResult(
@@ -695,13 +695,22 @@ actor DuckDBConnectionActor {
         )))
 
         var cancelled = false
-        try readRows(of: opened) { batch in
-            if !Task.isCancelled, !abort.isAborted {
-                // Blocks the actor's thread: an await here would let another call reach the connection mid-result.
-                abort.send(batch, to: continuation)
+        let reachedEnd: Bool
+        do {
+            reachedEnd = try readRows(of: opened) { batch in
+                if !Task.isCancelled, !abort.isAborted {
+                    // Blocks the actor's thread: an await here would let another call reach the connection mid-result.
+                    abort.send(batch, to: continuation)
+                }
+                cancelled = Task.isCancelled || abort.isAborted
+                return !cancelled
             }
-            cancelled = Task.isCancelled || abort.isAborted
-            return !cancelled
+        } catch is CancellationError {
+            try finishUnreadRows(of: opened)
+            throw CancellationError()
+        }
+        if !reachedEnd {
+            try finishUnreadRows(of: opened)
         }
         if cancelled {
             continuation.finish(throwing: CancellationError())
@@ -747,6 +756,13 @@ actor DuckDBConnectionActor {
             }
             guard body(batch) else { return false }
         }
+    }
+
+    // A consumer that stops reading inside a transaction must not abort it: a SELECT calling nextval left unfinished
+    // fails the transaction (scripts/probes/check-duckdb-streaming-results.sh).
+    private func finishUnreadRows(of opened: OpenedResult) throws {
+        guard opened.isStreaming, !opened.abandonsUnreadRows else { return }
+        try Self.drain(opened.result)
     }
 
     // Completes a statement whose rows are no longer wanted, so that what it changed is kept.

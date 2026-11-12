@@ -197,6 +197,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             connection.disconnect()
             throw error
         }
+        logSessionMode(connection)
         self.connection = connection
     }
 
@@ -282,7 +283,43 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         connection?.cancel()
     }
 
-    func beginTransaction() async throws { _ = try await execute(query: "BEGIN TRANSACTION") }
-    func commitTransaction() async throws { _ = try await execute(query: "END TRANSACTION") }
-    func rollbackTransaction() async throws { _ = try await execute(query: "ROLLBACK") }
+    func beginTransaction() async throws {
+        try await liveConnection().beginTransaction()
+    }
+
+    func commitTransaction() async throws {
+        try await liveConnection().commitTransaction()
+    }
+
+    func rollbackTransaction() async throws {
+        try await liveConnection().rollbackTransaction()
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let connection, !connection.hasLostConnection else { return .unknown }
+        switch connection.transactionState {
+        case .idle: return .idle
+        case .open: return .inTransaction
+        case .unknown: return .unknown
+        }
+    }
+
+    func liveConnection() throws -> TeradataAsyncConnection {
+        guard let connection else { throw TeradataWireError.connectionFailed("not connected") }
+        return connection
+    }
+
+    private func logSessionMode(_ connection: TeradataAsyncConnection) {
+        let mode = connection.sessionTransactionMode.rawValue
+        switch connection.sessionModeSource {
+        case .configured:
+            Self.logger.debug("Transaction mode \(mode, privacy: .public) as configured")
+        case .helpSession:
+            Self.logger.info("Transaction mode \(mode, privacy: .public) read from HELP SESSION")
+        case .sessionInfoView:
+            Self.logger.info("Transaction mode \(mode, privacy: .public) read from DBC.SessionInfoV")
+        case .unresolved:
+            Self.logger.warning("Neither HELP SESSION nor DBC.SessionInfoV gave the transaction mode; using Teradata semantics")
+        }
+    }
 }

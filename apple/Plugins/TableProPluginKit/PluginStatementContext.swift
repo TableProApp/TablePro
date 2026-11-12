@@ -35,6 +35,10 @@ public struct PluginStatementContext: Sendable, Equatable {
     // `.decimal` as numbers, `.boolean` as TRUE or FALSE. Nil, or a nil entry, where none was given.
     public var parameterKinds: [PluginColumnKind?]?
 
+    // The type of the column each parameter is written to or compared with, by position, as the target's driver names
+    // it. Nil, or a nil entry, where the host does not know it.
+    public var parameterTypeNames: [String?]?
+
     public init() {}
 }
 

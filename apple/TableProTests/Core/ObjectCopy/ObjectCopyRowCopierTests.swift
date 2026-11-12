@@ -17,6 +17,7 @@ private final class CopyDriver: PluginDriverStub, @unchecked Sendable {
     var batchSize = 2
     var executedQueries: [String] = []
     var executedParameters: [[PluginCellValue]] = []
+    var executedTypeNames: [[String?]?] = []
     var quote: (String) -> String = { "`\($0)`" }
     var declaredParameterStyle: ParameterStyle = .questionMark
     var transactionEvents: [String] = []
@@ -32,6 +33,15 @@ private final class CopyDriver: PluginDriverStub, @unchecked Sendable {
         executedQueries.append(query)
         executedParameters.append(parameters)
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        executedTypeNames.append(context.parameterTypeNames)
+        return try await executeParameterized(query: query, parameters: parameters)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -359,6 +369,38 @@ struct ObjectCopyRowCopierTests {
 
         #expect(target.executedQueries.first?.contains("CAST") == false)
         #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "00000101"])
+    }
+
+    // MARK: - Column types
+
+    // Oracle stored a copied `00123` in a VARCHAR2 as 123: the driver was never told the column was text.
+    @Test
+    func eachValueTellsTheTargetItsColumnType() async throws {
+        let source = CopyDriver()
+        source.streamed = [[.text("1"), .text("00123")], [.text("2"), .text("0.50")]]
+        let target = CopyDriver()
+
+        _ = try await ObjectCopyRowCopier(
+            step: step(columnTypeNames: ["id": "NUMBER", "name": "VARCHAR2(20 BYTE)"]),
+            sourceDatabaseType: .postgresql,
+            targetDatabaseType: .oracle
+        ).copy(from: source, to: target) { _ in }
+
+        // Oracle takes one row per INSERT.
+        #expect(target.executedTypeNames == [["NUMBER", "VARCHAR2(20 BYTE)"], ["NUMBER", "VARCHAR2(20 BYTE)"]])
+        #expect(target.executedParameters.map { row in row.map { $0.sortKey } } == [["1", "00123"], ["2", "0.50"]])
+    }
+
+    @Test
+    func aTargetOfNoKnownColumnTypesIsToldNone() async throws {
+        let source = CopyDriver()
+        source.streamed = rows(1)
+        let target = CopyDriver()
+
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
+            .copy(from: source, to: target) { _ in }
+
+        #expect(target.executedTypeNames == [nil])
     }
 
     private static func draft(

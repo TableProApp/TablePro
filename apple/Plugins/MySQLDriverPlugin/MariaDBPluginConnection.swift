@@ -148,6 +148,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private var baselineSelectLimit: UInt64?
     private var hasCapturedBaselineSelectLimit = false
 
+    // Whether this session already waits long enough for a streaming reader. Only touched from `queue`.
+    private var hasStreamingWriteTimeout = false
+
     /// Whether the connection that actually succeeded negotiated TLS. `.preferred` falls back to
     /// plaintext, so the configured mode does not say what the transport ended up being, and the
     /// `KILL` connection has to repeat what worked rather than what was asked for.
@@ -401,6 +404,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.appliedSelectLimit = nil
             self.baselineSelectLimit = nil
             self.hasCapturedBaselineSelectLimit = false
+            self.hasStreamingWriteTimeout = false
 
             let threadId = mysql_thread_id(handle)
             self.stateLock.lock()
@@ -738,7 +742,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     private static let killTimeoutSeconds: UInt32 = 5
 
-    // The server drops a connection it could not write a result to for net_write_timeout, 60 s by default.
+    // The server drops a connection it could not write a result to for net_write_timeout, 60 s by default and 600 s
+    // once `raiseStreamingWriteTimeout` ran; the lower one holds when a server refused the raise.
     private static let unreadResultPause: TimeInterval = 20
 
     // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
@@ -1497,6 +1502,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard !abort.isAborted else { return }
 
         try reconcileSelectLimit(rowCap: nil, statement: queryToRun, on: mysql)
+        raiseStreamingWriteTimeout(on: mysql)
 
         let queryStatus = queryToRun.withCString { queryPtr in
             mysql_real_query(mysql, queryPtr, UInt(queryToRun.utf8.count))
@@ -1561,6 +1567,23 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         mysql_free_result(resultPtr)
         try consumeTrailingResults(on: mysql, generation: generation)
+    }
+
+    // While the stream waits for its reader the server waits on the socket, and gives up after `net_write_timeout`,
+    // 60 seconds by default. 600 is the value MySQL Connector/J sets for a streaming result
+    // (`netTimeoutForStreamingResults`). Asked once per session: a server that refuses it keeps its own.
+    private func raiseStreamingWriteTimeout(on mysql: UnsafeMutablePointer<MYSQL>) {
+        guard !hasStreamingWriteTimeout else { return }
+        hasStreamingWriteTimeout = true
+        let statement = "SET SESSION net_write_timeout = GREATEST(@@SESSION.net_write_timeout, 600)"
+        let status = statement.withCString { mysql_real_query(mysql, $0, UInt(statement.utf8.count)) }
+        if let discarded = mysql_store_result(mysql) {
+            mysql_free_result(discarded)
+        }
+        guard status == 0 else {
+            logger.warning("net_write_timeout not raised for a stream: \(self.errorMessage(from: mysql))")
+            return
+        }
     }
 
     // MARK: - Trailing Results

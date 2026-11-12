@@ -105,7 +105,7 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         let report = HanaStreamReport()
         let collected = try await PluginBoundedStream.collect(
-            stream(query, report: report),
+            stream(query, report: report, refusesCutValues: false),
             rowCap: rowCap,
             startedAt: Date()
         )
@@ -113,7 +113,7 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        stream(query, report: HanaStreamReport())
+        stream(query, report: HanaStreamReport(), refusesCutValues: true)
     }
 
     func switchSchema(to schema: String) async throws {
@@ -175,12 +175,19 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func stream(_ sql: String, report: HanaStreamReport) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    // A copy, export or compare reads the stream, and would write a value cut at 64 MiB as if it were whole.
+    private func stream(
+        _ sql: String,
+        report: HanaStreamReport,
+        refusesCutValues: Bool
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         PluginRowStream.make { continuation, abort in
             let driver = self
             let producer = Task {
                 do {
-                    try await driver.produce(sql, into: continuation, abort: abort, report: report)
+                    try await driver.produce(
+                        sql, into: continuation, abort: abort, report: report, refusesCutValues: refusesCutValues
+                    )
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -196,7 +203,8 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ sql: String,
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
         abort: PluginStreamAbort,
-        report: HanaStreamReport
+        report: HanaStreamReport,
+        refusesCutValues: Bool
     ) async throws {
         if HanaExplainStatement.explainedStatement(in: sql) != nil {
             let result = try await run(sql, parameters: nil, rowCap: nil)
@@ -224,12 +232,24 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 },
                 onBatch: { batch in
                     report.record(truncatedLargeObjects: batch.truncatedLobCount)
+                    // The cursor loop sees the slot cancelled after this batch and closes the cursor.
+                    if refusesCutValues, batch.truncatedLobCount > 0 {
+                        _ = query.cancellation.cancel()
+                        return
+                    }
+                    // Runs on the session's own queue, which waits here while the reader is behind.
                     abort.send(HanaResultMapping.pluginRows(batch.rows), to: continuation)
                 }
             )
         } catch let failure as HanaBridgeFailure {
+            if refusesCutValues, report.hasCutLargeObjects {
+                throw HanaResultMapping.cutLargeObjectError
+            }
             let requested = Task.isCancelled || cancellationGate.isCancelled(query.generation)
             throw HanaFailureMapping.error(for: failure, cancellationRequested: requested)
+        }
+        if refusesCutValues, report.hasCutLargeObjects {
+            throw HanaResultMapping.cutLargeObjectError
         }
     }
 
