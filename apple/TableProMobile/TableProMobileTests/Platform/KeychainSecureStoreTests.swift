@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Security
 @testable import TableProMobile
 import Testing
@@ -121,5 +122,70 @@ struct KeychainSecureStoreTests {
         items.failedUpdate = nil
         try store.store("new-pem", role: .clientCertificate, for: connectionId)
         #expect(store.pem(role: .clientCertificate, for: connectionId) == "new-pem")
+    }
+
+    // MARK: - Launch cleanup
+
+    @Test("The launch cleanup removes a deleted connection's device-only secrets and keeps current, synced and Mac-owned ones")
+    func cleanupRemovesOnlyOrphans() async {
+        let kept = UUID()
+        let deleted = UUID()
+        let keptPassword = ConnectionSecretKind.password.account(for: kept)
+        let deletedPassword = ConnectionSecretKind.password.account(for: deleted)
+        let deletedSSHPassword = ConnectionSecretKind.sshPassword.account(for: deleted)
+        let macOwnedKey = ConnectionSecretKind.sshPrivateKey.account(for: deleted)
+        items.seed("kept", account: keptPassword, synchronizable: false)
+        items.seed("orphan", account: deletedPassword, synchronizable: false)
+        items.seed("orphan", account: deletedSSHPassword, synchronizable: false)
+        items.seed("synced", account: deletedPassword, synchronizable: true)
+        items.seed("mac", account: macOwnedKey, synchronizable: false)
+
+        await KeychainSecureStore.cleanOrphanedCredentials(items: items) { Set([kept]) }
+
+        #expect(items.value(account: keptPassword, synchronizable: false) == "kept")
+        #expect(items.value(account: deletedPassword, synchronizable: false) == nil)
+        #expect(items.value(account: deletedSSHPassword, synchronizable: false) == nil)
+        #expect(items.value(account: deletedPassword, synchronizable: true) == "synced")
+        #expect(items.value(account: macOwnedKey, synchronizable: false) == "mac")
+    }
+
+    @MainActor
+    @Test("Started from the main actor, the launch cleanup makes no Keychain call on the main thread")
+    func cleanupStaysOffTheMainThread() async {
+        let orphan = ConnectionSecretKind.password.account(for: UUID())
+        items.seed("orphan", account: orphan, synchronizable: false)
+
+        await KeychainSecureStore.cleanOrphanedCredentials(items: items) { Set([UUID()]) }
+
+        #expect(items.value(account: orphan, synchronizable: false) == nil)
+        #expect(items.mainThreadCalls == 0)
+    }
+
+    @Test("A connection saved while the Keychain is listed keeps its secrets, since the library is read after the listing")
+    func connectionSavedDuringListingKeepsItsSecrets() async {
+        let existing = UUID()
+        let saved = UUID()
+        let savedPassword = ConnectionSecretKind.password.account(for: saved)
+        let library = OSAllocatedUnfairLock(initialState: Set([existing]))
+        items.duringNextListing { [items] in
+            // A save adds the connection, then writes its secrets.
+            library.withLock { _ = $0.insert(saved) }
+            items.seed("new", account: savedPassword, synchronizable: false)
+        }
+
+        await KeychainSecureStore.cleanOrphanedCredentials(items: items) { library.withLock { $0 } }
+
+        #expect(items.value(account: savedPassword, synchronizable: false) == "new")
+    }
+
+    @Test("A library that is empty or not loaded removes nothing")
+    func unknownLibraryRemovesNothing() async {
+        let account = ConnectionSecretKind.password.account(for: UUID())
+        items.seed("secret", account: account, synchronizable: false)
+
+        await KeychainSecureStore.cleanOrphanedCredentials(items: items) { nil }
+        await KeychainSecureStore.cleanOrphanedCredentials(items: items) { Set() }
+
+        #expect(items.value(account: account, synchronizable: false) == "secret")
     }
 }

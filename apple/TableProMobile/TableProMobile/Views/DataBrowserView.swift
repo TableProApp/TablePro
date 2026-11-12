@@ -70,7 +70,7 @@ struct DataBrowserView: View {
     }
 
     private var columns: [ColumnInfo] { viewModel.columns }
-    private var rows: [[String?]] { viewModel.legacyRows }
+    private var rows: [Row] { viewModel.window.rows }
 
     private var pageReads: DataBrowserViewModel.SessionReadTracker {
         let viewModel = viewModel
@@ -130,10 +130,11 @@ struct DataBrowserView: View {
                     viewModel.seedFilters(filters)
                 }
                 await viewModel.load(isInitial: true)
-                guard reference != nil, !Task.isCancelled else { return }
-                if viewModel.takeSingleRowMatch() {
-                    showMatchedRow = true
-                }
+            }
+            // Pushed when the one row lands, not after the key read and the count that follow it.
+            .onChange(of: viewModel.hasSingleRowMatch) { _, found in
+                guard found, reference != nil, viewModel.takeSingleRowMatch() else { return }
+                showMatchedRow = true
             }
             // A redial or another window's database switch hands this table a new session; a referenced table keeps its schema.
             .onChange(of: BrowseSource(session: session, schema: browserSchema)) { _, source in
@@ -283,6 +284,17 @@ struct DataBrowserView: View {
         } else if rows.isEmpty, viewModel.isPageLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if viewModel.isPastTheEnd {
+            ContentUnavailableView {
+                Label("No Rows on This Page", systemImage: "tray")
+            } description: {
+                Text("This page is past the last row.")
+            } actions: {
+                Button("Go to First Page") {
+                    Task { await viewModel.goToPage(1) }
+                }
+                .buttonStyle(.borderedProminent)
+            }
         } else if rows.isEmpty, viewModel.hasActiveSearch {
             ContentUnavailableView.search(text: viewModel.activeSearchText)
         } else if rows.isEmpty {
@@ -316,10 +328,10 @@ struct DataBrowserView: View {
     }
 
     private var rowList: some View {
-        let indexed = IndexedRow.wrap(rows)
+        let rows = rows
         return List {
-            ForEach(indexed) { item in
-                rowLink(index: item.id, row: item.values)
+            ForEach(rows.indices, id: \.self) { index in
+                rowLink(index: index, row: rows[index].displayValues())
             }
         }
         .listStyle(.plain)
@@ -329,7 +341,7 @@ struct DataBrowserView: View {
         let primaryKeys = primaryKeyNames
         return RowGrid(
             columns: columns,
-            rows: rows,
+            window: viewModel.window,
             keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: primaryKeys)
         ) { index, line in
             NavigationLink {
@@ -345,7 +357,7 @@ struct DataBrowserView: View {
                 RowCard(
                     columns: columns,
                     columnDetails: viewModel.columnDetails,
-                    row: rows.indices.contains(index) ? rows[index] : [],
+                    row: rows.indices.contains(index) ? rows[index].displayValues() : [],
                     previewFieldCount: DuoLayoutResolver.regularPreviewFieldCount
                 )
                 .padding()
@@ -370,7 +382,8 @@ struct DataBrowserView: View {
     }
 
     private func rowDetail(index: Int) -> some View {
-        RowDetailView(
+        let viewModel = viewModel
+        return RowDetailView(
             columns: columns,
             rows: viewModel.window.rows,
             initialIndex: index,
@@ -450,12 +463,8 @@ struct DataBrowserView: View {
             Menu("Share Row") {
                 ForEach(ExportFormat.offered(for: connection.type)) { format in
                     Button(format.rawValue) {
-                        exportCompleted([cells]) { exportColumns, completed in
-                            shareText = try ClipboardExporter.exportRow(
-                                columns: exportColumns, cells: completed[0],
-                                format: format, tableName: table.name,
-                                databaseType: connection.type, driver: session?.driver
-                            )
+                        exportCompleted([cells], asOneRow: true, format: format) { text in
+                            shareText = text
                             showShareSheet = true
                         }
                     }
@@ -465,12 +474,7 @@ struct DataBrowserView: View {
             Menu("Copy Row") {
                 ForEach(ExportFormat.offered(for: connection.type)) { format in
                     Button(format.rawValue) {
-                        exportCompleted([cells]) { exportColumns, completed in
-                            let text = try ClipboardExporter.exportRow(
-                                columns: exportColumns, cells: completed[0],
-                                format: format, tableName: table.name,
-                                databaseType: connection.type, driver: session?.driver
-                            )
+                        exportCompleted([cells], asOneRow: true, format: format) { text in
                             ClipboardExporter.copyToClipboard(text)
                         }
                     }
@@ -516,12 +520,7 @@ struct DataBrowserView: View {
                 Section("Export") {
                     ForEach(ExportFormat.offered(for: connection.type)) { format in
                         Button {
-                            exportCompleted(viewModel.window.rows.map(\.cells)) { exportColumns, completed in
-                                let text = try ClipboardExporter.exportRows(
-                                    columns: exportColumns, rows: completed,
-                                    format: format, tableName: table.name,
-                                    databaseType: connection.type, driver: session?.driver
-                                )
+                            exportCompleted(viewModel.window.rows.map(\.cells), asOneRow: false, format: format) { text in
                                 ClipboardExporter.copyToClipboard(text)
                             }
                         } label: {
@@ -644,11 +643,15 @@ struct DataBrowserView: View {
     // Rows that cannot all be completed skip the reads: the exporter refuses them anyway.
     private func exportCompleted(
         _ pageRows: [[Cell]],
-        export: @escaping @MainActor ([ColumnInfo], [[Cell]]) throws -> Void
+        asOneRow: Bool,
+        format: ExportFormat,
+        deliver: @escaping (String) -> Void
     ) {
         guard !isCompletingCells else { return }
         let exportColumns = columns
         let driver = session?.driver
+        let tableName = table.name
+        let databaseType = connection.type
         isCompletingCells = true
         Task {
             defer { isCompletingCells = false }
@@ -657,7 +660,10 @@ struct DataBrowserView: View {
                 if let driver, pageRows.allSatisfy(DataBrowserViewModel.canComplete) {
                     completed = try await viewModel.completeRows(pageRows, driver: driver)
                 }
-                try export(exportColumns, completed)
+                deliver(try await Self.exportText(
+                    completed, columns: exportColumns, asOneRow: asOneRow, format: format,
+                    tableName: tableName, databaseType: databaseType, driver: driver
+                ))
             } catch let error where error is ClipboardExporter.IncompleteValues || error is ClipboardExporter.TooLarge
                         || error is CellLookupError {
                 viewModel.operationError = AppError(
@@ -676,6 +682,29 @@ struct DataBrowserView: View {
                 hapticError.toggle()
             }
         }
+    }
+
+    // Off the main actor, so a page of 500 rows formats without holding up the screen.
+    @concurrent
+    nonisolated private static func exportText(
+        _ rows: [[Cell]],
+        columns: [ColumnInfo],
+        asOneRow: Bool,
+        format: ExportFormat,
+        tableName: String,
+        databaseType: DatabaseType,
+        driver: (any DatabaseDriver)?
+    ) async throws -> String {
+        if asOneRow, let cells = rows.first {
+            return try ClipboardExporter.exportRow(
+                columns: columns, cells: cells, format: format, tableName: tableName,
+                databaseType: databaseType, driver: driver
+            )
+        }
+        return try ClipboardExporter.exportRows(
+            columns: columns, rows: rows, format: format, tableName: tableName,
+            databaseType: databaseType, driver: driver
+        )
     }
 
     private func performDelete(_ pending: PendingRowDelete) async {

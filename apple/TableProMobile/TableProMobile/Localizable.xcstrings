@@ -10907,6 +10907,9 @@
         }
       }
     },
+    "Go to First Page" : {
+
+    },
     "Go to Page" : {
       "localizations" : {
         "ko" : {
@@ -15429,6 +15432,9 @@
           }
         }
       }
+    },
+    "No Rows on This Page" : {
+
     },
     "No Tables" : {
       "localizations" : {
@@ -27633,6 +27639,9 @@
     "This Oracle server requires Native Network Encryption but did not offer it on this connection. Ask the DBA to enable it, or use TLS instead by setting an SSL mode." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This page is past the last row." : {
+
     },
     "This query will modify data. Are you sure you want to continue?" : {
       "localizations" : {

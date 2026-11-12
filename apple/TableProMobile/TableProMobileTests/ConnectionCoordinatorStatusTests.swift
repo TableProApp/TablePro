@@ -550,11 +550,13 @@ struct ConnectionCoordinatorStatusTests {
 nonisolated enum ScriptedFailure: LocalizedError {
     case unreachable
     case refused
+    case noSuchDatabase
 
     var errorDescription: String? {
         switch self {
         case .unreachable: "Lost connection to the server during the query"
         case .refused: "The server refused the request"
+        case .noSuchDatabase: "FATAL: the requested database does not exist"
         }
     }
 }

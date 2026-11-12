@@ -24,15 +24,32 @@ struct QueryEditorViewModelTests {
         let vm = QueryEditorViewModel(windowCapacity: 100)
         await vm.run(driver: driver, script: .statements("SELECT * FROM t"), maxRows: 3)
 
-        #expect(vm.legacyRows.count == 3)
-        #expect(vm.legacyRows.first?.first == "0")
-        #expect(vm.legacyRows.last?.first == "2")
+        #expect(vm.window.shownValues.count == 3)
+        #expect(vm.window.shownValues.first?.first == "0")
+        #expect(vm.window.shownValues.last?.first == "2")
         #expect(vm.truncationReason != nil)
         #expect(vm.truncationMessage != nil)
         if case .truncated(let reason) = vm.phase, case .rowCap(let cap) = reason {
             #expect(cap == 3)
         } else {
             Issue.record("expected truncated(.rowCap) phase, got \(vm.phase)")
+        }
+    }
+
+    @Test("Share and Copy Results format the rows on screen, and refuse a result the free memory cannot hold")
+    func exportResultsFormatsTheRows() async throws {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1"], ["2"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = QueryEditorViewModel(windowCapacity: 100)
+        await vm.run(driver: driver, script: .statements("SELECT id FROM t"), maxRows: 100)
+
+        let csv = try await vm.exportResults(as: .csv, databaseType: .mysql, driver: driver, availableBytes: 0)
+        #expect(csv == "id\n1\n2")
+
+        await #expect(throws: ClipboardExporter.TooLarge(source: .queryResult)) {
+            try await vm.exportResults(as: .csv, databaseType: .mysql, driver: driver, availableBytes: 1)
         }
     }
 
@@ -106,7 +123,7 @@ struct QueryEditorViewModelTests {
         let vm = QueryEditorViewModel(windowCapacity: 100)
         await vm.run(driver: driver, script: .statements("SELECT id FROM t"), maxRows: 100)
 
-        #expect(vm.legacyRows.count == 2)
+        #expect(vm.window.shownValues.count == 2)
         #expect(vm.truncationReason == nil)
         #expect(vm.truncationMessage == nil)
         if case .finished = vm.phase {} else {
@@ -127,7 +144,7 @@ struct QueryEditorViewModelTests {
 
         await vm.handlePressure(.warning)
 
-        #expect(vm.legacyRows.count == 2)
+        #expect(vm.window.shownValues.count == 2)
         #expect(vm.truncationReason == nil)
         #expect(vm.truncationMessage == nil)
         if case .finished = vm.phase {} else {
@@ -144,11 +161,11 @@ struct QueryEditorViewModelTests {
 
         let vm = QueryEditorViewModel(windowCapacity: 100)
         await vm.run(driver: driver, script: .statements("SELECT id FROM t"), maxRows: 100)
-        #expect(vm.legacyRows.count == 1)
+        #expect(vm.window.shownValues.count == 1)
 
         vm.reset()
 
-        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.window.shownValues.isEmpty)
         #expect(vm.columns.isEmpty)
         if case .idle = vm.phase {} else {
             Issue.record("expected idle phase after reset")
@@ -430,7 +447,7 @@ struct QueryEditorViewModelTests {
         #expect(totalBytes == 10_000)
         #expect(ref == nil)
         #expect(vm.longValuesNotice == String(localized: "Some long values are shown in part to stay within memory."))
-        let shown = vm.legacyRows.first?.first ?? nil
+        let shown = vm.window.shownValues.first?.first ?? nil
         #expect(shown?.utf8.count == Cell.previewByteLimit)
     }
 
@@ -472,9 +489,10 @@ struct QueryEditorViewModelTests {
         await vm.run(driver: driver, script: .statements("SELECT body FROM notes"))
         let margin = 64 * 1_024 * 1_024
 
-        #expect(vm.resultsFitExport(availableBytes: 0))
-        #expect(vm.resultsFitExport(availableBytes: margin + 40_001))
-        #expect(!vm.resultsFitExport(availableBytes: margin + 40_000))
+        let rows = vm.window.rows
+        #expect(QueryEditorViewModel.resultsFitExport(rows: rows, availableBytes: 0))
+        #expect(QueryEditorViewModel.resultsFitExport(rows: rows, availableBytes: margin + 40_001))
+        #expect(!QueryEditorViewModel.resultsFitExport(rows: rows, availableBytes: margin + 40_000))
     }
 
     @Test("the budget is a quarter of the headroom past 64 MB, at most 64 MB, and 64 MB when the headroom is unknown")
