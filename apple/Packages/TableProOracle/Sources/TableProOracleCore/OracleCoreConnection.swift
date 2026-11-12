@@ -1005,6 +1005,16 @@ public final class OracleCoreConnection: @unchecked Sendable {
         batching: OracleRowBatcher,
         continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
     ) async throws {
+        try await streamQuery(query, batching: batching, onElement: { continuation.yield($0) })
+        continuation.finish()
+    }
+
+    // The next row is read only once `onElement` returns, so a caller that waits in it holds the statement open.
+    public func streamQuery(
+        _ query: String,
+        batching: OracleRowBatcher,
+        onElement: @escaping @Sendable (OracleStreamElement) async -> Void
+    ) async throws {
         let role = OracleTransactionRole(of: query)
         await queryGate.acquire()
 
@@ -1022,13 +1032,12 @@ public final class OracleCoreConnection: @unchecked Sendable {
                     regions: regions,
                     batching: batching,
                     on: connection,
-                    continuation: continuation
+                    onElement: onElement
                 )
             }
             await recordSuccess(of: role, on: admitted.session)
             forgetSessionZonesIfChanged(by: query)
             await queryGate.release()
-            continuation.finish()
         } catch {
             let mapped = mapExecutionError(error)
             forgetSessionZonesIfChanged(by: query)
@@ -1045,33 +1054,33 @@ public final class OracleCoreConnection: @unchecked Sendable {
         regions: OracleTimeZoneRegions,
         batching: OracleRowBatcher,
         on connection: OracleNIO.OracleConnection,
-        continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
+        onElement: @escaping @Sendable (OracleStreamElement) async -> Void
     ) async throws {
         let statement = OracleStatement(unsafeSQL: query)
         let stream = try await connection.execute(statement, options: options, logger: nioLogger)
 
         let columns = stream.columns.map(OracleResultColumn.init)
         var decoder = CellDecoder(columns: columns, zones: zones, regions: regions)
-        continuation.yield(.header(columns: columns.map(\.descriptor)))
+        await onElement(.header(columns: columns.map(\.descriptor)))
 
         var batcher = batching
         do {
             for try await row in stream {
                 try Task.checkCancellation()
                 if let batch = batcher.append(decoder.decode(row)) {
-                    continuation.yield(.rows(batch))
+                    await onElement(.rows(batch))
                 }
             }
         } catch {
             // The rows read before a failure still reach the reader ahead of the error, as they did one by one.
-            if let batch = batcher.remainder() { continuation.yield(.rows(batch)) }
+            if let batch = batcher.remainder() { await onElement(.rows(batch)) }
             throw error
         }
-        if let batch = batcher.remainder() { continuation.yield(.rows(batch)) }
+        if let batch = batcher.remainder() { await onElement(.rows(batch)) }
         await warnOnce(about: decoder.unsupportedTypeNames)
 
         guard columns.isEmpty else { return }
-        continuation.yield(.affectedRows(try await stream.affectedRows))
+        await onElement(.affectedRows(try await stream.affectedRows))
     }
 
     // MARK: - Session Time Zones

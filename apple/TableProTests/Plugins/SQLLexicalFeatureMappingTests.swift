@@ -29,10 +29,10 @@ struct SQLLexicalFeatureMappingTests {
             .sqlScriptBlocks, .cqlBatches, .hashAndAtInIdentifiers, .angleQuotedIdentifiers,
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
             .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
-            .withoutDashComments, .escapeStringContinuations, .databendTokens, .psqlScripts,
+            .withoutDashComments, .escapeStringContinuations, .databendTokens, .psqlScripts, .nonASCIISpacesEndNames,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 42) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 43) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -122,6 +122,9 @@ struct SQLLexicalFeatureMappingTests {
         "SELECT $$it's$$; DROP TABLE t; SELECT 'x'",
         "SELECT $ü$it's$ü$; DROP TABLE t; SELECT 'x'",
         "SELECT E'\\''; DROP TABLE t; --'",
+        "SELECT x$e'\\'; DROP TABLE t; --'",
+        "SELECT x$q'['; DROP TABLE t; --]' FROM dual",
+        "SELECT x#q'['; DROP TABLE t; --]' FROM dual",
         "SELECT 1 # '\n; DROP TABLE t; -- '",
         "SELECT 'a\\'; DROP TABLE t; -- '",
         "SELECT 1 AS [a]]'b]; DROP TABLE t; SELECT 'x'",

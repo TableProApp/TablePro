@@ -120,7 +120,7 @@ extension VimEngine {
         let sel = buffer.selectedRange()
         guard sel.length > 0 else { return }
         lastVisualStart = sel.location
-        lastVisualEnd = sel.location + sel.length - 1
+        lastVisualEnd = characterStart(at: NSMaxRange(sel) - 1, in: buffer)
         lastVisualLinewise = linewise
     }
 
@@ -138,8 +138,8 @@ extension VimEngine {
             buffer.setSelectedRange(NSRange(location: lineStart, length: lineEnd - lineStart))
             setMode(.visual(linewise: true))
         } else {
-            let length = clampedEnd - clampedStart + (clampedEnd < buffer.length ? 1 : 0)
-            buffer.setSelectedRange(NSRange(location: clampedStart, length: length))
+            let selectionEnd = clampedEnd < buffer.length ? characterEnd(at: clampedEnd, in: buffer) : clampedEnd
+            buffer.setSelectedRange(NSRange(location: clampedStart, length: selectionEnd - clampedStart))
             setMode(.visual(linewise: false))
         }
     }

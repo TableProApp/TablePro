@@ -380,7 +380,7 @@ final class SQLFileParser: Sendable {
         // starts a word.
         let startsEscapeLiteral = (ctx.grammar.contains(.escapeStringPrefix) && (char == kCapitalE || char == kSmallE))
             || (ctx.grammar.contains(.escapeBytesPrefix) && char == kSmallB)
-        if startsEscapeLiteral, !SQLNonCodeSpan.isWordUnit(ctx.previousUnit) {
+        if startsEscapeLiteral, !SQLNonCodeSpan.continuesName(beforePrefix: ctx.previousUnit, grammar: ctx.grammar) {
             if i + 1 < bufLen {
                 if nsBuffer.character(at: i + 1) == kSingleQuote { return .none }
             } else if !ctx.atEndOfInput {
@@ -388,7 +388,7 @@ final class SQLFileParser: Sendable {
                 return .needsMoreData
             }
         }
-        if readsAlternativeQuotes, !SQLNonCodeSpan.isWordUnit(ctx.previousUnit),
+        if readsAlternativeQuotes, !SQLNonCodeSpan.continuesName(beforePrefix: ctx.previousUnit, grammar: ctx.grammar),
            let quoteLength = alternativeQuotePrefixLength(nsBuffer, at: i, bufLen: bufLen) {
             if quoteLength > 0 {
                 return .opensAlternativeQuote(prefixLength: quoteLength)
@@ -599,7 +599,7 @@ final class SQLFileParser: Sendable {
         let startsEscapeBytes = ctx.grammar.contains(.escapeBytesPrefix) && char == kSmallB
         if (startsEscapeString || startsEscapeBytes)
             && nextChar == kSingleQuote
-            && !SQLNonCodeSpan.isWordUnit(ctx.previousUnit) {
+            && !SQLNonCodeSpan.continuesName(beforePrefix: ctx.previousUnit, grammar: ctx.grammar) {
             settleHeldEnd(&ctx, word: nil)
             (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
                 ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
@@ -624,7 +624,14 @@ final class SQLFileParser: Sendable {
         }
 
         if let style = ctx.grammar.dollarQuoteStyle, char == kDollar {
-            switch SqlDollarQuote.scanOpener(at: i, in: nsBuffer, bufLen: bufLen, style: style) {
+            let grammar = ctx.grammar
+            switch SqlDollarQuote.scanOpener(
+                at: i,
+                in: nsBuffer,
+                bufLen: bufLen,
+                style: style,
+                continuesName: { SQLNonCodeSpan.continuesName(beforeDollar: $0, grammar: grammar) }
+            ) {
             case .opener(let length, let tag):
                 settleHeldEnd(&ctx, word: nil)
                 (ctx.hasStatementContent, ctx.statementStartLine) = markContent(

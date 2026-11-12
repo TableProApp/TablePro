@@ -467,20 +467,21 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
-                if !batch.isEmpty { continuation.yield(.rows(batch)) }
+                if !batch.isEmpty { _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation) }
                 sqlite3_finalize(statement)
                 continuation.finish(throwing: CancellationError())
                 return
             }
             batch.append(Self.readRow(statement, columnCount: columnCount))
             if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
+                // Blocks the actor's thread: an await here would let another call reach the handle mid-statement.
+                _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
                 batch.removeAll(keepingCapacity: true)
             }
             stepResult = sqlite3_step(statement)
         }
 
-        if !batch.isEmpty { continuation.yield(.rows(batch)) }
+        if !batch.isEmpty { _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation) }
 
         guard stepResult == SQLITE_DONE else {
             let message = String(cString: sqlite3_errmsg(db))

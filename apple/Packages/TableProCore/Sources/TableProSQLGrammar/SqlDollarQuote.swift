@@ -41,13 +41,19 @@ public enum SqlDollarQuote {
     }
 
     /// Resolves a `$` at `pos` to a dollar-quote opener, a positional parameter like `$1`, or a non-tag dollar. A `$`
-    /// glued to a preceding identifier is not an opener. Returns `needsMoreData` when the buffer ends mid-tag; a
-    /// whole-string caller treats that as `notOpener`.
+    /// glued to a preceding identifier, as `continuesName` reads the unit before it, is not an opener. Returns
+    /// `needsMoreData` when the buffer ends mid-tag; a whole-string caller treats that as `notOpener`.
     ///
     /// A tag starts with a letter or an underscore and continues with letters, digits and underscores, where a letter
     /// is any non-ASCII character as well, which is how PostgreSQL accepts `$ü$`.
-    public static func scanOpener(at pos: Int, in buffer: NSString, bufLen: Int, style: Style) -> Opener {
-        if pos > 0, isIdentifierContinuation(buffer.character(at: pos - 1)) {
+    public static func scanOpener(
+        at pos: Int,
+        in buffer: NSString,
+        bufLen: Int,
+        style: Style,
+        continuesName: (unichar) -> Bool = SqlDollarQuote.isIdentifierContinuation
+    ) -> Opener {
+        if pos > 0, continuesName(buffer.character(at: pos - 1)) {
             return .notOpener
         }
         guard pos + 1 < bufLen else { return .needsMoreData }

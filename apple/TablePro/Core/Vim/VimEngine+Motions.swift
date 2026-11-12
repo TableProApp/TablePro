@@ -9,7 +9,7 @@ extension VimEngine {
     func moveLeft(_ count: Int, in buffer: VimTextBuffer) {
         let pos = buffer.selectedRange().location
         let lineRange = buffer.lineRange(forOffset: pos)
-        let newPos = max(lineRange.location, pos - count)
+        let newPos = characterOffset(before: pos, count: count, limit: lineRange.location, in: buffer)
         buffer.setSelectedRange(NSRange(location: newPos, length: 0))
         goalColumn = nil
     }
@@ -24,8 +24,11 @@ extension VimEngine {
         } else {
             contentEnd = lineEnd
         }
-        let maxPos = max(lineRange.location, contentEnd - 1)
-        let newPos = min(maxPos, pos + count)
+        // With an operator pending, `l` reaches past the last character, so `dl` there deletes it.
+        let maxPos = pendingOperator != nil || contentEnd == lineRange.location
+            ? contentEnd
+            : characterStart(at: contentEnd - 1, in: buffer)
+        let newPos = characterOffset(after: pos, count: count, limit: maxPos, in: buffer)
         buffer.setSelectedRange(NSRange(location: newPos, length: 0))
         goalColumn = nil
     }
@@ -90,7 +93,7 @@ extension VimEngine {
         } else {
             contentEnd = lineEnd
         }
-        let finalPos = contentEnd > lineRange.location ? contentEnd - 1 : lineRange.location
+        let finalPos = contentEnd > lineRange.location ? characterStart(at: contentEnd - 1, in: buffer) : lineRange.location
         buffer.setSelectedRange(NSRange(location: finalPos, length: 0))
     }
 
@@ -151,7 +154,7 @@ extension VimEngine {
         if pos >= contentEnd && contentEnd > lineRange.location {
             pos = contentEnd - 1
         }
-        return pos
+        return characterStart(at: pos, in: buffer)
     }
 
     func wordBackward(_ count: Int, in buffer: VimTextBuffer) {
@@ -235,8 +238,7 @@ extension VimEngine {
 
     func executeFindChar(_ char: Character, request: VimFindCharRequest, in buffer: VimTextBuffer) -> Bool {
         lastFindChar = VimLastFindChar(char: char, forward: request.forward, till: request.till)
-        guard let scalar = char.unicodeScalars.first else { return true }
-        let target = unichar(scalar.value)
+        let target = String(char)
         let count = consumeCount()
         let pos = buffer.selectedRange().location
         let lineRange = buffer.lineRange(forOffset: pos)
@@ -244,37 +246,44 @@ extension VimEngine {
         let contentEnd = lineEnd > lineRange.location
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        let matches: (NSRange) -> Bool = { buffer.string(in: $0) == target }
+        // An offset below the line start ends the backward scan.
+        let previous: (Int) -> Int = { offset in
+            offset > lineRange.location ? self.characterStart(at: offset - 1, in: buffer) : offset - 1
+        }
 
         var resolved: Int?
         if request.forward {
-            let initial = request.till ? pos + 2 : pos + 1
-            var scanStart = min(initial, contentEnd)
+            var scanStart = characterEnd(at: pos, in: buffer)
+            if request.till { scanStart = characterEnd(at: scanStart, in: buffer) }
+            scanStart = min(scanStart, contentEnd)
             for _ in 0..<count {
                 resolved = nil
                 var idx = scanStart
                 while idx < contentEnd {
-                    if buffer.character(at: idx) == target {
+                    let range = buffer.characterRange(at: idx)
+                    if matches(range) {
                         resolved = idx
-                        scanStart = idx + 1
+                        scanStart = NSMaxRange(range)
                         break
                     }
-                    idx += 1
+                    idx = NSMaxRange(range)
                 }
                 if resolved == nil { break }
             }
         } else {
-            let initial = request.till ? pos - 2 : pos - 1
-            var scanStart = initial
+            var scanStart = previous(pos)
+            if request.till { scanStart = previous(scanStart) }
             for _ in 0..<count {
                 resolved = nil
                 var idx = scanStart
                 while idx >= lineRange.location {
-                    if buffer.character(at: idx) == target {
+                    if matches(buffer.characterRange(at: idx)) {
                         resolved = idx
-                        scanStart = idx - 1
+                        scanStart = previous(idx)
                         break
                     }
-                    idx -= 1
+                    idx = previous(idx)
                 }
                 if resolved == nil { break }
             }
@@ -282,7 +291,7 @@ extension VimEngine {
 
         guard var finalPos = resolved else { return true }
         if request.till {
-            finalPos += request.forward ? -1 : 1
+            finalPos = request.forward ? previous(finalPos) : characterEnd(at: finalPos, in: buffer)
         }
         executeMotion(in: buffer, inclusive: true) {
             buffer.setSelectedRange(NSRange(location: finalPos, length: 0))

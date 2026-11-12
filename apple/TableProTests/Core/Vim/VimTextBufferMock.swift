@@ -36,9 +36,7 @@ final class VimTextBufferMock: VimTextBuffer {
         return max(1, count)
     }
 
-    func invalidateLineCache() {
-        // No-op in mock — lineCount is always computed from current text
-    }
+    func invalidateLineCache() {}
 
     func lineRange(forOffset offset: Int) -> NSRange {
         let nsString = text as NSString
@@ -95,6 +93,14 @@ final class VimTextBufferMock: VimTextBuffer {
         let nsString = text as NSString
         guard offset >= 0 && offset < nsString.length else { return 0 }
         return nsString.character(at: offset)
+    }
+
+    func characterRange(at offset: Int) -> NSRange {
+        let nsString = text as NSString
+        guard offset >= 0 && offset < nsString.length else {
+            return NSRange(location: min(max(0, offset), nsString.length), length: 0)
+        }
+        return nsString.rangeOfComposedCharacterSequence(at: offset)
     }
 
     func wordBoundary(forward: Bool, from offset: Int) -> Int {
@@ -285,14 +291,16 @@ final class VimTextBufferMock: VimTextBuffer {
         let clampedLocation = max(0, min(range.location, nsString.length))
         let maxLength = nsString.length - clampedLocation
         let clampedLength = max(0, min(range.length, maxLength))
-        _selectedRange = NSRange(location: clampedLocation, length: clampedLength)
+        let clamped = NSRange(location: clampedLocation, length: clampedLength)
+        _selectedRange = clamped.length > 0
+            ? nsString.rangeOfComposedCharacterSequences(for: clamped)
+            : NSRange(location: characterRange(at: clampedLocation).location, length: 0)
     }
 
     func replaceCharacters(in range: NSRange, with string: String) {
         let mutable = NSMutableString(string: text)
         mutable.replaceCharacters(in: range, with: string)
         text = mutable as String
-        // Update selection to end of inserted text
         _selectedRange = NSRange(location: range.location + (string as NSString).length, length: 0)
     }
 
