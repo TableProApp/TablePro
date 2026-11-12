@@ -12,17 +12,28 @@ import Foundation
 import CLibSSH2
 import TableProSSHTransport
 
-/// Bridges `SSHForwardChannelOpening` to libssh2. Each attempt takes the session queue
-/// only long enough to try the open and read back the error and block directions, so a
-/// slow open never holds the queue against relays or keep-alive.
+// Bridges `SSHForwardChannelOpening` to libssh2. Each attempt takes the session queue
+// only long enough to try the open and read back the error and block directions, so a
+// slow open never holds the queue against relays or keep-alive.
 nonisolated internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpening {
     let session: OpaquePointer
     let destination: SSHForwardDestination
     let originPort: Int
-    let sessionQueue: DispatchQueue
+    let pump: SSHSessionPump
+    let turn: SSHSendTurn
 
     func attemptOpen() -> SSHForwardChannelAttempt {
-        sessionQueue.sync {
+        let attempt = openOnce()
+        if case .wouldBlock(let directions) = attempt {
+            turn.waitsToSend(directions.contains(.outbound))
+        } else {
+            turn.end()
+        }
+        return attempt
+    }
+
+    private func openOnce() -> SSHForwardChannelAttempt {
+        pump.perform {
             if let channel = LibSSH2ForwardChannel.open(
                 session: session,
                 destination: destination,
@@ -41,9 +52,9 @@ nonisolated internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpenin
     }
 }
 
-/// Opens the channel that carries forwarded traffic to the destination. The two libssh2
-/// entry points behave identically to the caller: both return a channel that reads and
-/// writes the same way, and both signal "not ready yet" with `LIBSSH2_ERROR_EAGAIN`.
+// Opens the channel that carries forwarded traffic to the destination. The two libssh2
+// entry points behave identically to the caller: both return a channel that reads and
+// writes the same way, and both signal "not ready yet" with `LIBSSH2_ERROR_EAGAIN`.
 nonisolated internal enum LibSSH2ForwardChannel {
     // Another open or relay can read this channel's reply into libssh2's queue and leave the socket
     // quiet, so a quiet wait is a retry and only the deadline ends an open.
