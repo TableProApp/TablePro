@@ -4,8 +4,9 @@
 Why this exists: the agent program is delivered inline on the SSH exec request, and libssh2
 rejects an uncompressed packet payload at or above MAX_SSH_PACKET_LEN - 0x100 = 34744 with
 LIBSSH2_ERROR_INVAL (-34). RemoteSQLiteAgentSource compresses the program (Apple
-COMPRESSION_ZLIB, raw DEFLATE) and carries it once. This mirrors that on the CLI: raw DEFLATE
-built with wbits -15, decompressed with the production bootstrap, run against the local python3.
+COMPRESSION_ZLIB, raw DEFLATE) and carries it once. This stands in on the CLI with zlib raw
+DEFLATE (same format, so the production bootstrap's wbits -15 decompresses it; sizes are close,
+not byte-identical to COMPRESSION_ZLIB), run against the local python3.
 
 Run from the repo root:  python3 apple/scripts/probes/remote-sqlite-launcher.py
 """
@@ -29,7 +30,8 @@ def agent_program() -> bytes:
     match = re.search(r'static let python = #"""\n(.*)\n"""#', text, re.S)
     if not match:
         sys.exit("could not extract the agent program from " + str(SOURCE))
-    return (match.group(1) + "\n").encode("utf-8")
+    # Matches Data(python.utf8): the multiline literal has no trailing newline.
+    return match.group(1).encode("utf-8")
 
 
 def raw_deflate(data: bytes) -> bytes:

@@ -39,6 +39,8 @@ enum RemoteSQLiteAgentSource {
                 return compression_encode_buffer(destinationBase, capacity, inputBase, source.count, nil, COMPRESSION_ZLIB)
             }
         }
+        // 0 means the output did not fit `capacity`; raw DEFLATE of this text never grows past it.
+        precondition(written > 0, "RemoteSQLiteAgentSource could not compress the agent program")
         deflated.removeSubrange(written..<deflated.count)
         return deflated.base64EncodedString()
     }()

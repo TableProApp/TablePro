@@ -47,8 +47,9 @@ struct RemoteSQLiteAdmissionTests {
         #expect(command.hasPrefix("sh -c 'b="))
         #expect(command.contains(RemoteSQLiteWire.noPythonNotice))
         #expect(command.contains("zlib.decompress"))
-        // The exec request is one SSH packet; libssh2 rejects an uncompressed payload at or above
-        // MAX_SSH_PACKET_LEN - 0x100 with -34. Stay under it with room to spare.
-        #expect(command.utf8.count < 34_744)
+        // The exec request is one SSH packet: this command plus SSH_MSG_CHANNEL_REQUEST framing.
+        // libssh2 rejects a payload at or above MAX_SSH_PACKET_LEN - 0x100 (34744) with -34; 256 B
+        // covers the framing and still leaves room to spare.
+        #expect(command.utf8.count + 256 < 34_744)
     }
 }
