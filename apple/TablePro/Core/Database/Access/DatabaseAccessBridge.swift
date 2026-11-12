@@ -290,6 +290,10 @@ internal actor DatabaseAccessBridge {
             )
         case .batches:
             return PlannedText(statement: OperationStatement(sql: query), unit: .script)
+        case .statements(let statements) where statements.contains(where: { $0.copyData != nil }):
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "COPY FROM STDIN takes its rows from the lines after it, which only the query editor and SQL import send. Run it there.")
+            )
         case .statements:
             throw DatabaseAccessError.invalidArgument(
                 String(localized: "Update the database driver in Settings > Extensions to run several statements in one call.")

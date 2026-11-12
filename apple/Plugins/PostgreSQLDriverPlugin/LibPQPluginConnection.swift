@@ -951,6 +951,28 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // One dispatch holds the connection from the COPY to its last result: a PQexec sent in between would end the copy.
+    func copyFromStandardInput(
+        _ statement: String,
+        rows: PluginCopyData,
+        readOnly: LibPQReadOnlyTransaction.Reason?
+    ) async throws -> LibPQPluginQueryResult {
+        let statementToRun = String(statement)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            guard let readOnly else { return try copyFromStandardInputSync(statementToRun, rows: rows, conn: conn) }
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            return try LibPQReadOnlyTransaction.run(
+                state: transactionStateOnQueue().sessionTransactionState,
+                reason: readOnly,
+                send: { try runReadOnlyControl($0, on: conn) }
+            ) {
+                try copyFromStandardInputSync(statementToRun, rows: rows, conn: conn)
+            }
+        }
+    }
+
     // MARK: - Server Information
 
     func serverVersion() -> String? {
@@ -1056,6 +1078,67 @@ final class LibPQPluginConnection: @unchecked Sendable {
             generation: generation,
             cancelsOutput: cancelsOutput,
             allowsSideQueries: true
+        )
+    }
+
+    // A statement that is not a copy-in, the server's refusal of the COPY among them, reads as any other result.
+    private func copyFromStandardInputSync(
+        _ statement: String,
+        rows: PluginCopyData,
+        conn: OpaquePointer
+    ) throws -> LibPQPluginQueryResult {
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        if let ended = sessionEndedBeforeSending(conn) { throw ended }
+        guard let start = statement.withCString({ PQexec(conn, $0) }) else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        recordTransactionState(of: conn)
+        guard let copy = LibPQCopyState.copy(of: start), copy.direction == .copyIn else {
+            return try queryResult(
+                from: start,
+                connection: conn,
+                generation: generation,
+                cancelsOutput: cancelsOutput,
+                allowsSideQueries: true
+            )
+        }
+        PQclear(start)
+
+        let sent = LibPQCopyIn.send(rows, format: copy.format, conn: conn) {
+            cancellationGate.isCancelled(generation)
+        }
+        recordTransactionState(of: conn)
+        guard let result = sent.result else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        defer { PQclear(result) }
+        switch sent.interruption {
+        case .cancelled:
+            throw CancellationError()
+        case .source(let error):
+            throw error
+        case .binaryFormat:
+            throw LibPQPluginError(message: LibPQCopyIn.binaryRefusal, sqlState: nil, detail: nil)
+        case .connection, nil:
+            break
+        }
+        guard PQresultStatus(result) == PGRES_COMMAND_OK else {
+            let error = getResultError(from: result)
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw lostConnection(error, on: conn, sent: true)
+        }
+        return LibPQPluginQueryResult(
+            columns: [],
+            columnOids: [],
+            columnTypeNames: [],
+            rows: [],
+            affectedRows: getAffectedRows(from: result),
+            commandTag: getCommandTag(from: result),
+            isTruncated: false
         )
     }
 

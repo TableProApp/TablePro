@@ -414,7 +414,8 @@ extension QueryExecutionCoordinator {
             prepared: prepared,
             grammar: grammar,
             script: Self.scriptHolds(statements, in: script) ? script : nil,
-            end: statements.last.map { NSMaxRange($0.range) } ?? 0
+            // The segment's end, so a last COPY cut again keeps its rows.
+            end: statements.last?.segmentEnd ?? 0
         ) { statement, grammar in
             self.prepareStatement(
                 statement: statement,
@@ -617,6 +618,7 @@ extension QueryExecutionCoordinator {
                             originalSQL: statement.sentSQL,
                             driver: driver,
                             parameters: statement.parameterValues,
+                            copyData: statement.statement?.copyData,
                             context: context
                         )
                     }

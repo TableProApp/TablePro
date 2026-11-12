@@ -47,4 +47,7 @@ public struct PluginCapabilities: OptionSet, Sendable {
     // A `PluginStatementContext.enforcesReadOnly` statement runs in the engine's read-only mode or throws, from every
     // entry point that takes a context, `executeBoundedQuery(query:rowCap:context:)` included.
     public static let enforcesReadOnlyMode = PluginCapabilities(rawValue: 1 << 24)
+    // The driver runs a `COPY ... FROM STDIN` and sends its rows through
+    // `PluginDatabaseDriver.copyFromStandardInput(statement:rows:context:)`.
+    public static let copyFromStandardInput = PluginCapabilities(rawValue: 1 << 25)
 }

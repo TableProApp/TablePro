@@ -380,6 +380,17 @@ final class LibPQDriverCore: @unchecked Sendable {
         return answer
     }
 
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        readOnly: LibPQReadOnlyTransaction.Reason?
+    ) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.copyFromStandardInput(statement, rows: rows, readOnly: readOnly)
+        return Self.answer(result, since: startTime)
+    }
+
     private static func answer(_ result: LibPQPluginQueryResult, since startTime: Date) -> PluginQueryResult {
         PluginQueryResult(
             columns: result.columns,
@@ -508,6 +519,23 @@ protocol LibPQBackedDriver: PluginDatabaseDriver {
 extension LibPQBackedDriver {
     var sessionLexicalState: PluginSessionLexicalState? {
         core.sessionLexicalState
+    }
+
+    // Every libpq engine here reaches this through one conformance, so a sibling that does not declare the capability
+    // (Redshift, whose COPY reads only its cloud sources) refuses here.
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard capabilities.contains(.copyFromStandardInput) else {
+            throw PluginDriverUnsupportedOperation.copyFromStandardInput
+        }
+        return try await core.copyFromStandardInput(
+            statement: statement,
+            rows: rows,
+            readOnly: LibPQReadOnlyTransaction.reason(for: context, capabilities: capabilities)
+        )
     }
 
     /// The new name must be bare. Every libpq engine here rejects a qualified one, because this
