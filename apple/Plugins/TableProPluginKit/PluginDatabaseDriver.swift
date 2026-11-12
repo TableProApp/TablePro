@@ -325,6 +325,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     var providesBulkColumnFetch: Bool { get }
+    var fetchesAllColumnsInOneRequest: Bool { get }
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     var providesBulkForeignKeyFetch: Bool { get }
@@ -1039,6 +1040,9 @@ public extension PluginDatabaseDriver {
     /// read, and a caller that compares two schemas would report the missing detail as no
     /// difference at all.
     var providesBulkColumnFetch: Bool { false }
+
+    // Whether `fetchAllColumns` reads every table in one request or a fixed few, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { providesBulkColumnFetch }
 
     /// Default: fetches columns per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).

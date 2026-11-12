@@ -308,6 +308,9 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return allColumnsToReturn
     }
 
+    var oneRequestColumnRead = true
+    var fetchesAllColumnsInOneRequest: Bool { oneRequestColumnRead }
+
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
@@ -890,6 +893,54 @@ struct SQLSchemaProviderTests {
         let columns = await provider.getColumns(for: "users")
         #expect(columns.map(\.name) == ["id"])
         #expect(driver.fetchColumnsCallCount == 0)
+    }
+
+    @Test("Only a driver that reads every table's columns in one request preloads them", arguments: [true, false])
+    func preloadNeedsAOneRequestColumnRead(oneRequest: Bool) async {
+        let driver = MockDatabaseDriver()
+        driver.oneRequestColumnRead = oneRequest
+        driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
+        driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
+
+        await provider.requestColumnPreload()
+        await provider.waitForEagerColumnLoad()
+        await provider.requestColumnPreload()
+        _ = await provider.allColumnsFromCachedTables()
+        await provider.waitForEagerColumnLoad()
+
+        #expect(driver.fetchAllColumnsCallCount == (oneRequest ? 1 : 0))
+        let columns = await provider.getColumns(for: "users")
+        #expect(columns.map { $0.name } == ["id"])
+        #expect(driver.fetchColumnsCallCount == (oneRequest ? 0 : 1))
+    }
+
+    @Test("A source asks for every column only when the driver that filled the scope reads them in one request", arguments: [true, false])
+    func sourcePreloadFollowsTheFillingDriver(oneRequest: Bool) async {
+        let recorder = CallRecorder()
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { table, _ in
+                recorder.record("columns.\(table)")
+                return [TestFixtures.makeColumnInfo(name: "id")]
+            },
+            fetchAllColumns: {
+                recorder.record("allColumns")
+                return ["users": [TestFixtures.makeColumnInfo(name: "id")]]
+            }
+        )
+        let driver = MockDatabaseDriver()
+        driver.oneRequestColumnRead = oneRequest
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
+
+        await provider.requestColumnPreload()
+        await provider.waitForEagerColumnLoad()
+        let columns = await provider.getColumns(for: "users")
+
+        #expect(recorder.calls == (oneRequest ? ["allColumns"] : ["columns.users"]))
+        #expect(columns.map { $0.name } == ["id"])
+        #expect(driver.fetchAllColumnsCallCount == 0)
     }
 
     @Test("A table-list write after a preload sends nothing until the next request")

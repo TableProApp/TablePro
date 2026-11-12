@@ -59,6 +59,8 @@ private final class MockFallbackDriver: DatabaseDriver, @unchecked Sendable {
         return columnsPerTable
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }

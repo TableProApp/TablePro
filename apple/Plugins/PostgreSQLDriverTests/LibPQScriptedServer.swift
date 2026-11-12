@@ -9,7 +9,8 @@ import Foundation
 // A loopback PostgreSQL server for one plaintext session. It refuses SSL and GSS encryption, accepts any startup
 // without a password, records each simple query and each statement the extended protocol parses, runs `onQuery` before
 // it answers, and reports the transaction status `status` picks from the query and the ones before it. A simple query
-// or a parsed statement gets what `answer` returns for it, an empty completion for nil. Cancel
+// or a parsed statement gets what `answer` returns for it; without one, each statement of a simple query gets an empty
+// completion, except that a statement holding `failingStatement` gets an error and the ones after it nothing. Cancel
 // requests arrive on connections of their own: each is counted, and a statement waiting for one then fails as a
 // cancelled statement does.
 final class LibPQScriptedServer: @unchecked Sendable {
@@ -61,6 +62,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
     private let onQuery: @Sendable (String) -> Void
     private let answer: @Sendable (String) -> Answer?
     private let cancelArrived = DispatchSemaphore(value: 0)
+    private let failingStatement: String?
     private let lock = NSLock()
     private var received: [String] = []
     private var bindings: [[String?]] = []
@@ -83,11 +85,13 @@ final class LibPQScriptedServer: @unchecked Sendable {
     init(
         status: @escaping @Sendable (_ query: String, _ earlier: [String]) -> UInt8 = { _, _ in LibPQScriptedServer.idle },
         onQuery: @escaping @Sendable (String) -> Void = { _ in },
-        answer: @escaping @Sendable (String) -> Answer? = { _ in nil }
+        answer: @escaping @Sendable (String) -> Answer? = { _ in nil },
+        failingStatement: String? = nil
     ) throws {
         self.status = status
         self.onQuery = onQuery
         self.answer = answer
+        self.failingStatement = failingStatement
         let socketFD = socket(AF_INET, SOCK_STREAM, 0)
         guard socketFD >= 0 else { throw SetupFailure() }
         var option: Int32 = 1
@@ -150,7 +154,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
                     }
                     guard execute(scripted, on: client, failed: &simpleFailed) else { return }
                 } else {
-                    reply = Self.message("C", Array("SELECT 0".utf8) + [0])
+                    reply = answers(to: query)
                 }
                 var state = status(query, earlier)
                 if simpleFailed, state == Self.inTransaction { state = Self.failedTransaction }
@@ -224,6 +228,42 @@ final class LibPQScriptedServer: @unchecked Sendable {
             }
             Darwin.close(client)
         }
+    }
+
+    private func answers(to query: String) -> [UInt8] {
+        let statements = Self.statements(in: query)
+        var reply: [UInt8] = []
+        for statement in statements.isEmpty ? [query] : statements {
+            if let failingStatement, statement.contains(failingStatement) {
+                return reply + Self.errorResponse(Failure(sqlState: "42501", message: "permission denied"))
+            }
+            reply += Self.message("C", Array("SELECT 0".utf8) + [0])
+        }
+        return reply
+    }
+
+    // Splits on each `;` outside a quoted literal or identifier, which is enough for the statements the driver sends.
+    private static func statements(in query: String) -> [String] {
+        var statements: [String] = []
+        var current = ""
+        var quote: Character?
+        for character in query {
+            if character == ";", quote == nil {
+                statements.append(current)
+                current = ""
+                continue
+            }
+            if character == quote {
+                quote = nil
+            } else if quote == nil, character == "'" || character == "\"" {
+                quote = character
+            }
+            current.append(character)
+        }
+        statements.append(current)
+        return statements
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private func startUp(_ client: Int32) -> Bool {
@@ -318,6 +358,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
     private static func message(_ type: Character, _ body: [UInt8]) -> [UInt8] {
         [type.asciiValue ?? 0] + bytes(UInt32(body.count + 4)) + body
     }
+
 
     private static func bytes(_ value: UInt32) -> [UInt8] {
         [UInt8((value >> 24) & 0xFF), UInt8((value >> 16) & 0xFF), UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)]

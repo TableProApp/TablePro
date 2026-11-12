@@ -246,6 +246,63 @@ final class LibPQDriverCore: @unchecked Sendable {
         return try await executeTransactionScopedRead(path + statement)
     }
 
+    // The server runs one Query's statements as one implicit transaction, so one `SET LOCAL` covers every read.
+    func executeCatalogReads(_ statements: [String]) async -> [Result<PluginQueryResult, Error>] {
+        guard pinsCatalogSearchPath, statements.count > 1, let pqConn = libpqConnection else {
+            return await catalogReadsOneByOne(statements)
+        }
+        let startTime = Date()
+        let answered: [Result<LibPQPluginQueryResult, Error>]
+        do {
+            let text = PostgreSQLCatalogSearchPath.pinned + statements.joined(separator: ";\n")
+            guard let batch = try await pqConn.executeConnectStatements(text) else {
+                return await catalogReadsOneByOne(statements)
+            }
+            // The first result is the pinned path's own.
+            answered = Array(batch.dropFirst())
+        } catch {
+            // A round trip that failed fails the connect in `finishConnecting`, so no read is sent again.
+            return statements.map { _ in .failure(error) }
+        }
+        let executionTime = Date().timeIntervalSince(startTime)
+        var reads: [Result<PluginQueryResult, Error>] = []
+        for (index, statement) in statements.enumerated() {
+            guard index < answered.count else {
+                reads.append(await catalogReadResult(statement))
+                continue
+            }
+            reads.append(answered[index].map { Self.pluginResult($0, executionTime: executionTime) })
+        }
+        return reads
+    }
+
+    private func catalogReadsOneByOne(_ statements: [String]) async -> [Result<PluginQueryResult, Error>] {
+        var reads: [Result<PluginQueryResult, Error>] = []
+        for statement in statements {
+            reads.append(await catalogReadResult(statement))
+        }
+        return reads
+    }
+
+    private func catalogReadResult(_ statement: String) async -> Result<PluginQueryResult, Error> {
+        do {
+            return .success(try await executeCatalogRead(statement))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private static func pluginResult(_ result: LibPQPluginQueryResult, executionTime: TimeInterval) -> PluginQueryResult {
+        PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: executionTime,
+            isTruncated: result.isTruncated
+        )
+    }
+
     private func executeTransactionScopedRead(_ statement: String) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()

@@ -80,6 +80,8 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return result.rows.compactMap { Self.mapColumnRow($0, includesTableName: false) }
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = CockroachRelationSQL.columnsQuery(schema: resolvedSchema, table: nil)
