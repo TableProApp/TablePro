@@ -89,11 +89,13 @@ extension DatabaseTreeOutlineCoordinator {
             }
         case .truncateTables(let targets, let ref):
             activateThen(ref) { [weak self] in
-                self?.viewModel?.batchToggleTruncate(refs: targets)
+                guard let self, let windowState = self.windowState else { return }
+                self.viewModel?.batchToggleTruncate(refs: targets, from: windowState)
             }
         case .dropTables(let targets, let ref):
             activateThen(ref) { [weak self] in
-                self?.viewModel?.batchToggleDelete(refs: targets)
+                guard let self, let windowState = self.windowState else { return }
+                self.viewModel?.batchToggleDelete(refs: targets, from: windowState)
             }
         case .beginRenameTable(let ref, let isRecentRow):
             activateThen(ref) { [weak self] in

@@ -174,8 +174,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
-    // False when `fetchAllColumns` degrades to one round trip per table.
+    // One query that also reports every column `fetchColumns` does, so Compare can trust it.
     var providesBulkColumnFetch: Bool { get }
+
+    // Only whether `fetchAllColumns` reads every table in one request, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { get }
 
     /// Dotted field paths a document store exposes for a collection, for query authoring.
     /// Default implementation returns nothing, which is correct for every SQL driver.
@@ -831,6 +834,8 @@ extension DatabaseDriver {
     }
 
     var providesBulkColumnFetch: Bool { false }
+
+    var fetchesAllColumnsInOneRequest: Bool { false }
 
     var providesBulkForeignKeyFetch: Bool { false }
 

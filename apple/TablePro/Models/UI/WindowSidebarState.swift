@@ -30,6 +30,12 @@ struct DatabaseTableDetailGroupKey: Hashable, Sendable {
     let group: TableDetailGroupKind
 }
 
+struct PendingTableOperation: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    let operation: TableOperationType
+    let tables: [DatabaseTreeTableRef]
+}
+
 @MainActor
 internal final class WindowSidebarState: ObservableObject {
     private let connectionId: UUID?
@@ -67,6 +73,19 @@ internal final class WindowSidebarState: ObservableObject {
     var acceptsObjectMarkRefresh: Bool {
         selectedTables.isEmpty && selectedRowCount == 0
     }
+
+    // The connection's queues are shared by every window hosting it, but a Truncate or Drop prompt belongs to the window that asked.
+    @Published private(set) var pendingTableOperation: PendingTableOperation?
+
+    func requestTableOperation(_ operation: TableOperationType, on tables: [DatabaseTreeTableRef]) {
+        pendingTableOperation = PendingTableOperation(operation: operation, tables: tables)
+    }
+
+    func resolveTableOperation(_ request: PendingTableOperation) {
+        guard pendingTableOperation?.id == request.id else { return }
+        pendingTableOperation = nil
+    }
+
     @Published var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }

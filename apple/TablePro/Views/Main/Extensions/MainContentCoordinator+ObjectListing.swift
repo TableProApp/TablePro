@@ -103,7 +103,8 @@ extension MainContentCoordinator {
             // browsed database, so the tab's container is reached first.
             Task { @MainActor [weak self] in
                 await self?.switchContainers(database: database, schema: schema)
-                self?.sidebarViewModel?.batchToggleDelete(refs: refs)
+                guard let self else { return }
+                sidebarViewModel?.batchToggleDelete(refs: refs, from: windowSidebarState)
             }
         }
     }

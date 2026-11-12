@@ -45,7 +45,6 @@ struct DatabaseTreeFlatRootTests {
         let sidebarState = SharedSidebarState.forConnection(connection.id)
         sidebarState.sidebarLayout = .flat
         let viewModel = SidebarViewModel(
-            selectedTables: .constant([]),
             pendingTruncates: .constant([]),
             pendingDeletes: .constant([]),
             tableOperationOptions: .constant([:]),

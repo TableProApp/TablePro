@@ -859,6 +859,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let schemaName = resolveSchema(schema)
         let catalog = try requireCatalog()

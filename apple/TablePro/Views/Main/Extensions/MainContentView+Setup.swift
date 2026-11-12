@@ -37,8 +37,10 @@ extension MainContentView {
             }
         }
 
-        if payload == nil || payload?.intent == .restoreOrDefault {
-            await coordinator.restoreSavedTabs()
+        // The merge keeps the founding tab, its selection and its entry in front of the saved ones.
+        if coordinator.persistence.readsSavedTabs(foundedWith: payload?.intent) {
+            let foundedOnContent = payload.map { $0.intent != .restoreOrDefault } ?? false
+            await coordinator.restoreSavedTabs(keepingEntry: foundedOnContent)
         }
         // Before the schema load, which can take seconds, so a move waiting on the restore lands now.
         coordinator.settleTabRestore()

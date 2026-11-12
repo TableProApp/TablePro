@@ -400,6 +400,142 @@ struct TabExecutionRegistryTests {
         #expect(registry.isStoppable(tabId) == false)
     }
 
+    // MARK: - A stopped claim keeping its work
+
+    @Test("A claim Stop ended keeps its work once, and settle still refuses it")
+    func stoppedClaimKeepsItsWorkOnce() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+
+        _ = registry.stop(tabId)
+
+        let settled = registry.settle(claim)
+        #expect(settled == false)
+        let kept = registry.settleStopped(claim, replacingContent: true)
+        #expect(kept)
+        let keptAgain = registry.settleStopped(claim, replacingContent: true)
+        #expect(keptAgain == false)
+        #expect(registry.isAnyExecuting == false)
+    }
+
+    @Test("Keeping a stopped claim's work gives the tab new content only when it replaces the result")
+    func keepingStoppedWorkChangesTheContentOnlyWhenItReplaces() {
+        var replacing = TabExecutionRegistry()
+        let replacingTab = UUID()
+        let replacingClaim = replacing.claim(replacingTab)
+        _ = replacing.stop(replacingTab)
+        let replacedContent = replacing.contentEpoch(for: replacingTab)
+
+        let replaced = replacing.settleStopped(replacingClaim, replacingContent: true)
+
+        #expect(replaced)
+        #expect(replacing.isSameContent(replacedContent, for: replacingTab) == false)
+
+        var keeping = TabExecutionRegistry()
+        let keepingTab = UUID()
+        let keepingClaim = keeping.claim(keepingTab)
+        _ = keeping.stop(keepingTab)
+        let keptContent = keeping.contentEpoch(for: keepingTab)
+
+        let kept = keeping.settleStopped(keepingClaim, replacingContent: false)
+
+        #expect(kept)
+        #expect(keeping.isSameContent(keptContent, for: keepingTab))
+    }
+
+    @Test("A second Stop with nothing running leaves the stopped claim its work")
+    func secondStopKeepsTheStoppedClaim() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+        _ = registry.stop(tabId)
+
+        let second = registry.stop(tabId)
+
+        #expect(second.ended.isEmpty)
+        let kept = registry.settleStopped(claim, replacingContent: true)
+        #expect(kept)
+    }
+
+    @Test("A new run after Stop leaves the stopped claim nothing to write")
+    func newRunForgetsTheStoppedClaim() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let stopped = registry.claim(tabId)
+        _ = registry.stop(tabId)
+
+        let successor = registry.claim(tabId)
+
+        let kept = registry.settleStopped(stopped, replacingContent: true)
+        #expect(kept == false)
+        #expect(registry.isCurrent(successor))
+    }
+
+    @Test(
+        "A retarget, a tab close or a lost session after Stop leaves the stopped claim nothing to write",
+        arguments: [ExecutionEndReason.supersededNavigation, .abandoned, .sessionEnded]
+    )
+    func invalidationForgetsTheStoppedClaim(reason: ExecutionEndReason) {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let stopped = registry.claim(tabId)
+        _ = registry.stop(tabId)
+
+        _ = registry.invalidate(tabId, reason: reason)
+
+        let kept = registry.settleStopped(stopped, replacingContent: true)
+        #expect(kept == false)
+
+        var all = TabExecutionRegistry()
+        let allTabId = UUID()
+        let allStopped = all.claim(allTabId)
+        _ = all.stop(allTabId)
+
+        _ = all.invalidateAll(reason: reason)
+
+        let keptAll = all.settleStopped(allStopped, replacingContent: true)
+        #expect(keptAll == false)
+    }
+
+    @Test("Stop records nothing for a committing claim it keeps")
+    func keptCommittingClaimIsNotStopped() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+        let marked = registry.enterUninterruptiblePhase(claim)
+        #expect(marked)
+
+        let outcome = registry.stop(tabId)
+
+        #expect(outcome.keptUninterruptibleClaim)
+        let kept = registry.settleStopped(claim, replacingContent: true)
+        #expect(kept == false)
+        let settled = registry.settle(claim)
+        #expect(settled)
+    }
+
+    @Test("Only the claim Stop ended, on its own tab, keeps its work")
+    func onlyTheStoppedClaimKeepsItsWork() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let other = UUID()
+        let earlier = registry.claim(tabId)
+        _ = registry.stop(tabId)
+        let later = registry.claim(tabId)
+        let otherClaim = registry.claim(other)
+        _ = registry.stop(tabId)
+
+        let keptEarlier = registry.settleStopped(earlier, replacingContent: true)
+        #expect(keptEarlier == false)
+        let keptOther = registry.settleStopped(otherClaim, replacingContent: true)
+        #expect(keptOther == false)
+        let keptLater = registry.settleStopped(later, replacingContent: true)
+        #expect(keptLater)
+        let settledOther = registry.settle(otherClaim)
+        #expect(settledOther)
+    }
+
     @Test("A run's start is the claim's own, and work with no claim reports none")
     func startedAtIsTheClaimsOwn() {
         var registry = TabExecutionRegistry()

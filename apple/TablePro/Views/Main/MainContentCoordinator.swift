@@ -26,6 +26,7 @@ enum DiscardAction {
     case displayOrder
     case columnVisibility
     case run
+    case containerChange
 }
 
 struct DisplayFormatsCacheEntry {
@@ -274,7 +275,9 @@ final class MainContentCoordinator: ObservableObject {
 
     // MARK: - Published State
 
-    @Published var cursorPositions: [CursorPosition] = []
+    // Not published: the editor writes it on every caret move, and a publish re-rendered every view observing this
+    // coordinator. Readers take it when they need it.
+    var cursorPositions: [CursorPosition] = []
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
@@ -296,6 +299,8 @@ final class MainContentCoordinator: ObservableObject {
     var deferredRestoreLoadTabId: UUID?
 
     var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
+    // One editor serves every query tab of the window, so each tab's undo history waits here while another is shown.
+    let editorUndoHistories = EditorUndoHistories()
     // Published because the inspector rebuilds its snapshot from it (load, comment refetch, rename).
     @Published var tableMetadataCache: [UUID: TableMetadataCacheEntry] = [:]
     // Bumped per Table Info invalidation so an in-flight read can't mark the cache current; per window, as it can precede a tab entry.
@@ -671,10 +676,7 @@ final class MainContentCoordinator: ObservableObject {
                 self?.browseCursorCoordinator.browseContainerDidChange()
             }
         tabManager.onTabRetargeted = { [weak self] tabId in
-            self?.existingGridModel(forTab: tabId)?.discardEditing()
-            self?.flushColumnLayoutPersistence()
-            self?.supersedeExecution(for: tabId)
-            self?.releaseRetargetedTabState(for: tabId)
+            self?.retargetTab(tabId)
         }
 
         // Synchronous: queue .main satisfies assumeIsolated, and the write finishes before exit, unlike Task-based saves.

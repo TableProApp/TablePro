@@ -516,17 +516,7 @@ struct MainEditorContentView: View {
 
     // The tab owns the new container for life, so it moves to that entry and the window follows, like selecting its tab.
     private func changeContainer(for tab: QueryTab, to name: String) {
-        let tabId = tab.id
-        guard tabManager.containerName(of: tab) != name,
-              tabManager.mutate(tabId: tabId, { tab in
-                  QueryContainerRebinding.rebind(&tab.tableContext, to: name, target: containerSwitchTarget)
-              }) else { return }
-        tabManager.markTabRenamed(tabId)
-        SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
-        guard tabManager.selectedTabId == tabId,
-              ContainerChangeRerunPolicy.reruns(showing: tabManager.selectedTab?.display.activeResultSet) else { return }
-        // The statement at the caret may not be the one that produced the rows, so a write asks first.
-        coordinator.runQuery(viewport: .firstRow, extraCapabilities: .confirmsWrites)
+        coordinator.changeQueryContainer(of: tab.id, to: name, target: containerSwitchTarget)
     }
 
     private func dismissDiskChangeBanner(tabId: UUID) {
@@ -1286,6 +1276,7 @@ extension MainEditorContentView {
             databaseScope: queryScope,
             connectionId: coordinator.connection.id,
             tabID: tab.id,
+            undoHistories: coordinator.editorUndoHistories,
             sourceFileURL: tab.content.sourceFileURL,
             claimFocusOnAppear: claimFocus,
             onFocusClaimed: {

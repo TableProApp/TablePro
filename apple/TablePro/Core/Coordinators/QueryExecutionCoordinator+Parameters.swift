@@ -44,6 +44,8 @@ private struct PreparedStatement: @unchecked Sendable {
     let parameterValues: [Any?]?
     let rowCap: Int?
     let anchor: StatementAnchor?
+    /// Where the script was cut after this statement, which a replan of the rest starts from.
+    let statement: SQLStatementScanner.ExecutableStatement?
     /// Whether this is the script's own `COMMIT`, read from the text before the lease is taken so
     /// the run never lexes inside it.
     let isCommitPoint: Bool
@@ -74,10 +76,10 @@ private final class RunningStatements {
 
     func replanned(after ran: Int, session: SQLLexicalGrammar) -> [PreparedStatement]? {
         guard session != grammar, let script, prepared.indices.contains(ran - 1),
-              let last = prepared[ran - 1].anchor
+              let last = prepared[ran - 1].statement
         else { return nil }
         let rest = QueryExecutionCoordinator.remainingStatements(
-            in: script, after: last.range, through: end, grammar: session
+            in: script, after: last, through: end, grammar: session
         ).map { prepare($0, session) }
         grammar = session
         prepared = Array(prepared.prefix(ran)) + rest
@@ -96,6 +98,30 @@ private struct ExecutedStatementHistory {
     let results: [QueryResult]
     let parameters: [QueryParameter]
     let connection: DatabaseConnection
+
+    func keeping(_ kept: [QueryResult]) -> ExecutedStatementHistory {
+        ExecutedStatementHistory(prepared: prepared, results: kept, parameters: parameters, connection: connection)
+    }
+}
+
+extension BatchStatementOutcome {
+    // The units a run the user stopped keeps: those that completed, and none that its plan rolled back.
+    func keptAfterStop(plan: BatchTransactionPlan) -> [Output] {
+        switch self {
+        case .completed(let results), .cancelled(let results):
+            return results
+        case .failed(_, .commitOutcomeUnknown, _):
+            // Nothing can say whether these were saved, so they are not recorded as plain successes.
+            return []
+        case .failed(let results, _, _):
+            return plan.keepsExecutedStatements ? Array(results.prefix(succeededCount)) : []
+        }
+    }
+
+    var leftCommitOutcomeUnknown: Bool {
+        guard case .failed(_, .commitOutcomeUnknown, _) = self else { return false }
+        return true
+    }
 }
 
 extension QueryExecutionCoordinator {
@@ -451,34 +477,36 @@ extension QueryExecutionCoordinator {
             }
             let built = await buildShownStatementRows(sent, results: results, tabId: tabId)
 
-            switch outcome {
-            case .cancelled(let results):
-                guard parent.tabExecution.settle(claim) else {
-                    recordStoppedStatements(sent, results: results, claim: claim)
-                    return
-                }
-                parent.retireQueryTask(.claim(claim))
-                keepStoppedStatements(
-                    history: ExecutedStatementHistory(
-                        prepared: sent, results: results, parameters: parameters, connection: conn
-                    ),
-                    tabId: tabId,
+            let history = ExecutedStatementHistory(
+                prepared: sent, results: results, parameters: parameters, connection: conn
+            )
+            guard parent.tabExecution.settle(claim) || reportsUnknownCommitAfterStop(outcome, claim: claim) else {
+                keepStatementsAfterStop(
+                    history.keeping(outcome.keptAfterStop(plan: run.plan)),
                     claim: claim,
                     sessionNotice: sessionNotice,
                     built: built
                 )
-                parent.reportEndedExecutions([
-                    EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
-                ])
-            case .completed(let results):
-                applyCompletedStatements(
-                    history: ExecutedStatementHistory(
-                        prepared: sent, results: results, parameters: parameters, connection: conn
-                    ),
+                return
+            }
+            parent.retireQueryTask(.claim(claim))
+
+            switch outcome {
+            case .cancelled:
+                keepStoppedStatements(
+                    history: history,
                     tabId: tabId,
                     claim: claim,
                     sessionNotice: sessionNotice,
-                    built: built
+                    built: built,
+                    presentsResults: true
+                )
+                parent.reportEndedExecutions([
+                    EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+                ])
+            case .completed:
+                applyCompletedStatements(
+                    history: history, tabId: tabId, claim: claim, sessionNotice: sessionNotice, built: built
                 )
             case .failed(let results, let failure, let errorDescription):
                 handleMultiStatementError(
@@ -490,9 +518,7 @@ extension QueryExecutionCoordinator {
                         plan: run.plan,
                         sessionState: run.sessionState
                     ),
-                    history: ExecutedStatementHistory(
-                        prepared: sent, results: results, parameters: parameters, connection: conn
-                    ),
+                    history: history,
                     tabId: tabId,
                     claim: claim,
                     anchors: sent.map(\.anchor),
@@ -529,6 +555,7 @@ extension QueryExecutionCoordinator {
             parameterValues: conversion?.values,
             rowCap: bounded.rowCap,
             anchor: StatementAnchor(statement),
+            statement: statement,
             isCommitPoint: BatchCommitStatement.matches(sql, grammar: grammar)
         )
     }
@@ -660,11 +687,22 @@ extension QueryExecutionCoordinator {
         )
     }
 
-    /// A Stop cannot take back what a plan without a transaction already committed, so the results
-    /// and the history of the statements that ran stay rather than being dropped with the run.
-    private func keepStoppedStatements(
-        history: ExecutedStatementHistory,
-        tabId: UUID,
+    // A commit nobody can confirm is reported as one even after a Stop, rather than kept as plain successes.
+    func reportsUnknownCommitAfterStop<Output>(_ outcome: BatchStatementOutcome<Output>, claim: TabExecutionClaim) -> Bool {
+        outcome.leftCommitOutcomeUnknown
+            && stoppedRunCanReplaceResults(onTab: claim.tabId)
+            && parent.tabExecution.settleStopped(claim, replacingContent: true)
+    }
+
+    // A stopped run comes back after the tab went idle. Edits staged since then keep the result they were made on.
+    func stoppedRunCanReplaceResults(onTab tabId: UUID) -> Bool {
+        guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return false }
+        return !parent.holdsUnsavedWork(tab)
+    }
+
+    // A Stop during a statement reads as one between statements: the completed ones are kept, with no error result.
+    private func keepStatementsAfterStop(
+        _ history: ExecutedStatementHistory,
         claim: TabExecutionClaim,
         sessionNotice: String?,
         built: StatementRowsBuild
@@ -673,7 +711,42 @@ extension QueryExecutionCoordinator {
             recordStoppedStatements(history.prepared, results: [], claim: claim)
             return
         }
+        let presentsResults = stoppedRunCanReplaceResults(onTab: claim.tabId)
+        guard parent.tabExecution.settleStopped(claim, replacingContent: presentsResults) else {
+            recordStoppedStatements(history.prepared, results: history.results, claim: claim)
+            return
+        }
+        keepStoppedStatements(
+            history: history,
+            tabId: claim.tabId,
+            claim: claim,
+            sessionNotice: sessionNotice,
+            built: built,
+            presentsResults: presentsResults
+        )
+        parent.reportEndedExecutions([
+            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+        ])
+    }
+
+    // A Stop cannot take back what a plan without a transaction already committed, so those statements keep their history.
+    private func keepStoppedStatements(
+        history: ExecutedStatementHistory,
+        tabId: UUID,
+        claim: TabExecutionClaim,
+        sessionNotice: String?,
+        built: StatementRowsBuild,
+        presentsResults: Bool
+    ) {
+        guard !history.results.isEmpty else {
+            recordStoppedStatements(history.prepared, results: [], claim: claim)
+            return
+        }
         recordExecutedStatements(history, tabId: tabId, commitOutcomeIsUnknown: false)
+        guard presentsResults else {
+            recordStoppedStatements(history.prepared, results: history.results, claim: claim)
+            return
+        }
         let mapped = statementResultSets(history, tabId: tabId, built: built)
         let resultSets = mapped.all
         let finished = Self.runLogEntries(history, resultSets: resultSets, plan: mapped.plan)
@@ -728,9 +801,7 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    /// Settles first, then writes. Everything below the gate belongs to a batch that still owns its
-    /// tab: its history rows, its outcome notification and its result sets. A superseded batch
-    /// writes none of them, which is what the single-statement path has always done.
+    // Below the caller's settle gate: a superseded batch writes no history rows, outcome or result sets.
     private func applyCompletedStatements(
         history: ExecutedStatementHistory,
         tabId: UUID,
@@ -738,9 +809,6 @@ extension QueryExecutionCoordinator {
         sessionNotice: String?,
         built: StatementRowsBuild
     ) {
-        guard parent.tabExecution.settle(claim) else { return }
-        parent.retireQueryTask(.claim(claim))
-
         let totalRowsAffected = history.results.reduce(0) { $0 + $1.rowsAffected }
         reportOperation(
             kind: .queryBatch,
@@ -911,7 +979,7 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    // Reports only, below the settle gate: the lease already rolled back, and a superseded batch writes no history.
+    // Below the caller's settle gate: the lease already rolled back, and a superseded batch writes no history.
     private func handleMultiStatementError(
         _ context: MultiStatementFailureContext,
         history: ExecutedStatementHistory,
@@ -934,16 +1002,6 @@ extension QueryExecutionCoordinator {
             .flatMap { anchors.indices.contains($0) ? anchors[$0] : nil }
 
         let failedStatementSQL = report.failedSQL
-        guard parent.tabExecution.settle(claim) else {
-            // A Stop during a statement surfaces as that statement failing, after the claim has already ended.
-            recordStoppedStatements(history.prepared, results: history.results, claim: claim)
-            return
-        }
-        parent.retireQueryTask(.claim(claim))
-
-        /// Below the settle gate for the same reason the success arm is: a superseded batch
-        /// has its error dropped here, so announcing it would report on work the user has
-        /// already navigated away from.
         reportOperation(kind: .queryBatch, claim: claim, outcome: .failed(reason: errorDescription))
         recordExecutedStatements(
             history,

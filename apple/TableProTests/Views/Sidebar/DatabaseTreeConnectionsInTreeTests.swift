@@ -75,7 +75,6 @@ struct DatabaseTreeConnectionsInTreeTests {
         sidebarState.sidebarLayout = layout
         let defaults = try EphemeralDefaults()
         let viewModel = SidebarViewModel(
-            selectedTables: .constant([]),
             pendingTruncates: .constant([]),
             pendingDeletes: .constant([]),
             tableOperationOptions: .constant([:]),

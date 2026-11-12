@@ -103,6 +103,7 @@ final class QuerySuggestionBar: UIView {
         case .alias: String(localized: "Alias")
         case .operator: String(localized: "Operator")
         case .favorite: String(localized: "Favorite")
+        case .joinCondition: String(localized: "Join Condition")
         }
     }
 }

@@ -137,6 +137,34 @@ public sealed class WorkspaceTabsTests
     }
 
     [Fact]
+    public void ASignOutWaitsOnUnsavedChangesAndHeldTransactionsAlone()
+    {
+        var running = new FakeTab("Query 1") { IsRunning = true };
+        _strip.Tabs.Add(running);
+
+        Assert.Equal(PendingWork.None, _tabs.Pending());
+
+        var edited = new FakeTab("Artist", TabKind.Table) { HasUnsavedChanges = true };
+        _strip.Tabs.Add(edited);
+
+        Assert.Equal(new PendingWork(UnsavedChanges: true, HeldTransaction: false), _tabs.Pending());
+
+        _strip.Tabs.Add(new FakeTab("Query 2") { Transaction = TransactionState.Failed });
+
+        Assert.Equal(new PendingWork(UnsavedChanges: true, HeldTransaction: true), _tabs.Pending());
+    }
+
+    [Fact]
+    public void EveryWorkspacesPendingWorkAddsUp()
+    {
+        var edits = new PendingWork(UnsavedChanges: true, HeldTransaction: false);
+        var transaction = new PendingWork(UnsavedChanges: false, HeldTransaction: true);
+
+        Assert.Equal(edits, PendingWork.None.Combine(edits).Combine(PendingWork.None));
+        Assert.Equal(new PendingWork(UnsavedChanges: true, HeldTransaction: true), edits.Combine(transaction));
+    }
+
+    [Fact]
     public async Task MakingTheConnectionReadOnlyAsksWithoutSaveAndAClosedTabAsksWithIt()
     {
         var edited = new FakeTab("Artist", TabKind.Table) { HasUnsavedChanges = true };

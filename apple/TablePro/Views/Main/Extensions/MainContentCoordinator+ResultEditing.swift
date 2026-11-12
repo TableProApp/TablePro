@@ -16,8 +16,19 @@ extension MainContentCoordinator {
         guard tab.tabType == .query else { return tab.tableContext.viewEditRefusal }
         return ResultEditability.refusal(
             for: tab.display.activeResultSet?.origin,
-            currentDatabaseName: scope(for: tab)?.database ?? browseDatabaseName
+            currentDatabaseName: boundDatabaseName(of: tab),
+            currentSchemaName: tab.tableContext.schemaName
         )
+    }
+
+    // Rows read in another database or schema than the tab names now: paging them would read from the new one.
+    func wasReadElsewhere(_ resultSet: ResultSet, in tab: QueryTab) -> Bool {
+        guard tab.tabType == .query, let origin = resultSet.origin else { return false }
+        return origin.wasRead(elsewhereThanDatabase: boundDatabaseName(of: tab), schema: tab.tableContext.schemaName)
+    }
+
+    private func boundDatabaseName(of tab: QueryTab) -> String {
+        scope(for: tab)?.database ?? browseDatabaseName
     }
 
     /// The one answer to "may the rows on screen be written to".

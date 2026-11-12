@@ -224,6 +224,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
         if isExternalSchema(resolvedSchema) {

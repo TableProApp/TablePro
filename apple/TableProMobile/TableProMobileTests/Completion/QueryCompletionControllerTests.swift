@@ -621,3 +621,49 @@ extension QueryCompletionControllerTests {
         #expect(await !suggest(controller, "/*\n" + notes + "it's done */\nSELECT * FROM or").isEmpty)
     }
 }
+
+extension QueryCompletionControllerTests {
+    @Test("right after a join's ON the foreign key's condition leads and goes in quoted for the engine")
+    func joinConditionFromForeignKey() async throws {
+        let source = ControllerColumnSource([
+            "orders": [ColumnInfo(name: "Id", typeName: "integer"), ColumnInfo(name: "CustomerId", typeName: "integer")],
+            "customers": [ColumnInfo(name: "Id", typeName: "integer")],
+        ])
+        let keys: QueryForeignKeyReader = { table, _ in
+            guard table == "orders" else { return [] }
+            return [ForeignKeyInfo(name: "orders_customer_fk", column: "CustomerId", referencedTable: "customers", referencedColumn: "Id")]
+        }
+        let controller = QueryCompletionController()
+        controller.update(
+            scope: scope(.postgresql, tables: ["orders", "customers"], database: "shop", schema: "public"),
+            readColumns: source.reader,
+            readCatalogForeignKeys: keys
+        )
+        let text = "SELECT * FROM orders o JOIN customers c ON "
+
+        let suggestions = await suggest(controller, text)
+        #expect(suggestions.first?.label == "o.CustomerId = c.Id")
+        #expect(suggestions.first?.kind == .joinCondition)
+        let edit = try accept("o.CustomerId = c.Id", in: text, with: controller)
+        #expect(applying(edit, to: text) == text + "o.\"CustomerId\" = c.\"Id\" ")
+    }
+
+    // Two copies of `o.Id` were offered, and the first went in bare, which PostgreSQL folds to `o.id`.
+    @Test("a qualified column after a join's ON is offered once and keeps its quotes")
+    func qualifiedColumnOnceAfterOn() async throws {
+        let source = ControllerColumnSource([
+            "orders": [ColumnInfo(name: "Id", typeName: "integer")],
+            "customers": [ColumnInfo(name: "Id", typeName: "integer")],
+        ])
+        let controller = controller(
+            scope(.postgresql, tables: ["orders", "customers"], database: "shop", schema: "public"),
+            source: source
+        )
+        let text = "SELECT * FROM orders o JOIN customers c ON "
+
+        let suggestions = await suggest(controller, text)
+        #expect(suggestions.filter { $0.label == "o.Id" }.count == 1)
+        let edit = try accept("o.Id", in: text, with: controller)
+        #expect(applying(edit, to: text) == text + "o.\"Id\"")
+    }
+}

@@ -54,10 +54,30 @@ public protocol LineFoldProvider: AnyObject {
     /// The provider owns this string because it is the only part of the folding system the host application supplies,
     /// so it is the only part that can reach the application's localized strings.
     func foldPlaceholderLabel(for summary: FoldPlaceholderSummary) -> String
+
+    // A provider that finds every fold in one pass returns that pass here. The calculator runs it on a copy of the
+    // text off the main thread and skips the per-line walk, which has to stay on the main thread.
+    func documentFoldScanner() -> LineFoldDocumentScanner?
 }
 
 public extension LineFoldProvider {
     func foldPlaceholderLabel(for summary: FoldPlaceholderSummary) -> String {
         summary.previewText
     }
+
+    func documentFoldScanner() -> LineFoldDocumentScanner? {
+        nil
+    }
 }
+
+public struct LineFoldProviderFold: Sendable, Equatable {
+    public let depth: Int
+    public let range: Range<Int>
+
+    public init(depth: Int, range: Range<Int>) {
+        self.depth = depth
+        self.range = range
+    }
+}
+
+public typealias LineFoldDocumentScanner = @Sendable (String) -> [LineFoldProviderFold]

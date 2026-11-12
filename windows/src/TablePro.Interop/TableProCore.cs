@@ -67,20 +67,22 @@ public sealed class TableProCore : IDisposable
         return new DatabaseSession(session);
     }
 
-    // Logs in with the secrets Credential Manager holds, or with the ones in secrets where those are set.
+    // Logs in with secrets where set, else Credential Manager's; the core stores keep once it has logged in.
     public async Task<DatabaseSession> ConnectAsync(
         Guid connectionId,
         ConnectionSecrets? secrets = null,
         ICredentialPrompter? prompter = null,
+        ConnectionSecrets? keep = null,
         CancellationToken cancellationToken = default)
     {
         var typed = Mapping.Secrets(secrets ?? ConnectionSecrets.None);
+        var kept = Mapping.Secrets(keep ?? ConnectionSecrets.None);
         var adapter = prompter is null ? null : new CredentialPrompterAdapter(prompter);
         using var registration = cancellationToken.Register(() => adapter?.Cancel());
         try
         {
             var session = await CoreCall.RunAsync(
-                    token => _core.ConnectSaved(connectionId.ToString(), typed, adapter, token),
+                    token => _core.ConnectSaved(connectionId.ToString(), typed, kept, adapter, token),
                     cancellationToken)
                 .ConfigureAwait(false);
             return new DatabaseSession(session, adapter);

@@ -258,27 +258,9 @@ public final class SQLCompletionProvider {
             }
 
         case .on:
+            items += await joinConditionItems(for: context.joinScope)
             items += await allowedValueItems(for: context)
-            items += await columnItems(for: context.tableReferences)
-            for ref in context.tableReferences {
-                let qualifier = ref.alias ?? ref.tableName
-                let cols = await catalog?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
-                for col in cols {
-                    var item = SQLCompletionItem(
-                        label: "\(qualifier).\(col.label)",
-                        kind: .column,
-                        insertText: "\(qualifier).\(col.label)",
-                        detail: col.detail,
-                        documentation: "Column from \(ref.tableName)",
-                        sortPriority: 80,
-                        identifier: col.identifier.map {
-                            SQLCompletionIdentifier([Self.qualifierPart(for: ref)] + $0.parts)
-                        }
-                    )
-                    item.isQualifiedReference = true
-                    items.append(item)
-                }
-            }
+            items += await qualifiedColumnItems(for: context.tableReferences)
             items += SQLKeywords.operatorItems()
             items += dialectOperatorItems()
             items += filterKeywords([
@@ -578,6 +560,85 @@ public final class SQLCompletionProvider {
         return await catalog?.allColumnsInScope(for: resolved) ?? []
     }
 
+    // A catalog that already qualifies a column once two tables are in scope keeps its own item, so the name is
+    // offered once and with the catalog's spelling.
+    private func qualifiedColumnItems(for references: [TableReference]) async -> [SQLCompletionItem] {
+        var items = await columnItems(for: references)
+        var indexByLabel: [String: Int] = [:]
+        for (index, item) in items.enumerated() where item.kind == .column && indexByLabel[item.label] == nil {
+            indexByLabel[item.label] = index
+        }
+        for ref in references {
+            let cols = await catalog?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
+            for col in cols {
+                let label = "\(ref.identifier).\(col.label)"
+                if let index = indexByLabel[label] {
+                    items[index].sortPriority = min(items[index].sortPriority, Self.qualifiedColumnPriority)
+                    continue
+                }
+                let parts = [Self.qualifierPart(for: ref)] + (col.identifier?.parts ?? [.catalog(col.label)])
+                var item = SQLCompletionItem(
+                    label: label,
+                    kind: .column,
+                    insertText: catalog?.writtenText(of: SQLCompletionIdentifier(parts)) ?? "\(ref.identifier).\(col.insertText)",
+                    detail: col.detail,
+                    documentation: "Column from \(ref.tableName)",
+                    sortPriority: Self.qualifiedColumnPriority,
+                    identifier: col.identifier.map { SQLCompletionIdentifier([Self.qualifierPart(for: ref)] + $0.parts) }
+                )
+                item.isQualifiedReference = true
+                indexByLabel[label] = items.count
+                items.append(item)
+            }
+        }
+        return items
+    }
+
+    private static let qualifiedColumnPriority = 80
+
+    private func joinConditionItems(for scope: SQLJoinScope?) async -> [SQLCompletionItem] {
+        guard let scope, let catalog else { return [] }
+        let joined = await joinSide(scope.joined, in: catalog)
+        var earlier: [SQLJoinConditions.Side] = []
+        for reference in scope.earlier {
+            earlier.append(await joinSide(reference, in: catalog))
+        }
+        var seen = Set<String>()
+        return SQLJoinConditions.conditions(joined: joined, earlier: earlier).compactMap { condition in
+            let item = joinConditionItem(condition, joined: scope.joined, catalog: catalog)
+            return seen.insert(item.label).inserted ? item : nil
+        }
+    }
+
+    private func joinSide(_ reference: TableReference, in catalog: any SQLCompletionCatalog) async -> SQLJoinConditions.Side {
+        SQLJoinConditions.Side(
+            reference: reference,
+            keys: await catalog.foreignKeys(of: reference.tableName, schema: reference.schema),
+            columns: await catalog.columnCompletionItems(for: reference.tableName, schema: reference.schema).map(\.label)
+        )
+    }
+
+    private func joinConditionItem(
+        _ condition: SQLJoinConditions.Condition,
+        joined: TableReference,
+        catalog: any SQLCompletionCatalog
+    ) -> SQLCompletionItem {
+        let pairs = condition.columns.map { columns in
+            SQLCompletionColumnPair(
+                left: SQLCompletionIdentifier([Self.qualifierPart(for: condition.earlier), .catalog(columns.earlier)]),
+                right: SQLCompletionIdentifier([Self.qualifierPart(for: joined), .catalog(columns.joined)])
+            )
+        }
+        let written = { (name: SQLCompletionIdentifier) in catalog.writtenText(of: name) ?? name.plainText }
+        return SQLCompletionItem(
+            label: SQLCompletionColumnPair.condition(pairs.map { (left: $0.left.plainText, right: $0.right.plainText) }),
+            kind: .joinCondition,
+            insertText: SQLCompletionColumnPair.condition(pairs.map { (left: written($0.left), right: written($0.right)) }),
+            detail: condition.constraintName.isEmpty ? nil : condition.constraintName,
+            columnPairs: pairs
+        )
+    }
+
     // ORDER BY sorts by an output alias before a source column of the same name, so the alias leads.
     private func outputAliasItems(
         _ spellings: [String], besides columns: [SQLCompletionItem], insideQuotes: Bool
@@ -843,7 +904,7 @@ public final class SQLCompletionProvider {
                 }
             case .select, .where_, .and, .on, .having, .groupBy, .orderBy,
                  .returning, .using, .window:
-                if item.kind == .column {
+                if item.kind == .column || item.kind == .joinCondition {
                     score -= 200
                 }
             case .set, .insertColumns:
