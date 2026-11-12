@@ -33,6 +33,7 @@ struct IntegrationsConnectedClientsPane: View {
         }
         .navigationTitle(IntegrationsActivitySection.connectedClients.title)
         .navigationSubtitle(subtitle)
+        .task { await manager.refreshClientsWhileShown() }
         .toolbar(content: toolbar)
         .alert(
             String(localized: "Disconnect client?"),
@@ -190,14 +191,20 @@ private struct ConnectedClientsTable: View {
 
     @ViewBuilder
     private func connectedCell(for client: MCPServerManager.SessionSnapshot) -> some View {
-        Text(client.connectedSince, format: .relative(presentation: .named))
-            .help(client.connectedSince.formatted(date: .complete, time: .standard))
+        relativeText(client.connectedSince)
     }
 
     @ViewBuilder
     private func lastActivityCell(for client: MCPServerManager.SessionSnapshot) -> some View {
-        Text(client.lastActivityAt, format: .relative(presentation: .named))
-            .help(client.lastActivityAt.formatted(date: .complete, time: .standard))
+        relativeText(client.lastActivityAt)
+    }
+
+    // The list publishes only when it changes, so the elapsed time redraws on its own schedule.
+    private func relativeText(_ date: Date) -> some View {
+        TimelineView(.periodic(from: .now, by: 5)) { _ in
+            Text(date.formatted(.relative(presentation: .named)))
+        }
+        .help(date.formatted(date: .complete, time: .standard))
     }
 
     @ViewBuilder

@@ -802,6 +802,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    // The schema cookie in the main database header, which SQLite bumps on every schema change.
+    func schemaChangeToken() async throws -> String? {
+        try await execute(query: "PRAGMA main.schema_version").rows.first?.first?.asText
+    }
+
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
         try Self.requireMainDatabase(schema)
         return try await SQLiteColumnReorderPlanner.schemaFingerprint(

@@ -31,7 +31,7 @@ internal enum MCPServerStartError: Error, LocalizedError, Equatable {
 
 @MainActor
 internal final class MCPServerManager: ObservableObject {
-    internal struct SessionSnapshot: Sendable, Identifiable {
+    internal struct SessionSnapshot: Sendable, Identifiable, Equatable {
         internal let id: String
         internal let clientName: String
         internal let clientVersion: String?
@@ -71,7 +71,6 @@ internal final class MCPServerManager: ObservableObject {
     @Published private var revocationObserverId: UUID?
     @Published private var dispatchTask: Task<Void, Never>?
     @Published private var stateTask: Task<Void, Never>?
-    @Published private var clientRefreshTask: Task<Void, Never>?
     @Published private var tokenRenewalTask: Task<Void, Never>?
 
     internal var isRunning: Bool {
@@ -293,7 +292,6 @@ internal final class MCPServerManager: ObservableObject {
         await built.start()
         startDispatchLoop(built, generation: generation)
         startStateLoop(built, generation: generation)
-        startClientRefresh(built, generation: generation)
         startBridgeCredentialRenewal(generation: generation)
         await registerRevocationObserver(built, store: store, generation: generation)
 
@@ -321,8 +319,6 @@ internal final class MCPServerManager: ObservableObject {
         dispatchTask = nil
         stateTask?.cancel()
         stateTask = nil
-        clientRefreshTask?.cancel()
-        clientRefreshTask = nil
         tokenRenewalTask?.cancel()
         tokenRenewalTask = nil
         supersededBridgeCredentials = []
@@ -340,7 +336,7 @@ internal final class MCPServerManager: ObservableObject {
         await releaseBridgeCredential()
 
         tokenStore = nil
-        connectedClients = []
+        publishClients([])
         state = .stopped
         MCPAuditLogger.logServerStopped()
     }
@@ -448,13 +444,11 @@ internal final class MCPServerManager: ObservableObject {
         }
     }
 
-    private func startClientRefresh(_ built: MCPServerComposition, generation: Int) {
-        clientRefreshTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let self, self.isCurrent(generation) else { return }
-                await self.refreshClients()
-                try? await Task.sleep(for: Self.clientRefreshInterval)
-            }
+    // Only a view showing the list reads it between changes, so the poll lives as long as that view's task.
+    internal func refreshClientsWhileShown() async {
+        while !Task.isCancelled {
+            await refreshClients()
+            try? await Task.sleep(for: Self.clientRefreshInterval)
         }
     }
 
@@ -513,15 +507,15 @@ internal final class MCPServerManager: ObservableObject {
         self.generation == generation
     }
 
-    private func refreshClients() async {
+    internal func refreshClients() async {
         guard let composition else {
-            connectedClients = []
+            publishClients([])
             return
         }
         let now = Date()
         await composition.activityLedger.prune(now: now)
         let entries = await composition.activityLedger.snapshot(now: now)
-        connectedClients = entries.map { entry in
+        publishClients(entries.map { entry in
             SessionSnapshot(
                 id: entry.id,
                 clientName: entry.clientName,
@@ -531,6 +525,11 @@ internal final class MCPServerManager: ObservableObject {
                 tokenName: entry.tokenName,
                 remoteAddress: entry.address
             )
-        }
+        })
+    }
+
+    private func publishClients(_ clients: [SessionSnapshot]) {
+        guard clients != connectedClients else { return }
+        connectedClients = clients
     }
 }

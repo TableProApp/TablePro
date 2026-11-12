@@ -1,4 +1,3 @@
-import AppKit
 import Combine
 import Foundation
 import os
@@ -62,14 +61,18 @@ internal struct ThemeFileTrash: Sendable {
     }
 }
 
-/// Owns the list. A user theme is identified by its JSON `id` but lives in whatever file it was
-/// loaded from, so a save, rename or move to the Trash acts on that file rather than on `<id>.json`;
-/// the two differ for any file the user named themselves. Every mutation updates the in-memory list
-/// synchronously, and the list reloads whenever TablePro becomes active, so a theme fixed, dropped
-/// or removed in Finder is picked up without a view asking.
+// Owns the list. A user theme is identified by its JSON `id` but lives in whatever file it was
+// loaded from, so a save, rename or move to the Trash acts on that file rather than on `<id>.json`;
+// the two differ for any file the user named themselves. Every mutation updates the in-memory list
+// synchronously, and the shared catalog reloads when its folder changes on disk, so a theme fixed,
+// dropped or removed in Finder is picked up without a view asking.
 @MainActor
 internal final class ThemeCatalog: ObservableObject {
-    internal static let shared = ThemeCatalog()
+    internal static let shared: ThemeCatalog = {
+        let catalog = ThemeCatalog()
+        catalog.startWatchingUserDirectory()
+        return catalog
+    }()
 
     @Published internal private(set) var themes: [ThemeDefinition] = BuiltInThemes.all
     @Published internal private(set) var rejected: [RejectedThemeRecord] = []
@@ -81,30 +84,37 @@ internal final class ThemeCatalog: ObservableObject {
     /// new file, which would bring back a theme deleted in Finder or on another Mac.
     private var vanished: [String: URL] = [:]
     private let userDirectory: URL
-    private let bundleDirectory: URL?
+    private let bundled: [ThemeDefinition]
     private let fileTrash: ThemeFileTrash
     private let syncTracker: SyncChangeTracker
-    private var activationCancellable: AnyCancellable?
+    private let directoryWatcher = FileSystemEventWatcher()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeCatalog")
 
-    /// Loaded before the first activation, so a user theme in a slot is in the list the launch
-    /// activation resolves against.
+    // Loads here, so a user theme a slot names is listed before the engine first resolves it.
+    // Bundled themes are read only here: they cannot change while TablePro runs.
     internal init(
         userDirectory: URL = ThemeCatalog.defaultUserDirectory,
         bundleDirectory: URL? = Bundle.main.resourceURL,
-        notificationCenter: NotificationCenter = .default,
         fileTrash: ThemeFileTrash = .resolved(in: .shared),
         syncTracker: SyncChangeTracker = .shared
     ) {
         self.userDirectory = userDirectory
-        self.bundleDirectory = bundleDirectory
+        self.bundled = ThemeCatalog.loadBundled(from: bundleDirectory)
         self.fileTrash = fileTrash
         self.syncTracker = syncTracker
         reloadSynchronously()
-        activationCancellable = notificationCenter
-            .publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.reloadSynchronously() }
+    }
+
+    // The catalog's own writes report too; their reload finds what the list already holds and
+    // publishes nothing.
+    internal func startWatchingUserDirectory() {
+        directoryWatcher.onChange = { [weak self] in self?.reloadSynchronously() }
+        directoryWatcher.watch([userDirectory.path])
+    }
+
+    internal func stopWatchingUserDirectory() {
+        directoryWatcher.cancel()
     }
 
     internal func theme(id: String) -> ThemeDefinition? {
@@ -122,7 +132,7 @@ internal final class ThemeCatalog: ObservableObject {
     }
 
     internal func reloadSynchronously() {
-        adopt(Self.loadContents(userDirectory: userDirectory, bundleDirectory: bundleDirectory))
+        adopt(Self.loadContents(userDirectory: userDirectory, bundled: bundled))
     }
 
     /// Writes the theme to the file it came from, or a new theme to `<id>.json`. The list then holds
@@ -361,24 +371,27 @@ internal final class ThemeCatalog: ObservableObject {
 
     // MARK: - Disk
 
-    nonisolated private static func loadContents(userDirectory: URL, bundleDirectory: URL?) -> ThemeCatalogContents {
-        var themes = BuiltInThemes.all
+    nonisolated private static func loadBundled(from directory: URL?) -> [ThemeDefinition] {
+        guard let directory else { return [] }
+        var themes: [ThemeDefinition] = []
+        for file in jsonFiles(in: directory) where file.lastPathComponent.hasPrefix(ThemeDefinition.builtInPrefix) {
+            do {
+                let theme = try ThemeFileFormat.decode(try Data(contentsOf: file))
+                guard !(BuiltInThemes.all + themes).contains(where: { $0.id == theme.id }) else { continue }
+                themes.append(theme)
+            } catch {
+                logger.error("Bundled theme \(file.lastPathComponent) rejected: \(error.publicLogShape, privacy: .public)")
+            }
+        }
+        return themes
+    }
+
+    nonisolated private static func loadContents(userDirectory: URL, bundled: [ThemeDefinition]) -> ThemeCatalogContents {
+        var themes = BuiltInThemes.all + bundled
         var rejected: [RejectedThemeRecord] = []
         var userFiles: [String: ThemeFile] = [:]
 
         ensureDirectory(userDirectory)
-
-        if let bundle = bundleDirectory {
-            for file in jsonFiles(in: bundle) where file.lastPathComponent.hasPrefix(ThemeDefinition.builtInPrefix) {
-                do {
-                    let theme = try ThemeFileFormat.decode(try Data(contentsOf: file))
-                    guard !themes.contains(where: { $0.id == theme.id }) else { continue }
-                    themes.append(theme)
-                } catch {
-                    logger.error("Bundled theme \(file.lastPathComponent) rejected: \(error.publicLogShape, privacy: .public)")
-                }
-            }
-        }
 
         let files = jsonFiles(in: userDirectory)
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }

@@ -10,9 +10,8 @@ import CLibSSH2
 
 import TableProSSHTransport
 
-/// Represents an active SSH tunnel backed by libssh2.
-/// Each instance owns a TCP socket, libssh2 session, a local listening socket,
-/// and the forwarding/keep-alive tasks.
+// An SSH tunnel backed by libssh2. It owns the TCP socket, the session, the local listening socket
+// with its acceptor, and the keep-alive task.
 internal final class LibSSH2Tunnel: @unchecked Sendable {
     let connectionId: UUID
     let localPort: Int
@@ -28,7 +27,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     // Jump host chain (in connection order)
     private let jumpChain: [JumpHop]
 
-    private var forwardingTask: Task<Void, Never>?
+    private var acceptor: SSHListenerAcceptor?
     private var keepAliveTask: Task<Void, Never>?
     private let aliveLatch = TeardownLatch()
 
@@ -48,7 +47,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     /// Individual libssh2 calls within each relay are dispatched to `sessionQueue`.
     private let relayQueue: DispatchQueue
 
-    /// Dedicated queue for the accept loop (poll + accept only, no libssh2 calls).
+    // Serial: the acceptor's handler, which accepts and makes no libssh2 call.
     private let acceptQueue: DispatchQueue
 
     /// Callback invoked when the tunnel dies (keep-alive failure, etc.)
@@ -72,10 +71,6 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     private static let relayBufferSize = 32_768 // 32KB
-
-    /// How long the accept loop waits per poll before rechecking `isRunning`. Small enough that
-    /// noticing a client the kernel already accepted costs a slim part of its connect budget.
-    internal static let acceptPollTimeoutMs: Int32 = 200
 
     init(
         connectionId: UUID,
@@ -123,39 +118,24 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     func startForwarding(destination: SSHForwardDestination) {
         sessionQueue.sync { libssh2_session_set_blocking(session, 0) }
 
-        forwardingTask = Task.detached { [weak self] in
-            guard let self else { return }
-
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.acceptQueue.async { [weak self] in
-                    defer { continuation.resume() }
-                    guard let self else { return }
-
-                    let target = destination.logDescription
-
-                    Self.logger.info(
-                        "Forwarding started on port \(self.localPort) -> \(target)"
-                    )
-
-                    while self.isRunning {
-                        guard let client = self.acceptClient() else {
-                            if self.isRunning {
-                                continue
-                            }
-                            break
-                        }
-
-                        self.spawnClient(
-                            clientFD: client,
-                            budget: self.relayDeadlines.next(),
-                            destination: destination
-                        )
-                    }
-
-                    Self.logger.info("Forwarding loop ended for port \(self.localPort)")
-                }
+        // A handler already running when the latch is claimed may still spawn one relay; teardown
+        // waits for the cancel handler before the relay group, so it waits for that relay too.
+        let acceptor = SSHListenerAcceptor(listenFD: listenFD, queue: acceptQueue) { [weak self] client in
+            guard let self, self.isRunning else {
+                Darwin.close(client.descriptor)
+                return
             }
+            self.spawnClient(
+                clientFD: client.descriptor,
+                budget: self.relayDeadlines.next(),
+                destination: destination
+            )
         }
+        self.acceptor = acceptor
+        acceptor.start()
+
+        let target = destination.logDescription
+        Self.logger.info("Forwarding started on port \(self.localPort) -> \(target)")
     }
 
     // MARK: - Keep-Alive
@@ -202,17 +182,12 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         aliveLatch.claim()
     }
 
-    /// Breaks every blocking wait first, then frees the session and the descriptors only once
-    /// every task that could still be polling them has exited. `shutdown` unblocks a poll at
-    /// once without releasing the descriptor number, which another thread would otherwise be
-    /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
-    /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
-    /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
-    ///
-    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
-    /// is the only thing that starts one: once it has ended, the group can only empty.
+    // `shutdown` wakes every poll on the transport but keeps the descriptor number, so no other
+    // socket can take it mid-poll. The listening socket closes only after the acceptor's cancel
+    // handler ran, which GCD runs once no accept handler is running. The relays are awaited after
+    // that, because the accept handler is the only thing that starts one: the group can only empty.
     private func performTeardown() {
-        forwardingTask?.cancel()
+        acceptor?.cancel()
         keepAliveTask?.cancel()
 
         shutdown(socketFD, SHUT_RDWR)
@@ -225,10 +200,10 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         let listenFD = self.listenFD
         let jumpChain = self.jumpChain
         let connectionId = self.connectionId
-        let forwardingTask = self.forwardingTask
+        let acceptor = self.acceptor
         let keepAliveTask = self.keepAliveTask
         Task.detached {
-            await forwardingTask?.value
+            await acceptor?.waitForCancellation()
             await keepAliveTask?.value
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 clientRelays.notify(queue: relayQueue) { continuation.resume() }
@@ -262,13 +237,12 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         }
     }
 
-    /// Synchronous cleanup for app termination, which waits for nothing because the process is
-    /// exiting. No descriptor is closed and the session is not freed: the relays and the accept
-    /// loop may still be polling them, and the OS reclaims every one of them anyway.
+    // App termination: waits for nothing, closes no descriptor and frees no session, since a relay or
+    // the accept handler may still be using them and the OS reclaims them all.
     func closeSync() {
         guard consumeAliveLatch() else { return }
 
-        forwardingTask?.cancel()
+        acceptor?.cancel()
         keepAliveTask?.cancel()
 
         shutdown(socketFD, SHUT_RDWR)
@@ -287,30 +261,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         onDeath?(connectionId)
     }
 
-    private func acceptClient() -> Int32? {
-        var pollFD = pollfd(fd: listenFD, events: Int16(POLLIN), revents: 0)
-        let pollResult = poll(&pollFD, 1, Self.acceptPollTimeoutMs)
-
-        guard pollResult > 0, pollFD.revents & Int16(POLLIN) != 0 else {
-            return nil
-        }
-
-        var clientAddr = sockaddr_in()
-        var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-
-        let clientFD = withUnsafeMutablePointer(to: &clientAddr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                accept(listenFD, $0, &addrLen)
-            }
-        }
-
-        guard clientFD >= 0 else { return nil }
-        return clientFD
-    }
-
-    /// Open the channel and relay the client, off the accept loop so a slow open cannot
-    /// stall the next accept, and off `sessionQueue` between attempts so it cannot stall
-    /// the relays and keep-alive that share the session.
+    // Off `sessionQueue` between open attempts, so a slow open cannot stall the relays and the
+    // keep-alive that share the session.
     private func openAndRelay(
         clientFD: Int32,
         budget: ConnectionRelayDeadlineProvider.Budget,
@@ -411,9 +363,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         }
     }
 
-    /// Opens the channel and relays one accepted client, off the accept loop so a slow
-    /// open cannot delay the next accept. The loop runs on `relayQueue` (concurrent);
-    /// individual libssh2 calls are dispatched to `sessionQueue` (serial) for thread safety.
+    // On `relayQueue`, off the accept handler, so a slow open cannot delay the next accept.
     private func spawnClient(
         clientFD: Int32,
         budget: ConnectionRelayDeadlineProvider.Budget,
