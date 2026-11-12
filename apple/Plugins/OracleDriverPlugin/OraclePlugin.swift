@@ -688,6 +688,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         OracleObjectQueries.dropTrigger(name: name, schema: schema, currentSchema: _currentSchema)
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let result = try await rawQuery(
             OracleSchemaQueries.allColumns(schema: effectiveSchema(schema), release: serverRelease())

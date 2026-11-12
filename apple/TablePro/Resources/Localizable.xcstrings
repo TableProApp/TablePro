@@ -113035,6 +113035,9 @@
         }
       }
     },
+    "Moving this tab to another database or schema will discard all unsaved changes." : {
+
+    },
     "Moving through this tab's history replaces what it is showing and will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -196862,6 +196865,9 @@
           }
         }
       }
+    },
+    "These rows came from another schema than the one this tab is now using." : {
+
     },
     "These rows cannot be edited because TablePro cannot tell which table they came from." : {
       "localizations" : {

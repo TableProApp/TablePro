@@ -62,6 +62,7 @@ enum ResultEditRefusal: Equatable {
     case unknownTable
     case view(PluginViewReadOnlyReason?)
     case databaseMoved
+    case schemaMoved
     case keysUnresolved
     case masked
 
@@ -73,6 +74,8 @@ enum ResultEditRefusal: Equatable {
             return Self.viewMessage(reason)
         case .databaseMoved:
             return String(localized: "These rows came from another database than the one this tab is now using.")
+        case .schemaMoved:
+            return String(localized: "These rows came from another schema than the one this tab is now using.")
         case .keysUnresolved:
             return String(localized: "TablePro has not looked up this table's key columns, so it cannot tell which row an edit would change.")
         case .masked:
@@ -122,7 +125,11 @@ extension PluginViewRowEditing {
 
 // Fail-closed: a result with no captured origin refuses rather than borrowing the tab's current table.
 enum ResultEditability {
-    static func refusal(for origin: ResultOrigin?, currentDatabaseName: String) -> ResultEditRefusal? {
+    static func refusal(
+        for origin: ResultOrigin?,
+        currentDatabaseName: String,
+        currentSchemaName: String?
+    ) -> ResultEditRefusal? {
         guard let origin else { return .unknownTable }
         // A query tab learns its relation is a view only from the driver's answer.
         if origin.isView || origin.viewRowEditing != nil {
@@ -134,11 +141,20 @@ enum ResultEditability {
             return .unknownTable
         }
         guard origin.keysResolved else { return .keysUnresolved }
-        guard origin.databaseName.isEmpty || currentDatabaseName.isEmpty
-            || origin.databaseName == currentDatabaseName
-        else {
-            return .databaseMoved
-        }
+        guard !origin.wasRead(elsewhereThanDatabase: currentDatabaseName) else { return .databaseMoved }
+        // The schema picker moves only the schema, so the database check above cannot see it.
+        guard origin.schemaName == currentSchemaName else { return .schemaMoved }
         return nil
+    }
+}
+
+extension ResultOrigin {
+    // An unknown database on either side is not a move.
+    func wasRead(elsewhereThanDatabase database: String) -> Bool {
+        !databaseName.isEmpty && !database.isEmpty && databaseName != database
+    }
+
+    func wasRead(elsewhereThanDatabase database: String, schema: String?) -> Bool {
+        wasRead(elsewhereThanDatabase: database) || schemaName != schema
     }
 }

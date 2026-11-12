@@ -7,8 +7,9 @@ import Darwin
 import Foundation
 
 // A loopback PostgreSQL server for one plaintext session. It refuses SSL and GSS encryption, accepts any startup
-// without a password, records each simple query, runs `onQuery` before it answers, and answers with an empty
-// completion and the transaction status `status` picks from the query and the ones before it.
+// without a password, records each simple query, runs `onQuery` before it answers, and answers each statement in it
+// with an empty completion, then the transaction status `status` picks from the query and the ones before it. A
+// statement holding `failingStatement` gets an error instead, and the statements after it in that query get nothing.
 final class LibPQScriptedServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -33,6 +34,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
     private let listener: Int32
     private let status: @Sendable (_ query: String, _ earlier: [String]) -> UInt8
     private let onQuery: @Sendable (String) -> Void
+    private let failingStatement: String?
     private let lock = NSLock()
     private var received: [String] = []
 
@@ -42,10 +44,12 @@ final class LibPQScriptedServer: @unchecked Sendable {
 
     init(
         status: @escaping @Sendable (_ query: String, _ earlier: [String]) -> UInt8 = { _, _ in LibPQScriptedServer.idle },
-        onQuery: @escaping @Sendable (String) -> Void = { _ in }
+        onQuery: @escaping @Sendable (String) -> Void = { _ in },
+        failingStatement: String? = nil
     ) throws {
         self.status = status
         self.onQuery = onQuery
+        self.failingStatement = failingStatement
         let socketFD = socket(AF_INET, SOCK_STREAM, 0)
         guard socketFD >= 0 else { throw SetupFailure() }
         var option: Int32 = 1
@@ -91,9 +95,45 @@ final class LibPQScriptedServer: @unchecked Sendable {
                 return received
             }
             onQuery(query)
-            let reply = Self.message("C", Array("SELECT 0".utf8) + [0]) + Self.message("Z", [status(query, earlier)])
+            let reply = answers(to: query) + Self.message("Z", [status(query, earlier)])
             guard send(client, reply) else { return }
         }
+    }
+
+    private func answers(to query: String) -> [UInt8] {
+        let statements = Self.statements(in: query)
+        var reply: [UInt8] = []
+        for statement in statements.isEmpty ? [query] : statements {
+            if let failingStatement, statement.contains(failingStatement) {
+                return reply + Self.errorResponse(sqlState: "42501", text: "permission denied")
+            }
+            reply += Self.message("C", Array("SELECT 0".utf8) + [0])
+        }
+        return reply
+    }
+
+    // Splits on each `;` outside a quoted literal or identifier, which is enough for the statements the driver sends.
+    private static func statements(in query: String) -> [String] {
+        var statements: [String] = []
+        var current = ""
+        var quote: Character?
+        for character in query {
+            if character == ";", quote == nil {
+                statements.append(current)
+                current = ""
+                continue
+            }
+            if character == quote {
+                quote = nil
+            } else if quote == nil, character == "'" || character == "\"" {
+                quote = character
+            }
+            current.append(character)
+        }
+        statements.append(current)
+        return statements
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private func startUp(_ client: Int32) -> Bool {
@@ -117,6 +157,14 @@ final class LibPQScriptedServer: @unchecked Sendable {
 
     private static func message(_ type: Character, _ body: [UInt8]) -> [UInt8] {
         [type.asciiValue ?? 0] + bytes(UInt32(body.count + 4)) + body
+    }
+
+    private static func errorResponse(sqlState: String, text: String) -> [UInt8] {
+        var body: [UInt8] = []
+        for (field, value) in [("S", "ERROR"), ("V", "ERROR"), ("C", sqlState), ("M", text)] {
+            body += Array(field.utf8) + Array(value.utf8) + [0]
+        }
+        return message("E", body + [0])
     }
 
     private static func bytes(_ value: UInt32) -> [UInt8] {

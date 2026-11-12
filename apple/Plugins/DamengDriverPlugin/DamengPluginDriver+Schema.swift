@@ -103,6 +103,8 @@ extension DamengPluginDriver {
         }
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let owner = effectiveSchema(schema)
         let result = try await executeParameterized(

@@ -13,7 +13,7 @@ import Foundation
 @MainActor
 internal final class ConnectionWorkspace {
     internal let connectionId: UUID
-    internal let payload: EditorTabPayload?
+    internal private(set) var payload: EditorTabPayload?
     internal let autoConnect: Bool
 
     internal var payloadConnection: DatabaseConnection?
@@ -302,6 +302,12 @@ internal final class ConnectionWorkspace {
             contentMode: resolvedContentMode,
             agentSessionId: displayedAgentSession?.id
         )
+    }
+
+    // The session's tabs were saved as it went down, so a reconnect restores them rather than opening the founding content again.
+    internal func retireFoundingPayload() {
+        guard let payload, payload.intent != .restoreOrDefault else { return }
+        self.payload = EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
     }
 
     /// Opens what the payload names. Held until the session exists if the connection is still

@@ -253,6 +253,8 @@ extension MSSQLPluginDriver {
         return "DROP TRIGGER \(quoteIdentifier(resolved)).\(quoteIdentifier(name))"
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let result = try await execute(query: MSSQLSchemaQueries.allColumns(schema: effectiveSchema(schema)))
         var columnsByTable: [String: [PluginColumnInfo]] = [:]

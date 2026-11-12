@@ -68,6 +68,7 @@ final class ConnectionCoordinator {
 
     private(set) var queryHistory: [QueryHistoryItem] = []
     private(set) var keepsDamagedHistoryCopy = false
+    @ObservationIgnored private var historyGeneration = 0
     private var historyStorage: QueryHistoryStorage { appState.queryHistory }
 
     var connectionManager: ConnectionManager { appState.connectionManager }
@@ -259,12 +260,24 @@ final class ConnectionCoordinator {
         TablePlacement(
             driver: session.map { ObjectIdentifier($0.driver) },
             database: activeDatabase,
-            schema: supportsSchemas ? activeSchema : nil
+            schema: tableQualifier
         )
+    }
+
+    // What the Tables tab qualifies a table with. MySQL's `db`.`table` names the database where other engines name a
+    // schema, so a `USE` run in the Query tab never moves where a browse, a save or a drop lands.
+    var tableQualifier: String? {
+        if supportsSchemas { return activeSchema }
+        guard model.qualifiesTablesWithDatabase, !activeDatabase.isEmpty else { return nil }
+        return activeDatabase
     }
 
     static var editorHeldElsewhereMessage: String {
         String(localized: "Another window has unsaved changes on this connection. Save or discard them before switching database.")
+    }
+
+    static var editorHeldHereMessage: String {
+        String(localized: "This window has unsaved changes on this connection, so the session stayed on its database. Save or discard them before switching database.")
     }
 
     static func lostTransactionMessage(_ loss: SessionLoss, connectionName: String) -> String? {
@@ -375,6 +388,8 @@ final class ConnectionCoordinator {
         await model.reloadMetadataIfReleased(from: self)
         // A catalog connection sees DDL the transaction ran only once it commits.
         noteCatalogChanged([.tables, .schemas, .databases])
+        // A `SET LOCAL search_path` ends with the transaction.
+        await followSessionSchema()
     }
 
     func rollBackTransaction(as token: SessionTransactionMonitor.HoldToken) async throws {
@@ -401,22 +416,123 @@ final class ConnectionCoordinator {
 
     // MARK: - Database / Schema Switching
 
-    // A MongoDB `use` moves the session itself, so the lists and the picker follow it there, once every request queued
-    // before has returned: a request Stop ended lands its `use` only then. The switch runs outside the run that asks,
-    // which Stop may have cancelled. While another window holds unsaved edits the session goes back instead, so they
-    // save where the picker says.
-    func followSessionDatabase() async {
-        guard supportsDatabaseSwitching, let driver = session?.driver as? PluginBackedDriver else { return }
+    // What a run may have moved: a `USE` moves the database, and a search path, a role or a transaction's end the schema.
+    struct SessionMove {
+        var database = false
+        var schema = false
+    }
+
+    // A read that costs a statement replaces ROW_COUNT() and the warnings, so it is sent only after a run that can have
+    // moved the session. The work runs in a task of its own, since Stop may have cancelled the run that asks.
+    func followSessionPlacement(after move: SessionMove) async {
+        await followSessionDatabase(after: move)
+        if move.schema { await followSessionSchema() }
+    }
+
+    private func followSessionDatabase(after move: SessionMove) async {
+        guard supportsDatabaseSwitching, let driver = session?.driver as? any SessionDatabaseReporting,
+              move.database || driver.reportsDatabaseWithoutStatement else { return }
         await Task {
-            guard let used = try? await driver.settledCurrentDatabase(), used != activeDatabase,
-                  session?.driver === driver else { return }
-            guard !anotherWindowHoldsEditor else {
-                try? await driver.switchDatabase(to: activeDatabase)
-                presentFailure(title: Self.switchDatabaseFailedTitle, message: Self.editorHeldElsewhereMessage)
+            let used = try? await driver.sessionDatabase()
+            // With autocommit off, a MySQL read opens a transaction.
+            if !driver.reportsDatabaseWithoutStatement { await refreshTransaction() }
+            guard let used, !used.isEmpty, used != activeDatabase, session?.driver === driver else { return }
+            // An unsaved edit holds the session where it was made, as it holds the picker.
+            if isHeldByEditor || anotherWindowHoldsEditor, !activeDatabase.isEmpty {
+                let back = activeDatabase
+                let failure = await whileSwitching(to: back) {
+                    do {
+                        try await driver.switchDatabase(to: back)
+                        return nil
+                    } catch {
+                        return ConnectionFailure(error: error, title: Self.switchDatabaseFailedTitle, redialRepeats: false)
+                    }
+                }
+                guard failure != nil else {
+                    presentFailure(
+                        title: Self.switchDatabaseFailedTitle,
+                        message: isHeldByEditor ? Self.editorHeldHereMessage : Self.editorHeldElsewhereMessage
+                    )
+                    return
+                }
+                // The lists follow the session, and every window with an edit open keeps the database it was made in,
+                // this one too, since it did not ask for the move.
+                model.beginSwitch()
+                _ = await model.switchDatabase(to: used, from: self, inside: nil)
+                model.endSwitch()
+                await model.loadSchemasAfterSwitch(to: used, from: self)
+                await model.runHeldBackWork(from: self)
+                // MySQL names the database in every Tables tab write, and a plugin driver runs the app's requests in the
+                // menu's database; SQL Server saves only once the session is back.
+                presentFailure(
+                    title: Self.switchDatabaseFailedTitle,
+                    message: model.qualifiesTablesWithDatabase || driver.reportsDatabaseWithoutStatement
+                        ? String(format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”."), used, back, back)
+                        : String(
+                            format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. To save the unsaved changes, run USE %@ in the Query tab of the window that holds them."),
+                            used, back, SQLBuilder.quoteIdentifier(back, for: connection.type)
+                        )
+                )
                 return
             }
             await switchDatabase(to: used)
         }.value
+    }
+
+    // The Tables tab names its schema, so only completion and the picker read where the session is.
+    private func followSessionSchema() async {
+        guard supportsSchemas, let driver = session?.driver as? any SessionSchemaReporting else { return }
+        await driver.settleCurrentSchema()
+        guard session?.driver === driver, let current = driver.currentSchema, current != activeSchema else { return }
+        appState.bumpSessionRevision(connection.id)
+        await followLiveSession()
+    }
+
+    // From the start of a run with a `USE` until the picker follows it, another run's statements could go out around the
+    // move, so no window runs one, and on SQL Server, whose Tables tab names no database, every window's writes are
+    // refused. A driver that reports its database without a statement keeps the app's requests where the picker says.
+    func beginDatabaseMove(ifRunning text: String) -> Bool {
+        guard supportsDatabaseSwitching, let driver = session?.driver as? any SessionDatabaseReporting,
+              !driver.reportsDatabaseWithoutStatement,
+              SessionLocalStatements.effect(of: [text], databaseType: connection.type).usesDatabase else { return false }
+        model.beginDatabaseMove()
+        return true
+    }
+
+    func endDatabaseMove() {
+        model.endDatabaseMove()
+    }
+
+    var isDatabaseMoving: Bool { model.isDatabaseMoving }
+
+    static var databaseMovingRefusal: AppError {
+        AppError(
+            category: .query,
+            title: String(localized: "Database Switch Running"),
+            message: String(localized: "A query that switches the database is running on this connection. Try again once it ends."),
+            recovery: nil,
+            underlying: nil
+        )
+    }
+
+    var databaseMoveRefusal: AppError? {
+        guard supportsDatabaseSwitching, !model.qualifiesTablesWithDatabase,
+              let driver = session?.driver as? any SessionDatabaseReporting,
+              !driver.reportsDatabaseWithoutStatement else { return nil }
+        if model.isDatabaseMoving { return Self.databaseMovingRefusal }
+        // A session that could not go back to where an unsaved edit was made. SQL Server compares names by its collation,
+        // which ignores case unless set otherwise.
+        if let current = driver.currentDatabase, !current.isEmpty, !activeDatabase.isEmpty,
+           current.caseInsensitiveCompare(activeDatabase) != .orderedSame {
+            return AppError(
+                category: .query,
+                title: String(localized: "Session in Another Database"),
+                message: String(format: String(localized: "The session is in “%@”, not “%@”, so this change cannot be saved now."), current, activeDatabase),
+                recovery: nil,
+                underlying: nil
+            )
+        }
+        return nil
     }
 
     func switchDatabase(to name: String) async {
@@ -506,25 +622,76 @@ final class ConnectionCoordinator {
 
     // MARK: - Query History
 
-    func loadHistory() {
-        queryHistory = historyStorage.load(for: connection.id)
-        keepsDamagedHistoryCopy = historyStorage.hasSetAsideCopies
+    // The file is read and written off the main actor, so a run never waits on it.
+    func loadHistory() async {
+        let read = await Self.readHistory(for: connection.id, in: historyStorage)
+        show(read.listed)
+        keepsDamagedHistoryCopy = read.keepsDamagedCopy
     }
 
-    func addHistoryItem(_ item: QueryHistoryItem) {
-        guard historyStorage.save(item) else { return }
-        loadHistory()
+    func addHistoryItem(_ item: QueryHistoryItem) async {
+        guard let listed = await Self.record(item, in: historyStorage) else { return }
+        show(listed)
     }
 
-    func deleteHistoryItem(_ id: UUID) {
-        historyStorage.delete(id)
+    // Saves finish in any order; a list read before a later write never replaces what that write left.
+    private func show(_ listed: QueryHistoryStorage.Listed) {
+        guard listed.generation >= historyGeneration else { return }
+        historyGeneration = listed.generation
+        queryHistory = listed.items
+    }
+
+    @concurrent
+    nonisolated private static func readHistory(
+        for connectionId: UUID,
+        in storage: QueryHistoryStorage
+    ) async -> (listed: QueryHistoryStorage.Listed, keepsDamagedCopy: Bool) {
+        (storage.listed(for: connectionId), storage.hasSetAsideCopies)
+    }
+
+    @concurrent
+    nonisolated private static func record(
+        _ item: QueryHistoryItem,
+        in storage: QueryHistoryStorage
+    ) async -> QueryHistoryStorage.Listed? {
+        storage.record(item)
+    }
+
+    // The row leaves the list at once, as a swipe expects, and the stored list, with any run saved meanwhile, follows.
+    @discardableResult
+    func deleteHistoryItem(_ id: UUID) -> Task<Void, Never> {
         queryHistory.removeAll { $0.id == id }
+        let connectionId = connection.id
+        let storage = historyStorage
+        return Task {
+            let read = await Self.changeHistory(for: connectionId, in: storage) { $0.delete(id) }
+            show(read.listed)
+        }
     }
 
-    func clearHistory() {
-        historyStorage.clearAll(for: [connection.id], removingSetAsideCopies: keepsDamagedHistoryCopy)
+    @discardableResult
+    func clearHistory() -> Task<Void, Never> {
+        let removingSetAside = keepsDamagedHistoryCopy
+        let connectionId = connection.id
+        let storage = historyStorage
         queryHistory = []
-        keepsDamagedHistoryCopy = historyStorage.hasSetAsideCopies
+        return Task {
+            let read = await Self.changeHistory(for: connectionId, in: storage) { storage in
+                storage.clearAll(for: [connectionId], removingSetAsideCopies: removingSetAside)
+            }
+            show(read.listed)
+            keepsDamagedHistoryCopy = read.keepsDamagedCopy
+        }
+    }
+
+    @concurrent
+    nonisolated private static func changeHistory(
+        for connectionId: UUID,
+        in storage: QueryHistoryStorage,
+        _ change: @Sendable (QueryHistoryStorage) -> Void
+    ) async -> (listed: QueryHistoryStorage.Listed, keepsDamagedCopy: Bool) {
+        change(storage)
+        return (storage.listed(for: connectionId), storage.hasSetAsideCopies)
     }
 
     func navigateToPendingTable() {

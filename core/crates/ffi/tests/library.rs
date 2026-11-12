@@ -546,27 +546,35 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
         .connect_saved(saved.id.clone(), ConnectionSecrets::default(), None, None)
         .await
         .unwrap();
+    struct Quiet;
+    impl tablepro_ffi::RunListener for Quiet {
+        fn events_pending(&self) {}
+    }
     let objects = session.objects(ObjectScopeArg::DefaultSchema, None).await.unwrap();
     let browse = session
-        .table_query(
+        .read_table_page(
             TableName {
                 schema: None,
                 name: "people".to_owned(),
             },
             None,
+            None,
             100,
             0,
+            Box::new(Quiet),
             None,
         )
         .await
         .unwrap();
+    let outcome = browse.run().outcome().await.unwrap();
+    let rows = browse.run().result_set(0).map(|set| set.row_count());
     session.close().await.unwrap();
     let snapshot = library.snapshot().await.unwrap();
 
     assert!(objects.iter().any(|object| object.name == "people"));
-    assert!(browse.sql.contains("FROM \"people\""), "{browse:?}");
-    assert!(browse.sql.contains("100"), "{browse:?}");
-    assert_eq!(browse.visible_columns, 2);
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    assert_eq!(rows, Some(0));
+    assert_eq!(browse.visible_columns(), 2);
     assert_eq!(snapshot.recent, [saved.id]);
     assert!(snapshot.connections[0].last_opened_ms.is_some());
 }
