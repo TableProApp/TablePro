@@ -391,26 +391,6 @@ struct TabFilterState: Equatable, Hashable, Codable {
     /// filtered query, so a tab that restored filters and has not loaded yet reruns those.
     var executedLogicMode: FilterLogicMode?
 
-    /// Whether the panel edits builder rows or one typed condition. Only a panel that also holds the
-    /// sort offers the switch (`DataGridSettings.showsSortInFilterPanel`); every other panel reads
-    /// `effectiveEditMode`, which falls back to the rows.
-    var editMode: FilterEditMode = .builder
-
-    /// The builder rows Text mode replaced, so switching back before typing anything returns them.
-    /// Deliberately not persisted: a restored tab has no rows to return to.
-    var textModeOrigin: FilterTextModeOrigin?
-
-    /// The Sort By section's edits, nil while it shows the tab's sort as it is. A header click
-    /// sorts at once and clears it, so the section follows the header. Not persisted: the sort the
-    /// rows were fetched with is the tab's `SortState`, and a draft is only what Apply would run.
-    var sortDraft: [FilterSortCriterion]?
-
-    /// The empty row the panel put in by itself for the reader to type into, as it was put in. A
-    /// filter brought in from outside the panel takes its place while the row is still exactly this.
-    /// Only a panel that opts in records it (`FilterPanelConfiguration.replacesUntouchedStartingRow`).
-    /// Not persisted: an incomplete row is never saved.
-    var startingFilter: TableFilter?
-
     init(isVisible: Bool = false) {
         self.filters = []
         self.commit = nil
@@ -421,7 +401,7 @@ struct TabFilterState: Equatable, Hashable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case filters, commit, isVisible, filterLogicMode, keyPattern, keyTypeScope, editMode
+        case filters, commit, isVisible, filterLogicMode, keyPattern, keyTypeScope
     }
 
     init(from decoder: Decoder) throws {
@@ -432,7 +412,6 @@ struct TabFilterState: Equatable, Hashable, Codable {
         self.filterLogicMode = try container.decodeIfPresent(FilterLogicMode.self, forKey: .filterLogicMode) ?? .and
         self.keyPattern = try container.decodeIfPresent(String.self, forKey: .keyPattern) ?? ""
         self.keyTypeScope = try container.decodeIfPresent(String.self, forKey: .keyTypeScope)
-        self.editMode = (try? container.decodeIfPresent(FilterEditMode.self, forKey: .editMode)) ?? .builder
     }
 
     var appliedFilters: [TableFilter] {
@@ -470,8 +449,7 @@ struct TabFilterState: Equatable, Hashable, Codable {
         PersistedFilterState(
             filters: filters.filter(\.isValid),
             logicMode: filterLogicMode,
-            isApplied: commit != nil,
-            editMode: effectiveEditMode
+            isApplied: commit != nil
         )
     }
 

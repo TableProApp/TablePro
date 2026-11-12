@@ -71,8 +71,7 @@ internal final class StatefulToolbarItem: NSToolbarItem {
     }
 
     private var symbolSource = ToolbarSymbolSource()
-    /// What the glyph on show depicts, as its provider named it.
-    internal private(set) var appliedGlyphKey: String?
+    private var appliedGlyphKey: String?
 
     override internal func validate() {
         super.validate()

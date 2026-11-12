@@ -17,45 +17,23 @@ enum AppAppearanceMode: String, Codable, CaseIterable {
     case auto
 }
 
-/// How the sidebar, the tabs and the object lists draw a database object's glyph.
-enum ObjectIconStyle: String, Codable, CaseIterable, Identifiable {
-    /// The outline glyphs every surface drew before the style existed, each in its surface's color.
-    case standard
-    /// A filled glyph in a system hue per kind of object, so a table, a view and a function are told
-    /// apart before their names are read.
-    case colorful
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .standard: return String(localized: "Standard")
-        case .colorful: return String(localized: "Colorful")
-        }
-    }
-}
-
 // The appearance mode is not here: it is per Mac (`AppSettingsManager.appearanceMode`), and this
 // struct is the synced `appearance` category.
 struct AppearanceSettings: Codable, Equatable {
     var preferredLightThemeId: String
     var preferredDarkThemeId: String
-    var objectIconStyle: ObjectIconStyle
 
     static let `default` = AppearanceSettings(
         preferredLightThemeId: BuiltInThemes.defaultLightId,
-        preferredDarkThemeId: BuiltInThemes.defaultDarkId,
-        objectIconStyle: .standard
+        preferredDarkThemeId: BuiltInThemes.defaultDarkId
     )
 
     init(
         preferredLightThemeId: String = BuiltInThemes.defaultLightId,
-        preferredDarkThemeId: String = BuiltInThemes.defaultDarkId,
-        objectIconStyle: ObjectIconStyle = .standard
+        preferredDarkThemeId: String = BuiltInThemes.defaultDarkId
     ) {
         self.preferredLightThemeId = preferredLightThemeId
         self.preferredDarkThemeId = preferredDarkThemeId
-        self.objectIconStyle = objectIconStyle
     }
 
     init(from decoder: Decoder) throws {
@@ -63,11 +41,10 @@ struct AppearanceSettings: Codable, Equatable {
         let fallback = Self.default
         preferredLightThemeId = container.decodeSetting(.preferredLightThemeId, default: fallback.preferredLightThemeId)
         preferredDarkThemeId = container.decodeSetting(.preferredDarkThemeId, default: fallback.preferredDarkThemeId)
-        objectIconStyle = container.decodeSetting(.objectIconStyle, default: fallback.objectIconStyle)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case preferredLightThemeId, preferredDarkThemeId, objectIconStyle
+        case preferredLightThemeId, preferredDarkThemeId
     }
 }
 
@@ -147,12 +124,6 @@ struct DataGridSettings: Codable, Equatable {
     var defaultSortDirection: SortDirection
     var rowCopyFormat: RowCopyFormat
     var showInvisibleCharacters: Bool
-    var showsColumnTypesInHeader: Bool
-    var resultBarAtTop: Bool
-    /// The filter panel of a table tab also edits the sort, offers a Text mode and applies both at once.
-    var showsSortInFilterPanel: Bool
-    /// A table tab opens with its filter panel showing.
-    var opensFilterPanelForTables: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -169,11 +140,7 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortBehavior: .none,
         defaultSortDirection: .ascending,
         rowCopyFormat: .rows,
-        showInvisibleCharacters: true,
-        showsColumnTypesInHeader: false,
-        resultBarAtTop: false,
-        showsSortInFilterPanel: false,
-        opensFilterPanelForTables: false
+        showInvisibleCharacters: true
     )
 
     init(
@@ -191,11 +158,7 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortBehavior: DefaultSortBehavior = .none,
         defaultSortDirection: SortDirection = .ascending,
         rowCopyFormat: RowCopyFormat = .rows,
-        showInvisibleCharacters: Bool = true,
-        showsColumnTypesInHeader: Bool = false,
-        resultBarAtTop: Bool = false,
-        showsSortInFilterPanel: Bool = false,
-        opensFilterPanelForTables: Bool = false
+        showInvisibleCharacters: Bool = true
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -212,10 +175,6 @@ struct DataGridSettings: Codable, Equatable {
         self.defaultSortDirection = defaultSortDirection
         self.rowCopyFormat = rowCopyFormat
         self.showInvisibleCharacters = showInvisibleCharacters
-        self.showsColumnTypesInHeader = showsColumnTypesInHeader
-        self.resultBarAtTop = resultBarAtTop
-        self.showsSortInFilterPanel = showsSortInFilterPanel
-        self.opensFilterPanelForTables = opensFilterPanelForTables
     }
 
     init(from decoder: Decoder) throws {
@@ -242,16 +201,6 @@ struct DataGridSettings: Codable, Equatable {
         rowCopyFormat = container.decodeSetting(.rowCopyFormat, default: fallback.rowCopyFormat)
         showInvisibleCharacters = container.decodeSetting(
             .showInvisibleCharacters, default: fallback.showInvisibleCharacters
-        )
-        showsColumnTypesInHeader = container.decodeSetting(
-            .showsColumnTypesInHeader, default: fallback.showsColumnTypesInHeader
-        )
-        resultBarAtTop = container.decodeSetting(.resultBarAtTop, default: fallback.resultBarAtTop)
-        showsSortInFilterPanel = container.decodeSetting(
-            .showsSortInFilterPanel, default: fallback.showsSortInFilterPanel
-        )
-        opensFilterPanelForTables = container.decodeSetting(
-            .opensFilterPanelForTables, default: fallback.opensFilterPanelForTables
         )
     }
 
@@ -393,19 +342,11 @@ struct TabSettings: Codable, Equatable {
     var enablePreviewTabs: Bool = true
     // `scroll` is the system's answer: every tab bar Apple ships keeps one row and scrolls it.
     var overflow: EditorTabStripOverflow = .scroll
-    /// Off by default: the location makes a table tab's title several times longer than the
-    /// table's name, and a tab at its minimum width then truncates it.
-    var titleShowsLocation: Bool = false
     static let `default` = TabSettings()
 
-    init(
-        enablePreviewTabs: Bool = true,
-        overflow: EditorTabStripOverflow = .scroll,
-        titleShowsLocation: Bool = false
-    ) {
+    init(enablePreviewTabs: Bool = true, overflow: EditorTabStripOverflow = .scroll) {
         self.enablePreviewTabs = enablePreviewTabs
         self.overflow = overflow
-        self.titleShowsLocation = titleShowsLocation
     }
 
     init(from decoder: Decoder) throws {
@@ -413,6 +354,5 @@ struct TabSettings: Codable, Equatable {
         let fallback = Self.default
         enablePreviewTabs = container.decodeSetting(.enablePreviewTabs, default: fallback.enablePreviewTabs)
         overflow = container.decodeSetting(.overflow, default: fallback.overflow)
-        titleShowsLocation = container.decodeSetting(.titleShowsLocation, default: fallback.titleShowsLocation)
     }
 }

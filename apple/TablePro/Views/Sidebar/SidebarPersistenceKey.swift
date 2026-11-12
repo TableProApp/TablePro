@@ -16,15 +16,6 @@ enum SidebarPersistenceKey {
         "sidebar.\(connectionId.uuidString).recents.expanded"
     }
 
-    static func favoritesExpanded(connectionId: UUID) -> String {
-        "sidebar.\(connectionId.uuidString).favorites.expanded"
-    }
-
-    /// The connection's own row in a tree that lists the saved connections above its databases.
-    static func ownConnectionExpanded(connectionId: UUID) -> String {
-        "sidebar.\(connectionId.uuidString).connection.expanded"
-    }
-
     static func foldersExpanded(connectionId: UUID) -> String {
         "sidebar.\(connectionId.uuidString).folders.expanded"
     }
@@ -67,8 +58,6 @@ enum SidebarPersistenceKey {
             tablesExpanded(connectionId: connectionId),
             redisKeysExpanded(connectionId: connectionId),
             recentsExpanded(connectionId: connectionId),
-            favoritesExpanded(connectionId: connectionId),
-            ownConnectionExpanded(connectionId: connectionId),
             foldersExpanded(connectionId: connectionId),
             temporaryExpanded(connectionId: connectionId),
             selectedTab(connectionId: connectionId),

@@ -15,10 +15,7 @@ import Testing
 
 @MainActor
 enum QueryEditorPaneFixture {
-    static func input(
-        text: Binding<String> = .constant("SELECT 1"),
-        twoRow: QueryEditorBar.TwoRowInput? = nil
-    ) -> QueryEditorPaneInput {
+    static func input(text: Binding<String> = .constant("SELECT 1")) -> QueryEditorPaneInput {
         QueryEditorPaneInput(
             header: { vimMode in
                 AnyView(VStack(spacing: 0) {
@@ -37,7 +34,6 @@ enum QueryEditorPaneFixture {
                             isStoppable: true,
                             hasResults: false,
                             explainVariants: [],
-                            supportsQueryBuilder: true,
                             shortcutHint: { label, _ in label }
                         ),
                         isExecuting: false,
@@ -53,8 +49,7 @@ enum QueryEditorPaneFixture {
                         onSaveAsFavorite: {},
                         onClearQuery: {},
                         onClearResults: {},
-                        onContainerChanged: { _ in },
-                        twoRow: twoRow
+                        onContainerChanged: { _ in }
                     )
                     Divider()
                 })
@@ -64,23 +59,6 @@ enum QueryEditorPaneFixture {
                 cursorPositions: .constant([]),
                 databaseType: .sqlite
             )
-        )
-    }
-
-    static func twoRowInput(connectionId: UUID) -> QueryEditorBar.TwoRowInput {
-        QueryEditorBar.TwoRowInput(
-            connection: QueryConnectionPickerModel(
-                connectionId: connectionId,
-                name: "Shop Demo",
-                color: .blue,
-                canMove: true,
-                confirm: { _ in false },
-                move: { _ in }
-            ),
-            savedQueries: ConnectionDataCache.shared(for: connectionId),
-            onSave: {},
-            onOpenQueryBuilder: {},
-            onInsertSavedQuery: { _ in }
         )
     }
 }
@@ -101,36 +79,6 @@ struct QueryEditorPaneLayoutTests {
         #expect(header.height == pane.header.intrinsicContentSize.height)
         #expect(header.maxY <= paneMinimum)
         #expect(editor.maxY <= header.minY + 0.5)
-        #expect(editor.height > 0)
-    }
-
-    /// The second row costs one control's height, and the pane's minimum still holds the bar and an
-    /// editor below it, so turning the setting on never pushes the bar under the results.
-    @Test("The two-row bar is taller than one row and still fits the pane minimum")
-    func twoRowBarFitsThePaneMinimum() {
-        let connectionId = UUID()
-        defer { ConnectionDataCache.removeConnection(connectionId) }
-        let paneMinimum = CollapsibleSplitController.defaultTopMinimumThickness
-        let single = QueryEditorPaneController(input: QueryEditorPaneFixture.input())
-        let double = QueryEditorPaneController(input: QueryEditorPaneFixture.input(
-            twoRow: QueryEditorPaneFixture.twoRowInput(connectionId: connectionId)
-        ))
-        defer {
-            single.teardown()
-            double.teardown()
-        }
-        for pane in [single, double] {
-            pane.view.frame = NSRect(x: 0, y: 0, width: 900, height: paneMinimum)
-            pane.view.layoutSubtreeIfNeeded()
-        }
-
-        let oneRow = single.header.frame.height
-        let twoRows = double.header.frame.height
-        let editor = double.editor.textViewController.view.frame
-        #expect(twoRows > oneRow + 10)
-        #expect(twoRows == double.header.intrinsicContentSize.height)
-        #expect(double.header.frame.maxY <= paneMinimum)
-        #expect(editor.maxY <= double.header.frame.minY + 0.5)
         #expect(editor.height > 0)
     }
 }

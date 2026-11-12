@@ -422,7 +422,7 @@ struct SyncCoordinatorThemeTests {
         #expect(harness.engine.mode == .auto)
     }
 
-    @Test("The outgoing appearance record carries the theme ids and the icon style, and no mode")
+    @Test("The outgoing appearance record carries the theme ids and no mode")
     func outgoingPayloadCarriesNoMode() throws {
         let harness = try Harness(label: "theme-mode-out")
         harness.storage.saveAppearance(AppearanceSettings(preferredLightThemeId: "user.day", preferredDarkThemeId: "user.night"))
@@ -431,7 +431,7 @@ struct SyncCoordinatorThemeTests {
         let data = try #require(harness.coordinator.settingsData(for: AppSettingsCategory.appearance))
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
 
-        #expect(Set(object.keys) == ["preferredLightThemeId", "preferredDarkThemeId", "objectIconStyle"])
+        #expect(Set(object.keys) == ["preferredLightThemeId", "preferredDarkThemeId"])
         #expect(object["preferredDarkThemeId"] as? String == "user.night")
     }
 

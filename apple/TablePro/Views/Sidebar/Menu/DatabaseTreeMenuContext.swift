@@ -46,7 +46,6 @@ internal struct DatabaseTreeMenuContext {
     internal let showObjectComments: Bool
     internal let showSystemContainers: Bool
     internal let showPartitions: Bool
-    internal var showTableDetails: Bool = false
     internal let rowSize: SidebarRowSizePreference
     internal var canFilterDatabases: Bool = false
     internal var hasDatabaseFilter: Bool = false
@@ -76,11 +75,9 @@ internal struct DatabaseTreeMenuContext {
     /// Whether the flat list is on screen, the one shape whose folders belong to the browsed
     /// database and schema rather than to a container row the user right-clicked.
     internal var offersBrowsedFolders: Bool = false
-    /// Whether the Tables kind has a listing to open, so an engine without one is not offered Show
-    /// Objects for a kind that would only fail.
+    /// Whether Show All Tables has a listing to open, so an engine without one is not offered a command
+    /// that does nothing.
     internal var canShowAllTables: Bool = false
-    /// On an engine grouped by schema a database row holds schemas, not objects.
-    internal var databaseRowsHoldSchemas: Bool = false
     /// The engine's schema rows are databases attached beside the opened file: reached by their
     /// qualifier, never made active, and not exported or copied as a unit.
     internal var listsAttachedSchemas: Bool = false

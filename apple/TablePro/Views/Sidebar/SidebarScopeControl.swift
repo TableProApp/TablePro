@@ -22,9 +22,10 @@ import AppKit
 /// Simplified Chinese 100pt.
 ///
 /// On macOS 27 it takes the tabs role AppKit gives "tab-based navigation and content selection",
-/// at regular size. Measured there, a regular control in a sidebar draws a glass capsule, the shape
-/// and height of the editor tab strip beside it in the same row; small draws a flat track a size
-/// below every other tab row in the window. Earlier releases keep the regular control too.
+/// at small size. Measured there, a regular control in a sidebar draws a glass capsule whatever
+/// its style or role; small with the tabs role draws a flat track with a neutral raised thumb.
+/// Small without the role would fill the thumb with the accent color, which marks a value choice,
+/// so earlier releases keep the regular control.
 @MainActor
 internal final class SidebarScopeControl: NSSegmentedControl {
     internal static let tabs: [SidebarTab] = [.tables, .favorites]
@@ -38,6 +39,7 @@ internal final class SidebarScopeControl: NSSegmentedControl {
         #if SDK_MACOS_27
         if #available(macOS 27.0, *) {
             role = .tabs
+            controlSize = .small
         }
         #endif
         for (index, tab) in Self.tabs.enumerated() {

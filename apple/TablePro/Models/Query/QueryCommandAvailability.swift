@@ -20,13 +20,6 @@ struct QueryCommandAvailability {
     let canSaveAsFavorite: Bool
     let canClearQuery: Bool
     let canClearResults: Bool
-    /// Save is Cmd+S for this tab, so it is live when Cmd+S would do something here: write the tab's
-    /// changed file or the grid edits it holds, or ask where to keep a query that has no file yet.
-    let canSave: Bool
-    /// Query Builder is the Join Builder sheet, which only an engine with a SQL dialect and foreign
-    /// keys can fill, so elsewhere the button is left out rather than shown dimmed for good.
-    let showsQueryBuilder: Bool
-    let canOpenQueryBuilder: Bool
     /// Whether the Run menu has anything live in it. Clear Query leaves the results standing and
     /// takes `canRun` away with it, so gating the menu on Run alone hid Clear Results at the one
     /// moment it was the command the reader wanted.
@@ -42,9 +35,6 @@ struct QueryCommandAvailability {
     let formatHint: String
     let favoriteHint: String
     let aiReviewHint: String
-    let saveHint: String
-    let beautifyHint: String
-    let queryBuilderHint: String
 
     /// `isStoppable` is separate from `isExecuting` because a batch whose `COMMIT` is on the wire is
     /// still running and can no longer be stopped by anything: the HIG asks not to offer a cancel
@@ -58,9 +48,6 @@ struct QueryCommandAvailability {
         explainVariants: [ExplainVariant],
         supportsFormatting: Bool = true,
         aiActions: AIQueryActionAvailability = .hidden,
-        hasUnsavedEdits: Bool = false,
-        hasSourceFile: Bool = false,
-        supportsQueryBuilder: Bool = false,
         shortcutHint: (String, ShortcutAction) -> String
     ) {
         self.explainVariants = explainVariants
@@ -80,10 +67,6 @@ struct QueryCommandAvailability {
         canClearQuery = hasQueryText
         canClearResults = hasResults
         canOpenRunMenu = canRun || hasQueryText || hasResults
-        canSave = hasUnsavedEdits || (!hasSourceFile && hasQueryText)
-        showsQueryBuilder = supportsQueryBuilder
-        /// The sheet reads the database's tables and foreign keys, so it waits for the session.
-        canOpenQueryBuilder = supportsQueryBuilder && isConnected
 
         runHint = Self.hint(
             base: shortcutHint(String(localized: "Run"), .executeQuery),
@@ -110,20 +93,6 @@ struct QueryCommandAvailability {
         favoriteHint = Self.hint(
             base: shortcutHint(String(localized: "Save as Favorite"), .saveAsFavorite),
             reason: hasQueryText ? nil : String(localized: "There is nothing to save yet.")
-        )
-        saveHint = Self.hint(
-            base: shortcutHint(String(localized: "Save"), .saveChanges),
-            reason: canSave ? nil : String(localized: "There is nothing to save yet.")
-        )
-        beautifyHint = Self.hint(
-            base: shortcutHint(String(localized: "Beautify SQL"), .formatQuery),
-            reason: !supportsFormatting
-                ? String(localized: "This query language has no formatter.")
-                : hasQueryText ? nil : String(localized: "There is nothing to format yet.")
-        )
-        queryBuilderHint = Self.hint(
-            base: String(localized: "Build Join Query"),
-            reason: canOpenQueryBuilder ? nil : String(localized: "This connection is not available.")
         )
     }
 

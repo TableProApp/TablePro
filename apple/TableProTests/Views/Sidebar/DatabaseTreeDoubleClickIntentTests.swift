@@ -72,27 +72,4 @@ struct DatabaseTreeDoubleClickIntentTests {
     func placeholderRowIsIgnored() {
         #expect(DatabaseTreeDoubleClickResolver.resolve(node: node(.status(.loading))) == .ignore)
     }
-
-    @Test("A column, index, key or check opens its table's Structure tab")
-    func detailRowShowsStructure() {
-        let ref = tableRef("orders")
-        let detail = DatabaseTreeTableDetailRef(table: ref, item: .column(TestFixtures.makeColumnInfo(name: "total")))
-
-        #expect(DatabaseTreeDoubleClickResolver.resolve(node: node(.tableDetail(detail))) == .showStructure(ref))
-    }
-
-    @Test("A detail group toggles its disclosure, and a trigger under its table opens its source")
-    func detailGroupAndTriggerRows() {
-        let ref = tableRef("orders")
-        let group = DatabaseTreeTableDetailGroupRef(table: ref, kind: .indexes)
-        let trigger = DatabaseTreeTriggerRef(
-            database: "app",
-            schema: "public",
-            trigger: TriggerInfo(name: "audit", timing: "AFTER", event: "INSERT", statement: "", table: "orders"),
-            listedUnderTable: true
-        )
-
-        #expect(DatabaseTreeDoubleClickResolver.resolve(node: node(.tableDetailGroup(group))) == .toggleDisclosure)
-        #expect(DatabaseTreeDoubleClickResolver.resolve(node: node(.trigger(trigger))) == .openObjectSource(trigger.objectRef))
-    }
 }

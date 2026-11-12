@@ -15,7 +15,6 @@ struct CatalogTreeRefreshPlan: Equatable, Sendable {
     /// Planned from their own keys: a flat or hierarchical tree takes its tables from `SchemaService`,
     /// so a loaded partition list can have no table list beside it.
     var partitions: Set<DatabaseTreeMetadataService.PartitionsKey> = []
-    var tableDetails: Set<DatabaseTreeMetadataService.TableDetailsKey> = []
     var routines: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var triggers: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var types: Set<DatabaseTreeMetadataService.ObjectsKey> = []
@@ -24,7 +23,7 @@ struct CatalogTreeRefreshPlan: Equatable, Sendable {
 
     var isEmpty: Bool {
         !refreshesDatabaseList && schemaLists.isEmpty && tables.isEmpty && partitions.isEmpty
-            && tableDetails.isEmpty && routines.isEmpty && triggers.isEmpty && types.isEmpty && serverObjects.isEmpty
+            && routines.isEmpty && triggers.isEmpty && types.isEmpty && serverObjects.isEmpty
             && allSchemaTables.isEmpty
     }
 }
@@ -43,7 +42,6 @@ extension DatabaseTreeMetadataService {
             schemaListKeys: schemaList.keys,
             tableKeys: tablesState.keys,
             partitionKeys: partitionsState.keys,
-            tableDetailKeys: tableDetailsState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
             typeKeys: typesState.keys,
@@ -67,7 +65,6 @@ extension DatabaseTreeMetadataService {
             schemaListKeys: schemaList.keys,
             tableKeys: tablesState.keys,
             partitionKeys: partitionsState.keys,
-            tableDetailKeys: tableDetailsState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
             typeKeys: typesState.keys,
@@ -84,7 +81,6 @@ extension DatabaseTreeMetadataService {
         schemaListKeys: some Sequence<DatabaseKey>,
         tableKeys: some Sequence<ObjectsKey>,
         partitionKeys: some Sequence<PartitionsKey> = EmptyCollection(),
-        tableDetailKeys: some Sequence<TableDetailsKey> = EmptyCollection(),
         routineKeys: some Sequence<ObjectsKey>,
         triggerKeys: some Sequence<ObjectsKey>,
         typeKeys: some Sequence<ObjectsKey>,
@@ -112,15 +108,6 @@ extension DatabaseTreeMetadataService {
         if change.kinds.contains(.tables) {
             plan.partitions = Set(partitionKeys.filter { key in
                 key.connectionId == change.connectionId && change.reaches(database: key.database)
-            })
-        }
-        // By database alone, as partitions are: a key in another schema can point at the table a change dropped.
-        let reachesDetails = change.kinds.contains(.tables)
-        let reachesTriggerDetails = reachesDetails || change.kinds.contains(.triggers)
-        if reachesTriggerDetails {
-            plan.tableDetails = Set(tableDetailKeys.filter { key in
-                key.connectionId == change.connectionId && change.reaches(database: key.database)
-                    && (reachesDetails || key.kind == .triggers)
             })
         }
         plan.routines = objectKeys(routineKeys, for: .routines)

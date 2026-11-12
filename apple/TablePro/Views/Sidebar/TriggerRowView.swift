@@ -12,17 +12,6 @@ enum TriggerRowLogic {
         return String(format: String(localized: "%1$@ on %2$@"), base, table)
     }
 
-    /// Under a schema's Triggers group the table tells two same-named triggers apart. Under the table
-    /// itself that name is the row above, so the caption says when the trigger fires instead.
-    static func caption(for trigger: TriggerInfo, listedUnderTable: Bool) -> String? {
-        guard listedUnderTable else {
-            guard let table = trigger.table, !table.isEmpty else { return nil }
-            return table
-        }
-        let firing = [trigger.timing, trigger.event].filter { !$0.isEmpty }.joined(separator: " ")
-        return firing.isEmpty ? nil : firing
-    }
-
     /// The row shows the name; the table it fires for, its timing and its event go here, because
     /// those are what tell two same-named triggers apart in a database-wide list.
     static func tooltip(for trigger: TriggerInfo) -> String {
@@ -42,11 +31,6 @@ enum TriggerRowLogic {
 struct TriggerRowView: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     let trigger: TriggerInfo
-    var listedUnderTable = false
-
-    private var objectIcon: ObjectIcon {
-        ObjectIconProvider.icon(for: .trigger, style: settingsManager.appearance.objectIconStyle)
-    }
 
     var body: some View {
         Label {
@@ -54,17 +38,17 @@ struct TriggerRowView: View {
                 Text(trigger.name)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                if let caption = TriggerRowLogic.caption(for: trigger, listedUnderTable: listedUnderTable) {
-                    Text(caption)
+                if let table = trigger.table, !table.isEmpty {
+                    Text(table)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .truncationMode(listedUnderTable ? .tail : .head)
+                        .truncationMode(.head)
                 }
             }
         } icon: {
-            objectIcon.image
-                .objectIconTint(objectIcon, standard: Color.accentColor)
+            Image(systemName: SidebarObjectKind.trigger.iconName)
+                .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)

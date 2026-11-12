@@ -437,37 +437,26 @@ extension MainContentCoordinator {
         tabManager.promotePreviewTab(id: selectedTabId)
     }
 
-    /// The flat list's sections are the browsed container's, so their Show Objects lists that one.
-    func showBrowsedObjects(_ kind: SidebarObjectKind) {
-        let scope = browsedObjectsScope
-        showObjects(
-            DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind),
-            asPreview: false
-        )
+    func showAllTablesMetadata() {
+        guard allTablesListing() != nil else { return }
+        openTableListing()
     }
 
-    /// The container `showBrowsedObjects` opens, which the toolbar's object buttons also read.
-    var browsedObjectsScope: DatabaseScope {
+    /// A read-only grid of the browsed container's tables, never an editor holding the statement that
+    /// lists them: the tab builds its statement from the plugin each time it loads.
+    func openTableListing() {
         let schemaName = EngineNamespaceSlot(databaseType: connection.type) == .schema ? browseSchemaName : nil
-        return DatabaseScope(connectionId: connectionId, database: browseDatabaseName, schema: schemaName)
-    }
-
-    /// The kinds an Objects tab on the browsed container offers, from the lists the sidebar holds for
-    /// it, so a toolbar button is live exactly where the sidebar has a group to show.
-    func browsedObjectKinds() -> [SidebarObjectKind] {
-        let scope = browsedObjectsScope
-        let tree = DatabaseTreeMetadataService.shared
-        let counts = ObjectListingKinds.itemCounts(
-            tables: tree.tables(connectionId: connectionId, database: scope.database, schema: scope.schema),
-            routines: tree.routines(connectionId: connectionId, database: scope.database, schema: scope.schema),
-            triggers: tree.triggers(connectionId: connectionId, database: scope.database, schema: scope.schema),
-            types: tree.userDefinedTypes(connectionId: connectionId, database: scope.database, schema: scope.schema)
+        let kindTitle = SidebarObjectKind.table.title(
+            tableEntityName: PluginManager.shared.tableEntityName(for: connection.type)
         )
-        return ObjectListingKinds.available(
-            itemCounts: counts,
-            declared: connection.type.declaredObjectKinds,
-            current: .table
+        let tabId = tabManager.addTableListingTab(
+            title: QueryTabManager.tableListingTitle(kindTitle: kindTitle, schemaName: schemaName),
+            databaseName: browseDatabaseName,
+            schemaName: schemaName
         )
+        /// Asking again for a listing already open brings it up to date, the way Refresh would. A tab
+        /// opened just now loads when its view first appears, and nothing is listening for this yet.
+        AppEvents.shared.tabRefreshRequested.send(tabId)
     }
 
     /// The schema the sidebar lists, which a cross-database tab can leave the shared driver off.

@@ -12,9 +12,6 @@ internal enum SplitViewAutosaveName {
     /// One width for the connections strip in every window, as the main split keeps one sidebar width.
     internal static let workspaceRail = "com.TablePro.workspaceRail"
 
-    /// Its own record, so the strip keeps its narrow width while the navigator holds the column.
-    internal static let connectionNavigator = "com.TablePro.connectionNavigator"
-
     internal static let historyDrawerPrefix = "HistoryDrawer-"
 
     /// Per connection, not per tab: the query tab branch has no `.id(tab.id)`, so its split view keeps the name it was born with.

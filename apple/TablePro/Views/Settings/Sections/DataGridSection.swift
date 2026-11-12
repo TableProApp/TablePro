@@ -35,13 +35,10 @@ struct DataGridSection: View {
 
             Toggle("Show alternate row backgrounds", isOn: $settings.showAlternateRows)
             Toggle("Show row numbers", isOn: $settings.showRowNumbers)
-            Toggle("Show column types in the header", isOn: $settings.showsColumnTypesInHeader)
             Toggle("Auto-show inspector on row select", isOn: $settings.autoShowInspector)
             Toggle("Smart value detection", isOn: $settings.enableSmartValueDetection)
             Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 .help(String(localized: "Mark zero-width, control and special space characters in cells and value fields"))
-            Toggle("Show the result bar above the grid", isOn: $settings.resultBarAtTop)
-                .help(String(localized: "Moves the bar with the row count, view switcher and pages from below the results to above them."))
             Toggle("Color values by type", isOn: $valueColors.colorsValuesByType)
                 .help(String(localized: "Draw strings, numbers, dates and other typed values in the colors of the theme's Values section"))
                 .accessibilityIdentifier("color-values-by-type-toggle")
@@ -61,14 +58,6 @@ struct DataGridSection: View {
             Text("Data Grid")
         } footer: {
             Text("Default row sort is applied when a table first opens. Sort direction also sets which way the first click on a column header sorts.")
-        }
-
-        Section {
-            Toggle("Show sort criteria in the filter bar", isOn: $settings.showsSortInFilterPanel)
-                .help(String(localized: "Edit the filters and the sort together, write the filter as text, and apply both at once"))
-            Toggle("Open the filter bar with each table", isOn: $settings.opensFilterPanelForTables)
-        } header: {
-            Text("Filter Bar")
         }
 
         Section {

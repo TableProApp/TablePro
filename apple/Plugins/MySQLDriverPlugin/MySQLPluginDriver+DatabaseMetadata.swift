@@ -84,8 +84,6 @@ internal extension MySQLPluginDriver {
 
     /// The character set is the collation's prefix (`MySQLTableOptions.characterSet(ofCollation:)`): MariaDB
     /// 10.10+ reports `utf8mb4_uca1400_ai_ci`, which no `COLLATION_NAME` matches.
-    ///
-    /// Sizes are bytes, so the host formats them for the reader and sorts them as numbers.
     func allTablesMetadataSQL(schema: String?) -> String? {
         guard !flavor.isDatabend else { return DatabendCatalog.allTablesMetadataSQL }
         guard !flavor.isStarRocks else { return nil }
@@ -98,12 +96,9 @@ internal extension MySQLPluginDriver {
             IFNULL(SUBSTRING_INDEX(TABLE_COLLATION, '_', 1), '') as charset,
             TABLE_COLLATION as collation,
             TABLE_ROWS as estimated_rows,
-            DATA_LENGTH + INDEX_LENGTH as total_size,
-            DATA_LENGTH as data_size,
-            INDEX_LENGTH as index_size,
-            ENGINE as engine,
-            CREATE_TIME as create_time,
-            UPDATE_TIME as update_time,
+            CONCAT(ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2), ' MB') as total_size,
+            CONCAT(ROUND(DATA_LENGTH / 1024 / 1024, 2), ' MB') as data_size,
+            CONCAT(ROUND(INDEX_LENGTH / 1024 / 1024, 2), ' MB') as index_size,
             TABLE_COMMENT as comment
         FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'

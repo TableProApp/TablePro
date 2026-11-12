@@ -769,16 +769,6 @@
     "“%@” changed since you last synced" : {
 
     },
-    "“%@” has its Safe Mode level set to %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "“%1$@” has its Safe Mode level set to %2$@."
-          }
-        }
-      }
-    },
     "“%@” holds no file to import." : {
 
     },
@@ -1079,16 +1069,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "« %@ » est toujours utilisé"
-          }
-        }
-      }
-    },
-    "“%@” is tagged %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "“%1$@” is tagged %2$@."
           }
         }
       }
@@ -2503,9 +2483,6 @@
     "%@ (specification)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "%@ (unique)" : {
-
     },
     "%@ (You)" : {
       "localizations" : {
@@ -11359,16 +11336,6 @@
         }
       }
     },
-    "%lld of ^[%lld object](inflect: true)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld of ^[%2$lld object](inflect: true)"
-          }
-        }
-      }
-    },
     "%lld of ^[%lld row](inflect: true)" : {
       "localizations" : {
         "en" : {
@@ -11686,9 +11653,6 @@
           }
         }
       }
-    },
-    "%lld row(s) returned" : {
-
     },
     "%lld row%@ affected" : {
       "extractionState" : "stale",
@@ -12774,9 +12738,6 @@
           }
         }
       }
-    },
-    "^[%lld object](inflect: true)" : {
-
     },
     "^[%lld row](inflect: true)" : {
       "localizations" : {
@@ -20813,9 +20774,6 @@
         }
       }
     },
-    "Add sort criterion" : {
-
-    },
     "Add SSH Server…" : {
       "localizations" : {
         "fr" : {
@@ -21222,9 +21180,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Adds a Favorites section above Recent with the tables you starred in the database you are browsing. Each table also stays in its own place." : {
-
-    },
     "Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it." : {
       "localizations" : {
         "fr" : {
@@ -21384,9 +21339,6 @@
           }
         }
       }
-    },
-    "Adds Tables, Views, Functions, Users, Query and Backup buttons to the connection window's toolbar. Customize Toolbar can move or remove them." : {
-
     },
     "Adds through the %@ command" : {
 
@@ -21634,9 +21586,6 @@
       }
     },
     "After" : {
-
-    },
-    "After a run, Message lists what each statement did and Summary puts the same in a table, beside a tab for each result." : {
 
     },
     "After keyword expansion, Tab moves through fields such as %1$@, and %2$@ marks where the cursor ends up." : {
@@ -26981,9 +26930,6 @@
         }
       }
     },
-    "Apply Filter & Sort" : {
-
-    },
     "Apply Filter from Link" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -27144,9 +27090,6 @@
           }
         }
       }
-    },
-    "Apply the filters and the sort (Cmd+Return)" : {
-
     },
     "Apply this rule" : {
       "localizations" : {
@@ -28053,9 +27996,6 @@
           }
         }
       }
-    },
-    "Arguments" : {
-
     },
     "Array element scope" : {
       "localizations" : {
@@ -31089,9 +31029,6 @@
         }
       }
     },
-    "Backup" : {
-
-    },
     "Backup Database" : {
       "localizations" : {
         "fr" : {
@@ -31737,9 +31674,6 @@
           }
         }
       }
-    },
-    "Beautify SQL" : {
-
     },
     "Before" : {
 
@@ -32928,9 +32862,6 @@
         }
       }
     },
-    "Builder" : {
-
-    },
     "Building" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -33858,25 +33789,7 @@
     "Can't Export Messages" : {
 
     },
-    "Can't List %@" : {
-
-    },
-    "Can't List Foreign Tables" : {
-
-    },
-    "Can't List Functions" : {
-
-    },
-    "Can't List Materialized Views" : {
-
-    },
-    "Can't List Procedures" : {
-
-    },
     "Can't List Routines" : {
-
-    },
-    "Can't List Sequences" : {
 
     },
     "Can't List Tables" : {
@@ -33918,15 +33831,6 @@
           }
         }
       }
-    },
-    "Can't List Triggers" : {
-
-    },
-    "Can't List Types" : {
-
-    },
-    "Can't List Views" : {
-
     },
     "Can't reach a PGlite socket server at %@:%d. Start it with 'npx @electric-sql/pglite-socket', then try again." : {
       "extractionState" : "manual",
@@ -33991,9 +33895,6 @@
           }
         }
       }
-    },
-    "Can't Switch to Text" : {
-
     },
     "Cancel" : {
       "localizations" : {
@@ -41059,9 +40960,6 @@
         }
       }
     },
-    "Click + to add sort criteria" : {
-
-    },
     "Click a table" : {
       "localizations" : {
         "fr" : {
@@ -41169,9 +41067,6 @@
           }
         }
       }
-    },
-    "Clicking a database, schema or object group in the sidebar lists its objects in the main area. Show Objects in the row's menu lists them either way." : {
-
     },
     "Client" : {
       "localizations" : {
@@ -44277,15 +44172,6 @@
           }
         }
       }
-    },
-    "Colorful" : {
-
-    },
-    "Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs and the object lists." : {
-
-    },
-    "Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs, the toolbar and the object lists." : {
-
     },
     "Colors" : {
       "extractionState" : "stale",
@@ -52639,9 +52525,6 @@
         }
       }
     },
-    "Copy Statement" : {
-
-    },
     "Copy stopped" : {
       "localizations" : {
         "fr" : {
@@ -57000,9 +56883,6 @@
         }
       }
     },
-    "Created Date" : {
-
-    },
     "Created the database %@." : {
       "localizations" : {
         "fr" : {
@@ -57207,9 +57087,6 @@
     "Credit Card" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "Criteria Edited" : {
-
     },
     "Critical" : {
       "localizations" : {
@@ -59005,9 +58882,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Data Length" : {
-
-    },
     "Data loss" : {
       "localizations" : {
         "fr" : {
@@ -59183,9 +59057,6 @@
           }
         }
       }
-    },
-    "Data Size" : {
-
     },
     "Data type" : {
 
@@ -70219,9 +70090,6 @@
     "Each row takes a value that exists in the referenced table." : {
 
     },
-    "Each statement of the last run, with its status, rows and time" : {
-
-    },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {
       "localizations" : {
         "fr" : {
@@ -71068,12 +70936,6 @@
           }
         }
       }
-    },
-    "Edit the filter as rows or as one WHERE condition" : {
-
-    },
-    "Edit the filters and the sort together, write the filter as text, and apply both at once" : {
-
     },
     "Edit the import of %@" : {
 
@@ -74491,9 +74353,6 @@
           }
         }
       }
-    },
-    "Error: %@" : {
-
     },
     "Error: Selected path is not a regular file" : {
       "localizations" : {
@@ -83166,9 +83025,6 @@
         }
       }
     },
-    "Filter Bar" : {
-
-    },
     "Filter by name" : {
       "localizations" : {
         "fr" : {
@@ -83208,9 +83064,6 @@
           }
         }
       }
-    },
-    "Filter by Name" : {
-
     },
     "Filter by Tag" : {
       "localizations" : {
@@ -83272,9 +83125,6 @@
         }
       }
     },
-    "Filter Connections" : {
-
-    },
     "Filter Databases…" : {
       "localizations" : {
         "fr" : {
@@ -83314,9 +83164,6 @@
           }
         }
       }
-    },
-    "Filter editing mode" : {
-
     },
     "Filter favorites" : {
       "localizations" : {
@@ -83607,9 +83454,6 @@
           }
         }
       }
-    },
-    "Filter Panel" : {
-
     },
     "Filter privileges" : {
       "localizations" : {
@@ -93967,9 +93811,6 @@
         }
       }
     },
-    "In the Tree layout, lists every saved connection in its groups at the top of the sidebar, with the connection on screen opened to its databases. Double-click another one to open it." : {
-
-    },
     "In-memory data store and cache" : {
       "localizations" : {
         "fr" : {
@@ -95267,9 +95108,6 @@
         }
       }
     },
-    "Index Size" : {
-
-    },
     "Index type reported by the engine" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -95810,9 +95648,6 @@
           }
         }
       }
-    },
-    "Insert a saved query at the cursor" : {
-
     },
     "Insert all rows in a single transaction. If any row fails, all changes are rolled back." : {
       "extractionState" : "manual",
@@ -101148,9 +100983,6 @@
     "Lakehouse analytics, MySQL protocol" : {
 
     },
-    "Language" : {
-
-    },
     "Language %@" : {
       "localizations" : {
         "fr" : {
@@ -104576,9 +104408,6 @@
           }
         }
       }
-    },
-    "List every saved connection beside the database tree" : {
-
     },
     "List Favorite Tables" : {
       "localizations" : {
@@ -108844,9 +108673,6 @@
         }
       }
     },
-    "Match System follows Sidebar icon size in System Settings > Appearance. Choose a size to fit more objects on screen than the rest of the system shows. Compact keeps the regular text size with less space between rows." : {
-
-    },
     "Match what I type" : {
 
     },
@@ -110892,9 +110718,6 @@
         }
       }
     },
-    "Messages" : {
-
-    },
     "Messages are nested too deeply." : {
 
     },
@@ -112028,9 +111851,6 @@
         }
       }
     },
-    "Modified Date" : {
-
-    },
     "Modified Rows" : {
 
     },
@@ -112547,19 +112367,6 @@
     "Mountains" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "Move" : {
-
-    },
-    "Move “%@” to “%@”?" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Move “%1$@” to “%2$@”?"
-          }
-        }
-      }
     },
     "Move “%@” to Connection" : {
 
@@ -113568,9 +113375,6 @@
           }
         }
       }
-    },
-    "Moves the bar with the row count, view switcher and pages from below the results to above them." : {
-
     },
     "Moving this tab to another database or schema will discard all unsaved changes." : {
 
@@ -114622,33 +114426,6 @@
           }
         }
       }
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter bar, opens that bar with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows and Message and Summary tabs above the results, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter bar, opens that bar with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, makes Tree the default sidebar layout and uses compact sidebar rows. In table tabs it shows column types in the header, the sort and a Text mode in the filter bar, opens that bar with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows and Message and Summary tabs above the results, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
-
-    },
-    "Navigator Layout turns on table details, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
-
     },
     "Nearest" : {
       "extractionState" : "stale",
@@ -118892,9 +118669,6 @@
         }
       }
     },
-    "No Foreign Tables" : {
-
-    },
     "No functions" : {
       "localizations" : {
         "fr" : {
@@ -118934,9 +118708,6 @@
           }
         }
       }
-    },
-    "No Functions" : {
-
     },
     "No generator can fill %@ (%@), and it cannot be left empty." : {
       "localizations" : {
@@ -119786,9 +119557,6 @@
         }
       }
     },
-    "No Materialized Views" : {
-
-    },
     "No measurable change" : {
       "localizations" : {
         "fr" : {
@@ -120504,9 +120272,6 @@
           }
         }
       }
-    },
-    "No Procedures" : {
-
     },
     "No providers configured" : {
       "localizations" : {
@@ -121307,9 +121072,6 @@
         }
       }
     },
-    "No Run Yet" : {
-
-    },
     "No saved changes to '%@' are being kept." : {
       "localizations" : {
         "fr" : {
@@ -121756,9 +121518,6 @@
       }
     },
     "No sequences" : {
-
-    },
-    "No Sequences" : {
 
     },
     "No servers yet." : {
@@ -122523,9 +122282,6 @@
         }
       }
     },
-    "No Types" : {
-
-    },
     "No Users or Roles" : {
       "localizations" : {
         "fr" : {
@@ -122778,9 +122534,6 @@
           }
         }
       }
-    },
-    "No Views" : {
-
     },
     "No Warnings" : {
       "localizations" : {
@@ -126618,15 +126371,6 @@
         }
       }
     },
-    "Object icon style:" : {
-
-    },
-    "Object Icons" : {
-
-    },
-    "Object Kind" : {
-
-    },
     "Object kinds this operation may name, as list_tables reports them. Empty when it acts on the whole database only." : {
       "localizations" : {
         "fr" : {
@@ -127038,9 +126782,6 @@
           }
         }
       }
-    },
-    "OK, %lld row(s) affected" : {
-
     },
     "Old image" : {
       "extractionState" : "manual",
@@ -129196,9 +128937,6 @@
         }
       }
     },
-    "Open in another window" : {
-
-    },
     "Open in Editor" : {
       "localizations" : {
         "fr" : {
@@ -130223,12 +129961,6 @@
           }
         }
       }
-    },
-    "Open the filter bar with each table" : {
-
-    },
-    "Open the filter panel with each table" : {
-
     },
     "Open this query in a new tab and run it" : {
       "comment" : "A description of the action to open a query in a new tab and run it.",
@@ -141393,9 +141125,6 @@
         }
       }
     },
-    "Puts Save, Query Builder, Format, Snippets and AI above the editor, and the connection, the database and the run controls on a second row." : {
-
-    },
     "Puzzle Piece" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -141690,9 +141419,6 @@
           }
         }
       }
-    },
-    "Query Builder" : {
-
     },
     "Query consoles import with their data source. Consoles with a default name start unchecked." : {
 
@@ -142383,9 +142109,6 @@
           }
         }
       }
-    },
-    "Query plan returned" : {
-
     },
     "Query preview" : {
       "comment" : "Accessibility label for the query preview text view.",
@@ -149256,9 +148979,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Remove sort criterion" : {
-
-    },
     "Remove TablePro from %@?" : {
 
     },
@@ -153421,9 +153141,6 @@
         }
       }
     },
-    "Returns" : {
-
-    },
     "Returns %@" : {
       "localizations" : {
         "fr" : {
@@ -156265,9 +155982,6 @@
         }
       }
     },
-    "Run a query to see what each statement did." : {
-
-    },
     "Run a saved query on the Server Dashboard" : {
 
     },
@@ -157212,9 +156926,6 @@
           }
         }
       }
-    },
-    "Runs on %@. Choose another connection to move this tab there." : {
-
     },
     "Runs statements on the SSH server so a database file there can be read and written in place." : {
       "localizations" : {
@@ -158294,9 +158005,6 @@
           }
         }
       }
-    },
-    "Save Current Query as Favorite…" : {
-
     },
     "Save Failed" : {
       "localizations" : {
@@ -163408,9 +163116,6 @@
         }
       }
     },
-    "Select sort column" : {
-
-    },
     "Select Tab %d" : {
       "localizations" : {
         "fr" : {
@@ -166950,9 +166655,6 @@
         }
       }
     },
-    "Show column types in the header" : {
-
-    },
     "Show Completions" : {
       "localizations" : {
         "fr" : {
@@ -166992,9 +166694,6 @@
           }
         }
       }
-    },
-    "Show connection and database in the toolbar" : {
-
     },
     "Show connections" : {
       "comment" : "A checkbox that toggles whether the sidebar shows a list of open connections.",
@@ -167079,9 +166778,6 @@
           }
         }
       }
-    },
-    "Show database and connection in table tab titles" : {
-
     },
     "Show DDL" : {
       "localizations" : {
@@ -167223,9 +166919,6 @@
           }
         }
       }
-    },
-    "Show favorite tables at the top of the tree" : {
-
     },
     "Show Favorites" : {
       "localizations" : {
@@ -167504,9 +167197,6 @@
     "show masked values" : {
 
     },
-    "Show Message and Summary tabs above query results" : {
-
-    },
     "SHOW needs TOPICS, BROKERS, GROUPS or CLUSTER." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -167641,9 +167331,6 @@
         }
       }
     },
-    "Show object buttons in the toolbar" : {
-
-    },
     "Show object comments" : {
       "localizations" : {
         "fr" : {
@@ -167723,12 +167410,6 @@
           }
         }
       }
-    },
-    "Show Objects" : {
-
-    },
-    "Show objects when a database, schema or group is selected" : {
-
     },
     "Show only the objects whose name contains this text" : {
       "localizations" : {
@@ -168165,9 +167846,6 @@
     "Show rows in %@" : {
 
     },
-    "Show saved connections in the database tree" : {
-
-    },
     "Show Sidebar" : {
       "localizations" : {
         "fr" : {
@@ -168207,12 +167885,6 @@
           }
         }
       }
-    },
-    "Show sort criteria in the filter bar" : {
-
-    },
-    "Show sort criteria in the filter panel" : {
-
     },
     "Show SQL" : {
       "localizations" : {
@@ -168361,12 +168033,6 @@
 
     },
     "Show the messages that arrived while paused" : {
-
-    },
-    "Show the query bar on two rows" : {
-
-    },
-    "Show the result bar above the grid" : {
 
     },
     "Show Toolbar" : {
@@ -169127,9 +168793,6 @@
           }
         }
       }
-    },
-    "Shows the connection and the database in the middle of the toolbar. Off, the sidebar, the query bar and the tab titles still name them, and the Database menu still switches them." : {
-
     },
     "Shows the version and Check for Updates under the app icon. An available update is shown either way." : {
       "localizations" : {
@@ -171261,9 +170924,6 @@
         }
       }
     },
-    "Snippets" : {
-
-    },
     "Snowflake" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -171957,9 +171617,6 @@
         }
       }
     },
-    "Sort column" : {
-
-    },
     "Sort columns in priority order" : {
       "localizations" : {
         "fr" : {
@@ -172049,9 +171706,6 @@
           }
         }
       }
-    },
-    "Sort direction" : {
-
     },
     "Sort direction (default ascending)" : {
       "localizations" : {
@@ -179046,9 +178700,6 @@
         }
       }
     },
-    "Switch To" : {
-
-    },
     "Switch to Inline Configuration" : {
       "localizations" : {
         "en" : {
@@ -180921,9 +180572,6 @@
           }
         }
       }
-    },
-    "Table Details" : {
-
     },
     "Table Favorites" : {
       "localizations" : {
@@ -192986,9 +192634,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "The read stopped before it finished." : {
-
-    },
     "The Realtime Database cannot filter with %@. It supports =, <, <=, >, >=, BETWEEN, STARTS WITH and IS NULL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -193308,9 +192953,6 @@
 
     },
     "The rows go in as one transaction. Cancel rolls it back." : {
-
-    },
-    "The rows on screen were fetched with different filters or sorting" : {
 
     },
     "The rows reached TablePro's %@ limit for one answer, so a result marked truncated holds only the rows that fit. Ask for fewer columns or rows." : {
@@ -195799,16 +195441,6 @@
         }
       }
     },
-    "The tab leaves “%@”, and its next run goes to “%@”." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The tab leaves “%1$@”, and its next run goes to “%2$@”."
-          }
-        }
-      }
-    },
     "The tab or its edits changed while the save waited for approval. Nothing was saved." : {
 
     },
@@ -197801,9 +197433,6 @@
           }
         }
       }
-    },
-    "These filters cannot be written as one condition for this database." : {
-
     },
     "These foreign key columns reference it and keep their narrower type: %@." : {
 
@@ -203525,9 +203154,6 @@
     "This Tab" : {
 
     },
-    "This tab cannot move while its query runs or its grid edits are unsaved." : {
-
-    },
     "This tab is closed. Reopen it to see its history." : {
 
     },
@@ -205192,9 +204818,6 @@
         }
       }
     },
-    "Titles a table tab orders@shop (Shop Demo), with a table or view icon, so each tab says where its rows come from. Query tabs keep their names." : {
-
-    },
     "TLS handshake failed: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -206545,9 +206168,6 @@
           }
         }
       }
-    },
-    "Total Size" : {
-
     },
     "Total size in bytes" : {
       "localizations" : {
@@ -208269,9 +207889,6 @@
     "Turned off" : {
 
     },
-    "Turns the connections column into a list of every saved connection, in its groups. Double-click one to open it." : {
-
-    },
     "Two columns are both named “%@”. Rename one, then save again." : {
       "localizations" : {
         "fr" : {
@@ -209463,9 +209080,6 @@
           }
         }
       }
-    },
-    "unique" : {
-
     },
     "Unique" : {
       "localizations" : {
@@ -212602,9 +212216,6 @@
     "Use License Key…" : {
 
     },
-    "Use Navigator Layout" : {
-
-    },
     "Use Required for Amazon Keyspaces and other hosted Cassandra deployments." : {
       "localizations" : {
         "fr" : {
@@ -212744,9 +212355,6 @@
           }
         }
       }
-    },
-    "Use Standard Layout" : {
-
     },
     "Use System Color" : {
 
@@ -213346,9 +212954,6 @@
           }
         }
       }
-    },
-    "Users" : {
-
     },
     "Users & Roles" : {
       "localizations" : {
@@ -216623,9 +216228,6 @@
           }
         }
       }
-    },
-    "What each statement of the last run did" : {
-
     },
     "What is switched on here is ignored when two structures are compared. These drift between environments by design." : {
       "localizations" : {

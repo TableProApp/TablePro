@@ -178,7 +178,7 @@ enum WindowTitleResolver {
             if let explicitTitle, !explicitTitle.isBlank {
                 return explicitTitle
             }
-            return QueryTabManager.tableListingTitle(schemaName: nil)
+            return String(localized: "Tables")
         case .routineDebug:
             if let explicitTitle, !explicitTitle.isBlank {
                 return explicitTitle

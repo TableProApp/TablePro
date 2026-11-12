@@ -118,38 +118,13 @@ internal enum ConnectionWindowPaneResolver {
     /// with no renderable session behind it, so `empty` cannot be asked which of those it is.
     /// Laying a switcher over a window that is going away and stranding a window that is not are
     /// the same mistake read from the same value.
-    ///
-    /// A tree that lists the saved connections already names every connection the window has, so
-    /// the preference yields to it and the sidebar stays one tree. A pane with no content draws no
-    /// tree, which brings the strip back as it does for the preference.
     internal static func showsWorkspaceRail(
         preferenceEnabled: Bool,
         workspaceCount: Int,
         pane: ConnectionWindowPane,
-        isClosing: Bool,
-        treeListsConnections: Bool = false
-    ) -> Bool {
-        guard workspaceCount > 1, !isClosing else { return false }
-        return (preferenceEnabled && !treeListsConnections) || !pane.hasContent
-    }
-
-    /// Whether the column stands when it holds the navigator instead of the strip.
-    ///
-    /// The navigator lists every saved connection, not the ones the window has open, so it has
-    /// something to offer with one workspace or none, and the workspace count plays no part. The
-    /// preference still does: it is what View > Show Connections writes, and that command keeps
-    /// hiding and showing the column whichever list is in it.
-    internal static func showsConnectionNavigator(
-        preferenceEnabled: Bool,
-        navigatorEnabled: Bool,
         isClosing: Bool
     ) -> Bool {
-        navigatorEnabled && preferenceEnabled && !isClosing
-    }
-
-    /// Show Connections only means something where the column can stand: always with the navigator,
-    /// and with the strip only once there is a second workspace to switch to.
-    internal static func canToggleConnectionsColumn(navigatorEnabled: Bool, workspaceCount: Int) -> Bool {
-        navigatorEnabled || workspaceCount > 1
+        guard workspaceCount > 1, !isClosing else { return false }
+        return preferenceEnabled || !pane.hasContent
     }
 }

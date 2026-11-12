@@ -99,7 +99,7 @@ internal enum EditorTabOpener {
             tabManager.addVersionHistoryTab(subject: subject, title: payload.tabTitle ?? QueryTabManager.versionHistoryFallbackTitle)
         case .tableListing:
             tabManager.addTableListingTab(
-                title: QueryTabManager.tableListingTitle(schemaName: payload.schemaName),
+                title: payload.tabTitle ?? String(localized: "Tables"),
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 schemaName: payload.schemaName
             )

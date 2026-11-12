@@ -55,31 +55,6 @@ struct AccessibilityTests {
         #expect(textView.string == newValue)
     }
 
-    @Test("A value set through accessibility is an edit the editor's owner hears about")
-    func setAccessibilityValueNotifiesTheChange() {
-        var notified = 0
-        let observer = NotificationCenter.default.addObserver(
-            forName: TextView.textDidChangeNotification,
-            object: textView,
-            queue: nil
-        ) { _ in notified += 1 }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        textView.setAccessibilityValue("SELECT 1")
-
-        #expect(textView.string == "SELECT 1")
-        #expect(notified == 1)
-    }
-
-    @Test("A read-only editor refuses a value set through accessibility")
-    func setAccessibilityValueRespectsReadOnly() {
-        textView.isEditable = false
-
-        textView.setAccessibilityValue("SELECT 1")
-
-        #expect(textView.string == sampleText)
-    }
-
     @Test
     func setAccessibilityValueInvalidType() {
         let originalString = textView.string

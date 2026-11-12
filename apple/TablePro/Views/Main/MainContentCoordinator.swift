@@ -209,8 +209,6 @@ final class MainContentCoordinator: ObservableObject {
     @Published var userTypeEditors: [UUID: UserTypeEditorModel] = [:]
     // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
     @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
-    // Here rather than in the view, so a command can reach a listing's model before the view next draws it.
-    let tableListingModels = TableListingModelStore()
     // Held here so Refresh, File > Export and a tab close reach the model; a close cancels its report.
     @Published var tableHealthModels: [UUID: TableHealthViewModel] = [:]
 
@@ -254,12 +252,6 @@ final class MainContentCoordinator: ObservableObject {
 
     // For alerts instead of NSApp.keyWindow, which may return a sheet window and leave dialogs stuck.
     weak var contentWindow: NSWindow?
-
-    /// Ends the completion sessions of the editors in a window. Injected so a test can see each run path reach it
-    /// without an editor on screen.
-    var dismissEditorCompletions: @MainActor (NSWindow?) -> Void = { window in
-        EditorEventRouter.shared.dismissCompletions(in: window)
-    }
 
     // Its own workspace's browse history: the window's answer follows the connection and mode on screen.
     var browseUndoManager: UndoManager? {
@@ -327,11 +319,6 @@ final class MainContentCoordinator: ObservableObject {
     // Injectable: `AlertHelper.present` goes app-modal with no window, and a unit test host has none, hanging the main thread.
     var presentError: (String, String, NSWindow?) -> Void = { title, message, window in
         AlertHelper.showErrorSheet(title: title, message: message, window: window)
-    }
-
-    // Injectable for the same reason: the two-row query bar's question before a pick moves a tab.
-    var askToMoveQueryTab: QueryTabMoveConfirming = { confirmation, window in
-        await QueryTabMoveConfirmation.present(confirmation, in: window)
     }
 
     // MARK: - Internal State
@@ -904,7 +891,6 @@ final class MainContentCoordinator: ObservableObject {
         createTableDrafts.removeAll()
         userTypeEditors.removeAll()
         erDiagramModels.removeAll()
-        tableListingModels.retainTabs([])
         discardTableHealthModels(Array(tableHealthModels.keys))
         displayFormatsCache.removeAll()
         tableMetadataCache.removeAll()
@@ -996,7 +982,6 @@ final class MainContentCoordinator: ObservableObject {
             traceExecutionBlocked(tabId: tab.id, site: "runQuery")
             return
         }
-        endEditorCompletion()
 
         if tab.tabType == .table {
             commitActiveGridEdit()
@@ -1018,13 +1003,6 @@ final class MainContentCoordinator: ObservableObject {
         }
     }
 
-    /// A run sends the reader to its results, which an open completion popup would cover until Escape. Completion
-    /// items load asynchronously, so a click on Run can land while a request is still out and the popup open after
-    /// it, and Command-Return passes through an open popup to the menu. Every run path ends the session first.
-    func endEditorCompletion() {
-        dismissEditorCompletions(contentWindow)
-    }
-
     // Takes SQL, not a range: the editor text and the tab binding can briefly differ, and a range on the wrong one truncates silently.
     @discardableResult
     func runStatement(_ sql: String, sourceOffset: Int? = nil) -> Bool {
@@ -1033,7 +1011,6 @@ final class MainContentCoordinator: ObservableObject {
             traceExecutionBlocked(tabId: tab.id, site: "runStatement")
             return false
         }
-        endEditorCompletion()
 
         // False when the discard prompt has to ask first: the run follows the answer, the caret stays.
         var started = false
@@ -1212,7 +1189,6 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
-        let recordsRun = source == .newSource && tab.tabType == .query && !isAutoLoad
         let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
         let safeModeIsReadOnly = runsAtReadOnly
@@ -1222,7 +1198,9 @@ final class MainContentCoordinator: ObservableObject {
         let queryTask = Task { [weak self] in
             guard let self else { return }
 
-            if isAutoLoad, await !connectBeforeAutoLoad(conn, claim: claim, trigger: trigger, traceToken: traceToken) { return }
+            if isAutoLoad, await !connectBeforeAutoLoad(conn, claim: claim, trigger: trigger, traceToken: traceToken) {
+                return
+            }
 
             let schemaTask = startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope)
 
@@ -1237,7 +1215,10 @@ final class MainContentCoordinator: ObservableObject {
                         // Before it runs, so a statement that fails or a connection lost under it is still noted.
                         if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
                         return try await queryExecutor.executeQuery(
-                            driver: driver, sql: statement.sql, parameters: nil, rowCap: rowCap,
+                            driver: driver,
+                            sql: statement.sql,
+                            parameters: nil,
+                            rowCap: rowCap,
                             safeModeIsReadOnly: safeModeIsReadOnly,
                             capturingOutputInto: isTableTab ? nil : failureOutput
                         )
@@ -1314,8 +1295,6 @@ final class MainContentCoordinator: ObservableObject {
                         prepared: prepared,
                         trigger: trigger
                     )
-                    // A re-read (a sort, a reload after a write) is not a run, so the log keeps describing the last one.
-                    if recordsRun { queryExecutionCoordinator.recordStatementRun(sql, tabId: tabId, startedAt: claim.startedAt) }
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
                     reportFetchedQuery(claim: claim, trigger: trigger, result: fetchResult)
@@ -1348,8 +1327,7 @@ final class MainContentCoordinator: ObservableObject {
                     isAutoLoad: isAutoLoad,
                     trigger: trigger,
                     traceToken: traceToken,
-                    serverOutput: failureOutput.output,
-                    recordsRun: recordsRun
+                    serverOutput: failureOutput.output
                 )
             }
         }
@@ -1407,5 +1385,32 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         return result
+    }
+
+    // MARK: - Sorting
+
+    func handleSortStateChanged(_ newState: SortState) {
+        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        guard newState != tab.sortState else { return }
+
+        if tab.tabType == .query {
+            sortQueryResult(by: newState, tabId: tab.id)
+            return
+        }
+
+        guard supportsColumnSort else { return }
+        let tabId = tab.id
+        let capturedSort = newState
+        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            guard self.tabManager.mutate(tabId: tabId, { tab in
+                tab.sortState = capturedSort
+                tab.hasUserInteraction = true
+                tab.pagination.reset()
+            }) else { return }
+            guard let tabIndex = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+            self.rebuildTableQuery(at: tabIndex)
+            self.runQuery(viewport: .firstRow)
+        }
     }
 }

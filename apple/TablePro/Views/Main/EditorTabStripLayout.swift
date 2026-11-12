@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -31,7 +30,6 @@ internal enum EditorTabStripLayout {
     internal static let accessoryInset: CGFloat = 5
     internal static let fontSize: CGFloat = 11
     internal static let pinGlyphSize: CGFloat = 9
-    internal static let objectGlyphSize: CGFloat = 10
     internal static let pinSpacing: CGFloat = 3
 
     /// One device pixel on the 2x displays this chrome is drawn for, which is what the system uses
@@ -89,117 +87,6 @@ internal enum EditorTabStripLayout {
         let usable = width - trackPadding * 2
         let divisor = CGFloat(max(count, 1))
         return max(usable / divisor, minimumTabWidth)
-    }
-
-    /// The widest a located tab grows to show its whole title. Past it the title takes its short form.
-    internal static let maximumLocatedTabWidth: CGFloat = 320
-
-    /// The widths of a scrolling run in which some tabs ask for a width of their own, in run order.
-    ///
-    /// A located title, `orders@shop_demo (Shop Demo)`, is longer than an equal share of a strip with a
-    /// few tabs open, and the share cut it to `orders@shop_dem…` while the tabs beside it, `Query 1`,
-    /// held room they did not need. So a tab asking for more than the share takes it, up to the
-    /// maximum, from the tabs that ask for none, which give it up only down to the minimum a name fits
-    /// in. A tab asking for less than the share never drops below what it asked for. When the others
-    /// are at that minimum, the asking tabs share what is left evenly, never below the share itself.
-    /// Nothing asks: every tab gets the share, exactly as before.
-    internal static func tabWidths(forTrack width: CGFloat, preferred: [CGFloat?]) -> [CGFloat] {
-        let count = preferred.count
-        guard count > 0 else { return [] }
-        let share = tabWidth(forTrack: width, count: count)
-        let asked = preferred.map { $0.map { min(max($0, minimumTabWidth), maximumLocatedTabWidth) } }
-        let growing = asked.indices.filter { (asked[$0] ?? 0) > share }
-        guard !growing.isEmpty else { return Array(repeating: share, count: count) }
-
-        let usable = max(width - trackPadding * 2, 0)
-        let others = asked.indices.filter { !growing.contains($0) }
-        let floors = others.map { asked[$0] ?? minimumTabWidth }
-        let room = usable - floors.reduce(0, +)
-        let level = cappingLevel(growing.map { asked[$0] ?? share }, total: room)
-
-        var widths = Array(repeating: share, count: count)
-        for index in growing {
-            let wanted = asked[index] ?? share
-            widths[index] = min(wanted, max(level ?? wanted, share))
-        }
-        let rest = usable - growing.reduce(0) { $0 + widths[$1] }
-        let raised = raisingLevel(floors, total: rest)
-        for (index, floor) in zip(others, floors) {
-            widths[index] = max(floor, raised)
-        }
-        return widths
-    }
-
-    /// The level `L` at which every value capped at `L` adds up to `total`, or nil when the values fit
-    /// as they are.
-    private static func cappingLevel(_ values: [CGFloat], total: CGFloat) -> CGFloat? {
-        guard values.reduce(0, +) > total else { return nil }
-        var remaining = total
-        let sorted = values.sorted()
-        for (position, value) in sorted.enumerated() {
-            let even = remaining / CGFloat(sorted.count - position)
-            if value >= even { return even }
-            remaining -= value
-        }
-        return nil
-    }
-
-    /// The level `L` at which every value raised to `L` adds up to `total`, or zero when the values
-    /// already take more than it.
-    private static func raisingLevel(_ values: [CGFloat], total: CGFloat) -> CGFloat {
-        var remaining = total
-        let sorted = values.sorted(by: >)
-        for (position, value) in sorted.enumerated() {
-            let even = remaining / CGFloat(sorted.count - position)
-            if value <= even { return even }
-            remaining -= value
-        }
-        return 0
-    }
-
-    /// The width a located tab asks for, keyed by tab. Only a located title asks: every other title is
-    /// short enough for the share, which is what it always had.
-    @MainActor
-    internal static func preferredWidths(
-        tabs: [QueryTab],
-        labels: [UUID: EditorTabLabelResolver.Label]
-    ) -> [UUID: CGFloat] {
-        tabs.reduce(into: [:]) { widths, tab in
-            guard let label = labels[tab.id], label.shortForm != nil else { return }
-            widths[tab.id] = min(
-                naturalWidth(of: label, isPinned: tab.isPinned, isPreview: tab.isPreview),
-                maximumLocatedTabWidth
-            )
-        }
-    }
-
-    /// What a tab needs to draw `label` whole: the close button's slot and the trailing slot that balances
-    /// it, their insets, the glyphs and the title in the strip's face. Rounded up, with a point to spare,
-    /// because a text measured to the exact width can still truncate once laid out.
-    internal static func naturalWidth(of label: EditorTabLabelResolver.Label, isPinned: Bool, isPreview: Bool) -> CGFloat {
-        var glyphs: [CGFloat] = []
-        if isPinned {
-            glyphs.append(symbolWidth("pin.fill", pointSize: pinGlyphSize))
-        }
-        if let icon = label.icon {
-            glyphs.append(symbolWidth(icon.symbolName, pointSize: objectGlyphSize))
-        }
-        let parts = glyphs + [textWidth(label.text, isPreview: isPreview)]
-        let spacing = pinSpacing * CGFloat(parts.count - 1)
-        return ceil(accessoryInset * 2 + accessoryWidth * 2 + parts.reduce(0, +) + spacing) + 1
-    }
-
-    /// The title's width in the face the strip draws it in, italic for a preview.
-    internal static func textWidth(_ text: String, isPreview: Bool) -> CGFloat {
-        let regular = NSFont.systemFont(ofSize: fontSize)
-        let font = isPreview ? NSFontManager.shared.convert(regular, toHaveTrait: .italicFontMask) : regular
-        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
-    }
-
-    private static func symbolWidth(_ name: String, pointSize: CGFloat) -> CGFloat {
-        let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
-        return ceil(image?.size.width ?? pointSize)
     }
 
     /// How far a tab fades while it is the one being dragged. Enough to read as lifted out of the

@@ -103,10 +103,6 @@ struct TableRow: View {
         settingsManager.general.showObjectIcons
     }
 
-    private var objectIcon: ObjectIcon {
-        ObjectIconProvider.icon(for: .relation(table.type), style: settingsManager.appearance.objectIconStyle)
-    }
-
     private var showsLeadingIcon: Bool {
         TableRowLogic.showsLeadingIcon(
             showObjectIcons: showsObjectIcon,
@@ -160,8 +156,8 @@ struct TableRow: View {
                 }
             } icon: {
                 if showsObjectIcon {
-                    objectIcon.image
-                        .objectIconTint(objectIcon, standard: Color.accentColor)
+                    Image(systemName: TableRowLogic.iconName(for: table.type))
+                        .selectionAwareTint(Color.accentColor)
                         .frame(width: 16)
                         .overlay(alignment: .bottomTrailing) {
                             pendingStateBadge

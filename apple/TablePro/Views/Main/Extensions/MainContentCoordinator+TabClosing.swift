@@ -64,14 +64,6 @@ extension MainContentCoordinator {
         }
     }
 
-    // A preview the next sidebar selection replaces. Not a user close, so nothing goes to Reopen Closed Tab.
-    func releasePreviewForReplacement(_ tab: QueryTab) {
-        flushColumnLayoutPersistence()
-        saveLastFilters(of: tab)
-        releaseResources(of: tab)
-        releaseExecution(of: tab)
-    }
-
     // All keyed by tab id, so a stale entry would hand another tab's state to the next tab given that id.
     func cleanupTabCaches(openTabIds: Set<UUID>) {
         prune(&displayFormatsCache, keeping: openTabIds)

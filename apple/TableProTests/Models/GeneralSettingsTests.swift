@@ -65,15 +65,10 @@ struct GeneralSettingsBoolSettingTests {
     static let settings = [
         BoolSetting(key: "shareAnalytics", defaultValue: true),
         BoolSetting(key: "showRecentTables", defaultValue: false),
-        BoolSetting(key: "showsObjectsOnSelection", defaultValue: false),
-        BoolSetting(key: "showsObjectToolbar", defaultValue: false),
-        BoolSetting(key: "showsToolbarLabels", defaultValue: false),
-        BoolSetting(key: "showsToolbarLocationItems", defaultValue: true),
         BoolSetting(key: "showObjectComments", defaultValue: true),
         BoolSetting(key: "showObjectIcons", defaultValue: true),
         BoolSetting(key: "showSystemContainers", defaultValue: false),
         BoolSetting(key: "showPartitions", defaultValue: true),
-        BoolSetting(key: "showTableDetails", defaultValue: false),
         BoolSetting(key: "showWorkspaceRail", defaultValue: true),
     ]
 

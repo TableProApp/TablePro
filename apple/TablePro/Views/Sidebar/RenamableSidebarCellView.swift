@@ -25,19 +25,11 @@ internal class RenamableSidebarCellView<Row: View>: SidebarHostingCellView<Row> 
 
     /// Overridden by a cell that draws more than one kind of row.
     internal var editorSymbolName: String { "folder" }
-    /// The glyph's hue in the colorful icon style, so the row keeps its look while it is renamed.
-    /// Nil leaves the template image to AppKit, which colors it for the row.
-    internal var editorSymbolTint: NSColor? { nil }
     internal var editorAccessibilityIdentifier: String { "sidebar-rename-field" }
-
-    override internal var backgroundStyle: NSView.BackgroundStyle {
-        didSet { applyEditorTint() }
-    }
 
     internal func beginRename(text: String, delegate: any NSTextFieldDelegate) {
         let field = makeEditorIfNeeded()
         editorIcon?.image = NSImage(systemSymbolName: editorSymbolName, accessibilityDescription: nil)
-        applyEditorTint()
         field.stringValue = text
         field.delegate = delegate
         isRenaming = true
@@ -62,12 +54,6 @@ internal class RenamableSidebarCellView<Row: View>: SidebarHostingCellView<Row> 
         setHostedContentHidden(isRenaming)
         editorField?.isHidden = !isRenaming
         editorIcon?.isHidden = !isRenaming
-    }
-
-    /// On the emphasized selection AppKit draws a template glyph in the selected-content color, as
-    /// the hosted row does; a hue there would sit on the accent fill.
-    private func applyEditorTint() {
-        editorIcon?.contentTintColor = backgroundStyle == .emphasized ? nil : editorSymbolTint
     }
 
     private func makeEditorIfNeeded() -> NSTextField {

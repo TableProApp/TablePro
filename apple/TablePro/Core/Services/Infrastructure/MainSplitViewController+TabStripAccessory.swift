@@ -103,7 +103,6 @@ internal extension MainSplitViewController {
                 containerTarget: workspace.connection.flatMap {
                     PluginManager.shared.containerSwitchTarget(for: $0.type)
                 },
-                connectionName: workspace.connection?.name ?? "",
                 execution: TabExecutionObservation(owner: sessionState.coordinator),
                 onNewTab: { [weak workspace] in
                     workspace?.sessionState?.coordinator.commandActions?.newTab()
@@ -186,15 +185,10 @@ internal extension MainSplitViewController {
             /// The resolver's description, not the drawn title: a table tab carries its database
             /// and schema there even when the short title is unique, and the tooltip is where a
             /// truncated or duplicated name is told apart.
-            tooltip: { [weak manager, weak workspace] id in
+            tooltip: { [weak manager] id in
                 guard let manager, let tab = manager.tabs.first(where: { $0.id == id }) else { return "" }
-                let style = EditorTabTitleStyle(
-                    showsLocation: AppSettingsManager.shared.tabs.titleShowsLocation,
-                    connectionName: workspace?.connection?.name ?? ""
-                )
-                let description = EditorTabLabelResolver.resolve(
-                    tabs: manager.visibleTabs, target: target, style: style
-                )[id]?.description ?? tab.title
+                let description = EditorTabLabelResolver.resolve(tabs: manager.visibleTabs, target: target)[id]?
+                    .description ?? tab.title
                 guard tab.isPreview else { return description }
                 return String(
                     format: String(localized: "%@\nPreview tab. Double-click to keep it open."),
@@ -209,16 +203,5 @@ internal extension MainSplitViewController {
             tabIds: manager.visibleTabs.map(\.id),
             overflow: AppSettingsManager.shared.tabs.overflow
         )
-        let settings = AppSettingsManager.shared
-        let labels = EditorTabLabelResolver.resolve(
-            tabs: manager.visibleTabs,
-            target: target,
-            style: EditorTabTitleStyle(
-                showsLocation: settings.tabs.titleShowsLocation,
-                connectionName: workspace.connection?.name ?? ""
-            ),
-            iconStyle: settings.appearance.objectIconStyle
-        )
-        interaction.setPreferredWidths(EditorTabStripLayout.preferredWidths(tabs: manager.visibleTabs, labels: labels))
     }
 }

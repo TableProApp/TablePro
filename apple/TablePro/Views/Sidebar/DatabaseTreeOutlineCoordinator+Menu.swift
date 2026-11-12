@@ -14,7 +14,6 @@ import TableProPluginKit
 /// replaced, never let the table see the click at all.
 extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
     internal func menuNeedsUpdate(_ menu: NSMenu) {
-        if fillConnectionMenu(menu, clicked: clickedNode()) { return }
         SidebarMenuBuilder.fill(
             menu,
             with: DatabaseTreeMenuSpec.sections(for: menuContext()),
@@ -92,7 +91,6 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             showObjectComments: settings.showObjectComments,
             showSystemContainers: settings.showSystemContainers,
             showPartitions: settings.showPartitions,
-            showTableDetails: settings.showTableDetails,
             rowSize: settings.sidebarRowSize,
             canFilterDatabases: PluginManager.shared.supportsDatabaseTree(for: databaseType)
                 && sidebarState?.sidebarLayout == .tree,
@@ -124,7 +122,6 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),
             offersBrowsedFolders: creation.offersBrowsedFolders,
             canShowAllTables: mainCoordinator?.allTablesListing() != nil,
-            databaseRowsHoldSchemas: supportsSchemaLevel,
             listsAttachedSchemas: listsAttachedSchemas,
             canDebugRoutine: DatabaseTreeMenuContext.canDebugRoutine(clicked?.kind, modules: .shared) {
                 mainCoordinator?.routineDebugTarget(for: $0)

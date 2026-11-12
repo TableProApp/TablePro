@@ -127,39 +127,4 @@ internal enum EditorTabReorderResolver {
             : Array((candidate ... (currentIndex - 1)).reversed())
         return crossable.last(where: hasCrossed)
     }
-
-    /// The tab a location falls in, for a run whose tabs need not be even: `boundaries` holds the
-    /// leading edge of each tab and the trailing edge of the last (`EditorTabRunLayout.linearBoundaries`).
-    internal static func destination(forLocation location: CGFloat, boundaries: [CGFloat]) -> Int {
-        let count = boundaries.count - 1
-        guard count > 1 else { return 0 }
-        return boundaries[1 ..< count].filter { $0 <= location }.count
-    }
-
-    /// `settledDestination(forLocation:tabWidth:currentIndex:count:)` for a run of uneven tabs, which a
-    /// located title asking for its whole width makes. The rule is the same, each neighbour's own centre,
-    /// and the run is rebuilt after every move, so a wide tab swapped past a narrow one does not swap back
-    /// until the pointer returns past the wide one's centre.
-    internal static func settledDestination(
-        forLocation location: CGFloat,
-        boundaries: [CGFloat],
-        currentIndex: Int
-    ) -> Int? {
-        let count = boundaries.count - 1
-        guard count > 1, currentIndex >= 0, currentIndex < count else { return nil }
-        let candidate = destination(forLocation: location, boundaries: boundaries)
-        guard candidate != currentIndex else { return nil }
-
-        func hasCrossed(_ index: Int) -> Bool {
-            let centre = (boundaries[index] + boundaries[index + 1]) / 2
-            return candidate > currentIndex
-                ? location >= centre - crossingTolerance
-                : location <= centre + crossingTolerance
-        }
-
-        let crossable = candidate > currentIndex
-            ? Array((currentIndex + 1) ... candidate)
-            : Array((candidate ... (currentIndex - 1)).reversed())
-        return crossable.last(where: hasCrossed)
-    }
 }
