@@ -12,7 +12,7 @@ use crate::support::{CALL, connect_with, direct, options_over, password, setup, 
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn a_catalog_read_on_a_warm_connection_costs_one_round_trip() {
+async fn a_catalog_read_on_a_warm_connection_skips_the_prepare() {
     let fixture = start(MysqlFlavour::Mysql).await;
     let liveness = test_liveness();
     let counter = Arc::new(RoundTripCounter::new(direct(fixture.host(), fixture.port(), &liveness)));
