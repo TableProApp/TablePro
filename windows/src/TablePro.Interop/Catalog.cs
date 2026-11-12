@@ -107,7 +107,7 @@ public sealed record TableName(string? Schema, string Name);
 public sealed record ColumnSort(int Column, bool Ascending);
 
 // Any columns past VisibleColumns are the engine's row address; without CanSeek only the first page can be read.
-public sealed record TableQuery(string Sql, int VisibleColumns, bool CanSeek = true);
+public sealed record TablePageRun(QueryRun Run, int VisibleColumns, bool CanSeek);
 
 public enum FailureCause
 {

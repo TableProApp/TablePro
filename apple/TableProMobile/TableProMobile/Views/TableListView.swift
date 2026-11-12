@@ -226,6 +226,11 @@ struct TableListView: View {
     // Another window can switch the shared session between the tap and the confirmation; the table named in the dialog
     // may then sit in another database or schema, so nothing runs.
     private func driver(for action: PendingTableAction) -> (any DatabaseDriver)? {
+        if let refusal = coordinator.databaseMoveRefusal {
+            errorMessage = refusal.message
+            showError = true
+            return nil
+        }
         guard action.placement == coordinator.tablePlacement, let driver = session?.driver else {
             errorMessage = String(localized: "The connection moved to another database or schema. Choose the table again.")
             showError = true

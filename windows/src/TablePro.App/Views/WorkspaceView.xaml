@@ -55,6 +55,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ObjectsColumn" Width="280" MinWidth="180" MaxWidth="640" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="HistoryColumn" Width="0" />
             </Grid.ColumnDefinitions>
 
             <Grid
@@ -108,6 +109,7 @@
                         <DataTemplate x:DataType="local:ObjectNode">
                             <TreeViewItem
                                 AutomationProperties.Name="{x:Bind AccessibleName}"
+                                ContextRequested="OnObjectRowContextRequested"
                                 Loaded="OnObjectRowLoaded"
                                 HasUnrealizedChildren="{x:Bind HasUnrealizedChildren, Mode=OneWay}"
                                 ItemsSource="{x:Bind Children}">
@@ -131,6 +133,7 @@
                     x:Uid="ObjectList"
                     Grid.Row="2"
                     AutomationProperties.AutomationId="ObjectList"
+                    ContextRequested="OnObjectListContextRequested"
                     IsItemClickEnabled="True"
                     ItemClick="OnObjectListClick"
                     SelectionMode="Single"
@@ -162,6 +165,7 @@
 
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -201,12 +205,29 @@
                     Visibility="Collapsed"
                     Severity="Warning" />
 
+                <!-- Over the tabs, since the user may switch tabs while a file is written. -->
+                <InfoBar
+                    x:Name="ExportBar"
+                    Grid.Row="3"
+                    Margin="8,8,8,0"
+                    AutomationProperties.AutomationId="ExportBar"
+                    Closed="OnExportBarClosed"
+                    IsOpen="False"
+                    Visibility="Collapsed">
+                    <InfoBar.ActionButton>
+                        <Button x:Uid="CancelExportButton" x:Name="CancelExportButton" AutomationProperties.AutomationId="CancelExportButton" Click="OnCancelExport" />
+                    </InfoBar.ActionButton>
+                    <InfoBar.Content>
+                        <ProgressBar x:Name="ExportProgress" x:Uid="ExportProgress" Margin="0,0,0,12" IsIndeterminate="True" />
+                    </InfoBar.Content>
+                </InfoBar>
+
                 <!-- TabView's style sets VerticalAlignment to Top, which sizes a tab's content to its smallest. -->
                 <!-- CanTearOutTabs is set once the strip is on screen and cleared before it leaves (WorkspaceView.Leave). -->
                 <TabView
                     x:Name="Tabs"
                     x:Uid="Tabs"
-                    Grid.Row="3"
+                    Grid.Row="4"
                     AddTabButtonClick="OnAddTab"
                     AutomationProperties.AutomationId="Tabs"
                     CanDragTabs="False"
@@ -221,6 +242,14 @@
                     TabWidthMode="Equal"
                     VerticalAlignment="Stretch" />
             </Grid>
+
+            <!-- Closed by default; View > Show query history opens it beside the tabs. -->
+            <Border
+                x:Name="HistoryHost"
+                Grid.Column="2"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="1,0,0,0"
+                Visibility="Collapsed" />
 
             <!-- On the next column's left edge, over the pane's border, as the Toolkit's sizers page lays it out. -->
             <toolkit:GridSplitter

@@ -26,6 +26,7 @@ private struct BatchOutput: Sendable {
     let rowsAffected: Int
     let errors: [PluginBatchError]
     let discardedResultSetCount: Int
+    let supersededResultSetCount: Int
     let executionTime: TimeInterval
     let errorDescription: String?
     var serverOutput: PluginServerOutput = .none
@@ -308,7 +309,8 @@ extension QueryExecutionCoordinator {
         driver: DatabaseDriver,
         failureOutput: ServerOutputBox
     ) async throws -> BatchOutput {
-        var combined = QueryBatchResult.empty
+        var earliest = QueryBatchResult.empty
+        var latest = QueryBatchResult.empty
         var printed = BatchPrintedOutput()
         for _ in 0..<max(prepared.batch.repeatCount, 1) {
             try Task.checkCancellation()
@@ -331,14 +333,18 @@ extension QueryExecutionCoordinator {
             }
             printed.append(printedAnswer.serverOutput)
             let answer = printedAnswer.answer
-            combined = combined.followed(by: answer)
+            earliest = earliest.followed(by: answer)
+            latest = latest.followedKeepingLatest(by: answer)
             guard answer.errors.isEmpty else { break }
         }
+        // Once the driver read past result sets, the newest ones kept are not the batch's last.
+        let combined = latest.discardedResultSetCount == 0 ? latest : earliest
         var output = BatchOutput(
             resultSets: combined.resultSets,
             rowsAffected: combined.rowsAffected,
             errors: combined.errors,
             discardedResultSetCount: combined.discardedResultSetCount,
+            supersededResultSetCount: combined.supersededResultSetCount,
             executionTime: combined.executionTime,
             errorDescription: BatchErrorText.describe(combined.errors, batchStartLine: prepared.startLine)
         )
@@ -558,6 +564,7 @@ extension QueryExecutionCoordinator {
             }
         }
         for ((entry, output), queries) in zip(zip(prepared, outputs), plan.queries) {
+            candidate += output.supersededResultSetCount
             let firstCandidate = candidate
             if let queries {
                 for (statement, result) in zip(queries, output.resultSets) {
@@ -627,6 +634,8 @@ extension QueryExecutionCoordinator {
                 }
                 continue
             }
+            // Result sets the batch let go still count toward the run's results, and are never shown.
+            shapes += repeatElement(true, count: output.supersededResultSetCount)
             let pairs: [(sql: String?, result: QueryResult)] = mapped.map { mapped in
                 zip(mapped, output.resultSets).map { (sql: $0.sql as String?, result: $1) }
             } ?? output.resultSets.map { (sql: nil, result: $0) }
@@ -653,7 +662,7 @@ extension QueryExecutionCoordinator {
         let isPlainQuery = { (sql: String) in
             QueryExecutor.qualifiesForRowCap(sql: sql, tabType: .query, databaseType: databaseType)
         }
-        guard BatchResultMapping.mapsToStatements(
+        guard output.supersededResultSetCount == 0, BatchResultMapping.mapsToStatements(
             entry.batch,
             resultSetCount: output.resultSets.count,
             hasErrors: !output.errors.isEmpty,
