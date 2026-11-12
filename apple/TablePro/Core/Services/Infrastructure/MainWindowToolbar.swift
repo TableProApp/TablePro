@@ -145,7 +145,16 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         /// reader who turns labels on keeps them.
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
-        self.managedToolbar.autosavesConfiguration = true
+        let environment = AppStorageEnvironment.shared
+        let autosaves = Self.autosavesArrangement(
+            isUnitTestHost: environment.isUnitTestHost,
+            isIsolated: environment.isIsolated
+        )
+        self.managedToolbar.autosavesConfiguration = autosaves
+        if !autosaves, !Self.hasStartedArrangementRecordsOver {
+            Self.hasStartedArrangementRecordsOver = true
+            Self.startArrangementRecordsOver(in: environment.defaults)
+        }
         self.managedToolbar.centeredItemIdentifiers = [Self.connection, Self.database]
         /// The hop off `AppSettingsManager.keyboard`'s own `didSet` matters: without it the toolbar
         /// items are mutated re-entrantly, part way through the settings write that triggered them.
@@ -622,6 +631,29 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             )
         }
         return inStep
+    }
+
+    /// AppKit files the arrangement and the display mode under the toolbar's identifier in the real standard domain, which
+    /// the unit test host and the storage sandbox must leave alone, the reason `SplitViewAutosaveName.current(_:)` names no
+    /// split view there. A sandboxed run wrote its arrangement over the one the installed app reads.
+    nonisolated internal static func autosavesArrangement(isUnitTestHost: Bool, isIsolated: Bool) -> Bool {
+        !(isUnitTestHost || isIsolated)
+    }
+
+    private static var hasStartedArrangementRecordsOver = false
+
+    /// The records say what the saved arrangement already carries. With nothing saved, every launch starts from the
+    /// default items and the icon-only mode, while the records stay in the sandbox's defaults from the last run, so they
+    /// are cleared once per launch and the first reconcile adds the Objects buttons and labels again.
+    internal static func startArrangementRecordsOver(in defaults: UserDefaults) {
+        for key in [
+            ToolbarDebugItemsRecord.key,
+            ToolbarObjectKindsRecord.key,
+            ToolbarLocationItemsRecord.key,
+            ToolbarLabelsRecord.key,
+        ] {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     // Pushed by the one writer of a module's state, so no toolbar listens for module changes while the module is off.
