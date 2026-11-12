@@ -51,7 +51,7 @@ public sealed partial class ShellTests
         app.Screenshot("42-result-picker");
     }
 
-    // Settings keeps two results per run, so the first two go and the status line says so.
+    // Settings keeps two results per run, so the first two go, the status line says so and the grid shows the newest.
     [Theory]
     [MemberData(nameof(Themes))]
     public void ARunPastTheResultLimitKeepsTheNewestAndSaysHowManyWent(string theme)
@@ -70,12 +70,14 @@ public sealed partial class ShellTests
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
 
-        Assert.Equal("3", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "3"));
+        Assert.Equal("4", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "4"));
         var picker = app.Find("ResultPicker").AsComboBox();
         picker.Expand();
         var listed = picker.Items.Select(item => item.Name).ToArray();
+        var selected = picker.SelectedItem?.Name;
         picker.Collapse();
         Assert.Equal<string>(["Result 3 (1)", "Result 4 (1)"], listed);
+        Assert.Equal("Result 4 (1)", selected);
         app.Screenshot("43-result-limit");
     }
 }
