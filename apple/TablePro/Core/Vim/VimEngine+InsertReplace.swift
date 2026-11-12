@@ -24,7 +24,7 @@ extension VimEngine {
                 let pos = buffer.selectedRange().location
                 let lineRange = buffer.lineRange(forOffset: pos)
                 if pos > lineRange.location {
-                    buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
+                    buffer.setSelectedRange(NSRange(location: characterStart(at: pos - 1, in: buffer), length: 0))
                 }
             }
             return true
@@ -41,7 +41,7 @@ extension VimEngine {
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
             if pos > lineRange.location {
-                buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
+                buffer.setSelectedRange(NSRange(location: characterStart(at: pos - 1, in: buffer), length: 0))
             }
             return true
         }
@@ -64,27 +64,27 @@ extension VimEngine {
         let contentEnd = lineEnd > lineRange.location
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
-        if pos < contentEnd {
-            let overwritten = NSRange(location: pos, length: 1)
-            replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: buffer.string(in: overwritten)))
-            buffer.replaceCharacters(in: overwritten, with: String(char))
-        } else {
-            replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: nil))
-            buffer.replaceCharacters(in: NSRange(location: pos, length: 0), with: String(char))
-        }
+        let typed = String(char)
+        let insertedLength = (typed as NSString).length
+        let overwritten = pos < contentEnd ? buffer.characterRange(at: pos) : NSRange(location: pos, length: 0)
+        let original = overwritten.length > 0 ? buffer.string(in: overwritten) : nil
+        replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: original, insertedLength: insertedLength))
+        buffer.replaceCharacters(in: overwritten, with: typed)
         return true
     }
 
     func backspaceInReplace(in buffer: VimTextBuffer) {
         let pos = buffer.selectedRange().location
         guard pos > 0 else { return }
-        if let last = replaceModeEdits.last, last.offset == pos - 1 {
+        if let last = replaceModeEdits.last, last.offset + last.insertedLength == pos {
             replaceModeEdits.removeLast()
-            buffer.replaceCharacters(in: NSRange(location: pos - 1, length: 1), with: last.original ?? "")
+            let inserted = NSRange(location: last.offset, length: last.insertedLength)
+            buffer.replaceCharacters(in: inserted, with: last.original ?? "")
+            buffer.setSelectedRange(NSRange(location: last.offset, length: 0))
         } else {
             replaceModeEdits.removeAll()
+            buffer.setSelectedRange(NSRange(location: characterStart(at: pos - 1, in: buffer), length: 0))
         }
-        buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
     }
 
     nonisolated static func isUnwritableControl(_ char: Character) -> Bool {
@@ -140,7 +140,8 @@ extension VimEngine {
         let pos = buffer.selectedRange().location
         let lineStart = lineStartBeforeCaret(in: buffer)
         guard pos > lineStart else { return pos }
-        return max(lineStart, buffer.wordBoundary(forward: false, from: pos))
+        // The word scan goes by code unit, so its boundary can fall inside a character.
+        return max(lineStart, characterStart(at: buffer.wordBoundary(forward: false, from: pos), in: buffer))
     }
 
     func lineStartBeforeCaret(in buffer: VimTextBuffer) -> Int {

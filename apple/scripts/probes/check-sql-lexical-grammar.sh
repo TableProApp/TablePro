@@ -108,6 +108,8 @@ CASE_NAMES=(
     "dollars glued to an identifier"
     "dollars glued to a non-ASCII identifier"
     "canonically equivalent dollar tag"
+    "E'' after a zero width space"
+    "dollar quote after a zero width space"
 )
 CASE_SQL=(
     "SELECT 'C:\\' AS p; DROP TABLE lexer_canary"
@@ -125,6 +127,8 @@ CASE_SQL=(
     "SELECT 1 AS x\$\$; DROP TABLE lexer_canary; --\$\$"
     "SELECT 1 AS é\$\$; DROP TABLE lexer_canary; --\$\$"
     "SELECT \$K\$ x \$K\$ , \$K\$; DROP TABLE lexer_canary; -- \$K\$" # the second tag is U+212A KELVIN SIGN
+    $'SELECT varchar\xe2\x80\x8bE\'\\\'\'; DROP TABLE lexer_canary; SELECT \'x\'' # DuckDB blanks the U+200B, PostgreSQL keeps it in the name
+    $'SELECT 1 AS a,\xe2\x80\x8b$$\'$$; DROP TABLE lexer_canary; SELECT \'x\''
 )
 
 SQLITE_DB="$WORK/lexer.sqlite"
