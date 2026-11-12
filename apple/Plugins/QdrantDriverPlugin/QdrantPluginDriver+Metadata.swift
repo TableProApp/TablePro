@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProQdrantClient
 import TableProQdrantCore
 
 extension QdrantPluginDriver {

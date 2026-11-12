@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProWeaviateClient
 import TableProWeaviateCore
 
 final class WeaviatePlugin: NSObject, TableProPlugin, DriverPlugin {

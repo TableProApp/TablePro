@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProWeaviateClient
 import TableProWeaviateCore
 
 extension WeaviatePluginDriver {
