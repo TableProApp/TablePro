@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#E6E9EF",
     "background": "#EFF1F5",
-    "boolFalse": "#D20F39",
-    "boolTrue": "#40A02B",
+    "binary": "#B4008A",
+    "boolFalse": "#C10031",
+    "boolTrue": "#226E0E",
+    "dateTime": "#0551E4",
     "deleted": "#D20F3926",
     "deletedText": "#D20F3980",
+    "enum": "#7E29E2",
     "focusBorder": "#8839EF",
     "gridLine": "#BCC0CC",
     "headerBackground": "#E6E9EF",
     "headerText": "#4C4F69",
     "inactiveSelection": "#CCD0DA",
     "inserted": "#40A02B26",
+    "json": "#875400",
     "modified": "#DF8E1D26",
     "nullValue": "#7C7F93",
+    "number": "#A73D00",
     "rowNumber": "#8C8FA1",
     "selection": "#CCD0DA",
     "selectionText": "#4C4F69",
-    "text": "#4C4F69"
+    "string": "#4653C5",
+    "text": "#4C4F69",
+    "uuid": "#006A70"
   },
   "editor": {
     "background": "#EFF1F5",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.catppuccin-latte",
   "name": "Catppuccin Latte",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#EFF1F5"
   }

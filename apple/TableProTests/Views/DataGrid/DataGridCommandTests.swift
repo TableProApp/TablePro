@@ -798,6 +798,67 @@ struct DataGridHeaderMenuTests {
         ])
     }
 
+    @Test("The list Filter Values builds off the main actor is the one the main actor builds")
+    func distinctValuesOffTheMainActor() async throws {
+        let rows = TableRows.from(
+            queryRows: [
+                [.text("2024-03-15 09:30:00.123456"), .text("1700000000"), .bytes(Data("signup".utf8)), .text("b")],
+                [.text("2024-03-15 09:30:00.123457"), .text("1700000000"), .bytes(Data([0x89, 0x50])), .null],
+                [.text("2024-03-15 09:30:00.123456"), .null, .bytes(Data("signup".utf8)), .text("a\rb")],
+            ],
+            columns: ["created", "stamp", "payload", "note"],
+            columnTypes: [
+                .datetime(rawType: "DATETIME(6)"),
+                .integer(rawType: "BIGINT"),
+                .blob(rawType: "VARBINARY(255)"),
+                .text(rawType: "TEXT"),
+            ]
+        )
+        let grid = CommandGrid(rows)
+        grid.model.setDisplayFormat(.unixTimestamp, for: try #require(grid.model.columns.column(at: 1)))
+        grid.model.setDisplayFormat(.text, for: try #require(grid.model.columns.column(at: 2)))
+        let created = try #require(grid.model.columns.column(at: 0))
+        #expect(grid.commands.distinctValues(for: created).map { $0.count } == [2, 1])
+
+        for column in grid.model.columns.columns {
+            let offMain = await ColumnValueTally.distinctValuesOffTheMainActor(
+                grid.model.rows,
+                dataIndex: column.dataIndex,
+                columnType: column.type,
+                displayFormat: grid.model.displayFormat(for: column),
+                databaseType: grid.model.configuration.traits.databaseType,
+                dateFormat: DateFormattingService.shared.currentFormat
+            )
+            #expect(offMain == grid.commands.distinctValues(for: column), "\(column.name)")
+        }
+    }
+
+    @Test("Filter Values asks whether to stop every 4,096 rows and gives up when told to")
+    func valueTallyChecksForCancellation() {
+        let rows = TableRows.from(
+            queryRows: (0..<10_000).map { [PluginCellValue.text("\($0 % 7)")] },
+            columns: ["v"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let dates = DateDisplayRenderer(format: .iso8601)
+        var checks = 0
+
+        let counted = ColumnValueTally.tally(
+            rows, dataIndex: 0, columnType: .text(rawType: "TEXT"), displayFormat: nil, databaseType: nil, dates: dates
+        ) {
+            checks += 1
+            return false
+        }
+        let stopped = ColumnValueTally.tally(
+            rows, dataIndex: 0, columnType: .text(rawType: "TEXT"), displayFormat: nil, databaseType: nil, dates: dates,
+            isCancelled: { true }
+        )
+
+        #expect(counted?.order.count == 7)
+        #expect(checks == 3)
+        #expect(stopped == nil)
+    }
+
     @Test("Fill Column is offered on a writable column that is not a key")
     func fillColumnOffer() {
         var configuration = CommandGrid.editable()

@@ -23,9 +23,36 @@ struct ThemeSlotTests {
         }
     }
 
-    @Test("The registry holds 35 slots")
+    @Test("The registry holds 42 slots")
     func slotCount() {
-        #expect(ThemeSlot.allCases.count == 35)
+        #expect(ThemeSlot.allCases.count == 42)
+    }
+
+    @Test("The value slots sit under the data grid key")
+    func valueSlots() {
+        let expected: [String: ThemeSlot] = [
+            "dataGrid.string": .gridString,
+            "dataGrid.number": .gridNumber,
+            "dataGrid.dateTime": .gridDateTime,
+            "dataGrid.binary": .gridBinary,
+            "dataGrid.json": .gridJSON,
+            "dataGrid.uuid": .gridUUID,
+            "dataGrid.enum": .gridEnum,
+        ]
+        for (path, slot) in expected {
+            #expect(ThemeSlot(rawValue: path) == slot, "\(path)")
+            #expect(slot.group == .dataGrid, "\(path)")
+            #expect(slot.introducedInSchema == 4, "\(path)")
+        }
+    }
+
+    @Test("Every slot came with format 3 or a later one this build reads, and the newest is the current format")
+    func slotsCarryTheirFormat() {
+        let formats = ThemeSlot.allCases.map(\.introducedInSchema)
+        #expect(formats.allSatisfy { (ThemeSchema.oldestReadable...ThemeSchema.current).contains($0) })
+        #expect(formats.max() == ThemeSchema.current)
+        let format3 = ThemeSlot.allCases.filter { $0.introducedInSchema == ThemeSchema.oldestReadable }
+        #expect(format3.count == 35)
     }
 
     @Test("Every slot belongs to exactly one group, listed in registry order")
@@ -44,16 +71,20 @@ struct ThemeSlotTests {
         #expect(sectioned.count == ThemeSlot.allCases.count)
     }
 
-    @Test("The editor sections split the data grid into rows, selection and changes")
+    @Test("The editor sections split the data grid into rows, values, selection and changes")
     func sectionsSplitTheGrid() {
-        #expect(ThemeSlotSection.allCases == [.window, .editor, .syntax, .dataGrid, .selection, .changes])
+        #expect(ThemeSlotSection.allCases == [.window, .editor, .syntax, .dataGrid, .values, .selection, .changes])
         #expect(ThemeSlotSection.window.slots == [.windowBackdrop])
         #expect(ThemeSlotSection.editor.slots == ThemeSlotGroup.editor.slots)
         #expect(ThemeSlotSection.syntax.slots == ThemeSlotGroup.syntax.slots)
         #expect(ThemeSlotSection.dataGrid.slots == [
-            .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
-            .gridLine, .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
+            .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText, .gridLine, .gridRowNumber,
         ])
+        #expect(ThemeSlotSection.values.slots == [
+            .gridNullValue, .gridBoolTrue, .gridBoolFalse,
+            .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum,
+        ])
+        #expect(ThemeSlotSection.values.label == "Values")
         #expect(ThemeSlotSection.selection.slots == [.gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder])
         #expect(ThemeSlotSection.changes.slots == [.gridModified, .gridInserted, .gridDeleted, .gridDeletedText])
     }
@@ -96,6 +127,11 @@ struct ThemeSlotTests {
         #expect(ThemeSlot.gridSelection.accessibilityLabel == "Data Grid Selection")
         #expect(ThemeSlot.gridSelectionText.accessibilityLabel == "Data Grid Selected Text")
         #expect(ThemeSlot.windowBackdrop.accessibilityLabel == "Window Background")
+        #expect(ThemeSlot.gridString.label == "String")
+        #expect(ThemeSlot.gridString.accessibilityLabel == "Data Grid String")
+        #expect(ThemeSlot.gridDateTime.label == "Date & Time")
+        #expect(ThemeSlot.gridDateTime.accessibilityLabel == "Data Grid Date & Time")
+        #expect(ThemeSlot.gridEnum.accessibilityLabel == "Data Grid Enum")
     }
 
     @Test("Only the fills under everything else require an opaque color")

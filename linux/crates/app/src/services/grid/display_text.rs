@@ -130,6 +130,7 @@ fn write_value(value: &Value, column: &ColumnType, date_format: DateFormat, scra
         Value::UInt(flag @ (0 | 1)) if column.kind == ColumnKind::Bool(BoolStorage::Integer) => {
             scratch.write_str(if *flag == 1 { "true" } else { "false" })
         }
+        Value::Int32(number) => write!(scratch, "{number}"),
         Value::Int(number) => write!(scratch, "{number}"),
         Value::UInt(number) => write!(scratch, "{number}"),
         Value::Float32(number) if number.is_finite() => write!(scratch, "{number}"),
@@ -337,6 +338,7 @@ mod tests {
         assert_eq!(shown(&Value::Bool(true)), "true");
         assert_eq!(shown(&Value::Int(42)), "42");
         assert_eq!(shown(&Value::UInt(7)), "7");
+        assert_eq!(shown(&Value::Int32(-7)), "-7");
         assert_eq!(shown(&Value::Float64(1.5)), "1.5");
         assert_eq!(shown(&Value::Float32(0.1)), "0.1");
         assert_eq!(shown(&Value::Text("hello".into())), "hello");

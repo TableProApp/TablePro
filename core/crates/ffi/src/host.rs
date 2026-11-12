@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
@@ -21,13 +21,13 @@ pub struct HostConfig {
 /// core makes it on a blocking thread, never on a runtime worker.
 #[uniffi::export(callback_interface)]
 pub trait HostSecrets: Send + Sync {
-    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<String>, HostSecretError>;
+    fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<SecretString>, HostSecretError>;
 
     fn store(
         &self,
         connection_id: String,
         kind: SecretKindTag,
-        secret: String,
+        secret: SecretString,
         label: String,
     ) -> Result<(), HostSecretError>;
 
@@ -37,10 +37,10 @@ pub trait HostSecrets: Send + Sync {
 
     fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError>;
 
-    fn load_item(&self, item: SecretItemTag) -> Result<Option<String>, HostSecretError>;
+    fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError>;
 
     /// The app names the item in its own words.
-    fn store_item(&self, item: SecretItemTag, secret: String) -> Result<(), HostSecretError>;
+    fn store_item(&self, item: SecretItemTag, secret: SecretString) -> Result<(), HostSecretError>;
 
     fn delete_item(&self, item: SecretItemTag) -> Result<(), HostSecretError>;
 }
@@ -148,23 +148,17 @@ impl std::fmt::Debug for HostSecretStore {
     }
 }
 
-fn exposed(secret: &SecretString) -> String {
-    secret.expose_secret().to_owned()
-}
-
 #[async_trait]
 impl SecretVault for HostSecretStore {
     async fn store(&self, id: Uuid, kind: SecretKind, secret: &SecretString, label: &str) -> Result<(), SecretError> {
-        let (secret, label) = (exposed(secret), label.to_owned());
+        let (secret, label) = (secret.clone(), label.to_owned());
         self.call(move |host| host.store(id.to_string(), kind.into(), secret, label))
             .await
     }
 
     async fn load(&self, id: Uuid, kind: SecretKind) -> Result<SecretLookup, SecretError> {
         let found = self.call(move |host| host.load(id.to_string(), kind.into())).await?;
-        Ok(found.map_or(SecretLookup::NotStored, |secret| {
-            SecretLookup::Found(SecretString::from(secret))
-        }))
+        Ok(found.map_or(SecretLookup::NotStored, SecretLookup::Found))
     }
 
     async fn relabel(&self, id: Uuid, kind: SecretKind, label: &str) -> Result<(), SecretError> {
@@ -185,12 +179,11 @@ impl SecretVault for HostSecretStore {
 #[async_trait]
 impl SecretItems for HostSecretStore {
     async fn load_item(&self, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
-        let found = self.call(move |host| host.load_item(item.into())).await?;
-        Ok(found.map(SecretString::from))
+        self.call(move |host| host.load_item(item.into())).await
     }
 
     async fn store_item(&self, item: SecretItem, secret: &SecretString) -> Result<(), SecretError> {
-        let secret = exposed(secret);
+        let secret = secret.clone();
         self.call(move |host| host.store_item(item.into(), secret)).await
     }
 
@@ -204,18 +197,20 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
+    use secrecy::ExposeSecret;
+
     use super::*;
     use crate::runtime;
 
     #[derive(Default)]
     struct MemorySecrets {
-        stored: Mutex<HashMap<(String, SecretKindTag), (String, String)>>,
-        items: Mutex<HashMap<SecretItemTag, String>>,
+        stored: Mutex<HashMap<(String, SecretKindTag), (SecretString, String)>>,
+        items: Mutex<HashMap<SecretItemTag, SecretString>>,
         locked: bool,
     }
 
     impl HostSecrets for MemorySecrets {
-        fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<String>, HostSecretError> {
+        fn load(&self, connection_id: String, kind: SecretKindTag) -> Result<Option<SecretString>, HostSecretError> {
             if self.locked {
                 return Err(HostSecretError::Locked);
             }
@@ -227,7 +222,7 @@ mod tests {
             &self,
             connection_id: String,
             kind: SecretKindTag,
-            secret: String,
+            secret: SecretString,
             label: String,
         ) -> Result<(), HostSecretError> {
             self.stored
@@ -254,11 +249,11 @@ mod tests {
             Ok(())
         }
 
-        fn load_item(&self, item: SecretItemTag) -> Result<Option<String>, HostSecretError> {
+        fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
             Ok(self.items.lock().unwrap().get(&item).cloned())
         }
 
-        fn store_item(&self, item: SecretItemTag, secret: String) -> Result<(), HostSecretError> {
+        fn store_item(&self, item: SecretItemTag, secret: SecretString) -> Result<(), HostSecretError> {
             self.items.lock().unwrap().insert(item, secret);
             Ok(())
         }
@@ -287,7 +282,10 @@ mod tests {
         store.delete_connection(id).await.unwrap();
         let after_delete = store.load(id, SecretKind::DatabasePassword).await.unwrap();
 
-        assert_eq!(found.found().map(|secret| exposed(&secret)), Some("hunter2".to_owned()));
+        assert_eq!(
+            found.found().map(|secret| secret.expose_secret().to_owned()),
+            Some("hunter2".to_owned())
+        );
         assert!(!after_delete.is_stored());
     }
 
@@ -300,7 +298,10 @@ mod tests {
         store.delete_connection(Uuid::new_v4()).await.unwrap();
         let found = store.load_item(item).await.unwrap();
 
-        assert_eq!(found.map(|secret| exposed(&secret)), Some("sk-test".to_owned()));
+        assert_eq!(
+            found.map(|secret| secret.expose_secret().to_owned()),
+            Some("sk-test".to_owned())
+        );
     }
 
     #[tokio::test]

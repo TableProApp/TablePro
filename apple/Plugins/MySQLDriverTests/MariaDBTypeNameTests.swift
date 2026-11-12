@@ -47,6 +47,15 @@ struct MariaDBTypeNameTests {
         #expect(resolve(typeRaw: 255) == "GEOMETRY")
     }
 
+    @Test("TINY of length 1 is TINYINT(1), and a BIT wider than one bit names its width")
+    func widthsTheClassifierReads() {
+        #expect(resolve(typeRaw: 1, length: 1) == "TINYINT(1)")
+        #expect(resolve(typeRaw: 1, length: 4) == "TINYINT")
+        #expect(resolve(typeRaw: 16, length: 1) == "BIT")
+        #expect(resolve(typeRaw: 16, length: 8) == "BIT(8)")
+        #expect(resolve(typeRaw: 16, length: 64) == "BIT(64)")
+    }
+
     @Test("Unknown type code returns UNKNOWN")
     func unknownType() {
         #expect(resolve(typeRaw: 999) == "UNKNOWN")

@@ -53,11 +53,95 @@ struct ThemeFileFormatTests {
         }
     }
 
+    private static let valueSlots: [ThemeSlot] = [.gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum]
+
+    private static func encodedSchema(_ theme: ThemeDefinition) throws -> Int? {
+        let object = try JSONSerialization.jsonObject(with: try ThemeFileFormat.encode(theme))
+        return (object as? [String: Any])?["schema"] as? Int
+    }
+
     // MARK: - What loads
 
-    @Test("The current format is 3")
-    func currentFormatIsThree() {
-        #expect(ThemeSchema.current == 3)
+    @Test("The current format is 4, and format 3 still reads")
+    func currentFormatIsFour() {
+        #expect(ThemeSchema.current == 4)
+        #expect(ThemeSchema.oldestReadable == 3)
+    }
+
+    @Test("A format 3 file and a format 4 file both load", arguments: [3, 4])
+    func readableFormatsLoad(schema: Int) throws {
+        var root = Self.metadata(schema: schema)
+        Self.insert("#FF0000", at: ["editor", "syntax", "keyword"], into: &root)
+        Self.insert("#00FF00", at: ["dataGrid", "boolTrue"], into: &root)
+
+        let colors = try Self.decode(root).overrides.mapValues(\.hex)
+
+        #expect(colors == [.syntaxKeyword: "#FF0000", .gridBoolTrue: "#00FF00"])
+    }
+
+    @Test("A format 4 file loads its value colors")
+    func formatFourLoadsValueColors() throws {
+        var root = Self.metadata(schema: 4)
+        for slot in Self.valueSlots {
+            Self.insert("#ABCDEF", at: slot.rawValue.components(separatedBy: "."), into: &root)
+        }
+
+        let theme = try Self.decode(root)
+
+        #expect(Set(theme.overrides.keys) == Set(Self.valueSlots))
+    }
+
+    // A format 3 reader refuses these keys, so a file that claims format 3 cannot hold them.
+    @Test("A format 3 file holding a format 4 key is refused with the format the key needs")
+    func newerKeyInOlderFileIsRefused() throws {
+        #expect(
+            try Self.refusal(Self.withColor("#F1FA8C", at: ["dataGrid", "string"]))
+                == .keysNeedNewerFormat(["dataGrid.string"], format: 4)
+        )
+
+        var root = Self.metadata(schema: 3)
+        Self.insert("#F8F8F2", at: ["dataGrid", "text"], into: &root)
+        for slot in Self.valueSlots {
+            Self.insert("#ABCDEF", at: slot.rawValue.components(separatedBy: "."), into: &root)
+        }
+        let paths = Self.valueSlots.map(\.rawValue).sorted()
+        #expect(try Self.refusal(root) == .keysNeedNewerFormat(paths, format: 4))
+    }
+
+    @Test("A key TablePro does not use outranks a key that needs a newer format")
+    func unknownKeyOutranksANewerKey() throws {
+        var root = Self.withColor("#F1FA8C", at: ["dataGrid", "string"])
+        Self.insert("#000000", at: ["panel", "text"], into: &root)
+
+        #expect(try Self.refusal(root) == .unknownKeys(["panel.text"]))
+    }
+
+    @Test("The encoder writes format 3 for a theme with no value color, and format 4 once it has one")
+    func encoderWritesTheOldestFormatThatHoldsTheTheme() throws {
+        let theme = ThemeDefinition(
+            id: "user.values",
+            name: "Values",
+            author: "",
+            appearance: .dark,
+            overrides: [.gridText: try ThemeColor(validating: "#F8F8F2"), .gridBoolTrue: try ThemeColor(validating: "#50FA7B")]
+        )
+        #expect(try Self.encodedSchema(theme) == 3)
+        #expect(try Self.encodedSchema(.defaultDark) == 3)
+
+        for slot in Self.valueSlots {
+            var withValue = theme
+            withValue.overrides[slot] = try ThemeColor(validating: "#F1FA8C")
+            #expect(try Self.encodedSchema(withValue) == 4, "\(slot.rawValue)")
+            #expect(try ThemeFileFormat.decode(try ThemeFileFormat.encode(withValue)) == withValue, "\(slot.rawValue)")
+        }
+    }
+
+    @Test("A format 4 file with no value color is saved back as format 3")
+    func formatFourWithoutValueColorsSavesAsThree() throws {
+        var root = Self.metadata(schema: 4)
+        Self.insert("#282A36", at: ["dataGrid", "background"], into: &root)
+
+        #expect(try Self.encodedSchema(try Self.decode(root)) == 3)
     }
 
     @Test("A file with only metadata loads and sets nothing")
@@ -85,9 +169,9 @@ struct ThemeFileFormatTests {
         #expect(colors == [.syntaxKeyword: "#FF0000", .gridAlternateRow: "#00000080"])
     }
 
-    @Test("Every slot path is accepted")
+    @Test("Every slot path is accepted in the current format")
     func everySlotPathLoads() throws {
-        var root = Self.metadata()
+        var root = Self.metadata(schema: ThemeSchema.current)
         for slot in ThemeSlot.allCases {
             Self.insert("#123456", at: slot.rawValue.components(separatedBy: "."), into: &root)
         }
@@ -271,10 +355,10 @@ struct ThemeFileFormatTests {
         }
     }
 
-    @Test("Format 2 and a file with no format are refused")
+    @Test("Format 2, format 5 and a file with no format are refused")
     func otherFormatsAreRefused() throws {
         #expect(try Self.refusal(Self.metadata(schema: 2)) == .schemaTooOld(found: 2, supported: 3))
-        #expect(try Self.refusal(Self.metadata(schema: 4)) == .schemaTooNew(found: 4, supported: 3))
+        #expect(try Self.refusal(Self.metadata(schema: 5)) == .schemaTooNew(found: 5, supported: 4))
         #expect(try Self.refusal(Self.metadata(schema: "3")) == .missingSchema)
 
         var unversioned = Self.metadata()
@@ -479,8 +563,9 @@ struct ThemeFileFormatTests {
     func errorMessages() {
         let errors: [ThemeLoadError] = [
             .malformedJSON(detail: nil), .missingSchema, .schemaTooOld(found: 2, supported: 3),
-            .schemaTooNew(found: 4, supported: 3), .missingField("name"), .invalidName, .invalidAuthor,
-            .invalidColor("#XYZ"), .unknownKeys(["a.b"]), .duplicateKey("a.b"), .reservedIdentifier("tablepro.x"),
+            .schemaTooNew(found: 5, supported: 4), .missingField("name"), .invalidName, .invalidAuthor,
+            .invalidColor("#XYZ"), .unknownKeys(["a.b"]), .keysNeedNewerFormat(["a.b"], format: 4),
+            .duplicateKey("a.b"), .reservedIdentifier("tablepro.x"),
             .invalidIdentifier("x/y"), .duplicateIdentifier("user.a", existingFile: "a.json"),
             .changedOnDisk("a.json"), .deletedOnDisk("a.json"), .nameTaken("Ocean"),
             .fileTooLarge(limit: ThemeFileImporter.maximumFileSize), .notATheme,
@@ -489,6 +574,18 @@ struct ThemeFileFormatTests {
             #expect(!(error.errorDescription ?? "").isEmpty, "\(error)")
         }
         #expect(ThemeLoadError.malformedJSON(detail: nil).errorDescription == "The file is not valid JSON.")
+        #expect(
+            ThemeLoadError.schemaTooOld(found: 2, supported: 3).errorDescription
+                == "Theme format 2 is no longer supported. This version of TablePro reads format 3 and later."
+        )
+        #expect(
+            ThemeLoadError.schemaTooNew(found: 5, supported: 4).errorDescription
+                == "Theme format 5 was made for a newer TablePro. This version reads format 4 and earlier."
+        )
+        #expect(
+            ThemeLoadError.keysNeedNewerFormat(["dataGrid.string"], format: 4).errorDescription
+                == "These theme keys need theme format 4: \"dataGrid.string\"."
+        )
         #expect(ThemeLoadError.deletedOnDisk("Ocean.json").errorDescription == "Ocean.json was deleted outside TablePro.")
         #expect(ThemeLoadError.nameTaken("Ocean").errorDescription == "A theme named “Ocean” already exists.")
         #expect(ThemeLoadError.notATheme.errorDescription == "This file is not a TablePro theme or a VS Code color theme.")

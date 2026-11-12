@@ -50,6 +50,20 @@ struct ColumnTypeClassifierTests {
         #expect(ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "boolean").isBooleanType)
     }
 
+    // The MySQL driver names a BIT with its width and a BOOLEAN as TINYINT(1).
+    @Test("A MySQL BIT wider than one bit is a number; BIT, BIT(1) and TINYINT(1) are booleans")
+    func mysqlBitWidthDecidesTheKind() {
+        let mysql = ColumnTypeClassifier(family: .mysql)
+        #expect(mysql.classify(rawTypeName: "BIT(8)") == .integer(rawType: "BIT(8)"))
+        #expect(mysql.classify(rawTypeName: "bit(64)") == .integer(rawType: "bit(64)"))
+        #expect(mysql.classify(rawTypeName: "BIT(1)").isBooleanType)
+        #expect(mysql.classify(rawTypeName: "BIT").isBooleanType)
+        #expect(mysql.classify(rawTypeName: "TINYINT(1)").isBooleanType)
+        #expect(isInteger(mysql.classify(rawTypeName: "TINYINT")))
+        #expect(ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "bit(8)") == .text(rawType: "bit(8)"))
+        #expect(ColumnTypeClassifier().classify(rawTypeName: "BIT(8)").isBooleanType)
+    }
+
     @Test("A compared column reads BIT by each side's family")
     func comparedColumnReadsBitBySide() {
         let column = CompareColumn(
@@ -787,8 +801,7 @@ struct ColumnTypeClassifierTests {
             #expect(isTimestamp(classifier.classify(rawTypeName: rawTypeName)))
         }
 
-        /// Every other engine's DATE is a calendar date, so Oracle's own DATE reaches the classifier as a hint
-        /// rather than through this name.
+        // Oracle's DATE reaches the classifier as a hint, so the bare name stays the calendar date every other engine means.
         @Test("DATE stays a calendar date")
         func dateStaysADate() {
             #expect(classifier.classify(rawTypeName: "DATE") == .date(rawType: "DATE"))
@@ -959,8 +972,7 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "jsonb").arrayElementEditor == nil)
         }
 
-        /// The badge vocabulary is semantic rather than the SQL spelling, so `jsonb[]` badges as
-        /// `json[]` exactly as scalar `jsonb` badges as `json`. #2897 read that as a lost `b`.
+        // The badge is semantic, so `jsonb[]` badges as `json[]` as scalar `jsonb` badges as `json`. #2897 read that as a lost `b`.
         @Test("A jsonb array keeps its raw type name behind the semantic badge")
         func keepsRawTypeBehindBadge() {
             let type = classifier.classify(rawTypeName: "jsonb[]")
@@ -976,10 +988,7 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "text[]").displayName == "Text Array")
         }
 
-        /// PostgreSQL spells a domain's array through `format_type`, which puts the parameters
-        /// before the brackets. The base/params split dropped everything after the last `)`, so the
-        /// `[]` was lost and the column classified as its element: a `bit(8)[]` got the boolean
-        /// dropdown, which writes a scalar into an array column.
+        // PostgreSQL's format_type puts the parameters before the brackets, and the old split dropped the `[]`: `bit(8)[]` got the boolean dropdown.
         @Test("A parameterized array keeps its brackets")
         func classifiesParameterizedArrays() {
             let numeric = classifier.classify(rawTypeName: "numeric(10,2)[]")
@@ -996,8 +1005,7 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "timestamp(3) with time zone[]").arrayElement != nil)
         }
 
-        /// The app's own spelling for an enum array puts the `[]` on the base and the labels in the
-        /// parentheses, which is the one array form the suffix test cannot see.
+        // The app's own `ENUM[](labels)` spelling is the one array form the suffix test cannot see.
         @Test("The enum array spelling still resolves its labels")
         func classifiesEnumArraySpelling() {
             let type = classifier.classify(rawTypeName: "ENUM[](mood)")
@@ -1069,10 +1077,7 @@ struct ColumnTypeClassifierTests {
             return false
         }
 
-        /// `GEO_POINT` ends in `INT`, and `classifyByPattern` tests `hasSuffix("INT")` before any
-        /// spatial arm, so an Elasticsearch `geo_point` column classified as an integer. That drove
-        /// its cell alignment, its sort comparator and its filter operators, all wrong, with or
-        /// without a map.
+        // `GEO_POINT` ends in `INT` and the `hasSuffix("INT")` arm ran before any spatial one, so `geo_point` classified as an integer.
         @Test("geo_point is spatial, not an integer")
         func geoPointIsNotAnInteger() {
             for raw in ["geo_point", "GEO_POINT", "Geo_Point"] {
@@ -1081,8 +1086,7 @@ struct ColumnTypeClassifierTests {
             }
         }
 
-        /// MySQL 8.0.11 renamed GEOMETRYCOLLECTION, and its catalog reports `geomcollection` for a
-        /// column declared with either spelling. Measured on MySQL 8.4.11.
+        // MySQL 8.0.11 renamed GEOMETRYCOLLECTION, and its catalog reports `geomcollection` for either spelling. Measured on MySQL 8.4.11.
         @Test("MySQL's own GEOMCOLLECTION spelling is spatial")
         func geomCollectionSpelling() {
             for raw in ["geomcollection", "GEOMCOLLECTION", "GEOMETRYCOLLECTION"] {
@@ -1105,7 +1109,6 @@ struct ColumnTypeClassifierTests {
             #expect(isSpatial(classifier.classify(rawTypeName: "Nullable(Point)")))
         }
 
-        /// The new entries must not drag neighbouring names into the spatial family.
         @Test("Neighbouring names keep their classification")
         func neighboursUnchanged() {
             #expect(classifier.classify(rawTypeName: "INT") == .integer(rawType: "INT"))

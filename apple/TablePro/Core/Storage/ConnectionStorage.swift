@@ -789,6 +789,7 @@ final class ConnectionStorage {
         "cloudflaretokenid", "cloudflaretokensecret", "cloudsqlproxyserviceaccountkey", "socksproxypassword"
     ]
     private static let localOnlySecretsMigratedKey = "com.TablePro.localOnlySecretsKeptOnDevice"
+    private static let pendingSyncedCopyRemovalsKey = "com.TablePro.localOnlySyncedCopiesPendingRemoval"
 
     private func secretKeys(for connection: DatabaseConnection) -> [String] {
         let id = connection.id.uuidString
@@ -854,16 +855,27 @@ final class ConnectionStorage {
         staging?.edits.deletedKeys.append(key)
     }
 
-    // Rewrites each stored secret into the scope the connection now has. Going device-only keeps the copy iCloud
-    // Keychain holds: removing it would remove it from every device. False when a secret could not be read or written.
+    // Rewrites each stored secret into the scope the connection now has. removingSyncedCopy then removes the iCloud
+    // Keychain copy, from every device, but only of a secret this Mac now holds itself. False when a secret could not
+    // be read or written.
     @discardableResult
-    private func rewriteSecrets(of connection: DatabaseConnection, readingOwnItemFirst: Bool, deviceOnly: Bool) -> Bool {
+    private func rewriteSecrets(
+        of connection: DatabaseConnection,
+        readingOwnItemFirst: Bool,
+        deviceOnly: Bool,
+        removingSyncedCopy: Bool = false
+    ) -> Bool {
         var complete = true
         for key in secretKeys(for: connection) {
             switch keychain.readStringResult(forKey: key, deviceOnly: readingOwnItemFirst) {
             case .found(let value):
-                if !keychain.writeString(value, forKey: key, deviceOnly: deviceOnly) {
+                guard keychain.writeString(value, forKey: key, deviceOnly: deviceOnly) else {
                     complete = false
+                    continue
+                }
+                if removingSyncedCopy, !keychain.removeSyncedCopy(forKey: key) {
+                    Self.logger.warning("A Local only secret kept its iCloud Keychain copy: \(key, privacy: .public)")
+                    notePendingSyncedCopyRemoval(key, connectionId: connection.id)
                 }
             case .notFound:
                 break
@@ -874,7 +886,8 @@ final class ConnectionStorage {
         return complete
     }
 
-    // Each direction reads the value the connection was using, so the toggle never changes a secret.
+    // Each direction reads the value the connection was using, so the toggle never changes a secret. Becoming Local
+    // only also takes the secrets off iCloud Keychain, so the other devices ask for them again.
     private func moveSecretsWhoseScopeChanged(from previous: [DatabaseConnection], to current: [DatabaseConnection]) {
         let wasSynced = Dictionary(
             previous.map { ($0.id, $0.participatesInSync) },
@@ -882,12 +895,42 @@ final class ConnectionStorage {
         )
         for connection in current {
             guard let synced = wasSynced[connection.id], synced != connection.participatesInSync else { continue }
-            rewriteSecrets(of: connection, readingOwnItemFirst: !synced, deviceOnly: synced)
+            rewriteSecrets(of: connection, readingOwnItemFirst: !synced, deviceOnly: synced, removingSyncedCopy: synced)
         }
     }
 
-    // Builds before this one wrote a Local only connection's secrets wherever the password sync setting pointed.
+    private func notePendingSyncedCopyRemoval(_ key: String, connectionId: UUID) {
+        var pending = defaults.dictionary(forKey: Self.pendingSyncedCopyRemovalsKey) as? [String: String] ?? [:]
+        pending[key] = connectionId.uuidString
+        defaults.set(pending, forKey: Self.pendingSyncedCopyRemovalsKey)
+    }
+
+    // A removal the user was promised and the keychain refused is tried again at launch, while the connection is
+    // still Local only. One that is back in sync, or gone, wants its synced copy kept or already removed it.
+    func removePendingSyncedCopies() {
+        guard let pending = defaults.dictionary(forKey: Self.pendingSyncedCopyRemovalsKey) as? [String: String],
+              !pending.isEmpty else { return }
+        let connections = loadConnections()
+        guard !lastLoadFailed else { return }
+        let byId = Dictionary(connections.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
+        var remaining: [String: String] = [:]
+        for (key, idString) in pending {
+            guard let connection = byId[idString], !connection.participatesInSync else { continue }
+            if !keychain.removeSyncedCopy(forKey: key) {
+                remaining[key] = idString
+            }
+        }
+        if remaining.isEmpty {
+            defaults.removeObject(forKey: Self.pendingSyncedCopyRemovalsKey)
+        } else {
+            defaults.set(remaining, forKey: Self.pendingSyncedCopyRemovalsKey)
+        }
+    }
+
+    // Builds before this one wrote a Local only connection's secrets wherever the password sync setting pointed. Only
+    // copied: the user saw no note saying the other devices lose them.
     func keepLocalOnlySecretsOnDeviceIfNeeded() {
+        removePendingSyncedCopies()
         guard !defaults.bool(forKey: Self.localOnlySecretsMigratedKey) else { return }
         let connections = loadConnections()
         guard !lastLoadFailed else { return }

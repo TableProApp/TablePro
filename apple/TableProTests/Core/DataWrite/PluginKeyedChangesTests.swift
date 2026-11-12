@@ -10,7 +10,7 @@ import Testing
 @testable import TablePro
 
 struct PluginKeyedChangesTests {
-    @Test("Every row gets its own key, and the key agrees across the changes and the sets")
+    @Test("Every change gets its own key, and the key agrees across the changes and the sets")
     func keysAgreeAcrossCollections() {
         let insertedA = RowID.inserted(UUID())
         let insertedB = RowID.inserted(UUID())
@@ -93,4 +93,31 @@ struct PluginKeyedChangesTests {
         #expect(crossed?.cellChanges.first?.newValue == "b")
         #expect(crossed?.originalRow == ["3", "a"])
     }
+
+    @MainActor
+    @Test("A row edited around another change reaches the driver once per edit, each with the row as it then stands")
+    func aRowEditedAroundAnotherChangeReachesTheDriverTwice() throws {
+        let handed = HandedChanges()
+        let driver = RowWriteStubDriver { changes, _, _, _ in
+            handed.changes = changes
+            return changes.map { PluginRowWrite(statement: "write(\($0.rowIndex))", rowIndices: [$0.rowIndex]) }
+        }
+        let (manager, _) = EditAroundADelete.manager(table: "items", databaseType: DatabaseType(rawValue: "MongoDB"))
+        manager.pluginDriver = driver
+        EditAroundADelete.record(on: manager)
+
+        _ = try manager.generateSQL()
+        let types = handed.changes.map { $0.type }
+        let keys = Set(handed.changes.map { $0.rowIndex })
+        let laterColumns = handed.changes.last?.cellChanges.map { $0.columnName }
+
+        #expect(types == [.update, .delete, .update])
+        #expect(keys.count == 3)
+        #expect(handed.changes.last?.originalRow == ["3", "Cyd", "c@test.com"])
+        #expect(laterColumns == ["email"])
+    }
+}
+
+private final class HandedChanges {
+    var changes: [PluginRowChange] = []
 }

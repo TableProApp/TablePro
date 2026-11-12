@@ -222,7 +222,7 @@ struct DataGridControllerTests {
     // MARK: - Find
 
     @Test("A find match moves the active cell to the match's column, so the arrow keys continue from it")
-    func findMatchSetsActiveColumn() {
+    func findMatchSetsActiveColumn() async {
         let grid = HostedDataGrid(rows: GridFixtureRows.people)
         defer { grid.close() }
         grid.model.setSelection(cell(0, 0))
@@ -230,6 +230,7 @@ struct DataGridControllerTests {
         grid.model.showFind()
         grid.model.find.term = "dee"
         grid.model.findQueryDidChange()
+        await grid.model.findSearchSettled()
 
         #expect(grid.model.selection.activeCell == GridCoord(row: 3, displayColumn: 1))
         #expect(grid.main.selectedRowIndexes == IndexSet(integer: 3))

@@ -83,6 +83,9 @@ struct VSCodeThemeMappingTests {
         case .gridNullValue: return "#707070"
         case .gridBoolTrue: return "#C00009"
         case .gridBoolFalse: return "#C0000A"
+        case .gridString: return "#C00002"
+        case .gridNumber: return "#C00003"
+        case .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum: return nil
         case .gridRowNumber: return "#808080"
         // 0xFF scaled by 0.3 and by 0.5, rounded.
         case .gridModified: return "#E0C0004D"
@@ -143,6 +146,9 @@ struct VSCodeThemeMappingTests {
         case .gridNullValue: return "#40404080"
         case .gridBoolTrue: return nil
         case .gridBoolFalse: return nil
+        case .gridString: return nil
+        case .gridNumber: return nil
+        case .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum: return nil
         case .gridRowNumber: return nil
         case .gridModified: return nil
         case .gridInserted: return "#00AA0033"

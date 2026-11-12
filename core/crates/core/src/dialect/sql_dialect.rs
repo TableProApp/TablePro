@@ -285,4 +285,9 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     fn update_sets_default(&self) -> bool {
         false
     }
+
+    /// Whether a read gives NULL for a value the row does not hold, as a document's missing field.
+    fn reads_missing_as_null(&self) -> bool {
+        false
+    }
 }

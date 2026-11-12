@@ -4340,6 +4340,9 @@
     "%@ May Still Be Running" : {
 
     },
+    "%@ more messages." : {
+
+    },
     "%@ more, in the script beside this" : {
       "localizations" : {
         "fr" : {
@@ -5418,6 +5421,9 @@
 
     },
     "%@ statements" : {
+
+    },
+    "%@ Statements" : {
 
     },
     "%@ stops being a computed column" : {
@@ -7015,6 +7021,9 @@
       }
     },
     "%1$@ column of %2$@" : {
+
+    },
+    "%1$@ contrast is %2$@:1. Aim for at least 4.5:1." : {
 
     },
     "%1$@ could not be read again before generating the script. %2$@" : {
@@ -13583,6 +13592,9 @@
           }
         }
       }
+    },
+    "1 more message." : {
+
     },
     "1 new column" : {
 
@@ -31806,6 +31818,10 @@
     "Billing…" : {
 
     },
+    "Binary" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Binary content" : {
       "localizations" : {
         "fr" : {
@@ -43893,6 +43909,9 @@
         }
       }
     },
+    "Color values by type" : {
+
+    },
     "Color, omitted when none" : {
       "localizations" : {
         "fr" : {
@@ -54548,6 +54567,10 @@
     "Could not read the table." : {
 
     },
+    "Could not read this Mac's trusted certificates to verify the server. Choose the server's CA certificate under SSL, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not read which rows are already in the table" : {
 
     },
@@ -57652,6 +57675,9 @@
         }
       }
     },
+    "cursors" : {
+
+    },
     "CURTIME()" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -58485,6 +58511,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid Binary" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Bool False" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -58493,11 +58523,19 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid Date & Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Deleted" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
     "Data Grid Deleted Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Enum" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -58562,6 +58600,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid JSON" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Line" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -58571,6 +58613,10 @@
       "generatesSymbol" : false
     },
     "Data Grid NULL Value" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Number" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -58586,7 +58632,15 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid String" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid UUID" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -60773,6 +60827,10 @@
           }
         }
       }
+    },
+    "Date & Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Date and Time" : {
 
@@ -67297,6 +67355,9 @@
         }
       }
     },
+    "Draw strings, numbers, dates and other typed values in the colors of the theme's Values section" : {
+
+    },
     "Drawing %1$d shapes in SRID %2$d." : {
       "localizations" : {
         "fr" : {
@@ -73544,6 +73605,10 @@
         }
       }
     },
+    "Enum" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enum %@ has no symbols." : {
 
     },
@@ -75511,6 +75576,9 @@
         }
       }
     },
+    "Except NULL and booleans, these colors show in the grid only while Color values by type is on in Settings > Data." : {
+
+    },
     "exclamation mark" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -75722,6 +75790,9 @@
           }
         }
       }
+    },
+    "Exclude from iCloud Sync?" : {
+
     },
     "Exclude the AUTO_INCREMENT counter" : {
       "extractionState" : "stale",
@@ -105377,6 +105448,9 @@
 
     },
     "Listen for Notifications" : {
+
+    },
+    "LISTEN registrations" : {
 
     },
     "Listens on all interfaces (0.0.0.0), reachable from your local network." : {
@@ -137008,6 +137082,9 @@
         }
       }
     },
+    "prepared statements" : {
+
+    },
     "Preparing Import…" : {
       "localizations" : {
         "fr" : {
@@ -142969,6 +143046,9 @@
           }
         }
       }
+    },
+    "Ran %@ statements that returned no rows." : {
+
     },
     "ran %@×" : {
       "comment" : "Run count in a detail line, %@ is a count",
@@ -158207,6 +158287,9 @@
         }
       }
     },
+    "Saved passwords are removed from iCloud Keychain, and your other devices will need them entered again." : {
+
+    },
     "Saved passwords can only be exported to an encrypted file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -158402,6 +158485,9 @@
           }
         }
       }
+    },
+    "Saving removes its passwords from iCloud Keychain. Your other devices will need them entered again." : {
+
     },
     "Saving your choice" : {
 
@@ -164399,6 +164485,12 @@
         }
       }
     },
+    "session locks" : {
+
+    },
+    "session settings" : {
+
+    },
     "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with %4$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -168049,6 +168141,9 @@
           }
         }
       }
+    },
+    "Showing the last %1$@ of %2$@ results that returned rows." : {
+
     },
     "Shown beside each key" : {
       "localizations" : {
@@ -183843,6 +183938,9 @@
     "Temporary Table" : {
 
     },
+    "temporary tables" : {
+
+    },
     "Teradata uses TLS on its HTTPS port, which the tunnel does not forward. Set SSL Mode to Disabled or Preferred to connect through the tunnel, or turn the tunnel off." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -187328,6 +187426,12 @@
         }
       }
     },
+    "The connection to %1$@ was lost while it waited and has been reconnected. The new session does not have what the old one set up: %2$@. Set it up again, then run the statements." : {
+
+    },
+    "The connection to %1$@ was lost while it waited, and the server rolled back its open transaction. The new session does not have what the old one set up either: %2$@. Set it up again, then run the statements." : {
+
+    },
     "The connection to Redis dropped after EXEC was sent, so whether the block ran is unknown." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -189515,6 +189619,10 @@
 
     },
     "The JSON file ends before its last value is complete." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The JSON file has text that is not valid in its encoding." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -192081,6 +192189,12 @@
           }
         }
       }
+    },
+    "The response stopped at the model's output token limit." : {
+
+    },
+    "The response stopped because the conversation filled the model's context window." : {
+
     },
     "The REST endpoint is not a valid URL." : {
       "extractionState" : "manual",
@@ -196325,7 +196439,15 @@
         }
       }
     },
+    "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d and later." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Theme format %1$d was made for a newer TablePro. This version reads format %2$d and earlier." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -196829,6 +196951,10 @@
     },
     "These statements ran inside the transaction already open on this connection, so rolling it back undoes them:" : {
 
+    },
+    "These theme keys need theme format %1$d: %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "These two engines cannot share a script." : {
       "localizations" : {
@@ -211922,6 +212048,9 @@
         }
       }
     },
+    "user variables" : {
+
+    },
     "User-Defined" : {
       "localizations" : {
         "fr" : {
@@ -212321,6 +212450,8 @@
       }
     },
     "UUID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -213246,6 +213377,10 @@
         }
       }
     },
+    "Values" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Values a spreadsheet would read as formulas, written with a leading single quote: %lld. Turn off Sanitize formula-like values to export them unchanged." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -213712,6 +213847,10 @@
           }
         }
       }
+    },
+    "Verify CA needs the server's CA certificate. Choose it under SSL, or use Verify Identity to check the server against this Mac's trusted certificates." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Verify certificate and hostname" : {
       "localizations" : {

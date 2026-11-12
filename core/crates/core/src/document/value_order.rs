@@ -40,7 +40,8 @@ fn bracket_named(alias: &str) -> Option<usize> {
 fn bracket_of(value: &Value) -> Option<usize> {
     let alias = match value {
         Value::Null => "null",
-        Value::Int(_)
+        Value::Int32(_)
+        | Value::Int(_)
         | Value::UInt(_)
         | Value::Float32(_)
         | Value::Float64(_)
@@ -83,7 +84,7 @@ fn shell_bracket(value: &ShellValue) -> Option<usize> {
             ShellConstructor::Uuid | ShellConstructor::BinData | ShellConstructor::HexData => "binData",
             ShellConstructor::MinKey => "minKey",
             ShellConstructor::MaxKey => "maxKey",
-            ShellConstructor::RegExp => "regex",
+            ShellConstructor::RegExp | ShellConstructor::BsonRegExp => "regex",
             ShellConstructor::Code => return None,
         },
         ShellValue::Object(fields) => match fields.first().map(|(key, _)| key.as_str()) {
@@ -123,6 +124,10 @@ mod tests {
             Some(vec!["bool", "date", "timestamp", "regex", "maxKey"])
         );
         assert_eq!(aliases_beyond(&Value::Int(5), false), Some(vec!["minKey", "null"]));
+        assert_eq!(
+            aliases_beyond(&Value::Int32(5), true),
+            aliases_beyond(&Value::Int(5), true)
+        );
         assert_eq!(
             aliases_beyond(&Value::Text("a".to_owned()), true).map(|aliases| aliases.len()),
             Some(9)

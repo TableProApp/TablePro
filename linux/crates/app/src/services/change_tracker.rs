@@ -11,6 +11,7 @@ use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
+use tablepro_core::value::same_value;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::{CellMarks, CellOverlay};
@@ -80,7 +81,10 @@ pub struct CellEdit {
 impl CellEdit {
     /// Whether the edit leaves the cell as it was before it.
     fn is_no_change(&self) -> bool {
-        matches!((&self.pending, &self.original), (CellInput::Value(pending), Some(original)) if pending == original)
+        matches!(
+            (&self.pending, &self.original),
+            (CellInput::Value(pending), Some(original)) if same_value(pending, original)
+        )
     }
 }
 
@@ -746,6 +750,10 @@ impl TabChangeTracker {
             require_key(columns)?;
             cells.sort_by_key(|(col, _)| *col);
             let touched = cells.iter().map(|(_, edit)| edit.touched).max().unwrap_or_default();
+            let read = cells
+                .iter()
+                .filter_map(|(col, edit)| edit.original.clone().map(|value| (*col, value)))
+                .collect();
             rows.push((
                 touched,
                 RowChange::Update(RowUpdate {
@@ -754,6 +762,7 @@ impl TabChangeTracker {
                         .into_iter()
                         .map(|(col, edit)| (col, edit.pending.clone()))
                         .collect(),
+                    read,
                 }),
                 StatementSource::Update {
                     row_key: row_key.clone(),
@@ -1702,6 +1711,7 @@ mod tests {
             vec![RowChange::Update(RowUpdate {
                 key: vec![Value::Int(1), Value::Int(2)],
                 assignments: vec![(2, CellInput::Value(Value::Text("new".into())))],
+                read: vec![(2, Value::Text("old".into()))],
             })]
         );
         assert_eq!(
@@ -1709,6 +1719,54 @@ mod tests {
             RowIdentity::UniqueKey {
                 columns: vec!["a".to_owned(), "b".to_owned()]
             }
+        );
+    }
+
+    #[test]
+    fn a_change_set_carries_each_edited_cells_read_value() {
+        let mut t = TabChangeTracker::default();
+        let columns = vec![pk_col("id"), data_col("qty"), data_col("price")];
+        let key = RowKey::from_pk_values(&[Value::Int(1)]).unwrap();
+        for (col, original, value) in [
+            (2, Value::Float64(2.5), Value::Float64(3.5)),
+            (1, Value::Int32(3), Value::Int(4)),
+        ] {
+            t.apply(TrackerEdit::Cell {
+                row_key: key.clone(),
+                col,
+                original,
+                value: CellInput::Value(value),
+            });
+        }
+
+        let tracked = t.change_set(&columns).unwrap();
+
+        assert_eq!(
+            tracked.changes.changes,
+            vec![RowChange::Update(RowUpdate {
+                key: vec![Value::Int(1)],
+                assignments: vec![
+                    (1, CellInput::Value(Value::Int(4))),
+                    (2, CellInput::Value(Value::Float64(3.5))),
+                ],
+                read: vec![(1, Value::Int32(3)), (2, Value::Float64(2.5))],
+            })]
+        );
+
+        t.apply(TrackerEdit::Cell {
+            row_key: key,
+            col: 1,
+            original: Value::Int32(3),
+            value: CellInput::Value(Value::Int(3)),
+        });
+        assert_eq!(
+            t.change_set(&columns).unwrap().changes.changes,
+            vec![RowChange::Update(RowUpdate {
+                key: vec![Value::Int(1)],
+                assignments: vec![(2, CellInput::Value(Value::Float64(3.5)))],
+                read: vec![(2, Value::Float64(2.5))],
+            })],
+            "an int32 edited back to its number stayed an edit"
         );
     }
 

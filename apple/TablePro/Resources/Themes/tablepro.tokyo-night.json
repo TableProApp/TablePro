@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#16161E",
     "background": "#1A1B26",
+    "binary": "#7DCFFF",
     "boolFalse": "#F7768E",
     "boolTrue": "#9ECE6A",
+    "dateTime": "#7AA2F7",
     "deleted": "#DB4B4B26",
     "deletedText": "#F7768E80",
+    "enum": "#BB9AF7",
     "focusBorder": "#7AA2F7",
     "gridLine": "#232433",
     "headerBackground": "#16161E",
     "headerText": "#A9B1D6",
     "inactiveSelection": "#222433",
     "inserted": "#41A6B526",
+    "json": "#E0AF68",
     "modified": "#E0AF6826",
     "nullValue": "#51597D",
+    "number": "#FF9E64",
     "rowNumber": "#363B54",
     "selection": "#2B2F41",
     "selectionText": "#A9B1D6",
-    "text": "#A9B1D6"
+    "string": "#B4F9F8",
+    "text": "#A9B1D6",
+    "uuid": "#73DACA"
   },
   "editor": {
     "background": "#1A1B26",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.tokyo-night",
   "name": "Tokyo Night",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#1A1B26"
   }

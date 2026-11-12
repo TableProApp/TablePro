@@ -227,6 +227,12 @@ macro_rules! connection_conformance_suite {
             stream_read_streams_every_row_in_bounded_batches,
             $crate::conformance::cases::streaming::stream_read_streams_every_row_in_bounded_batches::<$engine>
         }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            byte_limit_keeps_whole_rows_and_later_statements,
+            $crate::conformance::cases::byte_limit::byte_limit_keeps_whole_rows_and_later_statements::<$engine>
+        }
         $crate::__conformance_endpoint_cases! { $endpoint, $stop, $docker, $engine }
         $crate::__conformance_pool_case! { $pool, $endpoint, $stop, $docker, $engine }
         $crate::__conformance_editor_case! { $editor, $docker, $engine }

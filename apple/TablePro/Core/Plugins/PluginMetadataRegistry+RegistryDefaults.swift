@@ -7,9 +7,9 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
-    /// SQL Server refuses `=` on these (Msg 402 for `ntext`, `text`, `image` and `xml`, 403 for the spatial types), so
-    /// a keyless match compares them through a cast, which is exact for each. A `hierarchyid` reads as its bytes, which
-    /// the cast to `varbinary(max)` compares without an implicit conversion back to the type.
+    // SQL Server refuses `=` on these (Msg 402 for `ntext`, `text`, `image` and `xml`, 403 for the spatial types), so
+    // a keyless match compares them through a cast, which is exact for each. A `hierarchyid` reads as its bytes, which
+    // the cast to `varbinary(max)` compares without an implicit conversion back to the type.
     static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "IMAGE", "GEOGRAPHY", "GEOMETRY", "HIERARCHYID"]
 
     // Measured on ClickHouse 25.8: a JSON value or a NaN never equals the text it was read as, and concat() of it does.
@@ -17,13 +17,13 @@ extension PluginMetadataRegistry {
         "JSON", "OBJECT(", "DYNAMIC", "FLOAT", "BFLOAT16", "NULLABLE(FLOAT", "NULLABLE(BFLOAT16",
     ]
 
-    /// `sql_variant` refuses `=` too (Msg 206), and no cast keeps its base type: the integer `1` and the string `N'1'`
-    /// cast to the same text, so a keyless match on it could pick either row.
+    // `sql_variant` refuses `=` too (Msg 206), and no cast keeps its base type: the integer `1` and the string `N'1'`
+    // cast to the same text, so a keyless match on it could pick either row.
     static let mssqlRowMatchExcludedTypePrefixes = ["SQL_VARIANT"]
 
-    /// Oracle cannot compare a LOB, `LONG`, `LONG RAW`, `BFILE`, `XMLTYPE`, `JSON`, `VECTOR` or spatial value with `=`
-    /// (ORA-22848 on a CLOB), so a keyless match leaves them out. Matched against the bare type name, which an
-    /// owner-qualified column such as `"MDSYS"."SDO_GEOMETRY"` classifies by.
+    // Oracle cannot compare a LOB, `LONG`, `LONG RAW`, `BFILE`, `XMLTYPE`, `JSON`, `VECTOR` or spatial value with `=`
+    // (ORA-22848 on a CLOB), so a keyless match leaves them out. Matched against the bare type name, which an
+    // owner-qualified column such as `"MDSYS"."SDO_GEOMETRY"` classifies by.
     static let oracleRowMatchExcludedTypePrefixes = [
         "CLOB", "NCLOB", "BLOB", "LONG", "BFILE", "XMLTYPE", "JSON", "VECTOR", "SDO_"
     ]
@@ -602,6 +602,7 @@ extension PluginMetadataRegistry {
                     supportsOpportunisticTLS: false,
                     tlsImpliedPorts: [8_443, 443],
                     verifiesServerWithSystemTrust: true,
+                    requestedTLSVerifiesIdentity: true,
                     readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

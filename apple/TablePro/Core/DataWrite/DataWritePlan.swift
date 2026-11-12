@@ -66,6 +66,10 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
     // What the driver found the row by when it was read, for an update or a delete. A rewind writes to that row and
     // no other. Nil in a record saved before it was kept, and on an engine that keeps none.
     var rowLocator: String?
+    // Where the row's first write ran in the save. Nil in a record saved before it was kept, which runs by list order.
+    var order: Int?
+    // Only for an update written in two or more steps. An older build ignores it and rewinds the net images.
+    var steps: [RowWriteStep]?
 
     var isReversible: Bool { refusal == nil }
 
@@ -85,6 +89,82 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
         guard let image else { return [] }
         return Set(image.indices.filter { image[$0].isNull })
     }
+
+    // The row as each step left it, applying the steps to the pre-image in turn.
+    func stepImages() -> [RowWriteStepImage]? {
+        guard let steps, var row = preImage else { return nil }
+        var absent = absentColumnsBeforeWrite
+        return steps.map { step in
+            for (offset, column) in step.columns.enumerated() {
+                if row.indices.contains(column), step.after.indices.contains(offset) {
+                    row[column] = step.after[offset]
+                }
+                if step.afterAbsent.contains(column) {
+                    absent.insert(column)
+                } else {
+                    absent.remove(column)
+                }
+            }
+            return RowWriteStepImage(step: step, after: row, absentAfter: absent)
+        }
+    }
+}
+
+// `before` and `after` line up with `columns`, which are indices into the operation's columns.
+struct RowWriteStep: Codable, Sendable, Equatable {
+    let order: Int
+    let columns: [Int]
+    let before: [PluginCellValue]
+    let after: [PluginCellValue]
+    let beforeAbsent: Set<Int>
+    let afterAbsent: Set<Int>
+
+    init(
+        order: Int,
+        columns: [Int],
+        before: [PluginCellValue],
+        after: [PluginCellValue],
+        beforeAbsent: Set<Int> = [],
+        afterAbsent: Set<Int> = []
+    ) {
+        self.order = order
+        self.columns = columns
+        self.before = before
+        self.after = after
+        self.beforeAbsent = beforeAbsent
+        self.afterAbsent = afterAbsent
+    }
+
+    init(_ step: RowChange) {
+        self.init(
+            order: step.sequence,
+            columns: step.cellChanges.map(\.columnIndex),
+            before: step.cellChanges.map(\.oldValue),
+            after: step.cellChanges.map(\.newValue),
+            beforeAbsent: Set(step.cellChanges.filter(\.oldIsAbsent).map(\.columnIndex)),
+            afterAbsent: Set(step.cellChanges.filter(\.newIsAbsent).map(\.columnIndex))
+        )
+    }
+
+    var inverted: RowWriteStep {
+        RowWriteStep(
+            order: order, columns: columns, before: after, after: before,
+            beforeAbsent: afterAbsent, afterAbsent: beforeAbsent
+        )
+    }
+
+    func reordered(_ order: Int) -> RowWriteStep {
+        RowWriteStep(
+            order: order, columns: columns, before: before, after: after,
+            beforeAbsent: beforeAbsent, afterAbsent: afterAbsent
+        )
+    }
+}
+
+struct RowWriteStepImage {
+    let step: RowWriteStep
+    let after: [PluginCellValue]
+    let absentAfter: Set<Int>
 }
 
 // A driver's `PluginRowLookup`, bound for the executor.

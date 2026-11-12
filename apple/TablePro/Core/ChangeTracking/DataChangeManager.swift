@@ -109,6 +109,34 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private var loadedValues: [RowID: [Int: PluginCellValue]] = [:]
     private var coalescedOrder: [CoalescedCellKey] = []
 
+    // Process-wide, so a run restored from another tab never shares an id with a new command.
+    private static var lastActionID = 0
+    private var commandAction: Int?
+    private var typingAction: Int?
+
+    private static func newActionID() -> Int {
+        lastActionID += 1
+        return lastActionID
+    }
+
+    // One undo step over many cells, so a row it writes more than once stays one write in the save.
+    func recordAsOneAction(_ body: () -> Void) {
+        guard commandAction == nil else {
+            body()
+            return
+        }
+        commandAction = Self.newActionID()
+        defer { commandAction = nil }
+        body()
+    }
+
+    private func typingRunAction() -> Int {
+        if let typingAction { return typingAction }
+        let action = Self.newActionID()
+        typingAction = action
+        return action
+    }
+
     /// Whether a typed edit is waiting to become an undo step. The Edit menu reads it, because the
     /// undo manager has nothing registered yet while the run is open.
     var hasCoalescedUndoRun: Bool { !coalescedOrder.isEmpty }
@@ -323,6 +351,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             wasExpression: pending.isExpression(rowID: rowID, columnIndex: columnIndex),
             isExpression: isExpression
         )
+        let action = coalescesWithPrevious ? typingRunAction() : commandAction ?? Self.newActionID()
         objectWillChange.send()
         let recorded = pending.recordCellChange(
             rowID: rowID,
@@ -332,7 +361,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             newValue: newValue,
             originalRow: originalRow,
             absence: absence,
-            isExpression: isExpression
+            isExpression: isExpression,
+            action: action
         )
         guard recorded else {
             hasChanges = !pending.isEmpty
@@ -346,11 +376,14 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             )
         } else {
             registerUndo(actionName: String(localized: "Edit Cell")) { target in
-                target.applyDataUndo(.cellEdit(
-                    rowID: rowID, columnIndex: columnIndex, columnName: columnName,
-                    previousValue: oldValue, newValue: newValue, originalRow: originalRow,
-                    absence: absence, expression: expression
-                ))
+                target.applyDataUndo(
+                    .cellEdit(
+                        rowID: rowID, columnIndex: columnIndex, columnName: columnName,
+                        previousValue: oldValue, newValue: newValue, originalRow: originalRow,
+                        absence: absence, expression: expression
+                    ),
+                    actionID: action
+                )
             }
         }
         hasChanges = !pending.isEmpty
@@ -382,25 +415,28 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         coalescedOrder.append(key)
     }
 
-    /// Registers the run's cells as one undo step, in the order they were first written.
-    ///
-    /// A cell typed back to where it started contributes nothing: registering it would leave a step
-    /// that restores a value the cell already holds, and undoing it would record a pending change
-    /// over a value that already matches the server.
+    // A cell typed back to where it started is left out: undoing it would stage a value the server already holds.
     func endCoalescedUndoRun() {
-        guard !coalescedOrder.isEmpty else { return }
+        guard !coalescedOrder.isEmpty else {
+            typingAction = nil
+            return
+        }
         let edits = coalescedOrder.compactMap { coalescedEdits[$0] }.filter { !$0.isNoOp }
+        let action = typingAction
         discardCoalescedUndoRun()
         guard !edits.isEmpty, let undoManager = undoManagerProvider?() else { return }
 
         undoManager.beginUndoGrouping()
         for edit in edits {
             undoManager.registerUndo(withTarget: self) { target in
-                target.applyDataUndo(.cellEdit(
-                    rowID: edit.rowID, columnIndex: edit.columnIndex, columnName: edit.columnName,
-                    previousValue: edit.previousValue, newValue: edit.newValue, originalRow: edit.originalRow,
-                    absence: edit.absence, expression: edit.expression
-                ))
+                target.applyDataUndo(
+                    .cellEdit(
+                        rowID: edit.rowID, columnIndex: edit.columnIndex, columnName: edit.columnName,
+                        previousValue: edit.previousValue, newValue: edit.newValue, originalRow: edit.originalRow,
+                        absence: edit.absence, expression: edit.expression
+                    ),
+                    actionID: action
+                )
             }
         }
         undoManager.setActionName(String(localized: "Edit Cell"))
@@ -410,6 +446,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private func discardCoalescedUndoRun() {
         coalescedEdits.removeAll()
         coalescedOrder.removeAll()
+        typingAction = nil
     }
 
     private func discardUndoHistory() {
@@ -560,7 +597,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
 
     // MARK: - Core Undo Application
 
-    private func applyDataUndo(_ action: UndoAction) {
+    private func applyDataUndo(_ action: UndoAction, actionID: Int? = nil) {
         objectWillChange.send()
         switch action {
         case .cellEdit(let rowID, let columnIndex, let columnName, let previousValue, let newValue, let originalRow,
@@ -568,7 +605,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             applyCellEditUndo(
                 rowID: rowID, columnIndex: columnIndex, columnName: columnName,
                 previousValue: previousValue, newValue: newValue, originalRow: originalRow,
-                absence: absence, expression: expression, action: action
+                absence: absence, expression: expression, action: action, actionID: actionID
             )
 
         case .rowInsertion(let rowID, let image):
@@ -597,20 +634,25 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private func applyCellEditUndo(
         rowID: RowID, columnIndex: Int, columnName: String,
         previousValue: PluginCellValue, newValue: PluginCellValue, originalRow: [PluginCellValue]?,
-        absence: FieldAbsence, expression: ExpressionTransition, action: UndoAction
+        absence: FieldAbsence, expression: ExpressionTransition, action: UndoAction, actionID: Int?
     ) {
+        let isUndoing = undoManagerProvider?()?.isUndoing ?? false
         registerUndo(actionName: String(localized: "Edit Cell")) { target in
-            target.applyDataUndo(.cellEdit(
-                rowID: rowID, columnIndex: columnIndex, columnName: columnName,
-                previousValue: newValue, newValue: previousValue, originalRow: originalRow,
-                absence: absence.reversed, expression: expression.reversed
-            ))
+            target.applyDataUndo(
+                .cellEdit(
+                    rowID: rowID, columnIndex: columnIndex, columnName: columnName,
+                    previousValue: newValue, newValue: previousValue, originalRow: originalRow,
+                    absence: absence.reversed, expression: expression.reversed
+                ),
+                actionID: actionID
+            )
         }
 
+        // A redo is a new write, so it goes back after the other rows' changes still pending, where it was.
         let updateHoldsCell = pending.change(forRow: rowID, type: .update)?
             .cellChanges.contains { $0.columnIndex == columnIndex } ?? false
-        if updateHoldsCell {
-            pending.revertUpdateCell(
+        if updateHoldsCell, isUndoing {
+            pending.revertCellWrite(
                 rowID: rowID, columnIndex: columnIndex,
                 columnName: columnName, previousValue: previousValue,
                 previousIsAbsent: absence.wasAbsent,
@@ -627,7 +669,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
                 rowID: rowID,
                 columnIndex: columnIndex, columnName: columnName,
                 originalDBValue: newValue, newValue: previousValue, originalRow: originalRow,
-                absence: absence.reversed, expression: expression.reversed
+                absence: absence.reversed, expression: expression.reversed,
+                action: actionID
             )
         }
         lastUndoResult = UndoResult(

@@ -28,6 +28,7 @@ struct DataGridCellAppearance: Equatable {
         onEmphasizedSelection: Bool,
         checkboxMark: DataGridCheckboxMark? = nil,
         textTone: NSColor? = nil,
+        valueTone: DataGridValueTone = .plain,
         revealsInvisibleCharacters: Bool = false
     ) -> DataGridCellAppearance {
         let deletedTextColor = state.visualState.isDeleted ? palette.deletedRowText : nil
@@ -41,7 +42,12 @@ struct DataGridCellAppearance: Equatable {
             baseColor = deletedTextColor ?? .systemBlue
         case .none:
             font = palette.regularFont
-            baseColor = deletedTextColor ?? textTone ?? valueTextColor(kind: kind, rawValue: content.rawValue, palette: palette)
+            baseColor = deletedTextColor ?? textTone ?? valueTextColor(
+                kind: kind,
+                rawValue: content.rawValue,
+                valueTone: valueTone,
+                palette: palette
+            )
         case .null, .empty, .absent, .unloaded:
             font = palette.italicFont
             baseColor = deletedTextColor ?? palette.placeholderText
@@ -103,11 +109,12 @@ struct DataGridCellAppearance: Equatable {
     private static func valueTextColor(
         kind: DataGridCellKind,
         rawValue: String?,
+        valueTone: DataGridValueTone,
         palette: DataGridCellPalette
     ) -> NSColor {
-        guard kind == .boolean, let rawValue, let isTrue = StoredBoolean.value(of: rawValue) else {
-            return palette.text
+        if kind == .boolean, let rawValue, let isTrue = StoredBoolean.value(of: rawValue) {
+            return isTrue ? palette.booleanTrueText : palette.booleanFalseText
         }
-        return isTrue ? palette.booleanTrueText : palette.booleanFalseText
+        return palette.valueColors.color(for: valueTone) ?? palette.text
     }
 }

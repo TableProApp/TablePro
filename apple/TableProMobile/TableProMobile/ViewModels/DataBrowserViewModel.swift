@@ -18,6 +18,7 @@ final class DataBrowserViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DataBrowserViewModel")
 
     private let buffer: StreamingResultBuffer
+    private let textBudgetBytes: @MainActor () -> Int
     private(set) var totalRows: Int?
     private(set) var phase: Phase = .idle
     private(set) var executionTime: TimeInterval = 0
@@ -63,8 +64,12 @@ final class DataBrowserViewModel {
         case found
     }
 
-    init(windowCapacity: Int = 1_000) {
+    init(
+        windowCapacity: Int = 1_000,
+        textBudgetBytes: @escaping @MainActor () -> Int = { MemoryPressureMonitor.shared.textBudgetBytes() }
+    ) {
         self.buffer = StreamingResultBuffer(capacity: windowCapacity)
+        self.textBudgetBytes = textBudgetBytes
         self.pagination = PaginationState(pageSize: AppPreferences.defaultPageSize, currentPage: 0)
     }
 
@@ -259,7 +264,9 @@ final class DataBrowserViewModel {
             pagination.totalRows = page.totalCount
 
             let result = page.result
-            await loadPage(options: pageOptions(lazyContext: nil), startedAt: start, generation: generation) { options in
+            // A key's values have no key of their own to be read again by, so they stay whole within a budget.
+            let keyOptions = pageOptions(lazyContext: nil, textBudget: TextBudget(bytes: textBudgetBytes()))
+            await loadPage(options: keyOptions, startedAt: start, generation: generation) { options in
                 QueryResultStreaming.stream(options: options) { result }
             }
             guard isCurrent(generation) else { return }
@@ -284,12 +291,13 @@ final class DataBrowserViewModel {
         pagination.totalRows = pagination.currentOffset + legacyRows.count
     }
 
-    private func pageOptions(lazyContext: LazyContext?) -> StreamOptions {
+    private func pageOptions(lazyContext: LazyContext?, textBudget: TextBudget? = nil) -> StreamOptions {
         StreamOptions(
             textTruncationBytes: 4_096,
             inlineBinary: false,
             maxRows: pagination.pageSize,
-            lazyContext: lazyContext
+            lazyContext: lazyContext,
+            textBudget: textBudget
         )
     }
 
@@ -349,11 +357,7 @@ final class DataBrowserViewModel {
     }
 
     private func searchableColumns() -> [ColumnInfo] {
-        columns.filter { col in
-            let upper = col.typeName.uppercased()
-            return !upper.contains("BLOB") && !upper.contains("BYTEA") && !upper.contains("BINARY")
-                && !upper.contains("VARBINARY") && !upper.contains("IMAGE")
-        }
+        columns.filter { !Cell.holdsBytes(typeName: $0.typeName) }
     }
 
     private func fetchTotalRows(session: ConnectionSession, table: TableInfo, generation: Int) async {

@@ -156,6 +156,7 @@ impl Tally {
 /// what its cell shows, so `0.1 + 0.2` is `0.3`.
 fn number_of(value: &Value) -> Option<Exact> {
     let decimal = match value {
+        Value::Int32(n) => return Some(Exact::integer(BigInt::from(*n))),
         Value::Int(n) => return Some(Exact::integer(BigInt::from(*n))),
         Value::UInt(n) => return Some(Exact::integer(BigInt::from(*n))),
         Value::Text(text) => Cow::Owned(text.parse::<SqlDecimal>().ok()?),
@@ -309,6 +310,7 @@ mod tests {
             "-1"
         );
         assert_eq!(numbers(&[Value::Int(-1), Value::Int(-2)], NUMERIC).average, "-1.5");
+        assert_eq!(numbers(&[Value::Int32(-1), Value::Int(-2)], NUMERIC).average, "-1.5");
         assert_eq!(
             numbers(&[Value::Int(1), Value::Int(1), Value::Int(0)], NUMERIC).average,
             "0.6667"

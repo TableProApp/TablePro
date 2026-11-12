@@ -7217,6 +7217,10 @@
         }
       }
     },
+    "Could not read this Mac's trusted certificates to verify the server. Choose the server's CA certificate under SSL, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not run the credential_process command for profile \"%@\": %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -21153,6 +21157,9 @@
         }
       }
     },
+    "Shown in part. Run a query that returns fewer rows or columns to see it in full." : {
+
+    },
     "SID" : {
       "localizations" : {
         "ko" : {
@@ -21458,6 +21465,9 @@
 
     },
     "Some documents may already have been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "Some long values are shown in part to stay within memory." : {
 
     },
     "Sort" : {
@@ -24941,6 +24951,9 @@
     "The FreeTDS configuration could not be written: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The full values in this result need more memory than this device has free. Run a query that returns fewer rows and try again." : {
+
     },
     "The full values on this page need more memory than this device has free. Choose a smaller page size and try again." : {
 
@@ -29457,6 +29470,9 @@
 
     },
     "View as JSON" : {
+
+    },
+    "View Full Value" : {
 
     },
     "Views" : {

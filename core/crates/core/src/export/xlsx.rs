@@ -148,6 +148,7 @@ fn write_cell(
     value: &Value,
     formats: &CellFormats,
 ) -> Result<(), RenderError> {
+    let value = &*crate::document::json_number(value, super::column_type(columns, usize::from(column)));
     let written = match value {
         // A blank cell, not an empty string: Excel's COUNT and AVERAGE
         // read the two differently, and NULL is the absent one.
@@ -211,6 +212,7 @@ fn sheet_number(columns: &[ResultColumn], column: u16, value: &Value) -> Option<
     match value {
         Value::Float32(number) => Some(real_number(*number)),
         Value::Float64(number) => Some(*number),
+        Value::Int32(number) => Some(f64::from(*number)),
         Value::Int(_) | Value::UInt(_) | Value::Decimal(_) | Value::WideInt(_) => exact_number(columns, column, value),
         _ => None,
     }
@@ -384,6 +386,10 @@ mod tests {
 
         assert_eq!(sheet_number(&columns, 0, &Value::Int(42)), Some(42.0));
         assert_eq!(
+            sheet_number(&columns, 0, &Value::Int32(i32::MIN)),
+            Some(f64::from(i32::MIN))
+        );
+        assert_eq!(
             sheet_number(&columns, 0, &Value::Int(-999_999_999_999_999)),
             Some(-999_999_999_999_999.0)
         );
@@ -529,6 +535,19 @@ mod tests {
             render_xlsx(&cols(&["body"]), &[vec![Value::Text("x".repeat(32_767))]], "Results").is_ok(),
             "a value at the limit was refused"
         );
+    }
+
+    #[test]
+    fn a_number_fields_json_is_a_number_a_sheet_sums_and_other_json_is_text() {
+        let (columns, rows) = crate::export::test_columns::mixed_json();
+
+        let xml = sheet_xml(&render_xlsx(&columns, &rows, "Results").expect("render"));
+
+        assert!(xml.contains("<v>3000000000</v>"), "{xml}");
+        assert!(xml.contains("<v>19.9</v>"), "{xml}");
+        assert!(xml.contains("5f1d7a0c9b1e8b2a3c4d5e6f"), "{xml}");
+        assert!(xml.contains("<t>19.90</t>"), "{xml}");
+        assert!(xml.contains(r#"<t>{"$numberLong": "7"}</t>"#), "{xml}");
     }
 
     #[test]

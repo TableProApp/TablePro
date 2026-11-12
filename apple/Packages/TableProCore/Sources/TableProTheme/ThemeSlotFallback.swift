@@ -34,8 +34,9 @@ public extension ThemeSlot {
             return .defaultSyntax
         case .syntaxOperator:
             return .slot(.editorText)
-        // A bool in labelColor next to themed cell text reads as a different table.
-        case .gridBoolTrue, .gridBoolFalse:
+        // A value in labelColor next to themed cell text reads as a different table.
+        case .gridBoolTrue, .gridBoolFalse,
+             .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum:
             return .slot(.gridText)
         case .gridAlternateRow:
             return .derived(base: .gridBackground, rule: .stripe(toward: .gridText))

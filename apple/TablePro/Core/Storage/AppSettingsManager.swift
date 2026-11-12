@@ -62,8 +62,7 @@ final class AppSettingsManager: ObservableObject {
         formatter.options(for: editor)
     }
 
-    /// Device-local: it is deliberately absent from `AppSettingsCategory.synced`, so a zoom press
-    /// never pushes an iCloud record and a Mac on an older build cannot reset it.
+    // Device-local, absent from `AppSettingsCategory.synced`: a zoom press never pushes a record an older build could reset.
     @Published var typography: TypographySettings {
         didSet {
             guard typography != oldValue else { return }
@@ -104,6 +103,15 @@ final class AppSettingsManager: ObservableObject {
             dateFormattingService.updateFormat(validated.dateFormat)
             appEvents.dataGridSettingsChanged.send(())
             syncTracker.markDirty(.settings, id: AppSettingsCategory.dataGrid)
+        }
+    }
+
+    @Published var valueColors: ValueColorSettings {
+        didSet {
+            guard valueColors != oldValue else { return }
+            storage.saveValueColors(valueColors)
+            appEvents.valueColorSettingsChanged.send(())
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.valueColors)
         }
     }
 
@@ -221,6 +229,7 @@ final class AppSettingsManager: ObservableObject {
         self.editor = storage.loadEditor()
         self.formatter = storage.loadFormatter()
         self.dataGrid = storage.loadDataGrid()
+        self.valueColors = storage.loadValueColors()
         self.history = storage.loadHistory()
         self.tabs = storage.loadTabs()
         self.keyboard = storage.loadKeyboard()
@@ -242,10 +251,7 @@ final class AppSettingsManager: ObservableObject {
         dateFormattingService.updateFormat(dataGrid.dateFormat)
     }
 
-    /// Auto-pick the first configured provider as active when nothing is selected.
-    /// Avoids a "AI suddenly stopped working" upgrade UX when older settings JSON
-    /// (with multiple providers and no activeProviderID concept) is loaded.
-    /// Internal so `@testable` tests can exercise it directly.
+    // Settings saved before there was an active provider would otherwise read as AI turned off.
     internal static func migrateAI(_ settings: AISettings) -> AISettings {
         guard settings.activeProviderID == nil, let first = settings.providers.first else {
             return settings
@@ -261,7 +267,7 @@ final class AppSettingsManager: ObservableObject {
         await queryHistoryManager.applySettingsChange()
     }
 
-    /// Resets Sparkle's update preferences here too: the reset alert promises every section.
+    // Resets Sparkle's update preferences too: the reset alert promises every section.
     func resetToDefaults() {
         general = .default
         appearance = .default
@@ -269,6 +275,7 @@ final class AppSettingsManager: ObservableObject {
         editor = .default
         formatter = .default
         dataGrid = .default
+        valueColors = .default
         history = .default
         tabs = .default
         keyboard = .default

@@ -104,6 +104,7 @@ fn native_value(value: &Value, native: &NativeType) -> Option<CqlValue> {
 
 fn integer(value: &Value) -> Option<i64> {
     match value {
+        Value::Int32(number) => Some(i64::from(*number)),
         Value::Int(number) => Some(*number),
         Value::UInt(number) => i64::try_from(*number).ok(),
         _ => None,
@@ -114,6 +115,7 @@ fn integer(value: &Value) -> Option<i64> {
 /// the app holds it in. NaN and the infinities have none.
 fn unscaled(value: &Value) -> Option<(BigInt, u32)> {
     match value {
+        Value::Int32(number) => Some((BigInt::from(*number), 0)),
         Value::Int(number) => Some((BigInt::from(*number), 0)),
         Value::UInt(number) => Some((BigInt::from(*number), 0)),
         Value::WideInt(number) => Some((number.to_string().parse().ok()?, 0)),

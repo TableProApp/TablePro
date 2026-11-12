@@ -9,6 +9,7 @@ final class ScopeRecordingKeychain: KeychainStoring, @unchecked Sendable {
     private var local: [String: String] = [:]
     private var unreadableKeys: Set<String> = []
     private var failingKeys: Set<String> = []
+    private var failingSyncedRemovals: Set<String> = []
 
     func seedSynced(_ value: String, forKey key: String) {
         lock.lock()
@@ -38,6 +39,18 @@ final class ScopeRecordingKeychain: KeychainStoring, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         failingKeys.insert(key)
+    }
+
+    func failSyncedRemoval(of key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        failingSyncedRemovals.insert(key)
+    }
+
+    func allowSyncedRemoval(of key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        failingSyncedRemovals.remove(key)
     }
 
     func allowWrites(to key: String) {
@@ -101,5 +114,15 @@ final class ScopeRecordingKeychain: KeychainStoring, @unchecked Sendable {
         if !deviceOnly {
             synced[key] = nil
         }
+    }
+
+    // As the real keychain does, refused while no local value exists, so the secret is never lost on this Mac.
+    @discardableResult
+    func removeSyncedCopy(forKey key: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard local[key] != nil, !failingSyncedRemovals.contains(key) else { return false }
+        synced[key] = nil
+        return true
     }
 }

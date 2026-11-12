@@ -233,7 +233,7 @@ struct Draft {
     host: String,
     port: Option<u16>,
     username: String,
-    password: Option<String>,
+    password: Option<SecretString>,
     database: String,
     tls: TlsHints,
     options: NetworkOptions,
@@ -241,7 +241,7 @@ struct Draft {
     instance: bool,
     direct: Option<bool>,
     query_user: Option<String>,
-    query_password: Option<String>,
+    query_password: Option<SecretString>,
     unread: Vec<String>,
     path_database: bool,
 }
@@ -250,7 +250,7 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
     let parts = split_parts(rest, properties);
     let (username, password) = match parts.userinfo {
         Some(userinfo) => match userinfo.split_once(':') {
-            Some((user, secret)) => (decode(user)?, Some(decode(secret)?)),
+            Some((user, secret)) => (decode(user)?, Some(SecretString::from(decode(secret)?))),
             None => (decode(userinfo)?, None),
         },
         None => (String::new(), None),
@@ -294,7 +294,7 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
         host: draft.host,
         port: draft.port,
         username: draft.username,
-        password: draft.password.map(SecretString::from),
+        password: draft.password,
         database: draft.database,
         tls: draft.tls.resolve(),
         options: draft.options,
@@ -403,7 +403,7 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Mssql, "instancename") => draft.instance = !value.trim().is_empty(),
         (Engine::Mysql { .. }, "socket" | "unix_socket") => draft.socket = Some(value),
         (_, "user" | "username") => draft.query_user = Some(value),
-        (_, "password") => draft.query_password = Some(value),
+        (_, "password") => draft.query_password = Some(SecretString::from(value)),
         _ => draft.unread(key),
     }
     Ok(())

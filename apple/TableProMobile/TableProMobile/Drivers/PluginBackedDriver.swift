@@ -225,8 +225,7 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
                 case .bytes(let data):
                     return .binary(byteCount: data.count, ref: ref)
                 case .text(let text):
-                    let typeName = index < columns.count ? columns[index].typeName : nil
-                    return Cell.from(legacyValue: text, columnTypeName: typeName, options: options, ref: ref)
+                    return Cell.from(text: text, options: options, ref: ref)
                 }
             }
             continuation.yield(.row(Row(cells: cells, locator: locator)))

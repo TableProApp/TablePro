@@ -54,6 +54,13 @@ struct ThemeSlotFallbackTests {
         .gridNullValue: .system,
         .gridBoolTrue: .slot(.gridText),
         .gridBoolFalse: .slot(.gridText),
+        .gridString: .slot(.gridText),
+        .gridNumber: .slot(.gridText),
+        .gridDateTime: .slot(.gridText),
+        .gridBinary: .slot(.gridText),
+        .gridJSON: .slot(.gridText),
+        .gridUUID: .slot(.gridText),
+        .gridEnum: .slot(.gridText),
         .gridRowNumber: .system,
         .gridModified: .system,
         .gridInserted: .system,
@@ -189,11 +196,14 @@ struct ThemeSlotFallbackTests {
 
     // MARK: - Slot fallbacks
 
-    @Test("Bools follow themed grid text, and stay native without it")
+    @Test("Bools and value types follow themed grid text, and stay native without it")
     func gridTextFollowers() throws {
         let themed = try Self.theme(.dark, [.gridText: "#F8F8F2"])
         let text = Self.color("#F8F8F2")
-        for slot in [ThemeSlot.gridBoolTrue, .gridBoolFalse] {
+        let followers: [ThemeSlot] = [
+            .gridBoolTrue, .gridBoolFalse, .gridString, .gridNumber, .gridDateTime, .gridBinary, .gridJSON, .gridUUID, .gridEnum,
+        ]
+        for slot in followers {
             #expect(themed.value(for: slot) == .themed(text), "\(slot.rawValue)")
             #expect(ThemeDefinition.defaultDark.value(for: slot) == .system(slot), "\(slot.rawValue)")
         }
@@ -201,6 +211,10 @@ struct ThemeSlotFallbackTests {
         let ownBool = try Self.theme(.dark, [.gridText: "#F8F8F2", .gridBoolTrue: "#50FA7B"])
         #expect(ownBool.value(for: .gridBoolTrue) == .themed(Self.color("#50FA7B")))
         #expect(ownBool.value(for: .gridBoolFalse) == .themed(text))
+
+        let ownString = try Self.theme(.dark, [.gridText: "#F8F8F2", .gridString: "#F1FA8C"])
+        #expect(ownString.value(for: .gridString) == .themed(Self.color("#F1FA8C")))
+        #expect(ownString.value(for: .gridNumber) == .themed(text))
     }
 
     @Test("Operator falls back to the editor text, themed or native")

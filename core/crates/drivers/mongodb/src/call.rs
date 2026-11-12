@@ -138,6 +138,17 @@ impl ReadStop {
             false => Ok(()),
         }
     }
+
+    /// Once the call is stopped, send no new command: no stop reaches one
+    /// sent after it. The read still waits for the stop's answer, so the
+    /// session goes back to the pool and the link reads as live.
+    pub(crate) async fn before_command(&self) -> Result<(), DriverError> {
+        if !self.call.is_requested() {
+            return Ok(());
+        }
+        self.kill.answered.cancelled().await;
+        Err(stopped(&self.call))
+    }
 }
 
 fn refused_by_server(error: &mongodb::error::Error) -> bool {
@@ -328,6 +339,21 @@ mod tests {
                 server_cancelled: false
             })
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stopped_call_sends_no_new_command_once_the_stop_is_answered() {
+        let (kill, call) = (SessionKill::new(), StopRequest::new());
+        let read = kill.follow(&call);
+        assert_eq!(read.before_command().await, Ok(()));
+
+        call.request(StopReason::Cancelled);
+        let waited = tokio::time::timeout(Duration::from_secs(1), read.before_command()).await;
+        assert!(waited.is_err(), "the command went out before the answer");
+
+        kill.answered.cancel();
+        assert_eq!(read.before_more().await, Ok(()), "a killed cursor's own error ends it");
+        assert_eq!(read.before_command().await, Err(DriverError::Cancelled));
     }
 
     #[tokio::test(start_paused = true)]
