@@ -73,6 +73,8 @@ extension DynamoDBPluginDriver {
         )
     }
 
+    var fetchesAllColumnsInOneRequest: Bool { true }
+
     /// Columns for autocomplete, from the tables already described, with no request at all. The
     /// app asks for every table on connect, and answering by sampling each one read up to 300
     /// tables in the background.
