@@ -58,6 +58,11 @@ internal final class TabPersistenceCoordinator: ObservableObject {
         hasObservedTabs = true
     }
 
+    // A workspace founded on one table or query never read the saved set, and the gate refuses its saves until it does.
+    internal func readsSavedTabs(foundedWith intent: TabIntent?) -> Bool {
+        intent == nil || intent == .restoreOrDefault || !hasObservedTabs
+    }
+
     // The gate is one session's knowledge of the disk. Left open after the connection's last window closed, a
     // window later opened on content alone, which skips the restore, would write its one tab over the saved set.
     internal func endSession() {
