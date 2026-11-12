@@ -48,12 +48,15 @@ internal enum ExecutionGateProvider {
         case .stored(let stored): (nil, stored)
         case .unknown: (nil, nil)
         }
-        let managedMinimum = ManagedPolicyResolver.minimumSafeModeLevel(policy: ManagedPolicyReader.shared)
+        let floor: SafeModeLevel? = if let connection {
+            AgentModeSafeModeFloor.effectiveFloor(for: connection)?.level
+        } else {
+            ManagedPolicyResolver.minimumSafeModeLevel(policy: ManagedPolicyReader.shared)
+        }
         return ReadOnlyFunctionPolicy(
             functionsCanWrite: liveDriver?.enforcesReadOnlyMode != true
                 && PluginMetadataRegistry.queryFunctionsCanWrite.contains(databaseType),
-            levelIsHeld: managedMinimum?.blocksAllWrites == true
-                || connection?.safeModeFloor?.level.blocksAllWrites == true
+            floor: floor
         )
     }
 

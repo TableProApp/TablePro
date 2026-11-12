@@ -20,7 +20,8 @@ struct ExternalStatementGateTests {
         loadsExtensions: Bool = false,
         allowsDestructive: Bool = true,
         allowsMultiStatement: Bool = false,
-        destructiveAlternative: String? = nil
+        destructiveAlternative: String? = nil,
+        allowsOnlyDataStatements: Bool = false
     ) -> ExternalStatementGate.Statement {
         ExternalStatementGate.Statement(
             sql: sql,
@@ -30,7 +31,8 @@ struct ExternalStatementGateTests {
             loadsExtensions: loadsExtensions,
             allowsDestructive: allowsDestructive,
             allowsMultiStatement: allowsMultiStatement,
-            destructiveAlternative: destructiveAlternative
+            destructiveAlternative: destructiveAlternative,
+            allowsOnlyDataStatements: allowsOnlyDataStatements
         )
     }
 
@@ -49,6 +51,33 @@ struct ExternalStatementGateTests {
     func readsPass() throws {
         let classification = try ExternalStatementGate.classify(statement("SELECT 1"))
         #expect(classification.tier == .safe)
+    }
+
+    @Test("A caller held to data statements is refused a grant, a role change or a SET, and only that caller", arguments: [
+        "GRANT ALL ON orders TO app", "ALTER ROLE app WITH SUPERUSER", "SET search_path = evil", "SELECT set_config('role', 'admin', false)",
+    ])
+    func dataStatementsOnlyRefusesTheRest(sql: String) {
+        #expect(refusal(statement(sql, allowsOnlyDataStatements: true)) == .denied(ExternalStatementGate.dataStatementRefusal))
+        #expect(refusal(statement(sql)) == nil)
+    }
+
+    @Test("A caller held to data statements runs reads and row changes")
+    func dataStatementsOnlyRunsRowWork() {
+        for sql in ["SELECT * FROM orders", "UPDATE orders SET paid = true WHERE id = 1", "INSERT INTO orders (id) VALUES (1)"] {
+            #expect(refusal(statement(sql, allowsOnlyDataStatements: true)) == nil)
+        }
+    }
+
+    // A query language of the engine's own has no data statement to tell from a definition, so the flag leaves it to
+    // the tier rules.
+    @Test("A caller held to data statements keeps the tier rules on an engine with its own query language", arguments: [
+        (DatabaseType.mongodb, "db.orders.insertOne({a: 1})"),
+        (.kafka, "PRODUCE INTO \"orders\" KEY \"k\" VALUE \"v\""),
+        (.surrealdb, "DEFINE TABLE person SCHEMAFULL"),
+    ])
+    func dataStatementsOnlyLeavesOtherLanguages(type: DatabaseType, sql: String) {
+        #expect(QueryClassifier.isSQLDataStatement(sql, databaseType: type) == nil)
+        #expect(refusal(statement(sql, databaseType: type, allowsOnlyDataStatements: true)) == nil)
     }
 
     @Test("A MongoDB read passes a connection that is read only for external clients", arguments: [

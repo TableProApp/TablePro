@@ -767,7 +767,7 @@ extension QueryExecutionCoordinator {
                     filters: filters,
                     logicMode: logicMode,
                     safeModeIsReadOnly: parent.runsAtReadOnly,
-                    gate: parent.rawFilterNeedsReadOnlyGate(filters, tabId: tabId)
+                    gate: parent.rawFilterNeedsReadOnlyGate(filters)
                         ? sql.map { parent.rawFilterRequest(sql: $0, canPrompt: false) }
                         : nil
                 )
@@ -776,12 +776,8 @@ extension QueryExecutionCoordinator {
 
             // Nobody asked for this count, so nothing may ask the user about it: a refusal leaves the total unknown.
             var plan = prepared.plan
-            if let count = prepared.count, let gate = count.gate {
-                if await parent.executionGate.authorize(gate).isAuthorized {
-                    parent.approveReadOnlyRawFilter(count.filters, tabId: tabId)
-                } else {
-                    plan = .clear
-                }
+            if let count = prepared.count, let gate = count.gate, !(await parent.executionGate.authorize(gate).isAuthorized) {
+                plan = .clear
             }
 
             let outcome = await Self.rowCountOutcome(

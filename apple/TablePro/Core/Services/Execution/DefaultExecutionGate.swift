@@ -140,40 +140,24 @@ internal actor DefaultExecutionGate: ExecutionGate {
     }
 
     // The classifier tiers `SELECT purge_orders()` as a read. Where the driver cannot run it in the engine's read-only
-    // mode and a function on the engine can write, a call off the built-in list is asked about, or refused when a
-    // profile or the engine floor holds the level, since an answer there would let a write past them. Nil runs it.
+    // mode and a function on the engine can write, a call off the built-in list is one the gate cannot tell from a
+    // write, so Read-Only refuses it like one, whatever the caller was cleared for. Nil runs it.
     private func readOnlyFunctionRefusal(_ request: OperationRequest, sql: String) async -> OperationDecision? {
         let policy = await readOnlyFunctionPolicyResolver(request.connectionId, request.databaseType)
         guard policy.functionsCanWrite,
               ReadOnlyFunctionCalls.callsUnlistedFunction(sql, databaseType: request.databaseType)
         else { return nil }
-        if policy.levelIsHeld {
+        guard let level = policy.levelThatRunsIt else {
             return .denied(reason: String(
                 localized: "Cannot run this query: it calls a function that can change data, and Safe Mode is held at Read-Only for this connection."
             ))
         }
-        let caps = request.capabilities
-        guard !caps.contains(.preCleared), !caps.contains(.confirmationPreCleared) else { return nil }
-        if caps.contains(.cannotPrompt) {
-            return .denied(reason: String(localized: "Confirmation is required for this operation"))
-        }
-        let confirmed = await confirming.confirm(
-            OperationConfirmationRequest(
-                sql: request.sql,
-                operationDescription: String(localized: "This query calls a function that can change data"),
-                connectionId: request.connectionId,
-                connectionName: await connectionNameResolver(request.connectionId),
-                databaseType: request.databaseType,
-                caller: request.caller,
-                isDestructive: false,
-                scope: request.scope,
-                statements: request.statements
-            )
-        )
-        guard confirmed else {
-            return .denied(reason: String(localized: "Operation cancelled by user"), cause: .cancelledByUser)
-        }
-        return nil
+        return .denied(reason: String(
+            format: String(
+                localized: "Cannot run this query at Read-Only: it calls a function that can change data. Switch Safe Mode to %@ to run it."
+            ),
+            level.displayName
+        ))
     }
 
     private func resolveEffectiveWrite(_ request: OperationRequest, tier: QueryTier?) async -> Bool {

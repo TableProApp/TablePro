@@ -61,8 +61,8 @@ struct ExecuteQueryChatTool: ChatTool {
             takingScriptsOn: meta.databaseType
         )
 
-        // The refusals MCP makes, from the same gate. AI Policy, checked above, governs the assistant, so the
-        // External Clients level is not asked.
+        // The refusals MCP makes, from the same gate, plus Edit's. AI Policy, checked above, governs the assistant, so
+        // the External Clients level is not asked.
         let classification: QueryClassification
         do {
             classification = try ExternalStatementGate.classify(
@@ -76,7 +76,8 @@ struct ExecuteQueryChatTool: ChatTool {
                     allowsMultiStatement: capabilities.contains(.mayRunMultiStatement),
                     destructiveAlternative: String(
                         localized: "In Agent mode, use confirm_destructive_operation with the explicit confirmation phrase."
-                    )
+                    ),
+                    allowsOnlyDataStatements: context.chatMode != .agent
                 )
             )
         } catch let refusal as ExternalStatementGateError {
@@ -98,6 +99,13 @@ struct ExecuteQueryChatTool: ChatTool {
             database: database,
             schema: schema
         )
+        // A table named without a schema lands in the scope's, and the engine's own schemas hold its grant, setup and
+        // settings tables.
+        if context.chatMode != .agent, classification.tier != .safe, SQLStatementClassifier.isSystemScope(
+            database: scope.database, schema: scope.schema, databaseTypeId: meta.databaseType.rawValue
+        ) {
+            return ChatToolResult(content: ExternalStatementGate.dataStatementRefusal, isError: true)
+        }
         let planned = try await context.bridge.plannedScript(scope: scope, query: query, maxRows: maxRows)
         let operation = try await context.authPolicy.checkSafeModeDialog(
             operation: PendingOperation(

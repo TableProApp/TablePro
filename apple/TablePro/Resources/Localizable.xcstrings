@@ -34869,6 +34869,9 @@
         }
       }
     },
+    "Cannot run this query at Read-Only: it calls a function that can change data. Switch Safe Mode to %@ to run it." : {
+
+    },
     "Cannot run this query: it calls a function that can change data, and Safe Mode is held at Read-Only for this connection." : {
 
     },
@@ -70911,6 +70914,9 @@
         }
       }
     },
+    "Edit mode runs only queries and data changes, such as SELECT, INSERT, UPDATE, DELETE and MERGE. A schema, privilege, session or transaction statement, or a change to the database's own tables, needs Agent mode, or run it yourself in a query tab." : {
+
+    },
     "Edit Profile…" : {
       "localizations" : {
         "en" : {
@@ -71147,6 +71153,9 @@
           }
         }
       }
+    },
+    "Edit: read-only tools plus queries and data changes. On SQL databases, schema, privilege and session statements need Agent mode." : {
+
     },
     "Edit: read-only tools plus running queries. Destructive DDL stays blocked." : {
       "localizations" : {
@@ -183275,6 +183284,9 @@
         }
       }
     },
+    "TablePro's Safe Mode is held at Read-Only for this connection, so this tool cannot run." : {
+
+    },
     "TablePro's Safe Mode is set to read-only for this connection. Destructive operations are not permitted." : {
       "localizations" : {
         "fr" : {
@@ -183354,6 +183366,9 @@
           }
         }
       }
+    },
+    "TablePro's Safe Mode is set to Read-Only for this connection. Switch it to %@ to allow this tool." : {
+
     },
     "tables" : {
       "localizations" : {

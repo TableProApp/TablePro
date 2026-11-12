@@ -86,6 +86,7 @@ struct AIChatStoppedWriteTests {
                 historyRecorder: history,
                 executionGate: AlwaysAllowGate()
             ),
+            chatMode: .agent,
             policyLookup: { _ in .alwaysAllow }
         ))
         let registry = ChatToolRegistry()

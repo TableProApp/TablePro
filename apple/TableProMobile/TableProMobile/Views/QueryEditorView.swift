@@ -40,6 +40,7 @@ struct QueryEditorView: View {
     @State private var executionStartTime: Date?
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
+    @State private var showFunctionBlockedAlert = false
     @State private var pendingWriteQuery = ""
     @State private var showClearConfirmation = false
     @State private var showShareSheet = false
@@ -230,6 +231,11 @@ struct QueryEditorView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("This connection is in read-only mode. Write queries are not allowed.")
+        }
+        .alert(String(localized: "Query Blocked"), isPresented: $showFunctionBlockedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This query calls a function that can change data, which Read-Only does not run. Switch Safe Mode to \(SafeModeLevel.confirmWrites.displayName) to run it.")
         }
         .confirmationDialog(String(localized: "Execute Write Query?"), isPresented: $showWriteConfirmation, titleVisibility: .visible) {
             Button(String(localized: "Execute"), role: .destructive) {
@@ -854,6 +860,9 @@ struct QueryEditorView: View {
             case .proceed:
                 break
             }
+        } else if ReadOnlyFunctionGuard.refuses(trimmed, databaseType: databaseType, level: safeModeLevel) {
+            showFunctionBlockedAlert = true
+            return
         }
 
         await executeQueryDirect(trimmed)

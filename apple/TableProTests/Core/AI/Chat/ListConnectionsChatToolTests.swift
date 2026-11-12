@@ -22,6 +22,7 @@ struct ListConnectionsChatToolTests {
             connectionId: connectionId,
             bridge: MCPConnectionBridge(),
             authPolicy: MCPAuthPolicy(),
+            chatMode: .agent,
             policyLookup: { _ in policy }
         )
     }
