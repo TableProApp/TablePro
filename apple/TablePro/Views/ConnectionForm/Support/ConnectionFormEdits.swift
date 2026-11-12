@@ -42,6 +42,7 @@ struct ConnectionFormEdits: Equatable {
     var additionalFields: [String: String]
     var ownedAdditionalFieldIDs: Set<String>
     var maskingRules: [MaskingRule] = []
+    var revokedAIAlwaysAllowedTools: Set<String> = []
 
     static let appManagedAdditionalFieldIDs: Set<String> = [
         "preConnectScript",
@@ -93,6 +94,8 @@ struct ConnectionFormEdits: Equatable {
         result.completionIdentifierCase = completionIdentifierCase
         result.commitMode = commitMode
         result.maskingRules = maskingRules
+        // Subtract, never assign: a grant recorded while the form was open stays.
+        result.aiAlwaysAllowedTools.subtract(revokedAIAlwaysAllowedTools)
         return result
     }
 

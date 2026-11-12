@@ -635,6 +635,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedRead(query: query, rowCap: rowCap)
+    }
+
+    // An external read with a cap ends the request one row past it, as the bounded read does, instead of reading up to
+    // the emergency ceiling and cutting here. Parameters ride in `sp_executesql`, which only the default path writes.
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external, parameters?.isEmpty ?? true, let cap = rowCap, cap > 0 else {
+            return try await PluginParameterBinder.withHostContext(context) {
+                try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+            }
+        }
+        return try await boundedRead(query: query, rowCap: cap)
+    }
+
+    private func boundedRead(query: String, rowCap: Int) async throws -> PluginQueryResult {
         guard let conn = freeTDSConn else {
             throw MSSQLPluginError.notConnected
         }

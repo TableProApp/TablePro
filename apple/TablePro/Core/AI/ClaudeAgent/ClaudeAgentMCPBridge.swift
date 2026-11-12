@@ -5,6 +5,8 @@ import TableProMCP
 struct ClaudeAgentToolGrant: Sendable, Equatable {
     let configPath: String
     let tokenId: UUID
+    // Nil leaves every tool the token's scopes allow.
+    let allowedToolNames: [String]?
 }
 
 // A turn that was asked to use a connection stops with one of these rather than run without its tools.
@@ -26,7 +28,7 @@ enum ClaudeAgentToolGrantError: Error, LocalizedError, Equatable {
 }
 
 protocol ClaudeAgentMCPBridging: Sendable {
-    func makeGrant(connectionId: UUID?) async throws -> ClaudeAgentToolGrant?
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async throws -> ClaudeAgentToolGrant?
     func release(_ grant: ClaudeAgentToolGrant?) async
 }
 
@@ -53,7 +55,15 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         return .limited([connectionId])
     }
 
-    func makeGrant(connectionId: UUID?) async throws -> ClaudeAgentToolGrant? {
+    // Ask promises schema lookups only, so the server holds the token to them; Edit and Agent keep the read-only token.
+    static func toolProfile(for mode: AIChatMode) -> MCPToolProfile? {
+        switch mode {
+        case .ask: .schemaLookup
+        case .edit, .agent: nil
+        }
+    }
+
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async throws -> ClaudeAgentToolGrant? {
         guard let connectionAccess = Self.connectionAccess(for: connectionId) else {
             Self.logger.info("No connection attached; Claude Agent runs without database tools")
             return nil
@@ -61,6 +71,7 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         guard let endpoint = await self.endpoint() else { return nil }
         guard let tokenStore = await self.tokenStore() else { return nil }
 
+        let toolProfile = Self.toolProfile(for: mode)
         let generated: (token: MCPAuthToken, plaintext: String)
         do {
             generated = try await tokenStore.generate(
@@ -70,7 +81,8 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
                 expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
                 isBridgeCredential: false,
                 isClaudeAgentCredential: true,
-                extraScopes: []
+                extraScopes: [],
+                toolProfile: toolProfile
             )
         } catch {
             Self.logger.error("Claude Agent token was not issued: \(error.publicLogShape, privacy: .public)")
@@ -88,7 +100,11 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         }
 
         Self.logger.debug("Issued Claude Agent MCP grant")
-        return ClaudeAgentToolGrant(configPath: configPath, tokenId: generated.token.id)
+        return ClaudeAgentToolGrant(
+            configPath: configPath,
+            tokenId: generated.token.id,
+            allowedToolNames: toolProfile.map { $0.toolNames.sorted() }
+        )
     }
 
     func release(_ grant: ClaudeAgentToolGrant?) async {

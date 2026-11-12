@@ -29,12 +29,14 @@ struct AIChatPanelView: View {
         settingsManager.ai.hasActiveProvider
     }
 
-    /// The first call still waiting, in transcript order, which is the only one Return may answer.
+    // Only a card a turn still waits on may take Return and Escape.
     private var primaryPendingToolUseId: String? {
         for turn in viewModel.messages {
             for block in turn.blocks {
                 guard case .toolUse(let useBlock) = block.kind,
-                      case .pending = useBlock.approvalState else { continue }
+                      case .pending = useBlock.approvalState,
+                      ToolApprovalCenter.shared.isAwaiting(sessionId: viewModel.sessionId, toolUseId: useBlock.id)
+                else { continue }
                 return useBlock.id
             }
         }

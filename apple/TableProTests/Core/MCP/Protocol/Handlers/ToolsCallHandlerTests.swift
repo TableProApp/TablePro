@@ -1,5 +1,6 @@
 import Foundation
 import TableProMCP
+import TableProMCPTestSupport
 import TableProPluginKit
 @testable import TablePro
 import Testing
@@ -122,6 +123,103 @@ struct ToolsCallHandlerTests {
     func argumentsMayBeOmitted() async throws {
         let result = try await call(name: "list_connections", arguments: nil)
         #expect(result.payload["content"] != nil)
+    }
+
+    @Test("A tool outside the token's allowlist is refused before it runs, with no scope to step up to")
+    func toolOutsideTheAllowlistIsRefused() async throws {
+        let history = ToolTestQueryHistoryStore()
+        let handler = ToolsCallHandler(services: MCPToolTestHarness.services(history: history))
+        let principal = askPrincipal()
+
+        for name in ["execute_query", "browse_table", "export_data", "search_query_history", "explain_query"] {
+            let params = JsonValue.object([
+                "name": .string(name),
+                "arguments": .object(["query": .string("SELECT 1")])
+            ])
+            let context = await MCPProtocolHandlerTestSupport.makeContext(
+                method: ToolsCallHandler.method,
+                params: params,
+                principal: principal
+            )
+            do {
+                _ = try await handler.handle(params: params, context: context)
+                Issue.record("\(name) ran for a token whose allowlist leaves it out")
+            } catch let error as MCPProtocolError {
+                #expect(error.code == JsonRpcErrorCode.forbidden)
+                #expect(header(named: "WWW-Authenticate", in: error) == nil)
+                #expect(error.data?["requiredScopes"] == nil)
+            }
+        }
+        #expect(await history.receivedFilters.isEmpty)
+    }
+
+    @Test("A tool inside the token's allowlist still runs")
+    func toolInsideTheAllowlistRuns() async throws {
+        let params = JsonValue.object(["name": .string("list_connections"), "arguments": .object([:])])
+        let context = await MCPProtocolHandlerTestSupport.makeContext(
+            method: ToolsCallHandler.method,
+            params: params,
+            principal: askPrincipal()
+        )
+
+        let result = try await makeHandler().handle(params: params, context: context)
+
+        #expect(result.payload["isError"]?.boolValue == false)
+    }
+
+    @Test("Under Ask Every Time, one search_query_history call that names a connection asks once")
+    func namedHistorySearchAsksOnce() async throws {
+        let connectionId = UUID()
+        let presenter = RecordingApprovalPresenter(answer: true)
+        let history = ToolTestQueryHistoryStore(entries: [
+            QueryHistoryEntry(
+                query: "SELECT 1",
+                connectionId: connectionId,
+                databaseName: "shop",
+                databaseType: .postgresql,
+                source: .editor,
+                executionTime: 0.01,
+                rowCount: 1,
+                wasSuccessful: true
+            )
+        ])
+        let services = MCPToolTestHarness.services(
+            authPolicy: MCPToolTestHarness.authPolicy(
+                connections: [connectionId: MCPToolTestHarness.snapshot(policy: .askEachTime, name: "Payroll")],
+                approval: .everyTime,
+                presenter: presenter,
+                ledger: MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
+            ),
+            history: history
+        )
+        let params = JsonValue.object([
+            "name": .string("search_query_history"),
+            "arguments": .object(["query": .string(""), "connection_id": .string(connectionId.uuidString)])
+        ])
+        let context = await MCPProtocolHandlerTestSupport.makeContext(
+            method: ToolsCallHandler.method,
+            params: params,
+            principalScopes: [.toolsRead]
+        )
+
+        let result = try await ToolsCallHandler(services: services).handle(params: params, context: context)
+
+        #expect(await presenter.askedCount == 1)
+        #expect(result.payload["isError"]?.boolValue == false)
+        let entries = result.payload["structuredContent"]?["entries"]?.arrayValue ?? []
+        #expect(entries.count == 1)
+        #expect(entries.first?["connection_id"]?.stringValue == connectionId.uuidString)
+    }
+
+    private func askPrincipal() -> MCPPrincipal {
+        MCPPrincipal(
+            tokenFingerprint: "ask",
+            tokenId: UUID(),
+            scopes: [.toolsRead],
+            connectionAccess: .limited([]),
+            metadata: MCPPrincipalMetadata(label: "ask", issuedAt: .distantPast, expiresAt: nil),
+            toolAllowlist: MCPToolProfile.schemaLookup.toolNames
+        )
     }
 
     private func makeHandler() -> ToolsCallHandler {

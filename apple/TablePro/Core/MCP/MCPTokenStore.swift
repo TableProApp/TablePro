@@ -42,9 +42,17 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     // Set only by the Claude Agent chat's own mint, on the same terms.
     let isClaudeAgentCredential: Bool
     let extraScopes: Set<MCPScope>
+    // Set only by the Claude Agent chat's own mint; no pairing input reaches it.
+    let toolProfile: MCPToolProfile?
 
     var scopes: Set<MCPScope> {
-        permissions.scopes.union(extraScopes)
+        let granted = permissions.scopes.union(extraScopes)
+        guard let toolProfile else { return granted }
+        return granted.intersection(toolProfile.scopes)
+    }
+
+    var toolAllowlist: Set<String>? {
+        toolProfile?.toolNames
     }
 
     var isExpired: Bool {
@@ -96,7 +104,8 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         isActive: Bool,
         isBridgeCredential: Bool = false,
         isClaudeAgentCredential: Bool = false,
-        extraScopes: Set<MCPScope> = []
+        extraScopes: Set<MCPScope> = [],
+        toolProfile: MCPToolProfile? = nil
     ) {
         self.id = id
         self.name = name
@@ -112,6 +121,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.isBridgeCredential = isBridgeCredential
         self.isClaudeAgentCredential = isClaudeAgentCredential
         self.extraScopes = extraScopes.intersection(MCPScope.optionalGrants)
+        self.toolProfile = toolProfile
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -129,6 +139,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         case isBridgeCredential
         case isClaudeAgentCredential
         case extraScopes
+        case toolProfile
     }
 
     init(from decoder: Decoder) throws {
@@ -150,6 +161,12 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         let storedExtraScopes = (try? container.decodeIfPresent([String].self, forKey: .extraScopes)) ?? []
         self.extraScopes = Set(storedExtraScopes.compactMap(MCPScope.init(rawValue:)))
             .intersection(MCPScope.optionalGrants)
+        // Strict, unlike extraScopes: a profile only narrows, so a damaged value read as absent would widen the token.
+        if container.contains(.toolProfile) {
+            self.toolProfile = try container.decode(MCPToolProfile.self, forKey: .toolProfile)
+        } else {
+            self.toolProfile = nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -171,6 +188,34 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         try container.encode(isActive, forKey: .isActive)
         if !extraScopes.isEmpty {
             try container.encode(extraScopes.map(\.rawValue).sorted(), forKey: .extraScopes)
+        }
+        try container.encodeIfPresent(toolProfile, forKey: .toolProfile)
+    }
+}
+
+enum MCPToolProfile: String, Codable, Sendable {
+    // The chat's Ask mode: the schema lookups, no rows, no history.
+    case schemaLookup
+
+    var scopes: Set<MCPScope> {
+        switch self {
+        case .schemaLookup:
+            [.toolsRead]
+        }
+    }
+
+    var toolNames: Set<String> {
+        switch self {
+        case .schemaLookup:
+            [
+                ListConnectionsTool.name,
+                GetConnectionStatusTool.name,
+                ListDatabasesTool.name,
+                ListSchemasTool.name,
+                ListTablesTool.name,
+                DescribeTableTool.name,
+                GetTableDdlTool.name
+            ]
         }
     }
 }
@@ -243,6 +288,28 @@ actor MCPTokenStore {
         revocationObservers.removeValue(forKey: id)
     }
 
+    // Pairing and Settings mint without a profile; only the Claude Agent mint passes one.
+    func generate(
+        name: String,
+        permissions: TokenPermissions,
+        connectionAccess: ConnectionAccess,
+        expiresAt: Date?,
+        isBridgeCredential: Bool,
+        isClaudeAgentCredential: Bool,
+        extraScopes: Set<MCPScope>
+    ) throws -> (token: MCPAuthToken, plaintext: String) {
+        try generate(
+            name: name,
+            permissions: permissions,
+            connectionAccess: connectionAccess,
+            expiresAt: expiresAt,
+            isBridgeCredential: isBridgeCredential,
+            isClaudeAgentCredential: isClaudeAgentCredential,
+            extraScopes: extraScopes,
+            toolProfile: nil
+        )
+    }
+
     // Only the bridge's and the agent's own mints may take their names: a pairing client picks its name,
     // and the window labels both names as TablePro's own. loadFromDisk enforces the same for older tokens.
     func generate(
@@ -252,7 +319,8 @@ actor MCPTokenStore {
         expiresAt: Date?,
         isBridgeCredential: Bool,
         isClaudeAgentCredential: Bool,
-        extraScopes: Set<MCPScope>
+        extraScopes: Set<MCPScope>,
+        toolProfile: MCPToolProfile?
     ) throws -> (token: MCPAuthToken, plaintext: String) {
         let isAgentMint = isClaudeAgentCredential && !isBridgeCredential
         let claimsReservedName = (!isBridgeCredential && name == Self.stdioBridgeTokenName)
@@ -281,7 +349,8 @@ actor MCPTokenStore {
             isActive: true,
             isBridgeCredential: isBridgeCredential,
             isClaudeAgentCredential: isAgentMint,
-            extraScopes: isBridgeCredential ? [] : extraScopes
+            extraScopes: isBridgeCredential ? [] : extraScopes,
+            toolProfile: toolProfile
         )
 
         tokens.append(token)

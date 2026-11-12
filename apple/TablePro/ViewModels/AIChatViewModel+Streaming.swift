@@ -383,7 +383,8 @@ extension AIChatViewModel {
                     model: resolved.model
                 ),
                 sessionId: sessionId,
-                connectionId: connection?.id
+                connectionId: connection?.id,
+                chatMode: chatMode
             )
         )
 

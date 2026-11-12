@@ -897,35 +897,36 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String, rowCap: Int? = nil) async throws -> MariaDBPluginQueryResult {
+    func executeQuery(_ query: String, rowCap: Int? = nil, byteLimit: Int? = nil) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeQuerySync(queryToRun, rowCap: rowCap)
+            return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit)
         }
     }
 
     func executeParameterizedQuery(
         _ query: String,
         parameters: [PluginCellValue],
-        rowCap: Int? = nil
+        rowCap: Int? = nil,
+        byteLimit: Int? = nil
     ) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap)
+            return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit)
         }
     }
 
-    // `sessionState` runs in this same block, so nothing queued behind it can open a transaction before the wrap.
     func executeReadOnly(
         _ query: String,
         parameters: [PluginCellValue]?,
         rowCap: Int?,
-        sessionState: @escaping @Sendable (Bool) -> PluginSessionTransactionState
+        byteLimit: Int?,
+        scope: MySQLReadOnlyTransaction.Scope
     ) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
@@ -933,20 +934,29 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
             return try MySQLReadOnlyTransaction.run(
-                state: sessionState(isInTransaction),
+                state: scope.sessionState(isInTransaction),
+                reason: scope.reason,
                 send: { _ = try executeQuerySync($0) },
                 statement: {
-                    guard let params else { return try executeQuerySync(queryToRun, rowCap: rowCap) }
-                    return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap)
+                    guard let params else {
+                        return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit)
+                    }
+                    return try executeParameterizedQuerySync(
+                        queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit
+                    )
                 }
             )
         }
     }
 
-    private func executeQuerySync(_ query: String, rowCap: Int? = nil) throws -> MariaDBPluginQueryResult {
+    private func executeQuerySync(
+        _ query: String,
+        rowCap: Int? = nil,
+        byteLimit: Int? = nil
+    ) throws -> MariaDBPluginQueryResult {
         try runStatement(query) {
             try self.runCancellableStatement { mysql, generation in
-                try self.runTextStatement(query, rowCap: rowCap, on: mysql, generation: generation)
+                try self.runTextStatement(query, rowCap: rowCap, byteLimit: byteLimit, on: mysql, generation: generation)
             }
         }
     }
@@ -984,6 +994,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func runTextStatement(
         _ query: String,
         rowCap: Int?,
+        byteLimit: Int?,
         on mysql: UnsafeMutablePointer<MYSQL>,
         generation: Int
     ) throws -> MariaDBPluginQueryResult {
@@ -1050,6 +1061,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let maxRows = mysqlClampedRowCap(rowCap) ?? PluginRowLimits.emergencyMax
         let fetchLimit = maxRows == PluginRowLimits.emergencyMax ? maxRows : maxRows + 1
         var serverSentMore = false
+        var bytes = 0
+        var stoppedAtByteLimit = false
         var firstRowTime: TimeInterval?
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
@@ -1066,20 +1079,30 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 break
             }
 
-            rows.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
+            let row = textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns)
+            rows.append(row)
+            if let byteLimit {
+                bytes += mysqlDecodedByteCount(of: row)
+                if bytes > byteLimit {
+                    stoppedAtByteLimit = true
+                    break
+                }
+            }
         }
 
         let outcome = mysqlBoundedFetchOutcome(
             fetchedRows: rows.count,
             rowCap: maxRows,
-            serverSentMore: serverSentMore
+            serverSentMore: serverSentMore,
+            stoppedAtByteLimit: stoppedAtByteLimit
         )
         let truncated = outcome.isTruncated
+        let stoppedEarly = outcome.serverIgnoredLimit || stoppedAtByteLimit
         if truncated {
-            logger.warning("Result set truncated at \(maxRows) rows")
+            logger.warning("Result set truncated at \(outcome.keptRows) rows")
             rows.removeLast(rows.count - outcome.keptRows)
         }
-        if outcome.serverIgnoredLimit {
+        if stoppedEarly {
             if !sessionFlavor.dropsIdleSessionOnKillQuery {
                 killStatementOnServer(on: mysql, generation: generation)
             }
@@ -1095,9 +1118,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let fetchErrno = mysql_errno(mysql)
         if fetchErrno != 0 {
             let error = noting(getError(), generation: generation)
-            if !isExpectedInterruption(
-                errno: fetchErrno, message: error.message, wasTruncated: outcome.serverIgnoredLimit
-            ) {
+            if !isExpectedInterruption(errno: fetchErrno, message: error.message, wasTruncated: stoppedEarly) {
                 mysql_free_result(resultPtr)
                 throw error
             }
@@ -1107,7 +1128,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         do {
             try consumeTrailingResults(on: mysql, generation: generation)
         } catch let error as MariaDBPluginError where isExpectedInterruption(
-            errno: error.code, message: error.message, wasTruncated: outcome.serverIgnoredLimit
+            errno: error.code, message: error.message, wasTruncated: stoppedEarly
         ) {
             // The row cap's own kill stopped the routine after its first result set, the truncation already reported.
         }
@@ -1211,6 +1232,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         metadata: UnsafeMutablePointer<MYSQL_RES>,
         columns: MySQLResultColumns,
         rowCap: Int? = nil,
+        byteLimit: Int?,
         generation: Int,
         sentAt: Date
     ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool, firstRowTime: TimeInterval) {
@@ -1250,6 +1272,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let maxRows = mysqlClampedRowCap(rowCap) ?? PluginRowLimits.emergencyMax
         let fetchLimit = maxRows == PluginRowLimits.emergencyMax ? maxRows : maxRows + 1
         var serverSentMore = false
+        var bytes = 0
+        var stoppedAtByteLimit = false
         /// `mysql_stmt_execute` returns once the server has answered with a header, which on an
         /// unbuffered statement can be long before the first tuple exists. Only a fetch that
         /// returns a row proves the server produced one.
@@ -1295,20 +1319,30 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 }
             }
 
-            rows.append(columns.row(encoding: connectionEncoding) { index in
+            let row = columns.row(encoding: connectionEncoding) { index in
                 guard resultBinds[index].is_null?.pointee != 1 else { return nil }
                 let length = Int(resultBinds[index].length?.pointee ?? 0)
                 return UnsafeRawBufferPointer(start: resultBuffers[index], count: length)
-            })
+            }
+            rows.append(row)
+            // `mysql_stmt_next_result` and `mysql_stmt_close` skip the rows left unread.
+            if let byteLimit {
+                bytes += mysqlDecodedByteCount(of: row)
+                if bytes > byteLimit {
+                    stoppedAtByteLimit = true
+                    break
+                }
+            }
         }
 
         let outcome = mysqlBoundedFetchOutcome(
             fetchedRows: rows.count,
             rowCap: maxRows,
-            serverSentMore: serverSentMore
+            serverSentMore: serverSentMore,
+            stoppedAtByteLimit: stoppedAtByteLimit
         )
         if outcome.isTruncated {
-            logger.warning("Prepared statement result truncated at \(maxRows) rows")
+            logger.warning("Prepared statement result truncated at \(outcome.keptRows) rows")
             rows.removeLast(rows.count - outcome.keptRows)
         }
 
@@ -1322,18 +1356,19 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func executeParameterizedQuerySync(
         _ query: String,
         parameters: [PluginCellValue],
-        rowCap: Int? = nil
+        rowCap: Int? = nil,
+        byteLimit: Int? = nil
     ) throws -> MariaDBPluginQueryResult {
         guard flavor.preparesOnServer else {
             let inlined = flavor.isDatabend
                 ? try DatabendLiteral.inline(query, parameters: parameters, serverVersion: serverVersion())
                 : try StarRocksLiteral.inline(query, parameters: parameters)
-            return try executeQuerySync(inlined, rowCap: rowCap)
+            return try executeQuerySync(inlined, rowCap: rowCap, byteLimit: byteLimit)
         }
         return try runStatement(query) {
             try self.runCancellableStatement { mysql, generation in
                 try self.runPreparedStatement(
-                    query, parameters: parameters, rowCap: rowCap, on: mysql, generation: generation
+                    query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, on: mysql, generation: generation
                 )
             }
         }
@@ -1343,6 +1378,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         _ query: String,
         parameters: [PluginCellValue],
         rowCap: Int?,
+        byteLimit: Int?,
         on mysql: UnsafeMutablePointer<MYSQL>,
         generation: Int
     ) throws -> MariaDBPluginQueryResult {
@@ -1423,7 +1459,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
-            columns: columns, rowCap: rowCap, generation: generation, sentAt: sentAt
+            columns: columns, rowCap: rowCap, byteLimit: byteLimit, generation: generation, sentAt: sentAt
         )
         try consumeTrailingResults(of: stmt, generation: generation)
 
@@ -1445,10 +1481,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Streaming Query
 
-    // With `readOnlySessionState` the whole stream runs inside `executeReadOnly`'s transaction.
+    // With `readOnly` the whole stream runs inside `executeReadOnly`'s transaction.
     func streamQuery(
         _ query: String,
-        readOnlySessionState: (@Sendable (Bool) -> PluginSessionTransactionState)? = nil
+        readOnly: MySQLReadOnlyTransaction.Scope? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
@@ -1467,13 +1503,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                             }
                         }
                     }
-                    if let readOnlySessionState {
+                    if let readOnly {
                         guard !abort.isAborted else {
                             continuation.finish()
                             return
                         }
                         try MySQLReadOnlyTransaction.run(
-                            state: readOnlySessionState(isInTransaction),
+                            state: readOnly.sessionState(isInTransaction),
+                            reason: readOnly.reason,
                             send: { _ = try executeQuerySync($0) },
                             statement: stream
                         )

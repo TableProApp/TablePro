@@ -708,6 +708,28 @@ async fn a_write_where_clients_only_read_is_denied_without_asking() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_statement_that_reaches_a_file_is_refused_at_every_level_without_asking() {
+    let harness = harness().await;
+    harness.host.approves.store(true, Ordering::SeqCst);
+
+    for connection in [harness.ids.readable, harness.ids.writable] {
+        let (failed, text) = call(
+            &harness,
+            "execute_query",
+            json!({
+                "connection_id": connection.to_string(),
+                "query": "SELECT readfile('/etc/passwd')",
+            }),
+        )
+        .await;
+
+        assert!(failed);
+        assert!(text.starts_with("denied:"), "{text}");
+    }
+    assert!(harness.host.asked.lock().expect("asked").is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_write_the_user_declines_changes_nothing() {
     let harness = harness().await;
     harness.host.approves.store(false, Ordering::SeqCst);

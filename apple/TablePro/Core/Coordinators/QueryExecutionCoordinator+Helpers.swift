@@ -762,11 +762,30 @@ extension QueryExecutionCoordinator {
                     columns: queryColumns.columns,
                     columnTypes: queryColumns.columnTypes
                 )
-                return (plan, ExactCountInput(sql: sql, filters: filters, logicMode: logicMode), scope)
+                let input = ExactCountInput(
+                    sql: sql,
+                    filters: filters,
+                    logicMode: logicMode,
+                    safeModeIsReadOnly: parent.runsAtReadOnly,
+                    gate: parent.rawFilterNeedsReadOnlyGate(filters, tabId: tabId)
+                        ? sql.map { parent.rawFilterRequest(sql: $0, canPrompt: false) }
+                        : nil
+                )
+                return (plan, input, scope)
+            }
+
+            // Nobody asked for this count, so nothing may ask the user about it: a refusal leaves the total unknown.
+            var plan = prepared.plan
+            if let count = prepared.count, let gate = count.gate {
+                if await parent.executionGate.authorize(gate).isAuthorized {
+                    parent.approveReadOnlyRawFilter(count.filters, tabId: tabId)
+                } else {
+                    plan = .clear
+                }
             }
 
             let outcome = await Self.rowCountOutcome(
-                plan: prepared.plan,
+                plan: plan,
                 count: prepared.count,
                 scope: prepared.scope,
                 tableName: tableName
@@ -833,7 +852,8 @@ extension QueryExecutionCoordinator {
                         table: tableName,
                         filters: exactCount.filters,
                         logicMode: exactCount.logicMode,
-                        countSQL: sql
+                        countSQL: sql,
+                        safeModeIsReadOnly: exactCount.safeModeIsReadOnly
                     )
                 }
                 return count.map { RowCountOutcome.count($0, isApproximate: false) }
@@ -941,6 +961,9 @@ internal struct ExactCountInput: Sendable {
     internal let sql: String?
     internal let filters: [TableFilter]
     internal let logicMode: FilterLogicMode
+    internal var safeModeIsReadOnly = false
+    // What the gate is asked before a raw filter that calls a function runs at Read-Only.
+    internal var gate: OperationRequest?
 }
 
 enum RowCountPlan: Equatable {

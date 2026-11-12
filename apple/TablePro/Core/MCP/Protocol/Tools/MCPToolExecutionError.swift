@@ -12,13 +12,18 @@ public enum MCPToolErrorCode: String, Sendable, Equatable {
     case internalFailure = "internal_failure"
 }
 
-public struct MCPToolExecutionError: Error, Sendable, Equatable {
+// LocalizedError: the assistant's transcript shows `localizedDescription`, which was Foundation's generic text.
+public struct MCPToolExecutionError: LocalizedError, Sendable, Equatable {
     public let code: MCPToolErrorCode
     public let message: String
 
     public init(code: MCPToolErrorCode, message: String) {
         self.code = code
         self.message = message
+    }
+
+    public var errorDescription: String? {
+        "\(code.rawValue): \(message)"
     }
 
     public var asToolResult: MCPToolCallResult {
@@ -73,6 +78,9 @@ public struct MCPToolExecutionError: Error, Sendable, Equatable {
             )
         case .dataSourceError(let detail):
             return MCPToolExecutionError(code: .queryFailed, message: MCPErrorRedactor.redact(detail, secrets: secrets))
+        case .stoppedWhileRunning(let detail):
+            // The code a write past its deadline gets, the other answer that means "may have been applied".
+            return MCPToolExecutionError(code: .timeout, message: detail)
         }
     }
 }

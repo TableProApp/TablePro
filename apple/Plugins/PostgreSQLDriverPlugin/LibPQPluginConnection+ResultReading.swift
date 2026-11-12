@@ -87,6 +87,13 @@ internal extension LibPQPluginConnection {
         return LibPQCellDecoding.value(from: UnsafeRawBufferPointer(start: valuePtr, count: length), oid: oid)
     }
 
+    // The one row a single-row mode result holds.
+    static func singleRow(of result: OpaquePointer, oids: [UInt32]) -> [PluginCellValue] {
+        oids.enumerated().map { column in
+            decodeCell(from: result, row: 0, column: Int32(column.offset), oid: column.element)
+        }
+    }
+
     private func parseRows(
         from result: OpaquePointer,
         columns: [String],

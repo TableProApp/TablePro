@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import os
+import TableProPluginKit
 
 @MainActor
 final class ServerDashboardViewModel: ObservableObject {
@@ -188,15 +189,25 @@ final class ServerDashboardViewModel: ObservableObject {
         }
     }
 
-    /// A saved query can return a whole table, so a tile stops at the rows it can draw. A driver
-    /// with no bounded fetch gets `executeRead`, which is also where a scripting engine refuses writes.
+    // A saved query can return a whole table, so a tile stops at the rows it can draw. A driver with no bounded fetch
+    // gets `executeRead`, which is also where a scripting engine refuses writes. At Read-Only, a driver that can runs
+    // the saved query in the engine's read-only mode.
     private static func tileExecutor(connectionId: UUID, services: AppServices) -> DashboardTileBoard.Execute {
         { [connectionId, services] query in
             let driver = try liveDriver(connectionId: connectionId, services: services)
             let policy = await MainActor.run {
                 services.databaseManager.session(for: connectionId)?.connection.maskingPolicy ?? .none
             }
-            if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: DashboardTileTable.rowCap) {
+            let rowCap = DashboardTileTable.rowCap
+            let isReadOnly = ExecutionGateProvider.runsAtReadOnly(connectionId, in: services.databaseManager)
+            if let context = driver.readOnlyRunContext(safeModeIsReadOnly: isReadOnly) {
+                if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: rowCap, context: context) {
+                    return bounded.masked(by: policy)
+                }
+                return try await driver.executeUserQuery(query: query, rowCap: rowCap, parameters: nil, context: context)
+                    .masked(by: policy)
+            }
+            if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: rowCap) {
                 return bounded.masked(by: policy)
             }
             return try await driver.executeRead(query: query).masked(by: policy)

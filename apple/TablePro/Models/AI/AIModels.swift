@@ -270,6 +270,7 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
         case .edit:
             return """
                 You are in Edit mode. You can read schema and run SELECT/INSERT/UPDATE/DELETE via execute_query. \
+                Leave schema, privilege and session changes, such as CREATE, ALTER, GRANT or SET, to Agent mode. \
                 Destructive statements, such as DROP, TRUNCATE or a DELETE with no WHERE, are blocked.
                 """
         case .agent:

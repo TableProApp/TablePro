@@ -133,6 +133,15 @@ internal struct ObjectCopyRunner {
         )
         defer { ProcessInfo.processInfo.endActivity(activity) }
 
+        // A row filter is the user's text, read from a source that may be at Read-Only: it meets the gate as a Run would.
+        try await ReadOnlyReadGate.authorize(
+            plan.dataSteps.filter(\.hasRowFilter).map(\.sourceQuery),
+            connectionId: request.source.connectionId,
+            databaseType: request.source.databaseType,
+            gate: gate,
+            operationDescription: String(localized: "Execute Query")
+        )
+
         return try await gate.authorizing(authorizationRequest(for: plan)) {
             try await self.execute(plan, request: request, progress: progress)
         }
@@ -589,6 +598,7 @@ internal struct ObjectCopyRunner {
         let sourceType = request.source.databaseType
         let targetType = request.target.databaseType
         let sourceScope = request.source.scope
+        let sourceIsReadOnly = ExecutionGateProvider.runsAtReadOnly(request.source.connectionId)
         let errorHandling = request.errorHandling
         let relaxesRows = plan.keysInside.rows
 
@@ -630,6 +640,7 @@ internal struct ObjectCopyRunner {
                         manager: manager,
                         sourceType: sourceType,
                         targetType: targetType,
+                        sourceIsReadOnly: sourceIsReadOnly,
                         errorHandling: errorHandling,
                         progress: progress
                     )
@@ -682,6 +693,7 @@ internal struct ObjectCopyRunner {
         manager: any ScopedMetadataProviding,
         sourceType: DatabaseType,
         targetType: DatabaseType,
+        sourceIsReadOnly: Bool,
         errorHandling: ImportErrorHandling,
         progress: ObjectCopyProgress
     ) async -> DataResult {
@@ -704,8 +716,9 @@ internal struct ObjectCopyRunner {
                     guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
                         throw ObjectCopyError.refused(noSourceDriver)
                     }
+                    let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
                     return try await BulkReadTimeout.lifted(on: [sourceDriver]) {
-                        try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
+                        try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
                             progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
                         }
                     }
@@ -788,6 +801,7 @@ internal struct ObjectCopyRunner {
     ) async throws -> CopiedRows {
         let sourceScope = request.source.scope
         let targetScope = request.target.scope
+        let sourceIsReadOnly = ExecutionGateProvider.runsAtReadOnly(request.source.connectionId)
         let copier = ObjectCopyRowCopier(
             step: step, sourceDatabaseType: request.source.databaseType, targetDatabaseType: targetType
         )
@@ -808,8 +822,9 @@ internal struct ObjectCopyRunner {
                 guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
                     throw ObjectCopyError.refused(Self.noSourceDriver)
                 }
+                let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
                 let outcome = try await BulkReadTimeout.lifted(on: [sourceDriver]) {
-                    try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
+                    try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
                         progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
                     }
                 }

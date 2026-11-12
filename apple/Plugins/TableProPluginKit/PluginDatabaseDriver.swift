@@ -127,6 +127,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult?
 
+    // The same bounded read with what the host decided about it, under the same contract. The default runs the
+    // requirement above for a context that asks nothing that call cannot honor, and returns nil otherwise, so the host
+    // falls back to a call that takes the context.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult?
+
     /// Sends `query` to the server as one batch and reads it to the end, returning every result set it produced and
     /// every error it raised. `rowCap` bounds each result set on its own. A driver that implements this declares
     /// ``PluginCapabilities/resultSetBatches``; the default returns nil, and the host runs the text statement by
@@ -1483,6 +1492,19 @@ public extension PluginDatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? { nil }
+
+    // A driver built before the context overload ignores every field, so a read-only mode, a statement policy or a
+    // catalog pin it was asked for would silently not happen.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+              context.allowsDestructive, context.allowsServerCode
+        else { return nil }
+        return try await executeBoundedQuery(query: query, rowCap: rowCap)
+    }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
         nil

@@ -55,14 +55,18 @@ internal struct ObjectCopyRowCopier: Sendable {
     internal let sourceDatabaseType: DatabaseType
     internal let targetDatabaseType: DatabaseType
 
+    // `readContext` is Read-Only's, for a source whose connection runs at it: a view as the source runs its functions.
     internal func copy(
         from sourceDriver: any PluginDatabaseDriver,
         to targetDriver: any PluginDatabaseDriver,
+        readContext: PluginStatementContext? = nil,
         onProgress: @Sendable (Int) -> Void
     ) async throws -> Outcome {
         let scopes = await openSessionScopes(source: sourceDriver, target: targetDriver)
         do {
-            let outcome = try await transfer(from: sourceDriver, to: targetDriver, onProgress: onProgress)
+            let outcome = try await transfer(
+                from: sourceDriver, to: targetDriver, readContext: readContext, onProgress: onProgress
+            )
             await scopes?.close()
             return outcome
         } catch {
@@ -88,6 +92,7 @@ internal struct ObjectCopyRowCopier: Sendable {
     private func transfer(
         from sourceDriver: any PluginDatabaseDriver,
         to targetDriver: any PluginDatabaseDriver,
+        readContext: PluginStatementContext?,
         onProgress: @Sendable (Int) -> Void
     ) async throws -> Outcome {
         if let statement = step.serverSideInsert {
@@ -98,9 +103,9 @@ internal struct ObjectCopyRowCopier: Sendable {
         var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
         let cut = OSAllocatedUnfairLock<Int?>(initialState: nil)
         // The copy's SELECT states no engine ceiling, so only a limit the driver declares applies, as for its own export query.
-        var stream = ExportRowCut<PluginStreamElement>.reporting(
-            sourceDriver.streamRows(query: step.sourceQuery), engineCeiling: nil
-        ) { limit in
+        let rows = readContext.map { sourceDriver.streamRows(query: step.sourceQuery, context: $0) }
+            ?? sourceDriver.streamRows(query: step.sourceQuery)
+        var stream = ExportRowCut<PluginStreamElement>.reporting(rows, engineCeiling: nil) { limit in
             cut.withLock { $0 = limit }
         }.makeAsyncIterator()
 

@@ -38,6 +38,9 @@ pub enum ExternalRefusal {
     ReadOnlyAccess,
     /// Safe Mode is Read-Only, which no client can get past.
     SafeModeReadOnly,
+    /// The statement reads or writes files, reaches another server or runs
+    /// code outside the database, which a read-only transaction does not stop.
+    ReachesOutside,
 }
 
 impl ExternalAccess {

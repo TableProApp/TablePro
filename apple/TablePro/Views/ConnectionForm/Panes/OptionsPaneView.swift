@@ -366,6 +366,9 @@ struct OptionsPaneView: View {
                             .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
                     }
                 }
+                ForEach(coordinator.advanced.aiAlwaysAllowedTools, id: \.self) { tool in
+                    alwaysAllowedRow(tool)
+                }
             }
             Picker(String(localized: "External Clients"), selection: $coordinator.advanced.externalAccess) {
                 ForEach(ExternalAccessLevel.allCases) { level in
@@ -377,6 +380,18 @@ struct OptionsPaneView: View {
             Text(String(localized: "Access"))
         } footer: {
             accessFooter
+        }
+    }
+
+    private func alwaysAllowedRow(_ tool: String) -> some View {
+        LabeledContent {
+            Button(String(localized: "Forget")) {
+                coordinator.advanced.forgetAlwaysAllowed(tool)
+            }
+            .accessibilityLabel(String(format: String(localized: "Forget %@"), tool))
+        } label: {
+            Text(verbatim: tool)
+            Text(String(localized: "Always allowed"))
         }
     }
 
@@ -409,6 +424,9 @@ struct OptionsPaneView: View {
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+                if !coordinator.advanced.aiAlwaysAllowedTools.isEmpty {
+                    Text(String(localized: "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again."))
+                }
             } else {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))

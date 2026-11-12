@@ -481,7 +481,35 @@ extension MCPConnectionBridge {
         )
 
         let entries = page.entries.filter { Self.isSearchable($0, by: search, masksValues: masksValues) }
-        return .object(["history": .array(entries.map { Self.encode(historyEntry: $0, masksValues: masksValues) })])
+        let answer = Self.withinAnswerBudget(entries.map { Self.encode(historyEntry: $0, masksValues: masksValues) })
+        return .object([
+            "history": .array(answer.entries),
+            "is_truncated": .bool(answer.isTruncated)
+        ])
+    }
+
+    // Entries keep their order; the first one that would pass the budget ends the answer.
+    static func withinAnswerBudget(_ entries: [JsonValue]) -> (entries: [JsonValue], isTruncated: Bool) {
+        var kept: [JsonValue] = []
+        var usedBytes = 0
+        for entry in entries {
+            usedBytes += entry.jsonString().utf8.count
+            guard usedBytes <= ExternalAnswerBudget.answerBytes else {
+                return (kept, true)
+            }
+            kept.append(entry)
+        }
+        return (kept, false)
+    }
+
+    // The chat reaches only its own connection, so it lists only that one.
+    func listConnection(id connectionId: UUID) async -> JsonValue {
+        let listings = await MainActor.run { ExternalConnectionDirectory.listings() }
+        return Self.connectionListing(listings, id: connectionId)
+    }
+
+    static func connectionListing(_ listings: [ExternalConnectionListing], id connectionId: UUID) -> JsonValue {
+        MCPConnectionListEncoder.encode(listings, access: .limited([connectionId]), purpose: .agent)
     }
 
     static func scopePath(_ scope: PluginPrivilegeScope) -> String {
@@ -528,7 +556,9 @@ extension MCPConnectionBridge {
     // A statement the app wrote from the data itself carries stored values: a document edit's `replaceOne` holds every
     // field of the original and the edit, an import the file's values. What a person or a client typed is theirs.
     static func externalQueryText(of entry: QueryHistoryEntry, masksValues: Bool) -> String {
-        withholdsQuery(of: entry, masksValues: masksValues) ? ServerErrorText.withheldStatementText : entry.query
+        withholdsQuery(of: entry, masksValues: masksValues)
+            ? ServerErrorText.withheldStatementText
+            : ExternalAnswerBudget.cut(entry.query)
     }
 
     // The search matches the stored statement, so an entry whose statement is withheld would answer for its text.
@@ -550,7 +580,7 @@ extension MCPConnectionBridge {
 
     // A failure the editor or a grid save recorded keeps the server's words, which can repeat a value it read.
     static func externalErrorText(_ error: String, masksValues: Bool) -> String {
-        masksValues ? ServerErrorText.withheldMessage : MCPErrorRedactor.redact(error)
+        masksValues ? ServerErrorText.withheldMessage : ExternalAnswerBudget.cut(MCPErrorRedactor.redact(error))
     }
 }
 

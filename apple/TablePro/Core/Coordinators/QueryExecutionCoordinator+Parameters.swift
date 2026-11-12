@@ -228,6 +228,7 @@ extension QueryExecutionCoordinator {
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
         let grammar = parent.lexicalGrammar
+        let safeModeIsReadOnly = parent.runsAtReadOnly
         let held = parent.manualCommitRun(skipped: tab.tabType != .query)
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
@@ -250,6 +251,7 @@ extension QueryExecutionCoordinator {
                             sql: statement.sql,
                             parameters: boundValues.values,
                             rowCap: rowCap,
+                            safeModeIsReadOnly: safeModeIsReadOnly,
                             capturingOutputInto: failureOutput
                         )
                     }
@@ -393,7 +395,7 @@ extension QueryExecutionCoordinator {
         let statementTexts = statements.map(\.sql)
         let transactionKind = OperationKind.worst(of: statementTexts, databaseType: conn.type)
         let grammar = parent.lexicalGrammar
-        let plan = BatchTransactionPolicy.plan(for: statementTexts, databaseType: conn.type, grammar: grammar)
+        let plan = BatchTransactionPolicy.plan(for: statementTexts, databaseType: conn.type, grammar: grammar, safeModeIsReadOnly: parent.runsAtReadOnly)
         let prepared = statements.map { statement in
             prepareStatement(
                 statement: statement,
@@ -569,6 +571,7 @@ extension QueryExecutionCoordinator {
         let failureOutput = ServerOutputBox()
         let commitOutput = ServerOutputBox()
         let databaseType = parent.connection.type
+        let safeModeIsReadOnly = parent.runsAtReadOnly
         let grammar = parent.lexicalGrammar
         let statementTexts = prepared.map(\.sentSQL)
         do {
@@ -577,6 +580,7 @@ extension QueryExecutionCoordinator {
                 route: DatabaseManager.shared.executionRoute(for: scope),
                 cancellation: .cancellableRead(lease)
             ) { driver in
+                let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly)
                 let startState = await driver.heldSessionTransactionState()
                 let manual = ManualCommit.decision(
                     commitMode: commitMode,
@@ -612,7 +616,8 @@ extension QueryExecutionCoordinator {
                             rowCap: statement.rowCap,
                             originalSQL: statement.sentSQL,
                             driver: driver,
-                            parameters: statement.parameterValues
+                            parameters: statement.parameterValues,
+                            context: context
                         )
                     }
                 }

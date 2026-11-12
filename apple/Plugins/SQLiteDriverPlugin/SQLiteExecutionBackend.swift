@@ -43,13 +43,73 @@ protocol SQLiteExecutionBackend: Actor {
     func executeQuery(
         _ query: String,
         parameters: [PluginCellValue]?,
-        scope: SQLiteStatementScope
+        rules: SQLiteStatementRules,
+        bound: SQLiteReadBound?
     ) async throws -> SQLiteRawResult
     func streamQuery(
         _ query: String,
-        scope: SQLiteStatementScope,
+        rules: SQLiteStatementRules,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws
+}
+
+// How one statement runs: the authorizer scope, and whether read-only, with `PRAGMA query_only` around it and
+// `sqlite3_stmt_readonly` checked before it. Safe Mode's Read-Only keeps the session's authorizer scope, so an in-app
+// read keeps the extension functions it uses; an external read takes the `.readOnly` scope, which refuses them.
+struct SQLiteStatementRules: Sendable, Equatable {
+    let scope: SQLiteStatementScope
+    let readsOnly: Bool
+
+    static let unrestricted = SQLiteStatementRules(scope: .unrestricted, readsOnly: false)
+
+    init(scope: SQLiteStatementScope, readsOnly: Bool) {
+        self.scope = scope
+        self.readsOnly = readsOnly || scope == .readOnly
+    }
+
+    init(_ context: PluginStatementContext) {
+        if context.readOnly, context.origin == .external {
+            self.init(scope: .readOnly, readsOnly: true)
+        } else {
+            self.init(scope: context.allowsServerCode ? .unrestricted : .noServerCode, readsOnly: context.enforcesReadOnly)
+        }
+    }
+
+    // What a statement SQLite does not read as read-only is refused with, in the words of whoever asked.
+    var notReadRefusal: SQLitePluginError {
+        scope == .readOnly ? .readOnlyStatement : .safeModeReadOnlyStatement
+    }
+}
+
+// Where a bounded read stops: once `rowCap` rows are read and another is there, or at the first row that takes the
+// decoded rows past `byteLimit`. That row is kept, so the host sees its own limit was reached.
+struct SQLiteReadBound: Sendable, Equatable {
+    let rowCap: Int
+    let byteLimit: Int?
+
+    init(rowCap: Int, byteLimit: Int?) {
+        self.rowCap = min(max(rowCap, 1), PluginRowLimits.emergencyMax)
+        self.byteLimit = byteLimit.map { max($0, 0) }
+    }
+
+    // Nil when neither bound is set, and the statement is read whole as it always was.
+    static func ifSet(rowCap: Int?, byteLimit: Int?) -> SQLiteReadBound? {
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        guard cap != nil || byteLimit != nil else { return nil }
+        return SQLiteReadBound(rowCap: cap ?? PluginRowLimits.emergencyMax, byteLimit: byteLimit)
+    }
+
+    // Text as UTF-8, bytes as they are, null as nothing: never more than the host counts for the same row, so the read
+    // never stops before the host's own budget is full.
+    static func byteCount(of row: [PluginCellValue]) -> Int {
+        row.reduce(0) { total, cell in
+            switch cell {
+            case .null: total
+            case .text(let text): total + text.utf8.count
+            case .bytes(let data): total + data.count
+            }
+        }
+    }
 }
 
 /// The one thing about a running query that must be reachable while the query holds the backend
@@ -65,18 +125,18 @@ extension SQLiteExecutionBackend {
     func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
 
     func executeQuery(_ query: String) async throws -> SQLiteRawResult {
-        try await executeQuery(query, parameters: nil, scope: .unrestricted)
+        try await executeQuery(query, parameters: nil, rules: .unrestricted, bound: nil)
     }
 
     func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> SQLiteRawResult {
-        try await executeQuery(query, parameters: parameters, scope: .unrestricted)
+        try await executeQuery(query, parameters: parameters, rules: .unrestricted, bound: nil)
     }
 
     func streamQuery(
         _ query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        try await streamQuery(query, scope: .unrestricted, continuation: continuation)
+        try await streamQuery(query, rules: .unrestricted, continuation: continuation)
     }
 }
 
@@ -282,36 +342,45 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
     func executeQuery(
         _ query: String,
         parameters: [PluginCellValue]?,
-        scope: SQLiteStatementScope
+        rules: SQLiteStatementRules,
+        bound: SQLiteReadBound?
     ) throws -> SQLiteRawResult {
-        try withStatementHandle(scope) { handle, mustRead in
-            try runStatement(query, parameters: parameters, on: handle, mustRead: mustRead)
+        try withStatementHandle(rules) { handle, notReadRefusal in
+            try runStatement(query, parameters: parameters, on: handle, notReadRefusal: notReadRefusal, bound: bound)
         }
     }
 
-    // `mustRead` is true when the statement has to be one SQLite reads as read-only. A read-only statement runs on the
-    // session's handle, so temporary objects, attachments, `last_insert_rowid()` and `changes()` read as they do there.
+    // `notReadRefusal` is set when the statement has to be one SQLite reads as read-only. A read-only statement runs on
+    // the session's handle, so temporary objects, attachments, `last_insert_rowid()` and `changes()` read as they do there.
     private func withStatementHandle<T>(
-        _ scope: SQLiteStatementScope,
-        _ body: (OpaquePointer, Bool) throws -> T
+        _ rules: SQLiteStatementRules,
+        _ body: (OpaquePointer, SQLitePluginError?) throws -> T
     ) throws -> T {
         guard let db, let policy else { throw SQLitePluginError.notConnected }
         busyState.beginOperation()
-        switch scope {
-        case .unrestricted:
-            return try body(db, false)
-        case .noServerCode:
-            policy.scope = .noServerCode
-            defer { policy.scope = .unrestricted }
-            return try body(db, false)
-        case .readOnly:
-            return try withQueryOnly(db, policy: policy) { try body(db, true) }
+        guard rules.readsOnly else {
+            return try Self.within(rules.scope, of: policy) { try body(db, nil) }
+        }
+        // The pragmas run before the scope applies: the `.readOnly` scope refuses a pragma that sets anything.
+        return try withQueryOnly(db) {
+            try Self.within(rules.scope, of: policy) { try body(db, rules.notReadRefusal) }
         }
     }
 
-    // query_only stops writes to the database files. It does not stop an extension's function or virtual table from
-    // reaching other files, and the policy refuses those.
-    private func withQueryOnly<T>(_ db: OpaquePointer, policy: SQLiteAuthorizerPolicy, _ body: () throws -> T) throws -> T {
+    private static func within<T>(
+        _ scope: SQLiteStatementScope,
+        of policy: SQLiteAuthorizerPolicy,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        guard scope != .unrestricted else { return try body() }
+        policy.scope = scope
+        defer { policy.scope = .unrestricted }
+        return try body()
+    }
+
+    // query_only stops writes to the database files, a write an application function makes among them. It does not stop
+    // an extension's function or virtual table from reaching other files, and the `.readOnly` scope refuses those.
+    private func withQueryOnly<T>(_ db: OpaquePointer, _ body: () throws -> T) throws -> T {
         let wasQueryOnly = try Self.integerPragma("PRAGMA query_only", on: db) == 1
         if !wasQueryOnly {
             try Self.exec("PRAGMA query_only = 1", on: db)
@@ -321,8 +390,6 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
                 try? Self.exec("PRAGMA query_only = 0", on: db)
             }
         }
-        policy.scope = .readOnly
-        defer { policy.scope = .unrestricted }
         return try body()
     }
 
@@ -345,14 +412,15 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         _ query: String,
         parameters: [PluginCellValue]?,
         on db: OpaquePointer,
-        mustRead: Bool
+        notReadRefusal: SQLitePluginError?,
+        bound: SQLiteReadBound?
     ) throws -> SQLiteRawResult {
         let startTime = Date()
         let statement = try Self.prepareOnlyStatement(query, db: db)
         defer { sqlite3_finalize(statement) }
         // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
-        if mustRead, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
-            throw SQLitePluginError.readOnlyStatement
+        if let notReadRefusal, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
+            throw notReadRefusal
         }
 
         if let parameters {
@@ -368,13 +436,23 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
         var rows: [[PluginCellValue]] = []
         var truncated = false
+        let rowLimit = bound?.rowCap ?? PluginRowLimits.emergencyMax
+        var bytes = 0
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
-            if rows.count >= PluginRowLimits.emergencyMax {
+            if rows.count >= rowLimit {
                 truncated = true
                 break
             }
-            rows.append(Self.readRow(statement, columnCount: columnCount))
+            let row = Self.readRow(statement, columnCount: columnCount)
+            rows.append(row)
+            if let byteLimit = bound?.byteLimit {
+                bytes += SQLiteReadBound.byteCount(of: row)
+                if bytes > byteLimit {
+                    truncated = true
+                    break
+                }
+            }
             stepResult = sqlite3_step(statement)
         }
 
@@ -431,25 +509,25 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
     func streamQuery(
         _ query: String,
-        scope: SQLiteStatementScope,
+        rules: SQLiteStatementRules,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
-        try withStatementHandle(scope) { handle, mustRead in
-            try stream(query, on: handle, mustRead: mustRead, continuation: continuation)
+        try withStatementHandle(rules) { handle, notReadRefusal in
+            try stream(query, on: handle, notReadRefusal: notReadRefusal, continuation: continuation)
         }
     }
 
     private func stream(
         _ query: String,
         on db: OpaquePointer,
-        mustRead: Bool,
+        notReadRefusal: SQLitePluginError?,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
         let statement = try Self.prepareOnlyStatement(query, db: db)
         // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
-        if mustRead, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
+        if let notReadRefusal, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
             sqlite3_finalize(statement)
-            throw SQLitePluginError.readOnlyStatement
+            throw notReadRefusal
         }
 
         let firstStep = SQLiteResultColumns.stepFirst(statement)
