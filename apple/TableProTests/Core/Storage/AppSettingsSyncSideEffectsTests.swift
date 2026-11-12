@@ -23,7 +23,6 @@ struct AppSettingsSyncSideEffectsTests {
         let catalog = ThemeCatalog(
             userDirectory: root.appendingPathComponent("Themes", isDirectory: true),
             bundleDirectory: nil,
-            notificationCenter: NotificationCenter(),
             fileTrash: .folder(root.appendingPathComponent("Trash", isDirectory: true)),
             syncTracker: tracker
         )
