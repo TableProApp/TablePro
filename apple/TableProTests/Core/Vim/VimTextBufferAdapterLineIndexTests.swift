@@ -24,7 +24,7 @@ private let lineIndexDocuments = [
 struct VimTextBufferAdapterLineIndexTests {
     private final class StubDelegate: TextViewDelegate {}
 
-    private func makeTextView(string: String) -> TextView {
+    private func makeTextView(string: String, layingOut: Bool = true) -> TextView {
         let textView = TextView(
             string: string,
             font: .monospacedSystemFont(ofSize: 12, weight: .regular),
@@ -37,7 +37,9 @@ struct VimTextBufferAdapterLineIndexTests {
             delegate: StubDelegate()
         )
         textView.frame = NSRect(x: 0, y: 0, width: 500, height: 500)
-        textView.layout()
+        if layingOut {
+            textView.layout()
+        }
         return textView
     }
 
@@ -151,35 +153,38 @@ struct VimTextBufferAdapterLineIndexTests {
 
     // MARK: - Cost per line
 
-    // A fixed time limit cannot tell a slow runner from a slow motion, so the motion is timed against itself. Four
-    // passes over a script and one pass over a script four times as long do the same work when each line costs the
-    // same, and the long pass takes four times as long when each line walks the lines before it, so a bound of twice
-    // sits a factor of two from each. The fastest of three drops the samples a stall landed on.
+    // A fixed time limit cannot tell a slow runner from a slow motion, so the motion is timed against itself. Sixteen
+    // passes over a script and four over one four times as long visit the same number of lines. When each line costs
+    // the same the two take as long; when finding a line walks the lines before it, the long script takes four times
+    // as long, so a bound of twice sits a factor of two from each. The fastest of three drops the samples a stall
+    // landed on.
     @Test("]] costs as much per line in a long script as in a short one")
     func sectionForwardStaysLinear() {
-        let short = makeSectionScript(lines: 5_000)
-        let long = makeSectionScript(lines: 20_000)
+        let short = makeSectionScript(lines: 500)
+        let long = makeSectionScript(lines: 2_000)
 
         var shortLanding = 0
         var longLanding = 0
-        var fourShortPasses = TimeInterval.infinity
-        var oneLongPass = TimeInterval.infinity
+        var shortPasses = TimeInterval.infinity
+        var longPasses = TimeInterval.infinity
         withExtendedLifetime((short.textView, long.textView)) {
             for _ in 0..<3 {
-                fourShortPasses = min(fourShortPasses, Self.secondsSpent {
-                    for _ in 0..<4 {
+                shortPasses = min(shortPasses, Self.secondsSpent {
+                    for _ in 0..<16 {
                         shortLanding = Self.pressSectionForward(short.engine, short.adapter)
                     }
                 })
-                oneLongPass = min(oneLongPass, Self.secondsSpent {
-                    longLanding = Self.pressSectionForward(long.engine, long.adapter)
+                longPasses = min(longPasses, Self.secondsSpent {
+                    for _ in 0..<4 {
+                        longLanding = Self.pressSectionForward(long.engine, long.adapter)
+                    }
                 })
             }
         }
 
         #expect(shortLanding == short.lastOffset)
         #expect(longLanding == long.lastOffset)
-        #expect(oneLongPass < fourShortPasses * 2)
+        #expect(longPasses < shortPasses * 2)
     }
 
     private struct SectionScript {
@@ -189,9 +194,10 @@ struct VimTextBufferAdapterLineIndexTests {
         let lastOffset: Int
     }
 
+    // Not laid out: the motion reads only the line storage, and a text view outside a scroll view lays out every line.
     private func makeSectionScript(lines: Int) -> SectionScript {
         let script = String(repeating: "SELECT id, name FROM users WHERE id = 1;\n", count: lines)
-        let textView = makeTextView(string: script)
+        let textView = makeTextView(string: script, layingOut: false)
         let adapter = VimTextBufferAdapter(textView: textView)
         return SectionScript(
             textView: textView,

@@ -197,6 +197,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             connection.disconnect()
             throw error
         }
+        logSessionMode(connection)
         self.connection = connection
     }
 
@@ -228,14 +229,14 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let connection = self.connection
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 guard let connection else {
                     continuation.finish(throwing: TeradataWireError.connectionFailed("not connected"))
                     return
                 }
                 do {
-                    // Each reply's rows go out as it arrives, before the next one is asked for.
+                    // Each reply's rows go out as it arrives, and the next one is asked for once the reader has room.
                     try await connection.stream(
                         query,
                         onColumns: { columns in
@@ -246,8 +247,11 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         },
                         onRows: { rows in
                             guard !abort.isAborted else { return false }
-                            continuation.yield(.rows(rows.map { row in row.map { $0.asPluginCell } }))
-                            return true
+                            let delivered = PluginRowStream.deliverBlocking(
+                                .rows(rows.map { row in row.map { $0.asPluginCell } }),
+                                to: continuation
+                            )
+                            return delivered && !abort.isAborted
                         }
                     )
                     continuation.finish()
@@ -282,7 +286,43 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         connection?.cancel()
     }
 
-    func beginTransaction() async throws { _ = try await execute(query: "BEGIN TRANSACTION") }
-    func commitTransaction() async throws { _ = try await execute(query: "END TRANSACTION") }
-    func rollbackTransaction() async throws { _ = try await execute(query: "ROLLBACK") }
+    func beginTransaction() async throws {
+        try await liveConnection().beginTransaction()
+    }
+
+    func commitTransaction() async throws {
+        try await liveConnection().commitTransaction()
+    }
+
+    func rollbackTransaction() async throws {
+        try await liveConnection().rollbackTransaction()
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let connection, !connection.hasLostConnection else { return .unknown }
+        switch connection.transactionState {
+        case .idle: return .idle
+        case .open: return .inTransaction
+        case .unknown: return .unknown
+        }
+    }
+
+    func liveConnection() throws -> TeradataAsyncConnection {
+        guard let connection else { throw TeradataWireError.connectionFailed("not connected") }
+        return connection
+    }
+
+    private func logSessionMode(_ connection: TeradataAsyncConnection) {
+        let mode = connection.sessionTransactionMode.rawValue
+        switch connection.sessionModeSource {
+        case .configured:
+            Self.logger.debug("Transaction mode \(mode, privacy: .public) as configured")
+        case .helpSession:
+            Self.logger.info("Transaction mode \(mode, privacy: .public) read from HELP SESSION")
+        case .sessionInfoView:
+            Self.logger.info("Transaction mode \(mode, privacy: .public) read from DBC.SessionInfoV")
+        case .unresolved:
+            Self.logger.warning("Neither HELP SESSION nor DBC.SessionInfoV gave the transaction mode; using Teradata semantics")
+        }
+    }
 }

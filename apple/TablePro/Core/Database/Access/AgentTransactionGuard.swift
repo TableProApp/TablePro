@@ -44,7 +44,8 @@ internal struct AgentTransactionGuard: Sendable {
                 )
             case .oracle:
                 return Savepoint(open: savepointStatement, release: nil, rollback: rollbackStatement)
-            case .redshift, .duckdb, .redis, .other:
+            // Teradata has no savepoint.
+            case .redshift, .duckdb, .redis, .teradata, .other:
                 return nil
             }
         }

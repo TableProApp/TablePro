@@ -223,6 +223,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             .uuidCellText,
             .repeatingPrimaryKey,
             .readOnlyStatements,
+            .enforcesReadOnlyMode,
             .columnDefaultMarks,
         ]
     }
@@ -340,15 +341,15 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await runStatement(query, parameters: [], readOnly: false)
+        try await runStatement(query, parameters: [], readOnly: nil)
     }
 
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
-        try await runStatement(query, parameters: [], readOnly: context.readOnly && context.origin == .external)
+        try await runStatement(query, parameters: [], readOnly: ClickHouseReadOnlyReason(context))
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        try await runStatement(query, parameters: parameters, readOnly: false)
+        try await runStatement(query, parameters: parameters, readOnly: nil)
     }
 
     func executeParameterized(
@@ -356,19 +357,24 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await runStatement(query, parameters: parameters, readOnly: context.readOnly && context.origin == .external)
+        try await runStatement(query, parameters: parameters, readOnly: ClickHouseReadOnlyReason(context))
     }
 
+    // A capped read-only read with no parameters is the bounded stream, which ends on the server one row past the cap.
+    // Parameters ride only on the buffered request, so a read that has them is read whole and cut here.
     func executeUserQuery(
         query: String,
         rowCap: Int?,
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        guard context.readOnly, context.origin == .external else {
+        guard let reason = ClickHouseReadOnlyReason(context) else {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
-        let raw = try await runStatement(query, parameters: parameters ?? [], readOnly: true)
+        if let cap = rowCap, cap > 0, parameters?.isEmpty ?? true {
+            return try await boundedRead(query: query, rowCap: cap, readOnly: reason, byteLimit: context.resultByteLimit)
+        }
+        let raw = try await runStatement(query, parameters: parameters ?? [], readOnly: reason)
         guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
             columns: raw.columns,
@@ -380,7 +386,11 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         )
     }
 
-    private func runStatement(_ query: String, parameters: [PluginCellValue], readOnly: Bool) async throws -> PluginQueryResult {
+    private func runStatement(
+        _ query: String,
+        parameters: [PluginCellValue],
+        readOnly: ClickHouseReadOnlyReason?
+    ) async throws -> PluginQueryResult {
         let startTime = Date()
         let queryId = UUID().uuidString
         let result: CHQueryResult
@@ -579,6 +589,30 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     /// both ask for names its columns, so neither pays a `LIMIT 0` probe to learn them. That probe
     /// appended to the statement, which a query already carrying a `LIMIT` rejects outright.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedRead(query: query, rowCap: rowCap, readOnly: nil, byteLimit: nil)
+    }
+
+    // A context `readonly` does not cover goes back to the host as PluginKit's default sends it.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        guard let reason = ClickHouseReadOnlyReason(context) else {
+            guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+                  context.allowsDestructive, context.allowsServerCode
+            else { return nil }
+            return try await executeBoundedQuery(query: query, rowCap: rowCap)
+        }
+        return try await boundedRead(query: query, rowCap: rowCap, readOnly: reason, byteLimit: context.resultByteLimit)
+    }
+
+    private func boundedRead(
+        query: String,
+        rowCap: Int,
+        readOnly: ClickHouseReadOnlyReason?,
+        byteLimit: Int?
+    ) async throws -> PluginQueryResult {
         let started = Date()
         let isOutputCut = OSAllocatedUnfairLock(initialState: false)
         let stream = PluginRowStream.make { continuation, abort in
@@ -587,6 +621,8 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                     try await self.performBoundedStreamRows(
                         query: query,
                         rowCap: rowCap,
+                        readOnly: readOnly,
+                        byteLimit: byteLimit,
                         isOutputCut: isOutputCut,
                         continuation: continuation
                     )
@@ -611,6 +647,8 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     private func performBoundedStreamRows(
         query: String,
         rowCap: Int,
+        readOnly: ClickHouseReadOnlyReason?,
+        byteLimit: Int?,
         isOutputCut: OSAllocatedUnfairLock<Bool>,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
@@ -621,17 +659,23 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             database: database,
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
-            shape: .streamed(rowCap: rowCap)
+            shape: .streamed(rowCap: rowCap),
+            readOnly: readOnly != nil
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         try await killingOnCancel(queryId: queryId) {
-            try await streamTabSeparatedRows(
-                request: request,
-                session: session,
-                batchSize: min(5_000, rowCap + 1),
-                boundedOutputCut: isOutputCut,
-                continuation: continuation
-            )
+            do {
+                try await streamTabSeparatedRows(
+                    request: request,
+                    session: session,
+                    batchSize: min(5_000, rowCap + 1),
+                    boundedOutputCut: isOutputCut,
+                    byteLimit: byteLimit,
+                    continuation: continuation
+                )
+            } catch {
+                throw Self.readOnlyRefusal(error, reason: readOnly)
+            }
         }
     }
 
@@ -649,6 +693,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         session: URLSession,
         batchSize: Int,
         boundedOutputCut: OSAllocatedUnfairLock<Bool>? = nil,
+        byteLimit: Int? = nil,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         var decoder = ClickHouseTabSeparatedRowDecoder()
@@ -657,6 +702,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         var headerSent = false
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
+        var bytes = 0
 
         func sendHeader(_ header: ClickHouseTabSeparatedRowDecoder.Header) {
             guard !headerSent else { return }
@@ -666,6 +712,20 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 columnTypeNames: header.columnTypeNames,
                 estimatedRowCount: nil
             )))
+        }
+
+        // Keeps the row that takes the decoded rows past `byteLimit`, and says it came; the rest is never read.
+        func take(_ rows: [PluginRow]) -> Bool {
+            guard let byteLimit else {
+                batch.append(contentsOf: rows)
+                return false
+            }
+            for row in rows {
+                batch.append(row)
+                bytes += Self.decodedByteCount(of: row)
+                if bytes > byteLimit { return true }
+            }
+            return false
         }
 
         let chunks = ClickHouseHTTPChunks(session: session, request: request)
@@ -694,11 +754,18 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 if let header = decoder.header {
                     sendHeader(header)
                 }
-                batch.append(contentsOf: rows)
+                if take(rows) { throw ByteLimitReached() }
                 guard batch.count >= batchSize else { return }
                 continuation.yield(.rows(batch))
                 batch.removeAll(keepingCapacity: true)
             }
+        } catch is ByteLimitReached {
+            if !batch.isEmpty {
+                continuation.yield(.rows(batch))
+            }
+            boundedOutputCut?.withLock { $0 = true }
+            continuation.finish()
+            return
         } catch is OtherFormatBodyFull {}
 
         if let otherFormatBody {
@@ -723,11 +790,13 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             exceptionTag: chunks.headerValue("X-ClickHouse-Exception-Tag"),
             header: decoder.header
         )
-        batch.append(contentsOf: decoder.consume(rest))
-        batch.append(contentsOf: decoder.finish())
+        let stoppedAtByteLimit = take(decoder.consume(rest)) || take(decoder.finish())
         sendHeader(decoder.header ?? ClickHouseTabSeparatedRowDecoder.Header(columns: [], columnTypeNames: []))
         if !batch.isEmpty {
             continuation.yield(.rows(batch))
+        }
+        if stoppedAtByteLimit {
+            boundedOutputCut?.withLock { $0 = true }
         }
         continuation.finish()
     }
@@ -738,15 +807,17 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     private struct OtherFormatBodyFull: Error {}
 
+    private struct ByteLimitReached: Error {}
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        stream(query, readOnly: false)
+        stream(query, readOnly: nil)
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        stream(query, readOnly: context.readOnly && context.origin == .external)
+        stream(query, readOnly: ClickHouseReadOnlyReason(context))
     }
 
-    private func stream(_ query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    private func stream(_ query: String, readOnly: ClickHouseReadOnlyReason?) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
@@ -763,7 +834,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     private func performStreamRows(
         query: String,
-        readOnly: Bool,
+        readOnly: ClickHouseReadOnlyReason?,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let queryId = UUID().uuidString
@@ -774,7 +845,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
             shape: .streamed(rowCap: nil),
-            readOnly: readOnly
+            readOnly: readOnly != nil
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         try await killingOnCancel(queryId: queryId) {
@@ -786,7 +857,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                     continuation: continuation
                 )
             } catch {
-                throw readOnly ? Self.readOnlyRefusal(error) : error
+                throw Self.readOnlyRefusal(error, reason: readOnly)
             }
         }
     }

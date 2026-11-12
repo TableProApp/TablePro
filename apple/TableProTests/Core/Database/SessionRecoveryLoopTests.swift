@@ -10,7 +10,7 @@ import Testing
 @MainActor
 struct SessionRecoveryLoopTests {
     @MainActor
-    private struct Fixture {
+    fileprivate struct Fixture {
         let manager: DatabaseManager
         let clock: ManualClock
         let connection: DatabaseConnection
@@ -30,7 +30,7 @@ struct SessionRecoveryLoopTests {
         serverMessage: "self-signed certificate in certificate chain"
     )
 
-    private func makeFixture(
+    fileprivate func makeFixture(
         storage: ConnectionStorage = .shared,
         configure: (inout DatabaseConnection) -> Void = { _ in }
     ) -> Fixture {
@@ -49,7 +49,7 @@ struct SessionRecoveryLoopTests {
         return Fixture(manager: manager, clock: clock, connection: connection, driver: driver)
     }
 
-    private func cleanUp(_ fixture: Fixture) async {
+    fileprivate func cleanUp(_ fixture: Fixture) async {
         fixture.manager.endRecoveryLoop(for: fixture.id)
         await fixture.manager.stopHealthMonitor(for: fixture.id)
         fixture.manager.removeSession(for: fixture.id)
@@ -73,11 +73,11 @@ struct SessionRecoveryLoopTests {
         await cleanUp(fixture)
     }
 
-    private func loopTask(_ fixture: Fixture) throws -> Task<Void, Never> {
+    fileprivate func loopTask(_ fixture: Fixture) throws -> Task<Void, Never> {
         try #require(fixture.manager.recoveryLoops[fixture.id]?.task)
     }
 
-    private func runNextAttempt(_ fixture: Fixture) async {
+    fileprivate func runNextAttempt(_ fixture: Fixture) async {
         await fixture.clock.waitUntilSleeping()
         fixture.clock.advance(by: .seconds(DatabaseManager.maxRecoveryDelay))
     }
@@ -920,5 +920,87 @@ struct SessionRecoveryLoopTests {
             manager.removeSession(for: id)
         }
         #expect(manager.recoveryLoops.isEmpty)
+    }
+}
+
+extension GlobalStateSuites {
+    // Writes the shared SSH profile store across suspensions.
+    @MainActor
+    struct SessionRecoveryMovedProfileTests {
+        private let loop = SessionRecoveryLoopTests()
+
+        private func movedProfileFixture() -> (SessionRecoveryLoopTests.Fixture, restore: () -> Void) {
+            let profiles = SSHProfileStorage.shared
+            let saved = profiles.loadProfiles()
+            let moved = SSHProfile(name: "Jump", host: "bastion-b.example", port: 22, username: "ops", authMethod: .password)
+            profiles.saveProfilesWithoutSync(saved + [moved])
+            var dialed = moved.toSSHConfiguration()
+            dialed.host = "bastion-a.example"
+            let fixture = loop.makeFixture { connection in
+                connection.sshTunnelMode = .profile(id: moved.id, snapshot: dialed)
+                connection.sshConfig = dialed
+            }
+            return (fixture, { profiles.saveProfilesWithoutSync(saved) })
+        }
+
+        @Test("A recovery after the linked SSH profile moved to another server stops and dials nothing")
+        func movedProfileEndsTheLoop() async throws {
+            let (fixture, restore) = movedProfileFixture()
+            defer { restore() }
+            let expected = ConnectionFailureClassifier.info(for: ConnectionTunnelError.sshProfileMoved)
+
+            fixture.manager.beginRecovery(for: fixture.id, cause: .stoppedResponding)
+            let task = try loop.loopTask(fixture)
+            await loop.runNextAttempt(fixture)
+            await task.value
+
+            #expect(fixture.session?.liveness == .unreachable(expected))
+            #expect(fixture.session?.driver === fixture.driver)
+            #expect(fixture.manager.recoveryLoops[fixture.id] == nil)
+            #expect(FakeMSSQLPlugin.configurations(for: fixture.id).isEmpty)
+            await loop.cleanUp(fixture)
+        }
+
+        @Test("A connect no window asked for keeps a dialed session off the moved profile", arguments: [
+            ConnectTrigger.request, .background,
+        ])
+        func unattendedConnectKeepsTheDialedRoute(trigger: ConnectTrigger) async throws {
+            let (fixture, restore) = movedProfileFixture()
+            defer { restore() }
+            var dialed = try #require(fixture.session)
+            dialed.effectiveConnection = fixture.connection
+            fixture.manager.injectSession(dialed, for: fixture.id)
+            fixture.manager.markSessionUnreachable(fixture.id, startedWith: fixture.driver, info: nil)
+            let expected = ConnectionFailureClassifier.info(for: ConnectionTunnelError.sshProfileMoved)
+
+            for _ in 1...2 {
+                await #expect(throws: ConnectionTunnelError.sshProfileMoved) {
+                    try await fixture.manager.ensureConnected(fixture.connection, trigger: trigger)
+                }
+            }
+
+            #expect(fixture.session?.liveness == .unreachable(expected))
+            #expect(fixture.session?.driver === fixture.driver)
+            #expect(FakeMSSQLPlugin.configurations(for: fixture.id).isEmpty)
+            await loop.cleanUp(fixture)
+        }
+
+        @Test("A connect that failed and took the session with it still keeps the route until a disconnect")
+        func failedConnectKeepsTheDialedRoute() async throws {
+            let (fixture, restore) = movedProfileFixture()
+            defer { restore() }
+            fixture.manager.dialedConnections[fixture.id] = fixture.connection
+            fixture.manager.removeSession(for: fixture.id)
+
+            await #expect(throws: ConnectionTunnelError.sshProfileMoved) {
+                try await fixture.manager.ensureConnected(fixture.connection)
+            }
+            #expect(fixture.session == nil)
+            #expect(FakeMSSQLPlugin.configurations(for: fixture.id).isEmpty)
+
+            await fixture.manager.disconnectSession(fixture.id)
+            #expect(fixture.manager.dialedConnections[fixture.id] == nil)
+            await loop.cleanUp(fixture)
+        }
     }
 }

@@ -275,6 +275,7 @@ final class AIChatViewModel: ObservableObject {
         streamingTask?.cancel()
         streamingTask = nil
         ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
+        settlePendingToolApprovals()
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
@@ -386,7 +387,8 @@ final class AIChatViewModel: ObservableObject {
         conversationToRestore = nil
         guard let conversation else { return }
         activeConversationID = conversation.id
-        messages = conversation.messages.map { ChatTurn(wire: $0) }
+        // A stored card can never be answered, and older builds saved some still waiting.
+        messages = ChatToolCallRepair.settlingPendingApprovals(conversation.messages).map { ChatTurn(wire: $0) }
     }
 
     // For a session no window shows; the next restore reads back what is written here.

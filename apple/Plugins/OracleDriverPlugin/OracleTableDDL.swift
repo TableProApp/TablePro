@@ -17,13 +17,58 @@ import TableProSQLGrammar
 /// `GENERATED ALWAYS AS (...) VIRTUAL` or `DEFAULT`, then `NOT NULL`. `NOT NULL` before `DEFAULT` fails with
 /// ORA-03076, and a type folded to upper case names no type at all when it is a quoted mixed-case object type.
 internal enum OracleTableDDL {
+    // The keys and checks follow the columns. A NOT NULL the column definition writes is not written again as a check.
     static func createTable(
         qualifiedTable: String,
         columns: [PluginColumnInfo],
+        constraints: [OracleTableConstraint] = [],
         quote: (String) -> String
     ) throws -> String {
-        let definitions = try columns.map { "    " + (try columnDefinition($0, quote: quote)) }
+        let notNullColumns = Set(columns.filter { !$0.isNullable }.map(\.name))
+        let columnDefinitions = try columns.map { try columnDefinition($0, quote: quote) }
+        let written = constraints.filter { !$0.restatesNotNull(of: notNullColumns) }
+        // A check added after the rows is refused here, with the others, rather than in the index phase.
+        for check in written where check.isAddedAfterRows {
+            _ = try checkCondition(of: check)
+        }
+        let constraintClauses = try written.filter { !$0.isAddedAfterRows }.map { try constraintClause($0, quote: quote) }
+        let definitions = (columnDefinitions + constraintClauses).map { "    " + $0 }
         return "CREATE TABLE \(qualifiedTable) (\n" + definitions.joined(separator: ",\n") + "\n);"
+    }
+
+    // A check's catalog text goes in only as one expression, as a default does.
+    private static func constraintClause(_ constraint: OracleTableConstraint, quote: (String) -> String) throws -> String {
+        guard constraint.kind == .check else { return constraint.clause(quote: quote) }
+        var written = constraint
+        written.condition = try checkCondition(of: constraint)
+        return written.clause(quote: quote)
+    }
+
+    private static func checkCondition(of constraint: OracleTableConstraint) throws -> String {
+        let condition = SQLExpressionFragment.strippingComments(constraint.condition ?? "", databaseTypeId: "Oracle")
+        guard !constraint.conditionMayBeCut, !condition.isEmpty, isSingleExpression(condition) else {
+            throw OraclePluginError(core: .queryFailed(String(
+                format: String(localized: "The condition of check constraint %@ cannot be written as SQL."),
+                constraint.name
+            )))
+        }
+        return condition
+    }
+
+    // What runs after the rows: a NOVALIDATE constraint is enabled again without checking them, and one with a
+    // generated name is enabled by what it is, or added if it is a check.
+    static func afterRowsStatements(
+        qualifiedTable: String,
+        constraints: [OracleTableConstraint],
+        quote: (String) -> String
+    ) throws -> [String] {
+        try constraints.compactMap { constraint in
+            if let statement = constraint.enableAfterRowsStatement(qualifiedTable: qualifiedTable, quote: quote) {
+                return statement
+            }
+            guard constraint.isAddedAfterRows else { return nil }
+            return "ALTER TABLE \(qualifiedTable) ADD CHECK (\(try checkCondition(of: constraint))) ENABLE NOVALIDATE"
+        }
     }
 
     /// `TEXT_VC` is the view's query alone, so its column names go in the header: a view declared

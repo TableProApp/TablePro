@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import TableProImport
 
 extension WelcomeViewModel {
     func publishConnectionsToTeamLibrary(_ connectionsToPublish: [DatabaseConnection], teamID: String) {
@@ -38,8 +39,12 @@ extension WelcomeViewModel {
         confirm: @MainActor ([DatabaseConnection]) async -> Bool
     ) async -> TeamLibraryPublishOutcome {
         guard await confirm(connections) else { return .declined }
+        // A pull drops both, so sending them would only put a token typed into a command on the server.
         let plan = connections.map {
-            TeamLibraryPublishPlan.Connection(id: $0.id, settings: exporter.portableSettings(for: $0))
+            TeamLibraryPublishPlan.Connection(
+                id: $0.id,
+                settings: exporter.portableSettings(for: $0).withoutStartupCommands().withoutTunnelCommand()
+            )
         }
         do throws(TeamLibraryPublishError) {
             return .finished(try await sync.publishConnections(plan, to: teamID))

@@ -334,7 +334,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let statement = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let spec = MemcachedBrowseSpec.refusalMessage(statement) == nil ? MemcachedBrowseSpec.parse(statement) : nil
-        return PluginRowStream.make { continuation, abort in
+        return PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     if let spec {
@@ -374,7 +374,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let batch = page.entries[start ..< end]
                 let values = try await self.values(of: batch.map(\.key), on: connection)
                 let rows = self.rows(of: batch, values: values, serverTime: page.serverTime)
-                if !rows.isEmpty { continuation.yield(.rows(rows)) }
+                if !rows.isEmpty { _ = await PluginRowStream.deliver(.rows(rows), to: continuation) }
                 start = end
             }
         }

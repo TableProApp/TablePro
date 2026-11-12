@@ -7,6 +7,7 @@ public enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
     case launchFailed(String)
     case timeout(lastFailure: String)
     case serverTurnedOff
+    case serverFailedToStart
 
     public var errorDescription: String? {
         switch self {
@@ -16,6 +17,8 @@ public enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
             return "Timed out waiting for a trusted TablePro MCP handshake (\(lastFailure))"
         case .serverTurnedOff:
             return "The TablePro MCP server is turned off. Turn it on in TablePro under Settings > MCP."
+        case .serverFailedToStart:
+            return "The TablePro MCP server is turned on but failed to start. Open Settings > MCP in TablePro to see why and try again."
         }
     }
 }
@@ -72,12 +75,13 @@ public struct MCPHandshakeAcquirer: Sendable {
 
     // A forged refusal can only make the bridge give up, so it is read without the handshake's
     // ownership checks.
-    private func refusalAnswers(launchRequestedAt: Date) -> Bool {
+    private func refusalAnswering(launchRequestedAt: Date) -> MCPStartRefusal? {
         guard let data = try? Data(contentsOf: refusalUrl),
-              let refusal = try? MCPHandshakeCoding.decoder().decode(MCPStartRefusal.self, from: data) else {
-            return false
+              let refusal = try? MCPHandshakeCoding.decoder().decode(MCPStartRefusal.self, from: data),
+              refusal.answers(launchRequestedAt: launchRequestedAt) else {
+            return nil
         }
-        return refusal.answers(launchRequestedAt: launchRequestedAt)
+        return refusal
     }
 
     // The copy this helper ships in, not whichever copy owns `tablepro://`. Substitution stays on, so a
@@ -115,9 +119,15 @@ public struct MCPHandshakeAcquirer: Sendable {
             if let payload = attempt.payload {
                 return payload
             }
-            if let launchRequestedAt, refusalAnswers(launchRequestedAt: launchRequestedAt) {
-                logger.log(.error, "TablePro refused to start the MCP server: it is turned off")
-                throw MCPHandshakeAcquisitionError.serverTurnedOff
+            if let launchRequestedAt, let refusal = refusalAnswering(launchRequestedAt: launchRequestedAt) {
+                switch refusal.reason {
+                case .turnedOff:
+                    logger.log(.error, "TablePro refused to start the MCP server: it is turned off")
+                    throw MCPHandshakeAcquisitionError.serverTurnedOff
+                case .failedToStart:
+                    logger.log(.error, "TablePro tried to start the MCP server and failed")
+                    throw MCPHandshakeAcquisitionError.serverFailedToStart
+                }
             }
             lastFailure = attempt.failure
             try? await Task.sleep(for: Self.pollInterval)

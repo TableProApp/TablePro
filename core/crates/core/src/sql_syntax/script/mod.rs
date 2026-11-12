@@ -16,6 +16,7 @@ mod script_token;
 mod script_token_kind;
 pub(crate) mod server_reading;
 pub mod text_offsets;
+pub mod unicode_spaces;
 
 pub use batch_error_policy::BatchErrorPolicy;
 pub use lexical_settings::LexicalSettings;

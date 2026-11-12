@@ -9,6 +9,8 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
 
     public IReadOnlyList<ResultColumn> Columns { get; } = columns;
 
+    public int Position { get; internal set; }
+
     public long Rows { get; internal set; }
 
     // Every row the statement produced, where the engine counted past the limit.
@@ -28,12 +30,16 @@ public sealed class RunResults(string label, string labelMore)
 {
     private readonly List<RunResult> _results = [];
 
+    // A script can return thousands of sets, and each of their events looks one up.
+    private readonly Dictionary<int, RunResult> _bySet = [];
+
     public IReadOnlyList<RunResult> Results => _results;
 
     public RunResult Add(int setIndex, IReadOnlyList<ResultColumn> columns)
     {
-        var result = new RunResult(setIndex, columns);
+        var result = new RunResult(setIndex, columns) { Position = _results.Count + 1 };
         _results.Add(result);
+        _bySet.TryAdd(setIndex, result);
         return result;
     }
 
@@ -67,7 +73,7 @@ public sealed class RunResults(string label, string labelMore)
     public string Label(RunResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        var position = _results.IndexOf(result) + 1;
+        var position = result.Position;
         return result switch
         {
             { Truncated: false } => string.Format(CultureInfo.CurrentCulture, label, position, result.Rows),
@@ -76,5 +82,5 @@ public sealed class RunResults(string label, string labelMore)
         };
     }
 
-    private RunResult? Find(int setIndex) => _results.Find(result => result.SetIndex == setIndex);
+    private RunResult? Find(int setIndex) => _bySet.GetValueOrDefault(setIndex);
 }

@@ -114,6 +114,7 @@ crates/app/src/services/history_service.rs
 crates/app/src/services/import_file.rs
 crates/app/src/services/library_outline.rs
 crates/app/src/services/license_ask.rs
+crates/app/src/services/mcp_clients.rs
 crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs

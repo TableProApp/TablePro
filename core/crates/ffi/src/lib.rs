@@ -60,7 +60,7 @@ pub use row_edits::{
 };
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
-pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TablePageRead};
+pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, RowEstimate, SessionHealthTag, TablePageRead};
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
 

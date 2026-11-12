@@ -1,8 +1,8 @@
 import Darwin
 import Foundation
 @testable import TableProMCP
+import TableProProcess
 import TableProTestSupport
-import TableProUtilities
 import Testing
 
 struct MCPStderrBridgeLoggerTests {

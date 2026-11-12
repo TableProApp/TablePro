@@ -27,6 +27,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
     case sqlServer
     case oracle
     case redis
+    case teradata
     case other
 
     internal static func of(_ type: DatabaseType) -> TransactionEngineFamily {
@@ -69,7 +70,9 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         switch self {
         case .postgres, .redshift, .cockroach, .duckdb:
             return true
-        case .mysql, .sqlite, .sqlServer, .oracle, .redis, .other:
+        // Teradata mode rolls back the whole transaction on a failed request and ANSI mode only the request; the
+        // family cannot see the session's mode, so Teradata keeps the answer it had before it had a family.
+        case .mysql, .sqlite, .sqlServer, .oracle, .redis, .teradata, .other:
             return false
         }
     }
@@ -98,6 +101,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         "DuckDB": .duckdb,
         "SQL Server": .sqlServer,
         "Oracle": .oracle,
-        "Redis": .redis
+        "Redis": .redis,
+        "Teradata": .teradata
     ]
 }

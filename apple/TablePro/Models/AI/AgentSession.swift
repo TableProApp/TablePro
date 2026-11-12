@@ -148,7 +148,6 @@ internal final class AgentSession: ObservableObject, Identifiable {
     // None of the callers is the user throwing a conversation away, so the transcript is written first.
     internal func stop() {
         viewModel.cancelStream()
-        settlePendingApprovals()
         viewModel.persistCurrentConversation()
         mark(.stopped)
     }
@@ -162,18 +161,6 @@ internal final class AgentSession: ObservableObject, Identifiable {
     internal func resume() {
         guard status.isEnded else { return }
         mark(.ready)
-    }
-
-    // The cancelled task marks its card after the snapshot, which left a dead `.pending` card on disk.
-    private func settlePendingApprovals() {
-        for turn in viewModel.messages {
-            for block in turn.blocks {
-                guard case .toolUse(var use) = block.kind,
-                      case .pending = use.approvalState else { continue }
-                use.approvalState = .cancelled
-                block.setKind(.toolUse(use))
-            }
-        }
     }
 
     internal var record: AgentSessionRecord {

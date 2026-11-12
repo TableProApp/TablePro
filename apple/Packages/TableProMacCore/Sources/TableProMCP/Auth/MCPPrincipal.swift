@@ -28,19 +28,23 @@ public struct MCPPrincipal: Sendable, Equatable, Hashable {
     public let scopes: Set<MCPScope>
     public let connectionAccess: ConnectionAccess
     public let metadata: MCPPrincipalMetadata
+    // Nil means every tool the scopes allow.
+    public let toolAllowlist: Set<String>?
 
     public init(
         tokenFingerprint: String,
         tokenId: UUID,
         scopes: Set<MCPScope>,
         connectionAccess: ConnectionAccess = .all,
-        metadata: MCPPrincipalMetadata
+        metadata: MCPPrincipalMetadata,
+        toolAllowlist: Set<String>? = nil
     ) {
         self.tokenFingerprint = tokenFingerprint
         self.tokenId = tokenId
         self.scopes = scopes
         self.connectionAccess = connectionAccess
         self.metadata = metadata
+        self.toolAllowlist = toolAllowlist
     }
 
     public static let inAppAssistantTokenId = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xA1, 0x1A))
@@ -69,6 +73,10 @@ public struct MCPPrincipal: Sendable, Equatable, Hashable {
         scopes.contains(scope)
     }
 
+    public func allowsTool(_ name: String) -> Bool {
+        toolAllowlist?.contains(name) ?? true
+    }
+
     public func missingScopes(from required: Set<MCPScope>) -> Set<MCPScope> {
         required.subtracting(scopes)
     }
@@ -86,6 +94,7 @@ public struct MCPPrincipal: Sendable, Equatable, Hashable {
             && lhs.scopes == rhs.scopes
             && lhs.connectionAccess == rhs.connectionAccess
             && lhs.metadata == rhs.metadata
+            && lhs.toolAllowlist == rhs.toolAllowlist
     }
 
     public func hash(into hasher: inout Hasher) {

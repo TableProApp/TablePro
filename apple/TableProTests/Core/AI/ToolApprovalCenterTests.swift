@@ -125,6 +125,25 @@ struct ToolApprovalCenterTests {
         #expect(center.hasPending == false)
     }
 
+    @Test("A call is awaited from its announcement until its turn lets it go, and never in another session")
+    func isAwaitingFollowsTheTurn() async {
+        let center = ToolApprovalCenter()
+        #expect(!center.isAwaiting(sessionId: session, toolUseId: "call_0"))
+
+        center.expect(sessionId: session, toolUseIds: ["call_0"])
+        #expect(center.isAwaiting(sessionId: session, toolUseId: "call_0"))
+        #expect(!center.isAwaiting(sessionId: UUID(), toolUseId: "call_0"))
+
+        let waiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "call_0") }
+        await runQueuedMainActorWork()
+        center.forget(sessionId: session, toolUseIds: ["call_0"])
+        #expect(center.isAwaiting(sessionId: session, toolUseId: "call_0"))
+
+        center.resolve(sessionId: session, toolUseId: "call_0", decision: .run)
+        _ = await waiter.value
+        #expect(!center.isAwaiting(sessionId: session, toolUseId: "call_0"))
+    }
+
     /// The main queue runs its jobs in order, so a job queued now runs after every waiter the case
     /// started has reached its await.
     private func runQueuedMainActorWork() async {

@@ -14,7 +14,8 @@ import TableProUtilities
 /// Three answers, in precedence order. A script that opens a transaction of its own or turns the
 /// commit mode off manages its own, so the app opens none. A script holding a statement the engine
 /// refuses inside a transaction block runs in autocommit. Everything else is wrapped, which is what
-/// gives a failed batch its rollback.
+/// gives a failed batch its rollback, except at Read-Only, where there is no write to roll back and
+/// each statement runs in a read-only transaction of its own, which a wrap would refuse.
 ///
 /// An engine the app cannot open a transaction on at all
 /// (``TransactionEngineFamily/wrapsBatchInTransaction``) never reaches the SQL rules, because they
@@ -30,11 +31,12 @@ internal enum BatchTransactionPolicy {
     internal static func plan(
         for statements: [String],
         databaseType: DatabaseType,
-        grammar: SQLLexicalGrammar
+        grammar: SQLLexicalGrammar,
+        safeModeIsReadOnly: Bool = false
     ) -> BatchTransactionPlan {
         let family = TransactionEngineFamily.of(databaseType)
         guard family.wrapsBatchInTransaction else { return queuedBlockPlan(for: statements, grammar: grammar) }
-        var runsInAutocommit = false
+        var runsInAutocommit = safeModeIsReadOnly
         var holdsASavepoint = false
         for statement in statements {
             let text = statement as NSString

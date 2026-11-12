@@ -381,7 +381,7 @@ actor Neo4jConnection {
         _ statement: BoltRequest,
         batchSize: Int64,
         interruptible: Bool,
-        receive: @Sendable (_ keys: [String], _ records: [[PackStreamValue]], _ isFirst: Bool) -> Bool
+        receive: @Sendable (_ keys: [String], _ records: [[PackStreamValue]], _ isFirst: Bool) async -> Bool
     ) async throws {
         try await withTurn(interruptible: interruptible) { wire, since in
             let replies = try await Self.exchange([statement, .pull(count: batchSize)], on: wire, cancellableSince: since)
@@ -391,7 +391,7 @@ actor Neo4jConnection {
             var batch = replies[1]
             var isFirst = true
             while true {
-                let wanted = receive(keys, batch.records, isFirst)
+                let wanted = await receive(keys, batch.records, isFirst)
                 isFirst = false
                 guard batch.hasMore else { return }
                 guard wanted, !Task.isCancelled else {

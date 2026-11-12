@@ -55,11 +55,13 @@ enum ImportTypeMapper {
         }
     }
 
+    // SQLite stores a boolean as the integer 1 or 0. `BOOLEAN` has NUMERIC affinity and tells the import and the grid
+    // that the column is one.
     private static func sqliteType(_ type: PluginImportFieldType) -> String {
         switch type {
         case .integer: return "INTEGER"
         case .real: return "REAL"
-        case .boolean: return "INTEGER"
+        case .boolean: return "BOOLEAN"
         case .json, .text: return "TEXT"
         @unknown default: return "TEXT"
         }

@@ -94,7 +94,7 @@ internal final class LocalCredentialConsent {
             uses: ConnectionFieldCatalog.localCredentialUses(in: connection.additionalFields).map { use in
                 describe(use, fields: fields)
             },
-            destination: connection.destinationSummary,
+            destination: SSHProfileStorage.shared.refreshingLinkedProfile(connection).destinationSummary,
             origin: connection.origin
         )
     }

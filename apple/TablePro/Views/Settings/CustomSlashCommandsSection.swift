@@ -10,6 +10,7 @@ struct CustomSlashCommandsSection: View {
     @State private var editing: CustomSlashCommand?
     @State private var isCreating = false
     @State private var saveError: String?
+    @State private var pendingDelete: CustomSlashCommand?
 
     var body: some View {
         Section {
@@ -74,6 +75,22 @@ struct CustomSlashCommandsSection: View {
         } message: { message in
             Text(message)
         }
+        .alert(
+            pendingDelete.map { String(format: String(localized: "Delete “/%@”?"), $0.name) } ?? "",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            presenting: pendingDelete
+        ) { command in
+            Button(String(localized: "Delete"), role: .destructive) {
+                storage.delete(id: command.id)
+                pendingDelete = nil
+            }
+            Button(String(localized: "Cancel"), role: .cancel) { pendingDelete = nil }
+        } message: { _ in
+            Text(String(localized: "The command is removed from this Mac and from every Mac that syncs settings. This cannot be undone."))
+        }
     }
 
     @ViewBuilder
@@ -103,7 +120,7 @@ struct CustomSlashCommandsSection: View {
             }
             .controlSize(.small)
             Button(role: .destructive) {
-                storage.delete(id: command.id)
+                pendingDelete = command
             } label: {
                 Image(systemName: "trash")
             }

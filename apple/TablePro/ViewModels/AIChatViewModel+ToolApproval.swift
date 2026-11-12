@@ -87,22 +87,24 @@ extension AIChatViewModel {
                 sessionId: sessionId,
                 toolUseId: block.id
             )
-            let finalState: ToolApprovalState
+            let decidedState: ToolApprovalState
             switch decision {
             case .run:
-                finalState = .approved
-                explicitlyApproved.insert(block.id)
+                decidedState = .approved
             case .alwaysAllow:
                 await MainActor.run { [weak self] in
                     self?.persistAlwaysAllowed(toolName: block.name)
                 }
-                finalState = .approved
-                explicitlyApproved.insert(block.id)
+                decidedState = .approved
             case .cancel:
-                finalState = .cancelled
+                decidedState = .cancelled
             }
-            await MainActor.run { [weak self] in
-                self?.updateApprovalState(blockID: block.id, newState: finalState, assistantID: assistantID)
+            let finalState = await MainActor.run { [weak self] in
+                self?.updateApprovalState(blockID: block.id, newState: decidedState, assistantID: assistantID)
+                    ?? .cancelled
+            }
+            if case .approved = finalState {
+                explicitlyApproved.insert(block.id)
             }
             resolved.append(ToolUseBlock(
                 id: block.id,
@@ -149,7 +151,7 @@ extension AIChatViewModel {
             return .pending
         }
 
-        if let connection, connection.aiAlwaysAllowedTools.contains(toolName) {
+        if let connection, alwaysAllowedTools(for: connection).contains(toolName) {
             return .approved
         }
         if let connection {
@@ -171,6 +173,14 @@ extension AIChatViewModel {
         DatabaseManager.shared.session(for: connection.id)?.safeModeLevel ?? connection.safeModeLevel
     }
 
+    // `connection` is read once per pane, so a grant forgotten in the form or changed by sync after
+    // that is only in storage.
+    @MainActor
+    private func alwaysAllowedTools(for connection: DatabaseConnection) -> Set<String> {
+        services.connectionStorage.loadConnection(id: connection.id)?.aiAlwaysAllowedTools
+            ?? connection.aiAlwaysAllowedTools
+    }
+
     @MainActor
     func appendPendingToolUseBlocks(_ blocks: [ToolUseBlock], assistantID: UUID) {
         guard let turn = turn(withID: assistantID) else { return }
@@ -179,27 +189,38 @@ extension AIChatViewModel {
         }
     }
 
+    // Returns the state the card holds afterwards. Stop settles a card before a Run click already
+    // in flight lands, and New Conversation or a switch drops its turn: either way nothing runs.
     @MainActor
-    func updateApprovalState(blockID: String, newState: ToolApprovalState, assistantID: UUID) {
-        guard let turn = turn(withID: assistantID) else { return }
+    @discardableResult
+    func updateApprovalState(blockID: String, newState: ToolApprovalState, assistantID: UUID) -> ToolApprovalState {
+        guard let turn = turn(withID: assistantID) else { return .cancelled }
         for chatBlock in turn.blocks {
             if case .toolUse(var block) = chatBlock.kind, block.id == blockID {
+                if case .cancelled = block.approvalState { return .cancelled }
                 block.approvalState = newState
                 chatBlock.setKind(.toolUse(block))
-                return
+                return newState
+            }
+        }
+        return .cancelled
+    }
+
+    // The task marks a stopped card only after a hop back to the main actor, by which time the
+    // transcript has been saved or replaced.
+    @MainActor
+    func settlePendingToolApprovals() {
+        for turn in messages {
+            for block in turn.blocks {
+                guard case .toolUse(var use) = block.kind, case .pending = use.approvalState else { continue }
+                use.approvalState = .cancelled
+                block.setKind(.toolUse(use))
             }
         }
     }
 
-    /// Records an Always Allow grant as a read-modify-write of the one field it changes.
-    ///
-    /// It used to save the whole `DatabaseConnection` the view model was holding. That record is
-    /// read once, in `AIChatPanelView`'s `onAppear` and again only when the connection's id changes,
-    /// so a Safe Mode level raised in the toolbar while the pane stayed mounted was still the old
-    /// one here, and the grant wrote it back and silently undid the change.
-    ///
-    /// A destructive operation is never granted: each DROP, TRUNCATE and ALTER...DROP is confirmed
-    /// on its own.
+    // Writes only this field: the view model's copy of the connection can be stale. A destructive
+    // or remote tool is never granted.
     @MainActor
     func persistAlwaysAllowed(toolName: String) {
         if ChatToolRegistry.shared.tool(named: toolName)?.mode == .agentOnly {
@@ -209,7 +230,6 @@ extension AIChatViewModel {
             return
         }
         guard let connectionId = connection?.id else { return }
-        guard connection?.aiAlwaysAllowedTools.contains(toolName) == false else { return }
         guard services.connectionStorage.mutateConnections(ids: [connectionId], { stored in
             stored.aiAlwaysAllowedTools.insert(toolName)
         }) else {
@@ -265,18 +285,20 @@ extension AIChatViewModel {
                 sessionId: sessionId,
                 toolUseId: block.id
             )
+            let decidedState: ToolApprovalState
             switch decision {
             case .run:
-                finalState = .approved
-                approvalWasExplicit = true
+                decidedState = .approved
             case .alwaysAllow:
                 persistAlwaysAllowed(toolName: block.name)
-                finalState = .approved
-                approvalWasExplicit = true
+                decidedState = .approved
             case .cancel:
-                finalState = .cancelled
+                decidedState = .cancelled
             }
-            updateApprovalState(blockID: block.id, newState: finalState, assistantID: assistantID)
+            finalState = updateApprovalState(blockID: block.id, newState: decidedState, assistantID: assistantID)
+            if case .approved = finalState {
+                approvalWasExplicit = true
+            }
         } else {
             finalState = initialState
         }

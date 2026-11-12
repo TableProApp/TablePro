@@ -20,7 +20,7 @@ extension VimEngine {
         let rangeStart = min(startPos, endPos)
         var rangeEnd = max(startPos, endPos)
         if inclusive && rangeEnd < buffer.length && buffer.character(at: rangeEnd) != 0x0A {
-            rangeEnd += 1
+            rangeEnd = characterEnd(at: rangeEnd, in: buffer)
         }
         let range = NSRange(location: rangeStart, length: rangeEnd - rangeStart)
 
@@ -28,8 +28,11 @@ extension VimEngine {
         pendingOperator = nil
     }
 
-    func executeOperatorOnRange(_ op: VimOperator, range: NSRange, linewise: Bool, in buffer: VimTextBuffer) {
-        guard range.length > 0 else { return }
+    func executeOperatorOnRange(_ op: VimOperator, range proposed: NSRange, linewise: Bool, in buffer: VimTextBuffer) {
+        guard proposed.length > 0 else { return }
+        // Text objects scan by code unit, so their ranges can end inside a character.
+        let start = characterStart(at: proposed.location, in: buffer)
+        let range = NSRange(location: start, length: characterEnd(at: NSMaxRange(proposed) - 1, in: buffer) - start)
 
         switch op {
         case .delete:
@@ -37,8 +40,7 @@ extension VimEngine {
             writeToActiveRegister(text: text, linewise: linewise, asDelete: true)
             buffer.replaceCharacters(in: range, with: "")
             adjustMarksForEdit(in: range, replacementLength: 0)
-            let newPos = min(range.location, max(0, buffer.length - 1))
-            buffer.setSelectedRange(NSRange(location: max(0, newPos), length: 0))
+            buffer.setSelectedRange(NSRange(location: clampToContentPosition(range.location, in: buffer), length: 0))
         case .yank:
             let text = buffer.string(in: range)
             writeToActiveRegister(text: text, linewise: linewise, asDelete: false)
@@ -193,7 +195,7 @@ extension VimEngine {
             }
         } else {
             if after {
-                let insertPos = min(pos + 1, buffer.length)
+                let insertPos = characterEnd(at: pos, in: buffer)
                 buffer.replaceCharacters(in: NSRange(location: insertPos, length: 0), with: source.text)
                 let newPos = insertPos + (source.text as NSString).length - 1
                 buffer.setSelectedRange(NSRange(location: max(insertPos, newPos), length: 0))
@@ -212,16 +214,16 @@ extension VimEngine {
         let contentEnd = lineEnd > lineRange.location
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
-        let deleteCount = min(count, max(0, contentEnd - pos))
-        guard deleteCount > 0 else { return }
-        let range = NSRange(location: pos, length: deleteCount)
+        let end = characterOffset(after: pos, count: count, limit: contentEnd, in: buffer)
+        guard end > pos else { return }
+        let range = NSRange(location: pos, length: end - pos)
         writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
         adjustMarksForEdit(in: range, replacementLength: 0)
         noteEdit(at: pos, in: buffer)
         buffer.replaceCharacters(in: range, with: "")
-        let newContentEnd = contentEnd - deleteCount
+        let newContentEnd = contentEnd - range.length
         if pos >= newContentEnd && newContentEnd > lineRange.location {
-            buffer.setSelectedRange(NSRange(location: newContentEnd - 1, length: 0))
+            buffer.setSelectedRange(NSRange(location: characterStart(at: newContentEnd - 1, in: buffer), length: 0))
         } else {
             buffer.setSelectedRange(NSRange(location: pos, length: 0))
         }
@@ -230,10 +232,9 @@ extension VimEngine {
     func deleteCharBeforeCursor(_ count: Int, in buffer: VimTextBuffer) {
         let pos = buffer.selectedRange().location
         let lineRange = buffer.lineRange(forOffset: pos)
-        let deleteCount = min(count, pos - lineRange.location)
-        guard deleteCount > 0 else { return }
-        let start = pos - deleteCount
-        let range = NSRange(location: start, length: deleteCount)
+        let start = characterOffset(before: pos, count: count, limit: lineRange.location, in: buffer)
+        guard start < pos else { return }
+        let range = NSRange(location: start, length: pos - start)
         writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
         buffer.replaceCharacters(in: range, with: "")
         buffer.setSelectedRange(NSRange(location: start, length: 0))
@@ -246,9 +247,9 @@ extension VimEngine {
         let contentEnd = lineEnd > lineRange.location
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
-        let deleteCount = min(count, max(0, contentEnd - pos))
-        guard deleteCount > 0 else { setMode(.insert); return }
-        let range = NSRange(location: pos, length: deleteCount)
+        let end = characterOffset(after: pos, count: count, limit: contentEnd, in: buffer)
+        guard end > pos else { setMode(.insert); return }
+        let range = NSRange(location: pos, length: end - pos)
         writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
         buffer.replaceCharacters(in: range, with: "")
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
@@ -262,13 +263,16 @@ extension VimEngine {
         let contentEnd = lineEnd > lineRange.location
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
-        let toggleCount = min(count, max(0, contentEnd - pos))
-        guard toggleCount > 0 else { return }
-        let range = NSRange(location: pos, length: toggleCount)
+        let end = characterOffset(after: pos, count: count, limit: contentEnd, in: buffer)
+        guard end > pos else { return }
+        let range = NSRange(location: pos, length: end - pos)
         let transformed = toggleCaseTransform(buffer.string(in: range))
         buffer.replaceCharacters(in: range, with: transformed)
-        let newPos = min(pos + toggleCount, contentEnd > lineRange.location ? contentEnd - 1 : lineRange.location)
-        buffer.setSelectedRange(NSRange(location: newPos, length: 0))
+        // A case change can change the length, as ß becomes SS.
+        let newEnd = pos + (transformed as NSString).length
+        let newContentEnd = contentEnd + newEnd - end
+        let lastCharacter = characterStart(at: newContentEnd - 1, in: buffer)
+        buffer.setSelectedRange(NSRange(location: min(newEnd, lastCharacter), length: 0))
     }
 
     func applyCaseToLine(_ op: VimOperator, count: Int, in buffer: VimTextBuffer) {
@@ -384,16 +388,16 @@ extension VimEngine {
         let contentEnd = lineEnd > lineRange.location
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
-        guard pos + count <= contentEnd else { return true }
-        let replacement: String
-        if char == "\r" || char == "\n" {
-            replacement = String(repeating: "\n", count: count)
-        } else {
-            replacement = String(repeating: char, count: count)
+        var end = pos
+        for _ in 0..<count {
+            guard end < contentEnd else { return true }
+            end = characterEnd(at: end, in: buffer)
         }
-        let range = NSRange(location: pos, length: count)
-        buffer.replaceCharacters(in: range, with: replacement)
-        buffer.setSelectedRange(NSRange(location: pos + count - 1, length: 0))
+        let unit = char == "\r" || char == "\n" ? "\n" : String(char)
+        let replacement = String(repeating: unit, count: count)
+        buffer.replaceCharacters(in: NSRange(location: pos, length: end - pos), with: replacement)
+        let lastStart = pos + (replacement as NSString).length - (unit as NSString).length
+        buffer.setSelectedRange(NSRange(location: lastStart, length: 0))
         return true
     }
 }

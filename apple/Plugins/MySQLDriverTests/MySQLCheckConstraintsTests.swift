@@ -156,4 +156,12 @@ struct MySQLCheckConstraintsTests {
             quotedTable: "`t`", quotedName: "`c`", banner: "10.6.28-MariaDB", flavor: .mariadb
         ) == "ALTER TABLE `t` DROP CONSTRAINT `c`")
     }
+
+    // Measured on MySQL 8.4.13: without the type, table b's UNIQUE key named like table a's check listed a's check.
+    @Test("The joined catalog read matches only check constraints")
+    func joinedCatalogQueryMatchesChecksOnly() {
+        let query = MySQLCheckConstraints.joinedCatalogQuery(databaseLiteral: "shop", tableLiteral: "b")
+        #expect(query.contains("AND tc.CONSTRAINT_TYPE = 'CHECK'\n"))
+        #expect(query.contains("WHERE cc.CONSTRAINT_SCHEMA = 'shop' AND tc.TABLE_NAME = 'b'\n"))
+    }
 }

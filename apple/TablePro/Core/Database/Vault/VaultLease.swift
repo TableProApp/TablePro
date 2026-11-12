@@ -58,8 +58,7 @@ struct VaultLeaseSchedule: Equatable, Sendable {
     }
 }
 
-// Owned by whatever signed in with it, a driver or a backup job. Dropping the last reference revokes it too, so a
-// lease a timed-out connect never adopted does not outlive it.
+// Owned by `VaultLeaseCache`, which hands out holds. Dropping the last reference revokes it too.
 final class VaultLease: Sendable {
     let leaseId: String
 
@@ -98,6 +97,9 @@ final class VaultLease: Sendable {
 
     var hasEnded: Bool { control.hasEnded }
 
+    // What `onEnding` gets when a renewal finds the lease gone: the time a running statement has to finish in.
+    var endingLead: Duration { schedule.lead }
+
     // `onEnding` gets how long the lease has left, which is the time to sign in again in.
     func start(onEnding: @escaping @Sendable (Duration) -> Void) {
         let leaseId = leaseId
@@ -127,6 +129,23 @@ final class VaultLease: Sendable {
         let renewer = renewer
         Task.detached(priority: .utility) {
             await renewer.revoke(leaseId: leaseId)
+        }
+    }
+
+    func revoke() async {
+        guard control.release() else { return }
+        await renewer.revoke(leaseId: leaseId)
+    }
+
+    // Vault Agent drops a cached lease once renewing it fails; this asks the same question on demand. Nil when the
+    // lease cannot be renewed or Vault gave no definite answer.
+    func stillExists(timeout: Duration) async -> Bool? {
+        guard schedule.renewable, !hasEnded else { return nil }
+        do {
+            _ = try await renewer.renew(leaseId: leaseId, increment: schedule.initialDuration, timeout: timeout)
+            return true
+        } catch {
+            return Self.isDefinitive(error) ? false : nil
         }
     }
 
@@ -227,8 +246,10 @@ final class VaultLease: Sendable {
         if let request = error as? VaultRequestError {
             return (400 ..< 500).contains(request.status) && request.status != 429
         }
-        if case .unreachable = error as? VaultError { return false }
-        return error is VaultError
+        switch error as? VaultError {
+        case .unreachable, .serverFailed: return false
+        default: return error is VaultError
+        }
     }
 
     private final class Control: Sendable {

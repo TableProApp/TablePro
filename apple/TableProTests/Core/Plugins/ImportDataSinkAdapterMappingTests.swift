@@ -132,9 +132,8 @@ struct ImportDataSinkAdapterMappingTests {
         #expect(columns.isEmpty)
     }
 
-    /// A row carrying nothing has nothing to lose, so it passes through. Only a row holding values
-    /// that reach no column is worth stopping for, and conflating the two would turn an empty
-    /// object in an NDJSON file into a failed import.
+    // An empty object is how JSON export writes an all-NULL row without its NULLs, so it is written as a row of
+    // defaults. Only a row holding values that reach no column is an error.
     @Test("A row with no values at all is not an error")
     func emptyRowIsNotAnError() async throws {
         let sink = adapter(mapping: ["name": "name"])

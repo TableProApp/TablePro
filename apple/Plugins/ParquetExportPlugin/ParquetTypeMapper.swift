@@ -25,6 +25,10 @@ public enum ParquetTypeMapper {
         if dateTypes.contains(base) {
             return enginesWhereDateCarriesTime.contains(databaseTypeId) ? "TIMESTAMP" : "DATE"
         }
+        // A cast to TIMESTAMP or TIME drops the offset, so 12:00+07 would read as 12:00 UTC.
+        if isZoned(typeName) || base == "timestamptz" || base == "timetz" {
+            return timeTypes.contains(base) ? "TIMETZ" : "TIMESTAMPTZ"
+        }
         if timestampTypes.contains(base) { return "TIMESTAMP" }
         if timeTypes.contains(base) { return "TIME" }
         if binaryTypes.contains(base) { return "BLOB" }
@@ -47,6 +51,12 @@ public enum ParquetTypeMapper {
 
     private static func isUnsigned(_ typeName: String) -> Bool {
         words(typeName).contains("unsigned")
+    }
+
+    // Oracle's `with local time zone` counts: the driver writes it with the session's offset.
+    private static func isZoned(_ typeName: String) -> Bool {
+        let words = words(typeName).filter { $0 != "local" }
+        return words.indices.dropLast(2).contains { words[$0] == "with" && words[$0 + 1] == "time" && words[$0 + 2] == "zone" }
     }
 
     // `bit` and `bit(1)` hold one flag. `bit(8)` and `bit varying` hold a string of them.

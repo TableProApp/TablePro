@@ -93,6 +93,12 @@ pub(crate) struct ScriptSyntax {
     /// SQLite's `sqlite3GetToken` reads it. Inside a name it stays a name
     /// character, there as elsewhere.
     pub byte_order_mark_is_space: bool,
+    /// DuckDB turns its non-ASCII spaces into spaces before it lexes, where
+    /// its own reading of quotes is outside one (`unicode_spaces`). The
+    /// driver sends each statement alone, from its first code token, and
+    /// DuckDB reads each text it gets afresh, so the reading starts again
+    /// there.
+    pub blanks_unicode_spaces: bool,
     pub word_start_extra: &'static [u8],
     pub word_part_extra: &'static [u8],
 }
@@ -132,6 +138,7 @@ const POSTGRESQL: ScriptRules = ScriptRules {
         digit_separators: true,
         tcl_parameters: false,
         byte_order_mark_is_space: false,
+        blanks_unicode_spaces: false,
         word_start_extra: b"",
         word_part_extra: b"$",
     },
@@ -159,6 +166,7 @@ const MYSQL: ScriptRules = ScriptRules {
         digit_separators: false,
         tcl_parameters: false,
         byte_order_mark_is_space: false,
+        blanks_unicode_spaces: false,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -186,6 +194,7 @@ const SQLITE: ScriptRules = ScriptRules {
         digit_separators: true,
         tcl_parameters: true,
         byte_order_mark_is_space: true,
+        blanks_unicode_spaces: false,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -213,6 +222,7 @@ const MSSQL: ScriptRules = ScriptRules {
         digit_separators: false,
         tcl_parameters: false,
         byte_order_mark_is_space: false,
+        blanks_unicode_spaces: false,
         word_start_extra: b"@#",
         word_part_extra: b"@#$",
     },
@@ -240,6 +250,7 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
         digit_separators: true,
         tcl_parameters: false,
         byte_order_mark_is_space: false,
+        blanks_unicode_spaces: false,
         word_start_extra: b"",
         word_part_extra: b"",
     },
@@ -267,6 +278,7 @@ const CQL: ScriptRules = ScriptRules {
         digit_separators: false,
         tcl_parameters: false,
         byte_order_mark_is_space: false,
+        blanks_unicode_spaces: false,
         word_start_extra: b"",
         word_part_extra: b"",
     },
@@ -275,6 +287,7 @@ const CQL: ScriptRules = ScriptRules {
 /// DuckDB 2.0's PEG tokenizer: a string escapes only with an `E` prefix
 /// and ends at its quote, with no continuation on the next line; block
 /// comments nest, `$tag$` quotes, and a backtick quotes a name as `"` does.
+/// A byte from 0x80 up is a name byte, except a space its pass blanks.
 const DUCKDB: ScriptRules = ScriptRules {
     boundary: Boundary::Semicolon,
     compound: CompoundRule::None,
@@ -297,6 +310,7 @@ const DUCKDB: ScriptRules = ScriptRules {
         digit_separators: true,
         tcl_parameters: false,
         byte_order_mark_is_space: false,
+        blanks_unicode_spaces: true,
         word_start_extra: b"",
         word_part_extra: b"$",
     },

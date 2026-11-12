@@ -395,7 +395,7 @@ private actor PostgreSQLActor {
         )
 
         guard let connection = PQconnectStart(connStr) else {
-            throw PostgreSQLError.connectionFailed(String(localized: "Could not start a connection."))
+            throw PostgreSQLError.unreachable(String(localized: "Could not start a connection."))
         }
 
         var adopted = false
@@ -434,14 +434,14 @@ private actor PostgreSQLActor {
                     throw PostgreSQLError.connectionFailed(Self.message(from: connection))
                 }
                 guard Date() < deadline else {
-                    throw PostgreSQLError.connectionFailed(String(localized: "Connection timed out."))
+                    throw PostgreSQLError.unreachable(String(localized: "Connection timed out."))
                 }
 
                 let events = status == PGRES_POLLING_READING ? Int16(POLLIN) : Int16(POLLOUT)
                 var descriptor = pollfd(fd: socket, events: events, revents: 0)
                 let ready = poll(&descriptor, 1, Self.pollSliceMilliseconds)
                 guard ready >= 0 else {
-                    throw PostgreSQLError.connectionFailed(String(localized: "Connection failed while waiting on the socket."))
+                    throw PostgreSQLError.unreachable(String(localized: "Connection failed while waiting on the socket."))
                 }
                 guard ready > 0 else { continue }
 
@@ -1200,13 +1200,15 @@ nonisolated private struct RawPGResult: Sendable {
 
 nonisolated enum PostgreSQLError: Error, LocalizedError {
     case connectionFailed(String)
+    // The connect never reached the server: it timed out or the socket failed on this device.
+    case unreachable(String)
     case notConnected
     case queryFailed(String)
     case unsupported(String)
 
     var errorDescription: String? {
         switch self {
-        case .connectionFailed(let msg): return "PostgreSQL connection failed: \(msg)"
+        case .connectionFailed(let msg), .unreachable(let msg): return "PostgreSQL connection failed: \(msg)"
         case .notConnected: return "Not connected to PostgreSQL database"
         case .queryFailed(let msg): return "PostgreSQL query failed: \(msg)"
         case .unsupported(let msg): return msg

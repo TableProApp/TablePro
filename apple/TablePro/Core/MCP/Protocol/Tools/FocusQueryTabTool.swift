@@ -6,7 +6,10 @@ public struct FocusQueryTabTool: MCPToolImplementation {
     public static let name = "focus_query_tab"
     public static let title: String? = String(localized: "Focus Tab")
     public static let description = String(
-        localized: "Bring an open tab to the front, using a tab id from list_recent_tabs."
+        localized: """
+        Bring an open tab to the front, using a tab id from list_recent_tabs. TablePro asks the user about \
+        the tab's connection first, as it does for any call that names a connection.
+        """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]
     public static let annotations = MCPToolAnnotations(
@@ -32,7 +35,15 @@ public struct FocusQueryTabTool: MCPToolImplementation {
         required: ["status", "tab_id", "connection_id"]
     )
 
-    public init() {}
+    private let collectSnapshots: MCPTabSnapshotCollector
+
+    public init() {
+        self.init(collectSnapshots: MCPTabSnapshotProvider.liveSnapshots)
+    }
+
+    init(collectSnapshots: @escaping MCPTabSnapshotCollector) {
+        self.collectSnapshots = collectSnapshots
+    }
 
     public func perform(
         arguments: JsonValue,
@@ -44,13 +55,21 @@ public struct FocusQueryTabTool: MCPToolImplementation {
 
         let snapshots = await MCPTabSnapshotProvider.readableSnapshots(
             context: context,
-            services: services
+            services: services,
+            collect: collectSnapshots
         )
         guard let snapshot = snapshots.first(where: { $0.tabId == tabId }) else {
             throw MCPToolExecutionError.notFound(
                 String(localized: "No open tab this client may reach has that id.")
             )
         }
+
+        // The call names a tab, not a connection, so ToolsCallHandler had nothing to ask about.
+        try await services.authPolicy.resolveAndAuthorize(
+            principal: context.principal,
+            tool: Self.name,
+            connectionId: snapshot.connectionId
+        )
 
         let raised = await MainActor.run { () -> Bool in
             guard Self.focus(tabId: tabId, among: WindowManager.shared.coordinators(for: snapshot.connectionId)) else {

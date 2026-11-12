@@ -26,6 +26,17 @@ struct RowDetailViewModelTests {
         ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "test")
     }
 
+    @Test("A row opened before the browser read its foreign keys shows them once they arrive")
+    func foreignKeysArriveAfterTheRowOpened() {
+        let source = ForeignKeySource()
+        let vm = RowDetailViewModel(columns: makeColumns(), rows: makeRows(), initialIndex: 0, foreignKeys: source.keys)
+        #expect(vm.foreignKeys.isEmpty)
+
+        source.keys = [ForeignKeyInfo(name: "fk_owner", column: "id", referencedTable: "owners", referencedColumn: "id")]
+
+        #expect(vm.foreignKeys.map { $0.referencedTable } == ["owners"])
+    }
+
     @Test("canEdit requires session, table, primary key, and not safe-mode-blocked")
     func canEditPreconditions() {
         let driver = MockDatabaseDriver()
@@ -1180,4 +1191,9 @@ struct RowDetailViewModelTests {
         #expect(vm.longValue(forRow: 0, at: 1) == nil)
         #expect(!loadable.isShownInPart(forRow: 0, at: 2))
     }
+}
+
+@MainActor
+private final class ForeignKeySource {
+    var keys: [ForeignKeyInfo] = []
 }

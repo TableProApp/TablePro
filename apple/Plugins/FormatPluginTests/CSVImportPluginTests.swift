@@ -152,11 +152,21 @@ struct CSVImportPluginTests {
         #expect(CSVImportParsing.importFieldType(for: .date) == .text)
     }
 
-    @Test("Blank rows are detected")
+    @Test("Only an empty line in a file of several columns is blank; empty fields make a row")
     func testIsBlank() {
-        #expect(CSVImportParsing.isBlank([""]))
-        #expect(CSVImportParsing.isBlank(["", ""]))
-        #expect(!CSVImportParsing.isBlank(["", "x"]))
+        #expect(CSVImportParsing.isBlank([""], columnCount: 3))
+        #expect(!CSVImportParsing.isBlank([""], columnCount: 1))
+        #expect(!CSVImportParsing.isBlank(["", ""], columnCount: 2))
+        #expect(!CSVImportParsing.isBlank(["", "x"], columnCount: 2))
+    }
+
+    @Test("The data ends at the last record that holds a value")
+    func testDataEnd() {
+        let records: [[String]] = [["1", "a"], ["", ""], ["2", ""], ["", ""], [""]]
+        let end = CSVImportParsing.dataEnd(recordCount: records.count) { records[$0] }
+        let allEmpty = CSVImportParsing.dataEnd(recordCount: 2) { _ in ["", ""] }
+        #expect(end == 3)
+        #expect(allEmpty == 0)
     }
 
     // MARK: - Field detection

@@ -115,6 +115,7 @@ extension MainContentCoordinator {
 
         let (claim, lease) = beginTabExecution(for: tabId)
         let conn = connection
+        let safeModeIsReadOnly = runsAtReadOnly
 
         tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = nil }
 
@@ -138,7 +139,7 @@ extension MainContentCoordinator {
                                 )
                             }
                             return try await queryExecutor.executeQuery(
-                                driver: driver, sql: request.sql, parameters: nil, rowCap: nil
+                                driver: driver, sql: request.sql, parameters: nil, rowCap: nil, safeModeIsReadOnly: safeModeIsReadOnly
                             )
                         }
                     }

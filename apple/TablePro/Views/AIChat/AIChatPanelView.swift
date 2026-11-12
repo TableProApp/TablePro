@@ -29,12 +29,14 @@ struct AIChatPanelView: View {
         settingsManager.ai.hasActiveProvider
     }
 
-    /// The first call still waiting, in transcript order, which is the only one Return may answer.
+    // Only a card a turn still waits on may take Return and Escape.
     private var primaryPendingToolUseId: String? {
         for turn in viewModel.messages {
             for block in turn.blocks {
                 guard case .toolUse(let useBlock) = block.kind,
-                      case .pending = useBlock.approvalState else { continue }
+                      case .pending = useBlock.approvalState,
+                      ToolApprovalCenter.shared.isAwaiting(sessionId: viewModel.sessionId, toolUseId: useBlock.id)
+                else { continue }
                 return useBlock.id
             }
         }
@@ -320,14 +322,7 @@ struct AIChatPanelView: View {
         }
     }
 
-    /// Sized to the model's name, and able to compress below it.
-    ///
-    /// Its label used to carry `maxWidth: .infinity`, which spread the button across the window as
-    /// soon as the conversation had one to spread across. `.fixedSize()` is the other end of the same
-    /// mistake: measured on macOS 27, a 44-character model name holds the button at 339pt, which
-    /// overflows the trailing pane's composer row by 85pt at 240pt wide. Unframed it takes the name's
-    /// width where there is room and truncates where there is not, and the spacer after it is what
-    /// keeps Send at the trailing edge in both widths.
+    // No frame and no .fixedSize(): a 44-character model name held a fixed-size button at 339 pt, 85 pt past a 240 pt pane (macOS 27).
     @ViewBuilder
     private var modelPicker: some View {
         let providers = settingsManager.ai.providers
@@ -341,6 +336,7 @@ struct AIChatPanelView: View {
             let label = selectedProvider.map { provider in
                 resolvedModel.isEmpty ? provider.displayName : resolvedModel
             } ?? String(localized: "Select Model")
+            let icon = selectedProvider?.icon ?? BrandIcon(slug: nil, fallbackSystemImage: "cpu")
 
             Menu {
                 ForEach(providers) { provider in
@@ -352,7 +348,7 @@ struct AIChatPanelView: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "cpu")
+                    icon.menuImage(pointSize: 12)
                     Text(label)
                         .lineLimit(1)
                         .truncationMode(.middle)

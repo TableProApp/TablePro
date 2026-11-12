@@ -37,14 +37,39 @@ public struct MCPHandshakePayload: Codable, Sendable, Equatable {
 }
 
 public struct MCPStartRefusal: Codable, Sendable, Equatable {
+    // A code, never text: the file is read without the handshake's ownership checks, so whatever it
+    // says reaches the client only as one of the bridge's own messages.
+    public enum Reason: String, Codable, Sendable {
+        case turnedOff
+        case failedToStart
+    }
+
     public let pid: Int32
     // Seconds since 1970 with the fraction kept: an ISO 8601 date drops it, and a refusal from
     // earlier in the same second would then answer a launch it never saw.
     public let refusedAt: TimeInterval
+    public let reason: Reason
 
-    public init(pid: Int32, refusedAt: Date) {
+    private enum CodingKeys: String, CodingKey {
+        case pid
+        case refusedAt
+        case reason
+    }
+
+    public init(pid: Int32, refusedAt: Date, reason: Reason = .turnedOff) {
         self.pid = pid
         self.refusedAt = refusedAt.timeIntervalSince1970
+        self.reason = reason
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pid = try container.decode(Int32.self, forKey: .pid)
+        refusedAt = try container.decode(TimeInterval.self, forKey: .refusedAt)
+        // Builds before the reason wrote a refusal only when MCP was off; a reason this build does not
+        // know still means the server is not coming up.
+        let raw = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? nil
+        reason = raw.map { Reason(rawValue: $0) ?? .failedToStart } ?? .turnedOff
     }
 
     // Only a refusal written after the launch answers it, so one left from an earlier run cannot

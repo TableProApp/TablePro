@@ -311,7 +311,7 @@ final class AppSettingsStorage: Sendable {
         saveHistory(.default)
         saveTabs(.default)
         saveKeyboard(.default)
-        saveAI(.default)
+        saveAI(loadAI().resetKeepingProviders)
         saveSync(.default)
         saveMCP(.default)
         saveTypography(.default)

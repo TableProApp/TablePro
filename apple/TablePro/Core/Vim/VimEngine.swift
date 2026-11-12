@@ -45,6 +45,7 @@ enum VimScreenPosition { case top, middle, bottom }
 struct VimReplaceModeEdit {
     let offset: Int
     let original: String?
+    let insertedLength: Int
 }
 
 @MainActor

@@ -12,8 +12,8 @@ struct XLSXWriterStreamingTests {
     private static let columns = ["id", "name", "score", "blob", "note"]
     private static let columnTypeNames = ["int4", "text", "float8", "bytea", "varchar(8)"]
 
-    // SHA-256 of the workbook below as the writer produced it while it built every sheet in memory.
-    private static let workbookDigest = "7602d732018a0d8b389690d553dd671460fcc4b3dfa53d7a9fff2dcd69a63440"
+    // SHA-256 of the workbook below; every flush threshold has to produce it.
+    private static let workbookDigest = "0e3615d4591e87affd46978b977d3122f9cf93f459873835a08080ae9048f333"
 
     private static let closingTags = "</sheetData></worksheet>".utf8.count
 

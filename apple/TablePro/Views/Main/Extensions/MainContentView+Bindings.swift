@@ -158,7 +158,8 @@ extension MainContentView {
             resultsViewMode: currentTab?.display.resultsViewMode ?? .data,
             inspectorRowSourceRevision: coordinator.inspectorRowSourceRevision,
             gridDisplayRevision: coordinator.gridDisplayRevision,
-            structureEditor: coordinator.activeStructureEditor.map { ObjectIdentifier($0) }
+            structureEditor: coordinator.activeStructureEditor.map { ObjectIdentifier($0) },
+            isSaving: coordinator.isSavingSelectedTab
         )
     }
 }
@@ -172,6 +173,8 @@ struct InspectorTrigger: Equatable {
     let gridDisplayRevision: Int
     // A structure session or Create Table draft appears after its view first mounts, which moves nothing else here.
     var structureEditor: ObjectIdentifier?
+    // The fields go read-only while a save of this tab runs, and back when it ends.
+    var isSaving = false
 }
 
 enum InspectorValueDisplayFormatResolver {

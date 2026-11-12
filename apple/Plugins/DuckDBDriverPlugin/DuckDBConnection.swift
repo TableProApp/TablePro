@@ -214,29 +214,39 @@ actor DuckDBConnectionActor {
         }
 
         noteActivity(query)
-        var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandon)
+        var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandonWhenIdle)
         defer { duckdb_destroy_result(&opened.result) }
         try streamResultRows(opened, continuation: continuation)
     }
 
     // The state check, the BEGIN, the statement and the ROLLBACK share one actor turn, so nothing lands in between.
     // The statement text is not tracked: the ROLLBACK leaves the session as idle as it was found.
-    func executeReadOnly(_ query: String, parameters: [PluginCellValue], rowCap: Int? = nil) throws -> DuckDBRawResult {
+    // A stop at `byteLimit` ends only the read's own read-only transaction.
+    func executeReadOnly(
+        _ query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int? = nil,
+        byteLimit: Int? = nil,
+        reason: DuckDBReadOnlyStatement.Reason
+    ) throws -> DuckDBRawResult {
         let conn = try readOnlyConnection()
         let startTime = Date()
-        return try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
+        return try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState(), reason: reason) {
             var opened = try openResult(query: query, parameters: parameters, connection: conn, unread: .abandon)
             defer { duckdb_destroy_result(&opened.result) }
-            return try extractResult(from: opened, limit: rowCap ?? PluginRowLimits.emergencyMax, startTime: startTime)
+            return try extractResult(
+                from: opened, limit: rowCap ?? PluginRowLimits.emergencyMax, byteLimit: byteLimit, startTime: startTime
+            )
         }
     }
 
     func streamReadOnly(
         _ query: String,
+        reason: DuckDBReadOnlyStatement.Reason,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
         let conn = try readOnlyConnection()
-        try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
+        try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState(), reason: reason) {
             var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandon)
             defer { duckdb_destroy_result(&opened.result) }
             try streamResultRows(opened, continuation: continuation)
@@ -655,20 +665,39 @@ actor DuckDBConnectionActor {
         return ColumnSchema(names: names, logicalTypes: logicalTypes)
     }
 
-    private func extractResult(from opened: OpenedResult, limit: Int, startTime: Date) throws -> DuckDBRawResult {
+    // With `byteLimit` the read stops at the row that takes the decoded rows past it and keeps that row. A chunk is
+    // decoded whole before it is measured.
+    private func extractResult(
+        from opened: OpenedResult,
+        limit: Int,
+        byteLimit: Int? = nil,
+        startTime: Date
+    ) throws -> DuckDBRawResult {
         var rows: [[PluginCellValue]] = []
         if let rowCount = opened.rowCount {
             rows.reserveCapacity(Int(min(rowCount, UInt64(max(0, limit)))))
         }
 
         var budget = DuckDBFetchBudget(limit: limit)
+        var bytes = 0
+        var stoppedAtByteLimit = false
         let reachedEnd = try readRows(of: opened) { batch in
             let kept = budget.take(batch.count)
-            rows.append(contentsOf: kept == batch.count ? batch[...] : batch.prefix(kept))
-            return !budget.isExceeded
+            var slice = kept == batch.count ? batch[...] : batch.prefix(kept)
+            if let byteLimit {
+                for (offset, row) in slice.enumerated() {
+                    bytes += Self.decodedByteCount(of: row)
+                    guard bytes > byteLimit else { continue }
+                    slice = slice.prefix(offset + 1)
+                    stoppedAtByteLimit = true
+                    break
+                }
+            }
+            rows.append(contentsOf: slice)
+            return !budget.isExceeded && !stoppedAtByteLimit
         }
-        if !reachedEnd, opened.isStreaming, !opened.abandonsUnreadRows {
-            try Self.drain(opened.result)
+        if !reachedEnd {
+            try finishUnreadRows(of: opened)
         }
 
         return DuckDBRawResult(
@@ -677,8 +706,20 @@ actor DuckDBConnectionActor {
             rows: rows,
             rowsAffected: Int(opened.rowsChanged),
             executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: budget.isExceeded
+            isTruncated: budget.isExceeded || stoppedAtByteLimit
         )
+    }
+
+    // Text as UTF-8, bytes as they are, null as nothing: never more than the host counts for the same row, so a read
+    // never stops before the host's own budget is full.
+    static func decodedByteCount(of row: [PluginCellValue]) -> Int {
+        row.reduce(0) { total, cell in
+            switch cell {
+            case .null: total
+            case .text(let text): total + text.utf8.count
+            case .bytes(let data): total + data.count
+            }
+        }
     }
 
     private func streamResultRows(
@@ -692,10 +733,19 @@ actor DuckDBConnectionActor {
         )))
 
         var cancelled = false
-        try readRows(of: opened) { batch in
-            cancelled = Task.isCancelled
-                || !DuckDBBoundedStream.deliver(PluginStreamElement.rows(batch), to: continuation)
-            return !cancelled
+        let reachedEnd: Bool
+        do {
+            reachedEnd = try readRows(of: opened) { batch in
+                cancelled = Task.isCancelled
+                    || !DuckDBBoundedStream.deliver(PluginStreamElement.rows(batch), to: continuation)
+                return !cancelled
+            }
+        } catch is CancellationError {
+            try finishUnreadRows(of: opened)
+            throw CancellationError()
+        }
+        if !reachedEnd {
+            try finishUnreadRows(of: opened)
         }
         if cancelled {
             continuation.finish(throwing: CancellationError())
@@ -741,6 +791,13 @@ actor DuckDBConnectionActor {
             }
             guard body(batch) else { return false }
         }
+    }
+
+    // A consumer that stops reading inside a transaction must not abort it: a SELECT calling nextval left unfinished
+    // fails the transaction (scripts/probes/check-duckdb-streaming-results.sh).
+    private func finishUnreadRows(of opened: OpenedResult) throws {
+        guard opened.isStreaming, !opened.abandonsUnreadRows else { return }
+        try Self.drain(opened.result)
     }
 
     // Completes a statement whose rows are no longer wanted, so that what it changed is kept.

@@ -332,7 +332,7 @@ internal final class WindowManager {
         }
         bringToFront(targetHost.view.window)
         if DatabaseManager.shared.activeSessions[targetConnectionId]?.reportedStatus.isConnected != true {
-            targetHost.reconnectWorkspaceIfIdle(targetConnectionId)
+            targetHost.reconnectWorkspaceIfIdle(targetConnectionId, adoptsSSHProfileEdits: false)
         }
         target.queueMove(PendingTabMove(tabId: tabId, source: source) { [weak sourceHost] in
             sourceHost?.isShowingInKeyWindow(sourceConnectionId) ?? false

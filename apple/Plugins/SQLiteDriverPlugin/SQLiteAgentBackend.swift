@@ -77,15 +77,27 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
         connection.setBusyTimeout(UInt32(max(0, milliseconds)))
     }
 
+    // The agent stops at the bound's row cap. Its byte limit is not sent: the agent has no such field.
     func executeQuery(
         _ query: String,
         parameters: [PluginCellValue]?,
-        scope: SQLiteStatementScope
+        rules: SQLiteStatementRules,
+        bound: SQLiteReadBound?
     ) async throws -> SQLiteRawResult {
-        try await run(query, parameters: (parameters ?? []).map(Self.encode), scope: scope)
+        try await run(
+            query,
+            parameters: (parameters ?? []).map(Self.encode),
+            rules: rules,
+            rowCap: bound?.rowCap ?? PluginRowLimits.emergencyMax
+        )
     }
 
-    private func run(_ query: String, parameters: [SQLiteAgentValue], scope: SQLiteStatementScope) async throws -> SQLiteRawResult {
+    private func run(
+        _ query: String,
+        parameters: [SQLiteAgentValue],
+        rules: SQLiteStatementRules,
+        rowCap: Int
+    ) async throws -> SQLiteRawResult {
         let startTime = Date()
         let accumulator = SQLiteAgentResultAccumulator()
 
@@ -93,10 +105,10 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
             try await connection.execute(
                 sql: query,
                 parameters: parameters,
-                scope: Self.agentScope(scope),
+                scope: Self.agentScope(rules),
                 // The buffered path holds the whole result in memory, so it takes the same emergency
                 // ceiling the local backend applies; the streaming path below stays uncapped.
-                rowCap: UInt32(clamping: PluginRowLimits.emergencyMax),
+                rowCap: UInt32(clamping: rowCap),
                 onHeader: { header in accumulator.setHeader(header) },
                 onRows: { columnCount, values in
                     guard columnCount > 0 else { return }
@@ -126,14 +138,14 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
 
     func streamQuery(
         _ query: String,
-        scope: SQLiteStatementScope,
+        rules: SQLiteStatementRules,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         _ = try await withTaskCancellationHandler {
             try await connection.execute(
                 sql: query,
                 parameters: [],
-                scope: Self.agentScope(scope),
+                scope: Self.agentScope(rules),
                 rowCap: 0,
                 onHeader: { header in
                     continuation.yield(.header(PluginStreamHeader(
@@ -159,12 +171,14 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
         continuation.finish()
     }
 
-    // Nil runs the plain execute, so an unrestricted statement sends the frame it always sent.
-    private static func agentScope(_ scope: SQLiteStatementScope) -> SQLiteAgentStatementScope? {
-        switch scope {
-        case .unrestricted: nil
-        case .noServerCode: .noServerCode
-        case .readOnly: .readOnly
+    // Nil runs the plain execute, so an unrestricted statement sends the frame it always sent. The agent loads no
+    // extension, so a Safe Mode read loses nothing under its read-only scope.
+    static func agentScope(_ rules: SQLiteStatementRules) -> SQLiteAgentStatementScope? {
+        if rules.readsOnly { return .readOnly }
+        switch rules.scope {
+        case .unrestricted: return nil
+        case .noServerCode: return .noServerCode
+        case .readOnly: return .readOnly
         }
     }
 

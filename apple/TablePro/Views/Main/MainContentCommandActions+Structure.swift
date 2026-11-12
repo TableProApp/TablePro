@@ -43,7 +43,7 @@ extension MainContentCommandActions {
         guard let tab = coordinator?.tabManager.selectedTab,
               tab.tabType == .table || tab.tabType == .query else { return nil }
         if let session = stagedStructureSession { return .structure(session) }
-        return hasDataWork ? .data : nil
+        return hasDataWork && coordinator?.isSavingSelectedTab != true ? .data : nil
     }
 
     private func discardDataWorkAfterConfirming() async {

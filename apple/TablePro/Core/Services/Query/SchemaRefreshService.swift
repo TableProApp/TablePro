@@ -22,7 +22,8 @@ final class SchemaRefreshService {
 
     private struct InFlightRefresh {
         let id: UUID
-        let task: Task<Void, Never>
+        // Whether the refresh committed a fresh tables list.
+        let task: Task<Bool, Never>
     }
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaRefreshService")
@@ -62,21 +63,23 @@ final class SchemaRefreshService {
         SchemaForeignKeyStore.shared.invalidate(connectionId: connection.id)
         let key = RefreshKey(connectionId: connection.id, database: database)
         if let existing = inFlight[key] {
-            await existing.task.value
+            _ = await existing.task.value
             return
         }
         let entry = InFlightRefresh(id: UUID(), task: Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.performRefresh(connection: connection)
+            guard let self else { return false }
+            return await self.performRefresh(connection: connection)
         })
         inFlight[key] = entry
-        await entry.task.value
+        _ = await entry.task.value
         finish(entry, for: key)
     }
 
-    /// Never joins a load that began before the write, which would hand back the old catalog. The
-    /// entry is replaced before anything awaits, so every later plain refresh joins this one instead.
-    func refreshAfterWrite(connection: DatabaseConnection) async {
+    // Never joins a load that began before the write, which would hand back the old catalog. The entry
+    // is replaced before anything awaits, so every later plain refresh joins this one instead. Returns
+    // whether a fresh tables list was committed: false when the load failed or another refresh replaced it.
+    @discardableResult
+    func refreshAfterWrite(connection: DatabaseConnection) async -> Bool {
         let connectionId = connection.id
         SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         for key in Array(inFlight.keys) where key.connectionId == connectionId {
@@ -84,13 +87,14 @@ final class SchemaRefreshService {
         }
         let key = RefreshKey(connectionId: connectionId, database: nil)
         let entry = InFlightRefresh(id: UUID(), task: Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self else { return false }
             await self.schemaService.prepareForReload(connectionId: connectionId)
-            await self.performRefresh(connection: connection)
+            return await self.performRefresh(connection: connection)
         })
         inFlight[key] = entry
-        await entry.task.value
+        let committed = await entry.task.value
         finish(entry, for: key)
+        return committed
     }
 
     private func finish(_ entry: InFlightRefresh, for key: RefreshKey) {
@@ -103,7 +107,7 @@ final class SchemaRefreshService {
             key.connectionId == connectionId ? entry.task : nil
         }
         for task in tasks {
-            await task.value
+            _ = await task.value
         }
     }
 
@@ -277,8 +281,9 @@ final class SchemaRefreshService {
         await syncAutocompleteProvider(connectionId: connectionId)
     }
 
-    private func performRefresh(connection: DatabaseConnection) async {
+    private func performRefresh(connection: DatabaseConnection) async -> Bool {
         let connectionId = connection.id
+        var committed = false
 
         if pluginManager.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
             await schemaService.prepareForReload(connectionId: connectionId)
@@ -290,11 +295,11 @@ final class SchemaRefreshService {
                 throw DatabaseError.notConnected
             }
             let awaitedSchemas = schemasAwaitingJudgement(in: scope)
-            try await metadataDriverProvider.withMetadataDriver(
+            committed = try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                await schemaService.reload(
+                let didLoad = await schemaService.reload(
                     connectionId: connectionId,
                     driver: driver,
                     connection: connection,
@@ -305,9 +310,10 @@ final class SchemaRefreshService {
                     fetchingNow: awaitedSchemas,
                     driver: driver
                 )
+                return didLoad
             }
         } catch is CancellationError {
-            return
+            return false
         } catch {
             Self.logger.warning(
                 "[schema] refresh failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
@@ -320,6 +326,7 @@ final class SchemaRefreshService {
         }
 
         await syncAutocompleteProvider(connectionId: connectionId)
+        return committed
     }
 
     /// The schemas judged against the refreshed catalog as soon as it settles: the browsed one, and

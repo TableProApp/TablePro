@@ -27,6 +27,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
             Self.logger.debug("resources/read uri=\(uri, privacy: .private(mask: .hash))")
             MCPAuditLogger.logResourceRead(
                 principal: context.principal,
+                client: MCPAuditLogger.clientName(for: context.meta),
                 uri: uri,
                 outcome: .success
             )
@@ -38,6 +39,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
         } catch {
             MCPAuditLogger.logResourceRead(
                 principal: context.principal,
+                client: MCPAuditLogger.clientName(for: context.meta),
                 uri: uri,
                 outcome: .error,
                 errorMessage: (error as? MCPProtocolError)?.message ?? error.localizedDescription
@@ -130,7 +132,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
             return MCPProtocolError(code: JsonRpcErrorCode.expired, message: detail, httpStatus: .ok)
         case .timeout(let detail, _):
             return .requestTimeout(detail: detail)
-        case .userCancelled:
+        case .userCancelled, .stoppedWhileRunning:
             return .requestCancelled()
         case .dataSourceError(let detail):
             return .internalError(detail: detail)

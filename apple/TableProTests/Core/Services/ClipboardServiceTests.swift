@@ -101,3 +101,19 @@ struct ClipboardServiceTests {
         #expect(provider.readGridCells() == nil)
     }
 }
+
+extension GlobalStateSuites {
+    @Suite(.recordingClipboard)
+    @MainActor
+    struct ClipboardSecretWriteTests {
+        @Test("A secret copy through the shared service reaches the provider's concealed write")
+        func secretWriteReachesTheProvider() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+
+            ClipboardService.shared.writeSecretText("postgresql://app:hunter2@db.example.com/app")
+
+            #expect(clipboard.secretWrites == ["postgresql://app:hunter2@db.example.com/app"])
+            #expect(clipboard.text == "postgresql://app:hunter2@db.example.com/app")
+        }
+    }
+}

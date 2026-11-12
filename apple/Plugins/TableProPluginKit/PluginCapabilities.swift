@@ -44,4 +44,7 @@ public struct PluginCapabilities: OptionSet, Sendable {
     // The driver writes the column default only where `PluginRowChange.defaultColumns` marks one, so the text
     // `__DEFAULT__` in any other cell is saved as text.
     public static let columnDefaultMarks = PluginCapabilities(rawValue: 1 << 23)
+    // A `PluginStatementContext.enforcesReadOnly` statement runs in the engine's read-only mode or throws, from every
+    // entry point that takes a context, `executeBoundedQuery(query:rowCap:context:)` included.
+    public static let enforcesReadOnlyMode = PluginCapabilities(rawValue: 1 << 24)
 }

@@ -49,9 +49,10 @@ internal final class LinkedFolderGitStatusStore: ObservableObject {
 
     private let clientFactory: @Sendable () -> GitClient?
     private let foldersProvider: @MainActor () -> [LinkedSQLFolder]
-    private let repositoryWatcher = GitRepositoryWatcher()
+    private let repositoryWatcher = FileSystemEventWatcher()
     private var cancellables: Set<AnyCancellable> = []
     private var refreshTask: Task<Void, Never>?
+    private var repositorySearch: Task<Void, Never>?
     private var hasStarted = false
 
     init(
@@ -68,11 +69,33 @@ internal final class LinkedFolderGitStatusStore: ObservableObject {
         AppEvents.shared.linkedSQLFoldersDidUpdate
             .sink { [weak self] _ in self?.scheduleRefresh() }
             .store(in: &cancellables)
+        // A folder in a repository is followed by the folder and `.git` watchers. One that is not can join a
+        // repository made in a parent folder, which neither watcher sees, so only those folders are asked again.
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.scheduleRefresh() }
+            .sink { [weak self] _ in self?.lookForNewRepositories() }
             .store(in: &cancellables)
         repositoryWatcher.onChange = { [weak self] in self?.scheduleRefresh() }
         scheduleRefresh(after: .zero)
+    }
+
+    @discardableResult
+    func lookForNewRepositories() -> Task<Void, Never>? {
+        let outside = foldersProvider().filter { $0.isEnabled && snapshots[$0.id] == nil }
+        guard !outside.isEmpty, repositorySearch == nil else { return nil }
+        let client = clientFactory()
+        let search = Task { [weak self] in
+            defer { self?.repositorySearch = nil }
+            guard let client else { return }
+            for folder in outside {
+                let repository = try? await client.repositoryInfo(in: folder.expandedURL)
+                if repository != nil {
+                    self?.scheduleRefresh()
+                    return
+                }
+            }
+        }
+        repositorySearch = search
+        return search
     }
 
     func state(for favorite: LinkedSQLFavorite) -> LinkedFileGitState? {

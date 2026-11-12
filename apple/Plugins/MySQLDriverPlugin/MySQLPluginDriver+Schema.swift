@@ -311,15 +311,7 @@ internal extension MySQLPluginDriver {
                 ORDER BY CONSTRAINT_NAME
                 """
         } else {
-            query = """
-                SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
-                FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
-                JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                    ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA
-                    AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
-                WHERE cc.CONSTRAINT_SCHEMA = \'\(database)\' AND tc.TABLE_NAME = \'\(safeTable)\'
-                ORDER BY cc.CONSTRAINT_NAME
-                """
+            query = MySQLCheckConstraints.joinedCatalogQuery(databaseLiteral: database, tableLiteral: safeTable)
         }
         let result = try await execute(ownStatement: query)
         return result.rows.compactMap { row in

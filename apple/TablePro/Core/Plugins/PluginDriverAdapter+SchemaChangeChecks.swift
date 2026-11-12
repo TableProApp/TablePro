@@ -7,6 +7,10 @@ import Foundation
 import TableProPluginKit
 
 internal extension PluginDriverAdapter {
+    func schemaChangeToken() async throws -> String? {
+        try await schemaPluginDriver.schemaChangeToken()
+    }
+
     func reviewSchemaChange(
         table: String,
         schema: String?,

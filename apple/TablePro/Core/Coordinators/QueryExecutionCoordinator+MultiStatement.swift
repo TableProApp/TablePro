@@ -55,12 +55,19 @@ extension QueryExecutionCoordinator {
         }
     }
 
+    // A context is Read-Only's, and every call below carries it.
     func executeStatement(
         rowCap: Int?,
         originalSQL: String,
         driver: DatabaseDriver,
-        parameters: [Any?]? = nil
+        parameters: [Any?]? = nil,
+        context: PluginStatementContext? = nil
     ) async throws -> QueryResult {
+        if let context {
+            return try await executeStatement(
+                rowCap: rowCap, originalSQL: originalSQL, driver: driver, parameters: parameters, carrying: context
+            )
+        }
         if rowCap != nil {
             if parameters == nil, let cap = rowCap, cap > 0,
                let bounded = try await driver.executeBoundedQuery(query: originalSQL, rowCap: cap) {
@@ -72,6 +79,28 @@ extension QueryExecutionCoordinator {
             return try await driver.executeParameterized(query: originalSQL, parameters: parameters)
         }
         return try await driver.execute(query: originalSQL)
+    }
+
+    private func executeStatement(
+        rowCap: Int?,
+        originalSQL: String,
+        driver: DatabaseDriver,
+        parameters: [Any?]?,
+        carrying context: PluginStatementContext
+    ) async throws -> QueryResult {
+        if rowCap != nil {
+            if parameters == nil, let cap = rowCap, cap > 0,
+               let bounded = try await driver.executeBoundedQuery(query: originalSQL, rowCap: cap, context: context) {
+                return bounded
+            }
+            return try await driver.executeUserQuery(
+                query: originalSQL, rowCap: rowCap, parameters: parameters, context: context
+            )
+        }
+        if let parameters {
+            return try await driver.executeParameterized(query: originalSQL, parameters: parameters, context: context)
+        }
+        return try await driver.execute(query: originalSQL, context: context)
     }
 
     func makeStatementResultSet(

@@ -72,15 +72,52 @@ final class RowOperationsManager {
         )
     }
 
-    // A pending source row keeps its staged SQL, so a copy of now() is now() again, not the text.
     func duplicateRow(
         sourceRowIndex: Int,
         tableRows: inout TableRows,
         uuidKeyForms: [Int: UUIDCellForm] = [:]
     ) -> AddNewRowResult? {
-        guard sourceRowIndex >= 0, sourceRowIndex < tableRows.count else { return nil }
+        duplicateRows(sourceRowIndices: [sourceRowIndex], tableRows: &tableRows, uuidKeyForms: uuidKeyForms).rows.first
+    }
 
-        let source = tableRows.rows[sourceRowIndex]
+    struct DuplicateRowsResult {
+        let rows: [AddNewRowResult]
+        let delta: Delta
+    }
+
+    // Every copy is one undo step, as a paste of many rows is.
+    func duplicateRows(
+        sourceRowIndices: [Int],
+        tableRows: inout TableRows,
+        uuidKeyForms: [Int: UUIDCellForm] = [:]
+    ) -> DuplicateRowsResult {
+        let firstIndex = tableRows.count
+        var results: [AddNewRowResult] = []
+        var recorded: [DataChangeManager.InsertedRow] = []
+        for sourceRowIndex in sourceRowIndices where sourceRowIndex >= 0 && sourceRowIndex < firstIndex {
+            let copy = duplicatedRow(of: tableRows.rows[sourceRowIndex], in: tableRows, uuidKeyForms: uuidKeyForms)
+            let rowID = RowID.inserted(UUID())
+            let storageIndex = tableRows.count
+            let delta = tableRows.appendInsertedRow(id: rowID, values: copy.values, absentColumns: copy.absentColumns)
+            recorded.append(DataChangeManager.InsertedRow(
+                location: InsertedRowLocation(rowID: rowID, storageIndex: storageIndex),
+                values: copy.values, absentColumns: copy.absentColumns, expressionColumns: copy.expressionColumns
+            ))
+            results.append(AddNewRowResult(
+                rowID: rowID, values: copy.values, delta: delta, prefilledColumns: copy.prefilledColumns
+            ))
+        }
+        changeManager.recordBatchRowInsertion(rows: recorded)
+        let delta: Delta = results.isEmpty ? .none : .rowsInserted(IndexSet(integersIn: firstIndex..<tableRows.count))
+        return DuplicateRowsResult(rows: results, delta: delta)
+    }
+
+    // A pending source row keeps its staged SQL, so a copy of now() is now() again, not the text.
+    private func duplicatedRow(
+        of source: Row,
+        in tableRows: TableRows,
+        uuidKeyForms: [Int: UUIDCellForm]
+    ) -> RowCopy {
         var newValues = Array(source.values)
         var absentColumns = source.absentColumns
         var expressionColumns = changeManager.expressionColumns(forRow: source.id).filter { $0 < newValues.count }
@@ -103,13 +140,16 @@ final class RowOperationsManager {
                 }
             }
         }
-        return appendInsertedRow(
-            values: newValues,
-            absentColumns: absentColumns,
-            expressionColumns: expressionColumns,
-            prefilledColumns: prefilled,
-            to: &tableRows
+        return RowCopy(
+            values: newValues, absentColumns: absentColumns, expressionColumns: expressionColumns, prefilledColumns: prefilled
         )
+    }
+
+    private struct RowCopy {
+        let values: [PluginCellValue]
+        let absentColumns: Set<Int>
+        let expressionColumns: Set<Int>
+        let prefilledColumns: Set<Int>
     }
 
     private static func freshUUID(_ form: UUIDCellForm) -> PluginCellValue {
@@ -352,7 +392,9 @@ final class RowOperationsManager {
             let parsedRows = Self.reconcileStructuredRows(
                 payload, schema: schema, keepsMissingFields: keepsMissingFields
             )
-            return insertParsedRows(parsedRows, uuidKeyForms: uuidKeyForms, into: &tableRows)
+            return insertParsedRows(
+                parsedRows, primaryKeyColumns: primaryKeyColumns, uuidKeyForms: uuidKeyForms, into: &tableRows
+            )
         }
 
         guard let clipboardText = clipboardProvider.readText() else {
@@ -360,9 +402,14 @@ final class RowOperationsManager {
         }
 
         if parser == nil, let cells = clipboardProvider.readGridCells(), cells.text == clipboardText {
-            let parsedRows = Self.rows(fromCopiedCells: cells, schema: schema, tableRows: tableRows)
+            guard let parsedRows = Self.readingCopiedHex(
+                Self.rows(fromCopiedCells: cells, schema: schema, tableRows: tableRows), tableRows: tableRows
+            ) else {
+                return PasteRowsResult(pastedRows: [], delta: .none)
+            }
             return insertParsedRows(
                 keepsMissingFields ? parsedRows.map(Self.nullsAsMissingFields) : parsedRows,
+                primaryKeyColumns: primaryKeyColumns,
                 uuidKeyForms: uuidKeyForms,
                 into: &tableRows
             )
@@ -373,10 +420,14 @@ final class RowOperationsManager {
 
         switch parseResult {
         case .success(let parsedRows):
-            let unfilled = Self.unfilledCellValues(columns: columns, tableRows: tableRows)
+            let unfilled = Self.unfilledCellValues(columns: columns, primaryKeyColumns: primaryKeyColumns, tableRows: tableRows)
             let filled = parsedRows.map { Self.fillingBlankCells($0, with: unfilled) }
+            guard let filled = Self.readingCopiedHex(filled, tableRows: tableRows) else {
+                return PasteRowsResult(pastedRows: [], delta: .none)
+            }
             return insertParsedRows(
                 keepsMissingFields ? filled.map(Self.nullsAsMissingFields) : filled,
+                primaryKeyColumns: primaryKeyColumns,
                 uuidKeyForms: uuidKeyForms,
                 into: &tableRows
             )
@@ -400,7 +451,7 @@ final class RowOperationsManager {
             let sourceExpressions = payload.expressionCells?[index] ?? []
             var absentColumns: Set<Int> = []
             var expressionColumns: Set<Int> = []
-            var values: [PluginCellValue] = sourceForDestination.enumerated().map { destination, sourceIndex in
+            let values: [PluginCellValue] = sourceForDestination.enumerated().map { destination, sourceIndex in
                 guard let sourceIndex, sourceIndex < row.count else {
                     if keepsMissingFields { absentColumns.insert(destination) }
                     return .null
@@ -410,12 +461,6 @@ final class RowOperationsManager {
                     expressionColumns.insert(destination)
                 }
                 return row[sourceIndex]
-            }
-
-            if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
-                values[pkIndex] = .columnDefault
-                absentColumns.remove(pkIndex)
-                expressionColumns.insert(pkIndex)
             }
 
             return ParsedRow(
@@ -436,7 +481,7 @@ final class RowOperationsManager {
         cells.fields.enumerated().map { index, fields in
             let marked = cells.expressionFields?[index] ?? []
             var expressionColumns: Set<Int> = []
-            var values: [PluginCellValue] = (0..<schema.columnCount).map { column in
+            let values: [PluginCellValue] = (0..<schema.columnCount).map { column in
                 guard column < fields.count, let text = fields[column] else { return .null }
                 if marked.contains(column) {
                     expressionColumns.insert(column)
@@ -444,18 +489,43 @@ final class RowOperationsManager {
                 }
                 return .entered(text, columnType: tableRows.editingColumnType(at: column))
             }
-            if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
-                values[pkIndex] = .columnDefault
-                expressionColumns.insert(pkIndex)
-            }
             return ParsedRow(values: values, sourceLineNumber: index + 1, expressionColumns: expressionColumns)
         }
     }
 
+    // A copy writes bytes as `0x` hex, so a binary column takes back the bytes it spells. A `0x` field that is not hex,
+    // such as a copy cut short with `…`, refuses the paste, as it refuses a cell paste.
+    private static func readingCopiedHex(_ rows: [ParsedRow], tableRows: TableRows) -> [ParsedRow]? {
+        var read: [ParsedRow] = []
+        read.reserveCapacity(rows.count)
+        for row in rows {
+            var values = row.values
+            for index in values.indices where !row.expressionColumns.contains(index) {
+                guard case .text(let text) = values[index], BlobFormattingService.hasHexPrefix(text),
+                      tableRows.editingColumnType(at: index)?.isBlobType == true else { continue }
+                guard let bytes = BlobFormattingService.shared.bytes(fromPrefixedHex: text) else {
+                    logger.warning("Paste refused: a binary column's field is not hex after 0x")
+                    return nil
+                }
+                values[index] = .bytes(bytes)
+            }
+            read.append(ParsedRow(
+                values: values,
+                sourceLineNumber: row.sourceLineNumber,
+                absentColumns: row.absentColumns,
+                expressionColumns: row.expressionColumns,
+                blankColumns: row.blankColumns
+            ))
+        }
+        return read
+    }
+
     // A blank cell of pasted text was left unfilled, so it takes what a new row's cell does: the server's value where
-    // the column has a default, else NULL. A NOT NULL text column with no default takes the empty string it can hold.
+    // the column has a default, else NULL. A NOT NULL text column with no default takes the empty string it can hold,
+    // except a key, which an empty string would not name.
     private static func unfilledCellValues(
         columns: [String],
+        primaryKeyColumns: [String],
         tableRows: TableRows
     ) -> (values: [PluginCellValue], defaults: Set<Int>) {
         var defaults: Set<Int> = []
@@ -465,7 +535,8 @@ final class RowOperationsManager {
                 defaults.insert(position)
                 return .columnDefault
             }
-            if tableRows.refusesNull(columnAt: index), tableRows.editingColumnType(at: index)?.hasEmptyValue == true {
+            if tableRows.refusesNull(columnAt: index), tableRows.editingColumnType(at: index)?.hasEmptyValue == true,
+               !primaryKeyColumns.contains(name) {
                 return .text("")
             }
             return .null
@@ -509,6 +580,36 @@ final class RowOperationsManager {
         return destination.indices.map { $0 < source.count ? $0 : nil }
     }
 
+    // Left out of the INSERT, the server gives the key a value of its own: an identity, a default that calls a function
+    // such as nextval(), SQLite's rowid, or a key the driver takes no value for, as MongoDB's _id. A constant default
+    // would put every pasted row under the same key.
+    private func serverFillsKey(_ column: String, primaryKeyColumns: [String], in tableRows: TableRows) -> Bool {
+        guard primaryKeyColumns.contains(column) else { return false }
+        if tableRows.columnIdentity[column] != nil || !changeManager.isColumnWritable(column) { return true }
+        if let defaultValue = tableRows.columnDefaults[column] ?? nil, Self.givesEachRowItsOwnValue(defaultValue) {
+            return true
+        }
+        guard let databaseType = changeManager.databaseType else { return false }
+        return SQLiteRowidAlias.isAlias(
+            column: column,
+            declaredType: tableRows.columnDeclaredTypes[column],
+            primaryKey: primaryKeyColumns,
+            family: SQLTypeFamily.of(databaseType)
+        )
+    }
+
+    // A sequence, or a function other than the clock. SQL Server wraps a default in parentheses, `((1))` or `(newid())`,
+    // and PostgreSQL casts it, `'a'::text`.
+    private static func givesEachRowItsOwnValue(_ defaultValue: String) -> Bool {
+        var text = defaultValue.trimmingCharacters(in: .whitespaces)
+        while text.hasPrefix("("), text.hasSuffix(")") {
+            text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+        }
+        let upper = text.uppercased()
+        if upper.contains("NEXTVAL") || upper.contains("NEXT VALUE FOR") { return true }
+        return CrossEngineDefaultValue.strippingCast(text).contains("(") && !CrossEngineDefaultValue.readsTheClock(text)
+    }
+
     static func detectParser(for text: String) -> RowDataParser {
         var containsTab = false
         var containsComma = false
@@ -527,9 +628,11 @@ final class RowOperationsManager {
         return containsComma ? CSVRowParser() : TSVRowParser()
     }
 
-    // Every paste path resets the key to its default first; an unfilled UUID key then takes a fresh UUID per row.
+    // A key the server fills goes back to its default, a UUID key it does not fill takes a fresh UUID per row, and any
+    // other key keeps the pasted value.
     private func insertParsedRows(
         _ parsedRows: [ParsedRow],
+        primaryKeyColumns: [String],
         uuidKeyForms: [Int: UUIDCellForm],
         into tableRows: inout TableRows
     ) -> PasteRowsResult {
@@ -542,6 +645,7 @@ final class RowOperationsManager {
         // Pasted server-owned values skip the cell-edit check and the generator drops them, so the grid showed unsaved values.
         let serverOwned = tableRows.columns.enumerated().filter { _, name in
             tableRows.generatedColumns.contains(name) || tableRows.columnIdentity[name] != nil
+                || serverFillsKey(name, primaryKeyColumns: primaryKeyColumns, in: tableRows)
         }.map(\.offset)
 
         for parsedRow in parsedRows {
@@ -553,8 +657,7 @@ final class RowOperationsManager {
                 absentColumns.remove(index)
                 expressionColumns.insert(index)
             }
-            for (index, form) in uuidKeyForms where index < rowValues.count
-                && rowValues[index].isColumnDefault(isExpression: expressionColumns.contains(index)) {
+            for (index, form) in uuidKeyForms where index < rowValues.count {
                 rowValues[index] = Self.freshUUID(form)
                 absentColumns.remove(index)
                 expressionColumns.remove(index)

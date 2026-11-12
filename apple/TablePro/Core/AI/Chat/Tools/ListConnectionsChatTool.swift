@@ -8,12 +8,13 @@ import TableProMCP
 
 struct ListConnectionsChatTool: ChatTool {
     let name = "list_connections"
-    let description = String(localized: "List all saved database connections with their current status.")
+    let description = String(localized: "Show the connection this conversation works on, with its status.")
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(properties: [:])
     let mode: ChatToolMode = .readOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let payload = await context.bridge.listConnections()
+        let connectionId = try await ChatToolTarget.authorized(context: context, input: input, tool: name)
+        let payload = await context.bridge.listConnection(id: connectionId)
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }
 }

@@ -8,6 +8,7 @@ public enum MCPMetaKeys {
     public static let logLevel = "io.modelcontextprotocol/logLevel"
     public static let subscriptionId = "io.modelcontextprotocol/subscriptionId"
     public static let serverInfo = "io.modelcontextprotocol/serverInfo"
+    public static let bridgeInstance = "app.tablepro/bridgeInstance"
 
     public static let traceParent = "traceparent"
     public static let traceState = "tracestate"

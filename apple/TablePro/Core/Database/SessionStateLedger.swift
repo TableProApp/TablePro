@@ -135,7 +135,7 @@ extension SQLSessionDialect {
             self = .sqlite
         case .duckdb:
             self = .duckDB
-        case .redis, .other:
+        case .redis, .teradata, .other:
             return nil
         }
     }

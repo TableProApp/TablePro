@@ -66,6 +66,30 @@ struct SQLFileNamedAsTableTests {
         #expect(namesFile(sql))
     }
 
+    @Test("A table function DuckDB does not keep inside the database counts as one", arguments: [
+        "SELECT * FROM quack_serve('x')",
+        "SELECT * FROM odbc_query('DSN=x', 'DROP TABLE t')",
+        "SELECT * FROM notes, cloudformation_create_stack('x')",
+        "SELECT * FROM notes JOIN avro_metadata('x') ON true",
+        "SELECT * FROM notes, LATERAL quack_query('x')",
+        "SELECT * FROM (FROM quack_serve('x'))",
+        "SELECT * FROM system.main.quack_serve('x')",
+        "SELECT * FROM \"quack_serve\"('x')",
+    ])
+    func unknownTableFunctions(sql: String) {
+        #expect(namesFile(sql))
+    }
+
+    @Test("A dotted name ending in a file extension is a file in the working folder", arguments: [
+        "SELECT * FROM finances.csv",
+        "SELECT * FROM notes.\"csv\"",
+        "SELECT * FROM backup.duckdb",
+        "SELECT * FROM notes, data.parquet",
+    ])
+    func dottedFileNames(sql: String) {
+        #expect(namesFile(sql))
+    }
+
     @Test("A FROM that runs on from a number or an operator still lists tables", arguments: [
         "SELECT 1FROM 'payroll.csv'",
         "SELECT 1e5FROM 'payroll.csv'",
@@ -122,6 +146,11 @@ struct SQLFileNamedAsTableTests {
         "COMMENT ON TABLE notes IS 'a.csv'",
         "CREATE TABLE notes (path VARCHAR DEFAULT 'a.csv')",
         "SELECT _from, _desc, 'a.csv' FROM notes",
+        "SELECT * FROM main.range(1, 10)",
+        "SELECT * FROM duckdb_tables()",
+        "PIVOT notes ON year USING sum(salary)",
+        "SELECT * FROM notes JOIN tags ON f(tags.id) = notes.id",
+        "SELECT * FROM notes.csv_rows",
     ])
     func valuesAndTableNames(sql: String) {
         #expect(!namesFile(sql))

@@ -96,7 +96,7 @@ internal final class EnvVarReferenceConsent {
         EnvVarReferenceQuestion(
             connectionName: connection.name,
             names: EnvVarResolver.referencedNames(in: connection).sorted(),
-            destination: connection.destinationSummary,
+            destination: SSHProfileStorage.shared.refreshingLinkedProfile(connection).destinationSummary,
             origin: connection.origin
         )
     }

@@ -32,6 +32,15 @@ enum HanaResultMapping {
         )
     }
 
+    static var cutLargeObjectError: HanaError {
+        HanaError(
+            kind: .invalidResult,
+            message: String(
+                localized: "A large object value is longer than the 64 MiB TablePro reads from SAP HANA, so it cannot be copied or exported whole."
+            )
+        )
+    }
+
     static func columnMeta(
         columns: [String],
         columnTypeNames: [String],
@@ -84,7 +93,10 @@ final class HanaStreamReport: @unchecked Sendable {
         lock.withLock { truncatedLargeObjects += count }
     }
 
-    // A stream header has no field for the warning a result carries in statusMessage, so an export only logs it.
+    var hasCutLargeObjects: Bool {
+        lock.withLock { truncatedLargeObjects > 0 }
+    }
+
     func logTruncatedLargeObjects() {
         let count = lock.withLock { truncatedLargeObjects }
         guard count > 0 else { return }

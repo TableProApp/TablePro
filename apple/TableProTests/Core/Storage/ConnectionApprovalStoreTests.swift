@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSSHConfig
 import Testing
 
 @MainActor
@@ -140,6 +141,25 @@ struct ConnectionApprovalStoreTests {
 
         connection.additionalFields["mssqlAuthMethod"] = "entra"
         connection.additionalFields["entraTenantId"] = "victim-tenant"
+        #expect(!store.isApproved(connection))
+    }
+
+    @Test("An approval through an SSH profile asks again once the profile moves to another server")
+    func movedProfileAsksAgain() {
+        let profiles = SSHProfileStorage.shared
+        let saved = profiles.loadProfiles()
+        var profile = SSHProfile(name: "Jump", host: "bastion-a.example", port: 22, username: "ops", authMethod: .password)
+        #expect(profiles.saveProfilesWithoutSync(saved + [profile]))
+        defer { profiles.saveProfilesWithoutSync(saved) }
+        var connection = referencing()
+        connection.sshTunnelMode = .profile(id: profile.id, snapshot: profile.toSSHConfiguration())
+        let store = makeStore()
+        store.approve(connection)
+        #expect(store.isApproved(connection))
+
+        profile.host = "bastion-b.example"
+        #expect(profiles.saveProfilesWithoutSync(saved + [profile]))
+
         #expect(!store.isApproved(connection))
     }
 

@@ -123,7 +123,11 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         }
     }
 
+    // Runs before the timeout is recorded, for a test that makes the statement wait on the connection's queue.
+    var applyQueryTimeoutGate: (@Sendable () async -> Void)?
+
     func applyQueryTimeout(_ seconds: Int) async throws {
+        await applyQueryTimeoutGate?()
         applyQueryTimeoutValues.append(seconds)
     }
 

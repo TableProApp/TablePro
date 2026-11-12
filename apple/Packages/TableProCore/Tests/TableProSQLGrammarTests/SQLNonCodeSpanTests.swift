@@ -115,6 +115,79 @@ struct SQLNonCodeSpanTests {
         SQLLexicalReadings.resolve(databaseTypeId: engine, declared: nil, session: nil).execution
     }
 
+    private static func statements(_ sql: String, _ engine: String) -> Int {
+        SQLStatementScanner.executableStatements(in: sql, grammar: execution(engine)).count
+    }
+
+    private static func tier(_ sql: String, _ engine: String) -> StatementTier {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: engine, declared: nil, session: nil)
+        return SQLStatementClassifier.classify(sql, databaseTypeId: engine, readings: readings).tier
+    }
+
+    // Measured on PostgreSQL 17.11: with a domain named after each glued name, the server ran the DROP.
+    @Test(
+        "A prefix glued to a name by $ or by any non-ASCII unit is part of the name on PostgreSQL",
+        arguments: ["$", "\u{E9}", "\u{00A0}", "\u{3000}", "\u{200B}", "\u{2060}", "\u{FEFF}", "\u{2019}", "\u{FF0C}"]
+    )
+    func prefixAfterANameOnPostgreSQL(glue: String) {
+        let sql = "SELECT x\(glue)e'\\'; DROP TABLE t; --'"
+        for engine in ["PostgreSQL", "CockroachDB", "Redshift"] {
+            #expect(Self.statements(sql, engine) == 2, "\(engine)")
+            #expect(Self.tier(sql, engine) == .destructive, "\(engine)")
+        }
+        #expect(Self.statements("SELECT x\(glue)b'\\'; DROP TABLE t; --'", "CockroachDB") == 2)
+    }
+
+    // Measured on DuckDB 1.5.4 and 2.0.0: these spaces end `varchar` and the DROP ran; every other unit kept it a name.
+    @Test("DuckDB ends a name at the non-ASCII spaces it blanks before lexing and at no other non-ASCII unit")
+    func prefixAfterANameOnDuckDB() {
+        let blanks: [UInt16] = [0x00A0, 0x2000, 0x2005, 0x200A, 0x200B, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF]
+        for unit in blanks {
+            let space = String(utf16CodeUnits: [unit], count: 1)
+            let sql = "SELECT varchar\(space)E'\\''; DROP TABLE t; --'"
+            #expect(Self.statements(sql, "DuckDB") == 2, "U+\(String(unit, radix: 16))")
+            #expect(Self.tier(sql, "DuckDB") == .destructive, "U+\(String(unit, radix: 16))")
+            #expect(Self.statements(sql, "PostgreSQL") == 1, "U+\(String(unit, radix: 16))")
+        }
+        for glue in ["$", "\u{E9}", "\u{200C}", "\u{2019}", "\u{FF0C}", "\u{2028}"] {
+            #expect(Self.statements("SELECT x\(glue)e'\\'; DROP TABLE t; --'", "DuckDB") == 2, "\(glue)")
+            #expect(Self.statements("SELECT varchar\(glue)E'\\''; DROP TABLE t; --'", "DuckDB") == 1, "\(glue)")
+        }
+    }
+
+    // Measured on DuckDB 2.0.0: after these spaces `$$` opened a dollar quote and the DROP ran.
+    @Test("DuckDB opens a dollar quote after a space it blanks, and PostgreSQL keeps the $ in the name")
+    func dollarQuoteAfterABlankOnDuckDB() {
+        for space in ["\u{00A0}", "\u{200B}", "\u{3000}"] {
+            let sql = "SELECT 1 AS a,\(space)$$'$$; DROP TABLE t; SELECT 'x'"
+            #expect(Self.statements(sql, "DuckDB") == 3)
+            #expect(Self.tier(sql, "DuckDB") == .destructive)
+            #expect(Self.statements(sql, "PostgreSQL") == 1)
+        }
+        #expect(Self.statements("SELECT 1 AS a,\u{2019}$$'$$; DROP TABLE t; SELECT 'x'", "DuckDB") == 1)
+    }
+
+    // Measured on DuckDB 1.5.4 and 2.0.0: its pre-lexing pass kept the space in each text, so the `$$` stayed in the
+    // name and the DROP ran.
+    @Test("A gate reads DuckDB both ways, since it keeps a non-ASCII space where its pre-lexing pass sees a quote", arguments: [
+        "SELECT 1 AS a$$, 2 AS b\u{200B}$$; DROP TABLE t; --$$",
+        "/* ' */ SELECT 1 AS a\u{200B}$$; DROP TABLE t; --$$",
+        "SELECT E'\\'' AS c, 1 AS a\u{200B}$$; DROP TABLE t; --$$",
+    ])
+    func duckDBKeepsSomeSpaces(sql: String) {
+        #expect(Self.tier(sql, "DuckDB") == .destructive)
+    }
+
+    @Test("A q'...' glued to a name by $ or # is part of the name where both continue one")
+    func alternativeQuoteAfterAName() {
+        for engine in ["Oracle", "Dameng"] {
+            #expect(end("x$q'[it's]'", at: 2, Self.execution(engine)) == nil, "\(engine)")
+            #expect(end("x#q'[it's]'", at: 2, Self.execution(engine)) == nil, "\(engine)")
+            #expect(Self.statements("SELECT x$q'['; DROP TABLE t; --]' FROM dual", engine) == 2, "\(engine)")
+        }
+        #expect(end("x#e'\\'' y", at: 2, Self.execution("PostgreSQL")) == 7)
+    }
+
     @Test("A string after a line break continues a PostgreSQL E'...' with its escapes, as quotecontinue reads it")
     func escapeStringContinuesAfterALineBreak() {
         let postgreSQL = Self.execution("PostgreSQL")

@@ -119,6 +119,13 @@
     {
       "target" : {
         "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProMCPClientsTests",
+        "name" : "TableProMCPClientsTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
         "identifier" : "TableProMCPTests",
         "name" : "TableProMCPTests"
       }

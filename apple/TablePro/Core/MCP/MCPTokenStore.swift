@@ -9,6 +9,7 @@ enum MCPTokenStoreError: Error, Sendable, Equatable {
     case randomGenerationFailed(OSStatus)
     case keychainUnavailable(OSStatus)
     case storedTokensUnreadable
+    case notSaved
 
     var message: String {
         switch self {
@@ -18,6 +19,8 @@ enum MCPTokenStoreError: Error, Sendable, Equatable {
             return "Keychain unavailable (OSStatus \(status))"
         case .storedTokensUnreadable:
             return "The saved MCP tokens could not be read, so a new token cannot be saved"
+        case .notSaved:
+            return "The new MCP token could not be saved to the Keychain"
         }
     }
 }
@@ -39,9 +42,17 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     // Set only by the Claude Agent chat's own mint, on the same terms.
     let isClaudeAgentCredential: Bool
     let extraScopes: Set<MCPScope>
+    // Set only by the Claude Agent chat's own mint; no pairing input reaches it.
+    let toolProfile: MCPToolProfile?
 
     var scopes: Set<MCPScope> {
-        permissions.scopes.union(extraScopes)
+        let granted = permissions.scopes.union(extraScopes)
+        guard let toolProfile else { return granted }
+        return granted.intersection(toolProfile.scopes)
+    }
+
+    var toolAllowlist: Set<String>? {
+        toolProfile?.toolNames
     }
 
     var isExpired: Bool {
@@ -50,6 +61,25 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     }
 
     var isEffectivelyActive: Bool { isActive && !isExpired }
+
+    func renamed(_ name: String) -> MCPAuthToken {
+        MCPAuthToken(
+            id: id,
+            name: name,
+            prefix: prefix,
+            tokenHash: tokenHash,
+            salt: salt,
+            permissions: permissions,
+            connectionAccess: connectionAccess,
+            createdAt: createdAt,
+            lastUsedAt: lastUsedAt,
+            expiresAt: expiresAt,
+            isActive: isActive,
+            isBridgeCredential: isBridgeCredential,
+            isClaudeAgentCredential: isClaudeAgentCredential,
+            extraScopes: extraScopes
+        )
+    }
 
     var grantSubject: MCPGrantSubject {
         MCPGrantSubject(tokenId: id, isBridgeCredential: isBridgeCredential, isClaudeAgentCredential: isClaudeAgentCredential)
@@ -74,7 +104,8 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         isActive: Bool,
         isBridgeCredential: Bool = false,
         isClaudeAgentCredential: Bool = false,
-        extraScopes: Set<MCPScope> = []
+        extraScopes: Set<MCPScope> = [],
+        toolProfile: MCPToolProfile? = nil
     ) {
         self.id = id
         self.name = name
@@ -90,6 +121,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.isBridgeCredential = isBridgeCredential
         self.isClaudeAgentCredential = isClaudeAgentCredential
         self.extraScopes = extraScopes.intersection(MCPScope.optionalGrants)
+        self.toolProfile = toolProfile
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -107,6 +139,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         case isBridgeCredential
         case isClaudeAgentCredential
         case extraScopes
+        case toolProfile
     }
 
     init(from decoder: Decoder) throws {
@@ -128,6 +161,12 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         let storedExtraScopes = (try? container.decodeIfPresent([String].self, forKey: .extraScopes)) ?? []
         self.extraScopes = Set(storedExtraScopes.compactMap(MCPScope.init(rawValue:)))
             .intersection(MCPScope.optionalGrants)
+        // Strict, unlike extraScopes: a profile only narrows, so a damaged value read as absent would widen the token.
+        if container.contains(.toolProfile) {
+            self.toolProfile = try container.decode(MCPToolProfile.self, forKey: .toolProfile)
+        } else {
+            self.toolProfile = nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -149,6 +188,34 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         try container.encode(isActive, forKey: .isActive)
         if !extraScopes.isEmpty {
             try container.encode(extraScopes.map(\.rawValue).sorted(), forKey: .extraScopes)
+        }
+        try container.encodeIfPresent(toolProfile, forKey: .toolProfile)
+    }
+}
+
+enum MCPToolProfile: String, Codable, Sendable {
+    // The chat's Ask mode: the schema lookups, no rows, no history.
+    case schemaLookup
+
+    var scopes: Set<MCPScope> {
+        switch self {
+        case .schemaLookup:
+            [.toolsRead]
+        }
+    }
+
+    var toolNames: Set<String> {
+        switch self {
+        case .schemaLookup:
+            [
+                ListConnectionsTool.name,
+                GetConnectionStatusTool.name,
+                ListDatabasesTool.name,
+                ListSchemasTool.name,
+                ListTablesTool.name,
+                DescribeTableTool.name,
+                GetTableDdlTool.name
+            ]
         }
     }
 }
@@ -185,6 +252,7 @@ enum TokenPermissions: String, Codable, Sendable, CaseIterable, Identifiable {
 
 actor MCPTokenStore {
     static let stdioBridgeTokenName = "__stdio_bridge__"
+    static let claudeAgentTokenName = "__claude_agent__"
     static let bridgeTokenPermissions: TokenPermissions = .readWrite
     static let defaultTokenLifetime: TimeInterval = 90 * 24 * 60 * 60
 
@@ -220,7 +288,7 @@ actor MCPTokenStore {
         revocationObservers.removeValue(forKey: id)
     }
 
-    // Only the bridge's own mint may take its name: a pairing client could otherwise claim the bridge's grants.
+    // Pairing and Settings mint without a profile; only the Claude Agent mint passes one.
     func generate(
         name: String,
         permissions: TokenPermissions,
@@ -230,9 +298,34 @@ actor MCPTokenStore {
         isClaudeAgentCredential: Bool,
         extraScopes: Set<MCPScope>
     ) throws -> (token: MCPAuthToken, plaintext: String) {
-        let name = (!isBridgeCredential && name == Self.stdioBridgeTokenName)
-            ? name + " (client)"
-            : name
+        try generate(
+            name: name,
+            permissions: permissions,
+            connectionAccess: connectionAccess,
+            expiresAt: expiresAt,
+            isBridgeCredential: isBridgeCredential,
+            isClaudeAgentCredential: isClaudeAgentCredential,
+            extraScopes: extraScopes,
+            toolProfile: nil
+        )
+    }
+
+    // Only the bridge's and the agent's own mints may take their names: a pairing client picks its name,
+    // and the window labels both names as TablePro's own. loadFromDisk enforces the same for older tokens.
+    func generate(
+        name: String,
+        permissions: TokenPermissions,
+        connectionAccess: ConnectionAccess,
+        expiresAt: Date?,
+        isBridgeCredential: Bool,
+        isClaudeAgentCredential: Bool,
+        extraScopes: Set<MCPScope>,
+        toolProfile: MCPToolProfile?
+    ) throws -> (token: MCPAuthToken, plaintext: String) {
+        let isAgentMint = isClaudeAgentCredential && !isBridgeCredential
+        let claimsReservedName = (!isBridgeCredential && name == Self.stdioBridgeTokenName)
+            || (!isAgentMint && name == Self.claudeAgentTokenName)
+        let name = claimsReservedName ? Self.clientName(claiming: name) : name
         // The bridge credential is dropped at every load, so it alone may live in memory only.
         if !isBridgeCredential, !adoptStoredTokensIfUnread() {
             Self.logger.error("Refused to mint an MCP token: the stored list is still unreadable")
@@ -255,12 +348,18 @@ actor MCPTokenStore {
             expiresAt: expiresAt,
             isActive: true,
             isBridgeCredential: isBridgeCredential,
-            isClaudeAgentCredential: isClaudeAgentCredential && !isBridgeCredential,
-            extraScopes: isBridgeCredential ? [] : extraScopes
+            isClaudeAgentCredential: isAgentMint,
+            extraScopes: isBridgeCredential ? [] : extraScopes,
+            toolProfile: toolProfile
         )
 
         tokens.append(token)
-        save()
+        // A token the Keychain did not take would vanish at the next launch while the client still holds it.
+        if !save(), !isBridgeCredential {
+            tokens.removeAll { $0.id == token.id }
+            Self.logger.error("Refused to hand out an MCP token the Keychain did not save")
+            throw MCPTokenStoreError.notSaved
+        }
 
         Self.logger.info("Generated MCP token '\(name, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenCreated(tokenId: token.id, tokenName: name)
@@ -312,12 +411,16 @@ actor MCPTokenStore {
         return revoke(tokenId: token.id) ? .revoked : .notPersisted
     }
 
-    func delete(tokenId: UUID) {
+    // False when the Keychain write failed: the token stops working now, but until a later save lands a
+    // restart brings it back.
+    @discardableResult
+    func delete(tokenId: UUID) -> Bool {
         remove(tokenId: tokenId, withdrawsApprovals: true)
     }
 
     // A Claude Agent turn ends its own token this way: the approvals belong to the agent, not to one turn.
-    func retire(tokenId: UUID) {
+    @discardableResult
+    func retire(tokenId: UUID) -> Bool {
         remove(tokenId: tokenId, withdrawsApprovals: false)
     }
 
@@ -332,19 +435,21 @@ actor MCPTokenStore {
         Self.logger.info("Dropped the superseded bridge credential")
     }
 
-    private func remove(tokenId: UUID, withdrawsApprovals: Bool) {
+    @discardableResult
+    private func remove(tokenId: UUID, withdrawsApprovals: Bool) -> Bool {
         guard let index = tokens.firstIndex(where: { $0.id == tokenId }) else {
             Self.logger.warning("Attempted to delete non-existent token \(tokenId.uuidString, privacy: .public)")
-            return
+            return true
         }
 
         let name = tokens[index].name
         let withdrawn = withdrawsApprovals ? tokens[index].subjectWithdrawnWhenEnded : nil
         tokens.remove(at: index)
-        save()
+        let persisted = save()
         notifyRevocationObservers(tokenId: tokenId, withdrawing: withdrawn)
 
         Self.logger.info("Deleted MCP token '\(name, privacy: .private(mask: .hash))'")
+        return persisted
     }
 
     private func notifyRevocationObservers(tokenId: UUID, withdrawing subject: MCPGrantSubject?) {
@@ -394,14 +499,29 @@ actor MCPTokenStore {
         }
 
         let staleCount = tokens.filter(Self.isStaleBridge).count
-        guard staleCount > 0 else { return }
         tokens.removeAll(where: Self.isStaleBridge)
+        let renamedCount = tokens.filter(Self.claimsAgentName).count
+        tokens = tokens.map(Self.releasingAgentName)
+        guard staleCount > 0 || renamedCount > 0 else { return }
         save()
-        Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
+        Self.logger.info("Cleaned up \(staleCount) stale bridge token(s), renamed \(renamedCount) client token(s)")
     }
 
     private static func isStaleBridge(_ token: MCPAuthToken) -> Bool {
         token.isBridgeCredential || token.name == stdioBridgeTokenName
+    }
+
+    // Builds before the agent's name was reserved let a pairing client take it.
+    private static func claimsAgentName(_ token: MCPAuthToken) -> Bool {
+        token.name == claudeAgentTokenName && !token.isClaudeAgentCredential
+    }
+
+    private static func releasingAgentName(_ token: MCPAuthToken) -> MCPAuthToken {
+        claimsAgentName(token) ? token.renamed(clientName(claiming: token.name)) : token
+    }
+
+    private static func clientName(claiming reservedName: String) -> String {
+        reservedName + " (client)"
     }
 
     // One entry this build cannot decode costs that entry only, and it is written back untouched.
@@ -454,7 +574,9 @@ actor MCPTokenStore {
         }
         storedTokensUnread = false
         let minted = Set(tokens.map(\.id))
-        tokens = stored.tokens.filter { !minted.contains($0.id) && !Self.isStaleBridge($0) } + tokens
+        tokens = stored.tokens
+            .filter { !minted.contains($0.id) && !Self.isStaleBridge($0) }
+            .map(Self.releasingAgentName) + tokens
         undecodedEntries = stored.undecoded
         Self.logger.info("Read the stored MCP tokens after an earlier failure")
         return true

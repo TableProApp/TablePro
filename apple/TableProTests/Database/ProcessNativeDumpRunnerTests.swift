@@ -8,8 +8,8 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
-@testable import TableProUtilities
 
 struct ProcessNativeDumpRunnerTests {
     // A stand-in dump tool: the runner refuses a shell as the executable, as it does for every app-run tool.

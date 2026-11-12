@@ -144,9 +144,17 @@ enum MSSQLTableDefinitionSQL {
         return definition
     }
 
-    static func refusal(for column: PluginColumnDefinition, writesType: Bool = true, writesDefault: Bool = true) -> String? {
+    static func refusal(
+        for column: PluginColumnDefinition,
+        writesType: Bool = true,
+        writesDefault: Bool = true,
+        collation: String? = nil
+    ) -> String? {
         if writesType, !MSSQLDefinitionText.isColumnType(column.dataType) {
             return MSSQLDefinitionRefusal.columnType(column.name, column.dataType).reason
+        }
+        if let collation, !MSSQLDefinitionText.isCollationName(collation) {
+            return MSSQLDefinitionRefusal.collation(column.name, collation).reason
         }
         if writesDefault, let value = column.defaultValue, MSSQLDefinitionText.expression(value) == nil {
             return MSSQLDefinitionRefusal.columnDefault(column.name).reason

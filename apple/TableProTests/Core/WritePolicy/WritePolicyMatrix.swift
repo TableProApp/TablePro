@@ -102,7 +102,8 @@ enum MCPWritePath: String, CaseIterable, Sendable, CustomTestStringConvertible {
         case session
         // The connection stays unsaved, so a call the gates pass stops at the tool's lookup before a window opens.
         case window
-        // Names no connection: the tab list hides the ones the client may not reach. A hosted test has no window to raise.
+        // Names a tab, and asks about the tab's connection; the tab list hides the ones the client may not reach.
+        // A hosted test has no window to raise.
         case tab
     }
 
@@ -209,7 +210,6 @@ enum MCPWritePath: String, CaseIterable, Sendable, CustomTestStringConvertible {
     static func expected(_ path: MCPWritePath, _ cell: MCPWriteCell) -> WriteOutcome {
         guard path.scopes.isSubset(of: cell.token.scopes) else { return .refused }
         guard cell.aiPolicy != .never, cell.externalAccess != .blocked else { return .refused }
-        guard path.reach != .tab else { return .runs(after: []) }
         var prompts: [WritePrompt] = cell.aiPolicy == .askEachTime ? [.connectionAccess] : []
         guard path.reach == .statement else { return .runs(after: prompts) }
         guard cell.externalAccess == .readWrite, cell.safeMode != .readOnly else { return .refused }

@@ -14,7 +14,8 @@ struct ClaudeAgentProviderTests {
             prompt: "count the users",
             model: "sonnet",
             systemPrompt: "be terse",
-            mcpConfigPath: nil
+            mcpConfigPath: nil,
+            allowedToolNames: nil
         )
         #expect(args.contains("-p"))
         #expect(args.contains("stream-json"))
@@ -35,7 +36,8 @@ struct ClaudeAgentProviderTests {
             prompt: "hi",
             model: "",
             systemPrompt: nil,
-            mcpConfigPath: nil
+            mcpConfigPath: nil,
+            allowedToolNames: nil
         )
         guard let index = args.firstIndex(of: "--tools") else {
             Issue.record("--tools flag missing")
@@ -52,7 +54,8 @@ struct ClaudeAgentProviderTests {
             prompt: "--dangerously-skip-permissions",
             model: "",
             systemPrompt: nil,
-            mcpConfigPath: nil
+            mcpConfigPath: nil,
+            allowedToolNames: nil
         )
         #expect(args[args.count - 2] == "--")
         #expect(args.last == "--dangerously-skip-permissions")
@@ -64,7 +67,8 @@ struct ClaudeAgentProviderTests {
             prompt: "hi",
             model: "",
             systemPrompt: nil,
-            mcpConfigPath: "/tmp/config.json"
+            mcpConfigPath: "/tmp/config.json",
+            allowedToolNames: nil
         )
         #expect(args.contains("--mcp-config"))
         #expect(args.contains("/tmp/config.json"))
@@ -73,6 +77,31 @@ struct ClaudeAgentProviderTests {
             return
         }
         #expect(args[index + 1] == "mcp__tablepro__*")
+    }
+
+    @Test("An Ask grant names the seven schema tools to the CLI instead of the whole server")
+    func askGrantNamesItsTools() {
+        let args = ClaudeAgentProvider.inferenceArguments(
+            prompt: "hi",
+            model: "",
+            systemPrompt: nil,
+            mcpConfigPath: "/tmp/config.json",
+            allowedToolNames: MCPToolProfile.schemaLookup.toolNames.sorted()
+        )
+        guard let index = args.firstIndex(of: "--allowedTools") else {
+            Issue.record("--allowedTools flag missing")
+            return
+        }
+        #expect(args[index + 1] == [
+            "mcp__tablepro__describe_table",
+            "mcp__tablepro__get_connection_status",
+            "mcp__tablepro__get_table_ddl",
+            "mcp__tablepro__list_connections",
+            "mcp__tablepro__list_databases",
+            "mcp__tablepro__list_schemas",
+            "mcp__tablepro__list_tables"
+        ].joined(separator: ","))
+        #expect(!args.contains("mcp__tablepro__*"))
     }
 
     @Test("Partial message deltas decode as incremental text")

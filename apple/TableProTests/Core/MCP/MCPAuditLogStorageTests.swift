@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import TableProMCP
 import TableProPluginKit
 import Testing
@@ -308,6 +309,161 @@ struct MCPAuditLogStorageTests {
         let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         #expect(names.contains(MCPAuditLogStorage.databaseFileName))
         #expect(names.allSatisfy { !$0.hasPrefix("mcp-audit-test_") })
+    }
+
+    @Test("A row keeps the client that caused it, and the log filters by that client")
+    func filterByClient() async {
+        let storage = makeStorage()
+        await storage.addEntry(AuditEntry(category: .tool, action: "tool.a", outcome: AuditOutcome.success, clientName: "Cursor"))
+        await storage.addEntry(AuditEntry(category: .tool, action: "tool.b", outcome: AuditOutcome.success, clientName: "Zed"))
+        await storage.addEntry(AuditEntry(category: .admin, action: "server.started", outcome: AuditOutcome.success))
+
+        let cursor = await storage.query(clientName: "Cursor")
+        #expect(cursor.map { $0.action } == ["tool.a"])
+        #expect(cursor.first?.clientName == "Cursor")
+        #expect(await storage.query(category: .admin).first?.clientName == nil)
+        #expect(await storage.clientNames() == ["Cursor", "Zed"])
+        #expect(await storage.verify() == .intact(count: 3))
+    }
+
+    @Test("Every bridge credential reads as one token, whichever rotation wrote the row")
+    func filterByTokenName() async {
+        let storage = makeStorage()
+        await storage.addEntry(makeEntry(tokenId: UUID(), tokenName: MCPTokenStore.stdioBridgeTokenName, action: "tool.before"))
+        await storage.addEntry(makeEntry(tokenId: UUID(), tokenName: MCPTokenStore.stdioBridgeTokenName, action: "tool.after"))
+        await storage.addEntry(makeEntry(tokenName: "Raycast", action: "tool.raycast"))
+
+        let bridge = await storage.query(tokenName: MCPTokenStore.stdioBridgeTokenName)
+        #expect(Set(bridge.map { $0.action }) == ["tool.before", "tool.after"])
+    }
+
+    @Test("A log written before the client column opens with no client on its rows and keeps its chain")
+    func logWithoutTheClientColumnMigrates() async throws {
+        let directory = Self.makeDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent(MCPAuditLogStorage.databaseFileName).path
+        // Whole seconds, so the timestamp reads back from SQL text to the same value the digest used.
+        let old = makeEntry(tokenName: "Raycast", timestamp: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)), action: "tool.beforeUpgrade")
+        let hash = MCPAuditChainLink.digest(entry: old, sequence: 0, previousHash: MCPAuditChainLink.genesisHash)
+        let created = Self.execute([
+            """
+            CREATE TABLE audit_entries (
+                id TEXT PRIMARY KEY, timestamp REAL NOT NULL, category TEXT NOT NULL, token_id TEXT,
+                token_name TEXT, connection_id TEXT, action TEXT NOT NULL, outcome TEXT NOT NULL, details TEXT,
+                sequence INTEGER, previous_hash TEXT, entry_hash TEXT
+            );
+            """,
+            """
+            INSERT INTO audit_entries VALUES ('\(old.id.uuidString)', \(old.timestamp.timeIntervalSince1970), 'tool',
+                '\(old.tokenId?.uuidString ?? "")', 'Raycast', NULL, 'tool.beforeUpgrade', 'success', NULL,
+                0, '\(MCPAuditChainLink.genesisHash)', '\(hash)');
+            """
+        ], at: path)
+        #expect(created)
+
+        let storage = MCPAuditLogStorage(directory: directory)
+        let migrated = await storage.query()
+        #expect(migrated.count == 1)
+        #expect(migrated.first?.clientName == nil)
+        #expect(migrated.first?.tokenName == "Raycast")
+        #expect(await storage.verify() == .intact(count: 1))
+
+        #expect(await storage.addEntry(AuditEntry(category: .tool, action: "tool.afterUpgrade", outcome: AuditOutcome.success, clientName: "Cursor")))
+        #expect(await storage.verify() == .intact(count: 2))
+        #expect(await storage.query(clientName: "Cursor").map { $0.action } == ["tool.afterUpgrade"])
+
+        // What a build without the column runs: it names its columns, so the log stays its own.
+        #expect(Self.execute([
+            "SELECT id, timestamp, category, token_id, token_name, connection_id, action, outcome, details FROM audit_entries;",
+            """
+            INSERT INTO audit_entries
+                (id, timestamp, category, token_id, token_name, connection_id, action, outcome, details,
+                 sequence, previous_hash, entry_hash)
+            VALUES ('\(UUID().uuidString)', 0, 'tool', NULL, NULL, NULL, 'tool.olderBuild', 'success', NULL, 99, '', '');
+            """
+        ], at: path))
+    }
+
+    @Test("A tool call names the client that made it, never its token")
+    func toolCallCarriesTheClient() async throws {
+        let tokenId = UUID()
+
+        MCPAuditLogger.logToolCalled(
+            principal: makePrincipal(tokenId: tokenId, label: MCPTokenStore.stdioBridgeTokenName),
+            client: "Cursor",
+            toolName: "list_tables",
+            outcome: .success
+        )
+        await MCPAuditLogger.flush()
+
+        let row = try #require(await MCPAuditLogStorage.shared.query(tokenId: tokenId).first)
+        #expect(row.clientName == "Cursor")
+        #expect(row.tokenName == MCPTokenStore.stdioBridgeTokenName)
+    }
+
+    @Test("The client is named as Connected Clients names it, before any catalog lookup")
+    func clientNameFromClientInfo() {
+        func meta(_ info: MCPImplementation?) -> MCPRequestMeta {
+            MCPRequestMeta(protocolVersion: .latest, clientInfo: info, clientCapabilities: .none, progressToken: nil)
+        }
+
+        #expect(MCPAuditLogger.clientName(for: meta(MCPImplementation(name: "claude-ai", title: "Claude", version: "1"))) == "Claude")
+        #expect(MCPAuditLogger.clientName(for: meta(MCPImplementation(name: "cursor-vscode", title: "  ", version: "1"))) == "cursor-vscode")
+        #expect(MCPAuditLogger.clientName(for: meta(MCPImplementation(name: CLIClientIdentity.name, title: CLIClientIdentity.title, version: "1")))
+            == CLIClientIdentity.pairingName)
+        #expect(MCPAuditLogger.clientName(for: meta(nil)) == nil)
+    }
+
+    @Test("The Activity Log finds a row by its client and exports the client beside the token")
+    @MainActor
+    func activityLogSearchesAndExportsTheClient() throws {
+        let row = AuditEntry(
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            category: .tool,
+            tokenName: MCPTokenStore.stdioBridgeTokenName,
+            action: "tool.list_tables",
+            outcome: AuditOutcome.success,
+            clientName: "Cursor"
+        )
+        let noConnection: (UUID?) -> String? = { _ in nil }
+
+        #expect(IntegrationsActivityLogPane.searchMatches(row, needle: "cursor", connectionName: noConnection))
+        #expect(!IntegrationsActivityLogPane.searchMatches(row, needle: "zed", connectionName: noConnection))
+
+        let lines = IntegrationsActivityLogPane.csvString(for: [row], connectionName: noConnection)
+            .split(separator: "\n")
+            .map { $0.split(separator: ",", omittingEmptySubsequences: false).map(String.init) }
+        let header = try #require(lines.first)
+        let values = try #require(lines.last)
+        let client = try #require(header.firstIndex(of: "Client"))
+        let token = try #require(header.firstIndex(of: "Token"))
+        #expect(values[client] == "Cursor")
+        #expect(values[token] == MCPTokenStore.stdioBridgeTokenName)
+    }
+
+    @Test("A client name that reads as a spreadsheet formula is exported as text")
+    @MainActor
+    func exportedClientNameNeverRunsAsAFormula() throws {
+        let row = AuditEntry(
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            category: .tool,
+            tokenName: MCPTokenStore.stdioBridgeTokenName,
+            action: "tool.list_tables",
+            outcome: AuditOutcome.success,
+            clientName: "=HYPERLINK(\"https://example.com\")"
+        )
+        let csv = IntegrationsActivityLogPane.csvString(for: [row], connectionName: { _ in nil })
+        let values = try #require(csv.split(separator: "\n").last)
+
+        #expect(!values.contains(",=HYPERLINK"))
+        #expect(values.contains("'=HYPERLINK"))
+    }
+
+    private static func execute(_ statements: [String], at path: String) -> Bool {
+        var db: OpaquePointer?
+        guard sqlite3_open(path, &db) == SQLITE_OK else { return false }
+        defer { sqlite3_close(db) }
+        return statements.allSatisfy { sqlite3_exec(db, $0, nil, nil, nil) == SQLITE_OK }
     }
 
     private static func permissions(ofItemAt path: String) -> Int? {
