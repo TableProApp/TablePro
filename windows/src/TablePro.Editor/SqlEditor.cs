@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -109,7 +110,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             _lexer = value;
             _highlighter?.Dispose();
             _highlighter = value is null ? null : new SyntaxHighlighter(Document, value);
-            _layouts?.Clear();
+            ForgetLayouts();
             Invalidate();
         }
     }
@@ -133,7 +134,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         set
         {
             _fontSize = value;
-            _layouts?.Configure(_fontSize * _zoom, _model.Options.TabSize);
+            ConfigureLayouts();
             UpdateScrollBars();
             Invalidate();
         }
@@ -145,7 +146,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         set
         {
             _zoom = Math.Clamp(value, 0.5f, 3f);
-            _layouts?.Configure(EditorFontSize * _zoom, _model.Options.TabSize);
+            ConfigureLayouts();
             UpdateScrollBars();
             Invalidate();
         }
@@ -209,7 +210,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _scrollX = 0;
         _scrollY = 0;
         _widest = 0;
-        _layouts?.Clear();
+        ForgetLayouts();
         UpdateScrollBars();
         Invalidate();
         TextChanged?.Invoke(this, EventArgs.Empty);
@@ -245,6 +246,11 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     // TabView unloads a tab's content on every switch; a hidden tab keeps its layouts and brushes.
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // A tab moved to another window can hear its old window's Unloaded after the new one's Loaded.
+        if (IsLoaded)
+        {
+            return;
+        }
         _loaded = false;
         Unhook();
         _device?.Detach();
@@ -272,12 +278,22 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         {
             return;
         }
-        if (!_device.IsCurrent)
+        if (_device.NeedsRecovery)
         {
             _device.Recover(lost: false);
             RebuildBrushes();
         }
-        _device.Attach(_panel, PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        try
+        {
+            _device.Attach(_panel, PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        }
+        catch (COMException exception) when (GraphicsDevice.IsDeviceLoss(exception.HResult))
+        {
+            // Lost between the check and the call; a new device takes it.
+            _device.Recover(lost: true);
+            RebuildBrushes();
+            _device.Attach(_panel, PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        }
         UpdateScrollBars();
         Invalidate();
     }
@@ -294,6 +310,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     {
         _brushes?.Dispose();
         _brushes = null;
+        ForgetLayouts();
         _layouts?.Dispose();
         _layouts = null;
         _device?.Dispose();
@@ -308,12 +325,20 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             return;
         }
         // A swap chain on a removed device fails ResizeBuffers; the new one is made at the new size.
-        if (!_device.IsCurrent)
+        if (_device.NeedsRecovery)
         {
             RecoverDevice(lost: false);
             return;
         }
-        _device.Resize(PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        try
+        {
+            _device.Resize(PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        }
+        catch (COMException exception) when (GraphicsDevice.IsDeviceLoss(exception.HResult))
+        {
+            RecoverDevice(lost: true);
+            return;
+        }
         UpdateScrollBars();
         RenderNow();
     }
@@ -326,7 +351,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         }
         _brushes?.Dispose();
         _brushes = new Brushes(_device.Context, Palette.Resolve(ActualTheme));
-        _layouts?.Clear();
+        ForgetLayouts();
         Invalidate();
     }
 

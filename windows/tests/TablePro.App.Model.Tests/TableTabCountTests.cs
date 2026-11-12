@@ -136,6 +136,43 @@ public sealed class TableTabCountTests
         Assert.False(tab.IsCounting);
     }
 
+    // MySQL keeps TABLE_ROWS for a day and an unanalysed table can read 0, so an estimate under the rows read is no total.
+    [Theory]
+    [InlineData(0L, null)]
+    [InlineData(1_000L, null)]
+    [InlineData(1_001L, 1_001L)]
+    public void AnEstimateShowsOnlyWhenItIsMoreThanTheRowsShown(long estimate, long? shown)
+    {
+        var page = TablePage.First(1_000) with { Rows = 1_000, Estimate = estimate };
+
+        Assert.Equal(shown, page.ShownEstimate);
+    }
+
+    [Fact]
+    public async Task APageTurnLeavesTheCountTheUserAskedForRunning()
+    {
+        // No estimate, and the count the tab ran by itself timed out, so Count rows is offered.
+        _session.CountFailure = Errors.Of("operation.timeout");
+        var tab = New();
+        await tab.RunAsync();
+        Assert.True(tab.CanCountRows);
+        _session.CountFailure = null;
+
+        var asked = new Gate();
+        _session.Counting = asked;
+        var count = tab.CountRowsAsync();
+        await asked.Reached;
+        await tab.NextPageAsync();
+
+        Assert.True(tab.IsCounting);
+        asked.Open();
+        await count;
+
+        Assert.Equal(2, _session.Counts);
+        Assert.Equal(2_000_123, tab.Page.Total);
+        Assert.Equal(1_000, tab.Page.Offset);
+    }
+
     [Fact]
     public async Task AnEstimateThatLandsAsTheTabClosesShowsNothingAndCountsNothing()
     {

@@ -70,6 +70,12 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     internal static int CreatedOnThisThread => s_created;
 
+    // A driver update or a TDR removes the device while nothing draws; what is made on it next fails.
+    public bool IsLost => _d3d is null || SimulatedLoss || _d3d->GetDeviceRemovedReason().FAILED;
+
+    // For the tests, as the grid's FailNextDraw.
+    internal bool SimulatedLoss { get; set; }
+
     public bool IsSoftware { get; }
 
     public string AdapterName { get; } = string.Empty;

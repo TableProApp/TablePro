@@ -47,7 +47,7 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" />
     <!-- The Toolkit names the metapackage, whose AI, ML, Search, Widgets and DWrite the app never loads (docs/decisions/0005-distribution.md). -->
-    <PrunePackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+    <PrunePackageReference Include="Microsoft.WindowsAppSDK" Version="$(WindowsAppSdkVersion)" />
   </ItemGroup>
 
   <ItemGroup>

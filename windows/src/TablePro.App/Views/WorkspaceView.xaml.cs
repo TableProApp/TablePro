@@ -28,6 +28,9 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private SessionShare<DatabaseSession>? _share;
     private DatabaseSession? _session;
     private ObjectCatalog? _everyObject;
+
+    // Bumped as the catalog is dropped, so a read started before a refresh or a reconnect is not kept.
+    private int _catalogGeneration;
     private bool _singleSchema;
     private string _failureDetails = string.Empty;
     private int _filterGeneration;
@@ -181,7 +184,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     {
         _share = share;
         _session = share.Session;
-        _everyObject = null;
+        ForgetCatalog();
         ConnectingRing.IsActive = false;
         ConnectingPanel.Visibility = Visibility.Collapsed;
         FailedPanel.Visibility = Visibility.Collapsed;
@@ -306,7 +309,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         _snapshots.Clear();
         Objects.Clear();
         ObjectList.ItemsSource = null;
-        _everyObject = null;
+        ForgetCatalog();
         WorkspaceGrid.Visibility = Visibility.Collapsed;
         CommandsChanged?.Invoke(this, EventArgs.Empty);
         SessionChanged?.Invoke(this, EventArgs.Empty);
@@ -625,7 +628,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
-        _everyObject = null;
+        ForgetCatalog();
         await LoadTreeAsync(refresh: true).ConfigureAwait(true);
     }
 
@@ -1488,14 +1491,24 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         try
         {
             var catalog = _everyObject;
-            if (catalog is null)
+            while (catalog is null)
             {
+                var reading = _catalogGeneration;
                 var objects = await session
                     .GetObjectsAsync(_singleSchema ? ObjectScope.DefaultSchema : ObjectScope.AllSchemas)
                     .ConfigureAwait(true);
                 var culture = CultureInfo.CurrentCulture;
-                catalog = await Task.Run(() => new ObjectCatalog(objects, culture)).ConfigureAwait(true);
-                _everyObject ??= catalog;
+                var read = await Task.Run(() => new ObjectCatalog(objects, culture)).ConfigureAwait(true);
+                if (filtering.IsCancellationRequested || !ReferenceEquals(_session, session))
+                {
+                    return;
+                }
+
+                // A refresh during the read dropped the catalog, so the one it reads now is the one to keep.
+                if (reading == _catalogGeneration)
+                {
+                    catalog = _everyObject ??= read;
+                }
             }
 
             // Typing on while the catalog loads leaves only the newest text to show.
@@ -1532,6 +1545,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 _filtering = null;
             }
         }
+    }
+
+    private void ForgetCatalog()
+    {
+        _everyObject = null;
+        _catalogGeneration++;
     }
 
     private void OnBackToTree(object sender, RoutedEventArgs e)

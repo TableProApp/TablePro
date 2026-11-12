@@ -74,7 +74,22 @@ internal sealed unsafe class GraphicsDevice : IDisposable
     // False once another editor found the shared device lost and replaced it.
     public bool IsCurrent => ReferenceEquals(_device, _forceSoftware ? s_software : s_hardware);
 
+    // Checked before a swap chain is made or resized, since a hidden tab or an idle caret draws nothing to find the loss.
+    public bool NeedsRecovery => !IsCurrent || _device.IsLost;
+
     internal static int SwapChainsCreated => s_swapChainsCreated;
+
+    internal static void SimulateLoss(bool software)
+    {
+        if ((software ? s_software : s_hardware) is { } device)
+        {
+            device.SimulatedLoss = true;
+        }
+    }
+
+    // DXGI's answer when the device went away under the call.
+    public static bool IsDeviceLoss(int result) =>
+        result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET;
 
     public void Attach(SwapChainPanel panel, int pixelWidth, int pixelHeight, float scaleX, float scaleY)
     {
@@ -138,7 +153,7 @@ internal sealed unsafe class GraphicsDevice : IDisposable
     {
         Detach();
         NativeCom.Release(ref _context);
-        if (lost && IsCurrent)
+        if (IsCurrent && (lost || _device.IsLost))
         {
             if (_forceSoftware)
             {

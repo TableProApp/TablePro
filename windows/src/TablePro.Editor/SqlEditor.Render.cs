@@ -26,8 +26,8 @@ public sealed partial class SqlEditor
         {
             return;
         }
-        // Another editor on this thread found the shared device lost.
-        if (!_device.IsCurrent)
+        // Another editor on this thread found the shared device lost, or the driver removed it.
+        if (_device.NeedsRecovery)
         {
             RecoverDevice(lost: false);
             return;
@@ -257,6 +257,21 @@ public sealed partial class SqlEditor
         Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRenderingTick;
         _waitingForTick = false;
         Invalidate();
+    }
+
+    // The frame's map points at layouts the cache owns, so it goes whenever they do.
+    private void ForgetLayouts()
+    {
+        _layouts?.Clear();
+        _frameLayouts.Clear();
+        _frameVersion = -1;
+    }
+
+    private void ConfigureLayouts()
+    {
+        _layouts?.Configure(_fontSize * _zoom, _model.Options.TabSize);
+        _frameLayouts.Clear();
+        _frameVersion = -1;
     }
 
     private LineLayout LayoutFor(int line, string text)

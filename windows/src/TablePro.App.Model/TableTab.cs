@@ -1141,7 +1141,8 @@ public sealed class TableTab : IWorkspaceTab
     // A first page that is not full holds the whole table; otherwise the estimate decides, then the server counts.
     private async Task CountAsync(bool asked, CancellationToken closing)
     {
-        if (!asked && (_page.Total is not null || !_page.CanSeek || _countHeldBack))
+        // A page turn, sort or resize leaves a count the user asked for to finish.
+        if (!asked && (_page.Total is not null || !_page.CanSeek || _countHeldBack || (_counting is not null && _countAsked)))
         {
             _view.UpdatePager();
             return;

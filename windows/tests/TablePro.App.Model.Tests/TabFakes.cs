@@ -59,6 +59,8 @@ internal sealed class FakeSession : ITabSession
 
     public CoreError? EstimateFailure { get; set; }
 
+    public CoreError? CountFailure { get; set; }
+
     public int Estimates { get; private set; }
 
     // Waited at by the run of each page read.
@@ -216,7 +218,7 @@ internal sealed class FakeSession : ITabSession
             await counting.PassAsync(cancellationToken);
         }
 
-        return RowsPicked(filter);
+        return CountFailure is { } failure ? throw new TableProException(failure) : RowsPicked(filter);
     }
 
     public async Task<RowEstimate?> EstimateRowsAsync(TableName table, CancellationToken cancellationToken)

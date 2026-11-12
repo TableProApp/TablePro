@@ -445,7 +445,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             return Strings.Format("StatusPageOf", page.FirstRow, page.LastRow, total, run.Milliseconds);
         }
 
-        return page.Estimate is { } estimate
+        return page.ShownEstimate is { } estimate
             ? Strings.Format("StatusPageOfAbout", page.FirstRow, page.LastRow, estimate, run.Milliseconds)
             : Strings.Format("StatusPage", page.FirstRow, page.LastRow, run.Milliseconds);
     }

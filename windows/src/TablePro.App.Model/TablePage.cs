@@ -19,6 +19,9 @@ public sealed record TablePage(long Offset, int Size, long Rows, long? Total, bo
     // The engine's estimate of the table, shown as about N while no count gave Total; nothing pages by it.
     public long? Estimate { get; init; }
 
+    // Statistics can lag far behind the table, as MySQL's cached TABLE_ROWS or a table never analysed reading 0.
+    public long? ShownEstimate => Estimate is { } estimate && estimate > LastRow ? estimate : null;
+
     public long FirstRow => Rows == 0 ? 0 : Offset + 1;
 
     public long LastRow => Offset + Rows;

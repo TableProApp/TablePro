@@ -66,6 +66,33 @@ public sealed class LifetimeTests
         }
     });
 
+    // A driver update or a TDR removes the device while nothing draws, so the next tab shown must not make its swap chain on it.
+    [Fact]
+    public Task ATabShownAfterTheDeviceWasLostDrawsOnANewDevice() => WinUiApp.RunAsync(async () =>
+    {
+        var first = new SqlEditor { Text = "SELECT 1;" };
+        var second = new SqlEditor { Text = "SELECT 2;" };
+        try
+        {
+            Assert.True(await EditorHost.ShowAsync(first), "no first frame");
+            Assert.True(await EditorHost.ShowAsync(second), "no first frame on the second editor");
+            var devices = RenderDevice.CreatedOnThisThread;
+
+            GraphicsDevice.SimulateLoss(software: false);
+
+            Assert.True(await EditorHost.ShowAsync(first), "no frame on the tab shown after the loss");
+            Assert.Equal(1, RenderDevice.CreatedOnThisThread - devices);
+            Assert.True(await EditorHost.ShowAsync(second), "no frame on the other tab after the loss");
+            Assert.Equal(1, RenderDevice.CreatedOnThisThread - devices);
+        }
+        finally
+        {
+            EditorHost.Clear();
+            first.Dispose();
+            second.Dispose();
+        }
+    });
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<WeakReference> ShowAndCloseAsync()
     {

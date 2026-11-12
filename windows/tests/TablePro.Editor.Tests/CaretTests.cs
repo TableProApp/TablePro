@@ -36,11 +36,17 @@ public sealed class CaretTests
                 Assert.True(editor.Focus(FocusState.Programmatic));
                 await WinUiApp.NextFrameAsync();
                 Assert.True(editor.IsCaretBlinking);
+                var undisturbed = true;
                 while (editor.IsCaretBlinking && focused.Elapsed < timeout + TimeSpan.FromSeconds(3))
                 {
-                    await Task.Delay(50, cancel);
+                    await Task.Delay(20, cancel);
+                    undisturbed &= editor.IsInActiveWindow && editor.FocusState != FocusState.Unfocused;
                 }
 
+                // Before desktop.ps1 runs, a runner's own windows take the activation now and then, which stops the blink too.
+                Assert.SkipUnless(
+                    undisturbed && editor.IsInActiveWindow && editor.FocusState != FocusState.Unfocused,
+                    $"The window lost activation or the editor its focus {focused.ElapsedMilliseconds} ms after focus.");
                 Assert.False(editor.IsCaretBlinking, $"still blinking {focused.ElapsedMilliseconds} ms after focus");
                 Assert.True(focused.Elapsed >= timeout, $"stopped after {focused.ElapsedMilliseconds} ms");
                 Assert.True(frames >= 2, $"{frames} frames while it blinked");
