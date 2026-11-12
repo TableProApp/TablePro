@@ -40,6 +40,11 @@ impl QueryRun {
             .map(|store| Arc::new(ResultSet::new(index, store)))
     }
 
+    /// The app shows this set no more, so the run lets go of its rows; they go once no `ResultSet` holds them.
+    pub fn release_set(&self, index: u32) {
+        self.state.release_set(index);
+    }
+
     pub fn cancel(&self) {
         self.state.cancel.cancel();
     }

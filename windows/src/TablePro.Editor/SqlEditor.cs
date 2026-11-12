@@ -183,6 +183,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _disposed = true;
         Unhook();
         _highlighter?.Dispose();
+        ReleaseCaretLayer();
         ReleaseDevice();
         _tsf?.Dispose();
         _tsf = null;
@@ -255,6 +256,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         }
         _loaded = false;
         Unhook();
+        ClearCarets();
         _device?.Detach();
     }
 
@@ -353,6 +355,10 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         }
         _brushes?.Dispose();
         _brushes = new Brushes(_device.Context, Palette.Resolve(ActualTheme));
+        if (_caretBrush is not null)
+        {
+            _caretBrush.Color = _brushes.Palette.Caret;
+        }
         ForgetLayouts();
         Invalidate();
     }
@@ -360,6 +366,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     private void OnFocusChanged(bool focused)
     {
         _blink.SetFocused(focused);
+        ShowCaretState();
         SyncBlinkTimer();
         if (focused)
         {
@@ -370,7 +377,6 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             _tsf?.Unfocus();
             _model.Document.Undo.BreakJoin();
         }
-        Invalidate();
     }
 
     private int PixelWidth() => (int)Math.Ceiling(_panel.ActualWidth * _panel.CompositionScaleX);

@@ -26,7 +26,7 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
 }
 
 // Each result set of a run in the order it started, labelled "Result {n} ({rows})" as the Linux app lists them.
-public sealed class RunResults(string label, string labelMore)
+public sealed class RunResults(string label, string labelMore, int kept = 0)
 {
     private readonly List<RunResult> _results = [];
 
@@ -35,11 +35,28 @@ public sealed class RunResults(string label, string labelMore)
 
     public IReadOnlyList<RunResult> Results => _results;
 
-    public RunResult Add(int setIndex, IReadOnlyList<ResultColumn> columns)
+    // Earlier sets the limit let go of.
+    public int Dropped { get; private set; }
+
+    // Past a limit the oldest set goes, as macOS keeps the newest, and the caller lets go of what it holds for it.
+    public RunResult Add(int setIndex, IReadOnlyList<ResultColumn> columns, out RunResult? dropped)
     {
-        var result = new RunResult(setIndex, columns) { Position = _results.Count + 1 };
+        var result = new RunResult(setIndex, columns) { Position = Dropped + _results.Count + 1 };
         _results.Add(result);
         _bySet.TryAdd(setIndex, result);
+        dropped = null;
+        if (kept > 0 && _results.Count > kept)
+        {
+            dropped = _results[0];
+            _results.RemoveAt(0);
+            if (_bySet.TryGetValue(dropped.SetIndex, out var listed) && ReferenceEquals(listed, dropped))
+            {
+                _bySet.Remove(dropped.SetIndex);
+            }
+
+            Dropped++;
+        }
+
         return result;
     }
 

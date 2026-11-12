@@ -129,9 +129,6 @@ public sealed class TableTab : IWorkspaceTab
         "ffi.not_connected",
     };
 
-    // From this estimate on the server counts only when asked, as macOS's default threshold.
-    private const long CountsBelow = 100_000;
-
     private readonly ITabSession _session;
     private readonly ITableTabView _view;
     private readonly IResultsView _results;
@@ -758,7 +755,8 @@ public sealed class TableTab : IWorkspaceTab
                 Total = recount ? null : _page.Total,
                 Estimate = recount ? null : _page.Estimate,
             };
-            await _results.ShowRunAsync(_run, _sort, read.VisibleColumns, cancellationToken).ConfigureAwait(true);
+            await _results.ShowRunAsync(_run, _sort, read.VisibleColumns, keptSets: 0, cancellationToken)
+                .ConfigureAwait(true);
             if (_work.IsClosed)
             {
                 return;
@@ -1226,7 +1224,7 @@ public sealed class TableTab : IWorkspaceTab
             _page = _page with { Estimate = known.Rows };
         }
 
-        if (estimate is { Rows: >= CountsBelow })
+        if (estimate is { } held && held.Rows >= _settings().CountRowsIfEstimateLessThan)
         {
             _countHeldBack = true;
             return false;

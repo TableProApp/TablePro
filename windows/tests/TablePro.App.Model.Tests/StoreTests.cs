@@ -20,6 +20,37 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void TheCountThresholdComesBackAsSavedAndAFileWithoutOneCountsBelowAHundredThousand()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark", "pageSize": 500 }""");
+        Assert.Equal(100_000, new SettingsStore(path).Load().CountRowsIfEstimateLessThan);
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { CountRowsIfEstimateLessThan = AppSettings.AlwaysCount });
+        Assert.Equal(AppSettings.AlwaysCount, store.Load().CountRowsIfEstimateLessThan);
+
+        System.IO.File.WriteAllText(path, """{ "countRowsIfEstimateLessThan": -5 }""");
+        Assert.Equal(0, new SettingsStore(path).Load().CountRowsIfEstimateLessThan);
+    }
+
+    [Fact]
+    public void ResultsKeptPerRunComeBackAsSavedAndAFileWithoutThemKeepsEveryResult()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        Assert.Equal(0, new SettingsStore(path).Load().ResultSetsKeptPerRun);
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { ResultSetsKeptPerRun = 200 });
+        Assert.Equal(200, store.Load().ResultSetsKeptPerRun);
+        Assert.Contains("\"resultSetsKeptPerRun\": 200", System.IO.File.ReadAllText(path), StringComparison.Ordinal);
+
+        System.IO.File.WriteAllText(path, """{ "resultSetsKeptPerRun": -3 }""");
+        Assert.Equal(0, new SettingsStore(path).Load().ResultSetsKeptPerRun);
+    }
+
+    [Fact]
     public void AMissingOrBrokenSettingsFileGivesTheDefaults()
     {
         var path = File("settings.json");

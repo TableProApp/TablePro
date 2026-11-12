@@ -10,8 +10,8 @@ public sealed class RunResultsTests
     public void EverySetOfARunIsListedInTheOrderItStarted()
     {
         var results = New();
-        var first = results.Add(0, Columns);
-        var second = results.Add(1, Columns);
+        var first = results.Add(0, Columns, out _);
+        var second = results.Add(1, Columns, out _);
 
         results.Apply(new QueryEvent.ResultSetFinished(0, 3, null, Truncation.Complete));
         results.Apply(new QueryEvent.RowsAppended(1, 40));
@@ -27,8 +27,8 @@ public sealed class RunResultsTests
     public void RowsOfOneSetNeverCountTowardAnother()
     {
         var results = New();
-        var first = results.Add(0, Columns);
-        results.Add(1, Columns);
+        var first = results.Add(0, Columns, out _);
+        results.Add(1, Columns, out _);
 
         var changed = results.Apply(new QueryEvent.RowsAppended(1, 7));
 
@@ -41,8 +41,8 @@ public sealed class RunResultsTests
     public void ASetTheLimitCutShortShowsTheCountedTotalOrAPlus()
     {
         var results = New();
-        var counted = results.Add(0, Columns);
-        var uncounted = results.Add(1, Columns);
+        var counted = results.Add(0, Columns, out _);
+        var uncounted = results.Add(1, Columns, out _);
 
         results.Apply(new QueryEvent.ResultSetFinished(0, 10_000, 25_000, Truncation.ReadPastLimit));
         results.Apply(new QueryEvent.RowLimitReached(1, 10_000));
@@ -60,9 +60,9 @@ public sealed class RunResultsTests
     public void ASetCutForSizeKeepsTheRunsLimitAndShowsAPlusWhenNobodyCounted()
     {
         var results = New();
-        var uncounted = results.Add(0, Columns);
-        var counted = results.Add(1, Columns);
-        var rowLimited = results.Add(2, Columns);
+        var uncounted = results.Add(0, Columns, out _);
+        var counted = results.Add(1, Columns, out _);
+        var rowLimited = results.Add(2, Columns, out _);
 
         results.Apply(new QueryEvent.RowsAppended(0, 16));
         results.Apply(new QueryEvent.ByteLimitReached(0, 16, 256_000_000));
@@ -84,7 +84,7 @@ public sealed class RunResultsTests
     public void EventsAboutNoListedSetChangeNothing()
     {
         var results = New();
-        var only = results.Add(0, Columns);
+        var only = results.Add(0, Columns, out _);
 
         Assert.Null(results.Apply(new QueryEvent.RowsAppended(4, 9)));
         Assert.Null(results.Apply(new QueryEvent.CommandCompleted(2)));
@@ -96,7 +96,7 @@ public sealed class RunResultsTests
     public void TenThousandSetsEachTakeTheirOwnRowsAndPlace()
     {
         var results = New();
-        var sets = Enumerable.Range(0, 10_000).Select(index => results.Add(index * 2, Columns)).ToList();
+        var sets = Enumerable.Range(0, 10_000).Select(index => results.Add(index * 2, Columns, out _)).ToList();
 
         foreach (var index in Enumerable.Range(0, sets.Count).Reverse())
         {
@@ -114,14 +114,71 @@ public sealed class RunResultsTests
     public void TwoSetsWithOneIndexLeaveTheEventsToTheFirst()
     {
         var results = New();
-        var first = results.Add(3, Columns);
-        var second = results.Add(3, Columns);
+        var first = results.Add(3, Columns, out _);
+        var second = results.Add(3, Columns, out _);
 
         Assert.Same(first, results.Apply(new QueryEvent.RowsAppended(3, 8)));
         Assert.Equal(0, second.Rows);
         Assert.Equal("Result 2 (0)", results.Label(second));
     }
 
+    [Fact]
+    public void PastTheLimitTheNewestSetsStayWithTheirRunPlaceAndTheOldestGoInOrder()
+    {
+        var results = New(kept: 3);
+        var dropped = new List<RunResult>();
+        var sets = new List<RunResult>();
+        for (var index = 0; index < 10; index++)
+        {
+            sets.Add(results.Add(index, Columns, out var gone));
+            if (gone is not null)
+            {
+                dropped.Add(gone);
+            }
+        }
+
+        Assert.Equal(sets[7..], results.Results);
+        Assert.Equal(sets[..7], dropped);
+        Assert.Equal(7, results.Dropped);
+        Assert.Null(results.Apply(new QueryEvent.ResultSetFinished(0, 5, null, Truncation.Complete)));
+        Assert.Same(sets[9], results.Apply(new QueryEvent.ResultSetFinished(9, 5, null, Truncation.Complete)));
+        Assert.Equal(["Result 8 (0)", "Result 9 (0)", "Result 10 (5)"], results.Results.Select(results.Label));
+    }
+
+    [Fact]
+    public void ExactlyTheLimitDropsNothing()
+    {
+        var results = New(kept: 3);
+
+        for (var index = 0; index < 3; index++)
+        {
+            results.Add(index, Columns, out var gone);
+            Assert.Null(gone);
+        }
+
+        Assert.Equal(3, results.Results.Count);
+        Assert.Equal(0, results.Dropped);
+    }
+
+    // The sets a 10,000-set script leaves held, with the limit at 100.
+    [Fact]
+    public void TenThousandSetsWithAHundredKeptHoldAHundred()
+    {
+        var results = New(kept: 100);
+        var dropped = 0;
+
+        for (var index = 0; index < 10_000; index++)
+        {
+            results.Add(index, Columns, out var gone);
+            dropped += gone is null ? 0 : 1;
+        }
+
+        Assert.Equal(100, results.Results.Count);
+        Assert.Equal(9_900, dropped);
+        Assert.Equal(9_900, results.Dropped);
+        Assert.Equal("Result 9901 (0)", results.Label(results.Results[0]));
+    }
+
     // No number format, so the labels read the same under every culture.
-    private static RunResults New() => new("Result {0} ({1})", "Result {0} ({1}+)");
+    private static RunResults New(int kept = 0) => new("Result {0} ({1})", "Result {0} ({1}+)", kept);
 }

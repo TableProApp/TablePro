@@ -14,6 +14,10 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     private readonly RunMessages _messages = new(Strings.Get("MessagesCutShort"));
     private List<HeldSet> _held = [];
     private HeldSet? _picked;
+
+    // A set the limit dropped while the grid showed it, kept in _held and the picker until the run lets it go.
+    private HeldSet? _leaving;
+    private int _droppedSets;
     private ResultSet? _sorted;
     private ResultSet? _shown;
     private long? _milliseconds;
@@ -124,19 +128,21 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     }
 
     // The sets shown stay until the new run's first set has rows or ends, so a sort or a refresh never blanks the grid.
-    public async Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, CancellationToken cancellationToken)
+    public async Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, int keptSets,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(run);
         ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
         ResultSetCount = 0;
+        _droppedSets = 0;
         Outcome = null;
         RowsAffected = null;
         _milliseconds = null;
         // The last run's messages stay on screen until this one's arrive or it ends, as its rows do.
         _messages.Reset();
         _pickedView = null;
-        var results = new RunResults(Strings.Get("ResultSetItem"), Strings.Get("ResultSetItemMore"));
+        var results = new RunResults(Strings.Get("ResultSetItem"), Strings.Get("ResultSetItemMore"), keptSets);
         var incoming = new List<HeldSet>();
         var heldBy = new Dictionary<RunResult, HeldSet>();
         var adopted = false;
@@ -168,7 +174,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                         ResultSetCount++;
                         if (run.GetResultSet(started.SetIndex) is { } set)
                         {
-                            var result = results.Add(started.SetIndex, started.Columns.Take(visibleColumns).ToList());
+                            var result = results.Add(
+                                started.SetIndex, started.Columns.Take(visibleColumns).ToList(), out var dropped);
                             var item = new ComboBoxItem { Content = results.Label(result) };
                             var held = new HeldSet(result, set, item);
                             incoming.Add(held);
@@ -176,6 +183,13 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                             if (ReferenceEquals(_held, incoming))
                             {
                                 ListInPicker(item);
+                            }
+
+                            LetGoOfLeaving();
+                            if (dropped is not null && heldBy.Remove(dropped, out var gone))
+                            {
+                                run.ReleaseSet(gone.Result.SetIndex);
+                                Drop(incoming, gone);
                             }
                         }
 
@@ -209,6 +223,9 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                         break;
                     case QueryEvent.Finished finished:
                         Adopt();
+                        ShowFirstKept();
+                        LetGoOfLeaving();
+                        _droppedSets = results.Dropped;
                         RowCount = adopted ? (_picked?.Result.Rows ?? 0) : 0;
                         Transaction = finished.Transaction;
                         Outcome = finished.Outcome;
@@ -256,6 +273,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         var first = incoming[0];
         _held = incoming;
         _picked = first;
+        _leaving = null;
         _sorted = null;
         Columns = first.Result.Columns;
         ResultGrid.SetData(GridData(first.Set, first.Result.Columns));
@@ -286,6 +304,67 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ResultPicked?.Invoke(this, EventArgs.Empty);
     }
 
+    // Once the run is shown the grid reads the set it shows, so that one stays until the run lets it go.
+    private void Drop(List<HeldSet> incoming, HeldSet gone)
+    {
+        if (ReferenceEquals(gone, _picked))
+        {
+            _leaving = gone;
+            return;
+        }
+
+        incoming.Remove(gone);
+        if (ReferenceEquals(_held, incoming))
+        {
+            RemoveFromPicker(gone.Item);
+        }
+
+        gone.Set.Dispose();
+    }
+
+    // At the run's end the first set kept takes the place of a dropped one still shown, as a run shows its first set.
+    private void ShowFirstKept()
+    {
+        if (_leaving is not { } leaving
+            || !ReferenceEquals(leaving, _picked)
+            || _held.Find(entry => !ReferenceEquals(entry, leaving)) is not { } first)
+        {
+            return;
+        }
+
+        Pick(first);
+        ShowPickedLabel();
+    }
+
+    // Called from the run's events, never from the picker's own, so its list never changes while it takes a pick.
+    private void LetGoOfLeaving()
+    {
+        if (_leaving is not { } leaving || ReferenceEquals(leaving, _picked))
+        {
+            return;
+        }
+
+        _leaving = null;
+        _held.Remove(leaving);
+        RemoveFromPicker(leaving.Item);
+        leaving.Set.Dispose();
+    }
+
+    private void RemoveFromPicker(ComboBoxItem item)
+    {
+        _picking = true;
+        try
+        {
+            ResultPicker.Items.Remove(item);
+        }
+        finally
+        {
+            _picking = false;
+        }
+
+        ResultPicker.Visibility = _held.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void Release()
     {
         var (held, sorted) = (_held, _sorted);
@@ -294,6 +373,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         Placeholder.Visibility = Visibility.Visible;
         _held = [];
         _picked = null;
+        _leaving = null;
         _sorted = null;
         Columns = [];
         DisposeSets(held, sorted);
@@ -391,6 +471,11 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         }
 
         Pick(picked);
+        if (_leaving is not null)
+        {
+            // After the picker has taken the pick, since its list changes.
+            DispatcherQueue.TryEnqueue(LetGoOfLeaving);
+        }
     }
 
     private void Finish(QueryOutcome outcome, bool hasRows, long? affected)
@@ -426,12 +511,22 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                 ShowError(Strings.Get("StatusTimedOut"));
                 break;
             default:
-                Status(Strings.Get("StatusCancelled"));
+                Status(WithDropped(Strings.Get("StatusCancelled")));
                 break;
         }
     }
 
-    private string RowsText(RunResult result, long milliseconds) =>
+    private string RowsText(RunResult result, long milliseconds) => WithDropped(SetText(result, milliseconds));
+
+    // One line says how many earlier sets the limit dropped, after the status of its own.
+    private string WithDropped(string status) => _droppedSets switch
+    {
+        0 => status,
+        1 => Strings.Format("ResultsDroppedOne", status),
+        _ => Strings.Format("ResultsDroppedOther", status, _droppedSets),
+    };
+
+    private string SetText(RunResult result, long milliseconds) =>
         RowsStatus?.Invoke(result.Rows, milliseconds, result.Truncated)
         ?? Strings.Format(
             result switch

@@ -291,8 +291,10 @@ public sealed class QueryTab : IWorkspaceTab
             _run?.Dispose();
             var startedAt = DateTimeOffset.Now;
             var started = Stopwatch.GetTimestamp();
-            _run = _editor.Run(sql, RunOptions(_settings()), cancellationToken);
-            await _results.ShowRunAsync(_run, _sort, int.MaxValue, cancellationToken).ConfigureAwait(true);
+            var settings = _settings();
+            _run = _editor.Run(sql, RunOptions(settings), cancellationToken);
+            await _results.ShowRunAsync(_run, _sort, int.MaxValue, settings.ResultSetsKeptPerRun, cancellationToken)
+                .ConfigureAwait(true);
             if (!_work.IsClosed)
             {
                 if (record)
