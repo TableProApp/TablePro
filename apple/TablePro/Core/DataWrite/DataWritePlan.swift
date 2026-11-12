@@ -214,7 +214,7 @@ struct DataWriteStep: Sendable {
     let statement: ParameterizedStatement
     /// The most rows this statement may legitimately touch, or nil when the engine's count for it
     /// carries no meaning: DDL, a session setting, or a statement a plugin wrote itself for a table
-    /// with a primary key, where nothing tells the host which rows went into it.
+    /// with a primary key without saying how many rows it matches.
     let expectedRowCount: Int?
     let tableName: String?
     /// Whether this statement finds its rows by matching every column, because the table declares no
@@ -226,6 +226,8 @@ struct DataWriteStep: Sendable {
     let rowKind: RowWriteKind?
     // Finds the statement's rows right before it runs, for a driver whose engine has no key that names one row.
     let lookup: RowLookup?
+    // The driver vouched for `expectedRowCount` as the rows the statement matches, whatever engine it runs on.
+    let countsMatchedRows: Bool
 
     init(
         kind: Kind,
@@ -235,7 +237,8 @@ struct DataWriteStep: Sendable {
         matchesRowsWithoutKey: Bool = false,
         refusesSharedKey: Bool = false,
         rowKind: RowWriteKind? = nil,
-        lookup: RowLookup? = nil
+        lookup: RowLookup? = nil,
+        countsMatchedRows: Bool = false
     ) {
         self.kind = kind
         self.statement = statement
@@ -245,6 +248,7 @@ struct DataWriteStep: Sendable {
         self.refusesSharedKey = refusesSharedKey
         self.rowKind = rowKind
         self.lookup = lookup
+        self.countsMatchedRows = countsMatchedRows
     }
 }
 
@@ -272,11 +276,13 @@ extension DataWriteStep {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
-                    expectedRowCount: $0.keylessRowCount ?? $0.keyedRowCount,
+                    // The lowest: a driver's count never loosens the one row the host holds a statement to.
+                    expectedRowCount: [$0.matchedRowCount, $0.keylessRowCount, $0.keyedRowCount].compactMap { $0 }.min(),
                     tableName: tableName,
                     matchesRowsWithoutKey: $0.keylessRowCount != nil,
                     rowKind: $0.kind,
-                    lookup: $0.lookup
+                    lookup: $0.lookup,
+                    countsMatchedRows: $0.matchedRowCount != nil
                 )
             }
         }

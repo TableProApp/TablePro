@@ -39,7 +39,7 @@ struct PluginMetadataRegistryStarRocksTests {
 
     @Test("A DELETE on a duplicate key table reports 0 rows, so a keyless save is not held to its count")
     func rowCountsAreNotMeaningful() {
-        #expect(!DataWriteRowCounts.areMeaningful(for: .starrocks))
+        #expect(!DataWriteRowCounts.countsMatchedRows(for: .starrocks))
     }
 
     @Test("A StarRocks URL keeps the catalog.database path and routes to StarRocks")

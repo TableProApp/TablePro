@@ -39,6 +39,10 @@ enum MySQLTransport: Sendable, Equatable {
         mysql_options(handle, MYSQL_OPT_PROTOCOL, &value)
     }
 
+    // An UPDATE then reports the rows it matched, not only those whose value changed, so a save can tell a row that
+    // already held the value from one that is gone.
+    static let clientFlags = UInt(CLIENT_FOUND_ROWS)
+
     /// Connector/C takes the socket path only when the host is NULL or exactly `localhost`.
     func realConnect(
         _ handle: UnsafeMutablePointer<MYSQL>,
@@ -48,14 +52,14 @@ enum MySQLTransport: Sendable, Equatable {
     ) -> UnsafeMutablePointer<MYSQL>? {
         switch self {
         case .tcp(let host, let port):
-            let connected = mysql_real_connect(handle, host, user, password, database, port, nil, 0)
+            let connected = mysql_real_connect(handle, host, user, password, database, port, nil, Self.clientFlags)
             // Every session and kill connection dials through here, and a session's socket outlives the connect.
             if connected != nil, !MySQLSocketKeepalive.enable(on: mysql_get_socket(handle)) {
                 Self.logger.warning("TCP keepalive could not be set: errno \(errno, privacy: .public)")
             }
             return connected
         case .unixSocket(let path):
-            return mysql_real_connect(handle, "localhost", user, password, database, 0, path, 0)
+            return mysql_real_connect(handle, "localhost", user, password, database, 0, path, Self.clientFlags)
         }
     }
 }
