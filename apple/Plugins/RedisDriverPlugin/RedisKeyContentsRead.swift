@@ -30,6 +30,7 @@ struct RedisKeyContents {
     let kind: RedisKeyKind
     let length: Int?
     let preview: RedisReply?
+    var stringByteLimit: Int?
 
     var lengthCell: PluginCellValue {
         .fromOptional(length.map(String.init))
@@ -48,11 +49,12 @@ extension RedisCommandChannel {
         }
     }
 
-    /// A key whose type is unknown gets no probe at all, because the length and preview commands
-    /// are chosen by type.
+    // A key whose type is unknown gets no probe at all, because the length and preview commands
+    // are chosen by type.
     func readContents(
         of keys: [String],
-        describedAs descriptions: [RedisKeyDescription]
+        describedAs descriptions: [RedisKeyDescription],
+        stringByteLimit: Int?
     ) async throws -> [RedisKeyContents?] {
         let kinds = zip(keys, descriptions).map { (key: $0, kind: $1.kind) }
         var commands: [[String]] = []
@@ -60,7 +62,7 @@ extension RedisCommandChannel {
         for entry in kinds {
             guard let kind = entry.kind else { continue }
             commands.append(RedisKeySummary.lengthCommand(for: kind, key: entry.key))
-            commands.append(RedisKeySummary.previewCommand(for: kind, key: entry.key))
+            commands.append(RedisKeySummary.previewCommand(for: kind, key: entry.key, stringByteLimit: stringByteLimit))
         }
         let answers = try await runMetadataReads(commands)
 
@@ -72,7 +74,12 @@ extension RedisCommandChannel {
                 contents.append(nil)
                 continue
             }
-            contents.append(RedisKeyContents(kind: kind, length: answers[next]?.intValue, preview: answers[next + 1]))
+            contents.append(RedisKeyContents(
+                kind: kind,
+                length: answers[next]?.intValue,
+                preview: answers[next + 1],
+                stringByteLimit: stringByteLimit
+            ))
             next += 2
         }
         return contents

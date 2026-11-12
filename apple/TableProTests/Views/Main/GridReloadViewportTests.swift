@@ -147,6 +147,27 @@ struct GridReloadViewportTests {
         withExtendedLifetime(fixture) {}
     }
 
+    @Test("Reading the same table again keeps a cell cursor a cursor, on its own column")
+    func sameSourceKeepsTheCursorAndItsColumn() throws {
+        let fixture = makeFixture()
+        defer { fixture.coordinator.teardown() }
+        fixture.model.selectCell(GridCoord(row: 2, displayColumn: 1))
+        let column = try #require(fixture.model.activeCell?.column.id)
+
+        fixture.coordinator.setActiveTableRows(
+            Self.rows(ids: Array((1 ... 10).reversed())),
+            for: fixture.tabId,
+            viewport: .keepPlace,
+            source: .sameSource
+        )
+
+        let selection = try #require(fixture.takePlacement()?.selection)
+        #expect(selection.mode == .cursor)
+        #expect(selection.rowIDs == [.existing(7)])
+        #expect(selection.activeCell == GridSelectionSnapshot.Cell(rowID: .existing(7), columnID: column))
+        withExtendedLifetime(fixture) {}
+    }
+
     @Test("A new result does not carry the selection over")
     func newSourceRestoresNoSelection() {
         let fixture = makeFixture()

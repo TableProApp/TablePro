@@ -51,6 +51,8 @@ internal struct ConnectionTransactionBar: View {
     let connectionId: UUID
     @ObservedObject var transactions: SessionTransactionTracker
     let databaseManager: DatabaseManager
+    // Passed from the toolbar state the window observes: the session's own level publishes nothing.
+    let safeModeLevel: SafeModeLevel
 
     @State private var actingOn: SessionTransactionTracker.Key?
 
@@ -73,7 +75,7 @@ internal struct ConnectionTransactionBar: View {
             isAborted: hold.state == .aborted,
             connectionName: session.connection.name,
             database: hold.key.lane ?? namedDatabase(of: session),
-            safeModeLevel: session.safeModeLevel
+            safeModeLevel: safeModeLevel
         )
     }
 
@@ -109,11 +111,15 @@ internal struct ConnectionTransactionBar: View {
             Spacer(minLength: 8)
 
             Button(String(localized: "Roll Back")) {
-                act(on: hold) { try await rollBack(hold) }
+                act(on: hold) {
+                    try await ConnectionTransactionActions.rollBack(
+                        hold, databaseManager: databaseManager, window: NSApp.keyWindow
+                    )
+                }
             }
             if content.offersCommit {
                 Button(String(localized: "Commit")) {
-                    act(on: hold) { try await commit(hold) }
+                    act(on: hold) { try await ConnectionTransactionActions.commit(hold, databaseManager: databaseManager) }
                 }
             }
         }
@@ -124,64 +130,11 @@ internal struct ConnectionTransactionBar: View {
         .paneBarBackground()
     }
 
-    // Never gated by Safe Mode: rolling back keeps nothing, so it is the way out at every level.
-    private func rollBack(_ hold: SessionTransactionTracker.Hold) async throws {
-        let confirmed = await AlertHelper.confirmDestructive(
-            title: String(localized: "Roll Back the Transaction?"),
-            message: String(localized: "Its uncommitted changes are discarded."),
-            confirmButton: String(localized: "Roll Back"),
-            window: NSApp.keyWindow
-        )
-        guard confirmed else { return }
-        try await databaseManager.endTransaction(hold, committing: false)
-    }
-
-    // A COMMIT is a write, so it asks what a typed one asks: nothing at Silent, a confirmation at
-    // Alert, Touch ID at Safe Mode.
-    private func commit(_ hold: SessionTransactionTracker.Hold) async throws {
-        guard let session = databaseManager.session(for: connectionId) else { return }
-        let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: connectionId,
-                databaseType: session.connection.type,
-                sql: "COMMIT",
-                kind: .writeQuery,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Commit the transaction")
-            )
-        )
-        switch decision {
-        case .authorized:
-            try await databaseManager.endTransaction(hold, committing: true)
-        case .denied(_, .cancelledByUser):
-            return
-        case .denied(let reason, .policy):
-            throw SessionTransactionDenial(reason: reason)
-        }
-    }
-
     private func act(on hold: SessionTransactionTracker.Hold, _ action: @escaping @MainActor () async throws -> Void) {
         actingOn = hold.key
         Task {
             defer { actingOn = nil }
-            do {
-                try await action()
-            } catch is CancellationError {
-                return
-            } catch {
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Could Not End the Transaction"),
-                    message: error.localizedDescription,
-                    window: NSApp.keyWindow
-                )
-            }
+            await ConnectionTransactionActions.perform(window: NSApp.keyWindow, action)
         }
     }
-}
-
-private struct SessionTransactionDenial: LocalizedError {
-    let reason: String
-
-    var errorDescription: String? { reason }
 }

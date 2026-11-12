@@ -133,7 +133,7 @@ internal struct MultiStatementFailureContext: Equatable, Sendable {
     /// What became of the statements that ran before the failure.
     private func standingWorkNote(position: Int) -> String? {
         switch plan {
-        case .appTransaction, .scriptTransaction:
+        case .appTransaction, .heldTransaction, .scriptTransaction:
             return nil
         case .autocommit:
             return appliedWorkNote(position: position)

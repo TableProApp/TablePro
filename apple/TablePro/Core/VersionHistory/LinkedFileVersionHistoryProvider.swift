@@ -70,7 +70,7 @@ internal struct LinkedFileVersionHistoryProvider: VersionHistoryProvider {
                 throw VersionHistoryError.undecodableContent
             }
             return content
-        case .savedQueryVersion:
+        case .savedQueryVersion, .tabVersion:
             throw VersionHistoryError.versionNotFound
         }
     }

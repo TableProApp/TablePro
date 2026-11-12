@@ -33,13 +33,13 @@ public struct QueryScript: Sendable, Equatable {
     /// How the session read literals when the text was split.
     public let session: SQLSessionLexicalFacts?
 
-    /// The text that was split, where each unit ends in it, and its engine, so the rest can be split again.
+    /// The text that was split, the statement each unit runs, and its engine, so the rest can be split again.
     private let source: String?
-    private let unitEnds: [Int]
+    private let statements: [SQLStatementScanner.ExecutableStatement]
     private let databaseType: DatabaseType?
 
     public init(units: [Unit], unitKind: UnitKind) {
-        self.init(units: units, unitKind: unitKind, session: nil, source: nil, unitEnds: [], databaseType: nil)
+        self.init(units: units, unitKind: unitKind, session: nil, source: nil, statements: [], databaseType: nil)
     }
 
     private init(
@@ -47,14 +47,14 @@ public struct QueryScript: Sendable, Equatable {
         unitKind: UnitKind,
         session: SQLSessionLexicalFacts?,
         source: String?,
-        unitEnds: [Int],
+        statements: [SQLStatementScanner.ExecutableStatement],
         databaseType: DatabaseType?
     ) {
         self.units = units
         self.unitKind = unitKind
         self.session = session
         self.source = source
-        self.unitEnds = unitEnds
+        self.statements = statements
         self.databaseType = databaseType
     }
 
@@ -93,7 +93,7 @@ public struct QueryScript: Sendable, Equatable {
                 unitKind: .statement,
                 session: session,
                 source: text,
-                unitEnds: statements.map { $0.range.location + $0.range.length },
+                statements: statements,
                 databaseType: databaseType
             )
         }
@@ -107,7 +107,7 @@ public struct QueryScript: Sendable, Equatable {
             unitKind: .batch,
             session: session,
             source: nil,
-            unitEnds: [],
+            statements: [],
             databaseType: databaseType
         )
     }
@@ -136,12 +136,27 @@ public struct QueryScript: Sendable, Equatable {
     /// The text after unit `index`, split again under `session`, for a statement that changed how the session reads
     /// literals: after `SET sql_mode = 'NO_BACKSLASH_ESCAPES'` a backslash no longer escapes a quote, so the split
     /// made before it ran no longer matches what the server will read. Nil when the script cannot be split again.
+    ///
+    /// The rest starts where the scan went on after the unit, so a `COPY`'s rows stay rows and a client delimiter
+    /// stays in force.
     public func replanned(after index: Int, session: SQLSessionLexicalFacts?) -> QueryScript? {
-        guard unitKind == .statement, let source, let databaseType, unitEnds.indices.contains(index) else {
+        guard unitKind == .statement, let source, let databaseType, statements.indices.contains(index) else {
             return nil
         }
-        let rest = (source as NSString).substring(from: unitEnds[index])
-        return QueryScript.plan(rest, databaseType: databaseType, sendsBatchesWhole: false, session: session)
+        let rest = SQLStatementScanner.executableStatements(
+            in: source,
+            after: statements[index],
+            through: (source as NSString).length,
+            grammar: Self.executionGrammar(for: databaseType, session: session)
+        )
+        return QueryScript(
+            units: rest.map { Unit(sql: $0.sql) },
+            unitKind: .statement,
+            session: session,
+            source: source,
+            statements: rest,
+            databaseType: databaseType
+        )
     }
 }
 

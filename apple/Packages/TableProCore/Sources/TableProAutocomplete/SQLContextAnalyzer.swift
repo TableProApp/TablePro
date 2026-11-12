@@ -130,6 +130,7 @@ public struct SQLContext: Sendable {
     public private(set) var quotedName: SQLQuotedName?
     public let outputAliases: [String]     // SELECT-list aliases an ORDER BY at the cursor may name, as written
     public let targetTable: TableReference? // The table the INSERT, UPDATE or MERGE at the cursor writes
+    public let joinScope: SQLJoinScope?    // Right after the ON of a join
 
     public init(
         clauseType: SQLClauseType,
@@ -148,7 +149,8 @@ public struct SQLContext: Sendable {
         comparisonColumn: String? = nil,
         quotedName: SQLQuotedName? = nil,
         outputAliases: [String] = [],
-        targetTable: TableReference? = nil
+        targetTable: TableReference? = nil,
+        joinScope: SQLJoinScope? = nil
     ) {
         self.clauseType = clauseType
         self.prefix = prefix
@@ -167,6 +169,7 @@ public struct SQLContext: Sendable {
         self.quotedName = quotedName
         self.outputAliases = outputAliases
         self.targetTable = targetTable
+        self.joinScope = joinScope
     }
 
     public func replacingTableReferences(_ references: [TableReference]) -> SQLContext {
@@ -390,6 +393,11 @@ public final class SQLContextAnalyzer {
                 writtenTable($0, among: tableReferences)
             }
             : nil
+        let joinScope = resolution.clause == .on && dotPrefix == nil && quotedName == nil && !isCastTarget
+            ? Self.derivedTableParser.joinScope(in: tokens, cursor: clauseEnd).flatMap {
+                SQLJoinScope($0, references: tableReferences, cteNames: cteNames)
+            }
+            : nil
 
         return SQLContext(
             clauseType: isCastTarget ? .castTarget : resolution.clause,
@@ -408,7 +416,8 @@ public final class SQLContextAnalyzer {
             comparisonColumn: comparisonColumn,
             quotedName: quotedName,
             outputAliases: outputAliases,
-            targetTable: targetTable
+            targetTable: targetTable,
+            joinScope: joinScope
         )
     }
 

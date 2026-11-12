@@ -28,7 +28,7 @@ struct MultiStatementReplanTests {
         let last = try #require(planned.last)
 
         let rest = QueryExecutionCoordinator.remainingStatements(
-            in: Self.script, after: first.range, through: NSMaxRange(last.range), grammar: Self.noEscapes
+            in: Self.script, after: first, through: NSMaxRange(last.range), grammar: Self.noEscapes
         )
         let restSQL = rest.map { $0.sql }
         let restText = rest.map { (Self.script as NSString).substring(with: $0.range) }
@@ -37,6 +37,23 @@ struct MultiStatementReplanTests {
         #expect(restText == restSQL)
         #expect(QueryExecutionCoordinator.scriptHolds(planned, in: Self.script))
         #expect(!QueryExecutionCoordinator.scriptHolds(planned, in: "SELECT 1"))
+    }
+
+    @Test("A replan starts past a COPY's rows and keeps the DELIMITER in force")
+    func replanStartsPastTheSegment() throws {
+        let postgres = "COPY t FROM stdin;\nDROP TABLE users; COMMIT;\n\\.\nSELECT 1;"
+        let copy = try #require(SQLStatementScanner.executableStatements(in: postgres, grammar: TestGrammar.postgres).first)
+        let afterCopy = QueryExecutionCoordinator.remainingStatements(
+            in: postgres, after: copy, through: (postgres as NSString).length, grammar: TestGrammar.postgres
+        )
+        #expect(afterCopy.map { $0.sql } == ["SELECT 1"])
+
+        let mysql = "DELIMITER //\nSET sql_mode = 'NO_BACKSLASH_ESCAPES'//\nSELECT 'a\\'//"
+        let set = try #require(SQLStatementScanner.executableStatements(in: mysql, grammar: TestGrammar.mysql).first)
+        let afterSet = QueryExecutionCoordinator.remainingStatements(
+            in: mysql, after: set, through: (mysql as NSString).length, grammar: Self.noEscapes
+        )
+        #expect(afterSet.map { $0.sql } == ["SELECT 'a\\'"])
     }
 
     @Test("A run sends the replanned rest in place of what it planned")

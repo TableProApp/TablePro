@@ -26,6 +26,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let schema: String?
     }
 
+    // A `.database` kind, and every kind on an engine without schemas, is keyed with no schema.
+    struct ServerObjectsKey: Hashable, Sendable {
+        let connectionId: UUID
+        let database: String
+        let schema: String?
+        let kindId: String
+    }
+
     struct PartitionsKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
@@ -70,6 +78,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     @Published private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
     @Published private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
     @Published private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
+    @Published private(set) var serverObjectsState: [ServerObjectsKey: MetadataLoadState<[ServerObjectInfo]>] = [:]
     @Published private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[PartitionInfo]>] = [:]
     @Published private(set) var allSchemaTablesState: [DatabaseKey: MetadataLoadState<CatalogTableListing.Result>] = [:]
     @Published private(set) var listsRevisions: [UUID: Int] = [:]
@@ -80,6 +89,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private let routinesDedup = OnceTask<ListFetchKey<ObjectsKey>, [RoutineInfo]>()
     private let triggersDedup = OnceTask<ListFetchKey<ObjectsKey>, [TriggerInfo]>()
     private let typesDedup = OnceTask<ListFetchKey<ObjectsKey>, [UserDefinedTypeInfo]>()
+    private let serverObjectsDedup = OnceTask<ListFetchKey<ServerObjectsKey>, [ServerObjectInfo]>()
     private let partitionsDedup = OnceTask<ListFetchKey<PartitionsKey>, [PartitionInfo]>()
     private let allSchemaTablesDedup = OnceTask<AllSchemaTablesLoadKey, CatalogTableListing.Result>()
 
@@ -89,6 +99,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private var routinesCommit = ListCommitState<ObjectsKey>()
     private var triggersCommit = ListCommitState<ObjectsKey>()
     private var typesCommit = ListCommitState<ObjectsKey>()
+    private var serverObjectsCommit = ListCommitState<ServerObjectsKey>()
     private var partitionsCommit = ListCommitState<PartitionsKey>()
     private var allSchemaTablesFence = CommitFence<DatabaseKey>()
     private var allSchemaTablesFreshness = CatalogFreshness<DatabaseKey>()
@@ -119,6 +130,16 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     private var typeLists: TreeList<ObjectsKey, [UserDefinedTypeInfo]> {
         TreeList(state: \.typesState, commit: \.typesCommit, dedup: typesDedup, label: "types", workload: .bulk)
+    }
+
+    private var serverObjectLists: TreeList<ServerObjectsKey, [ServerObjectInfo]> {
+        TreeList(
+            state: \.serverObjectsState,
+            commit: \.serverObjectsCommit,
+            dedup: serverObjectsDedup,
+            label: "server objects",
+            workload: .bulk
+        )
     }
 
     private var partitionLists: TreeList<PartitionsKey, [PartitionInfo]> {
@@ -175,6 +196,45 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     func userDefinedTypes(connectionId: UUID, database: String, schema: String?) -> [UserDefinedTypeInfo] {
         typesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
+    }
+
+    func serverObjectsLoadState(
+        connectionId: UUID, database: String, schema: String?, kindId: String
+    ) -> MetadataLoadState<[ServerObjectInfo]> {
+        serverObjectsState[Self.serverObjectsKey(connectionId: connectionId, database: database, schema: schema, kindId: kindId)]
+            ?? .idle
+    }
+
+    func serverObjects(connectionId: UUID, database: String, schema: String?, kindId: String) -> [ServerObjectInfo] {
+        serverObjectsLoadState(connectionId: connectionId, database: database, schema: schema, kindId: kindId).value ?? []
+    }
+
+    func isServerObjectsCurrent(connectionId: UUID, database: String, schema: String?, kindId: String) -> Bool {
+        isConnected(connectionId) && serverObjectsCommit.freshness.isCurrent(
+            Self.serverObjectsKey(connectionId: connectionId, database: database, schema: schema, kindId: kindId)
+        )
+    }
+
+    // A container lists the kinds of its own level: a schema its `.container` kinds, a schema engine's
+    // database its `.database` kinds, and a database without schemas every kind.
+    nonisolated static func serverKinds(
+        declared: [SidebarServerObjectKind],
+        schema: String?,
+        listsTablesPerSchema: Bool
+    ) -> [SidebarServerObjectKind] {
+        if schema?.isEmpty == false { return declared.filter { $0.scope == .container } }
+        return listsTablesPerSchema ? declared.filter { $0.scope == .database } : declared
+    }
+
+    func serverKinds(connectionId: UUID, database: String, schema: String?) -> [SidebarServerObjectKind] {
+        guard let session = DatabaseManager.shared.session(for: connectionId) else { return [] }
+        return Self.serverKinds(
+            declared: SidebarServerObjectKind.declared(by: DatabaseManager.shared.driver(for: connectionId)),
+            schema: schema,
+            listsTablesPerSchema: Self.listsTablesPerSchema(
+                PluginManager.shared.databaseGroupingStrategy(for: session.connection.type)
+            )
+        )
     }
 
     func partitionsLoadState(
@@ -239,6 +299,12 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             .isEmpty
     }
 
+    func serverObjectsNeedFetch(connectionId: UUID, database: String, schema: String?) -> Bool {
+        guard isConnected(connectionId) else { return false }
+        return !serverKindsNeedingFetch(Self.objectsKey(connectionId: connectionId, database: database, schema: schema))
+            .isEmpty
+    }
+
     func partitionsNeedFetch(connectionId: UUID, database: String, schema: String?, table: String) -> Bool {
         isConnected(connectionId) && partitionsCommit.freshness.needsFetch(
             Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
@@ -276,6 +342,10 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             typesCommit.freshness.markChanged(key)
             marked = true
         }
+        for key in plan.serverObjects {
+            serverObjectsCommit.freshness.markChanged(key)
+            marked = true
+        }
         guard marked else { return }
         listsRevisions[connectionId, default: 0] &+= 1
     }
@@ -286,7 +356,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         if routinesCommit.freshness.needsFetch(key) { kinds.insert(.routines) }
         if browsesTriggers(key.connectionId), triggersCommit.freshness.needsFetch(key) { kinds.insert(.triggers) }
         if browsesUserDefinedTypes(key.connectionId), typesCommit.freshness.needsFetch(key) { kinds.insert(.types) }
+        if !serverKindsNeedingFetch(key).isEmpty { kinds.insert(.serverObjects) }
         return kinds
+    }
+
+    private func serverKindsNeedingFetch(_ key: ObjectsKey) -> [SidebarServerObjectKind] {
+        serverKinds(connectionId: key.connectionId, database: key.database, schema: key.schema).filter {
+            serverObjectsCommit.freshness.needsFetch(serverObjectsKey(key, kindId: $0.id))
+        }
     }
 
     // MARK: - All-schema tables
@@ -540,7 +617,27 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
                     await self.loadUserDefinedTypes(connectionId: connectionId, database: database, schema: schema)
                 }
             }
+            if kinds.contains(.serverObjects) {
+                group.addTask { await self.loadServerObjects(connectionId: connectionId, database: database, schema: schema) }
+            }
         }
+    }
+
+    // Only the kinds of this container's level, and only those a change overtook or nobody has read.
+    func loadServerObjects(connectionId: UUID, database: String, schema: String?) async {
+        guard isConnected(connectionId) else { return }
+        let container = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let kinds = serverKindsNeedingFetch(container)
+        await withTaskGroup(of: Void.self) { group in
+            for kind in kinds {
+                let key = serverObjectsKey(container, kindId: kind.id)
+                group.addTask { await self.loadServerObjectList(key) }
+            }
+        }
+    }
+
+    private func loadServerObjectList(_ key: ServerObjectsKey) async {
+        await read(key, connectionId: key.connectionId, in: serverObjectLists, fetch: serverObjectListFetch(key))
     }
 
     // MARK: - Refresh
@@ -581,7 +678,18 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         async let types: Void = refreshUserDefinedTypeObjects(
             connectionId: connectionId, database: database, schema: schema
         )
-        _ = await (tables, routines, triggers, types)
+        async let serverObjects: Void = refreshServerObjects(connectionId: connectionId, database: database, schema: schema)
+        _ = await (tables, routines, triggers, types, serverObjects)
+    }
+
+    func refreshServerObjects(connectionId: UUID, database: String, schema: String?, kindId: String? = nil) async {
+        let container = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let kinds = serverKinds(connectionId: connectionId, database: database, schema: schema)
+            .filter { kindId == nil || $0.id == kindId }
+        for kind in kinds {
+            let key = serverObjectsKey(container, kindId: kind.id)
+            await reread(key, connectionId: connectionId, in: serverObjectLists, fetch: serverObjectListFetch(key))
+        }
     }
 
     /// A row refreshes only the fetch its kind comes from. Partitions ride with the tables, because
@@ -783,6 +891,16 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
     }
 
+    private func serverObjectListFetch(_ key: ServerObjectsKey) -> ListFetch<[ServerObjectInfo]> {
+        let schema = key.schema
+        let kindId = key.kindId
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
+                try await driver.fetchServerObjects(ofKind: kindId, schema: schema)
+            }
+        }
+    }
+
     private func partitionListFetch(_ key: PartitionsKey) -> ListFetch<[PartitionInfo]> {
         let schema = key.schema
         let table = key.table
@@ -817,6 +935,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         routinesCommit.freshness.removeAll { $0.connectionId == connectionId }
         triggersCommit.freshness.removeAll { $0.connectionId == connectionId }
         typesCommit.freshness.removeAll { $0.connectionId == connectionId }
+        serverObjectsCommit.freshness.removeAll { $0.connectionId == connectionId }
         partitionsCommit.freshness.removeAll { $0.connectionId == connectionId }
         allSchemaTablesFreshness.removeAll { $0.connectionId == connectionId }
         allSchemaTablesRequested = allSchemaTablesRequested.filter { $0.key.connectionId != connectionId }
@@ -829,6 +948,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         routinesState = routinesState.filter { $0.key.connectionId != connectionId }
         triggersState = triggersState.filter { $0.key.connectionId != connectionId }
         typesState = typesState.filter { $0.key.connectionId != connectionId }
+        serverObjectsState = serverObjectsState.filter { $0.key.connectionId != connectionId }
         partitionsState = partitionsState.filter { $0.key.connectionId != connectionId }
     }
 
@@ -852,6 +972,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             triggersCommit.fence.supersede(key)
             typesCommit.fence.supersede(key)
         }
+        for key in serverObjectsState.keys where key.connectionId == connectionId {
+            serverObjectsCommit.fence.supersede(key)
+        }
         for key in connectionPartitionKeys(connectionId) {
             partitionsCommit.fence.supersede(key)
         }
@@ -867,6 +990,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await routinesDedup.cancel { $0.key.connectionId == connectionId }
         await triggersDedup.cancel { $0.key.connectionId == connectionId }
         await typesDedup.cancel { $0.key.connectionId == connectionId }
+        await serverObjectsDedup.cancel { $0.key.connectionId == connectionId }
         await partitionsDedup.cancel { $0.key.connectionId == connectionId }
         await allSchemaTablesDedup.cancel { $0.database.connectionId == connectionId }
     }
@@ -880,6 +1004,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         idlePending(\.routinesState) { $0.connectionId == connectionId }
         idlePending(\.triggersState) { $0.connectionId == connectionId }
         idlePending(\.typesState) { $0.connectionId == connectionId }
+        idlePending(\.serverObjectsState) { $0.connectionId == connectionId }
         idlePending(\.partitionsState) { $0.connectionId == connectionId }
         idlePending(\.allSchemaTablesState) { $0.connectionId == connectionId }
     }
@@ -937,6 +1062,17 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {
         let normalized: String? = (schema?.isEmpty == true) ? nil : schema
         return ObjectsKey(connectionId: connectionId, database: database, schema: normalized)
+    }
+
+    private static func serverObjectsKey(
+        connectionId: UUID, database: String, schema: String?, kindId: String
+    ) -> ServerObjectsKey {
+        let normalized: String? = (schema?.isEmpty == true) ? nil : schema
+        return ServerObjectsKey(connectionId: connectionId, database: database, schema: normalized, kindId: kindId)
+    }
+
+    private func serverObjectsKey(_ container: ObjectsKey, kindId: String) -> ServerObjectsKey {
+        ServerObjectsKey(connectionId: container.connectionId, database: container.database, schema: container.schema, kindId: kindId)
     }
 
     private static func partitionsKey(

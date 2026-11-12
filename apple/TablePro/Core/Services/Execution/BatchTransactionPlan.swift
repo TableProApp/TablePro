@@ -13,14 +13,17 @@ import TableProPluginKit
 /// `PRAGMA foreign_keys`. Such a batch opens nothing, commits nothing, and rolls nothing back,
 /// because there is no transaction of its own to roll back to.
 ///
-/// `.sessionTransaction` is the answer the text cannot reach: it comes from the driver, once the
-/// lease is held, through ``joining(_:)``.
+/// `.sessionTransaction` and `.heldTransaction` are the answers the text cannot reach: they come
+/// from the driver and the connection's commit mode, once the lease is held, through
+/// ``joining(_:commitMode:)``.
 ///
 /// The switches over this are exhaustive on purpose. No case may inherit `.appTransaction`'s begin
 /// or `.scriptTransaction`'s rollback by falling into a `default:` arm.
 internal enum BatchTransactionPlan: Equatable, Sendable {
     /// The app opens the transaction, commits it, and rolls it back on a failure or a Stop.
     case appTransaction
+    // Manual Commit: the app opens the transaction and leaves it for the user to commit; a failure or a Stop rolls it back.
+    case heldTransaction
     /// The script opens its own transaction. The app opens none and still rolls back what a failed
     /// script left open.
     case scriptTransaction
@@ -31,20 +34,39 @@ internal enum BatchTransactionPlan: Equatable, Sendable {
     /// ending in `COMMIT` commits.
     case sessionTransaction
 
-    internal var opensTransaction: Bool {
+    internal var sendsBegin: Bool {
         switch self {
-        case .appTransaction:
+        case .appTransaction, .heldTransaction:
             return true
         case .scriptTransaction, .autocommit, .sessionTransaction:
             return false
         }
     }
 
+    internal var commitsAtEnd: Bool {
+        switch self {
+        case .appTransaction:
+            return true
+        case .heldTransaction, .scriptTransaction, .autocommit, .sessionTransaction:
+            return false
+        }
+    }
+
     internal var rollsBackAfterStop: Bool {
         switch self {
-        case .appTransaction, .scriptTransaction:
+        case .appTransaction, .heldTransaction, .scriptTransaction:
             return true
         case .autocommit, .sessionTransaction:
+            return false
+        }
+    }
+
+    // What the session holds once the run ends is the user's to see: the transaction is still open.
+    internal var readsSessionEndState: Bool {
+        switch self {
+        case .heldTransaction, .sessionTransaction:
+            return true
+        case .appTransaction, .scriptTransaction, .autocommit:
             return false
         }
     }
@@ -65,8 +87,9 @@ internal enum BatchTransactionPlan: Equatable, Sendable {
     /// A session that answers `.unknown` keeps the wrap for a plain batch, but a self-managed
     /// script stops being rolled back: the transaction its text left open may predate the run, and
     /// rolling that back discards work the run never did.
-    internal func joining(_ session: PluginSessionTransactionState) -> BatchTransactionPlan {
+    internal func joining(_ session: PluginSessionTransactionState, commitMode: ConnectionCommitMode) -> BatchTransactionPlan {
         guard session.permitsAppTransaction else { return .sessionTransaction }
+        if self == .appTransaction, commitMode == .manual, session == .idle { return .heldTransaction }
         guard session == .unknown, self == .scriptTransaction else { return self }
         return .sessionTransaction
     }

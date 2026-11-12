@@ -26,6 +26,8 @@ nonisolated struct MongoDBStatementGenerator {
     // By `PluginRowChange.rowIndex`. Display text cannot say which value an `_id` came from: a string and an ObjectId
     // with the same hex read the same.
     var rowLocators: [Int: String] = [:]
+    // By row index like `rowLocators`: the numeric type each top-level number of the row was read as.
+    var readNumberKinds: [Int: [String: BsonValueKind]] = [:]
     /// Every kind each field held in the documents read, which says whether a cell showing `{` or
     /// `[` holds a document or an array or a string that reads the same.
     var fieldKinds: MongoDBFieldKinds = .empty
@@ -140,19 +142,19 @@ nonisolated struct MongoDBStatementGenerator {
         return "\(collectionAccessor).insertOne({\(entries.joined(separator: ", "))})"
     }
 
-    /// A value of a whole document the grid writes: a new row, a duplicate or a paste, or a
-    /// deleted document put back. An `_id` the row holds is kept, typed the way the filters type it;
-    /// the grid leaves a new row's `_id` as DEFAULT, so the server generates it.
-    ///
-    /// The shell inserts through libmongoc, which refuses a document holding an empty key at any
-    /// depth, and a JavaScript object reads `__proto__` as its prototype and drops it. An update
-    /// carries both, so only a new document refuses them, before anything in the save is sent.
-    private func documentValueJson(_ value: PluginCellValue, field: String, provenance: Provenance) throws -> String {
+    // libmongoc refuses an inserted document holding an empty key at any depth, and JavaScript reads `__proto__` as the
+    // prototype and drops it. An update carries both, so only a new or restored document refuses them, before any write.
+    private func documentValueJson(
+        _ value: PluginCellValue,
+        field: String,
+        provenance: Provenance,
+        readKind: BsonValueKind? = nil
+    ) throws -> String {
         guard !field.isEmpty else { throw MongoDBWriteRefusal.emptyFieldNameInNewDocument }
         guard field != "__proto__" else { throw MongoDBWriteRefusal.prototypeFieldInNewDocument }
         let json = field == MongoDBCollectionDDL.idField
             ? try idValueJson(value)
-            : try valueJson(value, field: field, provenance: provenance)
+            : try valueJson(value, field: field, provenance: provenance, readKind: readKind)
         if opensContainer(json), case .text(let text) = value, parsedContainer(text)?.holdsEmptyKey == true {
             throw MongoDBWriteRefusal.emptyKeyInNewDocument(field: field)
         }
@@ -161,12 +163,8 @@ nonisolated struct MongoDBStatementGenerator {
 
     // MARK: - Restore
 
-    /// Puts a deleted document back with the `_id` it had.
-    ///
-    /// A new row leaves `_id` to the server. Undoing a delete is the opposite requirement: a new
-    /// `_id` is a different document, and anything that referenced the old one still points at
-    /// nothing. A value that cannot be written refuses the restore rather than dropping the field.
-    /// A field the document did not have stays missing, and one that held null holds it again.
+    // An undone delete keeps its `_id`, since a new one is another document that nothing referencing the old one finds.
+    // A value that cannot be written refuses the restore rather than dropping the field.
     func generateRestore(
         rows: [[PluginCellValue]],
         absentCells: [Int: Set<Int>] = [:]
@@ -178,12 +176,14 @@ nonisolated struct MongoDBStatementGenerator {
                 guard idIndex < row.count else { throw MongoDBWriteRefusal.missingIdentity }
                 guard let locator = rowLocators[rowIndex] else { throw MongoDBWriteRefusal.unlocatedRow }
                 let absent = absentCells[rowIndex] ?? []
+                let readKinds = readNumberKinds[rowIndex] ?? [:]
                 let idField = MongoDBCollectionDDL.idField
                 var entries = ["\(quotedKey(idField)): \(try Self.identityJson(locator: locator))"]
                 for (index, value) in row.enumerated() where index != idIndex && index < columns.count {
                     guard !absent.contains(index) else { continue }
                     let field = columns[index]
-                    entries.append("\(quotedKey(field)): \(try documentValueJson(value, field: field, provenance: .restored))")
+                    let json = try documentValueJson(value, field: field, provenance: .restored, readKind: readKinds[field])
+                    entries.append("\(quotedKey(field)): \(json)")
                 }
                 let statement = "\(collectionAccessor).insertOne({\(entries.joined(separator: ", "))})"
                 return (statement: statement, parameters: [])
@@ -212,15 +212,16 @@ nonisolated struct MongoDBStatementGenerator {
         }
     }
 
-    /// A field the change names in `absentColumns` is removed with `$unset`; NULL is stored as null.
     private func updateStatement(for change: PluginRowChange) throws -> String? {
         guard !change.cellChanges.isEmpty else { return nil }
         let identity = try identityFilter(of: change)
         let removed = change.absentColumns ?? []
+        let readKinds = readNumberKinds[change.rowIndex] ?? [:]
         let cellWrites = try change.cellChanges.map {
             try cellWrite(
                 field: $0.columnName, from: $0.oldValue, to: $0.newValue,
-                removesField: removed.contains($0.columnIndex), isDefault: change.isColumnDefault($0.columnIndex)
+                removesField: removed.contains($0.columnIndex), isDefault: change.isColumnDefault($0.columnIndex),
+                readKind: readKinds[$0.columnName]
             )
         }
         let update = try updateDocument(for: cellWrites)
@@ -232,7 +233,8 @@ nonisolated struct MongoDBStatementGenerator {
         from oldValue: PluginCellValue,
         to newValue: PluginCellValue,
         removesField: Bool,
-        isDefault: Bool
+        isDefault: Bool,
+        readKind: BsonValueKind?
     ) throws -> CellWrite {
         guard field != MongoDBCollectionDDL.idField else { throw MongoDBWriteRefusal.identityChanged }
         guard !removesField else { return .remove(field: field) }
@@ -246,7 +248,8 @@ nonisolated struct MongoDBStatementGenerator {
             if let nested = try nestedEdit(of: field, from: oldValue, to: text) {
                 return nested
             }
-            return .whole(field: field, json: try valueJson(newValue, field: field, provenance: .edit(replacing: oldValue)))
+            let json = try valueJson(newValue, field: field, provenance: .edit(replacing: oldValue), readKind: readKind)
+            return .whole(field: field, json: json)
         }
     }
 
@@ -375,8 +378,12 @@ nonisolated struct MongoDBStatementGenerator {
         return type == "array" || type == "regex"
     }
 
-    /// A cell's value as the JSON the statement carries.
-    private func valueJson(_ value: PluginCellValue, field: String, provenance: Provenance) throws -> String {
+    private func valueJson(
+        _ value: PluginCellValue,
+        field: String,
+        provenance: Provenance,
+        readKind: BsonValueKind? = nil
+    ) throws -> String {
         switch value {
         case .null:
             return "null"
@@ -389,7 +396,7 @@ nonisolated struct MongoDBStatementGenerator {
             guard !JSONTruncation.isIncompleteStructure(text) else {
                 throw MongoDBWriteRefusal.truncatedValue(field: field)
             }
-            return try jsonValue(for: text, field: field, provenance: provenance)
+            return try jsonValue(for: text, field: field, provenance: provenance, readKind: readKind)
         }
     }
 
@@ -579,17 +586,22 @@ nonisolated struct MongoDBStatementGenerator {
         return nsValue.length == 24 && value.allSatisfy { $0.isHexDigit }
     }
 
-    /// A cell's text as the value it stands for, in the field's type when that type is known.
-    ///
-    /// The statement is JavaScript the shell evaluates, so text is only ever pasted in when it is
-    /// strict JSON. A stored string that merely starts with `[` and ends with `]` would otherwise run
-    /// as code the moment its row is duplicated or its delete is undone.
-    private func jsonValue(for value: String, field: String, provenance: Provenance) throws -> String {
+    // The statement is JavaScript the shell evaluates, so text goes in only as strict JSON: a stored string reading
+    // `[...]` would otherwise run as code once its row is duplicated or its delete undone.
+    private func jsonValue(
+        for value: String,
+        field: String,
+        provenance: Provenance,
+        readKind: BsonValueKind?
+    ) throws -> String {
         if declaredKinds[field] == .string || spellsAnotherKindInAStringField(value, field: field) {
             return "\"\(escapeJsonString(value))\""
         }
         if value == "true" || value == "false" || value == "null" {
             return value
+        }
+        if let typed = readNumberJson(value, field: field, readKind: readKind, provenance: provenance) {
+            return typed
         }
         if let typed = typedJson(value, kind: kind(of: field)) {
             return typed
@@ -604,6 +616,34 @@ nonisolated struct MongoDBStatementGenerator {
             return container
         }
         return "\"\(escapeJsonString(value))\""
+    }
+
+    // A number keeps the type its cell was read as when the text is a value of that type, since a field can mix numeric
+    // types and the column's majority would retype it. A validator's declared kind is what the server enforces.
+    private func readNumberJson(
+        _ value: String,
+        field: String,
+        readKind: BsonValueKind?,
+        provenance: Provenance
+    ) -> String? {
+        guard declaredKinds[field] == nil, let readKind, readsAsNumber(provenance) else { return nil }
+        switch readKind {
+        case .int32, .int64, .decimal128:
+            return typedJson(value, kind: readKind)
+        case .double:
+            return MongoDBDoubleText.isExact(value) ? typedJson(value, kind: .double) : nil
+        default:
+            return nil
+        }
+    }
+
+    private func readsAsNumber(_ provenance: Provenance) -> Bool {
+        switch provenance {
+        case .edit(replacing: .text), .restored:
+            return true
+        case .edit, .typedIntoNewDocument, .copiedIntoNewDocument:
+            return false
+        }
     }
 
     // A cell shows the string "90210" and the number 90210 as the same text. In a field that held

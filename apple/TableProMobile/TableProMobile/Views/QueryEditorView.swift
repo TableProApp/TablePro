@@ -112,6 +112,28 @@ struct QueryEditorView: View {
         }
     }
 
+    private var catalogForeignKeyReader: QueryForeignKeyReader {
+        let manager = appState.connectionManager
+        let connectionId = connectionId
+        let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
+        let activeSchema = activeSchema
+        let coordinator = coordinator
+        return { table, schema in
+            guard await coordinator.catalogMatchesSession else { return nil }
+            let namespace = schema ?? activeSchema
+            let keys = try await manager.readCatalog(for: connectionId, database: database) { driver in
+                try await driver.fetchForeignKeys(table: table, schema: namespace)
+            }
+            // MySQL, which has no schemas, names a key's database there. A key into another namespace would pair with
+            // a same-named table of this one.
+            let home = namespace.flatMap { $0.isEmpty ? nil : $0 } ?? database
+            return keys?.filter { key in
+                guard let target = key.referencedSchema, !target.isEmpty else { return true }
+                return target.caseInsensitiveCompare(home) == .orderedSame
+            }
+        }
+    }
+
     private var catalogTableReader: QuerySchemaTableReader {
         let manager = appState.connectionManager
         let connectionId = connectionId
@@ -199,7 +221,8 @@ struct QueryEditorView: View {
                 readColumns: sessionColumnReader,
                 readCatalogColumns: catalogColumnReader,
                 readSchemaTables: sessionTableReader,
-                readCatalogSchemaTables: catalogTableReader
+                readCatalogSchemaTables: catalogTableReader,
+                readCatalogForeignKeys: catalogForeignKeyReader
             )
         }
         .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {

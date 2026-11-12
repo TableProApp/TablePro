@@ -929,6 +929,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     var providesBulkColumnFetch: Bool { pluginDriver.providesBulkColumnFetch }
 
+    var fetchesAllColumnsInOneRequest: Bool { pluginDriver.fetchesAllColumnsInOneRequest }
+
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
         return pluginResult.mapValues { $0.map(ColumnInfo.init) }

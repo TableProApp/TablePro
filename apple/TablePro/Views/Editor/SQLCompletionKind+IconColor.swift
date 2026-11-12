@@ -1,8 +1,3 @@
-//
-//  SQLCompletionKind+IconColor.swift
-//  TablePro
-//
-
 import AppKit
 import TableProAutocomplete
 
@@ -19,6 +14,7 @@ extension SQLCompletionKind {
         case .alias: return .systemGray
         case .operator: return .systemIndigo
         case .favorite: return .systemYellow
+        case .joinCondition: return .systemBrown
         }
     }
 }

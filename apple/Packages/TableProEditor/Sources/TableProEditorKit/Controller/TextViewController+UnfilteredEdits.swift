@@ -26,4 +26,19 @@ public extension TextViewController {
         defer { isApplyingUnfilteredEdits = false }
         textView.replaceCharacters(in: span, with: rebuilt, skipUpdateSelection: true)
     }
+
+    // A command's replacement, unlike `setText`, keeps the undo history: one undo group, no typing filters, no
+    // suggestion triggers. The binding gets the text before this returns, so a run right after reads it.
+    @discardableResult
+    func replaceTextAsOneEdit(in range: NSRange, with string: String) -> Bool {
+        guard let textView, textView.isEditable, NSMaxRange(range) <= textView.textStorage.length else { return false }
+        guard !range.isEmpty || !string.isEmpty else { return true }
+        textView.undoManager?.beginUndoGrouping()
+        isApplyingUnfilteredEdits = true
+        textView.replaceCharacters(in: range, with: string)
+        isApplyingUnfilteredEdits = false
+        textView.undoManager?.endUndoGrouping()
+        flushPendingTextWriteback()
+        return true
+    }
 }

@@ -47,7 +47,8 @@ struct SidebarView: View {
     }
 
     private var hasAnyMatch: Bool {
-        SidebarObjectKind.allCases.contains { kind in
+        let declared = SidebarServerObjectKind.declared(by: DatabaseManager.shared.driver(for: connectionId))
+        return SidebarObjectKind.ordered(declared: declared).contains { kind in
             countFor(kind: kind) > 0
         } || !otherSchemaMatches.isEmpty || !attachedSchemaMatches.isEmpty || hasTemporaryMatch
     }
@@ -148,20 +149,14 @@ struct SidebarView: View {
         self.windowState = windowState
         _pendingTruncates = pendingTruncates
         _pendingDeletes = pendingDeletes
-        let selectedBinding = Binding(
-            get: { windowState.selectedTables },
-            set: { windowState.selectTables($0) }
-        )
         let vm = SidebarViewModel.shared(
             connectionId: connectionId,
             databaseType: databaseType,
-            selectedTables: selectedBinding,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             tableOperationOptions: tableOperationOptions
         )
-        /// Nothing observable is written here. This initializer runs on every evaluation of the
-        /// parent's body, and the view model already seeds its own filter and watches the field.
+        // Nothing observable is written here: this runs on every evaluation of the parent's body.
         _viewModel = StateObject(wrappedValue: vm)
         self.connectionId = connectionId
         self.coordinator = coordinator
@@ -213,34 +208,30 @@ struct SidebarView: View {
             // A refresh can put the catalog back to loading before the frame, and a stale true skips the next hold.
             CommittedTurn.after(in: coordinator?.contentWindow) { showsLoadedCatalog = isCatalogLoaded }
         }
-        .onChange(of: viewModel.showOperationDialog) { isPresented in
-            guard isPresented else { return }
-            presentOperationAlert()
+        .onChange(of: windowState.pendingTableOperation?.id) { _ in
+            guard let request = windowState.pendingTableOperation else { return }
+            presentOperationAlert(for: request)
         }
     }
 
-    private func presentOperationAlert() {
-        guard let operationType = viewModel.pendingOperationType,
-              let firstTable = viewModel.pendingOperationTables.first
-        else {
-            viewModel.showOperationDialog = false
+    private func presentOperationAlert(for request: PendingTableOperation) {
+        let windowState = windowState
+        guard let firstTable = request.tables.first else {
+            windowState.resolveTableOperation(request)
             return
         }
         let prompt = TableOperationPrompt(
-            operationType: operationType,
+            operationType: request.operation,
             tableName: firstTable.table.name,
-            tableCount: viewModel.pendingOperationTables.count,
+            tableCount: request.tables.count,
             cascadeSupported: PluginManager.shared.supportsCascadeDrop(for: viewModel.databaseType),
             foreignKeyDisableSupported: PluginManager.shared.supportsForeignKeyDisable(for: viewModel.databaseType)
         )
         let model = viewModel
         TableOperationAlert.present(prompt: prompt, window: coordinator?.contentWindow) { options in
-            model.showOperationDialog = false
-            guard let options else {
-                model.cancelPendingOperation()
-                return
-            }
-            model.confirmOperation(options: options)
+            windowState.resolveTableOperation(request)
+            guard let options else { return }
+            model.confirmOperation(request, options: options)
         }
     }
 
@@ -493,6 +484,12 @@ struct SidebarView: View {
         case .routine: return viewModel.filteredRoutines(of: kind, from: routines).count
         case .trigger: return viewModel.filteredTriggers(from: triggers).count
         case .type:    return viewModel.filteredUserTypes(from: userDefinedTypes).count
+        case .server:
+            guard let serverKind = kind.serverKind else { return 0 }
+            return viewModel.filteredServerObjects(
+                kindId: serverKind.id,
+                from: schemaService.serverObjects(for: connectionId, kindId: serverKind.id)
+            ).count
         }
     }
 }

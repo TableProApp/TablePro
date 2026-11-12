@@ -124,6 +124,62 @@ extension MainSplitViewController {
         workspaces.selected?.sessionState?.coordinator.safeModeStatus
     }
 
+    // Turning it off leaves a transaction already held open, and the bar with it.
+    @objc func toggleManualCommit(_ sender: Any?) {
+        guard let connectionId = workspaces.selectedConnectionId,
+              let session = DatabaseManager.shared.session(for: connectionId),
+              ManualCommit.isAvailable(for: session.connection.type) else { return }
+        DatabaseManager.shared.setCommitMode(session.commitMode == .manual ? .automatic : .manual, for: connectionId)
+    }
+
+    @objc func commitOpenTransaction(_ sender: Any?) {
+        guard let hold = selectedTransactionHold else { return }
+        let window = view.window
+        Task { @MainActor in
+            await ConnectionTransactionActions.perform(window: window) {
+                try await ConnectionTransactionActions.commit(hold)
+            }
+        }
+    }
+
+    @objc func rollBackOpenTransaction(_ sender: Any?) {
+        guard let hold = selectedTransactionHold else { return }
+        let window = view.window
+        Task { @MainActor in
+            await ConnectionTransactionActions.perform(window: window) {
+                try await ConnectionTransactionActions.rollBack(hold, window: window)
+            }
+        }
+    }
+
+    // The hold the selected tab's database runs on: the connection's one driver, or that database's own lane.
+    var selectedTransactionHold: SessionTransactionTracker.Hold? {
+        guard let coordinator = workspaces.selected?.sessionState?.coordinator else { return nil }
+        let container = coordinator.tabManager.selectedTab.flatMap { coordinator.scope(for: $0)?.database }
+            ?? coordinator.browseDatabaseName
+        return DatabaseManager.shared.sessionTransactions.hold(connectionId: coordinator.connectionId, container: container)
+    }
+
+    var transactionMenuState: TransactionMenuState {
+        guard let coordinator = workspaces.selected?.sessionState?.coordinator,
+              let session = DatabaseManager.shared.session(for: coordinator.connectionId)
+        else { return TransactionMenuState() }
+        let container = coordinator.tabManager.selectedTab.flatMap { coordinator.scope(for: $0)?.database }
+            ?? coordinator.browseDatabaseName
+        let reportsState = (session.driver?.supportsTransactions ?? false)
+            && !DatabaseManager.shared.sessionTransactions.cannotReportState(
+                connectionId: coordinator.connectionId, container: container
+            )
+        let hold = selectedTransactionHold
+        return TransactionMenuState(
+            isAvailable: ManualCommit.isAvailable(for: session.connection.type),
+            isManualCommitOn: DatabaseManager.shared.commitMode(for: coordinator.connectionId) == .manual,
+            canHoldTransactions: reportsState,
+            holdsTransaction: hold != nil,
+            canCommit: hold.map { ConnectionTransactionActions.offersCommit($0, safeModeLevel: session.safeModeLevel) } ?? false
+        )
+    }
+
     @objc func switchSessionContext(_ sender: Any?) {
         guard let selection = (sender as? NSMenuItem)?.representedObject as? SessionContextSelection,
               let coordinator = commandActions?.coordinator else { return }

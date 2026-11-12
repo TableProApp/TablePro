@@ -26,10 +26,17 @@ struct DatabaseTreeFlatRootTests {
 
     private let boom = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "permission denied"])
 
-    private func makeFixture(_ configure: (SideObjectsMockDriver) -> Void) async throws -> Fixture {
+    private func makeFixture(
+        injectsSession: Bool = false,
+        _ configure: (SideObjectsMockDriver) -> Void
+    ) async throws -> Fixture {
         let connection = TestFixtures.makeConnection(database: "shop", type: .postgresql)
         let driver = SideObjectsMockDriver(connection: connection)
         configure(driver)
+        // The outline asks the session's driver which kinds it declares.
+        if injectsSession {
+            DatabaseManager.shared.injectSession(ConnectionSession(connection: connection, driver: driver), for: connection.id)
+        }
         await SchemaService.shared.load(connectionId: connection.id, driver: driver, connection: connection)
 
         let scrollView = SidebarOutlineScaffold.makeScrollView(
@@ -45,7 +52,6 @@ struct DatabaseTreeFlatRootTests {
         let sidebarState = SharedSidebarState.forConnection(connection.id)
         sidebarState.sidebarLayout = .flat
         let viewModel = SidebarViewModel(
-            selectedTables: .constant([]),
             pendingTruncates: .constant([]),
             pendingDeletes: .constant([]),
             tableOperationOptions: .constant([:]),
@@ -69,6 +75,9 @@ struct DatabaseTreeFlatRootTests {
     }
 
     private func tearDown(_ fixture: Fixture) async {
+        if DatabaseManager.shared.session(for: fixture.connectionId) != nil {
+            DatabaseManager.shared.removeSession(for: fixture.connectionId)
+        }
         await SchemaService.shared.invalidate(connectionId: fixture.connectionId)
         SharedSidebarState.removeConnection(fixture.connectionId)
         _ = fixture.scrollView
@@ -140,6 +149,88 @@ struct DatabaseTreeFlatRootTests {
         }
         #expect(status == .error("permission denied"))
         #expect(rootStatuses(fixture).isEmpty)
+        await tearDown(fixture)
+    }
+
+    private var extensionKind: PluginServerObjectKind {
+        PluginServerObjectKind(
+            id: "extension", displayName: "Extension", pluralDisplayName: "Extensions",
+            iconName: "puzzlepiece.extension", scope: .database
+        )
+    }
+
+    private var extensions: SidebarObjectKind {
+        .server(SidebarServerObjectKind(extensionKind))
+    }
+
+    @Test("A declared kind with objects gets a section after the built-in kinds")
+    func declaredKindIsListedAfterBuiltIns() async throws {
+        let fixture = try await makeFixture(injectsSession: true) { driver in
+            driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders", schema: "public")]
+            driver.declaredServerKinds = [extensionKind]
+            driver.serverObjectsByKind["extension"] = [
+                ServerObjectInfo(kindId: "extension", name: "pgcrypto", schema: "public", identity: "16384", detail: "1.3")
+            ]
+        }
+
+        #expect(rootSections(fixture) == [.table, extensions])
+        let section = try #require(section(fixture, extensions))
+        let rows = fixture.coordinator.resolvedChildren(of: section)
+        guard case .serverObject(let ref) = rows.first?.kind else {
+            Issue.record("The Extensions section lists no extension row")
+            await tearDown(fixture)
+            return
+        }
+        #expect(rows.count == 1)
+        #expect(ref.object.name == "pgcrypto")
+        #expect(ref.kind.pluralDisplayName == "Extensions")
+        #expect(ref.objectRef.kind == .serverObject)
+        await tearDown(fixture)
+    }
+
+    @Test("A declared kind that returned nothing gets no section")
+    func emptyDeclaredKindIsOmitted() async throws {
+        let fixture = try await makeFixture(injectsSession: true) { driver in
+            driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders", schema: "public")]
+            driver.declaredServerKinds = [extensionKind]
+        }
+
+        #expect(rootSections(fixture) == [.table])
+        await tearDown(fixture)
+    }
+
+    @Test("A declared kind whose fetch failed keeps its section, showing the error")
+    func failedDeclaredKindKeepsItsSection() async throws {
+        let fixture = try await makeFixture(injectsSession: true) { driver in
+            driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders", schema: "public")]
+            driver.declaredServerKinds = [extensionKind]
+            driver.serverObjectsError = boom
+        }
+
+        #expect(rootSections(fixture) == [.table, extensions])
+        let section = try #require(section(fixture, extensions))
+        let rows = fixture.coordinator.resolvedChildren(of: section)
+        guard case .status(let status) = rows.first?.kind else {
+            Issue.record("The failed section shows no status row")
+            await tearDown(fixture)
+            return
+        }
+        #expect(status == .error("permission denied"))
+        await tearDown(fixture)
+    }
+
+    @Test("A search that matches only a server object keeps its section")
+    func searchMatchingOnlyAServerObject() async throws {
+        let fixture = try await makeFixture(injectsSession: true) { driver in
+            driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders", schema: "public")]
+            driver.declaredServerKinds = [extensionKind]
+            driver.serverObjectsByKind["extension"] = [ServerObjectInfo(kindId: "extension", name: "pgcrypto", schema: "public")]
+        }
+        fixture.viewModel.searchText = "crypto"
+        fixture.coordinator.searchText = "crypto"
+        fixture.coordinator.refresh()
+
+        #expect(rootSections(fixture) == [extensions])
         await tearDown(fixture)
     }
 }

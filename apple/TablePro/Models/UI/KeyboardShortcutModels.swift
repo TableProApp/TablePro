@@ -68,6 +68,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case moveTabToConnection
     case showServerDashboard
     case showQueryInsights
+    case commitTransaction
+    case rollbackTransaction
 
     // Editor & Query
     case openFile
@@ -197,7 +199,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     var category: ShortcutCategory {
         switch self {
         case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection,
-             .showServerDashboard, .showQueryInsights:
+             .showServerDashboard, .showQueryInsights, .commitTransaction, .rollbackTransaction:
             return .connections
         case .openFile, .saveChanges, .saveAs, .copyPath, .copyRelativePath,
              .executeQuery, .executeAllStatements, .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
@@ -307,6 +309,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .moveTabToConnection: return String(localized: "Move Tab to Connection")
         case .showServerDashboard: return String(localized: "Server Dashboard")
         case .showQueryInsights: return String(localized: "Query Insights")
+        case .commitTransaction: return String(localized: "Commit Transaction")
+        case .rollbackTransaction: return String(localized: "Roll Back Transaction")
         case .saveChanges: return String(localized: "Save Changes")
         case .saveAs: return String(localized: "Save As")
         case .copyPath: return String(localized: "Copy Path")
@@ -660,7 +664,8 @@ struct KeyboardSettings: Codable, Equatable {
 
     // MARK: - Default Shortcuts
 
-    // An action absent here shows as unassigned until the user binds it.
+    // An action absent here shows as unassigned until the user binds it. Commit and Roll Back Transaction ship
+    // unbound: they are infrequent, and a stray Roll Back discards work.
     static let defaultShortcuts: [ShortcutAction: BoundKey] = [
         // Connections
         .newConnection: .character("n", command: true),

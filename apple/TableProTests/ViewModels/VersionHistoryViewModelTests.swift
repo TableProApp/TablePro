@@ -236,6 +236,19 @@ struct VersionHistoryViewModelTests {
         #expect(viewModel.page.entries.isEmpty)
         #expect(viewModel.listState == .failed(VersionHistoryError.subjectNotFound.localizedDescription))
     }
+
+    @Test("A query tab that closed clears the list and says how to get it back")
+    func closedTabClearsTheList() async throws {
+        let provider = makeProvider()
+        let viewModel = makeViewModel(provider)
+        await viewModel.loadList()
+        await viewModel.detailTask?.value
+
+        await provider.setLoadError(.tabClosed)
+        await viewModel.loadList()
+        #expect(viewModel.page.entries.isEmpty)
+        #expect(viewModel.listState == .failed(VersionHistoryError.tabClosed.localizedDescription))
+    }
 }
 
 struct VersionComparisonTests {

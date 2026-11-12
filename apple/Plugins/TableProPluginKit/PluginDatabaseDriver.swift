@@ -210,6 +210,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo]
     func fetchEventDDL(_ event: PluginEventInfo) async throws -> String
 
+    // Asked of the live driver, so one plugin can answer per server flavor and version.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    // `schema` is the container for a `.container` kind and nil for a `.database` kind. A server
+    // without the catalog answers empty rather than throwing.
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo]
+    // Reads one listed object again with its definition; `identity` is the driver's own key.
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo
+
     /// The settings the server recorded for an object when it was created and applies whenever it runs, such as a
     /// MySQL routine's `sql_mode`, as statements a script writes around the object's `CREATE`. Nil when there are none.
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope?
@@ -316,6 +324,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     var providesBulkColumnFetch: Bool { get }
+    var fetchesAllColumnsInOneRequest: Bool { get }
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     var providesBulkForeignKeyFetch: Bool { get }
@@ -834,6 +843,17 @@ public extension PluginDatabaseDriver {
         return definition
     }
 
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
+    }
+
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope? { nil }
 
     func fetchTriggerCreationScope(_ trigger: PluginTriggerInfo) async throws -> PluginStatementScope? { nil }
@@ -1030,6 +1050,9 @@ public extension PluginDatabaseDriver {
     /// read, and a caller that compares two schemas would report the missing detail as no
     /// difference at all.
     var providesBulkColumnFetch: Bool { false }
+
+    // Whether `fetchAllColumns` reads every table in one request or a fixed few, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { providesBulkColumnFetch }
 
     /// Default: fetches columns per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).

@@ -512,7 +512,8 @@ struct MainContentView: View {
             ConnectionTransactionBar(
                 connectionId: connection.id,
                 transactions: DatabaseManager.shared.sessionTransactions,
-                databaseManager: DatabaseManager.shared
+                databaseManager: DatabaseManager.shared,
+                safeModeLevel: toolbarState.safeModeLevel
             )
             editorContentView
         }

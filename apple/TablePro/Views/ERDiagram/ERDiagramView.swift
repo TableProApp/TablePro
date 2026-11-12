@@ -71,7 +71,7 @@ struct ERDiagramView: View {
                 draft: draft,
                 tables: viewModel.referenceableTables,
                 columns: { viewModel.columnNames(of: $0) },
-                defaultReferencedColumn: { viewModel.defaultReferencedColumn(in: $0) },
+                referencedKeyColumns: { viewModel.referencedKeyColumns(in: $0) },
                 isNameTaken: { viewModel.isForeignKeyNameTaken($0) },
                 dialect: ForeignKeyDialect.forType(viewModel.editingConnection?.type ?? .mysql),
                 onAdd: { draft in

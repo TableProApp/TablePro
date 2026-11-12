@@ -9,7 +9,8 @@ import Foundation
 /// `BEGIN`, `CASE` and `END` count only where a keyword can stand: an engine that does not reserve them takes them as
 /// names, and a block a name opened would never close. T-SQL reserves all three, so there a block also opens outside
 /// a routine, as in `IF @x = 1 BEGIN ... END` and `BEGIN TRY ... END TRY BEGIN CATCH ... END CATCH`. A text left
-/// inside one is refused by the external gate.
+/// inside one is refused by the external gate. T-SQL also lets a `;` end an `IF`'s body before its `ELSE`, as in
+/// `IF @x = 1 SELECT 1; ELSE SELECT 2;`, so that `;` ends the statement only once the next token is not the `ELSE`.
 ///
 /// A `;` inside parentheses ends the statement, so a stray `(` cannot swallow what follows it, except in a PostgreSQL
 /// rule's action list, `DO ALSO (INSERT ...; INSERT ...)`, which holds its commands together.
@@ -42,6 +43,9 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     // T-SQL outside a routine: where a block's `BEGIN` can stand, as the statement's first word, after `IF`, `WHILE`
     // or `ELSE`, or after a block the statement already opened. Anywhere else `begin` is in a name's place.
     private var followsControlFlow = false
+    // The statement's own `IF`s still waiting for an `ELSE`, which may follow the `;` that ends the `IF`'s body.
+    private var conditionalsAwaitingElse = 0
+    private var endedBeforeElse = false
     private var pendingBeginMayOpen = false
     private var header = Header.opener
     private var definesRoutine = false
@@ -127,10 +131,18 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         case "BEGIN" where opensNestedBlock(atStatementPosition: statementPosition, isFirstWord: isFirstWord):
             pendingBegin = true
             pendingBeginMayOpen = true
-        case "IF" where readsBlocksEverywhere, "WHILE" where readsBlocksEverywhere:
+        case "IF" where readsBlocksEverywhere:
+            followsControlFlow = true
+            if depth == 0 {
+                conditionalsAwaitingElse += 1
+            }
+        case "WHILE" where readsBlocksEverywhere:
             followsControlFlow = true
         case "ELSE" where readsBlocksEverywhere && openCaseExpressions == 0:
             followsControlFlow = true
+            if depth == 0 {
+                conditionalsAwaitingElse = max(0, conditionalsAwaitingElse - 1)
+            }
         case "CASE" where !grammar.hasSingleBodyForm:
             depth += 1
             openCaseExpressions += 1
@@ -218,7 +230,21 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         inDeclaration = false
         inHandlerDeclaration = false
         merge?.observeSemicolon(endsStatement: endsStatement)
+        endedBeforeElse = endsStatement && readsBlocksEverywhere && conditionalsAwaitingElse > 0
         return endsStatement
+    }
+
+    public var awaitsContinuation: Bool {
+        endedBeforeElse
+    }
+
+    // T-SQL writes `IF c SELECT 1; ELSE SELECT 2;`, so the `;` ended the `IF`'s body rather than the `IF`.
+    public mutating func continuesStatement(with word: String?) -> Bool {
+        guard endedBeforeElse else { return false }
+        endedBeforeElse = false
+        guard word == "ELSE" else { return false }
+        merge?.observeSemicolon(endsStatement: false)
+        return true
     }
 
     public mutating func reset() {

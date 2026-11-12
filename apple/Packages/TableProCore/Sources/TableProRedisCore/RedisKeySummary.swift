@@ -34,10 +34,11 @@ nonisolated public enum RedisKeySummary {
         }
     }
 
-    public static func previewCommand(for kind: RedisKeyKind, key: String) -> [String] {
+    public static func previewCommand(for kind: RedisKeyKind, key: String, stringByteLimit: Int? = nil) -> [String] {
         switch kind {
         case .string:
-            return ["GET", key]
+            guard let stringByteLimit, stringByteLimit > 0 else { return ["GET", key] }
+            return ["GETRANGE", key, "0", String(stringByteLimit - 1)]
         case .hash:
             return ["HSCAN", key, "0", "COUNT", String(collectionPreviewLimit)]
         case .list:
@@ -99,6 +100,6 @@ nonisolated public enum RedisKeySummary {
         ) else {
             return nil
         }
-        return String(data: data, encoding: .utf8)
+        return RedisWireText.decode(data)
     }
 }
