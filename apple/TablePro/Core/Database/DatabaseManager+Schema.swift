@@ -42,7 +42,8 @@ extension DatabaseManager {
         _ script: SchemaChangeScript,
         databaseType: DatabaseType,
         scope: DatabaseScope,
-        gate: any ExecutionGate = ExecutionGateProvider.shared
+        gate: any ExecutionGate = ExecutionGateProvider.shared,
+        holdConfirmation: SchemaChangeHoldConfirmation = DatabaseManager.confirmSchemaChangeBesideHold
     ) async throws {
         let route = schemaChangeRoute(for: scope)
         let statements = script.statements
@@ -52,6 +53,8 @@ extension DatabaseManager {
         if let denial = await gate.authorize(request).denialError {
             throw denial
         }
+        try await confirmSchemaChange(on: route, connectionId: scope.connectionId, confirmation: holdConfirmation)
+        let isPooled = route.isPooled
 
         let executionTimes: [TimeInterval]
         do {
@@ -61,7 +64,7 @@ extension DatabaseManager {
                 cancellation: .protectedWrite
             ) { driver in
                 try await Self.refuseBeforeWriting(script, scope: scope, on: driver)
-                let useTransaction = Self.wrapsDDLInTransaction(driver)
+                let useTransaction = await Self.wrapsSchemaChange(on: driver, isPooled: isPooled)
                 if useTransaction {
                     try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
                 }
@@ -83,7 +86,13 @@ extension DatabaseManager {
                             Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
                         }
                     }
-                    throw SchemaChangeFailedAfterWriting(message: "Schema change failed: \(error.localizedDescription)")
+                    let applied: [SchemaStatement] = useTransaction
+                        ? []
+                        : statements.prefix(measured.count).filter { !$0.carriesCredentials }
+                    throw SchemaChangeFailedAfterWriting(
+                        message: "Schema change failed: \(error.localizedDescription)",
+                        appliedStatements: applied.map(\.sql)
+                    )
                 }
                 try await Self.confirmFinished(script, scope: scope, on: driver)
                 return measured
@@ -93,7 +102,7 @@ extension DatabaseManager {
         } catch let failure as SchemaChangeFailedAfterWriting {
             Self.reportCatalogChangeAfterFailure(in: scope)
             reportSavedChange(of: script, in: scope)
-            throw DatabaseError.queryFailed(failure.message)
+            throw DatabaseError.queryFailed(failure.reportedMessage)
         } catch {
             Self.reportCatalogChangeAfterFailure(in: scope)
             throw error
@@ -220,21 +229,17 @@ extension DatabaseManager {
         }
     }
 
-    /// Run a Create Table draft's statements, on the same isolated route and in the same shape as
-    /// `executeSchemaChanges`.
-    ///
-    /// The route is what matters. The view used to reach for `driver(for:)`, which is the session
-    /// driver, so a `BEGIN` opened here joined whatever transaction a query tab had left open and
-    /// the matching `COMMIT` took that tab's uncommitted work with it. `schemaChangeRoute` exists
-    /// for exactly that, and the app's own DDL has no business on the user's connection.
+    // On the schema change route: a BEGIN on the session driver would join a query tab's open transaction.
     func executeCreateTable(
         statements: [String],
         databaseType: DatabaseType,
         scope: DatabaseScope,
-        gate: any ExecutionGate = ExecutionGateProvider.shared
+        gate: any ExecutionGate = ExecutionGateProvider.shared,
+        holdConfirmation: SchemaChangeHoldConfirmation = DatabaseManager.confirmSchemaChangeBesideHold
     ) async throws {
         guard !statements.isEmpty else { return }
         let route = schemaChangeRoute(for: scope)
+        let isPooled = route.isPooled
         let script = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
 
         let authorization = await gate.authorize(
@@ -248,11 +253,8 @@ extension DatabaseManager {
                 operationDescription: String(localized: "Create Table")
             )
         )
-        guard case .authorized = authorization else {
-            throw DatabaseError.queryFailed(
-                authorization.deniedReason ?? String(localized: "Operation not permitted")
-            )
-        }
+        if let denial = authorization.denialError { throw denial }
+        try await confirmSchemaChange(on: route, connectionId: scope.connectionId, confirmation: holdConfirmation)
 
         let executionTimes: [TimeInterval]
         do {
@@ -261,7 +263,8 @@ extension DatabaseManager {
                 route: route,
                 cancellation: .protectedWrite
             ) { driver in
-                let useTransaction = Self.wrapsDDLInTransaction(driver) && statements.count > 1
+                let wraps = await Self.wrapsSchemaChange(on: driver, isPooled: isPooled)
+                let useTransaction = wraps && statements.count > 1
                 if useTransaction {
                     try await driver.beginTransaction(mode: .readWrite)
                 }
@@ -335,6 +338,14 @@ struct CreateTableIncompleteError: LocalizedError {
 /// changed even though the save did not finish.
 private struct SchemaChangeFailedAfterWriting: Error {
     let message: String
+    // Statements an engine that commits each DDL statement kept after a later one failed.
+    var appliedStatements: [String] = []
+
+    var reportedMessage: String {
+        guard !appliedStatements.isEmpty else { return message }
+        let heading = String(localized: "These statements ran before the failure and were not rolled back:")
+        return message + "\n\n" + ([heading] + appliedStatements).joined(separator: "\n")
+    }
 }
 
 private extension SchemaChangeScript {

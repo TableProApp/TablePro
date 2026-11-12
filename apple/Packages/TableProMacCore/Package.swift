@@ -20,6 +20,9 @@ let package = Package(
         .library(name: "TableProUtilities", targets: ["TableProUtilities"]),
         .library(name: "TableProSSHConfig", targets: ["TableProSSHConfig"]),
         .library(name: "TableProMCP", targets: ["TableProMCP"]),
+        .library(name: "TableProMCPClients", targets: ["TableProMCPClients"]),
+        // Only the tablepro-cli tool links this; the app never does, so ArgumentParser stays out of it.
+        .library(name: "TableProCommandLine", targets: ["TableProCommandLine"]),
         .library(name: "TableProMCPTestSupport", targets: ["TableProMCPTestSupport"]),
         .library(name: "TableProCloudAPI", targets: ["TableProCloudAPI"])
     ],
@@ -28,7 +31,9 @@ let package = Package(
         // Exact: the versions clients.md (macOS, Dependencies) names.
         .package(url: "https://github.com/apple/swift-openapi-generator", exact: "1.14.1"),
         .package(url: "https://github.com/apple/swift-openapi-runtime", exact: "1.13.0"),
-        .package(url: "https://github.com/apple/swift-openapi-urlsession", exact: "1.4.0")
+        .package(url: "https://github.com/apple/swift-openapi-urlsession", exact: "1.4.0"),
+        // Exact: the pin swift-openapi-generator already resolves, and licenses.yml names this version.
+        .package(url: "https://github.com/apple/swift-argument-parser", exact: "1.8.2")
     ],
     targets: [
         .target(
@@ -54,13 +59,28 @@ let package = Package(
         .target(
             name: "TableProMCP",
             dependencies: [
-                "TableProUtilities",
                 .product(name: "TableProCoreTypes", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "TableProWireIO", package: "TableProCore")
             ],
             path: "Sources/TableProMCP",
+            swiftSettings: appModuleSettings
+        ),
+        .target(
+            name: "TableProMCPClients",
+            path: "Sources/TableProMCPClients",
+            swiftSettings: appModuleSettings
+        ),
+        .target(
+            name: "TableProCommandLine",
+            dependencies: [
+                "TableProMCP",
+                .product(name: "TableProCoreTypes", package: "TableProCore"),
+                .product(name: "TableProProcess", package: "TableProCore"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/TableProCommandLine",
             swiftSettings: appModuleSettings
         ),
         // openapi.json is a copy of tablepro-cloud's api/v2.json; scripts/update-cloud-api.sh refreshes it.
@@ -106,10 +126,26 @@ let package = Package(
             dependencies: [
                 "TableProMCP",
                 "TableProMCPTestSupport",
-                "TableProUtilities",
+                .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             path: "Tests/TableProMCPTests",
+            swiftSettings: appModuleSettings
+        ),
+        .testTarget(
+            name: "TableProMCPClientsTests",
+            dependencies: ["TableProMCPClients"],
+            path: "Tests/TableProMCPClientsTests",
+            swiftSettings: appModuleSettings
+        ),
+        .testTarget(
+            name: "TableProCommandLineTests",
+            dependencies: [
+                "TableProCommandLine",
+                "TableProMCP",
+                "TableProMCPTestSupport"
+            ],
+            path: "Tests/TableProCommandLineTests",
             swiftSettings: appModuleSettings
         )
     ]

@@ -37,11 +37,12 @@ public extension SourceEditor {
 
         init(
             text: TextAPI,
+            documentID: AnyHashable? = nil,
             editorState: Binding<SourceEditorState>,
             highlightProviders: [any HighlightProviding]?,
             textCoordinators: [any TextViewCoordinator]
         ) {
-            self.textSync = TextBindingSync(text: text, phase: phase)
+            self.textSync = TextBindingSync(text: text, documentID: documentID, phase: phase)
             self._editorState = editorState
             self.highlightProviders = highlightProviders ?? [TreeSitterClient()]
             self.textCoordinators = textCoordinators
@@ -76,6 +77,12 @@ public extension SourceEditor {
                 self,
                 selector: #selector(textViewDidChangeText(_:)),
                 name: TextView.textDidChangeNotification,
+                object: controller.textView
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(textViewShouldFlushWriteback(_:)),
+                name: TextViewController.flushTextWritebackNotification,
                 object: controller.textView
             )
 
@@ -153,6 +160,13 @@ public extension SourceEditor {
                 return
             }
             textSync.editorTextDidChange(textView)
+        }
+
+        @objc func textViewShouldFlushWriteback(_ notification: Notification) {
+            guard let textView = notification.object as? TextView else {
+                return
+            }
+            textSync.flushPendingWriteback(from: textView)
         }
 
         @objc func textControllerCursorsDidUpdate(_ notification: Notification) {

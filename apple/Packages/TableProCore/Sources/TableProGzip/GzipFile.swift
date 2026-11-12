@@ -41,7 +41,8 @@ public enum GzipFile {
             let output = try FileHandle(forWritingTo: destination)
             defer { try? output.close() }
             let inflater = try GzipInflater(budget: budget)
-            while let block = try input.read(upToCount: readSize), !block.isEmpty {
+            // Each read returns an autoreleased buffer, and this loop never suspends, so nothing drains them until it ends.
+            while let block = try autoreleasepool(invoking: { try input.read(upToCount: readSize) }), !block.isEmpty {
                 try Task.checkCancellation()
                 try block.withUnsafeBytes { raw in
                     try inflater.inflate(raw) { try output.write(contentsOf: $0) }

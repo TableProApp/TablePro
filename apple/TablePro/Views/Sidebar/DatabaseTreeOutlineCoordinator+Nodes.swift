@@ -44,9 +44,17 @@ extension DatabaseTreeOutlineCoordinator {
     private func buildChildren(of node: DatabaseTreeNode?) -> [DatabaseTreeNode] {
         guard let node else { return rootNodes() }
         switch node.kind {
+        case .connectionGroup(let group):
+            return connectionLevelNodes(group.children)
+        case .savedConnection(let ref):
+            return ref.ownsTree ? shapeRootNodes() : []
         case .recentSection:
             return recentTableRefs().map {
                 self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
+            }
+        case .favoritesSection:
+            return favoriteTableRefs().map {
+                self.node(id: DatabaseTreeNode.favoriteTableId($0), kind: .favoriteTable($0))
             }
         case .temporarySection:
             return temporaryTableRefs().map {
@@ -58,13 +66,14 @@ extension DatabaseTreeOutlineCoordinator {
             return folderMemberNodes(of: ref)
         case .database(let metadata):
             return supportsSchemaLevel
-                ? schemaNodes(database: metadata.name)
+                ? databaseLevelNodes(database: metadata.name)
                 : objectNodes(database: metadata.name, schema: nil)
         case .schema(let database, let schema):
             return objectNodes(database: database, schema: schema)
         case .table(let ref):
+            if showsTableDetails { return tableDetailGroupNodes(of: ref) }
             guard showsPartitions, ref.table.type == .partitionedTable else { return [] }
-            return partitionNodes(of: ref)
+            return partitionNodes(of: ref, parentId: DatabaseTreeNode.tableId(ref))
         case .partition(let ref):
             guard showsPartitions, ref.partition.isSubpartitioned else { return [] }
             return subpartitionNodes(of: ref)
@@ -78,15 +87,16 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
             return redisChildren(of: redisNode)
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status:
+        case .tableDetailGroup(let group):
+            return tableDetailNodes(in: group)
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .serverObject, .status, .tableDetail:
             return []
         }
     }
 
     /// Only the top-level partitions. A subpartition names the partition it subdivides and is
     /// nested under that row instead, because an engine that has them reports both in one list.
-    private func partitionNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
-        let parentId = DatabaseTreeNode.tableId(ref)
+    internal func partitionNodes(of ref: DatabaseTreeTableRef, parentId: String) -> [DatabaseTreeNode] {
         let state = service.partitionsLoadState(
             connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
         )
@@ -108,7 +118,7 @@ extension DatabaseTreeOutlineCoordinator {
     /// own list carrying its name.
     private func subpartitionNodes(of ref: DatabaseTreePartitionRef) -> [DatabaseTreeNode] {
         if let relation = ref.tableRef {
-            return partitionNodes(of: relation)
+            return partitionNodes(of: relation, parentId: DatabaseTreeNode.tableId(relation))
         }
         let parent = ref.parent
         let state = service.partitionsLoadState(
@@ -139,6 +149,12 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private func rootNodes() -> [DatabaseTreeNode] {
+        listsConnections ? connectionLevelNodes(connectionTreeRows()) : shapeRootNodes()
+    }
+
+    /// What the shape lists at its top: the root itself, or the own connection's row when the tree
+    /// lists the saved connections above it.
+    internal func shapeRootNodes() -> [DatabaseTreeNode] {
         switch rootShape {
         case .databaseTree: return databaseTreeRootNodes()
         case .flat: return flatRootNodes()
@@ -160,7 +176,25 @@ extension DatabaseTreeOutlineCoordinator {
         nodes += matched
             .filter { seen.insert($0.id).inserted }
             .map { node(id: DatabaseTreeNode.databaseId($0.name), kind: .database($0)) }
+        if matched.isEmpty, let status = ownDatabaseListStatus() {
+            nodes.append(statusNode(parentId: DatabaseTreeNode.savedConnectionId(connectionId), status: status))
+        }
         return nodes
+    }
+
+    /// Under its connection's row the tree stands whatever the database list is doing, so the
+    /// connections above stay on screen. The states the view showed in the outline's place say
+    /// themselves here. A search that matches nothing lists nothing, as it does without the row.
+    private func ownDatabaseListStatus() -> DatabaseTreeNode.Status? {
+        guard listsConnections, searchText.isEmpty else { return nil }
+        switch service.databaseListState(for: connectionId) {
+        case .idle, .loading:
+            return .loading
+        case .failed(let message):
+            return .error(message)
+        case .loaded:
+            return .empty
+        }
     }
 
     internal var browsingDatabase: String? {
@@ -208,16 +242,17 @@ extension DatabaseTreeOutlineCoordinator {
         .map { node(id: DatabaseTreeNode.schemaId(database: database, schema: $0), kind: .schema(database: database, schema: $0)) }
     }
 
-    /// A torn-down sidebar has no view model and lists nothing at all. Counting its way to a root of
-    /// failed sections would fill a pane that is on its way out.
+    // A torn-down sidebar has no view model and lists nothing, rather than a root of failed sections.
     private func visibleObjectKinds() -> [SidebarObjectKind] {
         guard viewModel != nil else { return [] }
-        let itemCounts = SidebarObjectKind.allCases.reduce(into: [SidebarObjectKind: Int]()) {
+        let declared = flatServerKinds
+        let itemCounts = SidebarObjectKind.ordered(declared: declared).reduce(into: [SidebarObjectKind: Int]()) {
             $0[$1] = flatItemCount(for: $1)
         }
         return SidebarObjectKind.visible(
             itemCounts: itemCounts,
-            keeping: flatPlan().filedKinds.union(flatSidePhases.failedKinds(among: declaredObjectKinds))
+            keeping: flatPlan().filedKinds.union(flatSidePhases.failedKinds(among: declaredObjectKinds)),
+            declared: declared
         )
     }
 
@@ -228,10 +263,29 @@ extension DatabaseTreeOutlineCoordinator {
         return .emptyContainer(sideStates: flatSidePhases.all)
     }
 
-    /// What the engine says it fetches. It decides which fetches a container waits on before saying
-    /// it is empty, and which failures keep a section; it never lists a section on its own.
+    // Decides which fetches a container waits on and which failures keep a section; it never lists one on its own.
     internal var declaredObjectKinds: Set<SidebarObjectKind> {
-        databaseType.declaredObjectKinds
+        databaseType.declaredObjectKinds.union(declaredServerKinds.map { SidebarObjectKind.server($0) })
+    }
+
+    // Asked of the live driver, which answers per server flavor and version.
+    internal var declaredServerKinds: [SidebarServerObjectKind] {
+        SidebarServerObjectKind.declared(by: DatabaseManager.shared.driver(for: connectionId))
+    }
+
+    // A hierarchical engine lists its kinds per schema, never in the browsed catalog.
+    internal var flatServerKinds: [SidebarServerObjectKind] {
+        PluginManager.shared.databaseGroupingStrategy(for: databaseType) == .hierarchicalSchema ? [] : declaredServerKinds
+    }
+
+    private var containerServerKinds: [SidebarServerObjectKind] {
+        declaredServerKinds.filter { $0.scope == .container }
+    }
+
+    // The tree reads the kinds of the container's own level; a schema-grouped shape lists `.container` kinds alone.
+    private func serverKinds(database: String, schema: String?) -> [SidebarServerObjectKind] {
+        if rootShape == .hierarchicalSchema { return containerServerKinds }
+        return service.serverKinds(connectionId: connectionId, database: database, schema: schema)
     }
 
     internal func flatItemCount(for kind: SidebarObjectKind) -> Int {
@@ -245,6 +299,12 @@ extension DatabaseTreeOutlineCoordinator {
             return viewModel.filteredTriggers(from: schemaService.triggers(for: connectionId)).count
         case .type:
             return viewModel.filteredUserTypes(from: schemaService.userDefinedTypes(for: connectionId)).count
+        case .server:
+            guard let serverKind = kind.serverKind else { return 0 }
+            return viewModel.filteredServerObjects(
+                kindId: serverKind.id,
+                from: schemaService.serverObjects(for: connectionId, kindId: serverKind.id)
+            ).count
         }
     }
 
@@ -258,14 +318,16 @@ extension DatabaseTreeOutlineCoordinator {
         return [statusNode(parentId: DatabaseTreeNode.objectKindSectionId(kind), status: placeholder)]
     }
 
-    /// Only the kinds the engine declares take part, the rule `sideLoadStates` follows for a tree
-    /// container, so a fetch the engine never runs cannot hold the root on a spinner.
+    // Declared kinds only, as `sideLoadStates`, so a fetch the engine never runs cannot hold the root on a spinner.
     private var flatSidePhases: DatabaseTreeSidePhases {
         let declared = declaredObjectKinds
         return DatabaseTreeSidePhases(
             routines: schemaService.routinesLoadState(for: connectionId).erased,
             triggers: declared.contains(.trigger) ? schemaService.triggersLoadState(for: connectionId).erased : nil,
-            types: declared.contains(.type) ? schemaService.userDefinedTypesLoadState(for: connectionId).erased : nil
+            types: declared.contains(.type) ? schemaService.userDefinedTypesLoadState(for: connectionId).erased : nil,
+            serverObjects: Dictionary(uniqueKeysWithValues: flatServerKinds.map { kind in
+                (kind.id, schemaService.serverObjectsLoadState(for: connectionId, kindId: kind.id).erased)
+            })
         )
     }
 
@@ -295,6 +357,13 @@ extension DatabaseTreeOutlineCoordinator {
                     let ref = DatabaseTreeUserTypeRef(database: database, schema: type.schema, type: type)
                     return node(id: DatabaseTreeNode.userTypeId(ref), kind: .userType(ref))
                 }
+        case .server:
+            guard let serverKind = kind.serverKind else { return [] }
+            let objects = viewModel.filteredServerObjects(
+                kindId: serverKind.id,
+                from: schemaService.serverObjects(for: connectionId, kindId: serverKind.id)
+            )
+            return serverObjectNodes(objects, kind: serverKind, database: database, schema: { $0.schema })
         }
     }
 
@@ -414,7 +483,10 @@ extension DatabaseTreeOutlineCoordinator {
                 : nil,
             types: declared.contains(.type)
                 ? schemaService.userDefinedTypesLoadState(for: connectionId, schema: schema).erased
-                : nil
+                : nil,
+            serverObjects: Dictionary(uniqueKeysWithValues: containerServerKinds.map { kind in
+                (kind.id, schemaService.serverObjectsLoadState(for: connectionId, schema: schema, kindId: kind.id).erased)
+            })
         )
     }
 
@@ -435,6 +507,9 @@ extension DatabaseTreeOutlineCoordinator {
             routines: shown(schemaService.routines(for: connectionId, schema: schema)),
             triggers: shown(schemaService.triggers(for: connectionId, schema: schema)),
             userTypes: shown(schemaService.userDefinedTypes(for: connectionId, schema: schema)),
+            serverObjects: Dictionary(uniqueKeysWithValues: containerServerKinds.map { kind in
+                (kind.id, shown(schemaService.serverObjects(for: connectionId, schema: schema, kindId: kind.id)))
+            }),
             searchText: searchText,
             database: browsingDatabase
         )
@@ -458,6 +533,9 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func sessionSectionNodes() -> [DatabaseTreeNode] {
         var nodes: [DatabaseTreeNode] = []
+        if !favoriteTableRefs().isEmpty {
+            nodes.append(node(id: DatabaseTreeNode.favoritesSectionId, kind: .favoritesSection))
+        }
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
         }
@@ -534,6 +612,30 @@ extension DatabaseTreeOutlineCoordinator {
 
     internal var listsTablesPerSchema: Bool {
         DatabaseTreeMetadataService.listsTablesPerSchema(PluginManager.shared.databaseGroupingStrategy(for: databaseType))
+    }
+
+    // A schema engine's database lists its schemas, then the kinds it declares for the whole database.
+    private func databaseLevelNodes(database: String) -> [DatabaseTreeNode] {
+        let schemas = schemaNodes(database: database)
+        let groups = databaseScopedGroupNodes(database: database)
+        guard !groups.isEmpty else { return schemas }
+        if schemas.count == 1, case .status(.empty) = schemas[0].kind { return groups }
+        return schemas + groups
+    }
+
+    private func databaseScopedGroupNodes(database: String) -> [DatabaseTreeNode] {
+        let kinds = serverKinds(database: database, schema: nil)
+        guard !kinds.isEmpty else { return [] }
+        let phases = sideLoadStates(database: database, schema: nil)
+        return DatabaseTreeObjectGroupResolver.groups(
+            database: database,
+            schema: nil,
+            itemCounts: objectBuckets(database: database, schema: nil).itemCounts,
+            keeping: phases.failedKinds(among: Set(kinds.map { SidebarObjectKind.server($0) })),
+            declared: kinds
+        )
+        .filter { $0.kind.category == .server }
+        .map { node(id: DatabaseTreeNode.containerObjectKindSectionId($0), kind: .containerObjectKindSection($0)) }
     }
 
     private func schemaNodes(database: String) -> [DatabaseTreeNode] {
@@ -632,6 +734,14 @@ extension DatabaseTreeOutlineCoordinator {
         func shown<Item>(_ items: [Item], isCurrent: Bool) -> [Item] {
             showsOvertaken || isCurrent ? items : []
         }
+        let serverObjects = Dictionary(uniqueKeysWithValues: serverKinds(database: database, schema: schema).map { kind in
+            (kind.id, shown(
+                service.serverObjects(connectionId: connectionId, database: database, schema: schema, kindId: kind.id),
+                isCurrent: service.isServerObjectsCurrent(
+                    connectionId: connectionId, database: database, schema: schema, kindId: kind.id
+                )
+            ))
+        })
         return DatabaseTreeBucketSource(
             tables: tables,
             routines: shown(
@@ -646,6 +756,7 @@ extension DatabaseTreeOutlineCoordinator {
                 service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
                 isCurrent: service.isTypesCurrent(connectionId: connectionId, database: database, schema: schema)
             ),
+            serverObjects: serverObjects,
             searchText: searchText,
             database: database
         )
@@ -666,9 +777,7 @@ extension DatabaseTreeOutlineCoordinator {
         return objectBuckets(database: database, schema: schema)
     }
 
-    /// A fetch the engine never runs stays idle for good, and idle is not loaded: counting it
-    /// would hold every empty container on a spinner for a list that is never coming. So only the
-    /// kinds this engine declares take part in deciding between "empty" and "loading".
+    // Declared kinds only: an idle fetch the engine never runs would hold every empty container on a spinner.
     private func sideLoadStates(database: String, schema: String?) -> DatabaseTreeSidePhases {
         let declared = declaredObjectKinds
         return DatabaseTreeSidePhases(
@@ -678,7 +787,12 @@ extension DatabaseTreeOutlineCoordinator {
                 : nil,
             types: declared.contains(.type)
                 ? service.typesLoadState(connectionId: connectionId, database: database, schema: schema).erased
-                : nil
+                : nil,
+            serverObjects: Dictionary(uniqueKeysWithValues: serverKinds(database: database, schema: schema).map { kind in
+                (kind.id, service.serverObjectsLoadState(
+                    connectionId: connectionId, database: database, schema: schema, kindId: kind.id
+                ).erased)
+            })
         )
     }
 
@@ -712,7 +826,8 @@ extension DatabaseTreeOutlineCoordinator {
             database: database,
             schema: schema,
             itemCounts: looseItemCounts(buckets.itemCounts, plan: plan),
-            keeping: plan.filedKinds.union(sidePhases.failedKinds(among: declaredObjectKinds))
+            keeping: plan.filedKinds.union(sidePhases.failedKinds(among: declaredObjectKinds)),
+            declared: serverKinds(database: database, schema: schema)
         )
         guard !groups.isEmpty || !folders.isEmpty else {
             return [statusNode(parentId: parentId, status: .emptyContainer(sideStates: sidePhases.all))]
@@ -728,8 +843,7 @@ extension DatabaseTreeOutlineCoordinator {
     private func containerObjectNodes(for group: DatabaseTreeObjectGroup) -> [DatabaseTreeNode] {
         let buckets = objectBuckets(database: group.database, schema: group.schema)
         let emptyId = DatabaseTreeNode.containerObjectKindSectionId(group)
-        /// A schema-grouped group carries no database, and a reference naming an empty one would
-        /// switch the session to a database called "" the moment the row opened.
+        // An empty database name would switch the session to a database called "" the moment the row opened.
         let database: String? = group.database.isEmpty ? nil : group.database
         let placeholder = sidePhases(for: group).placeholder(for: group.kind).map {
             [statusNode(parentId: emptyId, status: $0)]
@@ -756,6 +870,25 @@ extension DatabaseTreeOutlineCoordinator {
                 let ref = DatabaseTreeUserTypeRef(database: database, schema: group.schema, type: type)
                 return node(id: DatabaseTreeNode.userTypeId(ref), kind: .userType(ref))
             }
+        case .server:
+            guard let serverKind = group.kind.serverKind else { return placeholder }
+            let objects = buckets.serverObjects[serverKind.id] ?? []
+            guard !objects.isEmpty else { return placeholder }
+            // A `.database` kind's object keeps its own schema, which is not the group's.
+            let fixedSchema = group.schema
+            return serverObjectNodes(objects, kind: serverKind, database: database, schema: { fixedSchema ?? $0.schema })
+        }
+    }
+
+    private func serverObjectNodes(
+        _ objects: [ServerObjectInfo],
+        kind: SidebarServerObjectKind,
+        database: String?,
+        schema: (ServerObjectInfo) -> String?
+    ) -> [DatabaseTreeNode] {
+        objects.map { object in
+            let ref = DatabaseTreeServerObjectRef(database: database, schema: schema(object), kind: kind, object: object)
+            return node(id: DatabaseTreeNode.serverObjectId(ref), kind: .serverObject(ref))
         }
     }
 
@@ -802,7 +935,7 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
-    private func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {
+    internal func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {
         node(id: DatabaseTreeNode.statusId(parentId: parentId, status: status), kind: .status(status))
     }
 

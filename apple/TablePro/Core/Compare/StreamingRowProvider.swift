@@ -5,14 +5,15 @@
 //  Feeds the merge join from a driver's row stream. It holds one batch of rows
 //  at a time, and hands them out one row at a time.
 //
-//  It is not what bounds a comparison's memory. A driver's stream buffers
-//  `.unbounded` and its producer starts at the moment the stream is built, not
-//  at the first read, so a side the walk consumes slowly runs ahead inside the
-//  stream's own buffer. The row limit, the filter, and the key order the two
-//  sides share are what keep a comparison's footprint down.
+//  It is not what bounds a comparison's memory. Most drivers' streams hold a
+//  few batches and wait for the walk; ClickHouse, Elasticsearch, Trino, MongoDB,
+//  Spanner and SQLite over SSH run ahead of a side the walk consumes slowly,
+//  inside the stream's own buffer. The row limit, the filter, and the key order
+//  the two sides share are what keep a comparison's footprint down there.
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct RowReadContext: Sendable {
@@ -55,6 +56,7 @@ internal final class StreamingRowProvider: DataRowProviding {
     private var deliveredCount = 0
     private var isFinished = false
     private var sawRowPastTheLimit = false
+    private let rowCut: OSAllocatedUnfairLock<Int?>
 
     internal init(
         stream: AsyncThrowingStream<PluginStreamElement, Error>,
@@ -62,17 +64,25 @@ internal final class StreamingRowProvider: DataRowProviding {
         rowLimit: Int? = nil,
         context: RowReadContext? = nil
     ) {
-        self.iterator = stream.makeAsyncIterator()
+        let rowCut = OSAllocatedUnfairLock<Int?>(initialState: nil)
+        self.rowCut = rowCut
+        self.iterator = ExportRowCut<PluginStreamElement>.reporting(stream, engineCeiling: nil) { limit in
+            rowCut.withLock { $0 = limit }
+        }.makeAsyncIterator()
         self.columns = columns
         self.rowLimit = rowLimit
         self.context = context
     }
 
-    /// The read asks for one row more than the limit and never hands that row out, so this is the
-    /// server's own answer to whether anything was left rather than a guess from the row count: a
-    /// table holding exactly the limit is not a truncated read.
+    // The read asks for one row past the limit, so a table holding exactly the limit is not a cut read. A stream the
+    // driver stopped at a limit it declares ends here too: a key only the other side holds was never read on this one.
     internal var endedAtRowLimit: Bool {
-        sawRowPastTheLimit
+        sawRowPastTheLimit || driverRowCut != nil
+    }
+
+    internal var driverRowCut: Int? {
+        guard isFinished else { return nil }
+        return rowCut.withLock { $0 }
     }
 
     internal func nextRow() async throws -> DataRow? {

@@ -1,4 +1,5 @@
 import Foundation
+import TableProFirebaseClient
 import TableProFirebaseCore
 import TableProPluginKit
 
@@ -35,6 +36,7 @@ extension FirebasePluginDriver {
         insertedRowIndices: Set<Int>,
         context: PluginRowWriteContext
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
         let types = writeColumnTypes(table, host: context.columnTypeNames)
         return try changes.compactMap { change in
             do {

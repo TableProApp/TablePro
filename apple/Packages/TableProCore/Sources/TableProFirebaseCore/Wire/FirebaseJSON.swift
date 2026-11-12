@@ -144,7 +144,7 @@ public indirect enum FirebaseJSON: Sendable, Hashable {
 
     /// JSON has no NaN or infinity, so those are written as strings; the caller that needs them
     /// back as numbers wraps them in a tag of its own.
-    static func doubleText(_ value: Double) -> String {
+    package static func doubleText(_ value: Double) -> String {
         guard value.isFinite else {
             return value.isNaN ? "\"NaN\"" : (value > 0 ? "\"Infinity\"" : "\"-Infinity\"")
         }

@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
@@ -21,14 +22,14 @@ use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::{
     ConnectEnvironment, ExternalAccess, FileEndpoint, LivenessPolicy, ResultEvent, ResultSink, RunOptions,
-    SafeModeLevel, SinkFlow, TlsConfig, UserSql, WorkspaceSettings,
+    SafeModeLevel, SinkFlow, TableRef, TlsConfig, UserSql, WorkspaceSettings,
 };
 use tablepro_driver_sqlite::SqliteDriver;
 use tablepro_mcp::{AccessToken, McpHost, McpServer, OpenOutcome, ToolContext, WriteApproval};
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
     ConnectRequest, ConnectServices, ConnectionMetadata, Connector, DefaultDeadlines, DriverConnector,
-    NoStoredCredentials, RequestTarget, Session, SessionDeps,
+    NoStoredCredentials, OperationKind, RequestTarget, Session, SessionDeps,
 };
 use tablepro_ssh::{SshRuntimeCell, SshServices};
 use tablepro_storage::query_history::NewEntry;
@@ -54,6 +55,7 @@ fn tasks() -> Tasks {
 #[derive(Default)]
 struct TestHost {
     sessions: Mutex<HashMap<Uuid, Arc<Session>>>,
+    siblings: Mutex<HashMap<(Uuid, String), Arc<Session>>>,
     approves: AtomicBool,
     asked: Mutex<Vec<WriteApproval>>,
     recorded: Mutex<Vec<NewEntry>>,
@@ -63,6 +65,14 @@ struct TestHost {
 impl McpHost for TestHost {
     async fn session(&self, id: Uuid) -> Option<Arc<Session>> {
         self.sessions.lock().expect("sessions").get(&id).cloned()
+    }
+
+    async fn session_in(&self, id: Uuid, database: &str) -> Option<Arc<Session>> {
+        self.siblings
+            .lock()
+            .expect("siblings")
+            .get(&(id, database.to_owned()))
+            .cloned()
     }
 
     async fn open_connections(&self) -> Vec<Uuid> {
@@ -184,14 +194,22 @@ impl ResultSink for Discard {
 }
 
 async fn seed(session: &Session) {
+    run_all(
+        session,
+        &[
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL, total NUMERIC)",
+            "INSERT INTO orders (status, total) VALUES ('open', 10), ('open', 20), ('paid', 30)",
+        ],
+    )
+    .await;
+}
+
+async fn run_all(session: &Session, statements: &[&str]) {
     let editor = session
         .open_editor_session(Default::default(), &CancellationToken::new())
         .await
         .expect("an editor session");
-    for sql in [
-        "CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL, total NUMERIC)",
-        "INSERT INTO orders (status, total) VALUES ('open', 10), ('open', 20), ('paid', 30)",
-    ] {
+    for &sql in statements {
         let summary = editor
             .run(
                 UserSql::new(sql),
@@ -272,6 +290,26 @@ struct Reply {
 /// One request on a connection of its own, written by hand so the test
 /// controls every header a client sends.
 async fn send(port: u16, path: &str, headers: &[(&str, &str)], body: &str) -> Reply {
+    let mut stream = open_request(port, path, headers, body).await;
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.expect("the response");
+    let text = String::from_utf8(raw).expect("a UTF-8 response");
+    let (head, body) = text.split_once("\r\n\r\n").expect("a header block");
+    let status = head
+        .split(' ')
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .expect("a status code");
+    let headers = head.to_ascii_lowercase();
+    let body = match headers.contains("transfer-encoding: chunked") {
+        true => unchunk(body),
+        false => body.to_owned(),
+    };
+    Reply { status, headers, body }
+}
+
+// The request sent and its answer not read yet, so a test can go away while the server works on it.
+async fn open_request(port: u16, path: &str, headers: &[(&str, &str)], body: &str) -> tokio::net::TcpStream {
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
         .await
         .expect("a connection to the server");
@@ -288,21 +326,7 @@ async fn send(port: u16, path: &str, headers: &[(&str, &str)], body: &str) -> Re
     request.push_str("\r\n");
     request.push_str(body);
     stream.write_all(request.as_bytes()).await.expect("the request");
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).await.expect("the response");
-    let text = String::from_utf8(raw).expect("a UTF-8 response");
-    let (head, body) = text.split_once("\r\n\r\n").expect("a header block");
-    let status = head
-        .split(' ')
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .expect("a status code");
-    let headers = head.to_ascii_lowercase();
-    let body = match headers.contains("transfer-encoding: chunked") {
-        true => unchunk(body),
-        false => body.to_owned(),
-    };
-    Reply { status, headers, body }
+    stream
 }
 
 fn unchunk(mut body: &str) -> String {
@@ -348,6 +372,25 @@ async fn call(harness: &Harness, tool: &str, arguments: Json) -> (bool, String) 
 
 fn parsed(text: &str) -> Json {
     serde_json::from_str(text).expect("a JSON answer")
+}
+
+// Another database of Readable's and Writable's server, held by their windows as Open Database… leaves it.
+async fn hold_archive(harness: &Harness) {
+    let dir = harness._dir.path();
+    let file = dir.join("archive.db");
+    let readable = open_session(dir, &file, harness.ids.readable, false, true).await;
+    run_all(
+        &readable,
+        &[
+            "CREATE TABLE invoices (id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)",
+            "INSERT INTO invoices (amount) VALUES (5), (7)",
+        ],
+    )
+    .await;
+    let writable = open_session(dir, &file, harness.ids.writable, false, false).await;
+    let mut siblings = harness.host.siblings.lock().expect("siblings");
+    siblings.insert((harness.ids.readable, "archive".to_owned()), readable);
+    siblings.insert((harness.ids.writable, "archive".to_owned()), writable);
 }
 
 async fn order_count(harness: &Harness) -> u64 {
@@ -426,8 +469,120 @@ async fn initialize_names_the_server_and_lists_every_tool() {
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 9, "{names:?}");
-    assert!(names.contains(&"execute_query"));
+    assert_eq!(names.len(), 11, "{names:?}");
+    for tool in ["execute_query", "list_databases", "export_data"] {
+        assert!(names.contains(&tool), "{names:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_client_that_initializes_is_seen_once_by_its_own_name() {
+    let harness = harness().await;
+    let port = harness.server.address().port();
+    let mut seen = harness.server.seen_clients();
+    let initialize = |name: &str, version: &str| {
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": name, "title": "Claude Code", "version": version },
+            },
+        })
+        .to_string()
+    };
+
+    let anonymous = send(port, "/mcp", &MCP_HEADERS[1..], &initialize("intruder", "1")).await;
+    assert_eq!(anonymous.status, 401);
+    assert!(
+        seen.borrow_and_update().is_empty(),
+        "a client without the token was recorded"
+    );
+
+    for version in ["2.1.321", "2.1.322"] {
+        let reply = send(port, "/mcp", &MCP_HEADERS, &initialize("claude-code", version)).await;
+        assert_eq!(reply.status, 200, "{}", reply.body);
+    }
+
+    tokio::time::timeout(Duration::from_secs(10), seen.changed())
+        .await
+        .expect("a sighting in time")
+        .expect("the server still running");
+    let clients = seen.borrow().clone();
+    assert_eq!(clients.len(), 1, "{clients:?}");
+    assert_eq!(clients[0].name, "claude-code");
+    assert_eq!(clients[0].title.as_deref(), Some("Claude Code"));
+    assert_eq!(clients[0].version, "2.1.322");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_client_that_never_initializes_is_seen_once_from_its_requests() {
+    let harness = harness().await;
+    let port = harness.server.address().port();
+    let mut seen = harness.server.seen_clients();
+    let request = |method: &str, mut params: Json| {
+        params["_meta"] = json!({
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": { "name": "claude-code", "title": "Claude Code", "version": "3.0.0" },
+        });
+        json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string()
+    };
+    let headers = |method: &'static str, name: Option<&'static str>| {
+        let mut headers = vec![
+            MCP_HEADERS[0],
+            MCP_HEADERS[1],
+            MCP_HEADERS[2],
+            ("MCP-Protocol-Version", "2026-07-28"),
+            ("Mcp-Method", method),
+        ];
+        headers.extend(name.map(|name| ("Mcp-Name", name)));
+        headers
+    };
+    let answered = |reply: Reply| {
+        assert_eq!(reply.status, 200, "{}", reply.body);
+        assert!(reply.body.contains("\"result\""), "{}", reply.body);
+    };
+
+    answered(
+        send(
+            port,
+            "/mcp",
+            &headers("server/discover", None),
+            &request("server/discover", json!({})),
+        )
+        .await,
+    );
+
+    assert!(seen.has_changed().expect("the server running"), "discover was not seen");
+    let clients = seen.borrow_and_update().clone();
+    assert_eq!(clients.len(), 1, "{clients:?}");
+    assert_eq!(clients[0].name, "claude-code");
+    assert_eq!(clients[0].title.as_deref(), Some("Claude Code"));
+    answered(
+        send(
+            port,
+            "/mcp",
+            &headers("tools/list", None),
+            &request("tools/list", json!({})),
+        )
+        .await,
+    );
+    answered(
+        send(
+            port,
+            "/mcp",
+            &headers("tools/call", Some("list_connections")),
+            &request("tools/call", json!({ "name": "list_connections", "arguments": {} })),
+        )
+        .await,
+    );
+    assert!(
+        !seen.has_changed().expect("the server running"),
+        "every call announced the client again"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -550,6 +705,28 @@ async fn a_write_where_clients_only_read_is_denied_without_asking() {
     assert!(text.starts_with("denied:"), "{text}");
     assert!(harness.host.asked.lock().expect("asked").is_empty());
     assert_eq!(order_count(&harness).await, 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_statement_that_reaches_a_file_is_refused_at_every_level_without_asking() {
+    let harness = harness().await;
+    harness.host.approves.store(true, Ordering::SeqCst);
+
+    for connection in [harness.ids.readable, harness.ids.writable] {
+        let (failed, text) = call(
+            &harness,
+            "execute_query",
+            json!({
+                "connection_id": connection.to_string(),
+                "query": "SELECT readfile('/etc/passwd')",
+            }),
+        )
+        .await;
+
+        assert!(failed);
+        assert!(text.starts_with("denied:"), "{text}");
+    }
+    assert!(harness.host.asked.lock().expect("asked").is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -834,4 +1011,322 @@ async fn a_write_stops_when_its_connection_closes_in_tablepro() {
     assert!(failed, "{text}");
     assert!(text.starts_with("not_connected:"), "{text}");
     assert_eq!(order_count(&harness).await, 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_engine_of_one_database_lists_none() {
+    let harness = harness().await;
+
+    let (failed, text) = call(
+        &harness,
+        "list_databases",
+        json!({ "connection_id": harness.ids.readable.to_string() }),
+    )
+    .await;
+    let (closed_failed, closed) = call(
+        &harness,
+        "list_databases",
+        json!({ "connection_id": harness.ids.closed.to_string() }),
+    )
+    .await;
+
+    assert!(failed);
+    assert!(text.starts_with("unsupported:"), "{text}");
+    assert!(closed_failed);
+    assert!(closed.starts_with("not_connected:"), "{closed}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_database_the_window_holds_answers_from_its_own_session() {
+    let harness = harness().await;
+    hold_archive(&harness).await;
+    let in_archive = |extra: &[(&str, &str)]| {
+        let mut arguments = json!({ "connection_id": harness.ids.readable.to_string(), "database": "archive" });
+        for &(name, value) in extra {
+            arguments[name] = json!(value);
+        }
+        arguments
+    };
+
+    let (_, tables) = call(&harness, "list_tables", in_archive(&[])).await;
+    let (schemas_failed, schemas) = call(&harness, "list_schemas", in_archive(&[])).await;
+    let (_, described) = call(&harness, "describe_table", in_archive(&[("table", "invoices")])).await;
+    let (_, ddl) = call(&harness, "get_table_ddl", in_archive(&[("table", "invoices")])).await;
+    let (_, counted) = call(
+        &harness,
+        "execute_query",
+        in_archive(&[("query", "SELECT count(*) AS n FROM invoices")]),
+    )
+    .await;
+    let (own_failed, _) = call(
+        &harness,
+        "describe_table",
+        json!({ "connection_id": harness.ids.readable.to_string(), "table": "invoices" }),
+    )
+    .await;
+
+    assert_eq!(parsed(&tables)["tables"][0]["name"], "invoices", "{tables}");
+    assert!(!schemas_failed, "{schemas}");
+    assert_eq!(parsed(&described)["columns"][1]["name"], "amount", "{described}");
+    assert!(
+        parsed(&ddl)["ddl"].as_str().is_some_and(|ddl| ddl.contains("invoices")),
+        "{ddl}"
+    );
+    assert_eq!(
+        parsed(&counted)["result_sets"][0]["rows"],
+        json!([{ "n": 2 }]),
+        "{counted}"
+    );
+    assert!(own_failed, "the connection's own database has no invoices");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_database_the_window_does_not_hold_is_refused_and_never_opened() {
+    let harness = harness().await;
+    let id = harness.ids.readable.to_string();
+
+    let (failed, text) = call(
+        &harness,
+        "list_tables",
+        json!({ "connection_id": id, "database": "elsewhere" }),
+    )
+    .await;
+    let (query_failed, query) = call(
+        &harness,
+        "execute_query",
+        json!({ "connection_id": id, "database": "elsewhere", "query": "SELECT 1" }),
+    )
+    .await;
+    let (empty_failed, empty) = call(&harness, "list_schemas", json!({ "connection_id": id, "database": "" })).await;
+
+    // SQLite reaches one database; a server of several answers not_connected (tool_context's tests).
+    assert!(failed);
+    assert!(text.starts_with("unsupported:"), "{text}");
+    assert!(query_failed);
+    assert!(query.starts_with("unsupported:"), "{query}");
+    assert!(empty_failed);
+    assert!(empty.starts_with("invalid_argument:"), "{empty}");
+    assert!(harness.host.recorded.lock().expect("recorded").is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn read_only_refuses_a_write_before_asking_even_at_read_and_write() {
+    let harness = harness().await;
+    harness.host.approves.store(true, Ordering::SeqCst);
+    let id = harness.ids.writable.to_string();
+
+    let (failed, text) = call(
+        &harness,
+        "execute_query",
+        json!({ "connection_id": id, "query": "DELETE FROM orders WHERE id = 1", "read_only": true }),
+    )
+    .await;
+    let (read_failed, read) = call(
+        &harness,
+        "execute_query",
+        json!({ "connection_id": id, "query": "SELECT count(*) AS n FROM orders", "read_only": true }),
+    )
+    .await;
+
+    assert!(failed);
+    assert!(text.starts_with("denied:"), "{text}");
+    assert!(harness.host.asked.lock().expect("asked").is_empty());
+    assert!(!read_failed, "{read}");
+    assert_eq!(parsed(&read)["result_sets"][0]["rows"], json!([{ "n": 3 }]));
+    assert_eq!(order_count(&harness).await, 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_write_in_another_database_names_it_to_the_user_and_runs_there() {
+    let harness = harness().await;
+    hold_archive(&harness).await;
+    harness.host.approves.store(true, Ordering::SeqCst);
+
+    let (failed, text) = call(
+        &harness,
+        "execute_query",
+        json!({
+            "connection_id": harness.ids.writable.to_string(),
+            "database": "archive",
+            "query": "DELETE FROM invoices WHERE id = 1",
+        }),
+    )
+    .await;
+
+    assert!(!failed, "{text}");
+    assert_eq!(parsed(&text)["rows_affected"], 1);
+    let asked = harness.host.asked.lock().expect("asked").clone();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].database.as_deref(), Some("archive"));
+    assert_eq!(order_count(&harness).await, 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_export_writes_each_format_under_the_row_cap() {
+    let harness = harness().await;
+    let export = |format: &str, max_rows: Option<u32>| {
+        let mut arguments = json!({
+            "connection_id": harness.ids.readable.to_string(),
+            "format": format,
+            "tables": ["orders"],
+        });
+        if let Some(rows) = max_rows {
+            arguments["max_rows"] = json!(rows);
+        }
+        call(&harness, "export_data", arguments)
+    };
+
+    let (csv_failed, csv) = export("csv", Some(2)).await;
+    let (_, json_text) = export("json", None).await;
+    let (_, sql) = export("sql", None).await;
+
+    assert!(!csv_failed, "{csv}");
+    let csv = parsed(&csv);
+    assert_eq!(csv["format"], "csv");
+    let first = &csv["exports"][0];
+    assert_eq!(first["table"], "orders");
+    assert_eq!(first["row_count"], 2);
+    assert_eq!(first["truncated"], true);
+    let lines: Vec<&str> = first["data"].as_str().expect("CSV text").lines().collect();
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    // The app's own CSV export neutralises formulas, which quotes every field.
+    assert_eq!(lines[0], r#""id","status","total""#);
+    assert!(lines[1].starts_with(r#""1","open","#), "{lines:?}");
+    let json_export = &parsed(&json_text)["exports"][0];
+    assert_eq!(json_export["truncated"], false);
+    let rows = parsed(json_export["data"].as_str().expect("JSON text"));
+    assert_eq!(rows.as_array().map(Vec::len), Some(3), "{rows}");
+    assert_eq!(rows[2]["status"], "paid");
+    let statements = parsed(&sql)["exports"][0]["data"]
+        .as_str()
+        .expect("SQL text")
+        .to_owned();
+    assert_eq!(statements.matches("INSERT INTO").count(), 3, "{statements}");
+    assert!(statements.contains("'paid'"), "{statements}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_export_outside_its_limits_is_refused() {
+    let harness = harness().await;
+    let id = harness.ids.readable.to_string();
+    let many: Vec<String> = (0..=tablepro_mcp::MAX_EXPORT_TABLES).map(|n| format!("t{n}")).collect();
+
+    let refusals = [
+        json!({ "connection_id": id, "format": "csv", "tables": ["orders"], "max_rows": 1001 }),
+        json!({ "connection_id": id, "format": "csv", "tables": [] }),
+        json!({ "connection_id": id, "format": "csv", "tables": many }),
+        json!({ "connection_id": id, "format": "xlsx", "tables": ["orders"] }),
+        json!({ "connection_id": id, "format": "csv", "tables": ["orders"], "path": "/tmp/out.csv" }),
+    ];
+    for arguments in refusals {
+        let (failed, text) = call(&harness, "export_data", arguments.clone()).await;
+
+        assert!(failed, "{arguments}");
+        assert!(text.starts_with("invalid_argument:"), "{arguments}: {text}");
+    }
+    let (missing_failed, missing) = call(
+        &harness,
+        "export_data",
+        json!({ "connection_id": id, "format": "json", "tables": ["orders", "nowhere"] }),
+    )
+    .await;
+    assert!(missing_failed, "{missing}");
+}
+
+// A SQLite session has one connection, so a read of its own waits while another call holds it.
+async fn connection_is_held(session: &Session) -> bool {
+    let table = TableRef::new(None, "orders");
+    let read = session.run(OperationKind::Metadata, |lease, call| {
+        let table = table.clone();
+        async move { Ok(lease.fetch_columns(&table, call).await?) }
+    });
+    tokio::time::timeout(Duration::from_millis(200), read).await.is_err()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_count_stops_when_its_client_goes_away() {
+    let harness = harness().await;
+    let writable = harness
+        .host
+        .session(harness.ids.writable)
+        .await
+        .expect("the writable session");
+    let readable = harness
+        .host
+        .session(harness.ids.readable)
+        .await
+        .expect("the readable session");
+    run_all(
+        &writable,
+        &["CREATE VIEW endless AS WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n) SELECT x FROM n"],
+    )
+    .await;
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "count_rows",
+            "arguments": { "connection_id": harness.ids.readable.to_string(), "table": "endless" },
+        },
+    })
+    .to_string();
+    let client = open_request(harness.server.address().port(), "/mcp", &MCP_HEADERS, &body).await;
+    let mut counting = false;
+    for _ in 0..50 {
+        if connection_is_held(&readable).await {
+            counting = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(counting, "the count never started");
+
+    drop(client);
+    let counted = tokio::time::timeout(Duration::from_secs(10), order_count(&harness)).await;
+
+    assert_eq!(
+        counted.ok(),
+        Some(3),
+        "the count kept the connection after its client left"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_answer_cuts_long_values_and_stops_at_its_size() {
+    let harness = harness().await;
+
+    let (failed, text) = call(
+        &harness,
+        "execute_query",
+        json!({
+            "connection_id": harness.ids.readable.to_string(),
+            "query": "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 200) \
+                SELECT x, replace(hex(zeroblob(100000)), '0', 'x') AS body FROM n",
+            "max_rows": 200,
+        }),
+    )
+    .await;
+
+    assert!(!failed, "{text}");
+    assert!(text.len() < tablepro_mcp::MAX_ANSWER_BYTES, "{} bytes", text.len());
+    let answer = parsed(&text);
+    let set = &answer["result_sets"][0];
+    let rows = set["rows"].as_array().expect("rows");
+    assert!(!rows.is_empty() && rows.len() < 200, "{} rows", rows.len());
+    assert_eq!(set["truncated"], true);
+    let cut = format!(
+        "{} [TablePro cut this value: 200000 bytes in all]",
+        "x".repeat(tablepro_mcp::MAX_VALUE_BYTES)
+    );
+    assert_eq!(rows[0]["body"].as_str(), Some(cut.as_str()));
+    let notes: Vec<&str> = answer["notes"]
+        .as_array()
+        .expect("notes")
+        .iter()
+        .filter_map(Json::as_str)
+        .collect();
+    assert!(notes.iter().any(|note| note.contains("64 KB")), "{notes:?}");
+    assert!(notes.iter().any(|note| note.contains("4 MB")), "{notes:?}");
+    assert!(!notes.iter().any(|note| note.contains("max_rows")), "{notes:?}");
 }

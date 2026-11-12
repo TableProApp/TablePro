@@ -51,7 +51,7 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
-      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: zizmor@${{ env.ZIZMOR_VERSION }}
 
@@ -109,35 +109,17 @@ jobs:
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version 0.0.0
 
       # pr-title.yml runs the same check on a title edit, which starts no CI run. The title is read now, not from the
-      # event, so a merge group or a re-run after a retitle sees the current one.
+      # event, so a re-run after a retitle sees the current one.
       - name: Check only a release pull request edits a CHANGELOG.md
+        if: github.event_name == 'pull_request'
         env:
-          EVENT: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          GROUP_REF: ${{ github.event.merge_group.head_ref }}
-          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "$EVENT" in
-            pull_request)
-              number="$PR_NUMBER"
-              base="$(git rev-parse HEAD^1)"
-              ;;
-            merge_group)
-              number="${GROUP_REF##*/pr-}"
-              number="${number%%-*}"
-              base="$GROUP_BASE"
-              ;;
-            *)
-              echo "Not a pull request or a merge group, so nothing to check."
-              exit 0
-              ;;
-          esac
-          case "$number" in '' | *[!0-9]*) echo "::error::no pull request number for this $EVENT"; exit 1 ;; esac
-          title="$(gh api "repos/$REPOSITORY/pulls/$number" --jq .title)"
-          scripts/ci/check-changelog-edits.sh "$base" "$title"
+          title="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq .title)"
+          scripts/ci/check-changelog-edits.sh "$(git rev-parse HEAD^1)" "$title"
 
       - name: Check docs/feature-parity/README.md matches features.yml
         run: python3 scripts/feature-parity.py --check
@@ -229,6 +211,7 @@ jobs:
           go mod verify
           go mod tidy -diff
           GOOS=darwin go vet ./...
+          go test ./...
           # go tool would build staticcheck for GOOS too, and Linux cannot run a darwin binary.
           go build -modfile=tools.mod -o "$RUNNER_TEMP/staticcheck" honnef.co/go/tools/cmd/staticcheck
           GOOS=darwin "$RUNNER_TEMP/staticcheck" ./...

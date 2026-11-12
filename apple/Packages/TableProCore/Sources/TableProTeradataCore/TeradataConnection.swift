@@ -1,7 +1,8 @@
 import Darwin
 import Foundation
 
-public final class TeradataConnection {
+// One queue drives it. Only `cancel()` comes from elsewhere, and what it reads and sends is under socketLock or wireLock.
+public final class TeradataConnection: @unchecked Sendable {
     private let config: TeradataConnectionConfig
     private let socketLock = NSLock()
     private var _socket: (any TeradataTransport)?
@@ -20,17 +21,87 @@ public final class TeradataConnection {
     private var gssSequence: UInt64 = 0
     private var confidentialityBypassed = false
 
-    public init(config: TeradataConnectionConfig) {
-        self.config = config
+    // Orders every post-logon send with the counters it consumes, since Stop sends its abort from another thread.
+    private let wireLock = NSLock()
+    // Under socketLock, which is never held across I/O.
+    private var _phase = RequestPhase.idle
+    private var _stopRequested = false
+    private var _operationActive = false
+    // The request a stop is waiting on the server for, so the stop's deadline closes nothing that came after it.
+    private var _stoppingRequest: UInt32?
+    // Under socketLock: the semantics the session runs with, and what its requests have left open.
+    private var _sessionMode: TeradataTransactionMode
+    private var _sessionModeSource: TeradataSessionModeSource
+    private var _transaction: TeradataTransactionTracker
+
+    // 3110: "The transaction was aborted by the user."
+    public static let userAbortCode = 3_110
+    private static let abortLockWait: TimeInterval = 0.25
+    // A server or network that stops answering would otherwise hold a stop for the whole 20-second receive timeout.
+    static let defaultStopGrace: TimeInterval = 5
+    private let stopGrace: TimeInterval
+    private let stopDeadlineQueue = DispatchQueue(label: "com.TablePro.teradata.stop-deadline")
+
+    private enum RequestPhase: Equatable {
+        case idle
+        case connecting
+        case awaitingResponse(UInt32)
+        case fetching(UInt32)
     }
 
-    init(config: TeradataConnectionConfig, transport: any TeradataTransport) {
+    private enum StopAction {
+        case nothing
+        case abort(UInt32)
+        case endOutput(UInt32)
+        case close
+    }
+
+    private enum Exchange {
+        case answered
+        case notSent
+        case outputEnded
+        // The consumer threw on a reply, and the request has ended on the wire.
+        case refused(any Error)
+    }
+
+    public init(config: TeradataConnectionConfig) {
+        self.config = config
+        stopGrace = Self.defaultStopGrace
+        let configured = Self.configuredMode(config.transactionMode)
+        _sessionMode = configured.mode
+        _sessionModeSource = configured.source
+        _transaction = TeradataTransactionTracker(mode: configured.mode)
+    }
+
+    init(
+        config: TeradataConnectionConfig,
+        transport: any TeradataTransport,
+        stopGrace: TimeInterval = TeradataConnection.defaultStopGrace
+    ) {
         self.config = config
         self._socket = transport
+        self.stopGrace = stopGrace
         confidentialityBypassed = true
+        let configured = Self.configuredMode(config.transactionMode)
+        _sessionMode = configured.mode
+        _sessionModeSource = configured.source
+        _transaction = TeradataTransactionTracker(mode: configured.mode)
+    }
+
+    private static func configuredMode(
+        _ mode: TeradataTransactionMode
+    ) -> (mode: TeradataTransactionMode, source: TeradataSessionModeSource) {
+        mode == .default ? (.default, .unresolved) : (mode, .configured)
     }
 
     public var isConnected: Bool { socket != nil }
+
+    // `.default` when the session could not say which semantics it runs with; it then gets Teradata's.
+    public var sessionTransactionMode: TeradataTransactionMode { socketLock.withLock { _sessionMode } }
+
+    public var sessionModeSource: TeradataSessionModeSource { socketLock.withLock { _sessionModeSource } }
+
+    public var transactionState: TeradataTransactionState { socketLock.withLock { _transaction.state } }
 
     // Set when a request failed partway, so the session it ran on was given up rather than ended.
     public var hasLostConnection: Bool { socketLock.withLock { _hasLostConnection } }
@@ -49,6 +120,7 @@ public final class TeradataConnection {
         socketLock.withLock {
             _socket = socket
             _hasLostConnection = false
+            _phase = .connecting
         }
         var established = false
         defer {
@@ -57,6 +129,7 @@ public final class TeradataConnection {
                 self.socket = nil
                 connectDeadline = nil
             }
+            socketLock.withLock { _phase = .idle }
         }
         serverIP = Self.resolveAddress(config.host) ?? config.host
         _ = try deadline.remainingMilliseconds()
@@ -66,16 +139,12 @@ public final class TeradataConnection {
         let params = try Td2Token.parseServerParams(serverToken)
         try runKeyExchange(params)
         try runConnect()
-
-        if let database = config.database, !database.isEmpty {
-            _ = try execute(TeradataSchemaQueries.setDatabase(database))
-        }
+        try prepareSession()
         _ = try deadline.remainingMilliseconds()
         established = true
     }
 
-    /// Keeps the transport's connect deadline active through the driver's required VERSION probe.
-    /// Only then may ordinary query I/O use the session's 20-second socket timeout.
+    // The connect deadline holds through the driver's VERSION probe; only then does query I/O get the 20-second timeout.
     public func finishConnecting() throws {
         guard let socket, let connectDeadline else {
             throw TeradataWireError.connectionFailed("not connecting")
@@ -85,31 +154,248 @@ public final class TeradataConnection {
         self.connectDeadline = nil
     }
 
+    // DEFAULT is the site's default, so the session is asked which one it got. An ANSI session opens a transaction
+    // with its first request and counts DATABASE as DDL, after which only COMMIT is legal, so the setup is committed.
+    func prepareSession() throws {
+        let (mode, source) = try resolveSessionMode()
+        var ranRequest = config.transactionMode == .default
+        if let database = config.database, !database.isEmpty {
+            _ = try execute(TeradataSchemaQueries.setDatabase(database))
+            ranRequest = true
+        }
+        if mode == .ansi, ranRequest {
+            _ = try execute(TeradataTransactionSQL.commit(.ansi))
+        }
+        socketLock.withLock {
+            _sessionMode = mode
+            _sessionModeSource = source
+            _transaction = TeradataTransactionTracker(mode: mode)
+        }
+    }
+
+    private func resolveSessionMode() throws -> (TeradataTransactionMode, TeradataSessionModeSource) {
+        guard config.transactionMode == .default else { return (config.transactionMode, .configured) }
+        if let mode = try probeSessionMode(
+            TeradataSessionModeProbe.helpSession, read: TeradataSessionModeProbe.mode(fromHelpSession:)
+        ) {
+            return (mode, .helpSession)
+        }
+        if let mode = try probeSessionMode(
+            TeradataSessionModeProbe.sessionInfo, read: TeradataSessionModeProbe.mode(fromSessionInfo:)
+        ) {
+            return (mode, .sessionInfoView)
+        }
+        return (.default, .unresolved)
+    }
+
+    // A refusal, or a reply this decoder cannot read, leaves the session usable for the next way of asking.
+    private func probeSessionMode(
+        _ sql: String,
+        read: (TeradataResultSet) -> TeradataTransactionMode?
+    ) throws -> TeradataTransactionMode? {
+        do {
+            return read(try execute(sql))
+        } catch TeradataWireError.cancelled {
+            throw TeradataWireError.cancelled
+        } catch {
+            guard isConnected else { throw error }
+            return nil
+        }
+    }
+
+    public func beginTransaction() throws {
+        guard let statement = TeradataTransactionSQL.begin(sessionTransactionMode) else { return }
+        _ = try execute(statement)
+    }
+
+    public func commitTransaction() throws {
+        _ = try execute(TeradataTransactionSQL.commit(sessionTransactionMode))
+    }
+
+    public func rollbackTransaction() throws {
+        do {
+            _ = try execute(TeradataTransactionSQL.rollback(sessionTransactionMode))
+        } catch TeradataWireError.server(let code, _) where TeradataTransactionSQL.rollbackAnswerCodes.contains(code) {
+            // The failure parcel a rollback answers with is its success.
+        }
+        socketLock.withLock { _transaction.rolledBack() }
+    }
+
+    // After DATABASE inside a transaction only the closing statement is legal (ANSI counts it as DDL; Teradata mode
+    // is not documented either way), so a switch never joins an open one, and in ANSI it is committed at once.
+    public func switchDatabase(to database: String) throws {
+        let (mode, state) = socketLock.withLock { (_sessionMode, _transaction.state) }
+        guard state != .open else { throw TeradataWireError.openTransactionBlocksDatabaseSwitch }
+        _ = try execute(TeradataSchemaQueries.setDatabase(database))
+        if mode == .ansi {
+            _ = try execute(TeradataTransactionSQL.commit(.ansi))
+        }
+    }
+
     public func execute(_ sql: String) throws -> TeradataResultSet {
+        var columns: [TeradataColumn] = []
+        var rows: [[TeradataValue]] = []
+        let activityCount = try perform(sql, onColumns: { columns = $0 }, onRows: { batch in
+            rows.append(contentsOf: batch)
+            return true
+        })
+        return TeradataResultSet(columns: columns, rows: rows, activityCount: activityCount)
+    }
+
+    // The reply that passes the cap ends the output on the server, so the rows past it are never fetched.
+    public func execute(_ sql: String, rowCap: Int?) throws -> TeradataCappedResult {
+        guard let rowCap, rowCap > 0 else {
+            return TeradataCappedResult(resultSet: try execute(sql), isTruncated: false)
+        }
+        var columns: [TeradataColumn] = []
+        var rows: [[TeradataValue]] = []
+        var isTruncated = false
+        let activityCount = try perform(sql, onColumns: { columns = $0 }, onRows: { batch in
+            guard rows.count + batch.count > rowCap else {
+                rows.append(contentsOf: batch)
+                return true
+            }
+            rows.append(contentsOf: batch.prefix(rowCap - rows.count))
+            isTruncated = true
+            return false
+        })
+        return TeradataCappedResult(
+            resultSet: TeradataResultSet(columns: columns, rows: rows, activityCount: activityCount),
+            isTruncated: isTruncated)
+    }
+
+    // `onColumns` runs once before any rows, with none for a request that has no result set; false from `onRows` ends the output.
+    public func stream(
+        _ sql: String,
+        onColumns: ([TeradataColumn]) throws -> Void,
+        onRows: ([[TeradataValue]]) throws -> Bool
+    ) throws {
+        _ = try perform(sql, onColumns: onColumns, onRows: onRows)
+    }
+
+    private func perform(
+        _ sql: String,
+        onColumns: ([TeradataColumn]) throws -> Void,
+        onRows: ([[TeradataValue]]) throws -> Bool
+    ) throws -> Int {
         guard socket != nil else { throw TeradataWireError.connectionFailed("not connected") }
+        let kinds = TeradataStatementKind.kinds(in: sql)
         let requestNumber = nextRequest()
         let body = TeradataMessages.optionsParcel(returnStatementInfo: false).encoded()
             + TeradataMessages.requestParcel(sql: sql).encoded()
             + TeradataMessages.responseParcel().encoded()
-        let parcels: [Parcel]
+        var reader = TeradataResultParser.Reader()
+        let outcome: Exchange
         do {
-            parcels = try exchange(body, requestNumber: requestNumber)
+            outcome = try exchange(body, requestNumber: requestNumber) { parcels in
+                try reader.read(parcels, onColumns: onColumns, onRows: onRows)
+            }
         } catch {
+            endRequest()
             // The reply still on its way would be read as the next request's.
             dropTransport()
             throw error
         }
-        return try TeradataResultParser.parse(parcels)
+        let stopped = endRequest()
+        switch outcome {
+        case .notSent:
+            throw TeradataWireError.cancelled
+        case .refused(let error):
+            guard case .server(let code, _)? = error as? TeradataWireError else {
+                // Refused by its reader rather than the server, so the request ran.
+                socketLock.withLock { _transaction.ran(kinds) }
+                throw error
+            }
+            let abortRolledBack = socketLock.withLock { () -> Bool in
+                let heldTransaction = _transaction.abortRollsBackTransaction
+                _transaction.failed(kinds, code: code)
+                return heldTransaction
+            }
+            if stopped, code == Self.userAbortCode {
+                throw abortRolledBack ? TeradataWireError.rolledBackByStop : TeradataWireError.cancelled
+            }
+            throw error
+        case .outputEnded where stopped:
+            socketLock.withLock { _transaction.ran(kinds) }
+            throw TeradataWireError.cancelled
+        case .answered, .outputEnded:
+            socketLock.withLock { _transaction.ran(kinds) }
+            try reader.finish(onColumns: onColumns)
+            return reader.activityCount
+        }
     }
 
-    private func exchange(_ body: [UInt8], requestNumber: UInt32) throws -> [Parcel] {
-        try sendEncrypted(kind: .start, body: body, requestNumber: requestNumber)
-        var parcels: [Parcel] = []
+    private func exchange(
+        _ body: [UInt8],
+        requestNumber: UInt32,
+        consume: ([Parcel]) throws -> Bool
+    ) throws -> Exchange {
+        let sent = try wireLock.withLock { () -> Bool in
+            // A stop that landed before the request went out refuses it, and the session stays as it was.
+            let refused = socketLock.withLock { () -> Bool in
+                guard !_stopRequested else { return true }
+                _phase = .awaitingResponse(requestNumber)
+                return false
+            }
+            guard !refused else { return false }
+            try sendEncryptedLocked(kind: .start, body: body, requestNumber: requestNumber)
+            return true
+        }
+        guard sent else { return .notSent }
         while true {
             let batch = try readReply()
-            parcels.append(contentsOf: batch)
-            if Self.responseIsComplete(batch) { return parcels }
+            let complete = Self.responseIsComplete(batch)
+            // Once the first reply is out an abort no longer takes effect, so a stop ends the output instead.
+            socketLock.withLock { _phase = .fetching(requestNumber) }
+            let wantsMore: Bool
+            do {
+                wantsMore = try consume(batch)
+            } catch {
+                // Ending the output keeps the session; a failed end leaves the rest to be read as the next request's.
+                if !complete, (try? endOutput(requestNumber: requestNumber)) == nil { throw error }
+                return .refused(error)
+            }
+            if complete { return .answered }
+            if !wantsMore || socketLock.withLock({ _stopRequested }) {
+                try endOutput(requestNumber: requestNumber)
+                return .outputEnded
+            }
             try sendContinue(requestNumber: requestNumber)
+        }
+    }
+
+    // The Cancel parcel in place of the Response parcel deletes the request's spool, and the server answers with
+    // End Request. One that does not throws, and the caller gives the transport up.
+    private func endOutput(requestNumber: UInt32) throws {
+        try sendEncrypted(kind: .cont, body: TeradataMessages.cancelParcel().encoded(), requestNumber: requestNumber)
+        guard Self.responseIsComplete(try readReply()) else {
+            throw TeradataWireError.malformed("the server kept answering a cancelled request")
+        }
+    }
+
+    // A caller's operation, so a stop that lands before its request goes out still reaches it.
+    public func beginOperation() {
+        socketLock.withLock {
+            _operationActive = true
+            _stopRequested = false
+        }
+    }
+
+    public func endOperation() {
+        socketLock.withLock {
+            _operationActive = false
+            _stopRequested = false
+        }
+    }
+
+    @discardableResult
+    private func endRequest() -> Bool {
+        socketLock.withLock {
+            let stopped = _stopRequested
+            _phase = .idle
+            _stopRequested = false
+            _stoppingRequest = nil
+            return stopped
         }
     }
 
@@ -129,19 +415,80 @@ public final class TeradataConnection {
             return
         }
         if sessionNumber != 0 {
-            let message = LanMessage(
-                kind: .logoff, body: TeradataMessages.logoffParcel().encoded(),
-                sessionNumber: sessionNumber, byteVar: 0,
-                authentication: TeradataMessages.authBytes(nextMessage()), hostCharSet: charsetCode)
-            try? socket.send(message.encoded())
+            wireLock.withLock {
+                let message = LanMessage(
+                    kind: .logoff, body: TeradataMessages.logoffParcel().encoded(),
+                    sessionNumber: sessionNumber, byteVar: 0,
+                    authentication: TeradataMessages.authBytes(nextMessage()), hostCharSet: charsetCode)
+                try? socket.send(message.encoded())
+            }
         }
         socket.close()
         self.socket = nil
         connectDeadline = nil
     }
 
+    // A request the server is still working on is aborted on the session, which rolls back its transaction, answers it
+    // with failure 3110 and stays logged on. Past the first reply the request's own loop ends the output instead, and a
+    // request not yet sent is refused. A connect has no request to stop, so it gives the transport up, as does an
+    // abort that cannot be sent or a server that has not ended the request within the grace.
     public func cancel() {
-        socket?.cancel()
+        let action: StopAction = socketLock.withLock {
+            switch _phase {
+            case .idle:
+                if _operationActive { _stopRequested = true }
+                return .nothing
+            case .connecting:
+                return .close
+            case .awaitingResponse(let request):
+                _stopRequested = true
+                _stoppingRequest = request
+                return .abort(request)
+            case .fetching(let request):
+                _stopRequested = true
+                _stoppingRequest = request
+                return .endOutput(request)
+            }
+        }
+        switch action {
+        case .nothing:
+            return
+        case .close:
+            socket?.cancel()
+        case .abort(let request):
+            guard sendAbort(for: request) else {
+                socket?.cancel()
+                return
+            }
+            closeUnlessEnded(request)
+        case .endOutput(let request):
+            closeUnlessEnded(request)
+        }
+    }
+
+    private func closeUnlessEnded(_ request: UInt32) {
+        stopDeadlineQueue.asyncAfter(deadline: .now() + stopGrace) { [weak self] in
+            guard let self else { return }
+            // Shut down under the lock, so a request that ended meanwhile cannot hand the transport to a new one.
+            socketLock.withLock {
+                guard _stoppingRequest == request else { return }
+                _socket?.cancel()
+            }
+        }
+    }
+
+    // A long start still going out holds the lock, and the caller may be the main thread.
+    private func sendAbort(for request: UInt32) -> Bool {
+        guard wireLock.lock(before: Date(timeIntervalSinceNow: Self.abortLockWait)) else { return false }
+        defer { wireLock.unlock() }
+        // Past the first reply the request's own loop ends the output; a request already answered needs nothing.
+        guard socketLock.withLock({ _phase == .awaitingResponse(request) }) else { return true }
+        do {
+            try sendEncryptedLocked(kind: .abort, body: TeradataMessages.abortParcel().encoded(), requestNumber: request)
+            return true
+        } catch {
+            return false
+        }
     }
 
     static func responseIsComplete(_ parcels: [Parcel]) -> Bool {
@@ -252,6 +599,12 @@ public final class TeradataConnection {
     }
 
     private func sendEncrypted(kind: MessageKind, body: [UInt8], requestNumber: UInt32) throws {
+        try wireLock.withLock {
+            try sendEncryptedLocked(kind: kind, body: body, requestNumber: requestNumber)
+        }
+    }
+
+    private func sendEncryptedLocked(kind: MessageKind, body: [UInt8], requestNumber: UInt32) throws {
         let message = LanMessage(
             kind: kind, body: body, sessionNumber: sessionNumber, requestNumber: requestNumber,
             byteVar: 0, authentication: TeradataMessages.authBytes(nextMessage()),
@@ -339,4 +692,10 @@ public final class TeradataConnection {
         guard inet_ntop(AF_INET, &inAddr, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil else { return nil }
         return String(cString: buffer)
     }
+}
+
+public struct TeradataCappedResult: Sendable {
+    public let resultSet: TeradataResultSet
+    // The answer held more rows than the cap, and its output was ended there.
+    public let isTruncated: Bool
 }

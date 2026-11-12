@@ -47,7 +47,8 @@ public enum AWSIAMTokenTarget: Sendable, Equatable {
                 override: fields["awsRDSEndpoint"],
                 defaultPort: defaultPort
             )
-            guard let region = Self.nonEmpty(fields["awsRegion"]) ?? RDSEndpoint.region(forHost: endpoint.host) else {
+            // The endpoint's own name decides: a token scoped to another region is refused, whatever the field says.
+            guard let region = AWSEndpointHost.rdsRegion(forHost: endpoint.host) ?? Self.nonEmpty(fields["awsRegion"]) else {
                 throw AWSAuthError.regionUnknown(host: endpoint.host)
             }
             return RDSAuthTokenGenerator.generateToken(

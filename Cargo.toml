@@ -4,6 +4,7 @@ members = [
     "core/crates/account",
     "core/crates/ai",
     "core/crates/bindgen",
+    "core/crates/cli",
     "core/crates/core",
     "core/crates/ffi",
     "core/crates/foreign-import",
@@ -36,6 +37,7 @@ publish = false
 [workspace.dependencies]
 tablepro-account = { path = "core/crates/account" }
 tablepro-ai = { path = "core/crates/ai" }
+tablepro-cli = { path = "core/crates/cli" }
 tablepro-core = { path = "core/crates/core" }
 tablepro-driver-cassandra = { path = "core/crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "core/crates/drivers/clickhouse" }
@@ -59,6 +61,8 @@ async-trait = "0.1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
+# Edits a TOML config file and keeps its comments and layout.
+toml_edit = "0.25.15"
 sqlparser = { version = "0.63", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process"] }
 tokio-util = { version = "0.7", default-features = false, features = ["codec", "rt"] }

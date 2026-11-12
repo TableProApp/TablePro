@@ -71,7 +71,20 @@ internal enum VersionHistoryFormatting {
             return String(format: String(localized: "Keeps the last %d versions on this Mac."), count)
         case .showsLatestCommits(let count):
             return String(format: String(localized: "Showing the %d most recent commits."), count)
+        case .keepsRecentVersions(let count, let days):
+            return String(
+                format: String(localized: "Keeps up to %1$d versions from the last %2$d days on this Mac."),
+                count,
+                days
+            )
         }
+    }
+
+    // The Revert To menu lists only past versions, so each row leads with its date.
+    static func menuTitle(for entry: VersionHistoryEntry) -> String {
+        guard let date = dateText(for: entry) else { return title(for: entry) }
+        guard let summary = entry.summary, !summary.isBlank else { return date }
+        return String(format: String(localized: "%1$@ (%2$@)"), date, summary)
     }
 
     private static func dateText(for entry: VersionHistoryEntry) -> String? {

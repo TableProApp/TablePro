@@ -56,7 +56,13 @@ public struct ExportDataTool: MCPToolImplementation {
         properties: [
             "format": MCPToolSchema.string(String(localized: "Format that was produced")),
             "rows_exported": MCPToolSchema.integer(String(localized: "Total rows written")),
-            "is_truncated": MCPToolSchema.boolean(String(localized: "Whether the row limit clipped any export")),
+            "is_truncated": MCPToolSchema.boolean(
+                String(localized: "Whether the row limit or the answer's size limit left rows out of any export")
+            ),
+            "notes": MCPToolSchema.array(
+                String(localized: "Why rows were left out, when the size limit left them out"),
+                of: MCPToolSchema.stringItem
+            ),
             "path": MCPToolSchema.string(String(localized: "File that was written, when output_path was given")),
             "exports": MCPToolSchema.array(
                 String(localized: "One entry per query or table"),
@@ -64,7 +70,9 @@ public struct ExportDataTool: MCPToolImplementation {
                     properties: [
                         "label": MCPToolSchema.string(String(localized: "Table name, or 'query'")),
                         "row_count": MCPToolSchema.integer(String(localized: "Rows in this export")),
-                        "is_truncated": MCPToolSchema.boolean(String(localized: "Whether this export was clipped")),
+                        "is_truncated": MCPToolSchema.boolean(
+                            String(localized: "Whether the row limit or the answer's size limit left rows out")
+                        ),
                         "data": MCPToolSchema.string(
                             String(localized: "Exported text. Omitted when the export was written to a file.")
                         )
@@ -168,6 +176,8 @@ public struct ExportDataTool: MCPToolImplementation {
         var documents: [String] = []
         var totalRows = 0
         var anyTruncated = false
+        // Every table of the call shares one answer, so each gets what the ones before it left.
+        var budget = ExternalAnswerBudget.export
 
         for (statement, classification) in zip(statements, classifications) {
             let planned: OperationStatement
@@ -191,14 +201,18 @@ public struct ExportDataTool: MCPToolImplementation {
                 services: services
             )
 
-            let result = try await ToolQueryExecutor.executeResultAndLog(
+            let read = try await ToolQueryExecutor.executeResultAndLog(
                 services: services,
                 operation: operation,
                 maxRows: maxRows + 1,
                 timeoutSeconds: timeoutSeconds,
                 context: context,
-                secrets: meta.redactionSecrets
+                secrets: meta.redactionSecrets,
+                masking: statement.masking,
+                budget: budget
             )
+            let result = read.result
+            budget = read.budget
 
             let rowCount = min(result.rows.count, maxRows)
             let isTruncated = result.rows.count > maxRows || result.isTruncated
@@ -232,6 +246,10 @@ public struct ExportDataTool: MCPToolImplementation {
             "is_truncated": .bool(anyTruncated),
             "exports": .array(exports)
         ]
+        let notes = budget.notes
+        if !notes.isEmpty {
+            payload["notes"] = .array(notes.map(JsonValue.string))
+        }
 
         guard let destination else {
             return .structured(.object(payload))
@@ -260,6 +278,7 @@ public struct ExportDataTool: MCPToolImplementation {
     struct ExportStatement {
         let label: String
         let sql: String
+        var masking: ExternalRowMasking = .byOrigin
     }
 
     static func buildStatements(
@@ -294,7 +313,8 @@ public struct ExportDataTool: MCPToolImplementation {
                 .joined(separator: ".")
             return ExportStatement(
                 label: table,
-                sql: limitedSelect(from: quoted, limit: maxRows + 1, style: dialect.autoLimitStyle)
+                sql: limitedSelect(from: quoted, limit: maxRows + 1, style: dialect.autoLimitStyle),
+                masking: .table(table)
             )
         }
     }

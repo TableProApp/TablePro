@@ -16,6 +16,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     private struct ConnectAttempt {
         let generation: UInt64
         let gate: ConnectionSingleResumeGate<Void>
+        var deadline: ContinuousClock.Instant
         var task: Task<Void, Never>?
         var isAbandoned = false
     }
@@ -30,13 +31,15 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         /// Read from the driver when its connect is adopted, so it outlives the `disconnect()` Test Connection
         /// makes before anyone asks for it.
         var connectionWarning: String?
+        // Only a yes is kept, so the driver's own code is not asked again on every read.
+        var buildsBrowseQueries = false
     }
 
     let connection: DatabaseConnection
     let effectiveQueryTimeoutSeconds: Int
     private let pluginDriver: any PluginDatabaseDriver
     // The Vault lease this driver signed in with. Its database user goes away when it ends.
-    private let credentialLease: VaultLease?
+    private let credentialLease: VaultLeaseHold?
     private let connectionDeadline: ConnectionDeadline
     private let timeoutEndpoint: ConnectionTimeoutEndpoint
     private let requiresHostDeadline: Bool
@@ -60,15 +63,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var schemaPluginDriver: any PluginDatabaseDriver { pluginDriver }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? {
-        // Expose plugin driver for query building dispatch if it implements the hooks.
-        // SQL drivers without custom pagination (MySQL, PostgreSQL, etc.) return nil
-        // from buildBrowseQuery and use standard SQL query rewriting instead.
-        guard pluginDriver.buildBrowseQuery(
-            table: "_probe", sortColumns: [], columns: [], limit: 1, offset: 0
-        ) != nil else {
-            return nil
-        }
+        if state.withLock({ $0.buildsBrowseQueries }) { return pluginDriver }
+        guard Self.buildsBrowseQueries(pluginDriver) else { return nil }
+        state.withLock { $0.buildsBrowseQueries = true }
         return pluginDriver
+    }
+
+    // Asks the schema-aware overload: its default forwards to the older one, so it answers for a driver
+    // that implements either. A driver that leaves browsing to the app returns nil from both.
+    static func buildsBrowseQueries(_ driver: any PluginDatabaseDriver) -> Bool {
+        driver.buildBrowseQuery(
+            table: "_probe", schema: nil, sortColumns: [], columns: [], limit: 1, offset: 0
+        ) != nil
     }
 
     var rowWritingPluginDriver: (any PluginDatabaseDriver)? {
@@ -91,50 +97,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginDriverAdapter")
 
-    private static let iso8601Formatter = OSAllocatedUnfairLock(
-        uncheckedState: {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return formatter
-        }()
-    )
-
-    static func cellValue(for parameter: Any?) -> PluginCellValue {
-        guard let parameter else { return .null }
-        if let data = parameter as? Data { return .bytes(data) }
-        if let f = parameter as? Float {
-            guard f.isFinite else { return .null }
-            return .text(NumberText.text(for: f))
-        }
-        if let f = parameter as? any BinaryFloatingPoint {
-            let d = Double(f)
-            guard d.isFinite else { return .null }
-            return .text(NumberText.text(for: d))
-        }
-        return .text(stringValue(for: parameter))
-    }
-
-    private static func stringValue(for parameter: Any) -> String {
-        switch parameter {
-        case let s as String:
-            return s
-        case let b as Bool:
-            return b ? "1" : "0"
-        case let i as any BinaryInteger:
-            return String(i)
-        case let f as any BinaryFloatingPoint:
-            return NumberText.text(for: Double(f))
-        case let d as Date:
-            return Self.iso8601Formatter.withLockUnchecked { $0.string(from: d) }
-        case let data as Data:
-            return data.hexEncoded
-        case let uuid as UUID:
-            return uuid.uuidString
-        default:
-            return String(describing: parameter)
-        }
-    }
-
     init(
         connection: DatabaseConnection,
         pluginDriver: any PluginDatabaseDriver,
@@ -142,7 +104,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         timeoutEndpoint: ConnectionTimeoutEndpoint? = nil,
         effectiveQueryTimeoutSeconds: Int? = nil,
         requiresHostDeadline: Bool? = nil,
-        credentialLease: VaultLease? = nil
+        credentialLease: VaultLeaseHold? = nil
     ) {
         self.connection = connection
         self.pluginDriver = pluginDriver
@@ -196,7 +158,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             let generation = state.nextConnectGeneration
             state.status = .connecting
             state.connectionWarning = nil
-            state.connectAttempt = ConnectAttempt(generation: generation, gate: gate)
+            state.connectAttempt = ConnectAttempt(generation: generation, gate: gate, deadline: connectionDeadline.instant)
             return generation
         }
         guard let generation else {
@@ -210,12 +172,17 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
         let operation = Task { [self] in
             do {
-                try await pluginDriver.connect(reportingStage: guardedReport)
+                try await connectSigningIn(generation: generation, report: guardedReport)
+                credentialLease?.signInAccepted()
                 let adopted = gate.resume(with: .success(()))
                 finishConnect(generation: generation, succeeded: true, adopted: adopted, error: nil)
             } catch {
                 // Every sign-in fails here, pooled and per-database ones included, so a rejected reused password goes.
                 PasswordCommandCache.shared.forget(connectionId: connection.id)
+                // A user refused through the whole window is still on its way: the server may load it by the next try.
+                if !(error is VaultUserNotLoaded), ConnectionFailureClassifier.isAuthenticationFailure(error) {
+                    credentialLease?.signInRefused(credentials: VaultLeaseHold.isRefusedSignIn(error))
+                }
                 let adopted = gate.resume(with: .failure(error))
                 finishConnect(generation: generation, succeeded: false, adopted: adopted, error: error)
             }
@@ -225,10 +192,15 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let timeout: Task<Void, Never>?
         if requiresHostDeadline {
             timeout = Task { [self] in
-                do {
-                    try await ContinuousClock().sleep(until: connectionDeadline.instant)
-                } catch {
-                    return
+                var instant = connectionDeadline.instant
+                while true {
+                    do {
+                        try await ContinuousClock().sleep(until: instant)
+                    } catch {
+                        return
+                    }
+                    guard let later = hostDeadline(of: generation), later > instant else { break }
+                    instant = later
                 }
                 abandonConnect(
                     generation: generation,
@@ -293,6 +265,39 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         guard action.1 else { return }
         pluginDriver.disconnect()
         state.withLock { $0.disconnectInProgress = false }
+    }
+
+    // A database can refuse a user Vault created moments ago until it loads it, so a young lease dials again.
+    private func connectSigningIn(generation: UInt64, report: @escaping ConnectionStageReporter) async throws {
+        guard let credentialLease else {
+            try await pluginDriver.connect(reportingStage: report)
+            return
+        }
+        try await credentialLease.dial(
+            { try await pluginDriver.connect(reportingStage: report) },
+            waiting: { delay in
+                // The wait is the database's, not the connect's, so the host deadline moves out by it.
+                moveHostDeadline(of: generation, past: delay)
+                report(.custom(String(localized: "Waiting for the database to accept the new Vault user")))
+            },
+            isCurrent: { isCurrentConnect(generation) }
+        )
+    }
+
+    private func moveHostDeadline(of generation: UInt64, past wait: Duration) {
+        let instant = ContinuousClock.now + wait + .seconds(connectionDeadline.configuredSeconds)
+        state.withLock { state in
+            guard var attempt = state.connectAttempt, attempt.generation == generation else { return }
+            attempt.deadline = max(attempt.deadline, instant)
+            state.connectAttempt = attempt
+        }
+    }
+
+    private func hostDeadline(of generation: UInt64) -> ContinuousClock.Instant? {
+        state.withLock { state in
+            guard let attempt = state.connectAttempt, attempt.generation == generation else { return nil }
+            return attempt.deadline
+        }
     }
 
     private func attach(_ task: Task<Void, Never>, to generation: UInt64) {
@@ -923,6 +928,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     var providesBulkColumnFetch: Bool { pluginDriver.providesBulkColumnFetch }
 
+    var fetchesAllColumnsInOneRequest: Bool { pluginDriver.fetchesAllColumnsInOneRequest }
+
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
         return pluginResult.mapValues { $0.map(ColumnInfo.init) }
@@ -1312,7 +1319,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Result Mapping
 
-    private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
+    func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
         let columnTypes = mapColumnTypes(
             rawTypeNames: pluginResult.columnTypeNames,
             classificationHints: PluginResultColumnHints.hints(
@@ -1335,6 +1342,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
         result.rowLocators = pluginResult.rowLocators
+        result.columnOrigins = pluginResult.columnOrigins
         result.exportDocuments = pluginResult.exportDocuments
         result.absentCells = pluginResult.absentCells ?? [:]
         return result
@@ -1433,7 +1441,7 @@ extension PluginDriverAdapter {
         let pluginResult = try await pluginDriver.executeParameterized(
             query: query,
             parameters: parameters.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context)
+            context: statementContext(query, approvedAs: context, parameters: parameters)
         )
         return mapQueryResult(pluginResult)
     }
@@ -1450,19 +1458,20 @@ extension PluginDriverAdapter {
             query: query,
             rowCap: rowCap,
             parameters: parameters?.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context)
+            context: statementContext(query, approvedAs: context, parameters: parameters)
         )
         return mapQueryResult(pluginResult)
     }
 
-    fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext) -> PluginStatementContext {
+    func statementContext(_ query: String, approvedAs caller: PluginStatementContext, parameters: [Any?]? = nil) -> PluginStatementContext {
         var context = PluginStatementContext.statement(query, databaseType: connection.type, approvedAs: caller)
         context.lexicalFeatures = sessionLexicalFeatures
+        context.parameterKinds = TypedParameterValue.kinds(of: parameters) ?? context.parameterKinds
         return context
     }
 
     // A driver built before `.statementPolicy` would run an external write the approval did not cover.
-    fileprivate func refuseUnenforcedPolicy(_ context: PluginStatementContext) throws {
+    func refuseUnenforcedPolicy(_ context: PluginStatementContext) throws {
         guard context.origin == .external, !context.readOnly,
               !context.allowsDestructive || !context.allowsServerCode,
               PluginMetadataRegistry.shared.snapshot(for: connection.type)?.capabilities.statementPolicyInDriver == true,

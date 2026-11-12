@@ -88,6 +88,7 @@ internal struct EtcdRangeRequest: Encodable {
     var sortTarget: String?
     var keysOnly: Bool?
     var countOnly: Bool?
+    var revision: Int64?
 
     private enum CodingKeys: String, CodingKey {
         case key
@@ -97,10 +98,12 @@ internal struct EtcdRangeRequest: Encodable {
         case sortTarget = "sort_target"
         case keysOnly = "keys_only"
         case countOnly = "count_only"
+        case revision
     }
 }
 
 internal struct EtcdRangeResponse: Decodable {
+    let header: EtcdResponseHeader?
     let kvs: [EtcdKeyValue]?
     let count: String?
     let more: Bool?
@@ -559,6 +562,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     func deleteRequest(_ req: EtcdDeleteRequest) async throws -> EtcdDeleteResponse {
         try await post(path: apiPath("kv/deleterange"), body: req)
+    }
+
+    func txnRequest(_ req: EtcdTxnRequest) async throws -> EtcdTxnResponse {
+        try await post(path: apiPath("kv/txn"), body: req)
     }
 
     // MARK: - Lease Operations

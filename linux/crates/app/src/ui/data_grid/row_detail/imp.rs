@@ -47,7 +47,11 @@ pub struct RowDetailPane {
     #[template_child]
     pub edited_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
-    pub field_label: TemplateChild<gtk::Label>,
+    pub editor_dock: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub editor_tools: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub editor_box: TemplateChild<gtk::Box>,
     #[template_child]
     pub choice_button: TemplateChild<gtk::MenuButton>,
     #[template_child]
@@ -71,7 +75,7 @@ pub struct RowDetailPane {
     #[template_child]
     pub clock_set: TemplateChild<gtk::Button>,
     #[template_child]
-    pub value_menu_button: TemplateChild<gtk::MenuButton>,
+    pub value_menu: TemplateChild<gio::Menu>,
     #[template_child]
     pub value_scroller: TemplateChild<gtk::ScrolledWindow>,
     #[template_child]

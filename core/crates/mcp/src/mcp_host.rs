@@ -15,6 +15,11 @@ use uuid::Uuid;
 pub trait McpHost: Send + Sync + 'static {
     async fn session(&self, id: Uuid) -> Option<Arc<Session>>;
 
+    // Only a session the window already holds beside the connection: a sibling belongs to it (ADR 0030).
+    async fn session_in(&self, _id: Uuid, _database: &str) -> Option<Arc<Session>> {
+        None
+    }
+
     async fn open_connections(&self) -> Vec<Uuid>;
 
     /// Open the saved connection in a window, as the picker does, and
@@ -55,6 +60,8 @@ impl std::fmt::Debug for OpenOutcome {
 pub struct WriteApproval {
     pub connection_id: Uuid,
     pub connection_name: String,
+    // The question has to name a database that is not the connection's own.
+    pub database: Option<String>,
     pub sql: String,
     /// Drops, empties or rewrites a whole table.
     pub destructive: bool,

@@ -120,7 +120,7 @@ struct GridFindMatcher {
 
 @MainActor
 enum GridFindEngine {
-    struct Source {
+    struct Source: Sendable {
         let rows: TableRows
         let order: DataGridRowOrder
         let columns: DataGridColumnSet
@@ -129,9 +129,48 @@ enum GridFindEngine {
         var revealsInvisibleCharacters = false
     }
 
-    struct Result: Equatable {
+    struct Result: Equatable, Sendable {
         var matches: [GridFindState.Match] = []
         var problem: String?
+    }
+
+    private enum Plan {
+        case answered(Result)
+        case scan(GridFindMatcher, columns: [DataGridColumn])
+    }
+
+    nonisolated static let cancellationInterval = 4_096
+
+    // Everything a loaded-rows search read besides the rows themselves, the settings the cell text follows included.
+    struct Basis: Equatable {
+        let term: String
+        let options: GridFindState.Options
+        let columns: DataGridColumnSet
+        let displayFormats: [ValueDisplayFormat?]
+        let databaseType: DatabaseType?
+        let revealsInvisibleCharacters: Bool
+        let valueFilter: GridValueFilterState
+        let gridSettings: DataGridSettings
+        let timeZoneGeneration: Int
+
+        init(
+            term: String,
+            options: GridFindState.Options,
+            source: Source,
+            valueFilter: GridValueFilterState,
+            gridSettings: DataGridSettings,
+            timeZoneGeneration: Int
+        ) {
+            self.term = term
+            self.options = options
+            columns = source.columns
+            displayFormats = source.displayFormats
+            databaseType = source.databaseType
+            revealsInvisibleCharacters = source.revealsInvisibleCharacters
+            self.valueFilter = valueFilter
+            self.gridSettings = gridSettings
+            self.timeZoneGeneration = timeZoneGeneration
+        }
     }
 
     struct Replacement: Equatable {
@@ -141,7 +180,7 @@ enum GridFindEngine {
         var cells: Int { edits.count }
     }
 
-    static var invalidPatternProblem: String {
+    nonisolated static var invalidPatternProblem: String {
         String(localized: "Invalid regular expression")
     }
 
@@ -155,22 +194,39 @@ enum GridFindEngine {
     }
 
     static func search(_ term: String, options: GridFindState.Options, in source: Source) -> Result {
-        let matcher: GridFindMatcher?
-        do {
-            matcher = try GridFindMatcher.make(term: term, options: options)
-        } catch {
-            return Result(problem: invalidPatternProblem)
+        search(term, options: options, in: source, dates: DateFormattingService.shared.renderer, isCancelled: { false }) ?? Result()
+    }
+
+    // Nil once cancelled, which is asked every 4,096 cells.
+    nonisolated static func search(
+        _ term: String,
+        options: GridFindState.Options,
+        in source: Source,
+        dates: DateDisplayRenderer,
+        isCancelled: () -> Bool
+    ) -> Result? {
+        let matcher: GridFindMatcher
+        let searched: [DataGridColumn]
+        switch plan(term, options: options, in: source) {
+        case .answered(let result):
+            return result
+        case .scan(let planned, let columns):
+            matcher = planned
+            searched = columns
         }
-        guard let matcher else { return Result() }
-        let searched = searchedColumns(options: options, in: source)
-        guard !searched.isEmpty else { return Result() }
 
         var found: [GridFindState.Match] = []
+        var budget = 0
         let rowCount = source.order.count(in: source.rows)
         for displayRow in 0..<rowCount {
+            if budget <= 0 {
+                if isCancelled() { return nil }
+                budget = cancellationInterval
+            }
+            budget -= searched.count
             guard let row = source.order.row(at: displayRow, in: source.rows) else { continue }
             for column in searched {
-                guard let text = searchableText(in: row, column: column, source: source),
+                guard let text = searchableText(in: row, column: column, source: source, dates: dates),
                       matcher.matches(text) else { continue }
                 found.append(GridFindState.Match(rowID: row.id, columnID: column.id))
             }
@@ -178,8 +234,106 @@ enum GridFindEngine {
         return Result(matches: found)
     }
 
+    // A renderer is never shared across threads, so this one builds its own from the format.
+    @concurrent
+    nonisolated static func searchOffTheMainActor(
+        _ term: String,
+        options: GridFindState.Options,
+        in source: Source,
+        dateFormat: DateFormatOption
+    ) async -> Result? {
+        search(
+            term,
+            options: options,
+            in: source,
+            dates: DateDisplayRenderer(format: dateFormat),
+            isCancelled: { Task.isCancelled }
+        )
+    }
+
+    // What a search answers without reading a cell: an invalid pattern, a term that finds nothing, no column to search.
+    nonisolated static func resultWithoutScanning(_ term: String, options: GridFindState.Options, in source: Source) -> Result? {
+        guard case .answered(let result) = plan(term, options: options, in: source) else { return nil }
+        return result
+    }
+
+    nonisolated private static func plan(_ term: String, options: GridFindState.Options, in source: Source) -> Plan {
+        let matcher: GridFindMatcher?
+        do {
+            matcher = try GridFindMatcher.make(term: term, options: options)
+        } catch {
+            return .answered(Result(problem: invalidPatternProblem))
+        }
+        guard let matcher else { return .answered(Result()) }
+        let searched = searchedColumns(options: options, in: source)
+        guard !searched.isEmpty else { return .answered(Result()) }
+        return .scan(matcher, columns: searched)
+    }
+
+    // What `search` finds after only these cells (by data index) were written and these rows added, others having
+    // left, on the same basis. Nil when the term cannot match, which `search` answers as cheaply.
+    static func refreshed(
+        _ matches: [GridFindState.Match],
+        writtenCells: [RowID: IndexSet],
+        addedRows: [RowID],
+        term: String,
+        options: GridFindState.Options,
+        in source: Source
+    ) -> Result? {
+        guard let matcher = try? GridFindMatcher.make(term: term, options: options) else { return nil }
+        let searched = searchedColumns(options: options, in: source)
+        guard !searched.isEmpty else { return nil }
+
+        let added = Set(addedRows)
+        let reread = added.union(writtenCells.keys)
+        var keptByRow: [RowID: [GridFindState.Match]] = [:]
+        for match in matches where writtenCells[match.rowID] != nil && !added.contains(match.rowID) {
+            keptByRow[match.rowID, default: []].append(match)
+        }
+
+        var rereadMatches: [(displayRow: Int, matches: [GridFindState.Match])] = []
+        for rowID in reread {
+            guard let displayRow = source.order.displayIndex(of: rowID, in: source.rows),
+                  let row = source.rows.row(withID: rowID) else { continue }
+            let written = added.contains(rowID) ? nil : writtenCells[rowID]
+            let kept = keptByRow[rowID] ?? []
+            var found: [GridFindState.Match] = []
+            for column in searched {
+                if let written, !written.contains(column.dataIndex) {
+                    if kept.contains(where: { $0.columnID == column.id }) {
+                        found.append(GridFindState.Match(rowID: rowID, columnID: column.id))
+                    }
+                    continue
+                }
+                guard let text = searchableText(in: row, column: column, source: source),
+                      matcher.matches(text) else { continue }
+                found.append(GridFindState.Match(rowID: rowID, columnID: column.id))
+            }
+            if !found.isEmpty {
+                rereadMatches.append((displayRow: displayRow, matches: found))
+            }
+        }
+        rereadMatches.sort { $0.displayRow < $1.displayRow }
+
+        var merged: [GridFindState.Match] = []
+        merged.reserveCapacity(matches.count + rereadMatches.count)
+        var next = rereadMatches.startIndex
+        for match in matches where !reread.contains(match.rowID) {
+            guard let displayRow = source.order.displayIndex(of: match.rowID, in: source.rows) else { continue }
+            while next < rereadMatches.endIndex, rereadMatches[next].displayRow < displayRow {
+                merged.append(contentsOf: rereadMatches[next].matches)
+                next += 1
+            }
+            merged.append(match)
+        }
+        for entry in rereadMatches[next...] {
+            merged.append(contentsOf: entry.matches)
+        }
+        return Result(matches: merged)
+    }
+
     // A scope naming a column that is no longer presented searches every presented column.
-    static func searchedColumns(options: GridFindState.Options, in source: Source) -> [DataGridColumn] {
+    nonisolated static func searchedColumns(options: GridFindState.Options, in source: Source) -> [DataGridColumn] {
         let candidates: [DataGridColumn]
         if let scope = options.columnScope, let scoped = source.columns.column(id: scope) {
             candidates = [scoped]
@@ -191,8 +345,17 @@ enum GridFindEngine {
         }
     }
 
-    // Nil for NULL, an empty cell, and bytes the column's format could not decode, which show as hex.
     static func searchableText(in row: Row, column: DataGridColumn, source: Source) -> String? {
+        searchableText(in: row, column: column, source: source, dates: DateFormattingService.shared.renderer)
+    }
+
+    // Nil for NULL, an empty cell, and bytes the column's format could not decode, which show as hex.
+    nonisolated static func searchableText(
+        in row: Row,
+        column: DataGridColumn,
+        source: Source,
+        dates: DateDisplayRenderer
+    ) -> String? {
         let dataIndex = column.dataIndex
         guard dataIndex < row.values.count else { return nil }
         let rawValue = row.values[dataIndex]
@@ -211,7 +374,8 @@ enum GridFindEngine {
             rawValue,
             columnType: column.type,
             displayFormat: format,
-            databaseType: source.databaseType
+            databaseType: source.databaseType,
+            dates: dates
         )
         guard !shown.isEmpty else { return nil }
         return source.revealsInvisibleCharacters ? shown : shown.shownWithoutMarks
@@ -345,7 +509,7 @@ enum GridFindEngine {
         return String(format: String(localized: "Replaced %1$@ in %2$@."), matchPhrase, cellPhrase)
     }
 
-    private static func displayFormat(for column: DataGridColumn, in source: Source) -> ValueDisplayFormat? {
+    nonisolated private static func displayFormat(for column: DataGridColumn, in source: Source) -> ValueDisplayFormat? {
         column.dataIndex < source.displayFormats.count ? source.displayFormats[column.dataIndex] : nil
     }
 

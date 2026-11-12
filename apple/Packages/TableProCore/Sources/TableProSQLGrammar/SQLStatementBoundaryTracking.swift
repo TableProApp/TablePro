@@ -48,9 +48,23 @@ public protocol SQLStatementBoundaryTracking {
     /// Returns whether this `;` ends the statement.
     mutating func observeSemicolon() -> Bool
 
+    /// Whether the `;` that just ended the statement can still be taken back by the token after it, as T-SQL takes
+    /// back the one in `IF @x = 1 SELECT 1; ELSE SELECT 2;` at its `ELSE`. A reader holds the end until the next token
+    /// that is not whitespace or a comment, then asks ``continuesStatement(with:)``.
+    var awaitsContinuation: Bool { get }
+
+    /// Whether the first token after a `;` that left ``awaitsContinuation`` set carries the statement on. `word` is
+    /// that token uppercased, or nil for a token that is not a word. On true the reader keeps the statement open and
+    /// observes the token as usual; on false it ends the statement at the `;` and resets.
+    mutating func continuesStatement(with word: String?) -> Bool
+
     /// Whether a block this statement opened is still open, which at the end of a text means everything after it was
     /// swallowed by a body that never closed.
     var holdsOpenBlock: Bool { get }
+
+    /// Whether the statement is a `COPY ... FROM STDIN` whose rows a psql script holds on the lines after it, which a
+    /// reader then takes as ``SQLPsqlScript/copyRows(afterSemicolonAt:in:length:)`` rather than as SQL.
+    var copiesFromStandardInput: Bool { get }
 
     mutating func reset()
 }
@@ -60,7 +74,19 @@ public extension SQLStatementBoundaryTracking {
         observeOpaqueToken()
     }
 
+    var awaitsContinuation: Bool {
+        false
+    }
+
+    mutating func continuesStatement(with word: String?) -> Bool {
+        false
+    }
+
     var holdsOpenBlock: Bool {
+        false
+    }
+
+    var copiesFromStandardInput: Bool {
         false
     }
 }
@@ -68,9 +94,15 @@ public extension SQLStatementBoundaryTracking {
 public enum SQLStatementBoundaries {
     /// The one place a grammar is matched to its statement boundaries, so no reader can pick a different one.
     public static func makeTracker(for grammar: SQLLexicalGrammar) -> any SQLStatementBoundaryTracking {
-        if grammar.contains(.plsqlBlocks) { return PLSQLUnitTracker() }
-        if grammar.contains(.cqlBatches) { return CQLBatchTracker() }
-        return SQLRoutineBodyTracker(grammar: grammar)
+        let tracker: any SQLStatementBoundaryTracking
+        if grammar.contains(.plsqlBlocks) {
+            tracker = PLSQLUnitTracker()
+        } else if grammar.contains(.cqlBatches) {
+            tracker = CQLBatchTracker()
+        } else {
+            tracker = SQLRoutineBodyTracker(grammar: grammar)
+        }
+        return grammar.contains(.psqlScripts) ? SQLPsqlStatementTracker(base: tracker) : tracker
     }
 
     /// Whether a statement `grammar` reads can own a `;`: the one that ends a PL/SQL unit or a T-SQL `MERGE`, or one

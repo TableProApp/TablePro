@@ -28,25 +28,26 @@ struct MCPAuditChainLink: Sendable, Equatable {
             entry.connectionId?.uuidString ?? "",
             entry.action,
             entry.outcome,
-            entry.details ?? "",
-            previousHash
+            entry.details ?? ""
         ]
-        let joined = fields.joined(separator: "\u{1F}")
+        // Only a row with a client hashes it, so every row written before the column keeps its digest.
+        let client = entry.clientName.map { [$0] } ?? []
+        let joined = (fields + client + [previousHash]).joined(separator: "\u{1F}")
         return SHA256.hash(data: Data(joined.utf8)).hexEncoded
     }
 }
 
 actor MCPAuditLogStorage {
-    static let shared = MCPAuditLogStorage()
+    static let shared = MCPAuditLogStorage(directory: AppStorageEnvironment.shared.supportDirectory)
+    static let databaseFileName = "mcp-audit.db"
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuditLogStorage")
 
     private static let retentionDays: Int = 90
 
     private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    private static var isRunningTests: Bool {
-        NSClassFromString("XCTestCase") != nil
-    }
+    private static let entryColumns =
+        "id, timestamp, category, token_id, token_name, connection_id, action, outcome, details, client_name"
 
     private struct DatabaseHandle: @unchecked Sendable {
         var pointer: OpaquePointer?
@@ -57,60 +58,38 @@ actor MCPAuditLogStorage {
     private var db: OpaquePointer? {
         if !isPrepared {
             isPrepared = true
-            setupDatabase()
+            let setAside = setupDatabase()
             prune(olderThan: Self.retentionDays)
             loadChainHead()
+            if let setAside {
+                recordSetAside(setAside)
+            }
         }
         return dbHandle.pointer
     }
     private var dbPath: String?
-    private let testDatabaseSuffix: String?
+    private let directory: URL
     private var nextSequence: Int = 0
     private var lastHash: String = MCPAuditChainLink.genesisHash
     private var isPrepared = false
 
-    init() {
-        self.testDatabaseSuffix = nil
+    init(directory: URL) {
+        self.directory = directory
     }
-
-    #if DEBUG
-    init(isolatedForTesting: Bool) {
-        self.testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
-    }
-
-    var databaseFilePaths: [String] {
-        guard db != nil, let dbPath else { return [] }
-        return [dbPath, dbPath + "-wal", dbPath + "-shm"]
-    }
-    #endif
 
     deinit {
         if let pointer = dbHandle.pointer {
             sqlite3_close(pointer)
         }
-        if Self.isRunningTests, let dbPath {
-            try? FileManager.default.removeItem(atPath: dbPath)
-            for suffix in ["-wal", "-shm"] {
-                try? FileManager.default.removeItem(atPath: dbPath + suffix)
-            }
-        }
     }
 
-    private func setupDatabase() {
+    private func setupDatabase() -> SetAsideDamagedStore? {
         let fileManager = FileManager.default
-        let directory = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         Self.restrict(path: directory.path, to: 0o700)
 
-        if Self.isRunningTests {
-            Self.purgeAbandonedTestDatabases(in: directory, fileManager: fileManager)
-        }
-
-        let suffix = testDatabaseSuffix ?? ""
-        let fileName = Self.isRunningTests
-            ? "mcp-audit-test_\(ProcessInfo.processInfo.processIdentifier)\(suffix).db"
-            : "mcp-audit.db"
-        let path = directory.appendingPathComponent(fileName).path(percentEncoded: false)
+        let url = directory.appendingPathComponent(Self.databaseFileName)
+        let path = url.path(percentEncoded: false)
         self.dbPath = path
 
         if !fileManager.fileExists(atPath: path) {
@@ -122,9 +101,16 @@ actor MCPAuditLogStorage {
         }
         Self.restrict(path: path, to: 0o600)
 
-        if sqlite3_open(path, &dbHandle.pointer) != SQLITE_OK {
+        // The damaged log is evidence, so it is set aside for review, never deleted.
+        guard case .opened(let pointer, let setAside) = LocalSQLiteStoreOpener.open(at: url) else {
             Self.logger.error("Error opening MCP audit database")
-            return
+            return nil
+        }
+        dbHandle.pointer = pointer
+        if setAside != nil {
+            Self.logger.fault("The MCP audit log was damaged and set aside; a new chain starts")
+            // SQLite created the fresh file with the default mode; its -wal and -shm copy this one.
+            Self.restrict(path: path, to: 0o600)
         }
 
         execute("PRAGMA journal_mode=WAL;")
@@ -133,6 +119,16 @@ actor MCPAuditLogStorage {
         createTables()
         backfillChainIfNeeded()
         restrictDatabaseFiles()
+        return setAside
+    }
+
+    private func recordSetAside(_ setAside: SetAsideDamagedStore) {
+        addEntry(AuditEntry(
+            category: .admin,
+            action: "auditLog.setAside",
+            outcome: AuditOutcome.error,
+            details: "setAside=\(setAside.setAsideURL.lastPathComponent)"
+        ))
     }
 
     private func restrictDatabaseFiles() {
@@ -140,14 +136,6 @@ actor MCPAuditLogStorage {
         Self.restrict(path: dbPath, to: 0o600)
         for suffix in ["-wal", "-shm"] {
             Self.restrict(path: dbPath + suffix, to: 0o600)
-        }
-    }
-
-    private static func purgeAbandonedTestDatabases(in directory: URL, fileManager: FileManager) {
-        let ownMarker = "mcp-audit-test_\(ProcessInfo.processInfo.processIdentifier)"
-        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
-        for name in names where name.hasPrefix("mcp-audit-test_") && !name.hasPrefix(ownMarker) {
-            try? fileManager.removeItem(atPath: directory.appendingPathComponent(name).path)
         }
     }
 
@@ -176,21 +164,24 @@ actor MCPAuditLogStorage {
                 details TEXT,
                 sequence INTEGER,
                 previous_hash TEXT,
-                entry_hash TEXT
+                entry_hash TEXT,
+                client_name TEXT
             );
             """)
-        addMissingChainColumns()
+        addMissingColumns()
         execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_entries(timestamp DESC);")
         execute("CREATE INDEX IF NOT EXISTS idx_audit_token ON audit_entries(token_id, timestamp DESC);")
         execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_sequence ON audit_entries(sequence);")
     }
 
-    private func addMissingChainColumns() {
+    // Older builds read and write only the columns they name, so an added column keeps the log theirs too.
+    private func addMissingColumns() {
         let existing = columnNames(ofTable: "audit_entries")
         let required: [(String, String)] = [
             ("sequence", "INTEGER"),
             ("previous_hash", "TEXT"),
-            ("entry_hash", "TEXT")
+            ("entry_hash", "TEXT"),
+            ("client_name", "TEXT")
         ]
         for (name, type) in required where !existing.contains(name) {
             execute("ALTER TABLE audit_entries ADD COLUMN \(name) \(type);")
@@ -217,7 +208,7 @@ actor MCPAuditLogStorage {
         guard unchainedRowCount() > 0 else { return }
 
         let sql = """
-            SELECT id, timestamp, category, token_id, token_name, connection_id, action, outcome, details
+            SELECT \(Self.entryColumns)
             FROM audit_entries
             ORDER BY timestamp ASC, id ASC;
             """
@@ -287,6 +278,8 @@ actor MCPAuditLogStorage {
 
     @discardableResult
     func addEntry(_ entry: AuditEntry) -> Bool {
+        // Opening the log loads the chain head, so it has to happen before the head is read.
+        let handle = db
         let sequence = nextSequence
         let previousHash = lastHash
         let hash = MCPAuditChainLink.digest(entry: entry, sequence: sequence, previousHash: previousHash)
@@ -294,12 +287,12 @@ actor MCPAuditLogStorage {
         let sql = """
             INSERT INTO audit_entries
                 (id, timestamp, category, token_id, token_name, connection_id, action, outcome, details,
-                 sequence, previous_hash, entry_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                 sequence, previous_hash, entry_hash, client_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
 
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
             Self.logger.warning("Failed to prepare audit insert statement")
             return false
         }
@@ -317,6 +310,7 @@ actor MCPAuditLogStorage {
         sqlite3_bind_int64(statement, 10, Int64(sequence))
         sqlite3_bind_text(statement, 11, previousHash, -1, Self.SQLITE_TRANSIENT)
         sqlite3_bind_text(statement, 12, hash, -1, Self.SQLITE_TRANSIENT)
+        bindOptionalText(statement, index: 13, value: entry.clientName)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             Self.logger.warning("Failed to append audit entry \(entry.action, privacy: .public)")
@@ -342,16 +336,20 @@ actor MCPAuditLogStorage {
     func query(
         category: AuditCategory? = nil,
         tokenId: UUID? = nil,
+        tokenName: String? = nil,
+        clientName: String? = nil,
         since: Date? = nil,
         limit: Int = 500
     ) -> [AuditEntry] {
         var conditions: [String] = []
         if category != nil { conditions.append("category = ?") }
         if tokenId != nil { conditions.append("token_id = ?") }
+        if tokenName != nil { conditions.append("token_name = ?") }
+        if clientName != nil { conditions.append("client_name = ?") }
         if since != nil { conditions.append("timestamp >= ?") }
 
         var sql = """
-            SELECT id, timestamp, category, token_id, token_name, connection_id, action, outcome, details
+            SELECT \(Self.entryColumns)
             FROM audit_entries
             """
         if !conditions.isEmpty {
@@ -375,6 +373,10 @@ actor MCPAuditLogStorage {
             sqlite3_bind_text(statement, bindIndex, tokenId.uuidString, -1, Self.SQLITE_TRANSIENT)
             bindIndex += 1
         }
+        for value in [tokenName, clientName].compactMap({ $0 }) {
+            sqlite3_bind_text(statement, bindIndex, value, -1, Self.SQLITE_TRANSIENT)
+            bindIndex += 1
+        }
         if let since {
             sqlite3_bind_double(statement, bindIndex, since.timeIntervalSince1970)
             bindIndex += 1
@@ -390,10 +392,28 @@ actor MCPAuditLogStorage {
         return entries
     }
 
+    func clientNames() -> [String] {
+        let sql = """
+            SELECT DISTINCT client_name FROM audit_entries
+            WHERE client_name IS NOT NULL
+            ORDER BY client_name COLLATE NOCASE;
+            """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(statement) }
+
+        var names: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let raw = sqlite3_column_text(statement, 0) {
+                names.append(String(cString: raw))
+            }
+        }
+        return names
+    }
+
     func verify() -> MCPAuditVerification {
         let sql = """
-            SELECT id, timestamp, category, token_id, token_name, connection_id, action, outcome, details,
-                   sequence, previous_hash, entry_hash
+            SELECT \(Self.entryColumns), sequence, previous_hash, entry_hash
             FROM audit_entries
             ORDER BY sequence ASC;
             """
@@ -411,11 +431,11 @@ actor MCPAuditLogStorage {
 
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let entry = parseEntry(statement) else {
-                return .broken(atSequence: Int(sqlite3_column_int64(statement, 9)))
+                return .broken(atSequence: Int(sqlite3_column_int64(statement, 10)))
             }
-            let sequence = Int(sqlite3_column_int64(statement, 9))
-            let previousHash = sqlite3_column_text(statement, 10).map { String(cString: $0) } ?? ""
-            let storedHash = sqlite3_column_text(statement, 11).map { String(cString: $0) } ?? ""
+            let sequence = Int(sqlite3_column_int64(statement, 10))
+            let previousHash = sqlite3_column_text(statement, 11).map { String(cString: $0) } ?? ""
+            let storedHash = sqlite3_column_text(statement, 12).map { String(cString: $0) } ?? ""
 
             let recomputed = MCPAuditChainLink.digest(
                 entry: entry,
@@ -499,6 +519,7 @@ actor MCPAuditLogStorage {
         let action = String(cString: actionCString)
         let outcome = String(cString: outcomeCString)
         let details = sqlite3_column_text(statement, 8).map { String(cString: $0) }
+        let clientName = sqlite3_column_text(statement, 9).map { String(cString: $0) }
 
         return AuditEntry(
             id: id,
@@ -509,7 +530,8 @@ actor MCPAuditLogStorage {
             connectionId: connectionId,
             action: action,
             outcome: outcome,
-            details: details
+            details: details,
+            clientName: clientName
         )
     }
 }

@@ -88,7 +88,7 @@ struct QueryInsightsView: View {
 
                 QueryInsightsSection(
                     title: String(localized: "Most Run"),
-                    systemImage: "arrow.trianglehead.2.clockwise",
+                    systemImage: "arrow.triangle.2.circlepath",
                     isEmpty: viewModel.snapshot.mostRun.isEmpty,
                     emptyMessage: String(localized: "No queries in this range.")
                 ) {

@@ -256,4 +256,29 @@ struct ConnectionLocalStatePurgeTests {
             defaults.string(forKey: RowInspectorState.viewModeKey(kept)) == InspectorViewMode.json.rawValue
         )
     }
+
+    @Test("Purging a connection removes its query tabs' versions and leaves another's")
+    func purgeClearsQueryTabVersions() async {
+        let (history, _) = makeHistory()
+        let versions = QueryTabVersionStorage(
+            databaseURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("tablepro-tests")
+                .appendingPathComponent("purge_tab_versions_\(UUID().uuidString).db"),
+            announce: { _ in },
+            removeDatabaseOnDeinit: true
+        )
+        let deleted = UUID()
+        let kept = UUID()
+        let deletedTab = UUID()
+        let keptTab = UUID()
+        await versions.record(tabId: deletedTab, connectionId: deleted, text: "SELECT secret", reason: .run)
+        await versions.record(tabId: keptTab, connectionId: kept, text: "SELECT 1", reason: .run)
+
+        await ConnectionLocalState.purgeAsyncStores(
+            [deleted], origin: .remote, queryHistory: history, queryTabVersions: versions
+        )
+
+        #expect(versions.summaries(tabId: deletedTab).isEmpty)
+        #expect(versions.summaries(tabId: keptTab).count == 1)
+    }
 }

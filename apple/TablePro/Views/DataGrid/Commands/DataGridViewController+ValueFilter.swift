@@ -7,35 +7,72 @@ import AppKit
 import SwiftUI
 import TableProPluginKit
 
-extension DataGridCommands {
-    // Every loaded value as the cell shows it, which is what a value filter stores and matches; NULL first.
-    func distinctValues(for column: DataGridColumn) -> [ColumnDistinctValue] {
-        let rows = model.rows
-        let dataIndex = column.dataIndex
-        guard dataIndex >= 0, dataIndex < rows.columns.count else { return [] }
-        let format = model.displayFormat(for: column)
-        let databaseType = configuration.traits.databaseType
-        var counts: [String: Int] = [:]
-        var order: [String] = []
-        var nullCount = 0
-        for row in rows.rows {
+// Each loaded value as the cell shows it, counted, in the order first seen.
+struct ColumnValueTally: Sendable {
+    static let cancellationInterval = 4_096
+
+    var counts: [String: Int] = [:]
+    var order: [String] = []
+    var nullCount = 0
+
+    // Nil once cancelled, which is asked every 4,096 rows.
+    static func tally(
+        _ rows: TableRows,
+        dataIndex: Int,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dates: DateDisplayRenderer,
+        isCancelled: () -> Bool
+    ) -> ColumnValueTally? {
+        var counted = ColumnValueTally()
+        guard dataIndex >= 0, dataIndex < rows.columns.count else { return counted }
+        for (offset, row) in rows.rows.enumerated() {
+            if offset % cancellationInterval == 0, isCancelled() { return nil }
             guard dataIndex < row.values.count else { continue }
             let raw = row.values[dataIndex]
             if case .null = raw {
-                nullCount += 1
+                counted.nullCount += 1
                 continue
             }
             let display = GridDisplayOrderResolver.displayValue(
                 raw,
-                columnType: column.type,
-                displayFormat: format,
-                databaseType: databaseType
+                columnType: columnType,
+                displayFormat: displayFormat,
+                databaseType: databaseType,
+                dates: dates
             )
-            if counts[display] == nil {
-                order.append(display)
+            if counted.counts[display] == nil {
+                counted.order.append(display)
             }
-            counts[display, default: 0] += 1
+            counted.counts[display, default: 0] += 1
         }
+        return counted
+    }
+
+    // A column of unique values costs a format per row and n log n locale-aware comparisons, too slow for the
+    // main actor. A renderer is never shared across threads, so this one builds its own from the format.
+    @concurrent
+    static func distinctValuesOffTheMainActor(
+        _ rows: TableRows,
+        dataIndex: Int,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
+        dateFormat: DateFormatOption
+    ) async -> [ColumnDistinctValue]? {
+        tally(
+            rows,
+            dataIndex: dataIndex,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType,
+            dates: DateDisplayRenderer(format: dateFormat),
+            isCancelled: { Task.isCancelled }
+        )?.sorted()
+    }
+
+    func sorted() -> [ColumnDistinctValue] {
         var values = order
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
             .map { ColumnDistinctValue(display: $0, isNull: false, count: counts[$0] ?? 0) }
@@ -43,6 +80,21 @@ extension DataGridCommands {
             values.insert(ColumnDistinctValue(display: "", isNull: true, count: nullCount), at: 0)
         }
         return values
+    }
+}
+
+extension DataGridCommands {
+    // Every loaded value as the cell shows it, which is what a value filter stores and matches; NULL first.
+    func distinctValues(for column: DataGridColumn) -> [ColumnDistinctValue] {
+        ColumnValueTally.tally(
+            model.rows,
+            dataIndex: column.dataIndex,
+            columnType: column.type,
+            displayFormat: model.displayFormat(for: column),
+            databaseType: configuration.traits.databaseType,
+            dates: DateFormattingService.shared.renderer,
+            isCancelled: { false }
+        )?.sorted() ?? []
     }
 }
 
@@ -58,11 +110,52 @@ extension DataGridViewController {
             guard let self, let current = self.model.columns.column(id: columnID) else { return }
             self.presentValueFilter(for: current)
         }) else { return }
-        guard let anchor = model.anchor(for: column) else { return }
+        guard model.anchor(for: column) != nil else { return }
 
-        let values = gridCommands.distinctValues(for: column)
+        let columnType = column.type
+        let displayFormat = model.displayFormat(for: column)
+        let databaseType = model.configuration.traits.databaseType
+        let dateFormat = DateFormattingService.shared.currentFormat
         let initialFilter = model.store.valueFilter.filter(forColumn: dataIndex)
+        let loadedRowCount = rows.count
+        let listedModel = model
         dismissValueFilterPopover()
+        // A reload, insert or removal while the list builds cancels it, as it would close the open popover.
+        menuState.valueFilterListing = Task { [weak self] in
+            let listed = await ColumnValueTally.distinctValuesOffTheMainActor(
+                rows,
+                dataIndex: dataIndex,
+                columnType: columnType,
+                displayFormat: displayFormat,
+                databaseType: databaseType,
+                dateFormat: dateFormat
+            )
+            guard let values = listed, !Task.isCancelled, let self else { return }
+            self.menuState.valueFilterListing = nil
+            // A grid that took another tab's model meanwhile shows other rows.
+            guard self.model === listedModel,
+                  let current = self.model.columns.column(id: columnID),
+                  let anchor = self.model.anchor(for: current) else { return }
+            // A connection switch unparents the grid without dismantling it, and NSPopover raises on a view with no window.
+            guard let window = anchor.view.window, window.isVisible else { return }
+            self.showValueFilterPopover(
+                for: current,
+                values: values,
+                loadedRowCount: loadedRowCount,
+                initialFilter: initialFilter,
+                anchor: anchor
+            )
+        }
+    }
+
+    private func showValueFilterPopover(
+        for column: DataGridColumn,
+        values: [ColumnDistinctValue],
+        loadedRowCount: Int,
+        initialFilter: ColumnValueFilter?,
+        anchor: (view: NSView, rect: NSRect)
+    ) {
+        let columnID = column.id
         menuState.valueFilterPopover = PopoverPresenter.show(
             relativeTo: anchor.rect,
             of: anchor.view,
@@ -71,7 +164,7 @@ extension DataGridViewController {
             ColumnValueFilterPopover(
                 columnName: column.name,
                 values: values,
-                loadedRowCount: rows.count,
+                loadedRowCount: loadedRowCount,
                 initialFilter: initialFilter,
                 // A change closes the popover once applied, in followRowChangesWithPopovers; declining the alert keeps the picks.
                 onApply: { filter in
@@ -89,6 +182,8 @@ extension DataGridViewController {
     }
 
     func dismissValueFilterPopover() {
+        menuState.valueFilterListing?.cancel()
+        menuState.valueFilterListing = nil
         guard let popover = menuState.valueFilterPopover else { return }
         menuState.valueFilterPopover = nil
         popover.close()

@@ -40,6 +40,7 @@ final class AppState {
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
     let catalogChanges = CatalogChangeBoard()
+    let sessionModels = ConnectionSessionModels()
     let syncCoordinator: IOSSyncCoordinator
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
@@ -72,7 +73,7 @@ final class AppState {
         driverFactory injectedDriverFactory: (any DriverFactory)? = nil
     ) {
         self.sampleInstaller = sampleInstaller
-        self.libraryPublisher = libraryPublisher ?? .live()
+        self.libraryPublisher = libraryPublisher ?? .live(defaults: defaults)
         self.localDatabaseFiles = localDatabaseFiles
         localDatabaseFiles.container.recordCurrentContainer()
         onboarding = OnboardingPreferences(defaults: defaults)
@@ -117,13 +118,27 @@ final class AppState {
         guard !TestRuntime.isActive else { return }
 
         if loadStatus == .ready {
-            KeychainSecureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
+            removeWhatDeletedConnectionsLeft()
             Task {
                 publishLibrary()
             }
         }
 
         connectSync()
+    }
+
+    // The Keychain and certificate folder listings block, so they run off the main actor at utility
+    // priority, against the library as it stands once the Keychain listing returns, not at launch.
+    private func removeWhatDeletedConnectionsLeft() {
+        Task.detached(priority: .utility) { [self] in
+            await KeychainSecureStore.cleanOrphanedCredentials { self.loadedConnectionIds }
+            guard let kept = await loadedConnectionIds else { return }
+            CertificateMaterializer().releaseAll(except: kept)
+        }
+    }
+
+    private var loadedConnectionIds: Set<UUID>? {
+        loadStatus == .ready ? Set(connections.map(\.id)) : nil
     }
 
     // Separate from init, which skips it under tests, so a test can run the wiring the app runs.
@@ -186,6 +201,7 @@ final class AppState {
 
     private func sessionEnded(_ connectionId: UUID, driver: any DatabaseDriver) {
         sessionTransactions.sessionEnded(connectionId, driver: driver)
+        sessionModels.existing(connectionId)?.sessionEnded(driver)
         bumpSessionRevision(connectionId)
     }
 
@@ -225,6 +241,7 @@ final class AppState {
         let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
         guard persist(connections: merged, onlyIfSaved: true) else { return false }
         localState.purge(removedIds)
+        sessionModels.purge(removedIds)
         savedQueries.removeRecords(ofConnections: removedIds, tombstoning: false)
         publishLibrary()
         return true
@@ -441,6 +458,7 @@ final class AppState {
         guard !removed.isEmpty else { return }
         persist(connections: connections.filter { !ids.contains($0.id) })
         localState.purge(Set(removed.map(\.id)))
+        sessionModels.purge(Set(removed.map(\.id)))
         let syncedIds = Set(removed.filter(\.participatesInSync).map(\.id))
         savedQueries.removeRecords(ofConnections: syncedIds, tombstoning: true)
         savedQueries.removeRecords(ofConnections: Set(removed.map(\.id)).subtracting(syncedIds), tombstoning: false)

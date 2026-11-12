@@ -1,8 +1,3 @@
-//
-//  ClaudeAgentProvider.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
@@ -31,14 +26,15 @@ final class ClaudeAgentProvider: ChatTransport {
             let task = Task {
                 var grant: ClaudeAgentToolGrant?
                 do {
-                    grant = await toolBridge.makeGrant()
+                    grant = try await toolBridge.makeGrant(connectionId: options.connectionId, mode: options.chatMode)
                     let prompt = AgentPromptRenderer.renderPrompt(turns: turns, includingSystemPrompt: nil)
                     let lines = try cli.streamLines(
                         arguments: Self.inferenceArguments(
                             prompt: prompt,
                             model: model,
                             systemPrompt: options.systemPrompt ?? ClaudeAgent.systemPrompt,
-                            mcpConfigPath: grant?.configPath
+                            mcpConfigPath: grant?.configPath,
+                            allowedToolNames: grant?.allowedToolNames
                         ),
                         currentDirectory: FileManager.default.temporaryDirectory
                     )
@@ -51,6 +47,8 @@ final class ClaudeAgentProvider: ChatTransport {
                             continuation.yield(.textDelta(text))
                         case .usage(let usage):
                             continuation.yield(.usage(usage))
+                        case .outputLimit(let limit):
+                            continuation.yield(.outputLimitReached(limit))
                         case .failure(let message):
                             await toolBridge.release(grant)
                             grant = nil
@@ -90,6 +88,7 @@ final class ClaudeAgentProvider: ChatTransport {
     enum DecodedEvent: Equatable {
         case text(String)
         case usage(AITokenUsage)
+        case outputLimit(ChatOutputLimit)
         case failure(String)
     }
 
@@ -97,7 +96,8 @@ final class ClaudeAgentProvider: ChatTransport {
         prompt: String,
         model: String,
         systemPrompt: String?,
-        mcpConfigPath: String?
+        mcpConfigPath: String?,
+        allowedToolNames: [String]?
     ) -> [String] {
         var arguments = [
             "-p",
@@ -111,7 +111,7 @@ final class ClaudeAgentProvider: ChatTransport {
         ]
 
         if let mcpConfigPath {
-            arguments += ["--mcp-config", mcpConfigPath, "--allowedTools", "mcp__\(ClaudeAgent.mcpServerName)__*"]
+            arguments += ["--mcp-config", mcpConfigPath, "--allowedTools", allowedToolsArgument(allowedToolNames)]
         }
         arguments.append("--strict-mcp-config")
 
@@ -125,10 +125,18 @@ final class ClaudeAgentProvider: ChatTransport {
         return arguments
     }
 
+    // The server's token profile is the gate; naming the tools here keeps the CLI from offering any other.
+    static func allowedToolsArgument(_ toolNames: [String]?) -> String {
+        let prefix = "mcp__\(ClaudeAgent.mcpServerName)__"
+        guard let toolNames else { return prefix + "*" }
+        return toolNames.map { prefix + $0 }.joined(separator: ",")
+    }
+
     static func decodeEvent(_ line: String) -> DecodedEvent? {
         guard let json = decodeJSON(line), let type = json["type"] as? String else { return nil }
         switch type {
         case "stream_event":
+            if let limit = outputLimit(json) { return .outputLimit(limit) }
             guard let text = partialText(json) else { return nil }
             return .text(text)
         case "result":
@@ -147,6 +155,18 @@ final class ClaudeAgentProvider: ChatTransport {
             return nil
         }
         return text
+    }
+
+    // The CLI passes the Messages API stream through, so a cut response ends with its message_delta stop reason.
+    static func outputLimit(_ json: [String: Any]) -> ChatOutputLimit? {
+        guard let event = json["event"] as? [String: Any],
+              event["type"] as? String == "message_delta",
+              let delta = event["delta"] as? [String: Any] else { return nil }
+        switch delta["stop_reason"] as? String {
+        case "max_tokens": return .outputTokens
+        case "model_context_window_exceeded": return .contextWindow
+        default: return nil
+        }
     }
 
     static func resultEvent(_ json: [String: Any]) -> DecodedEvent? {

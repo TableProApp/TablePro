@@ -70,7 +70,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
-      # Saved by a push or the nightly only: a cache saved on a pull request or merge group ref is visible to it alone.
+      # Saved by a push or the nightly only: a cache saved on a pull request ref is visible to it alone.
       - name: Save Swift package checkouts
         if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.tests.outcome == 'success' && steps.spm.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -79,9 +79,13 @@ jobs:
           key: ${{ steps.spm.outputs.cache-primary-key }}
 
       # Only Xcode adds a new string to the catalog. A command-line build extracts it and moves on.
-      - name: Check the app's strings reach its catalog
+      # The widget extension has its own catalog.
+      - name: Check the app's strings reach its catalogs
         if: ${{ !cancelled() }}
-        run: python3 scripts/localization.py extracted --target ios
+        run: |
+          set -euo pipefail
+          python3 scripts/localization.py extracted --target ios
+          python3 scripts/localization.py extracted --target widget
 
       # --parallel is what makes swift test write the XCTest xunit file. Without it only the Swift
       # Testing one appears, and TableProOracle's cases are all XCTest.

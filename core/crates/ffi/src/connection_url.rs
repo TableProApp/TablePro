@@ -1,19 +1,19 @@
 use std::path::Path;
 
-use secrecy::ExposeSecret;
+use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::connection_url::{self, ConnectionUrl};
 use tablepro_core::is_local_socket_host;
 
 use crate::error::CoreError;
-use crate::library::TlsModeTag;
+use crate::library::{Redacted, TlsModeTag};
 
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Clone, uniffi::Record)]
 pub struct ParsedConnectionUrl {
     pub driver_id: String,
     pub host: String,
     pub port: Option<u16>,
     pub username: String,
-    pub password: Option<String>,
+    pub password: Option<SecretString>,
     // The database name, or for a file engine the file's path.
     pub database: String,
     pub tls_mode: Option<TlsModeTag>,
@@ -23,9 +23,28 @@ pub struct ParsedConnectionUrl {
     pub server_name: Option<String>,
 }
 
+impl std::fmt::Debug for ParsedConnectionUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParsedConnectionUrl")
+            .field("driver_id", &self.driver_id)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| Redacted))
+            .field("database", &self.database)
+            .field("tls_mode", &self.tls_mode)
+            .field("ca_file", &self.ca_file)
+            .field("client_certificate", &self.client_certificate)
+            .field("client_key", &self.client_key)
+            .field("server_name", &self.server_name)
+            .finish()
+    }
+}
+
 #[uniffi::export]
-pub fn parse_connection_url(url: String) -> Result<ParsedConnectionUrl, CoreError> {
-    let parsed = connection_url::parse(&url).map_err(|error| CoreError::failed(error.code(), error.to_string()))?;
+pub fn parse_connection_url(url: SecretString) -> Result<ParsedConnectionUrl, CoreError> {
+    let text = url.expose_secret();
+    let parsed = connection_url::parse(text).map_err(|error| CoreError::failed(error.code(), error.to_string()))?;
     if let Some(setting) = unkept_setting(&parsed) {
         return Err(CoreError::failed(
             "url.settings_unsupported",
@@ -44,7 +63,7 @@ pub fn parse_connection_url(url: String) -> Result<ParsedConnectionUrl, CoreErro
         host: parsed.host,
         port: parsed.port,
         username: parsed.username,
-        password: parsed.password.map(|secret| secret.expose_secret().to_owned()),
+        password: parsed.password,
         database: parsed.database,
     })
 }
@@ -82,11 +101,14 @@ mod tests {
     use super::*;
 
     fn parse(url: &str) -> ParsedConnectionUrl {
-        parse_connection_url(url.to_owned()).unwrap()
+        parse_connection_url(SecretString::from(url)).unwrap()
     }
 
     fn refusal(url: &str) -> String {
-        parse_connection_url(url.to_owned()).unwrap_err().code().to_owned()
+        parse_connection_url(SecretString::from(url))
+            .unwrap_err()
+            .code()
+            .to_owned()
     }
 
     #[test]
@@ -97,9 +119,18 @@ mod tests {
         assert_eq!(parsed.host, "db.example.com");
         assert_eq!(parsed.port, Some(6543));
         assert_eq!(parsed.username, "app@corp");
-        assert_eq!(parsed.password.as_deref(), Some("p@ss"));
+        assert_eq!(parsed.password.as_ref().map(ExposeSecret::expose_secret), Some("p@ss"));
         assert_eq!(parsed.database, "shop db");
         assert_eq!(parsed.tls_mode, Some(TlsModeTag::VerifyFull));
+    }
+
+    #[test]
+    fn debug_output_shows_the_url_but_not_its_password() {
+        let shown = format!("{:?}", parse("postgresql://app:hunter2@db.example.com/shop"));
+
+        assert!(!shown.contains("hunter2"), "{shown}");
+        assert!(shown.contains("db.example.com"), "{shown}");
+        assert!(shown.contains("password: Some([REDACTED])"), "{shown}");
     }
 
     #[test]

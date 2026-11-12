@@ -3,12 +3,10 @@ use std::rc::Rc;
 use tablepro_session::runtime::Tasks;
 use uuid::Uuid;
 
-use super::StateFile;
 use super::column_layouts_document::ColumnLayoutsDocument;
+use super::{StateFile, StateFileError, TableStateKey};
 use crate::services::grid::ColumnLayout;
 
-/// Each table's column order, hidden columns and widths, remembered per
-/// connection, schema and table.
 #[derive(Clone)]
 pub struct ColumnLayoutStore {
     file: Rc<StateFile<ColumnLayoutsDocument>>,
@@ -31,16 +29,12 @@ impl ColumnLayoutStore {
         self.file.path()
     }
 
-    pub fn layout(&self, connection_id: Uuid, schema: Option<&str>, table: &str) -> ColumnLayout {
-        self.read(connection_id, schema, table, |layout| {
-            layout.cloned().unwrap_or_default()
-        })
+    pub fn layout(&self, key: impl Into<TableStateKey>, schema: Option<&str>, table: &str) -> ColumnLayout {
+        self.read(&key.into(), schema, table, |layout| layout.cloned().unwrap_or_default())
     }
 
-    /// Keep `layout` as the table's whole layout. The grid merges what it
-    /// shows into the stored layout before it saves.
-    pub fn save(&self, connection_id: Uuid, schema: Option<&str>, table: &str, layout: &ColumnLayout) {
-        self.change(connection_id, schema, table, |stored| {
+    pub fn save(&self, key: impl Into<TableStateKey>, schema: Option<&str>, table: &str, layout: &ColumnLayout) {
+        self.change(&key.into(), schema, table, |stored| {
             if stored == layout {
                 return false;
             }
@@ -49,20 +43,43 @@ impl ColumnLayoutStore {
         });
     }
 
-    /// Drop everything for a connection the user deleted, so the file
-    /// does not grow with entries nothing can reach.
     pub fn forget_connection(&self, connection_id: Uuid) {
-        self.file
-            .update(|document| document.connections.remove(&connection_id.to_string()).is_some());
+        self.file.update(|document| {
+            let before = document.connections.len();
+            document
+                .connections
+                .retain(|key, _| !TableStateKey::belongs_to(key, connection_id));
+            before != document.connections.len()
+        });
     }
 
-    pub fn flush(&self) -> impl Future<Output = ()> + Send + use<> {
+    pub fn failing(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.file.failing()
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.file.revision()
+    }
+
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.file.has_unsaved_changes()
+    }
+
+    pub fn current_error(&self) -> Option<StateFileError> {
+        self.file.current_error()
+    }
+
+    pub fn retry(&self) -> bool {
+        self.file.retry()
+    }
+
+    pub fn flush(&self) -> impl Future<Output = Result<(), StateFileError>> + Send + use<> {
         self.file.flush()
     }
 
     fn read<R>(
         &self,
-        connection_id: Uuid,
+        key: &TableStateKey,
         schema: Option<&str>,
         table: &str,
         with: impl FnOnce(Option<&ColumnLayout>) -> R,
@@ -71,33 +88,30 @@ impl ColumnLayoutStore {
             with(
                 document
                     .connections
-                    .get(&connection_id.to_string())
+                    .get(key.as_str())
                     .and_then(|schemas| schemas.get(schema_key(schema)))
                     .and_then(|tables| tables.get(table)),
             )
         })
     }
 
-    /// Change one table's layout. `change` returns whether anything moved.
-    /// A layout left with nothing in it is removed with any map it empties,
-    /// so a reset shrinks the file back.
     fn change(
         &self,
-        connection_id: Uuid,
+        key: &TableStateKey,
         schema: Option<&str>,
         table: &str,
         change: impl FnOnce(&mut ColumnLayout) -> bool,
     ) {
-        let mut layout = self.layout(connection_id, schema, table);
+        let mut layout = self.layout(key, schema, table);
         if !change(&mut layout) {
             return;
         }
         self.file.update(|document| match layout == ColumnLayout::default() {
-            true => prune(document, connection_id, schema, table),
+            true => prune(document, key, schema, table),
             false => {
                 document
                     .connections
-                    .entry(connection_id.to_string())
+                    .entry(key.as_str().to_owned())
                     .or_default()
                     .entry(schema_key(schema).to_owned())
                     .or_default()
@@ -108,14 +122,13 @@ impl ColumnLayoutStore {
     }
 }
 
-/// `None` is stored as the empty string so every JSON key is concrete.
 fn schema_key(schema: Option<&str>) -> &str {
     schema.unwrap_or("")
 }
 
-fn prune(document: &mut ColumnLayoutsDocument, connection_id: Uuid, schema: Option<&str>, table: &str) -> bool {
-    let connection_key = connection_id.to_string();
-    let Some(schemas) = document.connections.get_mut(&connection_key) else {
+fn prune(document: &mut ColumnLayoutsDocument, key: &TableStateKey, schema: Option<&str>, table: &str) -> bool {
+    let connection_key = key.as_str();
+    let Some(schemas) = document.connections.get_mut(connection_key) else {
         return false;
     };
     let mut removed = false;
@@ -126,7 +139,7 @@ fn prune(document: &mut ColumnLayoutsDocument, connection_id: Uuid, schema: Opti
         }
     }
     if schemas.is_empty() {
-        document.connections.remove(&connection_key);
+        document.connections.remove(connection_key);
     }
     removed
 }
@@ -160,7 +173,7 @@ mod tests {
         let store = store_at(&path);
 
         store.save(id, Some("public"), "users", &arranged());
-        store.flush().await;
+        store.flush().await.expect("saved");
         let reopened = store_at(&path);
 
         assert_eq!(reopened.layout(id, Some("public"), "users"), arranged());
@@ -203,7 +216,7 @@ mod tests {
         store.save(id, Some("public"), "users", &arranged());
 
         store.save(id, Some("public"), "users", &ColumnLayout::default());
-        store.flush().await;
+        store.flush().await.expect("saved");
 
         assert!(
             !read_text_file(&path).contains(&id.to_string()),

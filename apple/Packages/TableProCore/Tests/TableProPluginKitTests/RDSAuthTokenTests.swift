@@ -79,32 +79,32 @@ struct RDSAuthTokenGeneratorTests {
     }
 }
 
-struct RDSEndpointTests {
+struct RDSRegionTests {
     @Test("Derives region from cluster hostname")
     func clusterHostname() {
-        #expect(RDSEndpoint.region(forHost: "mydb.cluster-abc123.us-east-1.rds.amazonaws.com") == "us-east-1")
+        #expect(AWSEndpointHost.rdsRegion(forHost: "mydb.cluster-abc123.us-east-1.rds.amazonaws.com") == "us-east-1")
     }
 
     @Test("Derives region from instance hostname")
     func instanceHostname() {
-        #expect(RDSEndpoint.region(forHost: "mydb.abc123.us-west-2.rds.amazonaws.com") == "us-west-2")
+        #expect(AWSEndpointHost.rdsRegion(forHost: "mydb.abc123.us-west-2.rds.amazonaws.com") == "us-west-2")
     }
 
     @Test("Derives region from China partition hostname")
     func chinaHostname() {
-        #expect(RDSEndpoint.region(forHost: "mydb.abc.cn-north-1.rds.amazonaws.com.cn") == "cn-north-1")
+        #expect(AWSEndpointHost.rdsRegion(forHost: "mydb.abc.cn-north-1.rds.amazonaws.com.cn") == "cn-north-1")
     }
 
     @Test("Returns nil for non-RDS hosts")
     func nonRDSHost() {
-        #expect(RDSEndpoint.region(forHost: "localhost") == nil)
-        #expect(RDSEndpoint.region(forHost: "db.example.com") == nil)
+        #expect(AWSEndpointHost.rdsRegion(forHost: "localhost") == nil)
+        #expect(AWSEndpointHost.rdsRegion(forHost: "db.example.com") == nil)
     }
 
     @Test("Derives a lowercase region from a hostname typed with capitals")
     func mixedCaseHostname() {
-        #expect(RDSEndpoint.region(forHost: "MyDB.abc123.US-EAST-1.RDS.AmazonAWS.com") == "us-east-1")
-        #expect(RDSEndpoint.region(forHost: "MyDB.Cluster-ABC.EU-West-1.Rds.Amazonaws.Com") == "eu-west-1")
+        #expect(AWSEndpointHost.rdsRegion(forHost: "MyDB.abc123.US-EAST-1.RDS.AmazonAWS.com") == "us-east-1")
+        #expect(AWSEndpointHost.rdsRegion(forHost: "MyDB.Cluster-ABC.EU-West-1.Rds.Amazonaws.Com") == "eu-west-1")
     }
 }
 
@@ -206,13 +206,52 @@ struct RDSSigningEndpointResolverTests {
 
     @Test("An override may not redirect the token away from the host being dialled")
     func overrideCannotRedirectToAnotherHost() {
-        #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: "evil.example.com")) {
+        let refusal = AWSAuthError.rdsEndpointNotDialed(
+            endpoint: "prod.abc123.us-east-1.rds.amazonaws.com",
+            host: "evil.example.com"
+        )
+        #expect(throws: refusal) {
             _ = try resolve(
                 host: "evil.example.com",
                 port: 5_432,
                 override: "prod.abc123.us-east-1.rds.amazonaws.com:5432"
             )
         }
+    }
+
+    @Test("A DNS name that starts like 127.0.0.1 is not a local forward, so the override is refused")
+    func loopbackLookalikeNameCannotTakeTheOverride() {
+        for host in ["127.0.0.1.attacker.example", "127.evil.example.com", "127.0.0.1.nip.io", "127.0.0.1.", "0177.12.34.56", "[::1]", "127.0.0.1,db.example.com"] {
+            let refusal = AWSAuthError.rdsEndpointNotDialed(
+                endpoint: "prod.abc123.us-east-1.rds.amazonaws.com",
+                host: AWSEndpointHost.normalized(host)
+            )
+            #expect(throws: refusal) {
+                _ = try resolve(host: host, port: 3_306, override: "prod.abc123.us-east-1.rds.amazonaws.com:3306")
+            }
+        }
+    }
+
+    @Test("Every 127/8 literal and the loopback names count as a local forward")
+    func loopbackLiteralsTakeTheOverride() throws {
+        for host in ["127.0.0.1", "127.1.2.3", "127.255.255.255", "127.1", "localhost", "LOCALHOST", "::1", "0.0.0.0"] {
+            let endpoint = try resolve(host: host, port: 54_321, override: "mydb.abc123.us-east-1.rds.amazonaws.com")
+            #expect(endpoint.host == "mydb.abc123.us-east-1.rds.amazonaws.com")
+        }
+    }
+
+    @Test("A trailing dot on the host or the override is not signed")
+    func trailingDotIsDropped() throws {
+        let bare = RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432)
+        #expect(try resolve(host: "mydb.abc123.us-east-1.rds.amazonaws.com.") == bare)
+        #expect(try resolve(host: "127.0.0.1", port: 62_000, override: "mydb.abc123.us-east-1.rds.amazonaws.com.:5432") == bare)
+        #expect(try resolve(
+            host: "127.0.0.1",
+            port: 62_000,
+            preTunnelHost: "mydb.abc123.us-east-1.rds.amazonaws.com.",
+            preTunnelPort: 5_432
+        ) == bare)
+        #expect(try resolve(override: "mydb.abc123.us-east-1.rds.amazonaws.com.") == bare)
     }
 
     @Test("An override that restates the dialled host is accepted")
@@ -244,7 +283,7 @@ struct RDSSigningEndpointResolverTests {
             preTunnelHost: "mydb.abc123.ap-south-1.rds.amazonaws.com",
             preTunnelPort: 5_432
         )
-        #expect(RDSEndpoint.region(forHost: endpoint.host) == "ap-south-1")
+        #expect(AWSEndpointHost.rdsRegion(forHost: endpoint.host) == "ap-south-1")
     }
 
     @Test("A host typed with capitals resolves to the lowercase endpoint")

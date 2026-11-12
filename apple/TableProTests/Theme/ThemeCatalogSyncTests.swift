@@ -7,7 +7,6 @@
 //  anything, after treating it as untrusted input.
 //
 
-import AppKit
 import Foundation
 import os
 @testable import TablePro
@@ -20,7 +19,6 @@ struct ThemeCatalogSyncTests {
     @MainActor
     private final class Harness {
         let root: URL
-        let center = NotificationCenter()
         let suite: EphemeralDefaults
         let tracker: SyncChangeTracker
         let fileTrash: ThemeFileTrash
@@ -47,7 +45,6 @@ struct ThemeCatalogSyncTests {
             catalog = ThemeCatalog(
                 userDirectory: userDirectory ?? folders[0],
                 bundleDirectory: nil,
-                notificationCenter: center,
                 fileTrash: self.fileTrash,
                 syncTracker: tracker
             )
@@ -64,7 +61,6 @@ struct ThemeCatalogSyncTests {
             catalog = ThemeCatalog(
                 userDirectory: themes,
                 bundleDirectory: nil,
-                notificationCenter: center,
                 fileTrash: fileTrash,
                 syncTracker: tracker
             )
@@ -94,8 +90,19 @@ struct ThemeCatalogSyncTests {
         )
     }
 
+    nonisolated private static func valueTheme(_ id: String) throws -> ThemeDefinition {
+        var values = try theme(id)
+        values.overrides[.gridString] = try ThemeColor(validating: "#F1FA8C")
+        values.overrides[.gridNumber] = try ThemeColor(validating: "#BD93F9")
+        return values
+    }
+
     nonisolated private static func category(_ id: String) -> String {
         ThemeCatalog.syncCategory(for: id)
+    }
+
+    nonisolated private static func schema(of payload: Data) throws -> Int? {
+        try (JSONSerialization.jsonObject(with: payload) as? [String: Any])?["schema"] as? Int
     }
 
     // MARK: - Local changes
@@ -125,14 +132,13 @@ struct ThemeCatalogSyncTests {
         #expect(harness.tombstoned.isEmpty)
     }
 
-    @Test("Loading the folder and reloading on activation mark nothing")
+    @Test("Loading the folder and reloading it mark nothing")
     func loadsMarkNothing() throws {
         let harness = try Harness()
         defer { harness.remove() }
         try harness.write(try Self.theme("user.existing"))
 
         harness.reopen()
-        harness.center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         harness.catalog.reloadSynchronously()
 
         #expect(harness.catalog.theme(id: "user.existing") != nil)
@@ -378,6 +384,37 @@ struct ThemeCatalogSyncTests {
         #expect(harness.catalog.theme(id: synced.id) == nil)
     }
 
+    @Test("A synced format 4 theme lands with its value colors and marks nothing")
+    func remoteFormatFourThemeKeepsItsValueColors() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let synced = try Self.valueTheme("user.values")
+        let payload = try ThemeFileFormat.encode(synced)
+        #expect(try Self.schema(of: payload) == 4)
+
+        #expect(harness.catalog.applyRemote(category: Self.category(synced.id), data: payload) == .applied)
+
+        #expect(harness.catalog.storedTheme(id: synced.id) == synced)
+        #expect(try Data(contentsOf: harness.themes.appendingPathComponent("user.values.json")) == payload)
+        #expect(harness.dirty.isEmpty)
+    }
+
+    @Test("A synced format 3 record holding a value color is skipped, since that format cannot hold the key")
+    func remoteFormatThreeRecordWithAValueColorIsSkipped() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let payload = Data(##"{"schema":3,"id":"user.a","name":"a","appearance":"dark","dataGrid":{"string":"#F1FA8C"}}"##.utf8)
+        #expect(throws: ThemeLoadError.keysNeedNewerFormat(["dataGrid.string"], format: 4)) {
+            try ThemeFileFormat.decode(payload)
+        }
+
+        #expect(harness.catalog.applyRemote(category: Self.category("user.a"), data: payload) == .skipped)
+
+        #expect(try harness.fileNames().isEmpty)
+        #expect(harness.catalog.storedTheme(id: "user.a") == nil)
+        #expect(harness.dirty.isEmpty)
+    }
+
     struct Rejection: CustomTestStringConvertible, Sendable {
         let label: String
         let category: String
@@ -524,6 +561,24 @@ struct ThemeCatalogSyncTests {
         #expect(harness.catalog.syncCategories == [Self.category(night.id)])
     }
 
+    @Test("A theme with a value color syncs as one format 4 record, and a theme without one as format 3")
+    func payloadFormatFollowsTheKeysSet() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let night = try Self.theme("user.night")
+        let values = try Self.valueTheme("user.values")
+        try harness.catalog.save(night)
+        try harness.catalog.save(values)
+
+        #expect(harness.dirty == [Self.category(night.id), Self.category(values.id)])
+        #expect(harness.catalog.syncCategories == [Self.category(night.id), Self.category(values.id)])
+        let plain = try #require(harness.catalog.syncPayload(forCategory: Self.category(night.id)))
+        #expect(try Self.schema(of: plain) == 3)
+        let colored = try #require(harness.catalog.syncPayload(forCategory: Self.category(values.id)))
+        #expect(try Self.schema(of: colored) == 4)
+        #expect(try ThemeFileFormat.decode(colored) == values)
+    }
+
     // MARK: - Names
 
     @Test("Two themes with one name show apart in the list, while their files and records keep the name")
@@ -586,7 +641,6 @@ struct ThemeCatalogSyncTests {
         let catalog = ThemeCatalog(
             userDirectory: folder,
             bundleDirectory: nil,
-            notificationCenter: NotificationCenter(),
             syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
         )
 

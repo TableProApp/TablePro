@@ -15,11 +15,20 @@ protocol DataGridMountedView: AnyObject {
     func viewportSample() -> (row: Int, offset: CGFloat)?
     @discardableResult func beginEditing(row: Int, displayColumn: Int) -> Bool
     var isEditing: Bool { get }
+    // A viewer, the value filter or the foreign key preview: a reload closes or repoints each of them.
+    var holdsTransientUI: Bool { get }
+    // A live scroll or a selection drag, which a reload would move rows under.
+    var isTrackingInteraction: Bool { get }
     func commitEditing() -> Bool
     func discardEditing()
     @discardableResult func focus() -> Bool
     // Where a popover about a column (statistics, value filter) points.
     func anchor(forColumn displayColumn: Int) -> (view: NSView, rect: NSRect)?
+}
+
+extension DataGridMountedView {
+    var holdsTransientUI: Bool { false }
+    var isTrackingInteraction: Bool { false }
 }
 
 @MainActor
@@ -144,7 +153,7 @@ final class DataGridModel: ObservableObject {
             restoreSelection(in: current)
             displayRevision &+= 1
             mountedView?.apply(change)
-            refreshFind()
+            refreshFind(after: delta, in: current, previousOrder: previous)
             return
         }
         let change = DataGridChange.from(delta, order: order, rows: current, columns: columns)
@@ -158,7 +167,37 @@ final class DataGridModel: ObservableObject {
         }
         // An edited row stays where the filter put it until the filter or the row set changes (#2667).
         mountedView?.apply(change)
-        refreshFind()
+        refreshFind(after: delta, in: current)
+    }
+
+    // An open find bar reads again only the cells the delta wrote and the rows that now show and did not before;
+    // one that left drops its matches.
+    private func refreshFind(after delta: Delta, in current: TableRows, previousOrder: DataGridRowOrder? = nil) {
+        guard find.isVisible else { return }
+        var written: [RowID: IndexSet] = [:]
+        var added: [RowID] = []
+        switch delta {
+        case .cellChanged(let row, let column):
+            if current.rows.indices.contains(row) {
+                written[current.rows[row].id] = IndexSet(integer: column)
+            }
+        case .cellsChanged(let positions):
+            for position in positions where current.rows.indices.contains(position.row) {
+                written[current.rows[position.row].id, default: []].insert(position.column)
+            }
+        case .rowsInserted(let inserted):
+            added = inserted.compactMap { current.rows.indices.contains($0) ? current.rows[$0].id : nil }
+        case .rowsRemoved:
+            break
+        case .columnsReplaced, .fullReplace:
+            refreshFind()
+            return
+        }
+        // A filtered order resolved again can bring back a row hidden since an edit, which no refresh read then.
+        if let previousOrder, let shown = order.filteredIDs {
+            added += shown.filter { previousOrder.displayIndex(of: $0, in: current) == nil }
+        }
+        refreshFind(writtenCells: written, addedRows: added)
     }
 
     private func resolveOrder(in rows: TableRows) -> DataGridRowOrder {
@@ -210,8 +249,20 @@ final class DataGridModel: ObservableObject {
         setSelection(GridSelection(rectangles: rects, activeCell: active, anchor: active, mode: rects.isEmpty ? .cells : .rows))
     }
 
+    // Takes back a selection kept by identity, so a cell cursor stays a cursor on its own column.
+    func select(_ snapshot: GridSelectionSnapshot) {
+        let resolved = snapshot.resolved(order: order, rows: rows, columns: columns)
+        setSelection(resolved.rectangles.isEmpty && resolved.activeCell == nil ? .empty : resolved)
+    }
+
     func clearSelection() {
         setSelection(.empty)
+    }
+
+    /// Before a reload whose rows took other ids: the selection stays on the rows the map names, and
+    /// the reload resolves it as it resolves any kept selection.
+    func carrySelection(_ rowMap: [RowID: RowID]) {
+        store.selectionSnapshot = store.selectionSnapshot.remappingRows(rowMap)
     }
 
     // The change that follows tells the view: a selection moved ahead of it would end an open edit.
@@ -536,6 +587,13 @@ final class DataGridModel: ObservableObject {
         return column.dataIndex < formats.count ? formats[column.dataIndex] : nil
     }
 
+    // The table's own spelling of the column's type, where the owner says the columns are that table's. Read at use, so
+    // a definition that lands after the rows reaches the header with the metadata delta that carried it.
+    func declaredType(of column: DataGridColumn) -> String? {
+        guard configuration.namesDeclaredColumnTypes else { return nil }
+        return rows.declaredType(at: column.dataIndex)
+    }
+
     // MARK: - Editing
 
     func isColumnWritable(_ column: DataGridColumn) -> Bool {
@@ -548,6 +606,8 @@ final class DataGridModel: ObservableObject {
     }
 
     var isEditing: Bool { mountedView?.isEditing ?? false }
+    var holdsTransientUI: Bool { mountedView?.holdsTransientUI ?? false }
+    var isTrackingInteraction: Bool { mountedView?.isTrackingInteraction ?? false }
 
     // Owners that deferred work while an editor was open resume here.
     var onEditingEnded: (@MainActor () -> Void)?

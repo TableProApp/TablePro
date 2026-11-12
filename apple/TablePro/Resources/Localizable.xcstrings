@@ -634,6 +634,10 @@
         }
       }
     },
+    "'%@' is a field of an array of objects in this document. Change it with a query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "'%@' is document metadata and cannot be edited." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -764,6 +768,16 @@
     },
     "“%@” changed since you last synced" : {
 
+    },
+    "“%@” has its Safe Mode level set to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“%1$@” has its Safe Mode level set to %2$@."
+          }
+        }
+      }
     },
     "“%@” holds no file to import." : {
 
@@ -1069,6 +1083,19 @@
         }
       }
     },
+    "“%@” is tagged %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“%1$@” is tagged %2$@."
+          }
+        }
+      }
+    },
+    "“%@” is used more than once." : {
+
+    },
     "“%@” isn't a port or a range of ports, such as 4000-4999." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -1286,6 +1313,9 @@
         }
       }
     },
+    "“%@” will be disconnected and its token revoked. Any in-flight requests will be cancelled." : {
+
+    },
     "\"%@\" will be moved to Trash. You can recover it from there." : {
       "localizations" : {
         "fr" : {
@@ -1485,6 +1515,12 @@
           }
         }
       }
+    },
+    "“%@”'s in-flight requests will be cancelled. It reconnects the next time it starts; to stop it, remove TablePro from it in Connect a Client." : {
+
+    },
+    "“%@”'s running requests will be cancelled, but it can send new ones right away. To stop it, remove TablePro from it in Connect a Client, or turn off the MCP server." : {
+
     },
     "“%1$@” could not be written. %2$@" : {
       "localizations" : {
@@ -1818,6 +1854,9 @@
           }
         }
       }
+    },
+    "(expression)" : {
+
     },
     "(NULL)" : {
       "localizations" : {
@@ -2464,6 +2503,9 @@
     "%@ (specification)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ (unique)" : {
+
     },
     "%@ (You)" : {
       "localizations" : {
@@ -3167,6 +3209,9 @@
         }
       }
     },
+    "%@ connected" : {
+
+    },
     "%@ connections do not support adding rows from Shortcuts." : {
 
     },
@@ -3209,6 +3254,9 @@
           }
         }
       }
+    },
+    "%@ connects with a token from Settings > MCP > Authentication, which can limit what it reaches. TablePro leaves it as is." : {
+
     },
     "%@ contains characters Spanner does not allow." : {
       "extractionState" : "manual",
@@ -3268,6 +3316,9 @@
         }
       }
     },
+    "%@ could not be read as valid settings, so TablePro left it unchanged." : {
+
+    },
     "%@ could not be updated" : {
 
     },
@@ -3284,6 +3335,9 @@
       }
     },
     "%@ DDL" : {
+
+    },
+    "%@ defines TablePro in a form TablePro cannot edit safely, so it left the file unchanged." : {
 
     },
     "%@ does not accept this column change." : {
@@ -3557,6 +3611,9 @@
         }
       }
     },
+    "%@ has an unexpected shape where TablePro would add itself, so TablePro left it unchanged." : {
+
+    },
     "%@ has no column named %@" : {
       "localizations" : {
         "en" : {
@@ -3605,6 +3662,9 @@
       "generatesSymbol" : false
     },
     "%@ has no recorded reads." : {
+
+    },
+    "%@ has TablePro in one project only. Install adds it for every project." : {
 
     },
     "%@ holds a character macOS would turn into command line punctuation." : {
@@ -3702,6 +3762,9 @@
           }
         }
       }
+    },
+    "%@ is a binary column, and this value is not 0x followed by hex digits." : {
+
     },
     "%@ is a boolean field, so it matches only true or false, not %@." : {
       "extractionState" : "manual",
@@ -3973,6 +4036,12 @@
         }
       }
     },
+    "%@ is invalid after a failed or cancelled concurrent build. Queries never use it, but every write still updates it." : {
+
+    },
+    "%@ is invalid after a failed or cancelled concurrent build. Queries never use it." : {
+
+    },
     "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
       "localizations" : {
         "fr" : {
@@ -4222,6 +4291,18 @@
         }
       }
     },
+    "%@ is set up for a copy of TablePro that is no longer there." : {
+
+    },
+    "%@ is set up for a different copy of TablePro. Update points it to this one." : {
+
+    },
+    "%@ is set up with an address or token that no longer works." : {
+
+    },
+    "%@ is set up, but one project has its own older TablePro setup that wins there. Remove TablePro from that project's settings." : {
+
+    },
     "%@ is showing another sheet. Close it, then try again." : {
       "localizations" : {
         "fr" : {
@@ -4231,6 +4312,12 @@
           }
         }
       }
+    },
+    "%@ is the new copy an interrupted REINDEX CONCURRENTLY left behind. Drop it, then run the rebuild again." : {
+
+    },
+    "%@ is the old copy a REINDEX CONCURRENTLY left behind after the rebuild finished." : {
+
     },
     "%@ is too wide for this engine to index whole, so only a prefix is indexed. Rows differing only past it are refused as duplicates." : {
       "localizations" : {
@@ -4267,6 +4354,9 @@
     "%@ isn't compiled for debugging." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ kept changing while TablePro wrote it. Try again." : {
+
     },
     "%@ lines have unreadable characters" : {
       "localizations" : {
@@ -4319,6 +4409,9 @@
       }
     },
     "%@ May Still Be Running" : {
+
+    },
+    "%@ more messages." : {
 
     },
     "%@ more, in the script beside this" : {
@@ -4541,6 +4634,9 @@
           }
         }
       }
+    },
+    "%@ names the same key twice, so TablePro left it unchanged." : {
+
     },
     "%@ needs %@." : {
       "extractionState" : "manual",
@@ -4811,6 +4907,9 @@
         }
       }
     },
+    "%@ picks up the change right away." : {
+
+    },
     "%@ Plan" : {
 
     },
@@ -4905,6 +5004,9 @@
           }
         }
       }
+    },
+    "%@ reaches MCP servers only from its maker's cloud, so it cannot reach TablePro on this Mac." : {
+
     },
     "%@ read" : {
       "extractionState" : "manual",
@@ -5395,10 +5497,16 @@
         }
       }
     },
+    "%@ starts MCP servers only as local commands, so it cannot reach TablePro's HTTP server." : {
+
+    },
     "%@ statement" : {
 
     },
     "%@ statements" : {
+
+    },
+    "%@ Statements" : {
 
     },
     "%@ stops being a computed column" : {
@@ -5420,6 +5528,9 @@
           }
         }
       }
+    },
+    "%@ stops reaching your databases through TablePro." : {
+
     },
     "%@ succeeded" : {
       "extractionState" : "manual",
@@ -6998,6 +7109,9 @@
     "%1$@ column of %2$@" : {
 
     },
+    "%1$@ contrast is %2$@:1. Aim for at least 4.5:1." : {
+
+    },
     "%1$@ could not be read again before generating the script. %2$@" : {
       "localizations" : {
         "fr" : {
@@ -7101,6 +7215,12 @@
     "%1$@ dead rows, %2$@ live. Never vacuumed." : {
 
     },
+    "%1$@ dead rows, %2$@ live. No vacuum recorded in the server's statistics." : {
+
+    },
+    "%1$@ dead rows, %2$@ live. No vacuum recorded since the statistics were reset at %3$@." : {
+
+    },
     "%1$@ does not apply to a %2$@." : {
       "localizations" : {
         "fr" : {
@@ -7162,6 +7282,9 @@
         }
       }
     },
+    "%1$@ has no scans in the server's statistics. It takes %2$@." : {
+
+    },
     "%1$@ has type %2$@, which MongoDB does not have. Choose a type from the list." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -7173,6 +7296,9 @@
           }
         }
       }
+    },
+    "%1$@ has used %2$@ of its range: its last value is %3$@ and its limit %4$@." : {
+
     },
     "%1$@ holds numbers from %2$@ to %3$@." : {
 
@@ -7223,6 +7349,9 @@
     "%1$@ in SRID %2$d." : {
 
     },
+    "%1$@ INCLUDE (%2$@)" : {
+
+    },
     "%1$@ is a capped collection, and a longer field name makes MongoDB delete its oldest documents. Choose a name no longer than %2$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -7253,12 +7382,18 @@
     "%1$@ is a light theme, so %2$@ is used." : {
 
     },
+    "%1$@ is at %2$@ of the largest value %3$@ holds." : {
+
+    },
     "%1$@ is covered by %2$@." : {
 
     },
     "%1$@ is not a level %2$@ accepts. Use one of %3$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%1$@ is set up, but the project %2$@ has its own older TablePro setup that wins there. Remove TablePro from that project's settings." : {
+
     },
     "%1$@ is the local port, %2$@ and %3$@ are this connection's host and port. The command runs directly rather than through a shell, so start it with /usr/bin/env if you need environment variables." : {
       "localizations" : {
@@ -7494,6 +7629,9 @@
         }
       }
     },
+    "%1$@ reclaimable, %2$@ of the table's size on disk." : {
+
+    },
     "%1$@ references %2$@, which has no rows." : {
 
     },
@@ -7517,6 +7655,15 @@
         }
       }
     },
+    "%1$@ rows modified since it was last analyzed %2$@, more than the %3$@ that start an autoanalyze." : {
+
+    },
+    "%1$@ rows modified since it was last analyzed, more than the %2$@ that start an autoanalyze." : {
+
+    },
+    "%1$@ stops reaching your databases through TablePro. The current %2$@ is kept next to it as %3$@." : {
+
+    },
     "%1$@ tables hold “%2$@”." : {
 
     },
@@ -7527,6 +7674,9 @@
 
     },
     "%1$@ to %2$@: %3$@" : {
+
+    },
+    "%1$@ transactions old, past the %2$@ at which autovacuum forces a freeze. %3$@ remain before wraparound." : {
 
     },
     "%1$@ wants to run a query on \"%2$@\"" : {
@@ -7800,6 +7950,10 @@
           }
         }
       }
+    },
+    "%1$@.%2$@ was written as text: %3$lld values do not fit %4$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%1$@/%2$@ rows" : {
       "localizations" : {
@@ -11205,6 +11359,16 @@
         }
       }
     },
+    "%lld of ^[%lld object](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of ^[%2$lld object](inflect: true)"
+          }
+        }
+      }
+    },
     "%lld of ^[%lld row](inflect: true)" : {
       "localizations" : {
         "en" : {
@@ -11523,6 +11687,9 @@
         }
       }
     },
+    "%lld row(s) returned" : {
+
+    },
     "%lld row%@ affected" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -11768,6 +11935,12 @@
           }
         }
       }
+    },
+    "%lld sequences are locked by another session, so their counters were not checked." : {
+
+    },
+    "%lld sequences are not readable by this user, so their counters were not checked." : {
+
     },
     "%lld skipped (no options)" : {
       "localizations" : {
@@ -12481,6 +12654,9 @@
     "^[%lld change](inflect: true)" : {
 
     },
+    "^[%lld check](inflect: true) could not run. Select one to see why." : {
+
+    },
     "^[%lld column](inflect: true)" : {
       "localizations" : {
         "fr" : {
@@ -12571,6 +12747,12 @@
     "^[%lld finding](inflect: true)" : {
 
     },
+    "^[%lld fix](inflect: true)" : {
+
+    },
+    "^[%lld ignored finding](inflect: true) hidden." : {
+
+    },
     "^[%lld line](inflect: true)" : {
       "localizations" : {
         "fr" : {
@@ -12592,6 +12774,9 @@
           }
         }
       }
+    },
+    "^[%lld object](inflect: true)" : {
+
     },
     "^[%lld row](inflect: true)" : {
       "localizations" : {
@@ -13515,6 +13700,9 @@
           }
         }
       }
+    },
+    "1 more message." : {
+
     },
     "1 new column" : {
 
@@ -15791,6 +15979,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A document with this _id already exists." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A domain's base type, or a range's subtype" : {
       "localizations" : {
         "fr" : {
@@ -15918,6 +16110,9 @@
         }
       }
     },
+    "A finding moves here when a refresh no longer reports it." : {
+
+    },
     "A Firestore document is a JSON object of fields." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15960,6 +16155,9 @@
           }
         }
       }
+    },
+    "A freeze cannot pass the oldest open transaction, prepared transaction or replication slot." : {
+
     },
     "A global secondary index takes a partition key and an optional sort key" : {
       "extractionState" : "manual",
@@ -16120,6 +16318,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A key named '%@' already exists." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A key needs a name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16133,6 +16335,10 @@
       }
     },
     "A key range cannot be ORed with a column filter. Use =, STARTS WITH or REGEX on _key, or AND." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A key with this name already exists." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -16151,6 +16357,10 @@
     },
     "A label cannot be removed or moved once it exists." : {
 
+    },
+    "A large object value is longer than the 64 MiB TablePro reads from SAP HANA, so it cannot be copied or exported whole." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
 
@@ -16502,14 +16712,14 @@
         }
       }
     },
+    "A plan works on up to 3 devices at a time. Removing one signs TablePro out there." : {
+
+    },
     "A point's id cannot change. Insert a new row with the new id instead." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
     "A publish to the team library is still running. Try again when it finishes." : {
-
-    },
-    "A plan works on up to 3 devices at a time. Removing one signs TablePro out there." : {
 
     },
     "a query" : {
@@ -17485,6 +17695,9 @@
         }
       }
     },
+    "A transaction is already open on this connection, or it cannot say whether one is. Commit or roll it back first." : {
+
+    },
     "A transaction is already open. Commit or roll it back first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -17497,7 +17710,19 @@
         }
       }
     },
+    "A Transaction Is Open" : {
+
+    },
+    "A transaction is open on %@. Switching databases reconnects, and the server would roll it back. Commit or roll back the transaction, then switch again." : {
+
+    },
+    "A transaction is open on this connection, and a failed statement would abort it. Commit or roll back in TablePro first." : {
+
+    },
     "A transaction is open on this connection, and its uncommitted rows aren't in these counts." : {
+
+    },
+    "A transaction is open on this connection, and this change cannot run inside it. Nothing was run. Commit or roll back the transaction, then try again." : {
 
     },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
@@ -19629,6 +19854,9 @@
     "Add column “%@”" : {
 
     },
+    "Add Column Pair" : {
+
+    },
     "Add Column…" : {
       "localizations" : {
         "fr" : {
@@ -20261,6 +20489,9 @@
         }
       }
     },
+    "Add it in %@'s settings" : {
+
+    },
     "Add Jump Host" : {
       "localizations" : {
         "fr" : {
@@ -20582,6 +20813,9 @@
         }
       }
     },
+    "Add sort criterion" : {
+
+    },
     "Add SSH Server…" : {
       "localizations" : {
         "fr" : {
@@ -20713,6 +20947,9 @@
           }
         }
       }
+    },
+    "Add this to %@:" : {
+
     },
     "Add to Favorites" : {
       "comment" : "A label that describes an action to add an item to a user's favorites.",
@@ -20985,6 +21222,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Adds a Favorites section above Recent with the tables you starred in the database you are browsing. Each table also stays in its own place." : {
+
+    },
     "Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it." : {
       "localizations" : {
         "fr" : {
@@ -21144,6 +21384,12 @@
           }
         }
       }
+    },
+    "Adds Tables, Views, Functions, Users, Query and Backup buttons to the connection window's toolbar. Customize Toolbar can move or remove them." : {
+
+    },
+    "Adds through the %@ command" : {
+
     },
     "Adjust Limit" : {
       "localizations" : {
@@ -21388,6 +21634,9 @@
       }
     },
     "After" : {
+
+    },
+    "After a run, Message lists what each statement did and Summary puts the same in a table, beside a tab for each result." : {
 
     },
     "After keyword expansion, Tab moves through fields such as %1$@, and %2$@ marks where the cursor ends up." : {
@@ -22595,6 +22844,9 @@
         }
       }
     },
+    "All clients" : {
+
+    },
     "All collections" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -22774,6 +23026,12 @@
           }
         }
       }
+    },
+    "All Findings" : {
+
+    },
+    "All Findings (%@)" : {
+
     },
     "All Objects" : {
       "localizations" : {
@@ -24232,6 +24490,12 @@
         }
       }
     },
+    "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again." : {
+
+    },
+    "Always allowed" : {
+
+    },
     "Always count" : {
       "localizations" : {
         "fr" : {
@@ -25021,6 +25285,9 @@
         }
       }
     },
+    "Analyze Threshold" : {
+
+    },
     "ANCHOR needs a partition:offset list." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -25382,6 +25649,9 @@
 
     },
     "Another selected row adds the same query." : {
+
+    },
+    "Another session held its table locked, so its definition could not be read. Refresh once the lock is gone for a fix." : {
 
     },
     "Another source column is mapped to the same destination column." : {
@@ -26711,6 +26981,9 @@
         }
       }
     },
+    "Apply Filter & Sort" : {
+
+    },
     "Apply Filter from Link" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -26871,6 +27144,9 @@
           }
         }
       }
+    },
+    "Apply the filters and the sort (Cmd+Return)" : {
+
     },
     "Apply this rule" : {
       "localizations" : {
@@ -27777,6 +28053,9 @@
           }
         }
       }
+    },
+    "Arguments" : {
+
     },
     "Array element scope" : {
       "localizations" : {
@@ -29596,6 +29875,39 @@
         }
       }
     },
+    "Auto Refresh" : {
+
+    },
+    "Auto Refresh waits until the connection is back." : {
+
+    },
+    "Auto Refresh waits while a cell is being edited." : {
+
+    },
+    "Auto Refresh waits while a transaction is open." : {
+
+    },
+    "Auto Refresh waits while a value is open in its own window." : {
+
+    },
+    "Auto Refresh waits while rows are selected in a table without a primary key." : {
+
+    },
+    "Auto Refresh waits while rows load." : {
+
+    },
+    "Auto Refresh waits while the table has unsaved changes." : {
+
+    },
+    "Auto Refresh: %@" : {
+
+    },
+    "AUTO_INCREMENT columns whose next value has reached 75% of the largest value their type holds." : {
+
+    },
+    "AUTO_INCREMENT Near Its Limit" : {
+
+    },
     "Auto-detects from ~/.ssh/config and default key locations." : {
       "localizations" : {
         "fr" : {
@@ -30777,6 +31089,9 @@
         }
       }
     },
+    "Backup" : {
+
+    },
     "Backup Database" : {
       "localizations" : {
         "fr" : {
@@ -31423,7 +31738,16 @@
         }
       }
     },
+    "Beautify SQL" : {
+
+    },
     "Before" : {
+
+    },
+    "Before Replace" : {
+
+    },
+    "Before Restore" : {
 
     },
     "BEFORE, AFTER, or INSTEAD OF" : {
@@ -31465,6 +31789,9 @@
           }
         }
       }
+    },
+    "Begin, commit, or roll back a transaction on the connection's shared session. The transaction stays open across calls until committed or rolled back, and it is the same session the user's own tabs run on, so leave nothing open. Begin is refused while a transaction is already open, and every action is refused on a connection with Manual Commit on, where the user commits in TablePro. Needs tools:write." : {
+
     },
     "Begin, commit, or roll back a transaction on the connection's shared session. The transaction stays open across calls until committed or rolled back, and it is the same session the user's own tabs run on, so leave nothing open. Needs tools:write." : {
       "localizations" : {
@@ -31695,6 +32022,10 @@
     },
     "Billing…" : {
 
+    },
+    "Binary" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Binary content" : {
       "localizations" : {
@@ -32296,6 +32627,9 @@
         }
       }
     },
+    "Bring an open tab to the front, using a tab id from list_recent_tabs. TablePro asks the user about the tab's connection first, as it does for any call that names a connection." : {
+
+    },
     "Broadcast" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -32393,6 +32727,9 @@
           }
         }
       }
+    },
+    "Browse All Versions…" : {
+
     },
     "Browse needs a TableName" : {
       "extractionState" : "manual",
@@ -32590,6 +32927,9 @@
           }
         }
       }
+    },
+    "Builder" : {
+
     },
     "Building" : {
       "extractionState" : "manual",
@@ -33518,7 +33858,25 @@
     "Can't Export Messages" : {
 
     },
+    "Can't List %@" : {
+
+    },
+    "Can't List Foreign Tables" : {
+
+    },
+    "Can't List Functions" : {
+
+    },
+    "Can't List Materialized Views" : {
+
+    },
+    "Can't List Procedures" : {
+
+    },
     "Can't List Routines" : {
+
+    },
+    "Can't List Sequences" : {
 
     },
     "Can't List Tables" : {
@@ -33560,6 +33918,15 @@
           }
         }
       }
+    },
+    "Can't List Triggers" : {
+
+    },
+    "Can't List Types" : {
+
+    },
+    "Can't List Views" : {
+
     },
     "Can't reach a PGlite socket server at %@:%d. Start it with 'npx @electric-sql/pglite-socket', then try again." : {
       "extractionState" : "manual",
@@ -33609,6 +33976,9 @@
         }
       }
     },
+    "Can't read settings" : {
+
+    },
     "Can't read this folder" : {
 
     },
@@ -33621,6 +33991,9 @@
           }
         }
       }
+    },
+    "Can't Switch to Text" : {
+
     },
     "Cancel" : {
       "localizations" : {
@@ -34582,6 +34955,9 @@
           }
         }
       }
+    },
+    "Cannot run this query: it calls a function that can change data, and Safe Mode is held at Read-Only for this connection." : {
+
     },
     "Cannot save changes to '%@'." : {
       "localizations" : {
@@ -36560,6 +36936,9 @@
         }
       }
     },
+    "Changing the column type rewrites the table and its indexes under an exclusive lock." : {
+
+    },
     "Changing the primary key rebuilds the table and can fail on duplicate values." : {
       "localizations" : {
         "fr" : {
@@ -37048,6 +37427,15 @@
         }
       }
     },
+    "ChatGPT sign-in failed: %@" : {
+
+    },
+    "ChatGPT sign-in was denied: %@" : {
+
+    },
+    "ChatGPT sign-in was denied." : {
+
+    },
     "Check" : {
 
     },
@@ -37184,6 +37572,9 @@
         }
       }
     },
+    "Check Failed" : {
+
+    },
     "Check for a firewall, VPN, or load balancer between you and the server that closes connections mid-handshake." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -37250,6 +37641,9 @@
         }
       }
     },
+    "Check id, also set on each of its findings" : {
+
+    },
     "Check mode:" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -37292,7 +37686,13 @@
         }
       }
     },
+    "Check name" : {
+
+    },
     "Check Now" : {
+
+    },
+    "Check Skipped" : {
 
     },
     "Check that the Client Key path points to a valid PEM private key." : {
@@ -37847,6 +38247,9 @@
       }
     },
     "Choose a character set first" : {
+
+    },
+    "Choose a column and a referenced column in every row." : {
 
     },
     "Choose a connection" : {
@@ -39340,6 +39743,15 @@
         }
       }
     },
+    "Claude Agent can't use this connection: TablePro couldn't create its access token. Try again." : {
+
+    },
+    "Claude Agent can't use this connection: TablePro couldn't save its access token to the Keychain. Try again." : {
+
+    },
+    "Claude Agent can't use this connection: TablePro couldn't write its MCP settings file. Try again." : {
+
+    },
     "Claude Code" : {
       "localizations" : {
         "fr" : {
@@ -40179,6 +40591,9 @@
         }
       }
     },
+    "Clear Resolved" : {
+
+    },
     "Clear Results" : {
       "localizations" : {
         "fr" : {
@@ -40644,6 +41059,9 @@
         }
       }
     },
+    "Click + to add sort criteria" : {
+
+    },
     "Click a table" : {
       "localizations" : {
         "fr" : {
@@ -40751,6 +41169,9 @@
           }
         }
       }
+    },
+    "Clicking a database, schema or object group in the sidebar lists its objects in the main area. Show Objects in the row's menu lists them either way." : {
+
     },
     "Client" : {
       "localizations" : {
@@ -41121,6 +41542,9 @@
         }
       }
     },
+    "Client List Unavailable" : {
+
+    },
     "Client Secret" : {
       "localizations" : {
         "fr" : {
@@ -41201,6 +41625,18 @@
           }
         }
       }
+    },
+    "Client: %@" : {
+
+    },
+    "Clients can connect once the MCP server is running." : {
+
+    },
+    "Clients can connect while the MCP server is on. Turn it on in Settings > MCP." : {
+
+    },
+    "Clients cannot connect until it runs. Open Settings > MCP to see why and try again." : {
+
     },
     "Clients will appear here while they have an active MCP session." : {
       "localizations" : {
@@ -42033,6 +42469,9 @@
           }
         }
       }
+    },
+    "Close this tab and choose Database > Table Health." : {
+
     },
     "Close while work is still running?" : {
 
@@ -43078,6 +43517,9 @@
         }
       }
     },
+    "Code expires in ^[%lld second](inflect: true)" : {
+
+    },
     "Code folding" : {
       "localizations" : {
         "fr" : {
@@ -43753,6 +44195,9 @@
         }
       }
     },
+    "Color values by type" : {
+
+    },
     "Color, omitted when none" : {
       "localizations" : {
         "fr" : {
@@ -43832,6 +44277,15 @@
           }
         }
       }
+    },
+    "Colorful" : {
+
+    },
+    "Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs and the object lists." : {
+
+    },
+    "Colorful gives each kind of object its own filled, colored icon in the sidebar, the tabs, the toolbar and the object lists." : {
+
     },
     "Colors" : {
       "extractionState" : "stale",
@@ -43914,6 +44368,18 @@
         }
       }
     },
+    "Column \"%1$@\" has Teradata type %2$@, which TablePro cannot read yet. CAST it to DECIMAL or VARCHAR in the query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Column \"%1$@\" has Teradata type %2$@, which TablePro cannot read yet. CAST it to VARCHAR in the query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "column %@ first appears in a later chunk" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Column %@ has a type, default, generation expression or check that is not one SQL expression." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -43939,6 +44405,9 @@
           }
         }
       }
+    },
+    "Column → Referenced Column" : {
+
     },
     "Column comment" : {
       "extractionState" : "manual",
@@ -44074,6 +44543,9 @@
           }
         }
       }
+    },
+    "Column default" : {
+
     },
     "Column default expression" : {
       "extractionState" : "manual",
@@ -44601,6 +45073,9 @@
           }
         }
       }
+    },
+    "Column Type" : {
+
     },
     "Column type, for a column match" : {
       "localizations" : {
@@ -45401,7 +45876,14 @@
     "Commit Message" : {
 
     },
+    "Commit or roll back the open transaction before switching database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Commit the transaction" : {
+
+    },
+    "Commit Transaction" : {
 
     },
     "Commit…" : {
@@ -46684,6 +47166,9 @@
         }
       }
     },
+    "Configuration" : {
+
+    },
     "Configure an active provider or turn on Apple Intelligence to enable inline suggestions." : {
 
     },
@@ -47773,6 +48258,9 @@
           }
         }
       }
+    },
+    "Connected just now" : {
+
     },
     "Connected Threads" : {
       "localizations" : {
@@ -49612,6 +50100,9 @@
         }
       }
     },
+    "Connections on this profile share one database user. TablePro renews its lease while in use, revokes it once the last connection disconnects or after 10 minutes unused, and never saves the generated password." : {
+
+    },
     "Connections the client may use, ordered by name" : {
       "localizations" : {
         "fr" : {
@@ -51043,6 +51534,12 @@
         }
       }
     },
+    "Copy Command" : {
+
+    },
+    "Copy Configuration" : {
+
+    },
     "Copy Connection ID" : {
       "localizations" : {
         "fr" : {
@@ -51780,6 +52277,9 @@
         }
       }
     },
+    "Copy Original Definition" : {
+
+    },
     "Copy Output" : {
       "localizations" : {
         "fr" : {
@@ -52096,6 +52596,9 @@
         }
       }
     },
+    "Copy Setup for %@" : {
+
+    },
     "Copy Special" : {
       "localizations" : {
         "fr" : {
@@ -52135,6 +52638,9 @@
           }
         }
       }
+    },
+    "Copy Statement" : {
+
     },
     "Copy stopped" : {
       "localizations" : {
@@ -52229,6 +52735,9 @@
         }
       }
     },
+    "Copy the command and run it in Terminal" : {
+
+    },
     "Copy the full error to the clipboard" : {
       "localizations" : {
         "fr" : {
@@ -52268,6 +52777,9 @@
           }
         }
       }
+    },
+    "Copy the setup into %@" : {
+
     },
     "Copy to" : {
       "localizations" : {
@@ -54395,6 +54907,10 @@
     "Could not read the table." : {
 
     },
+    "Could not read this Mac's trusted certificates to verify the server. Choose the server's CA certificate under SSL, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not read which rows are already in the table" : {
 
     },
@@ -54567,6 +55083,9 @@
         }
       }
     },
+    "Could Not Save the Fix Script" : {
+
+    },
     "Could not save the password to the Keychain. Nothing was changed." : {
       "localizations" : {
         "fr" : {
@@ -54596,6 +55115,9 @@
           }
         }
       }
+    },
+    "Could not save this connection's passwords to the Keychain. Your changes were not saved." : {
+
     },
     "Could not search the referenced table" : {
       "localizations" : {
@@ -54661,6 +55183,9 @@
           }
         }
       }
+    },
+    "Could not update the finding history. %@" : {
+
     },
     "Could not use this license key." : {
 
@@ -54891,6 +55416,12 @@
         }
       }
     },
+    "Couldn't Create the Token" : {
+
+    },
+    "Couldn't Detach Partition" : {
+
+    },
     "Couldn't Discard Changes" : {
       "localizations" : {
         "fr" : {
@@ -54902,6 +55433,9 @@
       }
     },
     "Couldn't download cloud-sql-proxy. The server answered with HTTP status %lld." : {
+
+    },
+    "Couldn't Drop Partition" : {
 
     },
     "Couldn't Duplicate the Theme" : {
@@ -54920,6 +55454,9 @@
 
     },
     "Couldn't Import Formatter Rules" : {
+
+    },
+    "Couldn't install" : {
 
     },
     "Couldn't Load" : {
@@ -54969,6 +55506,9 @@
 
     },
     "Couldn't Move the Theme to the Trash" : {
+
+    },
+    "Couldn't Optimize Table" : {
 
     },
     "Couldn't publish to the team catalog" : {
@@ -55106,6 +55646,9 @@
     "Couldn't Read the DDL" : {
 
     },
+    "Couldn't Read the Parts" : {
+
+    },
     "Couldn't read the referenced table" : {
       "localizations" : {
         "fr" : {
@@ -55139,6 +55682,9 @@
       }
     },
     "Couldn't refresh the team library" : {
+
+    },
+    "Couldn't remove" : {
 
     },
     "Couldn't Rename the Theme" : {
@@ -55240,7 +55786,16 @@
         }
       }
     },
+    "Couldn't Save the Deletion" : {
+
+    },
+    "Couldn't Save the Revocation" : {
+
+    },
     "Couldn't start" : {
+
+    },
+    "Couldn't update" : {
 
     },
     "Count" : {
@@ -55502,6 +56057,9 @@
         }
       }
     },
+    "Counters Near Their Limit" : {
+
+    },
     "Counting rows" : {
       "localizations" : {
         "fr" : {
@@ -55596,6 +56154,15 @@
       }
     },
     "Country" : {
+
+    },
+    "Covering Columns" : {
+
+    },
+    "Covering Definition" : {
+
+    },
+    "Covering Index" : {
 
     },
     "Covers the loaded rows only." : {
@@ -56433,6 +57000,9 @@
         }
       }
     },
+    "Created Date" : {
+
+    },
     "Created the database %@." : {
       "localizations" : {
         "fr" : {
@@ -56637,6 +57207,9 @@
     "Credit Card" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Criteria Edited" : {
+
     },
     "Critical" : {
       "localizations" : {
@@ -57462,6 +58035,9 @@
           }
         }
       }
+    },
+    "cursors" : {
+
     },
     "CURTIME()" : {
       "extractionState" : "stale",
@@ -58296,6 +58872,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid Binary" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Bool False" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -58304,11 +58884,19 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid Date & Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Deleted" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
     "Data Grid Deleted Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Enum" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -58373,6 +58961,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid JSON" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Line" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -58382,6 +58974,10 @@
       "generatesSymbol" : false
     },
     "Data Grid NULL Value" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Number" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -58397,9 +58993,20 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Data Grid String" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Grid Text" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Data Grid UUID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Length" : {
+
     },
     "Data loss" : {
       "localizations" : {
@@ -58576,6 +59183,9 @@
           }
         }
       }
+    },
+    "Data Size" : {
+
     },
     "Data type" : {
 
@@ -59814,6 +60424,9 @@
         }
       }
     },
+    "Database the checks ran on" : {
+
+    },
     "Database the listing covers" : {
       "localizations" : {
         "fr" : {
@@ -60392,6 +61005,9 @@
         }
       }
     },
+    "Database: %1$@ (%2$@)" : {
+
+    },
     "Database: %1$@, schema: %2$@" : {
 
     },
@@ -60578,6 +61194,10 @@
           }
         }
       }
+    },
+    "Date & Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Date and Time" : {
 
@@ -60837,6 +61457,12 @@
           }
         }
       }
+    },
+    "Dead Row Share" : {
+
+    },
+    "Dead Rows" : {
+
     },
     "Debounce: %d ms" : {
       "localizations" : {
@@ -61818,6 +62444,10 @@
         }
       }
     },
+    "Default Version" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Default view:" : {
       "localizations" : {
         "fr" : {
@@ -61908,6 +62538,10 @@
           }
         }
       }
+    },
+    "Definer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Definition" : {
       "localizations" : {
@@ -62069,6 +62703,9 @@
         }
       }
     },
+    "Delete “/%@”?" : {
+
+    },
     "Delete \"%@\"" : {
       "localizations" : {
         "fr" : {
@@ -62182,6 +62819,9 @@
           }
         }
       }
+    },
+    "Delete %d tokens?" : {
+
     },
     "Delete %lld columns?" : {
       "localizations" : {
@@ -65279,6 +65919,10 @@
         }
       }
     },
+    "Disabled on Replica" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Discard" : {
       "localizations" : {
         "fr" : {
@@ -67095,6 +67739,9 @@
           }
         }
       }
+    },
+    "Draw strings, numbers, dates and other typed values in the colors of the theme's Values section" : {
+
     },
     "Drawing %1$d shapes in SRID %2$d." : {
       "localizations" : {
@@ -69484,6 +70131,13 @@
         }
       }
     },
+    "e.g., Cursor on my Mac" : {
+
+    },
+    "Each array element must be a JSON object" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Each Browse filter needs an Attribute and an Operator" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -69563,6 +70217,9 @@
 
     },
     "Each row takes a value that exists in the referenced table." : {
+
+    },
+    "Each statement of the last run, with its status, rows and time" : {
 
     },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {
@@ -70412,6 +71069,12 @@
         }
       }
     },
+    "Edit the filter as rows or as one WHERE condition" : {
+
+    },
+    "Edit the filters and the sort together, write the filter as text, and apply both at once" : {
+
+    },
     "Edit the import of %@" : {
 
     },
@@ -70956,6 +71619,9 @@
     "Editor Text" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Edits %@" : {
+
     },
     "Effective" : {
       "localizations" : {
@@ -71860,6 +72526,8 @@
       }
     },
     "Enabled" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -72165,6 +72833,10 @@
           }
         }
       }
+    },
+    "Ends" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Ends on %@" : {
 
@@ -73339,6 +74011,10 @@
         }
       }
     },
+    "Enum" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enum %@ has no symbols." : {
 
     },
@@ -73816,6 +74492,9 @@
         }
       }
     },
+    "Error: %@" : {
+
+    },
     "Error: Selected path is not a regular file" : {
       "localizations" : {
         "fr" : {
@@ -74163,6 +74842,9 @@
         }
       }
     },
+    "Estimated size of what the fix acts on: the index for an index check, the table otherwise. On PostgreSQL it is as of the last VACUUM, ANALYZE or index build." : {
+
+    },
     "Estimated Startup Cost" : {
       "localizations" : {
         "fr" : {
@@ -74307,6 +74989,10 @@
         }
       }
     },
+    "etcd compacted the revision this export started from, so it stopped part way. Run it again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "etcd has no %@ column." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -74416,6 +75102,8 @@
       "generatesSymbol" : false
     },
     "Event" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -74454,6 +75142,10 @@
           }
         }
       }
+    },
+    "Event Scheduler" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Event Streaming" : {
       "localizations" : {
@@ -74536,6 +75228,8 @@
       }
     },
     "Events" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -74556,6 +75250,12 @@
       }
     },
     "Every 5 Minutes" : {
+
+    },
+    "Every 5 Seconds" : {
+
+    },
+    "Every 10 Seconds" : {
 
     },
     "Every 15 minutes" : {
@@ -74581,6 +75281,9 @@
         }
       }
     },
+    "Every 30 Seconds" : {
+
+    },
     "Every call that reaches a connection asks first." : {
       "localizations" : {
         "fr" : {
@@ -74590,6 +75293,12 @@
           }
         }
       }
+    },
+    "Every check that ran found nothing." : {
+
+    },
+    "Every check this engine runs, in order" : {
+
     },
     "Every collection with this ID, at any depth" : {
       "extractionState" : "manual",
@@ -74617,6 +75326,9 @@
           }
         }
       }
+    },
+    "Every custom shortcut goes back to its default." : {
+
     },
     "Every database you picked is written into this folder." : {
       "localizations" : {
@@ -75293,6 +76005,9 @@
         }
       }
     },
+    "Except NULL and booleans, these colors show in the grid only while Color values by type is on in Settings > Data." : {
+
+    },
     "exclamation mark" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -75504,6 +76219,9 @@
           }
         }
       }
+    },
+    "Exclude from iCloud Sync?" : {
+
     },
     "Exclude the AUTO_INCREMENT counter" : {
       "extractionState" : "stale",
@@ -79025,6 +79743,10 @@
         }
       }
     },
+    "Extension" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Extension File" : {
       "localizations" : {
         "fr" : {
@@ -82444,6 +83166,9 @@
         }
       }
     },
+    "Filter Bar" : {
+
+    },
     "Filter by name" : {
       "localizations" : {
         "fr" : {
@@ -82483,6 +83208,9 @@
           }
         }
       }
+    },
+    "Filter by Name" : {
+
     },
     "Filter by Tag" : {
       "localizations" : {
@@ -82544,6 +83272,9 @@
         }
       }
     },
+    "Filter Connections" : {
+
+    },
     "Filter Databases…" : {
       "localizations" : {
         "fr" : {
@@ -82583,6 +83314,9 @@
           }
         }
       }
+    },
+    "Filter editing mode" : {
+
     },
     "Filter favorites" : {
       "localizations" : {
@@ -82873,6 +83607,9 @@
           }
         }
       }
+    },
+    "Filter Panel" : {
+
     },
     "Filter privileges" : {
       "localizations" : {
@@ -83866,6 +84603,18 @@
           }
         }
       }
+    },
+    "Findings" : {
+
+    },
+    "Findings of every check that completed, ignored ones included" : {
+
+    },
+    "Findings the check reported" : {
+
+    },
+    "Finish in %@" : {
+
     },
     "Finish Signing In" : {
       "localizations" : {
@@ -85116,6 +85865,12 @@
         }
       }
     },
+    "Foreign keys use this column (%@): drop them, give the column at the other end of each the same type, then add them again." : {
+
+    },
+    "Foreign keys whose columns lead no valid, non-partial index, so a delete on the referenced table scans this one." : {
+
+    },
     "Foreign Keys Without an Index" : {
 
     },
@@ -85278,6 +86033,9 @@
           }
         }
       }
+    },
+    "Forget %@" : {
+
     },
     "Forget All" : {
       "localizations" : {
@@ -85761,6 +86519,9 @@
           }
         }
       }
+    },
+    "Freeze Max Age" : {
+
     },
     "Freeze the list; messages keep arriving underneath" : {
 
@@ -86582,6 +87343,9 @@
         }
       }
     },
+    "Generated: %@" : {
+
+    },
     "Generation failed." : {
       "localizations" : {
         "fr" : {
@@ -86893,6 +87657,9 @@
         }
       }
     },
+    "Get Table Health" : {
+
+    },
     "Get Table Statistics" : {
       "localizations" : {
         "fr" : {
@@ -87187,6 +87954,9 @@
           }
         }
       }
+    },
+    "Give your client this address and header:" : {
+
     },
     "global" : {
       "localizations" : {
@@ -90696,6 +91466,9 @@
         }
       }
     },
+    "How to read value: percent is a fraction (0.25 means 25 percent), date is ISO 8601" : {
+
+    },
     "HTTP %d with a body of %d bytes" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -91095,6 +91868,9 @@
         }
       }
     },
+    "Id of the check that reported it" : {
+
+    },
     "Identical" : {
       "localizations" : {
         "fr" : {
@@ -91224,6 +92000,9 @@
           }
         }
       }
+    },
+    "Identity column" : {
+
     },
     "Identity File" : {
       "localizations" : {
@@ -91517,6 +92296,9 @@
         }
       }
     },
+    "Ignore" : {
+
+    },
     "Ignore case" : {
       "localizations" : {
         "fr" : {
@@ -91616,6 +92398,9 @@
           }
         }
       }
+    },
+    "Ignored" : {
+
     },
     "Image" : {
       "localizations" : {
@@ -93182,6 +93967,9 @@
         }
       }
     },
+    "In the Tree layout, lists every saved connection in its groups at the top of the sidebar, with the connection on screen opened to its databases. Double-click another one to open it." : {
+
+    },
     "In-memory data store and cache" : {
       "localizations" : {
         "fr" : {
@@ -94436,6 +95224,9 @@
         }
       }
     },
+    "Index scans on this server's standbys are not counted here." : {
+
+    },
     "Index size" : {
       "localizations" : {
         "fr" : {
@@ -94475,6 +95266,9 @@
           }
         }
       }
+    },
+    "Index Size" : {
+
     },
     "Index type reported by the engine" : {
       "extractionState" : "manual",
@@ -94518,6 +95312,9 @@
         }
       }
     },
+    "Index usage counts cover only what the server's statistics hold; a reset, a crash or a failover discards them." : {
+
+    },
     "Index usage counts since the server started at %@." : {
 
     },
@@ -94525,6 +95322,9 @@
 
     },
     "Index usage counts since the statistics were last reset at %@." : {
+
+    },
+    "Index, constraint, sequence or column the finding is about" : {
 
     },
     "Indexed columns in order" : {
@@ -94611,6 +95411,12 @@
         }
       }
     },
+    "Indexes a failed or cancelled CREATE INDEX CONCURRENTLY or REINDEX CONCURRENTLY left invalid, leaving out builds still running." : {
+
+    },
+    "Indexes never scanned since the statistics were last reset, leaving out unique, constraint and foreign key indexes." : {
+
+    },
     "Indexes on the table" : {
       "localizations" : {
         "fr" : {
@@ -94650,6 +95456,18 @@
           }
         }
       }
+    },
+    "Indexes whose columns lead another visible index of the same type on the same table." : {
+
+    },
+    "Indexes whose keys lead another index with the same method, predicate and uniqueness; primary key and constraint indexes stay." : {
+
+    },
+    "Indexes whose keys lead another with the same method and predicate, a plain one under a unique one included; primary key and constraint indexes stay." : {
+
+    },
+    "Indexes with no recorded reads since the server started, leaving out unique, full-text and foreign key indexes." : {
+
     },
     "Indexing an expression needs MySQL 8.0.13 or later." : {
       "extractionState" : "manual",
@@ -94992,6 +95810,9 @@
           }
         }
       }
+    },
+    "Insert a saved query at the cursor" : {
+
     },
     "Insert all rows in a single transaction. If any row fails, all changes are rolled back." : {
       "extractionState" : "manual",
@@ -95522,6 +96343,9 @@
         }
       }
     },
+    "Insert rows into a table using bound parameters, so values are never spliced into SQL text. Needs tools:write and goes through the connection's Safe Mode approval. With Manual Commit on, the rows stay pending until the user commits in TablePro." : {
+
+    },
     "Insert rows the target is missing" : {
       "localizations" : {
         "fr" : {
@@ -95908,6 +96732,12 @@
     "Install %@…" : {
 
     },
+    "Install adds TablePro to a client on this Mac. Select a client to see its settings and set it up by hand." : {
+
+    },
+    "Install in %@" : {
+
+    },
     "Install it with “brew install libpq” and link it." : {
       "localizations" : {
         "fr" : {
@@ -96082,6 +96912,9 @@
       "generatesSymbol" : false
     },
     "Install Update…" : {
+
+    },
+    "Install…" : {
 
     },
     "Installed" : {
@@ -96864,6 +97697,9 @@
           }
         }
       }
+    },
+    "Invalid Indexes" : {
+
     },
     "Invalid indexes are not recreated: %@." : {
       "extractionState" : "manual",
@@ -97819,6 +98655,9 @@
           }
         }
       }
+    },
+    "ISO 8601 time the checks ran" : {
+
     },
     "ISO Date (2024-12-31)" : {
       "localizations" : {
@@ -99049,6 +99888,9 @@
           }
         }
       }
+    },
+    "Keeps up to %1$d versions from the last %2$d days on this Mac." : {
+
     },
     "Keeps what rows looked like before each save, on this Mac only, for 7 days. It is encrypted, and never synced." : {
       "localizations" : {
@@ -100306,6 +101148,9 @@
     "Lakehouse analytics, MySQL protocol" : {
 
     },
+    "Language" : {
+
+    },
     "Language %@" : {
       "localizations" : {
         "fr" : {
@@ -100493,6 +101338,9 @@
           }
         }
       }
+    },
+    "Largest Value" : {
+
     },
     "Last 4 Characters" : {
 
@@ -100737,6 +101585,9 @@
         }
       }
     },
+    "Last Analyze" : {
+
+    },
     "Last checked: %@" : {
       "localizations" : {
         "fr" : {
@@ -100769,6 +101620,10 @@
           }
         }
       }
+    },
+    "Last Executed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Last Hour" : {
       "localizations" : {
@@ -100973,6 +101828,9 @@
         }
       }
     },
+    "Last Seen" : {
+
+    },
     "Last seen %@" : {
 
     },
@@ -101136,6 +101994,12 @@
           }
         }
       }
+    },
+    "Last Vacuum" : {
+
+    },
+    "Last Value" : {
+
     },
     "Later" : {
 
@@ -103087,6 +103951,9 @@
         }
       }
     },
+    "Line %lld runs COPY FROM STDIN, whose rows TablePro cannot send. Run the file with psql, or dump it again with --inserts." : {
+
+    },
     "Line break" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -103709,6 +104576,9 @@
           }
         }
       }
+    },
+    "List every saved connection beside the database tree" : {
+
     },
     "List Favorite Tables" : {
       "localizations" : {
@@ -104885,6 +105755,9 @@
         }
       }
     },
+    "List the tabs open in TablePro. With connection_id, TablePro asks the user about that connection first. Without it, the list covers only connections this client may already reach without asking. Each entry carries the tab id that focus_query_tab takes and the window id that open_table_tab returns." : {
+
+    },
     "List the triggers attached to one table, with their timing, event, and body." : {
       "localizations" : {
         "fr" : {
@@ -105071,6 +105944,9 @@
     "Listen for Notifications" : {
 
     },
+    "LISTEN registrations" : {
+
+    },
     "Listens on all interfaces (0.0.0.0), reachable from your local network." : {
       "localizations" : {
         "fr" : {
@@ -105228,6 +106104,9 @@
 
     },
     "Live Messages…" : {
+
+    },
+    "Live Rows" : {
 
     },
     "Live: %@" : {
@@ -106192,6 +107071,10 @@
         }
       }
     },
+    "Local socket" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Locale Provider" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -106643,6 +107526,9 @@
         }
       }
     },
+    "Lower Bound" : {
+
+    },
     "lowercase" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -106838,6 +107724,9 @@
           }
         }
       }
+    },
+    "macOS could not generate a secure token. Try again." : {
+
     },
     "macOS will ask for your login password" : {
       "localizations" : {
@@ -107371,6 +108260,15 @@
         }
       }
     },
+    "Manual Commit" : {
+
+    },
+    "Manual Commit is on for this connection, so this change is pending until the user commits it in TablePro." : {
+
+    },
+    "Manual Commit is on for this connection. Commit or roll back in TablePro." : {
+
+    },
     "Many Databases, One App" : {
       "localizations" : {
         "fr" : {
@@ -107522,7 +108420,13 @@
     "Masked" : {
 
     },
+    "Masked %@: this connection has masking rules, and TablePro could not trace these columns to a table column." : {
+
+    },
     "Masked by a masking rule" : {
+
+    },
+    "Masked every column: this connection has masking rules, and TablePro could not trace any of them to a table column." : {
 
     },
     "Masking" : {
@@ -107939,6 +108843,9 @@
           }
         }
       }
+    },
+    "Match System follows Sidebar icon size in System Settings > Appearance. Choose a size to fit more objects on screen than the rest of the system shows. Compact keeps the regular text size with less space between rows." : {
+
     },
     "Match what I type" : {
 
@@ -109290,6 +110197,18 @@
         }
       }
     },
+    "MCP Server Couldn't Start" : {
+
+    },
+    "MCP Server Not Running" : {
+
+    },
+    "MCP Server Off" : {
+
+    },
+    "MCP Server Starting" : {
+
+    },
     "MCP Server: Running (%d clients)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -109340,6 +110259,9 @@
           }
         }
       }
+    },
+    "Measured values" : {
+
     },
     "Median" : {
       "localizations" : {
@@ -109970,6 +110892,9 @@
         }
       }
     },
+    "Messages" : {
+
+    },
     "Messages are nested too deeply." : {
 
     },
@@ -110183,6 +111108,9 @@
           }
         }
       }
+    },
+    "Metric name" : {
+
     },
     "Metric unit" : {
       "localizations" : {
@@ -111100,6 +112028,12 @@
         }
       }
     },
+    "Modified Date" : {
+
+    },
+    "Modified Rows" : {
+
+    },
     "Modified:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -111614,7 +112548,23 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Move" : {
+
+    },
+    "Move “%@” to “%@”?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Move “%1$@” to “%2$@”?"
+          }
+        }
+      }
+    },
     "Move “%@” to Connection" : {
+
+    },
+    "Move “%@” to the Trash?" : {
 
     },
     "Move Column Down" : {
@@ -112619,6 +113569,12 @@
         }
       }
     },
+    "Moves the bar with the row count, view switcher and pages from below the results to above them." : {
+
+    },
+    "Moving this tab to another database or schema will discard all unsaved changes." : {
+
+    },
     "Moving through this tab's history replaces what it is showing and will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -112834,6 +113790,10 @@
           }
         }
       }
+    },
+    "MUSTAPPLY takes only RENAMENX or SET with NX" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "My Queries" : {
       "localizations" : {
@@ -113056,6 +114016,9 @@
           }
         }
       }
+    },
+    "MySQL caches the values this check reads for information_schema_stats_expiry seconds, one day by default. ANALYZE TABLE refreshes a table's values." : {
+
     },
     "MySQL, PostgreSQL, SQLite, ClickHouse, and Redis are built in. Others install when you choose them." : {
       "localizations" : {
@@ -113660,6 +114623,33 @@
         }
       }
     },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter bar, opens that bar with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows and Message and Summary tabs above the results, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter bar, opens that bar with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, and makes Tree the default sidebar layout. In table tabs it shows column types in the header, the sort and a Text mode in the filter panel, opens that panel with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, favorite tables at the top of the tree, the Objects tab on selection, the Objects toolbar buttons, toolbar labels and saved connections in the tree, takes the connection and database out of the toolbar, makes Tree the default sidebar layout and uses compact sidebar rows. In table tabs it shows column types in the header, the sort and a Text mode in the filter bar, opens that bar with each table, puts the result bar above the grid and names the database and connection in tab titles. In query tabs it shows the query bar on two rows and Message and Summary tabs above the results, and object icons turn colorful. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
+    "Navigator Layout turns on table details, the Objects tab on selection, the Objects toolbar buttons and the connections list, and makes Tree the default sidebar layout. Standard Layout turns them off again. Open connections switch layout too." : {
+
+    },
     "Nearest" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -113718,6 +114708,15 @@
 
     },
     "Needs attention" : {
+
+    },
+    "Needs MySQL 8.0 or later." : {
+
+    },
+    "Needs PostgreSQL 10 or later." : {
+
+    },
+    "Needs the PROCESS privilege to tell a table in its own file from one in a shared tablespace." : {
 
     },
     "Negotiating encryption" : {
@@ -113947,6 +114946,15 @@
           }
         }
       }
+    },
+    "Never Analyzed" : {
+
+    },
+    "Never analyzed, so the planner has no statistics for it." : {
+
+    },
+    "Never analyzed. Autovacuum does not analyze a partitioned table, so only a manual ANALYZE gives it statistics." : {
+
     },
     "Never Ask" : {
       "localizations" : {
@@ -115475,6 +116483,9 @@
         }
       }
     },
+    "new: not seen in the last run the Table Health tab recorded; ignored: the user accepted it" : {
+
+    },
     "New…" : {
       "localizations" : {
         "fr" : {
@@ -115764,6 +116775,9 @@
     "Next value" : {
 
     },
+    "Next Value" : {
+
+    },
     "Nightly tables" : {
       "localizations" : {
         "fr" : {
@@ -115773,6 +116787,10 @@
           }
         }
       }
+    },
+    "No" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No %@" : {
       "localizations" : {
@@ -116026,6 +117044,9 @@
           }
         }
       }
+    },
+    "No analyze recorded in the server's statistics, and this user cannot read the table's statistics to confirm it." : {
+
     },
     "No Attached Databases" : {
 
@@ -117779,6 +118800,9 @@
         }
       }
     },
+    "No Findings" : {
+
+    },
     "No findings." : {
 
     },
@@ -117868,6 +118892,9 @@
         }
       }
     },
+    "No Foreign Tables" : {
+
+    },
     "No functions" : {
       "localizations" : {
         "fr" : {
@@ -117907,6 +118934,9 @@
           }
         }
       }
+    },
+    "No Functions" : {
+
     },
     "No generator can fill %@ (%@), and it cannot be left empty." : {
       "localizations" : {
@@ -118031,6 +119061,9 @@
           }
         }
       }
+    },
+    "No integer type holds larger values." : {
+
     },
     "No item read so far holds \"%@\" as a key type. Create this index from the editor with its AttributeDefinitions." : {
       "extractionState" : "manual",
@@ -118753,6 +119786,9 @@
         }
       }
     },
+    "No Materialized Views" : {
+
+    },
     "No measurable change" : {
       "localizations" : {
         "fr" : {
@@ -119469,6 +120505,9 @@
         }
       }
     },
+    "No Procedures" : {
+
+    },
     "No providers configured" : {
       "localizations" : {
         "fr" : {
@@ -119989,6 +121028,9 @@
         }
       }
     },
+    "No Resolved Findings" : {
+
+    },
     "No Result to Compare With" : {
 
     },
@@ -120102,6 +121144,10 @@
         }
       }
     },
+    "No row has this primary key, so nothing was updated. Another client may have deleted it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "No row holds the values it was loaded with. Another client may have changed or deleted it." : {
 
     },
@@ -120114,6 +121160,9 @@
           }
         }
       }
+    },
+    "No row took the change. Another client may have changed or deleted it, or a security policy or trigger skipped it." : {
+
     },
     "No rows" : {
       "localizations" : {
@@ -120257,6 +121306,9 @@
           }
         }
       }
+    },
+    "No Run Yet" : {
+
     },
     "No saved changes to '%@' are being kept." : {
       "localizations" : {
@@ -120704,6 +121756,9 @@
       }
     },
     "No sequences" : {
+
+    },
+    "No Sequences" : {
 
     },
     "No servers yet." : {
@@ -121468,6 +122523,9 @@
         }
       }
     },
+    "No Types" : {
+
+    },
     "No Users or Roles" : {
       "localizations" : {
         "fr" : {
@@ -121720,6 +122778,9 @@
           }
         }
       }
+    },
+    "No Views" : {
+
     },
     "No Warnings" : {
       "localizations" : {
@@ -122893,6 +123954,9 @@
         }
       }
     },
+    "Not dropped: its covering index %@ is dropped in this script." : {
+
+    },
     "not equals" : {
       "localizations" : {
         "fr" : {
@@ -122932,6 +123996,9 @@
           }
         }
       }
+    },
+    "Not found" : {
+
     },
     "Not found (404) at %@. Check the Base URL and the model." : {
       "localizations" : {
@@ -123906,6 +124973,9 @@
           }
         }
       }
+    },
+    "Notes on the whole report, such as when the usage counters started" : {
+
     },
     "Nothing got at least %1$lld%% slower than the period before. A query needs %2$lld runs in both periods, and has to have grown by at least %3$@." : {
       "comment" : "Empty state for regressions: %1$lld is a percentage, %2$lld a run count, %3$@ a duration",
@@ -125307,6 +126377,9 @@
         }
       }
     },
+    "Number, string, boolean or null, as type says" : {
+
+    },
     "Numbered List" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -125544,6 +126617,15 @@
           }
         }
       }
+    },
+    "Object icon style:" : {
+
+    },
+    "Object Icons" : {
+
+    },
+    "Object Kind" : {
+
     },
     "Object kinds this operation may name, as list_tables reports them. Empty when it acts on the whole database only." : {
       "localizations" : {
@@ -125957,6 +127039,9 @@
         }
       }
     },
+    "OK, %lld row(s) affected" : {
+
+    },
     "Old image" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -125968,6 +127053,9 @@
           }
         }
       }
+    },
+    "Old setup in a project" : {
+
     },
     "Ollama is running but has no models. Run \"ollama pull <model>\" to download one." : {
       "localizations" : {
@@ -126072,6 +127160,13 @@
           }
         }
       }
+    },
+    "On a partitioned table the drop cannot run concurrently, and it removes the index from every partition." : {
+
+    },
+    "On Completion" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "On Delete" : {
       "localizations" : {
@@ -126342,6 +127437,9 @@
         }
       }
     },
+    "On This Mac" : {
+
+    },
     "On Update" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -126450,6 +127548,9 @@
         }
       }
     },
+    "On-disk size of what the fix acts on: the index for an index check, the table otherwise" : {
+
+    },
     "Once this save updates the validator, it would reject the document with _id %@. Fix the document or the validator first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -126538,6 +127639,9 @@
           }
         }
       }
+    },
+    "One project only" : {
+
     },
     "One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows." : {
       "localizations" : {
@@ -126631,6 +127735,12 @@
         }
       }
     },
+    "One sequence is locked by another session, so its counter was not checked." : {
+
+    },
+    "One sequence is not readable by this user, so its counter was not checked." : {
+
+    },
     "One SQL or NoSQL statement" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -126682,6 +127792,10 @@
         }
       }
     },
+    "One Time" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "One username and password, shared by any number of connections. Change it here and every connection using it signs in with the new one." : {
       "localizations" : {
         "fr" : {
@@ -126691,6 +127805,9 @@
           }
         }
       }
+    },
+    "One-line description" : {
+
     },
     "One-time" : {
       "localizations" : {
@@ -128066,6 +129183,9 @@
     "Open Fix in Editor" : {
 
     },
+    "Open Fixes in Editor" : {
+
+    },
     "Open in Agent Mode" : {
       "localizations" : {
         "fr" : {
@@ -128075,6 +129195,9 @@
           }
         }
       }
+    },
+    "Open in another window" : {
+
     },
     "Open in Editor" : {
       "localizations" : {
@@ -129101,6 +130224,12 @@
         }
       }
     },
+    "Open the filter bar with each table" : {
+
+    },
+    "Open the filter panel with each table" : {
+
+    },
     "Open this query in a new tab and run it" : {
       "comment" : "A description of the action to open a query in a new tab and run it.",
       "isCommentAutoGenerated" : true,
@@ -129329,6 +130458,9 @@
         }
       }
     },
+    "Opens %@ to confirm" : {
+
+    },
     "Opens a database connection in TablePro" : {
 
     },
@@ -129341,6 +130473,9 @@
           }
         }
       }
+    },
+    "Opens database URLs and files, runs queries and exports tables from the terminal. Run `tablepro help` to see every command." : {
+
     },
     "Opens database URLs from the terminal, such as a DDEV project database." : {
       "localizations" : {
@@ -130392,6 +131527,12 @@
         }
       }
     },
+    "Other Client" : {
+
+    },
+    "Other Clients" : {
+
+    },
     "Other rows hold exactly the same values, so the change cannot reach this row alone." : {
 
     },
@@ -130451,6 +131592,9 @@
           }
         }
       }
+    },
+    "Out of date" : {
+
     },
     "out-of-band check" : {
       "extractionState" : "manual",
@@ -130964,6 +132108,9 @@
     "Owned by %@" : {
 
     },
+    "Owned by the column" : {
+
+    },
     "Owned objects" : {
       "localizations" : {
         "fr" : {
@@ -131005,6 +132152,8 @@
       }
     },
     "Owner" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -131043,6 +132192,9 @@
           }
         }
       }
+    },
+    "Ownership" : {
+
     },
     "Owning table, for a column match" : {
       "localizations" : {
@@ -135786,6 +136938,19 @@
         }
       }
     },
+    "Port %d cannot be used. Choose a port from %d to %d." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Port %1$d cannot be used. Choose a port from %2$d to %3$d."
+          }
+        }
+      }
+    },
+    "Port %d was in use, so this address changes when TablePro restarts." : {
+
+    },
     "Port %d was in use." : {
 
     },
@@ -136593,6 +137758,9 @@
         }
       }
     },
+    "prepared statements" : {
+
+    },
     "Preparing Import…" : {
       "localizations" : {
         "fr" : {
@@ -136692,6 +137860,9 @@
           }
         }
       }
+    },
+    "Present and true when the answer's size limit cut plan_text or left the parsed plan or rows out" : {
+
     },
     "Preserve all values as strings" : {
       "extractionState" : "stale",
@@ -140222,6 +141393,9 @@
         }
       }
     },
+    "Puts Save, Query Builder, Format, Snippets and AI above the editor, and the connection, the database and the run controls on a second row." : {
+
+    },
     "Puzzle Piece" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -140516,6 +141690,9 @@
           }
         }
       }
+    },
+    "Query Builder" : {
+
     },
     "Query consoles import with their data source. Consoles with a default name start unchecked." : {
 
@@ -141051,6 +142228,9 @@
         }
       }
     },
+    "Query History Was Damaged" : {
+
+    },
     "Query Insights" : {
       "localizations" : {
         "fr" : {
@@ -141203,6 +142383,9 @@
           }
         }
       }
+    },
+    "Query plan returned" : {
+
     },
     "Query preview" : {
       "comment" : "Accessibility label for the query preview text view.",
@@ -141978,6 +143161,9 @@
         }
       }
     },
+    "Quit and reopen %@ to load it." : {
+
+    },
     "Quit Anyway" : {
       "localizations" : {
         "fr" : {
@@ -142083,6 +143269,9 @@
       }
     },
     "Quit while work is still running?" : {
+
+    },
+    "Quit with an Open Transaction?" : {
 
     },
     "Quit Without Saving" : {
@@ -142551,6 +143740,9 @@
           }
         }
       }
+    },
+    "Ran %@ statements that returned no rows." : {
+
     },
     "ran %@×" : {
       "comment" : "Run count in a detail line, %@ is a count",
@@ -143248,6 +144440,9 @@
           }
         }
       }
+    },
+    "Reaches only servers on the internet" : {
+
     },
     "Read" : {
       "localizations" : {
@@ -144312,6 +145507,9 @@
         }
       }
     },
+    "Rebuilding a unique index fails while the table holds duplicate values." : {
+
+    },
     "Received" : {
       "localizations" : {
         "fr" : {
@@ -144693,6 +145891,15 @@
         }
       }
     },
+    "Reclaimable" : {
+
+    },
+    "Reclaimable Share" : {
+
+    },
+    "Reclaimable Space" : {
+
+    },
     "Reconnect" : {
       "localizations" : {
         "fr" : {
@@ -144791,6 +145998,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Reconnecting could not reopen the database %1$@: %2$@" : {
+
+    },
+    "Reconnecting could not reopen the schema %1$@: %2$@" : {
+
+    },
     "Reconnecting failed after %d attempts." : {
       "localizations" : {
         "fr" : {
@@ -144849,6 +146062,16 @@
     },
     "Record %@ has no fields list." : {
 
+    },
+    "Record %lld of the CSV data has %lld fields, but the header has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record %1$lld of the CSV data has %2$lld fields, but the header has %3$lld."
+          }
+        }
+      }
     },
     "Record Access" : {
       "extractionState" : "manual",
@@ -144933,6 +146156,10 @@
       }
     },
     "Records" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Recurring" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -145401,6 +146628,9 @@
         }
       }
     },
+    "Referenced Column" : {
+
+    },
     "Referenced row not found" : {
       "localizations" : {
         "fr" : {
@@ -145525,6 +146755,9 @@
         }
       }
     },
+    "Referenced Table" : {
+
+    },
     "Referenced Value" : {
 
     },
@@ -145595,6 +146828,9 @@
           }
         }
       }
+    },
+    "Referencing Columns" : {
+
     },
     "Referencing table" : {
       "localizations" : {
@@ -145675,6 +146911,10 @@
           }
         }
       }
+    },
+    "Refresh before changing this item, so the save can check that it has not changed since it was loaded." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Refresh concurrently" : {
       "localizations" : {
@@ -146132,6 +147372,9 @@
     "Relaunch while work is still running?" : {
 
     },
+    "Relaunch with an Open Transaction?" : {
+
+    },
     "Release" : {
       "localizations" : {
         "fr" : {
@@ -146393,6 +147636,9 @@
         }
       }
     },
+    "Reload %@ to load it." : {
+
+    },
     "Reload from Disk" : {
       "localizations" : {
         "fr" : {
@@ -146532,6 +147778,10 @@
           }
         }
       }
+    },
+    "Relocatable" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Remote (Quack, experimental)" : {
       "extractionState" : "manual",
@@ -147078,6 +148328,9 @@
           }
         }
       }
+    },
+    "Remove Column Pair" : {
+
     },
     "Remove Comment" : {
       "localizations" : {
@@ -148003,6 +149256,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Remove sort criterion" : {
+
+    },
+    "Remove TablePro from %@?" : {
+
+    },
     "Remove tag %@" : {
       "comment" : "A label for a button that removes a tag from a list of selected tags. The argument is the name of the tag to be removed.",
       "isCommentAutoGenerated" : true,
@@ -148195,6 +149454,9 @@
 
     },
     "Removing" : {
+
+    },
+    "Removing…" : {
 
     },
     "Rename" : {
@@ -149697,6 +150959,9 @@
         }
       }
     },
+    "Reset All Shortcuts?" : {
+
+    },
     "Reset column widths, order, and visibility to defaults" : {
       "localizations" : {
         "fr" : {
@@ -150185,6 +151450,12 @@
 
     },
     "Resolve the conflict in a Git client before committing this file." : {
+
+    },
+    "Resolved" : {
+
+    },
+    "Resolved Findings" : {
 
     },
     "Resolved on every connect. It stays on this Mac and never syncs, because it can name a command to run." : {
@@ -150966,6 +152237,12 @@
         }
       }
     },
+    "Restore Row" : {
+
+    },
+    "Restore Rows" : {
+
+    },
     "Restore the previous values of a save" : {
       "localizations" : {
         "fr" : {
@@ -151339,6 +152616,9 @@
           }
         }
       }
+    },
+    "Restrict to one connection. Omit for every connection already approved." : {
+
     },
     "Restrict to one connection. Omit for every readable connection." : {
       "localizations" : {
@@ -152141,6 +153421,9 @@
         }
       }
     },
+    "Returns" : {
+
+    },
     "Returns %@" : {
       "localizations" : {
         "fr" : {
@@ -152228,6 +153511,9 @@
       }
     },
     "Revert Changes" : {
+
+    },
+    "Revert To" : {
 
     },
     "review" : {
@@ -152890,6 +154176,9 @@
 
     },
     "Roll Back the Transaction?" : {
+
+    },
+    "Roll Back Transaction" : {
 
     },
     "Roll it back to continue." : {
@@ -154976,6 +156265,9 @@
         }
       }
     },
+    "Run a query to see what each statement did." : {
+
+    },
     "Run a saved query on the Server Dashboard" : {
 
     },
@@ -155034,6 +156326,9 @@
           }
         }
       }
+    },
+    "Run each statement on its own; some cannot run inside a transaction." : {
+
     },
     "Run EXEC to apply the block, or DISCARD to drop it." : {
       "extractionState" : "manual",
@@ -155304,6 +156599,9 @@
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
 
     },
+    "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one. A statement that starts a transaction while one is open is refused. With Manual Commit on, a write stays pending until the user commits it in TablePro, and statements that begin, commit or roll back a transaction are refused. While a transaction is open on PostgreSQL or CockroachDB a statement runs inside a savepoint, so its failure leaves the transaction usable; on Redshift and DuckDB it is refused." : {
+
+    },
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
       "localizations" : {
         "fr" : {
@@ -155497,6 +156795,9 @@
         }
       }
     },
+    "Run TablePro's Table Health checks on one database and return each check's outcome and every finding, with its metrics and the SQL that fixes it. Status comes from the history the Table Health tab records: new since its last run, or ignored by the user. This call records nothing and runs no fix. Available on every engine that has Table Health in TablePro." : {
+
+    },
     "Run the command below in your terminal" : {
       "localizations" : {
         "fr" : {
@@ -155546,6 +156847,9 @@
           }
         }
       }
+    },
+    "Run the fix only if the column holds no negative values." : {
+
     },
     "Run the query again. TablePro reconnects to the server automatically." : {
       "extractionState" : "manual",
@@ -155719,6 +157023,9 @@
         }
       }
     },
+    "Run this in Terminal:" : {
+
+    },
     "Run WATCH again before starting the block." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -155732,6 +157039,9 @@
       }
     },
     "Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user approves it before it runs: through your elicitation prompt when your client supports elicitation, otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the user left writable for external clients." : {
+
+    },
+    "Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user approves it before it runs: through your elicitation prompt when your client supports elicitation, otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the user left writable for external clients. The transaction rules of execute_query apply, Manual Commit's among them." : {
 
     },
     "Run Without Limit" : {
@@ -155785,6 +157095,9 @@
       }
     },
     "Running query in “%1$@” on %2$@" : {
+
+    },
+    "Running the query will replace this result and discard all unsaved changes." : {
 
     },
     "Running Threads" : {
@@ -155899,6 +157212,9 @@
           }
         }
       }
+    },
+    "Runs on %@. Choose another connection to move this tab there." : {
+
     },
     "Runs statements on the SSH server so a database file there can be read and written in place." : {
       "localizations" : {
@@ -156157,6 +157473,14 @@
     },
     "Safe Mode is read-only for this connection." : {
 
+    },
+    "Safe Mode is set to Read-Only for this connection, and it has a transaction open. Roll it back, then try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Safe Mode is set to Read-Only for this connection, and the database refused the statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Safe mode level" : {
       "localizations" : {
@@ -156971,6 +158295,9 @@
         }
       }
     },
+    "Save Current Query as Favorite…" : {
+
+    },
     "Save Failed" : {
       "localizations" : {
         "fr" : {
@@ -157090,6 +158417,9 @@
           }
         }
       }
+    },
+    "Save Fix Script…" : {
+
     },
     "Save frequently used queries\nfor quick access." : {
       "extractionState" : "stale",
@@ -157543,6 +158873,9 @@
         }
       }
     },
+    "Saved connection “%@”" : {
+
+    },
     "Saved Connections" : {
       "localizations" : {
         "fr" : {
@@ -157734,6 +159067,9 @@
         }
       }
     },
+    "Saved passwords are removed from iCloud Keychain, and your other devices will need them entered again." : {
+
+    },
     "Saved passwords can only be exported to an encrypted file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -157825,6 +159161,9 @@
 
     },
     "Saved queries import for every connection, in a folder named “%@”." : {
+
+    },
+    "Saved Queries Were Damaged" : {
 
     },
     "Saved Query" : {
@@ -157926,6 +159265,9 @@
           }
         }
       }
+    },
+    "Saving removes its passwords from iCloud Keychain. Your other devices will need them entered again." : {
+
     },
     "Saving your choice" : {
 
@@ -158081,6 +159423,10 @@
       }
     },
     "Scatter Plot" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Schedule" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -159437,6 +160783,9 @@
         }
       }
     },
+    "Schema, on engines that have one" : {
+
+    },
     "Schemas" : {
       "localizations" : {
         "fr" : {
@@ -160423,6 +161772,9 @@
         }
       }
     },
+    "Search the query history TablePro keeps on this Mac. With connection_id, TablePro asks the user about that connection first. Without it, results cover only connections this client may already reach without asking." : {
+
+    },
     "Search values" : {
       "localizations" : {
         "fr" : {
@@ -161223,6 +162575,9 @@
           }
         }
       }
+    },
+    "Select a client to see how TablePro connects to it." : {
+
     },
     "Select a column" : {
 
@@ -162053,6 +163408,9 @@
         }
       }
     },
+    "Select sort column" : {
+
+    },
     "Select Tab %d" : {
       "localizations" : {
         "fr" : {
@@ -162143,6 +163501,9 @@
           }
         }
       }
+    },
+    "Selected Findings (%@)" : {
+
     },
     "Selected Item" : {
       "extractionState" : "stale",
@@ -162827,6 +164188,9 @@
         }
       }
     },
+    "Sequence Type" : {
+
+    },
     "Sequence Unavailable" : {
 
     },
@@ -162839,6 +164203,12 @@
           }
         }
       }
+    },
+    "Sequences Near Their Limit" : {
+
+    },
+    "Sequences that have used at least 75% of what their type, limits and integer column allow, leaving out cycling ones." : {
+
     },
     "Serial Consistency" : {
       "extractionState" : "manual",
@@ -163908,6 +165278,12 @@
         }
       }
     },
+    "session locks" : {
+
+    },
+    "session settings" : {
+
+    },
     "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with %4$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -164556,6 +165932,15 @@
         }
       }
     },
+    "Set up" : {
+
+    },
+    "Set up an app to use TablePro's MCP server" : {
+
+    },
+    "Set up with a token" : {
+
+    },
     "Set Value" : {
       "localizations" : {
         "fr" : {
@@ -164716,6 +166101,9 @@
           }
         }
       }
+    },
+    "Settings file" : {
+
     },
     "Settings:" : {
       "extractionState" : "stale",
@@ -165042,6 +166430,9 @@
           }
         }
       }
+    },
+    "Share Used" : {
+
     },
     "Sheet" : {
       "localizations" : {
@@ -165559,6 +166950,9 @@
         }
       }
     },
+    "Show column types in the header" : {
+
+    },
     "Show Completions" : {
       "localizations" : {
         "fr" : {
@@ -165598,6 +166992,9 @@
           }
         }
       }
+    },
+    "Show connection and database in the toolbar" : {
+
     },
     "Show connections" : {
       "comment" : "A checkbox that toggles whether the sidebar shows a list of open connections.",
@@ -165682,6 +167079,9 @@
           }
         }
       }
+    },
+    "Show database and connection in table tab titles" : {
+
     },
     "Show DDL" : {
       "localizations" : {
@@ -165824,6 +167224,9 @@
         }
       }
     },
+    "Show favorite tables at the top of the tree" : {
+
+    },
     "Show Favorites" : {
       "localizations" : {
         "fr" : {
@@ -165933,6 +167336,9 @@
           }
         }
       }
+    },
+    "Show Ignored" : {
+
     },
     "Show in Finder" : {
       "localizations" : {
@@ -166098,6 +167504,9 @@
     "show masked values" : {
 
     },
+    "Show Message and Summary tabs above query results" : {
+
+    },
     "SHOW needs TOPICS, BROKERS, GROUPS or CLUSTER." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -166232,6 +167641,9 @@
         }
       }
     },
+    "Show object buttons in the toolbar" : {
+
+    },
     "Show object comments" : {
       "localizations" : {
         "fr" : {
@@ -166311,6 +167723,12 @@
           }
         }
       }
+    },
+    "Show Objects" : {
+
+    },
+    "Show objects when a database, schema or group is selected" : {
+
     },
     "Show only the objects whose name contains this text" : {
       "localizations" : {
@@ -166747,6 +168165,9 @@
     "Show rows in %@" : {
 
     },
+    "Show saved connections in the database tree" : {
+
+    },
     "Show Sidebar" : {
       "localizations" : {
         "fr" : {
@@ -166786,6 +168207,12 @@
           }
         }
       }
+    },
+    "Show sort criteria in the filter bar" : {
+
+    },
+    "Show sort criteria in the filter panel" : {
+
     },
     "Show SQL" : {
       "localizations" : {
@@ -166930,7 +168357,16 @@
         }
       }
     },
+    "Show the connection this conversation works on, with its status." : {
+
+    },
     "Show the messages that arrived while paused" : {
+
+    },
+    "Show the query bar on two rows" : {
+
+    },
+    "Show the result bar above the grid" : {
 
     },
     "Show Toolbar" : {
@@ -167553,6 +168989,9 @@
         }
       }
     },
+    "Showing the last %1$@ of %2$@ results that returned rows." : {
+
+    },
     "Shown beside each key" : {
       "localizations" : {
         "fr" : {
@@ -167592,6 +169031,9 @@
           }
         }
       }
+    },
+    "Shown Findings (%@)" : {
+
     },
     "Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names." : {
       "localizations" : {
@@ -167685,6 +169127,9 @@
           }
         }
       }
+    },
+    "Shows the connection and the database in the middle of the toolbar. Off, the sidebar, the query bar and the tab titles still name them, and the Database menu still switches them." : {
+
     },
     "Shows the version and Check for Updates under the app icon. An available update is shown either way." : {
       "localizations" : {
@@ -168746,13 +170191,13 @@
         }
       }
     },
-    "Signing in with credentials from this Mac was not approved." : {
-
-    },
     "Signing in" : {
 
     },
     "Signing in by email? Type the 6-digit code from the email in the sign-in sheet. The link in the email opens your browser instead." : {
+
+    },
+    "Signing in with credentials from this Mac was not approved." : {
 
     },
     "Signing in…" : {
@@ -169347,6 +170792,9 @@
         }
       }
     },
+    "Skipped" : {
+
+    },
     "Skipped %@: no endpoint yet." : {
       "localizations" : {
         "fr" : {
@@ -169813,6 +171261,9 @@
         }
       }
     },
+    "Snippets" : {
+
+    },
     "Snowflake" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -170098,6 +171549,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Some Checks Failed" : {
+
+    },
     "Some columns in this preset don't exist in the current table" : {
       "localizations" : {
         "fr" : {
@@ -170174,6 +171628,9 @@
           }
         }
       }
+    },
+    "Some of these changes were applied before the save failed. The table was read again, and only the changes that were not applied are still staged." : {
+
     },
     "Some passwords were not read. You can enter them in the connection editor after import." : {
       "localizations" : {
@@ -170353,6 +171810,9 @@
         }
       }
     },
+    "Some values were longer than 64 KB and were cut there; each one cut ends in a mark with its full length. Read such a value in parts with a narrower query." : {
+
+    },
     "Someone in %@ changed this item after TablePro last downloaded the team library. Choose the version the team library keeps." : {
 
     },
@@ -170497,6 +171957,9 @@
         }
       }
     },
+    "Sort column" : {
+
+    },
     "Sort columns in priority order" : {
       "localizations" : {
         "fr" : {
@@ -170586,6 +172049,9 @@
           }
         }
       }
+    },
+    "Sort direction" : {
+
     },
     "Sort direction (default ascending)" : {
       "localizations" : {
@@ -171951,6 +173417,12 @@
           }
         }
       }
+    },
+    "SQL that fixes the finding, absent when there is none or it is withheld. Review it before running it." : {
+
+    },
+    "SQL that fixes the finding, absent when there is none. Review it before running it." : {
+
     },
     "SQL the session proposes appears here before it runs." : {
       "localizations" : {
@@ -173372,6 +174844,9 @@
     "Stable Hash" : {
 
     },
+    "Stable metric id" : {
+
+    },
     "Stack" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -173386,6 +174861,9 @@
           }
         }
       }
+    },
+    "Stale Statistics" : {
+
     },
     "Standalone" : {
       "extractionState" : "manual",
@@ -173502,6 +174980,9 @@
       }
     },
     "Start" : {
+
+    },
+    "Start a new %@ session to load it." : {
 
     },
     "Start one to ask about this connection." : {
@@ -173646,6 +175127,13 @@
         }
       }
     },
+    "Starts" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Starts only local command servers" : {
+
+    },
     "starts with" : {
       "localizations" : {
         "fr" : {
@@ -173740,6 +175228,9 @@
           }
         }
       }
+    },
+    "Startup commands failed, so this session runs without them:\n%@" : {
+
     },
     "Startup SQL" : {
       "comment" : "A section header for the startup SQL commands of a connection.",
@@ -174505,6 +175996,8 @@
       }
     },
     "Status" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -175464,6 +176957,9 @@
           }
         }
       }
+    },
+    "Stop Ignoring" : {
+
     },
     "Stop Import" : {
 
@@ -177550,6 +179046,9 @@
         }
       }
     },
+    "Switch To" : {
+
+    },
     "Switch to Inline Configuration" : {
       "localizations" : {
         "en" : {
@@ -179081,6 +180580,9 @@
         }
       }
     },
+    "Table Age" : {
+
+    },
     "Table and view names in a database. Pass database and schema to look outside the browsed one, and row_counts=true for approximate row counts." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -179420,6 +180922,9 @@
         }
       }
     },
+    "Table Details" : {
+
+    },
     "Table Favorites" : {
       "localizations" : {
         "fr" : {
@@ -179471,6 +180976,15 @@
       }
     },
     "Table Health" : {
+
+    },
+    "Table Health did not finish within the MCP query timeout of %lld seconds." : {
+
+    },
+    "Table Health findings cannot run queries." : {
+
+    },
+    "Table Health for %@" : {
 
     },
     "Table health is available for PostgreSQL, MySQL and MariaDB." : {
@@ -180216,6 +181730,9 @@
         }
       }
     },
+    "Table the finding is about" : {
+
+    },
     "Table the statistics describe" : {
       "localizations" : {
         "fr" : {
@@ -180719,6 +182236,9 @@
     "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift Endpoint when you connect through a port forward." : {
 
     },
+    "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or to a custom domain name that points to it, or enter that endpoint as the Redshift Endpoint." : {
+
+    },
     "TablePro cannot upload changes until there is space in iCloud. Changes from this Mac are kept here and upload once you free up space or add storage. To manage storage, open System Settings, click your name, then click iCloud." : {
 
     },
@@ -180819,6 +182339,9 @@
     "TablePro could not check whether %@ sends the password in plain text without TLS. Try again, or set SSL Mode to Required." : {
 
     },
+    "TablePro could not confirm its change to %@. Check the file before you try again." : {
+
+    },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -180859,6 +182382,10 @@
           }
         }
       }
+    },
+    "TablePro could not look up \"%@\" in DNS to find the AWS endpoint it points to. Check the network and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro could not open its query history database, so nothing is being recorded and nothing can be shown. Your existing history is still on disk." : {
       "comment" : "A description of the error that occurs when the query history database cannot be opened.",
@@ -180932,6 +182459,21 @@
     "TablePro could not reach the Schema Registry: %@" : {
 
     },
+    "TablePro could not read %@'s settings file, so it leaves the file alone. Copy the setup and add it by hand." : {
+
+    },
+    "TablePro could not read its list of clients. Reinstall TablePro to restore it." : {
+
+    },
+    "TablePro could not read its query history, so it moved the file aside as “%@” and started a new one. The copy stays until you delete it or clear all of your history." : {
+
+    },
+    "TablePro could not read its saved queries, so it moved the file aside as “%@” and started an empty one. Nothing in that file was deleted." : {
+
+    },
+    "TablePro could not read its Table Health history for this connection." : {
+
+    },
     "TablePro could not read the CA Certificate at %@: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -180945,6 +182487,12 @@
           }
         }
       }
+    },
+    "TablePro could not read the Table Health history: %@" : {
+
+    },
+    "TablePro could not read the tokens saved in the Keychain, so it will not save a new one over them. Restart TablePro and try again." : {
+
     },
     "TablePro could not read what this connection is holding, so it kept the file." : {
       "extractionState" : "manual",
@@ -180962,6 +182510,15 @@
 
     },
     "TablePro could not read your saved connections, so it did not save over them." : {
+
+    },
+    "TablePro could not save the change to the Keychain. The token works again after TablePro restarts." : {
+
+    },
+    "TablePro could not save the Table Health history: %@" : {
+
+    },
+    "TablePro could not save the token to the Keychain, so it was not created. Try again." : {
 
     },
     "TablePro could not tell how this Dameng server treats backslashes, so it will not send a value that contains one. Reconnect, then try again." : {
@@ -180989,6 +182546,9 @@
     "TablePro could not verify your license with the server. Connect to the internet, then check again." : {
 
     },
+    "TablePro could not write %@." : {
+
+    },
     "TablePro could not write the CA bundle DuckDB reads: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -180999,6 +182559,9 @@
     "TablePro couldn't confirm that the routine ended. It may still be running on the server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro couldn't create a token for this client, so the client wasn't paired. Try pairing again." : {
+
     },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
@@ -181044,6 +182607,9 @@
 
     },
     "TablePro couldn't reach the team library." : {
+
+    },
+    "TablePro couldn't save a token for this client to the Keychain, so the client wasn't paired. Try pairing again." : {
 
     },
     "TablePro Data Was Removed from iCloud" : {
@@ -181258,6 +182824,9 @@
           }
         }
       }
+    },
+    "TablePro has no Table Health checks for this engine." : {
+
     },
     "TablePro has not confirmed this license with the server in 30 days." : {
       "localizations" : {
@@ -181547,6 +183116,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro is running from a disk image or a temporary location. Move it to the Applications folder first, then open it from there." : {
+
+    },
     "TablePro is still trying to reconnect." : {
       "localizations" : {
         "fr" : {
@@ -181586,6 +183158,12 @@
           }
         }
       }
+    },
+    "TablePro is turned off in %1$@. Turn it on in %1$@'s MCP settings to use it." : {
+
+    },
+    "TablePro moved" : {
+
     },
     "TablePro on iPhone and iPad can't connect to %1$@ with the SSL mode %2$@." : {
       "extractionState" : "manual",
@@ -181891,6 +183469,9 @@
           }
         }
       }
+    },
+    "TablePro's client list has a setup for this client that it cannot fill in." : {
+
     },
     "TablePro's data is no longer in iCloud. It may have been deleted in iCloud settings. Upload what this Mac has again, or turn off sync to keep it on this Mac only." : {
 
@@ -182285,6 +183866,9 @@
     "Tables more than %lld foreign keys away weren't checked." : {
 
     },
+    "Tables never analyzed, or with more rows modified since the last ANALYZE than 10% of their rows plus 50." : {
+
+    },
     "Tables of %@" : {
       "localizations" : {
         "fr" : {
@@ -182364,6 +183948,9 @@
           }
         }
       }
+    },
+    "Tables stored in their own files whose free space is at least 100 MiB and at least 10% of their size on disk." : {
+
     },
     "Tables that carry at least one foreign key" : {
       "localizations" : {
@@ -182485,6 +184072,15 @@
         }
       }
     },
+    "Tables whose oldest unfrozen row is more than autovacuum_freeze_max_age transactions old (200,000,000 by default)." : {
+
+    },
+    "Tables whose oldest unfrozen row is more than autovacuum_freeze_max_age transactions old (200,000,000 unless set lower)." : {
+
+    },
+    "Tables with at least 1,000 dead rows, and at least 20% as many dead rows as live ones." : {
+
+    },
     "Tables with more estimated rows use approximate counts to avoid slow COUNT(*) queries" : {
       "localizations" : {
         "fr" : {
@@ -182524,6 +184120,12 @@
           }
         }
       }
+    },
+    "Tables with no primary key; a partition takes its key from its parent, so only the parent is listed." : {
+
+    },
+    "Tables with no primary key." : {
+
     },
     "Tables Without a Primary Key" : {
 
@@ -183247,6 +184849,9 @@
 
     },
     "Temporary Table" : {
+
+    },
+    "temporary tables" : {
 
     },
     "Teradata uses TLS on its HTTPS port, which the tunnel does not forward. Set SSL Mode to Disabled or Preferred to connect through the tunnel, or turn the tunnel off." : {
@@ -184513,6 +186118,19 @@
         }
       }
     },
+    "The %@ command did not finish within %d seconds." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ command did not finish within %2$d seconds."
+          }
+        }
+      }
+    },
+    "The %@ command is no longer installed." : {
+
+    },
     "The %@ command line tool is not installed." : {
       "localizations" : {
         "fr" : {
@@ -184549,6 +186167,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未安裝 %@ 命令列工具。"
+          }
+        }
+      }
+    },
+    "The %@ command stopped with exit code %d." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ command stopped with exit code %2$d."
           }
         }
       }
@@ -185718,6 +187346,9 @@
         }
       }
     },
+    "The change did not run." : {
+
+    },
     "The change to this table's structure will be lost." : {
 
     },
@@ -186434,6 +188065,9 @@
         }
       }
     },
+    "The command is removed from this Mac and from every Mac that syncs settings. This cannot be undone." : {
+
+    },
     "The command must contain %@, where the local port goes" : {
       "localizations" : {
         "fr" : {
@@ -186464,6 +188098,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The condition of check constraint %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The condition of index %@ cannot be written as SQL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -186486,6 +188124,9 @@
     "The connection from the database didn't complete the debugger handshake." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The connection has no current database. Pass a database name." : {
+
     },
     "The connection has no current DuckDB catalog to read metadata from" : {
       "extractionState" : "manual",
@@ -186730,6 +188371,12 @@
           }
         }
       }
+    },
+    "The connection to %1$@ was lost while it waited and has been reconnected. The new session does not have what the old one set up: %2$@. Set it up again, then run the statements." : {
+
+    },
+    "The connection to %1$@ was lost while it waited, and the server rolled back its open transaction. The new session does not have what the old one set up either: %2$@. Set it up again, then run the statements." : {
+
     },
     "The connection to Redis dropped after EXEC was sent, so whether the block ran is unknown." : {
       "extractionState" : "manual",
@@ -187404,6 +189051,9 @@
         }
       }
     },
+    "The database refused the new user Vault created for it for %lld seconds. Some databases load new users on a timer, so try again in a moment." : {
+
+    },
     "The database server enforced this, not TablePro's Safe Mode. You are most likely connected to a read replica, or the server sets new transactions to read-only. Connect to the primary server to write.\n\nServer response: %@" : {
       "localizations" : {
         "fr" : {
@@ -187600,6 +189250,16 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The definition of trigger “%@” could not be read, so it cannot be edited: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The definition of trigger “%1$@” could not be read, so it cannot be edited: %2$@"
+          }
+        }
+      }
+    },
     "The descriptor set names an unknown field type %llu." : {
 
     },
@@ -187771,6 +189431,10 @@
           }
         }
       }
+    },
+    "The document changed on the server after it was read. Refresh and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The document has not loaded, so there is nothing to save it over." : {
       "localizations" : {
@@ -188698,6 +190362,10 @@
     "The global_instrumentation consumer is disabled, so the server records no index reads." : {
 
     },
+    "The grid shows only the start of this value, so it cannot be edited here. Change it with a command in the query editor." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the group coordinator is not available" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -188900,8 +190568,28 @@
         }
       }
     },
+    "The item changed since its CAS value was read, so nothing was saved. Refresh to see its current value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The item does not exist, so nothing was saved. Refresh to see the current keys." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The JSON array must contain only objects." : {
 
+    },
+    "The JSON file ends before its last value is complete." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The JSON file has text that is not valid in its encoding." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The JSON file is not valid at byte %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The JSON is nested more deeply than DynamoDB allows" : {
       "extractionState" : "manual",
@@ -188989,6 +190677,10 @@
     },
     "The key %1$@ matched %2$@ rows, so the row was not written." : {
 
+    },
+    "The key changed on the server after it was read. Refresh and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The key that protects your save history is not available." : {
       "localizations" : {
@@ -189636,6 +191328,15 @@
     "The MCP server could not prepare its private socket folder." : {
 
     },
+    "The MCP server is not running, so clients you add cannot connect yet. Turn it on in Settings > MCP." : {
+
+    },
+    "The MCP server is not running, so TablePro cannot change its tokens now. Start the server, then try again." : {
+
+    },
+    "The MCP server is not running, so TablePro cannot save a token now. Start the server, then try again." : {
+
+    },
     "The MCP server is turned off. Turn it on in Settings > MCP." : {
 
     },
@@ -189881,6 +191582,9 @@
 
     },
     "The open transaction failed. Roll it back yourself." : {
+
+    },
+    "The open transaction on this connection ended while this statement ran." : {
 
     },
     "The operation failed." : {
@@ -190226,6 +191930,9 @@
         }
       }
     },
+    "The parsed plan did not fit in TablePro's %@ limit for one answer, so it is left out. Read plan_text instead." : {
+
+    },
     "The partial backup file is removed." : {
 
     },
@@ -190458,6 +192165,9 @@
           }
         }
       }
+    },
+    "The plugin can't be loaded. You can put it back from the Trash." : {
+
     },
     "The plugin depends on a component that's missing or incompatible with this Mac." : {
       "localizations" : {
@@ -190855,6 +192565,12 @@
           }
         }
       }
+    },
+    "The provider ended the response without sending any content." : {
+
+    },
+    "The provider reported an error." : {
+
     },
     "The query contains a NUL character (U+0000) and was not run. Remove it and try again." : {
       "extractionState" : "manual",
@@ -191266,6 +192982,13 @@
         }
       }
     },
+    "The RDS Endpoint \"%1$@\" is not the database at \"%2$@\", where the connection goes. Clear the RDS Endpoint unless you connect through a port forward." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The read stopped before it finished." : {
+
+    },
     "The Realtime Database cannot filter with %@. It supports =, <, <=, >, >=, BETWEEN, STARTS WITH and IS NULL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -191325,6 +193048,9 @@
     "The Redshift Endpoint applies only when Host is a local port forward or that same endpoint, and \"%@\" is neither." : {
 
     },
+    "The Redshift Endpoint applies only when Host is a local port forward, a custom domain name or that same endpoint, and \"%@\" is none of them." : {
+
+    },
     "the reference “%@” is inside itself" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -191334,6 +193060,10 @@
       "generatesSymbol" : false
     },
     "the reference “%@” is used more than once" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The referential action of foreign key %@ is not one SQL Server has: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -191446,6 +193176,12 @@
         }
       }
     },
+    "The response stopped at the model's output token limit." : {
+
+    },
+    "The response stopped because the conversation filled the model's context window." : {
+
+    },
     "The REST endpoint is not a valid URL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -191526,6 +193262,10 @@
         }
       }
     },
+    "The row has %1$lld fields where %2$lld are expected. A field that holds the delimiter must be quoted." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The row has no __name__, so the document it came from is unknown. Reload the collection." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -191568,6 +193308,15 @@
 
     },
     "The rows go in as one transaction. Cancel rolls it back." : {
+
+    },
+    "The rows on screen were fetched with different filters or sorting" : {
+
+    },
+    "The rows reached TablePro's %@ limit for one answer, so a result marked truncated holds only the rows that fit. Ask for fewer columns or rows." : {
+
+    },
+    "The rows reached TablePro's %@ limit for one answer, so an export marked truncated holds only the rows that fit, and the exports after it may hold none. Export fewer tables, columns or rows per call." : {
 
     },
     "The rules file is not a regular file." : {
@@ -192244,6 +193993,12 @@
         }
       }
     },
+    "The selected findings have no SQL fix." : {
+
+    },
+    "The sequence and its column are already bigint, so no wider type exists." : {
+
+    },
     "The sequence for %@ runs past the largest number it can hold." : {
 
     },
@@ -192395,6 +194150,9 @@
     "The server did not answer the TLS handshake. If it serves plain HTTP, set SSL Mode to Disabled." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The server did not answer this check." : {
+
     },
     "The server did not say which InfluxDB version it runs." : {
       "extractionState" : "manual",
@@ -192584,6 +194342,9 @@
           }
         }
       }
+    },
+    "The server reported a partition ID that cannot be used in a statement, so nothing was run." : {
+
     },
     "The server reported an error." : {
       "localizations" : {
@@ -193400,6 +195161,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH host keys saved in %@ could not be read, so this server's key could not be checked." : {
+
+    },
     "the SSH host, user or port of “%@” is not one TablePro allows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -193415,6 +195179,9 @@
     "The SSH port %lld is not between 1 and 65535." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The SSH profile this connection uses now points to another server. Click Reconnect in its window to use it." : {
+
     },
     "The SSH server closed the connection during the handshake." : {
 
@@ -193784,6 +195551,12 @@
         }
       }
     },
+    "The startup command %@ failed, so this session runs without it." : {
+
+    },
+    "The startup command %1$@ failed (%2$@), so this session runs without it." : {
+
+    },
     "The statement before it stays applied." : {
       "localizations" : {
         "fr" : {
@@ -193793,6 +195566,15 @@
           }
         }
       }
+    },
+    "The statement did not finish within %d seconds and is still running. It may have been applied; check before running it again." : {
+
+    },
+    "The statement failed with %@. Its message is withheld because this connection has masking rules, and the message can repeat a masked value." : {
+
+    },
+    "The statement failed. Its message is withheld because this connection has masking rules, and the message can repeat a masked value." : {
+
     },
     "The statement has %1$lld placeholders but %2$lld values were given." : {
       "extractionState" : "manual",
@@ -193839,6 +195621,9 @@
           }
         }
       }
+    },
+    "The statement text is withheld because this connection has masking rules, and it can repeat a masked value." : {
+
     },
     "The statement that was sent, with its prefix" : {
       "extractionState" : "stale",
@@ -193924,6 +195709,13 @@
         }
       }
     },
+    "The statement was still running in the database when it was stopped, and it runs to the end. It may have been applied; check before running it again." : {
+
+    },
+    "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The statement's placeholders do not match the %d values given." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -194006,6 +195798,19 @@
           }
         }
       }
+    },
+    "The tab leaves “%@”, and its next run goes to “%@”." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The tab leaves “%1$@”, and its next run goes to “%2$@”."
+          }
+        }
+      }
+    },
+    "The tab or its edits changed while the save waited for approval. Nothing was saved." : {
+
     },
     "The table %@ was already created with different columns. Choose another name." : {
       "localizations" : {
@@ -194123,6 +195928,9 @@
           }
         }
       }
+    },
+    "The Table Health history file could not be read. The next refresh starts a new history and keeps the old file." : {
+
     },
     "The table is being read again after the save." : {
 
@@ -194657,9 +196465,6 @@
         }
       }
     },
-    "The text at byte %lld is not valid UTF-8." : {
-
-    },
     "The team library asked TablePro to download it again." : {
 
     },
@@ -194673,6 +196478,9 @@
 
     },
     "The team library refused the change. It may be too large or hold a field the library never stores." : {
+
+    },
+    "The text at byte %lld is not valid UTF-8." : {
 
     },
     "The text could not be parsed as JSON." : {
@@ -194756,6 +196564,9 @@
       }
     },
     "The text encoding is invalid." : {
+
+    },
+    "The text has no CREATE TRIGGER statement. Saving it would drop the trigger without creating it again, so nothing was run." : {
 
     },
     "The text is not valid JSON." : {
@@ -195034,6 +196845,12 @@
           }
         }
       }
+    },
+    "The trigger was dropped, the new definition failed, and the original could not be created again. The trigger no longer exists. Copy the original definition to recreate it. Error: %@" : {
+
+    },
+    "The trigger's full definition could not be read, so it could not be restored if the edit failed. Nothing was run." : {
+
     },
     "The triggers on %1$@ in %2$@ could not be listed: %3$@" : {
       "localizations" : {
@@ -195369,6 +197186,10 @@
     "The value ends early, at byte %lld." : {
 
     },
+    "The value in %@ expired after the grid read it. Refresh, then edit the row again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -195481,6 +197302,10 @@
     },
     "The wait/io/table/sql/handler instrument is disabled, so the server records no index reads." : {
 
+    },
+    "The workbook has more sheets than an XLSX file can hold." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The workbook has no worksheet to read." : {
       "extractionState" : "manual",
@@ -195629,7 +197454,15 @@
         }
       }
     },
+    "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d and later." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Theme format %1$d was made for a newer TablePro. This version reads format %2$d and earlier." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -195969,6 +197802,12 @@
         }
       }
     },
+    "These filters cannot be written as one condition for this database." : {
+
+    },
+    "These foreign key columns reference it and keep their narrower type: %@." : {
+
+    },
     "These messages use the %@ compression codec, which TablePro cannot read." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -196020,6 +197859,9 @@
           }
         }
       }
+    },
+    "These rows came from another schema than the one this tab is now using." : {
+
     },
     "These rows cannot be edited because TablePro cannot tell which table they came from." : {
       "localizations" : {
@@ -196123,6 +197965,19 @@
       }
     },
     "These rows show masked values, which cannot be written back. Reveal them to edit." : {
+
+    },
+    "These statements ran before the failure and were not rolled back:" : {
+
+    },
+    "These statements ran inside the transaction already open on this connection, so rolling it back undoes them:" : {
+
+    },
+    "These theme keys need theme format %1$d: %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "These tokens will be permanently deleted. External clients using them will lose access immediately." : {
 
     },
     "These two engines cannot share a script." : {
@@ -196406,6 +198261,12 @@
         }
       }
     },
+    "This change runs on its own connection and can wait until you commit or roll back the open transaction." : {
+
+    },
+    "This change sets session options around its statements, so it can't wait for Commit. Turn off Manual Commit in the Database menu to run it." : {
+
+    },
     "This change was not authorized" : {
       "localizations" : {
         "fr" : {
@@ -196602,6 +198463,9 @@
           }
         }
       }
+    },
+    "This connection can't hold this change until you commit, so it did not run. Turn off Manual Commit in the Database menu to run it." : {
+
     },
     "This connection can't open the separate session live messages need." : {
 
@@ -197367,6 +199231,9 @@
         }
       }
     },
+    "This database can't report an open transaction, so it commits each change." : {
+
+    },
     "This database cannot be renamed" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -197568,6 +199435,9 @@
     "This database cannot store a table comment." : {
 
     },
+    "This database commits schema and maintenance statements on its own, so changes can't wait for Commit." : {
+
+    },
     "This database did not return a query plan for the statement." : {
       "comment" : "Text displayed in a description when the database did not return a query plan for the statement.",
       "isCommentAutoGenerated" : true,
@@ -197707,6 +199577,10 @@
         }
       }
     },
+    "This database has no column defaults, so a cell cannot be left to one. Enter a value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This database has no Create Table form" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -197826,6 +199700,9 @@
       }
     },
     "This database's driver cannot write SQL into %@. Update the driver." : {
+
+    },
+    "This database's driver may read the text __DEFAULT__ in %@ as the column default, so it cannot be saved as text." : {
 
     },
     "This deletes only the queries listed here, across every connection. Queries the source, date, outcome and search filters are hiding stay. You cannot undo this." : {
@@ -199002,6 +200879,9 @@
         }
       }
     },
+    "This finding has no SQL fix." : {
+
+    },
     "This folder is already linked" : {
       "comment" : "Alert title when trying to add a folder that is already linked.",
       "isCommentAutoGenerated" : true,
@@ -199167,6 +201047,12 @@
           }
         }
       }
+    },
+    "This import runs each statement on its own, so nothing can wait for Commit. Turn on Wrap in transaction or turn off Manual Commit." : {
+
+    },
+    "This import turns off foreign key checks, which can't wait for Commit. Turn off Disable foreign key checks or Manual Commit to run it." : {
+
     },
     "This index needs a name." : {
       "localizations" : {
@@ -200855,6 +202741,9 @@
         }
       }
     },
+    "This query calls a function that can change data" : {
+
+    },
     "This query language has no formatter." : {
       "localizations" : {
         "fr" : {
@@ -200864,6 +202753,14 @@
           }
         }
       }
+    },
+    "This record cannot be found again from what was read. Refresh and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This record's id reads like a UUID, array or object id, so its text does not say which record it is. Open the table to edit it, or use a query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This replaces %@ on this Mac." : {
 
@@ -200922,6 +202819,10 @@
     "This routine takes no arguments." : {
 
     },
+    "This row cannot be found again from what was read. Reload the table." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This row does not name a stored document." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -200959,6 +202860,13 @@
     },
     "This row has no value for this field." : {
 
+    },
+    "This row has no values, and %@ has no way to insert a row of only defaults." : {
+
+    },
+    "This row holds only the part of a value the grid shows, so adding it would store that part. Add the key with a command in the query editor." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names." : {
       "extractionState" : "manual",
@@ -201015,6 +202923,9 @@
           }
         }
       }
+    },
+    "This run mixes changes with a statement that can't run in a transaction. Run that statement on its own, or turn off Manual Commit." : {
+
     },
     "This save also edits key columns, and the counts don't include those edits." : {
 
@@ -201324,6 +203235,12 @@
         }
       }
     },
+    "This server is a read-only standby. Run the fixes on the primary." : {
+
+    },
+    "This server is a standby. Its activity counters do not reflect the primary." : {
+
+    },
     "This server is Databend. Edit the connection and choose Databend as its type." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -201608,6 +203525,12 @@
     "This Tab" : {
 
     },
+    "This tab cannot move while its query runs or its grid edits are unsaved." : {
+
+    },
+    "This tab is closed. Reopen it to see its history." : {
+
+    },
     "This tab is on %@. Switch the connection to that database to run it." : {
       "localizations" : {
         "fr" : {
@@ -201647,6 +203570,9 @@
           }
         }
       }
+    },
+    "This tab moved to another database while the query waited for approval. Run it again." : {
+
     },
     "This table has no options to change." : {
 
@@ -202347,6 +204273,9 @@
         }
       }
     },
+    "This will permanently delete all query history entries, the saved changes kept for restoring, and the earlier versions of your query tabs. This action cannot be undone." : {
+
+    },
     "This will reset all settings across every section to their default values." : {
       "localizations" : {
         "fr" : {
@@ -202386,6 +204315,9 @@
           }
         }
       }
+    },
+    "This will reset all settings across every section to their default values. AI providers, their API keys and Enable AI Features are kept." : {
+
     },
     "This workbook has no worksheets." : {
       "localizations" : {
@@ -203260,6 +205192,9 @@
         }
       }
     },
+    "Titles a table tab orders@shop (Shop Demo), with a table or view icon, so each tab says where its rows come from. Query tabs keep their names." : {
+
+    },
     "TLS handshake failed: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -203455,6 +205390,9 @@
           }
         }
       }
+    },
+    "TOAST Age" : {
+
     },
     "Today" : {
       "localizations" : {
@@ -204057,6 +205995,12 @@
         }
       }
     },
+    "Tokens are not available" : {
+
+    },
+    "Tokens load while the MCP server is running." : {
+
+    },
     "Too Large to Compare" : {
 
     },
@@ -204602,6 +206546,9 @@
         }
       }
     },
+    "Total Size" : {
+
+    },
     "Total size in bytes" : {
       "localizations" : {
         "fr" : {
@@ -204925,6 +206872,9 @@
         }
       }
     },
+    "Transaction Age" : {
+
+    },
     "Transaction Control" : {
       "localizations" : {
         "fr" : {
@@ -204980,6 +206930,9 @@
     "Transaction failed on %1$@, %2$@. Roll it back to continue." : {
 
     },
+    "Transaction ID Wraparound" : {
+
+    },
     "transaction open" : {
 
     },
@@ -205018,6 +206971,9 @@
           }
         }
       }
+    },
+    "Transactions Left" : {
+
     },
     "Transfer" : {
       "extractionState" : "manual",
@@ -206310,6 +208266,12 @@
         }
       }
     },
+    "Turned off" : {
+
+    },
+    "Turns the connections column into a list of every saved connection, in its groups. Double-click one to open it." : {
+
+    },
     "Two columns are both named “%@”. Rename one, then save again." : {
       "localizations" : {
         "fr" : {
@@ -206845,6 +208807,12 @@
         }
       }
     },
+    "Uncommitted changes on “%@” are rolled back when TablePro quits." : {
+
+    },
+    "Uncommitted changes on %@ are rolled back when TablePro quits." : {
+
+    },
     "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server" : {
       "localizations" : {
         "fr" : {
@@ -207055,6 +209023,9 @@
           }
         }
       }
+    },
+    "Undoing what had already run also failed, so the table may be left part way. Run these statements to restore it:" : {
+
     },
     "Unexpected “%@” in the .proto file." : {
 
@@ -207492,6 +209463,9 @@
           }
         }
       }
+    },
+    "unique" : {
+
     },
     "Unique" : {
       "localizations" : {
@@ -209339,6 +211313,9 @@
         }
       }
     },
+    "Update in %@" : {
+
+    },
     "Update Now" : {
       "localizations" : {
         "fr" : {
@@ -209609,6 +211586,9 @@
         }
       }
     },
+    "Update…" : {
+
+    },
     "Updated" : {
       "localizations" : {
         "fr" : {
@@ -209728,6 +211708,9 @@
           }
         }
       }
+    },
+    "Updated by Writes" : {
+
     },
     "Updated to v%@" : {
       "extractionState" : "stale",
@@ -209934,6 +211917,9 @@
     "Upload Again" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Upper Bound" : {
+
     },
     "Upper bound, for BETWEEN" : {
       "localizations" : {
@@ -210616,6 +212602,9 @@
     "Use License Key…" : {
 
     },
+    "Use Navigator Layout" : {
+
+    },
     "Use Required for Amazon Keyspaces and other hosted Cassandra deployments." : {
       "localizations" : {
         "fr" : {
@@ -210756,6 +212745,9 @@
         }
       }
     },
+    "Use Standard Layout" : {
+
+    },
     "Use System Color" : {
 
     },
@@ -210880,6 +212872,9 @@
           }
         }
       }
+    },
+    "Used" : {
+
     },
     "Used by %lld" : {
       "localizations" : {
@@ -211174,6 +213169,9 @@
         }
       }
     },
+    "user variables" : {
+
+    },
     "User-Defined" : {
       "localizations" : {
         "fr" : {
@@ -211349,6 +213347,9 @@
         }
       }
     },
+    "Users" : {
+
+    },
     "Users & Roles" : {
       "localizations" : {
         "fr" : {
@@ -211428,6 +213429,9 @@
           }
         }
       }
+    },
+    "Uses another copy" : {
+
     },
     "Uses the access key stored in ~/.aws/credentials." : {
       "localizations" : {
@@ -211573,6 +213577,8 @@
       }
     },
     "UUID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -212498,6 +214504,14 @@
         }
       }
     },
+    "Values" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Values a spreadsheet would read as formulas, written with a leading single quote: %lld. Turn off Sanitize formula-like values to export them unchanged." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Values from %d loaded rows" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -212719,6 +214733,9 @@
     "Vault Address" : {
 
     },
+    "Vault could not complete the request: %@" : {
+
+    },
     "Vault could not issue credentials from %@: %@" : {
       "localizations" : {
         "en" : {
@@ -212752,6 +214769,9 @@
 
     },
     "Vault returned a sign-in page that is not an https address, so TablePro did not open it." : {
+
+    },
+    "Vault returned a sign-in page without a state, so TablePro could not check the browser's answer." : {
 
     },
     "Vault returned no sign-in page. The OIDC role must allow the redirect URI http://localhost:8250/oidc/callback." : {
@@ -212958,6 +214978,10 @@
         }
       }
     },
+    "Verify CA needs the server's CA certificate. Choose it under SSL, or use Verify Identity to check the server against this Mac's trusted certificates." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Verify certificate and hostname" : {
       "localizations" : {
         "fr" : {
@@ -213152,6 +215176,8 @@
       }
     },
     "Version" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -213947,6 +215973,9 @@
     "Waiting for a compatible build" : {
 
     },
+    "Waiting for the database to accept the new Vault user" : {
+
+    },
     "Waiting for the tunnel" : {
       "localizations" : {
         "fr" : {
@@ -214595,6 +216624,9 @@
         }
       }
     },
+    "What each statement of the last run did" : {
+
+    },
     "What is switched on here is ignored when two structures are compared. These drift between environments by design." : {
       "localizations" : {
         "fr" : {
@@ -214754,6 +216786,9 @@
           }
         }
       }
+    },
+    "What the check looks for, with its threshold" : {
+
     },
     "What the option does" : {
       "localizations" : {
@@ -214934,6 +216969,9 @@
           }
         }
       }
+    },
+    "What to know when reading this check's findings" : {
+
     },
     "What will run against %@" : {
       "localizations" : {
@@ -215390,6 +217428,9 @@
           }
         }
       }
+    },
+    "Whether the check ran" : {
+
     },
     "Whether the column accepts NULL" : {
       "extractionState" : "manual",
@@ -215867,6 +217908,16 @@
         }
       }
     },
+    "Whether the row limit or the answer's size limit left rows out" : {
+
+    },
+    "Whether the row limit or the answer's size limit left rows out of any export" : {
+
+    },
+    "Whether the row limit or the answer's size limit left rows out of the result" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Whether the session is open" : {
       "localizations" : {
         "fr" : {
@@ -215906,6 +217957,9 @@
           }
         }
       }
+    },
+    "Whether the size limit left out matching entries" : {
+
     },
     "Whether the statement names an object, the database, or either" : {
       "localizations" : {
@@ -216306,6 +218360,19 @@
         }
       }
     },
+    "Why fix_sql is left out: running it with the other fixes would do harm" : {
+
+    },
+    "Why rows were left out or values cut, when they were" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Why rows were left out, when the size limit left them out" : {
+
+    },
+    "Why the check was skipped or failed" : {
+
+    },
     "Why the metrics panel could not be read" : {
       "localizations" : {
         "fr" : {
@@ -216335,6 +218402,9 @@
           }
         }
       }
+    },
+    "Why values are masked, when they are" : {
+
     },
     "Wi-Fi" : {
       "extractionState" : "manual",
@@ -217032,6 +219102,12 @@
     "With the Dashboard" : {
 
     },
+    "Withheld: another finding's fix drops %@, the index that covers this one, and dropping both leaves these lookups with no index." : {
+
+    },
+    "Withheld: another finding's fix drops the index that covers this one, and dropping both leaves these lookups with no index." : {
+
+    },
     "Word wrap" : {
       "localizations" : {
         "fr" : {
@@ -217535,6 +219611,10 @@
         }
       }
     },
+    "XLSX file exceeds 4 GB ZIP limit" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -217658,6 +219738,10 @@
           }
         }
       }
+    },
+    "Yes" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Yesterday" : {
       "localizations" : {
@@ -217860,6 +219944,15 @@
         }
       }
     },
+    "You were signed out. Sign in again." : {
+
+    },
+    "You're on Free" : {
+
+    },
+    "You're signed in" : {
+
+    },
     "You've used TablePro on %lld days" : {
       "localizations" : {
         "fr" : {
@@ -217899,15 +219992,6 @@
           }
         }
       }
-    },
-    "You were signed out. Sign in again." : {
-
-    },
-    "You're on Free" : {
-
-    },
-    "You're signed in" : {
-
     },
     "Your account is not allowed to read the source of %@" : {
       "extractionState" : "manual",
@@ -218167,6 +220251,9 @@
           }
         }
       }
+    },
+    "Your first change opens a transaction, and nothing is saved until you commit. Structure changes, Users & Roles, Copy To, Generate Rows and Shortcuts actions still save at once." : {
+
     },
     "Your license has expired" : {
       "localizations" : {

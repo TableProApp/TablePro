@@ -46,13 +46,14 @@ const ACTIONS: [(&str, ActionInput); 12] = [
 
 /// The actions a connection tree row or a toast fires for its own
 /// session, which take the session as their target (`session_target`).
-const SESSION_ACTIONS: [(&str, SessionInput); 11] = [
+const SESSION_ACTIONS: [(&str, SessionInput); 12] = [
     ("show-session", SessionWindowInput::ShowSession),
     ("disconnect-session", SessionWindowInput::DisconnectSession),
     ("stop-connecting", SessionWindowInput::StopConnecting),
     ("new-query-in", SessionWindowInput::NewQueryIn),
     ("refresh-in", SessionWindowInput::RefreshIn),
     ("open-database-in", SessionWindowInput::ChooseDatabaseIn),
+    ("new-table-in", SessionWindowInput::NewTableIn),
     ("new-database-in", SessionWindowInput::NewDatabaseIn),
     ("new-schema-in", SessionWindowInput::NewSchemaIn),
     ("drop-database-in", SessionWindowInput::DropDatabaseIn),
@@ -150,6 +151,9 @@ pub(super) fn show_safe_mode(window: &adw::ApplicationWindow, level: Option<Safe
         return;
     };
     action.set_enabled(level.is_some());
+    if let Some(shell) = window.downcast_ref::<SessionWindow>().and_then(SessionWindow::shell) {
+        shell.show_safe_mode(level);
+    }
     if let Some(level) = level {
         action.set_state(&crate::ui::safe_mode::action_target(level).to_variant());
     }

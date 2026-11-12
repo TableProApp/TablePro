@@ -19,6 +19,99 @@ private final class StreamRecordingDriver: PluginDriverStub, @unchecked Sendable
     func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
 }
 
+// No stream of its own, so its rows reach the export through PluginKit's default, the way SAP HANA's do.
+private final class CuttingQueryDriver: PluginDriverStub, @unchecked Sendable {
+    private let rowCount: Int
+    private let isCut: Bool
+
+    init(rowCount: Int, isCut: Bool) {
+        self.rowCount = rowCount
+        self.isCut = isCut
+    }
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(
+            columns: ["id"],
+            columnTypeNames: ["INTEGER"],
+            rows: (0..<rowCount).map { [.text(String($0))] },
+            rowsAffected: 0,
+            executionTime: 0,
+            isTruncated: isCut
+        )
+    }
+
+    func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
+}
+
+// A SAP HANA export over 5,000,000 rows wrote the first 5,000,000 and reported success: the default
+// stream dropped the result's cut, so nothing named the file as partial.
+@MainActor
+struct ExportDriverRowCutTests {
+    private let orders = PluginExportTable(name: "orders", databaseName: "SALES", tableType: "table", schema: "SALES", kind: .table)
+
+    private func exportAdapter(_ driver: CuttingQueryDriver, type: DatabaseType) -> ExportDataSourceAdapter {
+        ExportDataSourceAdapter(
+            driver: PluginDriverAdapter(connection: TestFixtures.makeConnection(type: type), pluginDriver: driver),
+            databaseType: type
+        )
+    }
+
+    private func rowCount(_ stream: AsyncThrowingStream<PluginStreamElement, Error>) async throws -> Int {
+        var count = 0
+        for try await element in stream {
+            if case .rows(let rows) = element { count += rows.count }
+        }
+        return count
+    }
+
+    @Test("A table export the driver cut at its row limit is named as partial")
+    func cutTableExportIsReported() async throws {
+        let adapter = exportAdapter(CuttingQueryDriver(rowCount: 3, isCut: true), type: .sapHana)
+
+        let exported = try await rowCount(adapter.streamRows(for: orders))
+
+        #expect(exported == 3)
+        #expect(adapter.cappedTableWarnings.count == 1)
+        #expect(adapter.cappedTableWarnings.first?.contains("orders") == true)
+        #expect(adapter.cappedTableWarnings.first?.contains("3") == true)
+    }
+
+    @Test("A table export the driver read whole carries no warning")
+    func wholeTableExportIsNotReported() async throws {
+        let adapter = exportAdapter(CuttingQueryDriver(rowCount: 3, isCut: false), type: .sapHana)
+
+        let exported = try await rowCount(adapter.streamRows(for: orders))
+
+        #expect(exported == 3)
+        #expect(adapter.cappedTableWarnings.isEmpty)
+    }
+
+    @Test("A table export that reaches the engine's own ceiling is still named as partial")
+    func engineCeilingIsStillReported() async throws {
+        let adapter = exportAdapter(CuttingQueryDriver(rowCount: 10_000, isCut: false), type: .cloudflareR2SQL)
+
+        _ = try await rowCount(adapter.streamRows(for: orders))
+
+        #expect(adapter.cappedTableWarnings.count == 1)
+    }
+
+    @Test("A query export the driver cut is named as partial at the limit it declared")
+    func cutQueryExportIsReported() async throws {
+        let driver = PluginDriverAdapter(
+            connection: TestFixtures.makeConnection(type: .sapHana),
+            pluginDriver: CuttingQueryDriver(rowCount: 3, isCut: true)
+        )
+        let source = StreamingQueryExportDataSource(query: "SELECT id FROM orders", driver: driver, databaseType: .sapHana)
+
+        let exported = try await rowCount(source.streamRows(table: "result", databaseName: ""))
+
+        #expect(exported == 3)
+        #expect(source.driverRowCut == 3)
+        #expect(ExportService.leadingRowsCapWarning(exportedRows: 3, pagination: .offset, driverCut: source.driverRowCut) != nil)
+        #expect(ExportService.leadingRowsCapWarning(exportedRows: 3, pagination: .offset, driverCut: nil) == nil)
+    }
+}
+
 struct ExportDataSourceAdapterRowLimitTests {
     private func streamedQuery(
         type: DatabaseType,

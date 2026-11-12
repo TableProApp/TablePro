@@ -47,12 +47,14 @@ final class QueryEditorViewModel {
     private static let budgetCheckInterval = 500
 
     private let buffer: StreamingResultBuffer
+    private let textBudgetBytes: @MainActor () -> Int
     private(set) var phase: Phase = .idle
     private(set) var executionTime: TimeInterval = 0
     private(set) var requestCount = 0
     private(set) var currentRequest = 0
     private(set) var rowsAffectedTotal = 0
     private(set) var interruption: ScriptInterruption?
+    private(set) var cutLongValues = false
     // Each request as it went to the server, split again after a statement changed how the session reads literals.
     @ObservationIgnored private(set) var sentStatements: [String] = []
     @ObservationIgnored private(set) var ranTransactionRollBack = false
@@ -61,14 +63,18 @@ final class QueryEditorViewModel {
     @ObservationIgnored private var runID: UInt64 = 0
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var startedAt: Date?
+    @ObservationIgnored private var requestBudget: TextBudget?
 
-    init(windowCapacity: Int = QueryEditorViewModel.maxBufferedRows) {
+    init(
+        windowCapacity: Int = QueryEditorViewModel.maxBufferedRows,
+        textBudgetBytes: @escaping @MainActor () -> Int = { MemoryPressureMonitor.shared.textBudgetBytes() }
+    ) {
         self.buffer = StreamingResultBuffer(capacity: windowCapacity)
+        self.textBudgetBytes = textBudgetBytes
     }
 
     var columns: [ColumnInfo] { buffer.columns }
     var window: RowWindow { buffer.window }
-    var legacyRows: [[String?]] { buffer.legacyRows }
     var statusMessage: String? { buffer.statusMessage }
     var truncationReason: TruncationReason? { buffer.truncation }
 
@@ -88,7 +94,7 @@ final class QueryEditorViewModel {
 
     var truncationMessage: String? {
         guard let truncationReason else { return nil }
-        let shown = buffer.legacyRows.count
+        let shown = buffer.count
         switch truncationReason {
         case .rowCap:
             return String(format: String(localized: "Showing the first %d rows. Add LIMIT to fetch more."), shown)
@@ -99,6 +105,51 @@ final class QueryEditorViewModel {
         case .driverLimit:
             return String(format: String(localized: "The database limited the result. Showing %d rows."), shown)
         }
+    }
+
+    var longValuesNotice: String? {
+        cutLongValues ? String(localized: "Some long values are shown in part to stay within memory.") : nil
+    }
+
+    // Formats off the main actor: 10,000 rows of JSON take long enough to hold up the screen.
+    func exportResults(
+        as format: ExportFormat,
+        databaseType: DatabaseType,
+        driver: (any DatabaseDriver)?,
+        availableBytes: Int
+    ) async throws -> String {
+        try await Self.export(
+            rows: buffer.window.rows, columns: buffer.columns, format: format,
+            databaseType: databaseType, driver: driver, availableBytes: availableBytes
+        )
+    }
+
+    @concurrent
+    nonisolated private static func export(
+        rows: [Row],
+        columns: [ColumnInfo],
+        format: ExportFormat,
+        databaseType: DatabaseType,
+        driver: (any DatabaseDriver)?,
+        availableBytes: Int
+    ) async throws -> String {
+        guard resultsFitExport(rows: rows, availableBytes: availableBytes) else {
+            throw ClipboardExporter.TooLarge(source: .queryResult)
+        }
+        return try ClipboardExporter.exportRows(
+            columns: columns, rows: rows.map(\.cells), format: format, databaseType: databaseType, driver: driver
+        )
+    }
+
+    // The export text and the pasteboard's copy of it are held beside the values already on screen.
+    nonisolated static func resultsFitExport(rows: [Row], availableBytes: Int) -> Bool {
+        let textBytes = rows.reduce(0) { total, row in
+            row.cells.reduce(total) { sum, cell in
+                guard case .text(let value) = cell else { return sum }
+                return sum + value.utf8.count
+            }
+        }
+        return DataBrowserViewModel.exportFits(pendingBytes: textBytes, availableBytes: availableBytes)
     }
 
     var progressMessage: String {
@@ -232,6 +283,8 @@ final class QueryEditorViewModel {
         executionTime = 0
         rowsAffectedTotal = 0
         interruption = nil
+        requestBudget = nil
+        cutLongValues = false
         ranTransactionRollBack = false
         unitKind = script.unitKind
         requestCount = script.requestCount
@@ -259,6 +312,8 @@ final class QueryEditorViewModel {
         executionTime = 0
         rowsAffectedTotal = 0
         interruption = nil
+        requestBudget = nil
+        cutLongValues = false
         ranTransactionRollBack = false
         requestCount = 0
         currentRequest = 0
@@ -351,6 +406,7 @@ final class QueryEditorViewModel {
         guard run == runID else { return }
         buffer.flush()
         finalizeTiming()
+        settleLongValues()
         resolvePhase()
     }
 
@@ -370,8 +426,13 @@ final class QueryEditorViewModel {
     /// False when the request was cut short: by Stop, by memory pressure, or by another query that took over the
     /// connection, whose driver then ends this stream as cancelled.
     private func stream(_ sql: String, driver: DatabaseDriver, options: StreamOptions) async throws -> Bool {
+        // Only this request's rows stay on screen, so it gets a budget of its own, sized from the headroom now.
+        let budget = TextBudget(bytes: textBudgetBytes())
+        requestBudget = budget
+        var requestOptions = options
+        requestOptions.textBudget = budget
         var sinceBudgetCheck = 0
-        for try await element in driver.executeStreaming(query: sql, options: options) {
+        for try await element in driver.executeStreaming(query: sql, options: requestOptions) {
             if Task.isCancelled { return false }
             buffer.apply(element)
             guard case .row = element else { continue }
@@ -393,6 +454,7 @@ final class QueryEditorViewModel {
         guard run == runID else { return }
         buffer.flush()
         finalizeTiming()
+        settleLongValues()
         let reason = buffer.truncation ?? .cancelled
         if requestCount > 1 {
             let cause: ScriptInterruption.Cause
@@ -424,6 +486,7 @@ final class QueryEditorViewModel {
         guard run == runID else { return }
         buffer.flush()
         finalizeTiming()
+        settleLongValues()
         if requestCount > 1 {
             interruption = ScriptInterruption(
                 cause: .failed(sql: sql),
@@ -460,6 +523,10 @@ final class QueryEditorViewModel {
         } else if case .running = phase {
             phase = .finished
         }
+    }
+
+    private func settleLongValues() {
+        cutLongValues = requestBudget?.hasRefused ?? false
     }
 
     private func finalizeTiming() {

@@ -8,46 +8,83 @@ import TableProNumberFormatting
 import TableProPluginKit
 
 public enum SurrealStatementGenerator {
-    static let autoIdMarker = "__DEFAULT__"
-
-    static func isAutoDefault(_ value: PluginCellValue) -> Bool {
-        guard case let .text(text) = value else { return false }
-        return text.trimmingCharacters(in: .whitespaces) == autoIdMarker
-    }
-
     public static func rowWrites(
         table: String,
         scope: SurrealScope,
         columns: [String],
         kinds: [String: SurrealFieldKind],
+        heldKinds: [String: Set<SurrealFieldKind.Base>] = [:],
+        recordKinds: [String: [String: SurrealFieldKind.Base]] = [:],
+        declaredKinds: [String: SurrealFieldKind] = [:],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
+        insertedRowIndices: Set<Int>,
+        rowLocators: [Int: String] = [:]
     ) throws(PluginRowWriteRefusal) -> [PluginRowWrite] {
         var writes: [PluginRowWrite] = []
+        var insertedWritten: Set<Int> = []
+        let typing = FieldTyping(kinds: kinds, held: heldKinds, records: recordKinds, declared: declaredKinds)
 
-        for change in changes where change.type == .update && !insertedRowIndices.contains(change.rowIndex) {
-            guard let write = try update(table: table, scope: scope, columns: columns, kinds: kinds, change: change) else {
+        var defaults: [Int: Set<Int>] = [:]
+        for change in changes where change.type == .insert {
+            defaults[change.rowIndex, default: []].formUnion(change.defaultColumns ?? [])
+        }
+
+        // In the order received, which is edit order: a record deleted to free a unique value goes before the one taking it.
+        for change in changes {
+            let index = change.rowIndex
+            if insertedRowIndices.contains(index) {
+                guard insertedWritten.insert(index).inserted, let values = insertedRowData[index] else { continue }
+                writes.append(try insert(
+                    table: table, scope: scope, columns: columns, typing: typing, values: values,
+                    defaults: defaults[index] ?? [], rowIndex: index
+                ))
                 continue
             }
-            writes.append(write)
-        }
-
-        for index in insertedRowIndices.sorted() {
-            guard let values = insertedRowData[index] else { continue }
-            writes.append(try insert(
-                table: table, scope: scope, columns: columns, kinds: kinds, values: values, rowIndex: index
-            ))
-        }
-
-        for change in changes where change.type == .delete || deletedRowIndices.contains(change.rowIndex) {
-            guard !insertedRowIndices.contains(change.rowIndex) else { continue }
-            guard let write = delete(table: table, scope: scope, columns: columns, change: change) else { continue }
-            writes.append(write)
+            let locator = rowLocators[index]
+            if change.type == .update,
+               let write = try update(
+                   table: table, scope: scope, columns: columns, typing: typing, change: change, locator: locator
+               ) {
+                writes.append(write)
+            }
+            if change.type == .delete || deletedRowIndices.contains(index),
+               let write = try delete(table: table, scope: scope, columns: columns, change: change, locator: locator) {
+                writes.append(write)
+            }
         }
 
         return writes
+    }
+
+    private struct FieldTyping {
+        let kinds: [String: SurrealFieldKind]
+        let held: [String: Set<SurrealFieldKind.Base>]
+        // Keyed by record literal, the text the grid shows in the id column.
+        let records: [String: [String: SurrealFieldKind.Base]]
+        let declared: [String: SurrealFieldKind]
+
+        // A single declared type decides: SurrealDB leaves rows written before `DEFINE FIELD ... TYPE` as
+        // they were, and rejects another kind written into the field now.
+        func value(of cell: PluginCellValue, in column: String, record: String? = nil) -> SurrealValue {
+            let recordHeld = Self.declaresOneKind(declared[column]) ? nil : record.flatMap { records[$0]?[column] }
+            return SurrealCellCoder.value(
+                from: cell,
+                kind: declared[column] ?? kinds[column],
+                held: held[column] ?? [],
+                recordHeld: recordHeld
+            )
+        }
+
+        private static func declaresOneKind(_ kind: SurrealFieldKind?) -> Bool {
+            guard let kind, kind.base != .any else { return false }
+            let concrete = kind.raw.split(separator: "|").filter { alternative in
+                let name = alternative.trimmingCharacters(in: .whitespaces).lowercased()
+                return name != "none" && name != "null"
+            }
+            return concrete.count <= 1
+        }
     }
 
     // MARK: - Statements
@@ -56,15 +93,19 @@ public enum SurrealStatementGenerator {
         table: String,
         scope: SurrealScope,
         columns: [String],
-        kinds: [String: SurrealFieldKind],
-        change: PluginRowChange
+        typing: FieldTyping,
+        change: PluginRowChange,
+        locator: String?
     ) throws(PluginRowWriteRefusal) -> PluginRowWrite? {
         if let reserved = change.cellChanges.first(where: { SurrealInfoParser.isReservedColumn($0.columnName) }) {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: reservedColumnReason(reserved.columnName))
         }
-        guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
-        let editable = change.cellChanges.filter { !Self.isAutoDefault($0.newValue) }
-        guard !editable.isEmpty else { return nil }
+        let editable = change.cellChanges.filter { !change.isColumnDefault($0.columnIndex) }
+        guard !editable.isEmpty,
+              let record = try targetRecord(table: table, columns: columns, change: change, locator: locator)
+        else { return nil }
+        // The record kinds are keyed by the literal the read showed.
+        let recordKey = record.literal
 
         var parameters: [PluginCellValue] = [SurrealCellCoder.parameter(.recordId(record))]
         var assignments: [String] = []
@@ -74,7 +115,7 @@ public enum SurrealStatementGenerator {
             if !cell.newValue.isNull {
                 try refuseShortened(cell.oldValue, in: cell.columnName, rowIndex: change.rowIndex)
             }
-            let value = SurrealCellCoder.value(from: cell.newValue, kind: kinds[cell.columnName])
+            let value = typing.value(of: cell.newValue, in: cell.columnName, record: recordKey)
             parameters.append(SurrealCellCoder.parameter(value))
             assignments.append(SurrealQL.quoteIdentifier(cell.columnName) + " = $p\(parameters.count - 1)")
         }
@@ -91,8 +132,9 @@ public enum SurrealStatementGenerator {
         table: String,
         scope: SurrealScope,
         columns: [String],
-        kinds: [String: SurrealFieldKind],
+        typing: FieldTyping,
         values: [PluginCellValue],
+        defaults: Set<Int>,
         rowIndex: Int
     ) throws(PluginRowWriteRefusal) -> PluginRowWrite {
         var parameters: [PluginCellValue] = []
@@ -100,13 +142,13 @@ public enum SurrealStatementGenerator {
         var target = SurrealQL.quoteIdentifier(table)
 
         for (index, column) in columns.enumerated() {
-            guard index < values.count else { continue }
+            guard index < values.count, !defaults.contains(index) else { continue }
             let cell = values[index]
 
             if column == SurrealInfoParser.recordIdColumn {
                 guard case let .text(text) = cell else { continue }
                 let trimmed = text.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty, trimmed != Self.autoIdMarker else { continue }
+                guard !trimmed.isEmpty else { continue }
                 guard let record = SurrealQL.parseRecordId(text, fallbackTable: table) else { continue }
                 parameters.append(SurrealCellCoder.parameter(.recordId(record)))
                 target = "$p\(parameters.count - 1)"
@@ -114,9 +156,8 @@ public enum SurrealStatementGenerator {
             }
 
             if case .null = cell { continue }
-            if Self.isAutoDefault(cell) { continue }
             try refuseShortened(cell, in: column, rowIndex: rowIndex)
-            let value = SurrealCellCoder.value(from: cell, kind: kinds[column])
+            let value = typing.value(of: cell, in: column)
             parameters.append(SurrealCellCoder.parameter(value))
             assignments.append(SurrealQL.quoteIdentifier(column) + " = $p\(parameters.count - 1)")
         }
@@ -135,9 +176,12 @@ public enum SurrealStatementGenerator {
         table: String,
         scope: SurrealScope,
         columns: [String],
-        change: PluginRowChange
-    ) -> PluginRowWrite? {
-        guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
+        change: PluginRowChange,
+        locator: String?
+    ) throws(PluginRowWriteRefusal) -> PluginRowWrite? {
+        guard let record = try targetRecord(table: table, columns: columns, change: change, locator: locator) else {
+            return nil
+        }
         return PluginRowWrite(
             statement: SurrealQueryBuilder.compose(scope: scope, statement: "DELETE $p0;"),
             parameters: [SurrealCellCoder.parameter(.recordId(record))],
@@ -172,15 +216,42 @@ public enum SurrealStatementGenerator {
         return String(format: format, column)
     }
 
-    private static func recordId(
+    private static var unreadableRecordIdReason: String {
+        String(
+            localized: "This record's id reads like a UUID, array or object id, so its text does not say which record it is. Open the table to edit it, or use a query."
+        )
+    }
+
+    private static var unknownRecordReason: String {
+        String(localized: "This record cannot be found again from what was read. Refresh and try again.")
+    }
+
+    // The locator is the id the row was read with. A row without one, from a query tab, is named by its id cell.
+    private static func targetRecord(
         table: String,
         columns: [String],
-        originalRow: [PluginCellValue]?
-    ) -> SurrealRecordID? {
+        change: PluginRowChange,
+        locator: String?
+    ) throws(PluginRowWriteRefusal) -> SurrealRecordID? {
+        if let locator {
+            guard let record = SurrealRowLocator.record(from: locator) else {
+                throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: unknownRecordReason)
+            }
+            return record
+        }
+        guard let text = recordText(columns: columns, originalRow: change.originalRow),
+              let record = SurrealQL.parseRecordId(text, fallbackTable: table) else { return nil }
+        guard SurrealQL.isRecoverableFromText(record.id) else {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: unreadableRecordIdReason)
+        }
+        return record
+    }
+
+    private static func recordText(columns: [String], originalRow: [PluginCellValue]?) -> String? {
         guard let originalRow,
               let index = columns.firstIndex(of: SurrealInfoParser.recordIdColumn),
               index < originalRow.count,
               case let .text(text) = originalRow[index] else { return nil }
-        return SurrealQL.parseRecordId(text, fallbackTable: table)
+        return text
     }
 }

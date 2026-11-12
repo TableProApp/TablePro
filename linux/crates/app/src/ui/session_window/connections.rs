@@ -8,6 +8,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use tablepro_core::SafeModeLevel;
+use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{
@@ -66,6 +67,21 @@ impl SessionWindow {
         prefill: Option<ConnectPrefill>,
         focus: Option<FormField>,
     ) {
+        self.present_dialog(mode, prefill, focus, None);
+    }
+
+    pub(super) fn on_connect_from_link(&self, url: Box<ConnectionUrl>) {
+        self.imp().link_queued.set(false);
+        self.present_dialog(ConnectDialogMode::Create, None, None, Some(url));
+    }
+
+    fn present_dialog(
+        &self,
+        mode: ConnectDialogMode,
+        prefill: Option<ConnectPrefill>,
+        focus: Option<FormField>,
+        link: Option<Box<ConnectionUrl>>,
+    ) {
         let Some(state) = self.state() else {
             return;
         };
@@ -85,7 +101,7 @@ impl SessionWindow {
             });
             if let Some(window) = window.upgrade() {
                 window.imp().dialog_opening.set(false);
-                window.show_connect_dialog(mode, prefill, focus, environment);
+                window.show_connect_dialog(mode, prefill, focus, link, environment);
             }
         });
     }
@@ -95,6 +111,7 @@ impl SessionWindow {
         mode: ConnectDialogMode,
         prefill: Option<ConnectPrefill>,
         focus: Option<FormField>,
+        link: Option<Box<ConnectionUrl>>,
         ssh: SshEnvironment,
     ) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
@@ -128,6 +145,9 @@ impl SessionWindow {
         dialog.connect_saved(move |_, id| saved.deliver(SessionWindowInput::ConnectionSaved(id)));
         dialog.connect_closed(move |_| input.deliver(SessionWindowInput::DialogClosed));
         dialog.present(Some(self));
+        if let Some(url) = link {
+            dialog.fill_from_link(*url);
+        }
         if let Some(field) = focus {
             dialog.reveal_field(field);
         }
@@ -1494,7 +1514,11 @@ mod tests {
 
         assert_eq!(
             toasts(),
-            ["The connection could not be duplicated. The keyring is locked. Unlock it and try again."]
+            [
+                "The connection could not be duplicated. The keyring is locked. Unlock the keyring, accept its \
+              prompt and try again. With automatic login, GNOME may have no default keyring yet: create one \
+              in Passwords and Keys and make it the default."
+            ]
         );
     }
 

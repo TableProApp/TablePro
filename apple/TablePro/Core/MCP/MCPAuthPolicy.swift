@@ -143,10 +143,7 @@ public actor MCPAuthPolicy {
         )
     }
 
-    /// An aggregate read spans connections, so it cannot prompt for one that asks each time. It
-    /// answers the narrower question every per-connection check already asks: may this principal
-    /// see this connection at all. Anything it excludes is a connection the client could not have
-    /// named directly either.
+    // May this principal see the connection at all; a call that names one is asked about it on top of this.
     func readableConnectionIds(principal: MCPPrincipal) async -> Set<UUID> {
         let candidates = await connectionIdsProvider()
         return await readableConnectionIds(principal: principal, from: candidates)
@@ -162,6 +159,24 @@ public actor MCPAuthPolicy {
             readable.insert(candidate)
         }
         return readable
+    }
+
+    // For a caller that cannot wait on a prompt: anything short of an outright allow is a no.
+    func isAllowedWithoutPrompt(principal: MCPPrincipal, connectionId: UUID) async -> Bool {
+        guard let decision = try? await authorize(principal: principal, tool: "", connectionId: connectionId),
+              case .allowed = decision
+        else { return false }
+        return true
+    }
+
+    // A read spanning connections cannot ask about each one, so it keeps only those already allowed.
+    func connectionIdsReadableWithoutPrompt(principal: MCPPrincipal) async -> Set<UUID> {
+        var allowed: Set<UUID> = []
+        for candidate in await readableConnectionIds(principal: principal) {
+            guard await isAllowedWithoutPrompt(principal: principal, connectionId: candidate) else { continue }
+            allowed.insert(candidate)
+        }
+        return allowed
     }
 
     func resolveAndAuthorize(
@@ -260,13 +275,14 @@ public actor MCPAuthPolicy {
         await approvalLedger.record(principal: principal, connectionId: connectionId, approved: true)
     }
 
-    /// Called when a token is revoked. The bundled bridge re-mints its credential roughly every
-    /// 45 minutes and deletes the one it replaces, which reaches here as a revocation; treating that
-    /// as the user withdrawing consent is what made the prompt come back all day, so the caller
-    /// passes the token's name and the bridge's own rotation is skipped.
+    // The bridge's approvals belong to the bridge, not to one of its rotating credentials.
     func clearApprovals(tokenId: UUID, wasBridgeCredential: Bool = false) async {
         guard !wasBridgeCredential else { return }
-        await approvalLedger.clear(subject: .token(tokenId))
+        await clearApprovals(subject: .token(tokenId))
+    }
+
+    func clearApprovals(subject: MCPGrantSubject) async {
+        await approvalLedger.clear(subject: subject)
     }
 
     func forgetEveryGrant() async {

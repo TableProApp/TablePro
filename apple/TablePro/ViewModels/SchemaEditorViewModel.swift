@@ -330,7 +330,7 @@ final class SchemaEditorViewModel: ObservableObject {
                 renameCommitted: plan.renamesFirst && committedFirst
             )
         } catch {
-            failure = error.localizedDescription
+            failure = GatedOperationFailure(error).message
             return ApplyOutcome(
                 succeeded: false, committedName: originalName ?? "", renameCommitted: false
             )

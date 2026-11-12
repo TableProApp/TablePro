@@ -3,8 +3,8 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
-@testable import TableProUtilities
 
 struct PipeReaderTests {
     private final class Received: @unchecked Sendable {
@@ -33,6 +33,19 @@ struct PipeReaderTests {
         }
     }
 
+    private final class Ends: @unchecked Sendable {
+        private let lock = NSLock()
+        private var bytesSeen: [Int] = []
+
+        func record(_ count: Int) {
+            lock.withLock { bytesSeen.append(count) }
+        }
+
+        var all: [Int] {
+            lock.withLock { bytesSeen }
+        }
+    }
+
     @Test("Everything written arrives in order and reading ends by itself at end of file", .timeLimit(.minutes(1)))
     func deliversInOrderUntilEndOfFile() async throws {
         let pipe = Pipe()
@@ -47,6 +60,82 @@ struct PipeReaderTests {
 
         try await waitUntil { received.data.count == payload.count && handle.readabilityHandler == nil }
         #expect(received.data == payload)
+    }
+
+    @Test("The end callback fires once, after the last chunk, when the writer closes", .timeLimit(.minutes(1)))
+    func endCallbackFiresOnceAfterTheLastChunk() async throws {
+        let pipe = Pipe()
+        defer { withExtendedLifetime(pipe) {} }
+        let received = Received()
+        let ends = Ends()
+        let reader = PipeReader(pipe.fileHandleForReading)
+        reader.start { received.append($0) } atEnd: { failure in
+            ends.record(failure == nil ? received.data.count : -1)
+        }
+
+        let payload = Data((0 ..< 3 * DescriptorRead.pipeCapacity).map { UInt8($0 % 251) })
+        BackgroundPipeWriter.write([payload], to: pipe.fileHandleForWriting, pausingBeforeEach: 0)
+
+        try await waitUntil { !ends.all.isEmpty }
+        reader.stop()
+        #expect(ends.all == [payload.count])
+        #expect(received.data == payload)
+    }
+
+    @Test(
+        "Stopping the reader keeps the end callback quiet, even for a callback dispatched before the stop",
+        .timeLimit(.minutes(1))
+    )
+    func stopSilencesTheEndCallback() async throws {
+        let pipe = Pipe()
+        defer { withExtendedLifetime(pipe) {} }
+        let handle = pipe.fileHandleForReading
+        let ends = Ends()
+        let reader = PipeReader(handle)
+        reader.start { _ in } atEnd: { _ in ends.record(0) }
+        let dispatched = try #require(handle.readabilityHandler)
+
+        reader.stop()
+        try pipe.fileHandleForWriting.close()
+        let returned: Void? = await BoundedCall.resultOnItsOwnThread { dispatched(handle) }
+
+        try #require(returned != nil)
+        #expect(ends.all.isEmpty)
+    }
+
+    @Test("Stopping at end of file reads to the end without firing the end callback", .timeLimit(.minutes(1)))
+    func stopAtEndOfFileSilencesTheEndCallback() async throws {
+        let pipe = Pipe()
+        defer { withExtendedLifetime(pipe) {} }
+        let handle = pipe.fileHandleForReading
+        let received = Received()
+        let ends = Ends()
+        let reader = PipeReader(handle)
+        reader.start { received.append($0) } atEnd: { _ in ends.record(0) }
+        handle.readabilityHandler = nil
+
+        try pipe.fileHandleForWriting.write(contentsOf: Data("last".utf8))
+        try pipe.fileHandleForWriting.close()
+        let stopped: Void? = await BoundedCall.resultOnItsOwnThread { reader.stopAtEndOfFile() }
+
+        #expect(stopped != nil)
+        #expect(received.data == Data("last".utf8))
+        #expect(ends.all.isEmpty)
+    }
+
+    @Test("The owner may stop the reader from inside its end callback", .timeLimit(.minutes(1)))
+    func stopFromTheEndCallbackReturns() async throws {
+        let pipe = Pipe()
+        defer { withExtendedLifetime(pipe) {} }
+        let ends = Ends()
+        let reader = PipeReader(pipe.fileHandleForReading)
+        reader.start { _ in } atEnd: { _ in
+            reader.stop()
+            ends.record(0)
+        }
+
+        try pipe.fileHandleForWriting.close()
+        try await waitUntil { ends.all == [0] }
     }
 
     @Test("A callback dispatched before a drain reads nothing when it runs after it", .timeLimit(.minutes(1)))

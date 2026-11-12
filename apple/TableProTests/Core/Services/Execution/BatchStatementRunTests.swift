@@ -117,6 +117,53 @@ struct BatchStatementRunTests {
         }
     }
 
+    @Test("A held run sends BEGIN and leaves the transaction open for the user to commit")
+    func heldRunBeginsAndNeverCommits() async {
+        let driver = TransactionRecordingDriver()
+        let outcome = await Self.run(plan: .heldTransaction, driver: driver)
+        #expect(driver.events == [.begin(mode: .readWrite)])
+        guard case .completed(let results) = outcome else {
+            Issue.record("expected a completed run, got \(outcome)")
+            return
+        }
+        #expect(results.count == 3)
+    }
+
+    @Test("A held run marks the turn's hold, and one rolled back clears it")
+    func heldRunMarksTheTurn() async {
+        let held = ManualCommitTurnHold()
+        _ = await ManualCommit.$turnHold.withValue(held) {
+            await Self.run(plan: .heldTransaction, driver: TransactionRecordingDriver())
+        }
+        #expect(held.isHeld)
+
+        let failed = ManualCommitTurnHold()
+        _ = await ManualCommit.$turnHold.withValue(failed) {
+            await Self.run(plan: .heldTransaction, driver: TransactionRecordingDriver(), failing: "VACUUM")
+        }
+        #expect(!failed.isHeld)
+    }
+
+    @Test("A held run rolls back what it opened on a failure and on a Stop")
+    func heldRunRollsBackAFailureAndAStop() async {
+        let failing = TransactionRecordingDriver()
+        let failed = await Self.run(plan: .heldTransaction, driver: failing, failing: "VACUUM")
+        #expect(failing.events == [.begin(mode: .readWrite), .rollback])
+        guard case .failed = failed else {
+            Issue.record("expected a failed run, got \(failed)")
+            return
+        }
+
+        let stopped = TransactionRecordingDriver()
+        let outcome = await Self.run(plan: .heldTransaction, driver: stopped, stopsAfter: 1)
+        #expect(stopped.events == [.begin(mode: .readWrite), .rollback])
+        guard case .cancelled(let results) = outcome else {
+            Issue.record("expected a cancelled run, got \(outcome)")
+            return
+        }
+        #expect(results.isEmpty)
+    }
+
     @Test("The app's own transaction is rolled back on a failure, and its results are dropped")
     func appTransactionRollsBackAFailure() async {
         let driver = TransactionRecordingDriver()
@@ -228,7 +275,7 @@ struct BatchStatementRunTests {
 
     @Test(
         "A driver without transactions is never asked to begin, commit or roll back",
-        arguments: [BatchTransactionPlan.appTransaction, .scriptTransaction, .autocommit, .sessionTransaction]
+        arguments: [BatchTransactionPlan.appTransaction, .heldTransaction, .scriptTransaction, .autocommit, .sessionTransaction]
     )
     func driversWithoutTransactionsAreLeftAlone(plan: BatchTransactionPlan) async {
         let driver = TransactionRecordingDriver(supportsTransactions: false)

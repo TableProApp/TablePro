@@ -40,6 +40,7 @@ extension DatabaseManager {
             pingInterval: { await AppSettingsManager.shared.general.connectionHealthCheck.interval },
             pingHandler: { [weak self] in
                 guard let self else { return false }
+                await self.closeIdleOpenedLanes(for: connectionId)
                 if await self.queriesInFlight[connectionId] != nil {
                     Self.logger.debug("Ping skipped, operation in flight for \(connectionId)")
                     return true
@@ -148,10 +149,17 @@ extension DatabaseManager {
                 result.driver.disconnect()
                 return .abort
             }
+            let warning = openingWarning(
+                driver: result.driver,
+                startupFailures: result.startupFailures,
+                restoreWarning: result.restoreWarning,
+                for: connectionId
+            )
             updateSession(connectionId) { session in
                 session.driver = result.driver
                 session.effectiveConnection = result.effectiveConnection
                 session.status = .connected
+                session.connectionWarning = warning
                 if let schemaDriver = result.driver as? SchemaSwitchable {
                     session.browseSchema = schemaDriver.currentSchema
                 }
@@ -178,15 +186,46 @@ extension DatabaseManager {
         }
     }
 
+    // Read before the driver is closed and replaced, which prunes the hold and the ledger. The user's next statement
+    // there is refused once, as on a lane, instead of running without the transaction or session it was written for.
+    // A switch the user asked for passes `includingState: false`: they chose to leave that session.
+    internal func noteSessionLost(with driver: DatabaseDriver?, for connectionId: UUID, includingState: Bool = true) {
+        guard let driver, let session = activeSessions[connectionId] else { return }
+        let lost = sessionTransactions.holds(for: connectionId).filter { sessionTransactions.driver(for: $0) === driver }
+        for hold in lost {
+            sessionLanes.markLost(
+                database: hold.key.lane ?? session.resolvedBrowseDatabase,
+                transaction: true,
+                for: connectionId
+            )
+        }
+        guard includingState else { return }
+        sessionLanes.markLost(
+            database: session.resolvedBrowseDatabase,
+            state: sessionStateLedger.state(heldBy: driver, for: connectionId),
+            for: connectionId
+        )
+    }
+
     internal func reconnectVerdict(for error: Error) -> ConnectionFailureClassifier.ReconnectVerdict {
         if let tlsError = error as? SSLHandshakeError {
             return ConnectionFailureClassifier.reconnectVerdict(for: tlsError)
         }
         // A refusal that needs a person gets the same answer on every retry.
-        if error is EnvVarReferenceConsentError || error is PreConnectScriptConsentError {
+        if error is EnvVarReferenceConsentError || error is PreConnectScriptConsentError
+            || error is LocalCredentialConsentError || error is ConnectionTunnelError {
             return .stop(ConnectionFailureClassifier.info(for: error))
         }
-        guard isAuthenticationFailure(error) else { return .retry(nil) }
+        // The lease renewal stops on the same Vault errors; an unreachable or failing Vault is worth another try.
+        if error is VaultError || error is VaultRequestError {
+            let info = ConnectionFailureClassifier.info(for: error)
+            return VaultLease.isDefinitive(error) ? .stop(info) : .retry(info)
+        }
+        // The new user is kept, and the next attempt may find it loaded.
+        if error is VaultUserNotLoaded {
+            return .retry(ConnectionFailureClassifier.info(for: error))
+        }
+        guard ConnectionFailureClassifier.isAuthenticationFailure(error) else { return .retry(nil) }
         let message = String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
         return .stop(ConnectionFailureInfo(message: message))
     }
@@ -215,10 +254,18 @@ extension DatabaseManager {
         message: String(localized: "The connection was closed and reconnecting was cancelled.")
     )
 
+    // A direct dial reaches another host when the CNAME of an AWS IAM connection now leads to another RDS endpoint.
+    internal func movesEndpoint(of session: ConnectionSession, to rebuilt: DatabaseConnection) -> Bool {
+        let previous = session.effectiveConnection ?? session.connection
+        return rebuilt.host.caseInsensitiveCompare(previous.host) != .orderedSame
+    }
+
     internal struct ReconnectResult {
         let driver: DatabaseDriver
         let effectiveConnection: DatabaseConnection
         let cachedPassword: String?
+        let startupFailures: [StartupCommandFailure]
+        let restoreWarning: String?
     }
 
     // Rebuilds the tunnel for a tunneled session before connecting the new driver. Tunnels are keyed by
@@ -229,25 +276,30 @@ extension DatabaseManager {
         generation: Int
     ) async throws -> ReconnectResult? {
         let connectionId = session.connection.id
+        noteSessionLost(with: session.driver, for: connectionId)
         session.driver?.disconnect()
         // Resolved as the connect resolved it; a reference that lost its approval needs a person.
-        let connection = try await envVarReferenceConsent.resolve(session.connection, trigger: .background)
-        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: connection)
+        let resolved = try await envVarReferenceConsent.resolve(session.connection, trigger: .background)
+        // Followed again, for a direct dial too: the CNAME may lead to another RDS endpoint than at the connect.
+        let connection = try await resolvingRDSEndpointAlias(of: resolved, trigger: .background)
+        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: resolved)
         let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
         try requireCurrentAttempt(generation, for: connectionId)
 
-        let connectionForDriver: DatabaseConnection
-        if connection.activeTunnelKind != nil {
+        let tunneled = connection.activeTunnelKind != nil
+        if tunneled {
             // A rebuilt tunnel moves to a new local port, stranding every other database's connection.
             await closeTransportLanes(for: connectionId) { self.isCurrentAttempt(generation, for: connectionId) }
-            connectionForDriver = try await buildEffectiveConnection(
-                for: connection,
-                deadline: deadline,
-                ownsAttempt: { self.isCurrentAttempt(generation, for: connectionId) }
-            )
-            try requireCurrentAttempt(generation, for: connectionId)
-        } else {
-            connectionForDriver = session.effectiveConnection ?? session.connection
+        }
+        let connectionForDriver = try await buildEffectiveConnection(
+            for: connection,
+            pinnedSSHRoute: session.connection.destinationTunnel,
+            deadline: deadline,
+            ownsAttempt: { self.isCurrentAttempt(generation, for: connectionId) }
+        )
+        try requireCurrentAttempt(generation, for: connectionId)
+        if !tunneled, movesEndpoint(of: session, to: connectionForDriver) {
+            await closeTransportLanes(for: connectionId) { self.isCurrentAttempt(generation, for: connectionId) }
         }
 
         guard let connectResult = try await connectReconnectDriver(
@@ -267,13 +319,13 @@ extension DatabaseManager {
             throw CancellationError()
         }
 
-        await applyTimeoutAndStartupCommands(
+        let startupFailures = await applyTimeoutAndStartupCommands(
             on: driver,
             queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
             startupCommands: session.connection.startupCommands,
             connectionName: session.connection.name
         )
-        await restoreSchemaAndDatabase(
+        let restoreWarning = await restoreSchemaAndDatabase(
             on: driver,
             savedSchema: session.browseSchema,
             savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase
@@ -282,7 +334,9 @@ extension DatabaseManager {
         return ReconnectResult(
             driver: driver,
             effectiveConnection: connectionForDriver,
-            cachedPassword: connectResult.cachedPassword
+            cachedPassword: connectResult.cachedPassword,
+            startupFailures: startupFailures,
+            restoreWarning: restoreWarning
         )
     }
 
@@ -291,7 +345,7 @@ extension DatabaseManager {
         queryTimeoutSeconds: Int,
         startupCommands: String?,
         connectionName: String
-    ) async {
+    ) async -> [StartupCommandFailure] {
         do {
             try await driver.applyQueryTimeout(queryTimeoutSeconds)
         } catch {
@@ -300,7 +354,7 @@ extension DatabaseManager {
             )
         }
 
-        await executeStartupCommands(startupCommands, on: driver, connectionName: connectionName)
+        return await executeStartupCommands(startupCommands, on: driver, connectionName: connectionName)
     }
 
     private func databaseSwitchRequiresReconnect(_ connection: DatabaseConnection) -> Bool {
@@ -308,17 +362,23 @@ extension DatabaseManager {
             .capabilities.requiresReconnectForDatabaseSwitch ?? false
     }
 
+    // The reconnected session stays on the server's default when a restore fails, which the window would not show.
     func restoreSchemaAndDatabase(
         on driver: DatabaseDriver,
         savedSchema: String?,
         savedDatabase: String?
-    ) async {
+    ) async -> String? {
+        var warnings: [String?] = []
         // The schema lives inside the database, and a database switch can leave the driver on none.
         if let savedDatabase, let adapter = driver as? PluginDriverAdapter {
             do {
                 try await adapter.switchDatabase(to: savedDatabase)
             } catch {
                 Self.logger.warning("Failed to restore database '\(savedDatabase)' on reconnect: \(error.localizedDescription)")
+                warnings.append(String(
+                    format: String(localized: "Reconnecting could not reopen the database %1$@: %2$@"),
+                    savedDatabase, error.localizedDescription
+                ))
             }
         }
 
@@ -327,8 +387,13 @@ extension DatabaseManager {
                 try await schemaDriver.switchSchema(to: savedSchema)
             } catch {
                 Self.logger.warning("Failed to restore schema '\(savedSchema)' on reconnect: \(error.localizedDescription)")
+                warnings.append(String(
+                    format: String(localized: "Reconnecting could not reopen the schema %1$@: %2$@"),
+                    savedSchema, error.localizedDescription
+                ))
             }
         }
+        return Self.joinedWarning(warnings)
     }
 
     internal func stopHealthMonitor(for connectionId: UUID) async {
@@ -368,7 +433,8 @@ extension DatabaseManager {
             // A debug target dialed through this transport would be left holding its locks once it goes.
             await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
             MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
-            await closeTransportLanes(for: sessionId) { self.isCurrentAttempt(generation, for: sessionId) }
+            // The user asked for this reconnect, so what the lanes' sessions set up is not reported as lost.
+            await closeTransportLanes(for: sessionId, includingState: false) { self.isCurrentAttempt(generation, for: sessionId) }
         }
         defer {
             if replacesPooledTransport {
@@ -402,14 +468,35 @@ extension DatabaseManager {
             }
             try requireCurrentAttempt(generation, for: sessionId)
 
-            let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: session.connection)
-            let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
+            // Resolved as the connect resolved it: the session keeps the row as saved, `${VAR}` references included.
+            let resolved = try await envVarReferenceConsent.resolve(session.connection, trigger: .request)
+            try requireCurrentAttempt(generation, for: sessionId)
+            let connection = try await resolvingRDSEndpointAlias(of: resolved, trigger: .request)
+            try requireCurrentAttempt(generation, for: sessionId)
+            let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: resolved)
+            let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
             let effectiveConnection = try await buildEffectiveConnection(
-                for: session.connection,
+                for: connection,
+                pinnedSSHRoute: session.connection.destinationTunnel,
                 deadline: deadline,
                 ownsAttempt: { self.isCurrentAttempt(generation, for: sessionId) }
             )
             try requireCurrentAttempt(generation, for: sessionId)
+            // Pooled and parked connections stand on the old endpoint, so they go the way a rebuilt tunnel's do.
+            let movesPooledEndpoint = !replacesPooledTransport && movesEndpoint(of: session, to: effectiveConnection)
+            if movesPooledEndpoint {
+                await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
+                MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
+                await closeTransportLanes(for: sessionId, includingState: false) {
+                    self.isCurrentAttempt(generation, for: sessionId)
+                }
+            }
+            defer {
+                if movesPooledEndpoint {
+                    MetadataConnectionPool.shared.endTransportReplacement(connectionId: sessionId)
+                    RoutineDebugSessions.shared.reopenAdmission(for: sessionId)
+                }
+            }
 
             // Nil means the user declined the re-prompt after an auth failure: a cancellation, not a refusal.
             guard let connectResult = try await connectReconnectDriver(
@@ -425,13 +512,13 @@ extension DatabaseManager {
             }
             let driver = connectResult.driver
 
-            await applyTimeoutAndStartupCommands(
+            let startupFailures = await applyTimeoutAndStartupCommands(
                 on: driver,
                 queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name
             )
-            await restoreSchemaAndDatabase(
+            let restoreWarning = await restoreSchemaAndDatabase(
                 on: driver,
                 savedSchema: activeSessions[sessionId]?.browseSchema,
                 savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase
@@ -441,10 +528,14 @@ extension DatabaseManager {
                 throw CancellationError()
             }
 
+            let warning = openingWarning(
+                driver: driver, startupFailures: startupFailures, restoreWarning: restoreWarning, for: sessionId
+            )
             updateSession(sessionId) { session in
                 session.driver = driver
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
+                session.connectionWarning = warning
                 if let schemaDriver = driver as? SchemaSwitchable {
                     session.browseSchema = schemaDriver.currentSchema
                 }
@@ -551,7 +642,7 @@ extension DatabaseManager {
         guard allowsCredentialPrompt else { return .fail }
         guard ConnectionCredentialResolver.promptsForPassword(session.connection),
               !pluginManager.hidesPassword(for: session.connection),
-              isAuthenticationFailure(error)
+              ConnectionFailureClassifier.isAuthenticationFailure(error)
         else {
             return .fail
         }
@@ -570,29 +661,6 @@ extension DatabaseManager {
         }
 
         return .retry(prompted)
-    }
-
-    private static let invalidAuthorizationSQLState = "28000"
-    private static let mysqlAccessDeniedErrorCode = 1_045
-
-    internal func isAuthenticationFailure(_ error: Error) -> Bool {
-        if let pluginError = error as? any PluginDriverError {
-            if pluginError.pluginSqlState == Self.invalidAuthorizationSQLState {
-                return true
-            }
-            if pluginError.pluginErrorCode == Self.mysqlAccessDeniedErrorCode {
-                return true
-            }
-            return messageIndicatesAuthenticationFailure(pluginError.pluginErrorMessage)
-        }
-        return messageIndicatesAuthenticationFailure(error.localizedDescription)
-    }
-
-    private func messageIndicatesAuthenticationFailure(_ message: String) -> Bool {
-        let lowered = message.lowercased()
-        return lowered.contains("access denied")
-            || lowered.contains("authentication failed")
-            || lowered.contains("invalid credentials")
     }
 
     // A superseded attempt leaves the slot alone: the tunnel under this connection's id is the newer attempt's.

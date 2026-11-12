@@ -23,8 +23,8 @@ GIT_ENV = {
 }
 MAIN_CHANGELOG = "# Changelog\n\n## [0.81.0] - 2026-10-16\n\n### Fixed\n\n- A bug. (#1)\n"
 DETECTOR_SOURCE = Path(__file__).resolve().parents[3] / version.DETECTOR
-# What the fake detector in CheckTests calls shipped; AppleTreeTests runs the real one.
-SHIPPED_PREFIXES = ("TablePro/", "Plugins/")
+# What the fake detector in CheckTests calls each suite; AppleTreeTests runs the real one.
+SUITE_PREFIXES = {"shipped": ("TablePro/", "Plugins/"), "macos": ("TablePro/", "Plugins/"), "ios": ("Mobile/",)}
 
 
 class GrammarTests(unittest.TestCase):
@@ -77,11 +77,13 @@ class GrammarTests(unittest.TestCase):
 
 
 class FakeGitHub:
-    def __init__(self, releases=(), runs=None, jobs=None):
+    def __init__(self, releases=(), runs=None, jobs=None, passed=None):
         self._releases = list(releases)
         self._runs = runs or {}
         self._jobs = jobs or {}
+        self._passed = passed or {}
         self.run_queries = []
+        self.passed_queries = []
 
     def releases(self):
         return self._releases
@@ -90,6 +92,10 @@ class FakeGitHub:
         self.run_queries.append((sha, branch))
         return self._runs.get((sha, branch), [])
 
+    def passed_push_runs(self, branch):
+        self.passed_queries.append(branch)
+        return self._passed.get(branch, [])
+
     def job_conclusions(self, run_id, job):
         return self._jobs.get((run_id, job), [])
 
@@ -97,6 +103,18 @@ class FakeGitHub:
 def green_on(sha, branch="release/0.82"):
     run = version.Run("ci", version.CI_WORKFLOW, "completed", "success", "https://ci.example/ci")
     return {(sha, branch): [run]}, {("ci", job): ["success"] for job in version.TEST_JOBS}
+
+
+# A green CI push run whose plan ran only the test jobs in ran; the others' calling jobs are skipped.
+def planned(run_id, sha, ran, branch="release/0.82"):
+    run = version.Run(run_id, version.CI_WORKFLOW, "completed", "success", f"https://ci.example/{run_id}")
+    jobs = {}
+    for job in version.TEST_JOBS:
+        if job in ran:
+            jobs[(run_id, job)] = ["success"]
+        else:
+            jobs[(run_id, job.split(" / ")[0])] = ["skipped"]
+    return {(sha, branch): [run]}, jobs
 
 
 def with_ci(runs, **changes):
@@ -149,7 +167,7 @@ class CheckTests(unittest.TestCase):
     def changed(self, base, head, suite):
         self.diffs.append((base, head, suite))
         paths = self.repo.git("diff-tree", "-r", "--name-only", base, head).splitlines()
-        return any(path.startswith(SHIPPED_PREFIXES) for path in paths)
+        return any(path.startswith(SUITE_PREFIXES[suite]) for path in paths)
 
     def check(self, tag, github):
         return version.check(tag, self.git, github, changed=self.changed)
@@ -211,6 +229,80 @@ class CheckTests(unittest.TestCase):
                 github = FakeGitHub(releases=[("v0.81.0", False)], runs=failed, jobs=jobs)
                 self.assertEqual(self.check("v0.82.0-beta.1", github),
                                  [f"CI ended '{conclusion}' at https://ci.example/ci"])
+
+    def line_runs(self, *planned_runs):
+        runs, jobs, passed = {}, {}, []
+        for run_id, sha, ran in planned_runs:
+            more_runs, more_jobs = planned(run_id, sha, ran)
+            runs.update(more_runs)
+            jobs.update(more_jobs)
+            passed.insert(0, (run_id, sha))
+        return runs, jobs, {"release/0.82": passed}
+
+    def patch_after(self):
+        release_commit = self.repo.commit("chore(release): v0.82.1", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.1] - 2026-10-27\n\n## [0.82.0] - 2026-10-20\n\n## [0.81.0]"))
+        self.repo.line("0.82", release_commit)
+        self.repo.git("tag", "v0.82.1", release_commit)
+        return release_commit
+
+    def test_a_release_commit_takes_each_test_job_from_its_last_pass(self):
+        pick = self.repo.commit("fix: a macOS fix", source="TablePro/Fix.swift")
+        release_commit = self.patch_after()
+        both = tuple(version.TEST_JOBS)
+        runs, jobs, passed = self.line_runs(("cut", self.cut, both), ("pick", pick, ("macos / macOS Tests",)),
+                                            ("release", release_commit, ()))
+        github = FakeGitHub(releases=[("v0.81.0", False), ("v0.82.0", False)], runs=runs, jobs=jobs, passed=passed)
+        self.assertEqual(self.check("v0.82.1", github), [])
+        self.assertEqual(self.diffs, [(pick, "v0.82.1", "macos"), (self.cut, "v0.82.1", "ios")])
+
+    def test_a_left_out_job_refuses_a_change_to_its_suite_since_it_last_passed(self):
+        self.repo.commit("fix: a pick whose run failed", source="TablePro/Fix.swift")
+        release_commit = self.patch_after()
+        runs, jobs, passed = self.line_runs(("cut", self.cut, tuple(version.TEST_JOBS)),
+                                            ("release", release_commit, ()))
+        github = FakeGitHub(releases=[("v0.81.0", False), ("v0.82.0", False)], runs=runs, jobs=jobs, passed=passed)
+        self.assertEqual(self.check("v0.82.1", github), [
+            "macos / macOS Tests ran no tests at https://ci.example/release (job: none)",
+            "ios / iOS and Package Tests ran no tests at https://ci.example/release (job: none)",
+            f"v0.82.1 changes the macos suite since {self.cut}, where macos / macOS Tests last passed on release/0.82",
+        ])
+
+    def test_a_left_out_job_needs_a_pass_at_an_ancestor_on_the_line(self):
+        self.repo.git("checkout", "--quiet", "-b", "side", self.base)
+        side = self.repo.commit("off the line")
+        self.repo.git("checkout", "--quiet", "main")
+        release_commit = self.patch_after()
+        both = tuple(version.TEST_JOBS)
+        runs, jobs, passed = self.line_runs(("side", side, both), ("cut", self.cut, ()),
+                                            ("release", release_commit, ()))
+        passed["release/0.82"].append(("gone", "f" * 40))
+        jobs.update({("gone", job): ["success"] for job in both})
+        main_runs, main_jobs = planned("main", self.base, both, branch="main")
+        jobs.update(main_jobs)
+        github = FakeGitHub(releases=[("v0.81.0", False), ("v0.82.0", False)], runs={**runs, **main_runs}, jobs=jobs,
+                            passed={**passed, "main": [("main", self.base)]})
+        self.assertEqual(self.check("v0.82.1", github), [
+            "macos / macOS Tests ran no tests at https://ci.example/release (job: none)",
+            "ios / iOS and Package Tests ran no tests at https://ci.example/release (job: none)",
+            "no earlier CI push run on release/0.82 ran macos / macOS Tests at an ancestor of v0.82.1",
+            "no earlier CI push run on release/0.82 ran ios / iOS and Package Tests at an ancestor of v0.82.1",
+        ])
+        self.assertEqual(github.passed_queries, ["release/0.82"])
+        self.assertEqual(self.diffs, [])
+
+    def test_a_failed_test_job_beside_a_left_out_one_is_not_excused(self):
+        release_commit = self.patch_after()
+        runs, jobs, passed = self.line_runs(("cut", self.cut, tuple(version.TEST_JOBS)),
+                                            ("release", release_commit, ()))
+        del jobs[("release", "macos")]
+        jobs[("release", "macos / macOS Tests")] = ["skipped"]
+        github = FakeGitHub(releases=[("v0.81.0", False), ("v0.82.0", False)], runs=runs, jobs=jobs, passed=passed)
+        self.assertEqual(self.check("v0.82.1", github), [
+            "macos / macOS Tests ran no tests at https://ci.example/release (job: skipped)",
+            "ios / iOS and Package Tests ran no tests at https://ci.example/release (job: none)",
+        ])
+        self.assertEqual(github.passed_queries, [])
 
     def test_a_run_of_another_workflow_does_not_count(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
@@ -541,6 +633,7 @@ class GitHubTests(unittest.TestCase):
             calls.append(command)
             path = command[command.index("--jq") - 1]
             outputs = {
+                "/workflows/ci.yml/runs?": "21\tabc\n22\tdef\n",
                 "/releases": "v0.82.0\tfalse\nplugin-oracle-v1.0.0\ttrue\n",
                 "/runs?": ("11\t.github/workflows/ci.yml\tcompleted\tsuccess\thttps://ci.example/11\n"
                            "12\t.github/workflows/ci.yml\tin_progress\t\thttps://ci.example/12\n"),
@@ -556,8 +649,12 @@ class GitHubTests(unittest.TestCase):
             version.Run("12", ".github/workflows/ci.yml", "in_progress", "", "https://ci.example/12"),
         ])
         self.assertEqual(github.job_conclusions("11", "macos / macOS Tests"), ["success", ""])
+        self.assertEqual(github.passed_push_runs("release/0.83"), [("21", "abc"), ("22", "def")])
         self.assertIn("--paginate", calls[0])
         self.assertIn("--paginate", calls[2])
+        self.assertIn("--paginate", calls[3])
+        self.assertIn("repos/Owner/Repo/actions/workflows/ci.yml/runs?branch=release/0.83&event=push&status=success"
+                      "&per_page=100", calls[3])
         self.assertIn('select(.name == "macos / macOS Tests")', calls[2][-1])
         self.assertIn("repos/Owner/Repo/actions/runs?head_sha=abc&event=push&branch=release/0.83&per_page=100",
                       calls[1])

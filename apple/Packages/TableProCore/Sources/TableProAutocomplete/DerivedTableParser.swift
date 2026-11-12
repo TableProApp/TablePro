@@ -446,6 +446,135 @@ struct DerivedTableParser {
         return target.reference
     }
 
+    // MARK: - Join scope
+
+    struct JoinSource: Equatable {
+        let table: String
+        let schema: String?
+        let alias: String?
+        // Whether the name the statement exposes it by, the alias or else the table, was quoted.
+        let isQuoted: Bool
+    }
+
+    private struct FromItemNames {
+        let sources: [JoinSource]
+        // One stored table named directly, not a join group, a derived table or a table function.
+        let isTable: Bool
+        let end: Int
+    }
+
+    // Walking back from an ON, a clause word means it belongs to no FROM list, as in CREATE INDEX, GRANT or a trigger.
+    private static let joinScopeBreakers: Set<String> = [
+        "SELECT", "WHERE", "GROUP", "HAVING", "ORDER", "LIMIT", "OFFSET", "FETCH", "SET", "VALUES", "RETURNING", "INTO",
+        "UNION", "INTERSECT", "EXCEPT", "MINUS", "WINDOW", "QUALIFY", "INSERT", "DELETE", "MERGE", "CREATE", "ALTER",
+        "DROP", "GRANT", "REVOKE"
+    ]
+
+    // Set only when the ON is the token right before `cursor` and follows a table joined by JOIN. The earlier tables
+    // are the ones before it since the last comma of its FROM list or join group, which is all such an ON may name.
+    func joinScope(in stream: SQLTokenStream, cursor: Int) -> (joined: JoinSource, earlier: [JoinSource])? {
+        guard let on = stream.tokens.lastIndex(where: { $0.range.location < cursor }), stream.isWord(on, "ON"),
+              stream.kind(on - 1) != .comma, !stream.isWord(on - 1, in: Self.joinWords),
+              let start = joinListStart(before: on, cursor: cursor, in: stream) else { return nil }
+        var earlier: [JoinSource] = []
+        var isJoined = false
+        var index = start
+        while index < on {
+            let item = fromItemNames(at: index, to: on, in: stream)
+            let next = nextFromItem(after: item.end, to: on, in: stream).index
+            guard next < on else {
+                guard isJoined, item.isTable, let joined = item.sources.first,
+                      firstTopLevel(["ON"], from: item.end, to: on, in: stream) == nil else { return nil }
+                return (joined, Array(earlier.reversed()))
+            }
+            if stream.kind(next - 1) == .comma {
+                earlier = []
+                isJoined = false
+            } else {
+                earlier += item.sources
+                isJoined = stream.isWord(next - 1, "JOIN") || stream.isWord(next - 1, "STRAIGHT_JOIN")
+            }
+            index = next
+        }
+        return nil
+    }
+
+    // The first item of the FROM list holding `on` at the cursor's query level, or of the join group around it.
+    private func joinListStart(before on: Int, cursor: Int, in stream: SQLTokenStream) -> Int? {
+        var floor = 0
+        if let open = stream.enclosingParens(before: cursor).last {
+            guard isStatementBody(open, in: stream) else {
+                return opensFromItem(open, in: stream) ? open + 1 : nil
+            }
+            floor = open + 1
+        }
+        var index = on - 1
+        while index >= floor {
+            let token = stream.tokens[index]
+            if token.kind == .closeParen, token.partner >= floor {
+                index = token.partner - 1
+                continue
+            }
+            // After a dot a word is a name, as in `a.set`.
+            if token.kind == .word, stream.kind(index - 1) != .dot {
+                switch token.upper {
+                case "FROM" where !stream.isWord(index - 1, "DISTINCT"), "UPDATE":
+                    return index + 1
+                case "USING" where stream.kind(index + 1) != .openParen:
+                    return index + 1
+                case let word where Self.joinScopeBreakers.contains(word):
+                    return nil
+                default:
+                    break
+                }
+            }
+            index -= 1
+        }
+        return nil
+    }
+
+    private func fromItemNames(at start: Int, to end: Int, in stream: SQLTokenStream) -> FromItemNames {
+        var index = start
+        while stream.isWord(index, "LATERAL") || stream.isWord(index, "ONLY") { index += 1 }
+        guard index < end else { return FromItemNames(sources: [], isTable: false, end: end) }
+        if stream.kind(index) == .openParen {
+            let close = stream.after(index) - 1
+            guard !isQueryBody(index, in: stream) else {
+                return FromItemNames(sources: [], isTable: false, end: alias(after: close, in: stream)?.end ?? close + 1)
+            }
+            return FromItemNames(sources: groupNames(from: index + 1, to: min(close, end), in: stream), isTable: false, end: close + 1)
+        }
+        guard let path = path(at: index, to: end, in: stream) else {
+            return FromItemNames(sources: [], isTable: false, end: index + 1)
+        }
+        index = path.end
+        if stream.kind(index) == .openParen {
+            let close = stream.after(index) - 1
+            return FromItemNames(sources: [], isTable: false, end: alias(after: close, in: stream)?.end ?? close + 1)
+        }
+        if stream.kind(index) == .star { index += 1 }
+        var source = JoinSource(table: path.table, schema: path.schema, alias: nil, isQuoted: path.isQuoted)
+        if let alias = alias(after: index - 1, in: stream) {
+            let aliasIndex = stream.isWord(index, "AS") ? index + 1 : index
+            source = JoinSource(
+                table: path.table, schema: path.schema, alias: alias.name, isQuoted: stream.kind(aliasIndex) == .quoted
+            )
+            index = alias.end
+        }
+        return FromItemNames(sources: [source], isTable: true, end: index)
+    }
+
+    private func groupNames(from start: Int, to end: Int, in stream: SQLTokenStream) -> [JoinSource] {
+        var names: [JoinSource] = []
+        var index = start
+        while index < end {
+            let item = fromItemNames(at: index, to: end, in: stream)
+            names += item.sources
+            index = nextFromItem(after: item.end, to: end, in: stream).index
+        }
+        return names
+    }
+
     // MARK: - Definitions
 
     // One query level. A CTE of its WITH list is in scope from the next definition on, and only a level that holds the

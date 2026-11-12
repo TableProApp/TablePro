@@ -25,6 +25,7 @@ serde.workspace = true
 serde_json.workspace = true
 subtle = "2.6"
 thiserror.workspace = true
+toml_edit.workspace = true
 tokio = { workspace = true, features = ["rt"] }
 tokio-util.workspace = true
 tracing.workspace = true

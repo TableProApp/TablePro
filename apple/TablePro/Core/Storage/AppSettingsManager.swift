@@ -12,11 +12,23 @@ final class AppSettingsManager: ObservableObject {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
-            if oldValue.showWorkspaceRail != general.showWorkspaceRail {
+            // The strip stands aside for a tree that lists the connections itself, so that setting moves it too.
+            if oldValue.showWorkspaceRail != general.showWorkspaceRail
+                || oldValue.showsConnectionNavigator != general.showsConnectionNavigator
+                || oldValue.showsConnectionsInTree != general.showsConnectionsInTree {
                 appEvents.workspaceRailVisibilityChanged.send(())
             }
             if oldValue.connectionHealthCheck != general.connectionHealthCheck {
                 appEvents.connectionHealthCheckChanged.send(())
+            }
+            if oldValue.showsObjectToolbar != general.showsObjectToolbar {
+                MainWindowToolbar.applyObjectToolbarSettingChange()
+            }
+            if oldValue.showsToolbarLabels != general.showsToolbarLabels {
+                MainWindowToolbar.applyToolbarLabelsSettingChange()
+            }
+            if oldValue.showsToolbarLocationItems != general.showsToolbarLocationItems {
+                MainWindowToolbar.applyLocationItemsSettingChange()
             }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.general)
         }
@@ -29,6 +41,10 @@ final class AppSettingsManager: ObservableObject {
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
             )
+            if oldValue.objectIconStyle != appearance.objectIconStyle {
+                appEvents.objectIconStyleChanged.send(appearance.objectIconStyle)
+                MainWindowToolbar.applyObjectIconStyleChange()
+            }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.appearance)
         }
     }
@@ -62,8 +78,7 @@ final class AppSettingsManager: ObservableObject {
         formatter.options(for: editor)
     }
 
-    /// Device-local: it is deliberately absent from `AppSettingsCategory.synced`, so a zoom press
-    /// never pushes an iCloud record and a Mac on an older build cannot reset it.
+    // Device-local, absent from `AppSettingsCategory.synced`: a zoom press never pushes a record an older build could reset.
     @Published var typography: TypographySettings {
         didSet {
             guard typography != oldValue else { return }
@@ -104,6 +119,15 @@ final class AppSettingsManager: ObservableObject {
             dateFormattingService.updateFormat(validated.dateFormat)
             appEvents.dataGridSettingsChanged.send(())
             syncTracker.markDirty(.settings, id: AppSettingsCategory.dataGrid)
+        }
+    }
+
+    @Published var valueColors: ValueColorSettings {
+        didSet {
+            guard valueColors != oldValue else { return }
+            storage.saveValueColors(valueColors)
+            appEvents.valueColorSettingsChanged.send(())
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.valueColors)
         }
     }
 
@@ -151,9 +175,14 @@ final class AppSettingsManager: ObservableObject {
         }
     }
 
+    // Every writer, a reset from another pane included, has to reach the Keychain flag and the coordinator.
     @Published var sync: SyncSettings {
         didSet {
             storage.saveSync(sync)
+            passwordSyncDefaults.set(sync.syncsPasswords, forKey: KeychainHelper.passwordSyncEnabledKey)
+            if oldValue.enabled != sync.enabled {
+                switchSync(sync.enabled)
+            }
         }
     }
 
@@ -161,6 +190,7 @@ final class AppSettingsManager: ObservableObject {
         didSet {
             guard !isValidating else { return }
             var validated = mcp
+            validated.port = mcp.validatedPort
             validated.maxRowLimit = mcp.validatedMaxRowLimit
             validated.defaultRowLimit = mcp.validatedDefaultRowLimit
             validated.queryTimeoutSeconds = mcp.validatedQueryTimeoutSeconds
@@ -192,6 +222,8 @@ final class AppSettingsManager: ObservableObject {
     private let mcpServerManager: MCPServerManager
     private let copilotService: CopilotService
     private let connectionListPreferences: ConnectionListPreferences
+    private let passwordSyncDefaults: UserDefaults
+    private let switchSync: @MainActor (Bool) -> Void
     private var isValidating = false
 
     init(
@@ -203,7 +235,16 @@ final class AppSettingsManager: ObservableObject {
         queryHistoryManager: QueryHistoryManager = .shared,
         mcpServerManager: MCPServerManager = .shared,
         copilotService: CopilotService = .shared,
-        connectionListPreferences: ConnectionListPreferences = .shared
+        connectionListPreferences: ConnectionListPreferences = .shared,
+        passwordSyncDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        switchSync: @escaping @MainActor (Bool) -> Void = { enabled in
+            // Read at call time, so building the shared settings never builds the coordinator.
+            if enabled {
+                SyncCoordinator.shared.enableSync()
+            } else {
+                SyncCoordinator.shared.disableSync()
+            }
+        }
     ) {
         self.storage = storage
         self.themeEngine = themeEngine
@@ -214,6 +255,8 @@ final class AppSettingsManager: ObservableObject {
         self.mcpServerManager = mcpServerManager
         self.copilotService = copilotService
         self.connectionListPreferences = connectionListPreferences
+        self.passwordSyncDefaults = passwordSyncDefaults
+        self.switchSync = switchSync
 
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
@@ -221,6 +264,7 @@ final class AppSettingsManager: ObservableObject {
         self.editor = storage.loadEditor()
         self.formatter = storage.loadFormatter()
         self.dataGrid = storage.loadDataGrid()
+        self.valueColors = storage.loadValueColors()
         self.history = storage.loadHistory()
         self.tabs = storage.loadTabs()
         self.keyboard = storage.loadKeyboard()
@@ -242,10 +286,7 @@ final class AppSettingsManager: ObservableObject {
         dateFormattingService.updateFormat(dataGrid.dateFormat)
     }
 
-    /// Auto-pick the first configured provider as active when nothing is selected.
-    /// Avoids a "AI suddenly stopped working" upgrade UX when older settings JSON
-    /// (with multiple providers and no activeProviderID concept) is loaded.
-    /// Internal so `@testable` tests can exercise it directly.
+    // Settings saved before there was an active provider would otherwise read as AI turned off.
     internal static func migrateAI(_ settings: AISettings) -> AISettings {
         guard settings.activeProviderID == nil, let first = settings.providers.first else {
             return settings
@@ -261,7 +302,7 @@ final class AppSettingsManager: ObservableObject {
         await queryHistoryManager.applySettingsChange()
     }
 
-    /// Resets Sparkle's update preferences here too: the reset alert promises every section.
+    // Resets Sparkle's update preferences too: the reset alert promises every section.
     func resetToDefaults() {
         general = .default
         appearance = .default
@@ -269,10 +310,11 @@ final class AppSettingsManager: ObservableObject {
         editor = .default
         formatter = .default
         dataGrid = .default
+        valueColors = .default
         history = .default
         tabs = .default
         keyboard = .default
-        ai = .default
+        ai = ai.resetKeepingProviders
         sync = .default
         mcp = .default
         typography = .default

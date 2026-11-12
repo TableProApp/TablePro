@@ -1,26 +1,33 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use rmcp::handler::server::common::schema_for_type;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, ListToolsResult,
-    PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool, ToolAnnotations,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, DiscoverResult, Implementation,
+    InitializeRequestParams, InitializeResult, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
+    ServerConfig, Tool, ToolAnnotations,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
-use crate::tool_args::{BrowseArgs, ConnectionArgs, CountArgs, NoArgs, QueryArgs, SchemaArgs, TableArgs};
+use crate::seen_clients::SeenClients;
+use crate::tool_args::{
+    BrowseArgs, ConnectionArgs, CountArgs, DatabaseArgs, ExportArgs, NoArgs, QueryArgs, SchemaArgs, TableArgs,
+};
 use crate::tool_context::ToolContext;
 use crate::tool_error::ToolError;
-use crate::{connection_tools, query_tools, schema_tools};
+use crate::{connection_tools, export_tools, query_tools, schema_tools};
 
 const INSTRUCTIONS: &str = "TablePro reaches the database connections the user saved in it. \
 Start with list_connections. A connection has to be open in a TablePro window: call connect for one whose \
 is_open is false, and the user may have to answer TablePro first. Call describe_table before writing SQL \
 against a table. execute_query runs one statement: a read runs read-only, and a write runs only where the \
 connection's External Clients level allows it and after the user approves it in TablePro. A refusal is the \
-user's setting, not a passing failure, so do not retry it.";
+user's setting, not a passing failure, so do not retry it. A tool that takes database reaches only a database \
+the user already opened in TablePro beside the connection. An answer holds about 4 MB of rows at most, and a \
+statement's or a browse's answer cuts a value longer than 64 KB; its notes say when.";
 
 /// The tools, as a stateless handler: every call reads the saved
 /// connections and the windows again.
@@ -28,13 +35,24 @@ user's setting, not a passing failure, so do not retry it.";
 pub struct ToolServer {
     context: ToolContext,
     version: Arc<str>,
+    seen: SeenClients,
 }
 
 impl ToolServer {
-    pub fn new(context: ToolContext, version: &str) -> Self {
+    pub(crate) fn new(context: ToolContext, version: &str, seen: SeenClients) -> Self {
         Self {
             context,
             version: Arc::from(version),
+            seen,
+        }
+    }
+
+    // A client on the 2026-07-28 protocol never sends `initialize`; it
+    // names itself in each request's `_meta`. Only that is read: rmcp's
+    // fallback for a stateless request is a placeholder, not the client.
+    fn note_client(&self, context: &RequestContext<RoleServer>) {
+        if let Some(client) = context.meta.client_info() {
+            self.seen.record_new(&client, SystemTime::now());
         }
     }
 
@@ -49,13 +67,15 @@ impl ToolServer {
         match request.name.as_ref() {
             "list_connections" => connection_tools::list_connections(tools, parse(arguments)?).await,
             "connect" => connection_tools::connect(tools, parse(arguments)?).await,
-            "list_schemas" => schema_tools::list_schemas(tools, parse(arguments)?).await,
-            "list_tables" => schema_tools::list_tables(tools, parse(arguments)?).await,
-            "describe_table" => schema_tools::describe_table(tools, parse(arguments)?).await,
-            "get_table_ddl" => schema_tools::get_table_ddl(tools, parse(arguments)?).await,
+            "list_databases" => schema_tools::list_databases(tools, parse(arguments)?, cancel).await,
+            "list_schemas" => schema_tools::list_schemas(tools, parse(arguments)?, cancel).await,
+            "list_tables" => schema_tools::list_tables(tools, parse(arguments)?, cancel).await,
+            "describe_table" => schema_tools::describe_table(tools, parse(arguments)?, cancel).await,
+            "get_table_ddl" => schema_tools::get_table_ddl(tools, parse(arguments)?, cancel).await,
             "browse_table" => query_tools::browse_table(tools, parse(arguments)?, cancel).await,
-            "count_rows" => query_tools::count_rows(tools, parse(arguments)?).await,
+            "count_rows" => query_tools::count_rows(tools, parse(arguments)?, cancel).await,
             "execute_query" => query_tools::execute_query(tools, parse(arguments)?, cancel).await,
+            "export_data" => export_tools::export_data(tools, parse(arguments)?, cancel).await,
             other => Err(ToolError::NotFound(format!("there is no tool named {other}"))),
         }
     }
@@ -72,11 +92,30 @@ impl ServerHandler for ToolServer {
             .with_instructions(INSTRUCTIONS)
     }
 
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        self.seen.record(&request.client_info, SystemTime::now());
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+
+    async fn discover(&self, context: RequestContext<RoleServer>) -> Result<DiscoverResult, ErrorData> {
+        self.note_client(&context);
+        Ok(DiscoverResult::from_server_info(
+            self.supported_protocol_versions().into_owned(),
+            self.get_info(),
+        ))
+    }
+
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
+        self.note_client(&context);
         Ok(ListToolsResult::with_all_items(catalog()))
     }
 
@@ -89,6 +128,7 @@ impl ServerHandler for ToolServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        self.note_client(&context);
         let name = request.name.clone();
         let result = match self.dispatch(request, &context).await {
             Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),
@@ -128,9 +168,17 @@ first, such as for a password; then the status is connecting, and calling connec
             true,
         ),
         tool::<ConnectionArgs>(
+            "list_databases",
+            "List Databases",
+            "The server's databases the login can open, with the connection's own marked as current. An engine \
+that reaches one database, such as a file, answers unsupported.",
+            true,
+        ),
+        tool::<DatabaseArgs>(
             "list_schemas",
             "List Schemas",
-            "The schemas of an open connection, with the default one marked.",
+            "The schemas of an open connection, or of another of its databases open in TablePro, with the default \
+one marked.",
             true,
         ),
         tool::<SchemaArgs>(
@@ -170,8 +218,15 @@ for the engine.",
             "Run a Statement",
             "Run one SQL statement, or one batch on SQL Server. A read runs read-only. A write runs only on a \
 connection whose External Clients level is Read & Write and whose Safe Mode is not Read-Only, and only after the \
-user approves it in TablePro.",
+user approves it in TablePro. With read_only set, anything but a read is refused before it runs.",
             false,
+        ),
+        tool::<ExportArgs>(
+            "export_data",
+            "Export Tables",
+            "Rows of one or more tables or views as CSV, JSON or INSERT statements, returned in the answer and \
+never written to a file. Each table keeps at most max_rows rows and says whether it had more.",
+            true,
         ),
     ]
 }
@@ -185,7 +240,7 @@ mod tests {
         let tools = catalog();
 
         let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
-        assert_eq!(names.len(), 9);
+        assert_eq!(names.len(), 11);
         for tool in &tools {
             assert_eq!(
                 tool.input_schema.get("type").and_then(serde_json::Value::as_str),
@@ -204,10 +259,28 @@ mod tests {
     #[test]
     fn an_unknown_argument_is_refused() {
         let arguments: serde_json::Value =
-            serde_json::from_str(r#"{"connection_id": "x", "query": "SELECT 1", "database": "other"}"#).expect("JSON");
+            serde_json::from_str(r#"{"connection_id": "x", "query": "SELECT 1", "schema": "other"}"#).expect("JSON");
 
         let refused = parse::<QueryArgs>(arguments);
 
         assert!(matches!(refused, Err(ToolError::InvalidArgument(_))));
+    }
+
+    #[test]
+    fn an_export_takes_only_its_three_formats() {
+        let arguments = |format: &str| -> serde_json::Value {
+            serde_json::from_str(&format!(
+                r#"{{"connection_id": "x", "format": "{format}", "tables": ["orders"]}}"#
+            ))
+            .expect("JSON")
+        };
+
+        for format in ["csv", "json", "sql"] {
+            assert!(parse::<ExportArgs>(arguments(format)).is_ok(), "{format}");
+        }
+        assert!(matches!(
+            parse::<ExportArgs>(arguments("xlsx")),
+            Err(ToolError::InvalidArgument(_))
+        ));
     }
 }

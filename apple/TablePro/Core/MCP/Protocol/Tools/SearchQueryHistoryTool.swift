@@ -6,8 +6,9 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
     public static let title: String? = String(localized: "Search Query History")
     public static let description = String(
         localized: """
-        Search the query history TablePro keeps on this Mac. Results cover only connections this client \
-        may reach, whether or not connection_id is given.
+        Search the query history TablePro keeps on this Mac. With connection_id, TablePro asks the user about \
+        that connection first. Without it, results cover only connections this client may already reach \
+        without asking.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
@@ -22,7 +23,9 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
     public static let inputSchema = MCPToolSchema.object(
         properties: [
             "query": MCPToolSchema.string(String(localized: "Text matched against the recorded statement")),
-            "connection_id": MCPToolSchema.string(String(localized: "Restrict to one connection")),
+            "connection_id": MCPToolSchema.string(
+                String(localized: "Restrict to one connection. Omit for every connection already approved.")
+            ),
             "limit": MCPToolSchema.integer(
                 String(localized: "Maximum entries to return (1-500, default 50)"),
                 minimum: 1,
@@ -60,9 +63,12 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
                         "row_count", "was_successful"
                     ]
                 )
+            ),
+            "is_truncated": MCPToolSchema.boolean(
+                String(localized: "Whether the size limit left out matching entries")
             )
         ],
-        required: ["entries"]
+        required: ["entries", "is_truncated"]
     )
 
     public init() {}
@@ -90,26 +96,29 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             )
         }
 
+        let allowlist: Set<UUID>
         if let connectionId {
-            try await services.authPolicy.resolveAndAuthorize(
-                principal: context.principal,
-                tool: Self.name,
-                connectionId: connectionId,
-                sql: nil
-            )
-        }
-
-        var allowlist = await services.authPolicy.readableConnectionIds(principal: context.principal)
-        if let connectionId {
-            allowlist = allowlist.intersection([connectionId])
+            // ToolsCallHandler already asked about this connection; Ask Every Time records nothing, so asking here asked twice.
+            try await MCPToolAuthorization.requireReadAccess(connectionId, context: context, services: services)
+            allowlist = [connectionId]
+        } else {
+            allowlist = await services.authPolicy.connectionIdsReadableWithoutPrompt(principal: context.principal)
         }
         guard !allowlist.isEmpty else {
-            return .structured(.object(["entries": .array([])]))
+            return .structured(.object(["entries": .array([]), "is_truncated": .bool(false)]))
         }
 
+        var anyMasksValues = false
+        for allowed in allowlist {
+            if await !services.connectionBridge.maskingPolicy(for: allowed).isEmpty {
+                anyMasksValues = true
+                break
+            }
+        }
         let page = await services.queryHistoryManager.fetch(
             QueryHistoryFilter(
                 scope: connectionId.map { .connection($0) } ?? .all,
+                sources: MCPConnectionBridge.searchableSources(by: query, masksValues: anyMasksValues),
                 searchText: query.isEmpty ? nil : query,
                 since: since,
                 until: until,
@@ -118,10 +127,20 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             limit: limit
         )
 
-        let payload = page.entries.map { entry -> JsonValue in
+        var masksValues: [UUID: Bool] = [:]
+        for entryConnection in Set(page.entries.map(\.connectionId)) {
+            masksValues[entryConnection] = await !services.connectionBridge.maskingPolicy(for: entryConnection).isEmpty
+        }
+
+        let entries = page.entries.filter {
+            MCPConnectionBridge.isSearchable($0, by: query, masksValues: masksValues[$0.connectionId] == true)
+        }
+        let payload = entries.map { entry -> JsonValue in
             var fields: [String: JsonValue] = [
                 "id": .string(entry.id.uuidString),
-                "query": .string(entry.query),
+                "query": .string(
+                    MCPConnectionBridge.externalQueryText(of: entry, masksValues: masksValues[entry.connectionId] == true)
+                ),
                 "connection_id": .string(entry.connectionId.uuidString),
                 "database_name": .string(entry.databaseName),
                 "database_type": .string(entry.databaseType.rawValue),
@@ -136,11 +155,17 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
                 fields["schema_name"] = .string(schemaName)
             }
             if let error = entry.errorMessage {
-                fields["error_message"] = .string(MCPErrorRedactor.redact(error))
+                fields["error_message"] = .string(
+                    MCPConnectionBridge.externalErrorText(error, masksValues: masksValues[entry.connectionId] == true)
+                )
             }
             return .object(fields)
         }
 
-        return .structured(.object(["entries": .array(payload)]))
+        let answer = MCPConnectionBridge.withinAnswerBudget(payload)
+        return .structured(.object([
+            "entries": .array(answer.entries),
+            "is_truncated": .bool(answer.isTruncated)
+        ]))
     }
 }

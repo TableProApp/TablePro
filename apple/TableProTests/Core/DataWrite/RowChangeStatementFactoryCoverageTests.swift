@@ -255,8 +255,8 @@ struct RowChangeStatementFactoryCoverageTests {
         let engine = DatabaseType(rawValue: "ProbeEngine")
         let hostOnly = LegacyStatementStubDriver { _, _, _, _ in nil }
         let inserted = RowID.inserted(UUID())
-        let allDefaults: [PluginCellValue] = [.text("__DEFAULT__"), .text("__DEFAULT__")]
-        let changes = [nameEdit(), RowChange(rowID: inserted, type: .insert)]
+        let allDefaults: [PluginCellValue] = [.columnDefault, .columnDefault]
+        let changes = [nameEdit(), RowChange(rowID: inserted, type: .insert, expressionColumns: [0, 1])]
 
         let generator = try SQLStatementGenerator(
             tableName: "t", columns: columns, primaryKeyColumns: ["_id"], databaseType: engine,
@@ -319,7 +319,42 @@ struct RowChangeStatementFactoryCoverageTests {
         let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
 
         #expect(build.steps.map(\.statement.sql) == ["updateOne(0)"])
-        #expect(build.steps.allSatisfy { $0.expectedRowCount == nil })
+        #expect(build.steps.allSatisfy { $0.expectedRowCount == nil && !$0.countsMatchedRows })
+    }
+
+    @Test("A driver's own matched-row count reaches the save plan as the count the step is held to")
+    func buildRowWritesTakesTheDriversMatchedRowCount() throws {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "items", columns: columns, primaryKeyColumns: ["_id"],
+            databaseType: .snowflake, generatedColumns: []
+        )
+        manager.pluginDriver = RowWriteStubDriver { changes, _, _, _ in
+            changes.map { PluginRowWrite(statement: "updateOne(\($0.rowIndex))", rowIndices: [$0.rowIndex], expectedRowCount: 1) }
+        }
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "a", newValue: "z", originalRow: ["0", "a"]
+        )
+
+        let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
+
+        #expect(build.steps.map(\.expectedRowCount) == [1])
+        #expect(build.steps.allSatisfy { $0.countsMatchedRows && !$0.matchesRowsWithoutKey })
+    }
+
+    @Test("A driver's count never raises the one row the host holds a keyless statement to")
+    func driverCountNeverLoosensTheKeylessHold() throws {
+        let driver = RowWriteStubDriver { changes, _, _, _ in
+            changes.map { PluginRowWrite(statement: "updateOne(\($0.rowIndex))", rowIndices: [$0.rowIndex], expectedRowCount: 3) }
+        }
+        let written = try factory(primaryKeyColumns: [], databaseType: .mssql, driver: driver)
+            .rowWriteStatements(for: [nameEdit()])
+
+        let steps = DataWriteStep.rowWrites(written, tableName: "items", primaryKeyColumns: [])
+
+        #expect(steps.map(\.expectedRowCount) == [1])
+        #expect(steps.allSatisfy { $0.matchesRowsWithoutKey && $0.countsMatchedRows })
     }
 
     @Test("A driver's keyed statement through a view is held to its one row")
@@ -369,6 +404,40 @@ struct RowChangeStatementFactoryCoverageTests {
         }
         #expect(statements.count == 2)
         #expect(statements.allSatisfy { $0.keylessRowCount == nil })
+    }
+
+    @Test("A driver that writes only the first edit of a row edited around a delete refuses the save")
+    func aDriverThatWritesOneRunOfARowRefusesTheSave() {
+        let driver = RowWriteStubDriver { changes, _, _, _ in
+            let firstUpdate = changes.first { $0.type == .update }?.rowIndex
+            return changes.compactMap { change in
+                guard change.type != .update || change.rowIndex == firstUpdate else { return nil }
+                return PluginRowWrite(statement: "write(\(change.rowIndex))", rowIndices: [change.rowIndex])
+            }
+        }
+        let (manager, _) = EditAroundADelete.manager(table: "items", databaseType: DatabaseType(rawValue: "MongoDB"))
+        manager.pluginDriver = driver
+        EditAroundADelete.record(on: manager)
+
+        #expect(throws: DataWriteError.changesNotWritable(table: "items", unwritten: UnwrittenRowCounts(updates: 1))) {
+            _ = try manager.generateSQL()
+        }
+    }
+
+    @Test("A refusal counts the rows it cannot write, not the edits of each")
+    func aRefusalCountsRowsNotRuns() {
+        let driver = RowWriteStubDriver { changes, _, _, _ in
+            changes.filter { $0.type == .delete }.map {
+                PluginRowWrite(statement: "deleteOne(\($0.rowIndex))", rowIndices: [$0.rowIndex])
+            }
+        }
+        let (manager, _) = EditAroundADelete.manager(table: "items", databaseType: DatabaseType(rawValue: "MongoDB"))
+        manager.pluginDriver = driver
+        EditAroundADelete.record(on: manager)
+
+        #expect(throws: DataWriteError.changesNotWritable(table: "items", unwritten: UnwrittenRowCounts(updates: 1))) {
+            _ = try manager.generateSQL()
+        }
     }
 
     @Test("Preview SQL and Save both refuse the same mixed set")

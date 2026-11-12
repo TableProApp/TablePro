@@ -28,7 +28,7 @@ internal final class TypesensePluginDriver: PluginDatabaseDriver, @unchecked Sen
     var supportsTransactions: Bool { false }
 
     /// `.userManagement` is what enables Database > Users & Roles, which lists Typesense API keys.
-    var capabilities: PluginCapabilities { [.cancelQuery, .userManagement] }
+    var capabilities: PluginCapabilities { [.cancelQuery, .userManagement, .columnDefaultMarks] }
 
     init(config: DriverConnectionConfig) {
         self.config = config
@@ -237,6 +237,7 @@ internal final class TypesensePluginDriver: PluginDatabaseDriver, @unchecked Sen
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
         let fields = lock.withLock { _schemaCache[table] }?.fieldsByName ?? [:]
         let generator = TypesenseStatementGenerator(collection: table, columns: columns, fields: fields)
         return try generator.generateRowWrites(

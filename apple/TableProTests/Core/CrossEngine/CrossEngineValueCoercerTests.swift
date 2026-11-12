@@ -151,9 +151,52 @@ struct CrossEngineValueCoercerTests {
     @Test
     func aPostgresArrayBecomesJson() {
         let subject = coercer([.json], sources: [arrayOfText], from: .postgres)
-        #expect(subject.coerce([.text("{1,2,3}")]) == [.text("[1,2,3]")])
+        #expect(subject.coerce([.text("{1,2,3}")]) == [.text("[\"1\",\"2\",\"3\"]")])
         #expect(subject.coerce([.text("{a,b}")]) == [.text("[\"a\",\"b\"]")])
         #expect(subject.coerce([.text("{}")]) == [.text("[]")])
+    }
+
+    @Test
+    func aTextArrayKeepsEveryElementAString() {
+        let subject = coercer([.json], sources: [arrayOfText], from: .postgres)
+        #expect(subject.coerce([.text("{02134,inf}")]) == [.text("[\"02134\",\"inf\"]")])
+        #expect(subject.coerce([.text("{10001,true}")]) == [.text("[\"10001\",\"true\"]")])
+        #expect(subject.coerce([.text("{0x1F,+5,NaN,NULL}")]) == [.text("[\"0x1F\",\"+5\",\"NaN\",null]")])
+    }
+
+    @Test
+    func aNumericArrayWritesJsonNumbers() {
+        let integers = coercer([.json], sources: [.array(element: .integer(bytes: 4))], from: .postgres)
+        #expect(integers.coerce([.text("{1,-2,NULL}")]) == [.text("[1,-2,null]")])
+        let decimals = coercer(
+            [.json], sources: [.array(element: .decimal(precision: nil, scale: nil))], from: .postgres)
+        #expect(decimals.coerce([.text("{1.50,12345678901234567890.5}")])
+            == [.text("[1.50,12345678901234567890.5]")])
+    }
+
+    @Test
+    func aFloatThatJsonCannotSpellIsWrittenAsAString() {
+        let subject = coercer([.json], sources: [.array(element: .floatingPoint(bits: 64))], from: .postgres)
+        #expect(subject.coerce([.text("{1.5,NaN,Infinity,-Infinity}")])
+            == [.text("[1.5,\"NaN\",\"Infinity\",\"-Infinity\"]")])
+    }
+
+    @Test
+    func aBooleanArrayWritesJsonBooleans() {
+        let subject = coercer([.json], sources: [.array(element: .boolean)], from: .postgres)
+        #expect(subject.coerce([.text("{t,f,NULL}")]) == [.text("[true,false,null]")])
+    }
+
+    @Test
+    func aJsonArrayKeepsItsElementsAsJson() {
+        let subject = coercer([.json], sources: [.array(element: .json)], from: .postgres)
+        #expect(subject.coerce([.text(#"{"{\"a\": 1}",7,"\"x\""}"#)]) == [.text(#"[{"a": 1},7,"x"]"#)])
+    }
+
+    @Test
+    func aControlCharacterInAnElementIsEscaped() {
+        let subject = coercer([.json], sources: [arrayOfText], from: .postgres)
+        #expect(subject.coerce([.text("{\"a\u{08}b\"}")]) == [.text("[\"a\\bb\"]")])
     }
 
     /// A JSON object arrives with the same brackets an array literal uses, and it is already JSON.
@@ -179,6 +222,53 @@ struct CrossEngineValueCoercerTests {
     func aTextSourceIsNeverRewrittenAsAnArray() {
         let subject = coercer([.json], sources: [.text(length: nil, isFixed: false)], from: .postgres)
         #expect(subject.coerce([.text("{a,b}")]) == [.text("{a,b}")])
+    }
+
+    // MARK: - Bit strings
+
+    private func bitCoercer(
+        source: CanonicalTypeKind,
+        target: CanonicalTypeKind,
+        from sourceFamily: SQLTypeFamily,
+        to targetFamily: SQLTypeFamily
+    ) -> CrossEngineValueCoercer {
+        CrossEngineValueCoercer(pairs: [.init(source: source, target: target)], from: sourceFamily, to: targetFamily)
+    }
+
+    @Test
+    func aPostgresBitStringBecomesTheNumberMySQLReads() {
+        let subject = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .postgres, to: .mysql)
+        #expect(subject.coerce([.text("00000101")]) == [.text("5")])
+        #expect(subject.coerce([.text("00000000")]) == [.text("0")])
+        #expect(subject.coerce([.null]) == [.null])
+    }
+
+    @Test
+    func aMySQLBitBecomesDigitsPaddedToTheTargetLength() {
+        let subject = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .mysql, to: .postgres)
+        #expect(subject.coerce([.text("5")]) == [.text("00000101")])
+        #expect(subject.coerce([.text("170")]) == [.text("10101010")])
+    }
+
+    @Test
+    func aVaryingTargetTakesTheSourceLength() {
+        let subject = bitCoercer(source: .bitString(length: 4), target: .bitString(length: nil), from: .mysql, to: .duckdb)
+        #expect(subject.coerce([.text("5")]) == [.text("0101")])
+    }
+
+    @Test
+    func bitTextThatIsNotABitValueIsLeftAlone() {
+        let toMySQL = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .postgres, to: .mysql)
+        #expect(toMySQL.coerce([.text("0012")]) == [.text("0012")])
+        let toPostgres = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .mysql, to: .postgres)
+        #expect(toPostgres.coerce([.text("b'101'")]) == [.text("b'101'")])
+    }
+
+    @Test
+    func twoEnginesThatReadBitsAlikeKeepTheValue() {
+        let subject = bitCoercer(source: .bitString(length: 8), target: .bitString(length: 8), from: .postgres, to: .duckdb)
+        #expect(!subject.isNeeded)
+        #expect(!coercer([.bitString(length: 8)], from: .mysql).isNeeded)
     }
 
     // MARK: - Shape

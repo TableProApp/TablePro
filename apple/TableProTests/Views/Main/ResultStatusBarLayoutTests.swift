@@ -29,7 +29,8 @@ struct ResultStatusBarLayoutTests {
         pagination: PaginationState = PaginationState(),
         statusMessage: String? = nil,
         selectionSummary: SelectionSummaryState? = nil,
-        lastTiming: PluginQueryTiming? = nil
+        lastTiming: PluginQueryTiming? = nil,
+        autoRefresh: StatusBarAutoRefreshState = .unavailable
     ) -> ResultStatusBar {
         let snapshot = StatusBarSnapshot(
             tabId: UUID(),
@@ -92,7 +93,8 @@ struct ResultStatusBarLayoutTests {
             resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
             resultSetActions: .none,
             onToggleFilters: {},
-            onFetchAll: {}
+            onFetchAll: {},
+            autoRefresh: autoRefresh
         )
     }
 
@@ -101,6 +103,37 @@ struct ResultStatusBarLayoutTests {
         host.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
         host.layoutSubtreeIfNeeded()
         return host.fittingSize.height
+    }
+
+    @Test("A bar above the content draws its rule on its lower edge and opens its popovers downward")
+    func topBarFacesTheContentBelowIt() {
+        #expect(StatusBarPlacement.top.dividerEdge == .bottom)
+        #expect(StatusBarPlacement.top.popoverArrowEdge == .bottom)
+        #expect(StatusBarPlacement.bottom.dividerEdge == .top)
+        #expect(StatusBarPlacement.bottom.popoverArrowEdge == .top)
+    }
+
+    /// Moving the bar moves its rule and nothing else, so the grid below it gets the same height
+    /// back and the bar drops a tier at the same widths it always did.
+    @Test("Placed above the grid, the bar keeps its height and its width")
+    func topPlacementKeepsTheFootprint() {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        let below = NSHostingView(rootView: bar)
+        let above = NSHostingView(rootView: bar.environment(\.statusBarPlacement, .top))
+        below.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
+        above.frame = NSRect(x: 0, y: 0, width: 900, height: 200)
+        below.layoutSubtreeIfNeeded()
+        above.layoutSubtreeIfNeeded()
+
+        #expect(above.fittingSize.height == below.fittingSize.height)
+        #expect(above.fittingSize.width == below.fittingSize.width)
+        #expect(above.fittingSize.height >= StatusBarChrome.height)
     }
 
     /// A fresh query tab used to render an 8pt sliver that snapped to 28pt on the first execution,
@@ -627,6 +660,47 @@ struct ResultStatusBarLayoutTests {
             pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
         )
         expectFills(bar, at: pane)
+    }
+
+    private static var autoRefreshOn: StatusBarAutoRefreshState {
+        StatusBarAutoRefreshState(interval: .fiveSeconds, pause: nil, onChange: { _ in })
+    }
+
+    @Test("A table tab with Auto Refresh on is never wider than its host", arguments: statusBarHostWidths)
+    func autoRefreshBarNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000),
+            autoRefresh: Self.autoRefreshOn
+        )
+        #expect(bar.model.controls.showsAutoRefresh)
+        expectFills(bar, at: width)
+    }
+
+    @Test("The Auto Refresh glyph keeps its own color only while an interval runs")
+    func autoRefreshGlyphShowsTheOnState() throws {
+        let on = try #require(ResultStatusBar.autoRefreshSymbol(isOn: true))
+        let off = try #require(ResultStatusBar.autoRefreshSymbol(isOn: false))
+
+        #expect(!on.isTemplate, "a template image draws in the control's color and hides the on state")
+        #expect(off.isTemplate)
+        #expect(on.size == off.size, "the glyph must not change width when the interval turns on")
+    }
+
+    @Test("The narrowest tier still holds 280pt with Auto Refresh on the bar")
+    func narrowestTierHoldsWithAutoRefresh() {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000),
+            autoRefresh: Self.autoRefreshOn
+        )
+        expectFills(bar, at: 280)
     }
 
     /// The grid shares a `VStack` with the bar, closed by a `.frame(maxWidth: .infinity)` that can

@@ -62,10 +62,12 @@ struct SQLStatementGeneratorRowMatchTests {
 
     @Test("A Databend row left entirely on defaults names one column with DEFAULT")
     func databendAllDefaultsInsert() throws {
-        let change = RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
+        let change = RowChange(
+            rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil, expressionColumns: [0, 1, 2, 3]
+        )
         let statements = try generator(excluding: []).generateStatements(
             from: [change],
-            insertedRowData: [.existing(0): [.text("__DEFAULT__"), .text("__DEFAULT__"), .text("__DEFAULT__"), .text("__DEFAULT__")]],
+            insertedRowData: [.existing(0): [.columnDefault, .columnDefault, .columnDefault, .columnDefault]],
             deletedRowIDs: [],
             insertedRowIDs: [.existing(0)]
         )

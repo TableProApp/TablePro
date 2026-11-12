@@ -52,6 +52,30 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(fixture.sync.content.connections.map(\.settings.name) == ["Prod", "Staging"])
     }
 
+    @Test("A published connection carries neither its tunnel command nor its startup commands")
+    func publishLeavesCommandsOut() async throws {
+        let fixture = try await TeamLibraryFixture()
+        var prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        prod.tunnelCommandMode = .inline(TunnelCommandConfiguration(
+            method: .custom,
+            command: "cloudflared access tcp --url localhost:{port} --service-token-secret S3cret"
+        ))
+        prod.startupCommands = "SET app.token = 'S3cret';"
+
+        let outcome = await WelcomeViewModel.publishConnections(
+            [prod],
+            to: TeamLibraryFixture.team,
+            through: fixture.sync,
+            confirm: { _ in true }
+        )
+
+        #expect(outcome == .finished(.published(1)))
+        let data = try #require(await fixture.pushes().first?.first?["data"] as? [String: Any])
+        #expect(data["name"] as? String == "Prod")
+        #expect(data["tunnelCommand"] == nil)
+        #expect(data["startupCommands"] == nil)
+    }
+
     @Test("A member who only reads the library gets told so, and nothing is pushed")
     func readerCannotPublish() async throws {
         let fixture = try await TeamLibraryFixture(role: "member")

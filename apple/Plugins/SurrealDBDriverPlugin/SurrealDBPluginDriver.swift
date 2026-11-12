@@ -14,6 +14,16 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var namespace: String
     private var database: String?
     private var kindCache: [String: [String: SurrealFieldKind]] = [:]
+    private var heldKindCache: [String: [String: Set<SurrealFieldKind.Base>]] = [:]
+    // What `DEFINE FIELD` says, kept apart from the kinds the first rows read happened to hold.
+    private var declaredKindCache: [String: [String: SurrealFieldKind]] = [:]
+    // Table, then record literal, then field: the kind each record's field held when last read.
+    // Bounded by field entries, and evicted a table at a time, least recently read first.
+    private var recordKindCache: [String: [String: [String: SurrealFieldKind.Base]]] = [:]
+    private var recordKindEntries: [String: Int] = [:]
+    private var recordKindTables: [String] = []
+    private static let recordKindEntryLimit = 200_000
+    private static let recordKindRowLimit = 20_000
 
     init(config: DriverConnectionConfig) {
         let settings = SurrealDBConnectionConfig(config: config)
@@ -28,7 +38,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.parameterizedQueries, .cancelQuery, .truncateTable, .multiSchema]
+        [.parameterizedQueries, .cancelQuery, .truncateTable, .multiSchema, .columnDefaultMarks]
     }
 
     var serverVersion: String? {
@@ -63,9 +73,23 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    // The record kinds outlive a reconnect: they describe rows of the same database that a grid still shows.
     func disconnect() {
         client.stop()
-        lock.withLock { kindCache.removeAll() }
+        lock.withLock {
+            kindCache.removeAll()
+            heldKindCache.removeAll()
+            declaredKindCache.removeAll()
+        }
+    }
+
+    private func clearKindCaches() {
+        kindCache.removeAll()
+        heldKindCache.removeAll()
+        declaredKindCache.removeAll()
+        recordKindCache.removeAll()
+        recordKindEntries.removeAll()
+        recordKindTables.removeAll()
     }
 
     func ping() async throws {
@@ -112,19 +136,35 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.withLock {
             namespace = database
             self.database = nil
-            kindCache.removeAll()
+            clearKindCaches()
         }
     }
 
     func switchSchema(to schema: String) async throws {
         lock.withLock {
             database = schema
-            kindCache.removeAll()
+            clearKindCaches()
         }
+    }
+
+    func cachedHeldKinds(for table: String) -> [String: Set<SurrealFieldKind.Base>] {
+        lock.withLock { heldKindCache[table] ?? [:] }
+    }
+
+    func cachedRecordKinds(for table: String) -> [String: [String: SurrealFieldKind.Base]] {
+        lock.withLock { recordKindCache[table] ?? [:] }
     }
 
     func cachedKinds(for table: String) -> [String: SurrealFieldKind] {
         lock.withLock { kindCache[table] ?? [:] }
+    }
+
+    func cachedDeclaredKinds(for table: String) -> [String: SurrealFieldKind] {
+        lock.withLock { declaredKindCache[table] ?? [:] }
+    }
+
+    func rememberDeclaredKinds(_ kinds: [String: SurrealFieldKind], for table: String) {
+        lock.withLock { declaredKindCache[table] = kinds }
     }
 
     func mergeKinds(_ kinds: [String: SurrealFieldKind], for table: String) {
@@ -134,7 +174,8 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    func learnKinds(from value: SurrealValue) {
+    // `remembersRecords` is false for a whole-table read, an export or a stream, which no grid edits.
+    func learnKinds(from value: SurrealValue, remembersRecords: Bool = true) {
         let rows: [SurrealValue]
         switch value {
         case let .array(items):
@@ -145,19 +186,89 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return
         }
 
+        let keepsRecords = remembersRecords && rows.count <= Self.recordKindRowLimit
         var learned: [String: [String: SurrealFieldKind]] = [:]
+        var held: [String: [String: Set<SurrealFieldKind.Base>]] = [:]
+        var byRecord: [String: [String: RecordFieldKinds]] = [:]
         for row in rows {
             guard let pairs = row.objectPairs,
                   case let .recordId(record)? = row[SurrealInfoParser.recordIdColumn] else { continue }
+            var fields = RecordFieldKinds()
             for pair in pairs where !SurrealInfoParser.isReservedColumn(pair.key) {
-                guard learned[record.table]?[pair.key] == nil,
-                      let kind = SurrealFieldKind.infer(from: pair.value) else { continue }
+                guard let kind = SurrealFieldKind.infer(from: pair.value) else {
+                    if keepsRecords { fields.empty.insert(pair.key) }
+                    continue
+                }
+                if keepsRecords {
+                    if kind.base == .any { fields.empty.insert(pair.key) } else { fields.held[pair.key] = kind.base }
+                }
+                held[record.table, default: [:]][pair.key, default: []].insert(kind.base)
+                guard learned[record.table]?[pair.key] == nil else { continue }
                 learned[record.table, default: [:]][pair.key] = kind
             }
+            if keepsRecords { byRecord[record.table, default: [:]][record.literal] = fields }
         }
         for (table, kinds) in learned {
             mergeKinds(kinds, for: table)
         }
+        guard !held.isEmpty || !byRecord.isEmpty else { return }
+        lock.withLock {
+            for (table, fields) in held {
+                for (field, bases) in fields {
+                    heldKindCache[table, default: [:]][field, default: []].formUnion(bases)
+                }
+            }
+            rememberRecordKinds(byRecord)
+        }
+    }
+
+    private struct RecordFieldKinds {
+        var held: [String: SurrealFieldKind.Base] = [:]
+        var empty: Set<String> = []
+    }
+
+    // A projection names some fields, so each read updates the ones it names and keeps the rest.
+    // Called under `lock`.
+    private func rememberRecordKinds(_ reads: [String: [String: RecordFieldKinds]]) {
+        let incoming = reads.values.reduce(0) { total, records in total + records.values.reduce(0) { $0 + $1.held.count } }
+        guard incoming <= Self.recordKindEntryLimit else { return }
+        for (table, records) in reads {
+            mergeRecordKinds(records, into: table)
+        }
+        var total = recordKindEntries.values.reduce(0, +)
+        while total > Self.recordKindEntryLimit, let oldest = recordKindTables.first(where: { reads[$0] == nil }) {
+            total -= recordKindEntries[oldest] ?? 0
+            forgetRecordKinds(of: oldest)
+        }
+        guard total > Self.recordKindEntryLimit else { return }
+        // The tables just read outgrew the limit on their own over many pages: only this read's rows stay.
+        for (table, records) in reads {
+            forgetRecordKinds(of: table)
+            mergeRecordKinds(records, into: table)
+        }
+    }
+
+    private func mergeRecordKinds(_ records: [String: RecordFieldKinds], into table: String) {
+        var cached = recordKindCache[table] ?? [:]
+        var entries = recordKindEntries[table] ?? 0
+        for (record, fields) in records {
+            var known = cached[record] ?? [:]
+            entries -= known.count
+            known.merge(fields.held) { _, read in read }
+            for field in fields.empty { known.removeValue(forKey: field) }
+            entries += known.count
+            cached[record] = known.isEmpty ? nil : known
+        }
+        recordKindCache[table] = cached
+        recordKindEntries[table] = entries
+        recordKindTables.removeAll { $0 == table }
+        recordKindTables.append(table)
+    }
+
+    private func forgetRecordKinds(of table: String) {
+        recordKindCache.removeValue(forKey: table)
+        recordKindEntries.removeValue(forKey: table)
+        recordKindTables.removeAll { $0 == table }
     }
 
     // MARK: - Execution
@@ -173,7 +284,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let failure = SurrealRPCClient.firstFailure(results) {
             throw failure
         }
-        results.forEach { learnKinds(from: $0.value) }
+        results.forEach { learnKinds(from: $0.value, remembersRecords: length == .display) }
         return Self.result(from: results, elapsed: Date().timeIntervalSince(started), length: length)
     }
 
@@ -234,13 +345,15 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let flattened = SurrealRowFlattener.flatten(last.value, length: length)
         let affected = rowsAffected(last.value)
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: flattened.columns,
             columnTypeNames: flattened.columnTypeNames,
             rows: flattened.rows,
             rowsAffected: affected,
             executionTime: elapsed
         )
+        result.rowLocators = SurrealRowFlattener.rowLocators(last.value)
+        return result
     }
 
     private static func rowsAffected(_ value: SurrealValue) -> Int {
@@ -347,15 +460,37 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
+    }
+
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
         try SurrealStatementGenerator.rowWrites(
             table: table,
             scope: scope(forSchema: schema),
             columns: columns,
             kinds: cachedKinds(for: table),
+            heldKinds: cachedHeldKinds(for: table),
+            recordKinds: cachedRecordKinds(for: table),
+            declaredKinds: cachedDeclaredKinds(for: table),
             changes: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            insertedRowIndices: insertedRowIndices,
+            rowLocators: context.rowLocators
         )
     }
 

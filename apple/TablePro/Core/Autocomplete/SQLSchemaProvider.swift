@@ -1,10 +1,3 @@
-//
-//  SQLSchemaProvider.swift
-//  TablePro
-//
-//  Cached database schema provider for autocomplete
-//
-
 import Foundation
 import os
 import TableProAutocomplete
@@ -35,7 +28,9 @@ actor SQLSchemaProvider {
     }
 
     private var tables: [TableInfo] = []
-    private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:]
+    private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:] {
+        didSet { cachedTableColumnItems = nil }
+    }
     private var columnAccessOrder: [ColumnCacheKey] = []
     private var columnTasks: [ColumnCacheKey: Task<[ColumnInfo]?, Never>] = [:]
     private var loadTask: Task<Void, Never>?
@@ -61,19 +56,26 @@ actor SQLSchemaProvider {
         let fetchAllColumns: @Sendable () async throws -> [String: [ColumnInfo]]
         let fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])?
         let sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])?
+        let fetchForeignKeys: (@Sendable (_ table: String, _ schema: String?) async throws -> [ForeignKeyInfo])?
 
         init(
             fetchColumns: @escaping @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo],
             fetchAllColumns: @escaping @Sendable () async throws -> [String: [ColumnInfo]],
             fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])? = nil,
-            sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])? = nil
+            sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])? = nil,
+            fetchForeignKeys: (@Sendable (_ table: String, _ schema: String?) async throws -> [ForeignKeyInfo])? = nil
         ) {
             self.fetchColumns = fetchColumns
             self.fetchAllColumns = fetchAllColumns
             self.fetchSchemaTables = fetchSchemaTables
             self.sampleFieldPaths = sampleFieldPaths
+            self.fetchForeignKeys = fetchForeignKeys
         }
     }
+
+    // Keyed like the column cache and cleared with it, so a table's keys are read once per table list.
+    private var foreignKeyCache: [ColumnCacheKey: [SQLCompletionForeignKey]] = [:]
+    private var foreignKeyTasks: [ColumnCacheKey: Task<[SQLCompletionForeignKey]?, Never>] = [:]
 
     private var fieldPathCache: [String: [PluginFieldPath]] = [:]
     private var fieldPathTasks: [String: Task<[PluginFieldPath], Never>] = [:]
@@ -90,7 +92,19 @@ actor SQLSchemaProvider {
     // Every table-slot request reads all of them, so they are built once per table list, not per keystroke.
     private var unqualifiedTableItems: (defaultSchema: String?, items: [SQLCompletionItem])?
 
+    private struct TableColumnItems {
+        let defaultSchema: String?
+        let eagerLoadSchema: String?
+        let items: [SQLCompletionItem]
+    }
+
+    // Every column request before a FROM reads all of them, so they are built once per column cache and table list.
+    private var cachedTableColumnItems: TableColumnItems?
+    private(set) var tableColumnItemsBuildCount = 0
+
     private weak var cachedDriver: (any DatabaseDriver)?
+    // Read from the driver that filled the table list, so learning it opens no connection.
+    private var fetchesAllColumnsInOneRequest = false
     private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
 
@@ -104,7 +118,6 @@ actor SQLSchemaProvider {
 
     // MARK: - Public API
 
-    /// Load schema from the database (driver should already be connected).
     /// Concurrent callers await the same in-flight Task instead of firing duplicate queries.
     func loadSchema(using driver: DatabaseDriver, connection: DatabaseConnection? = nil) async {
         if let existing = loadTask {
@@ -119,6 +132,7 @@ actor SQLSchemaProvider {
         Self.logger.info("[schema] loadSchema starting new fetch")
         let t0 = Date()
         self.cachedDriver = driver
+        self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
 
@@ -143,17 +157,14 @@ actor SQLSchemaProvider {
         noteTableListWritten()
     }
 
-    /// Get the current connection info
     func getConnectionInfo() -> DatabaseConnection? {
         connectionInfo
     }
 
-    /// Get all tables
     func getTables() -> [TableInfo] {
         tables
     }
 
-    /// Get columns for a specific table (with LRU caching)
     func getColumns(for tableName: String, schema: String? = nil) async -> [ColumnInfo] {
         let key = cacheKey(table: tableName, schema: schema)
 
@@ -198,7 +209,60 @@ actor SQLSchemaProvider {
         while columnAccessOrder.count > Self.maxCachedTables {
             let evicted = columnAccessOrder.removeFirst()
             columnCache.removeValue(forKey: evicted)
+            foreignKeyCache.removeValue(forKey: evicted)
         }
+    }
+
+    // Read after the ON of a join, never per keystroke: concurrent callers await the read in flight, and a failed read
+    // is kept as no keys until the table list is read again, so a catalog that refuses it is not asked on every key.
+    func foreignKeys(of tableName: String, schema: String? = nil) async -> [SQLCompletionForeignKey] {
+        let key = cacheKey(table: tableName, schema: schema)
+        if let cached = foreignKeyCache[key] { return cached }
+        if let inFlight = foreignKeyTasks[key] { return await inFlight.value ?? [] }
+        guard connectionInfo?.type.supportsForeignKeys != false else { return [] }
+
+        let readSchema = schema.map { catalogSpelling(ofSchema: $0, isQuoted: false) ?? $0 }
+        let read: @Sendable () async throws -> [ForeignKeyInfo]
+        if let source = metadataSource {
+            guard let fetch = source.fetchForeignKeys else { return [] }
+            read = { try await fetch(tableName, readSchema) }
+        } else if let driver = cachedDriver {
+            guard driver.connection.type.supportsForeignKeys else { return [] }
+            read = { try await driver.fetchForeignKeys(table: tableName, schema: readSchema) }
+        } else {
+            return []
+        }
+
+        let task = Task<[SQLCompletionForeignKey]?, Never> {
+            do {
+                let rows = try await read()
+                return Self.completionForeignKeys(rows)
+            } catch {
+                Self.logger.debug(
+                    "[schema] foreign key read failed for completion: \(error.publicLogShape, privacy: .public)"
+                )
+                return nil
+            }
+        }
+        foreignKeyTasks[key] = task
+        let fetched = await task.value
+        guard foreignKeyTasks[key] == task else { return fetched ?? [] }
+        foreignKeyTasks[key] = nil
+        let keys = fetched ?? []
+        foreignKeyCache[key] = keys
+        return keys
+    }
+
+    private static func completionForeignKeys(_ rows: [ForeignKeyInfo]) -> [SQLCompletionForeignKey] {
+        SQLCompletionForeignKey.grouping(rows.map {
+            SQLCompletionForeignKey.Row(
+                name: $0.name,
+                column: $0.column,
+                referencedTable: $0.referencedTable,
+                referencedSchema: $0.referencedSchema,
+                referencedColumn: $0.referencedColumn
+            )
+        })
     }
 
     /// A lookup that names no schema reads the schema an unqualified fetch targets, which is the one
@@ -243,11 +307,14 @@ actor SQLSchemaProvider {
         self.columnCache.removeAll()
         self.columnAccessOrder.removeAll()
         self.columnTasks.removeAll()
+        self.foreignKeyCache.removeAll()
+        self.foreignKeyTasks.removeAll()
         self.fieldPathCache.removeAll()
         self.fieldPathTasks.removeAll()
         self.onDemandSchemaTables.removeAll()
         self.onDemandSchemaTableTasks.removeAll()
         self.cachedDriver = driver
+        self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
         noteTableListWritten()
@@ -260,6 +327,8 @@ actor SQLSchemaProvider {
         columnCache.removeAll()
         columnAccessOrder.removeAll()
         columnTasks.removeAll()
+        foreignKeyCache.removeAll()
+        foreignKeyTasks.removeAll()
         fieldPathCache.removeAll()
         fieldPathTasks.removeAll()
     }
@@ -304,6 +373,13 @@ actor SQLSchemaProvider {
         let tableCount = eagerLoadTableCount
         guard tableCount > 0 else {
             columnPreload = .awaitingTables(generation: generation)
+            return
+        }
+        guard fetchesAllColumnsInOneRequest else {
+            Self.logger.info(
+                "[schema] column preload skipped tableCount=\(tableCount) fetchesAllColumnsInOneRequest=false"
+            )
+            columnPreload = .settled(generation: generation, outcome: .skipped)
             return
         }
         guard tableCount <= Self.maxCachedTables else {
@@ -354,6 +430,7 @@ actor SQLSchemaProvider {
     private func noteTableListWritten() {
         tableListGeneration &+= 1
         unqualifiedTableItems = nil
+        cachedTableColumnItems = nil
         switch columnPreload {
         case .awaitingTables:
             startColumnPreloadIfStale(retryingFailure: true)
@@ -397,7 +474,6 @@ actor SQLSchemaProvider {
         await task.value
     }
 
-    /// Find table name from alias
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
         let lowerName = aliasOrName.lowercased()
 
@@ -650,7 +726,6 @@ actor SQLSchemaProvider {
         return []
     }
 
-    /// Get completion items for all columns of tables in scope
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem] {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
@@ -710,12 +785,29 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// Only the bulk cache can answer a statement that names no table, so once an editor has asked, a
-    /// stale cache starts a read here. This call answers from what is cached and never waits.
+    // Only the bulk cache can answer a statement that names no table, so once an editor has asked, a stale cache
+    // starts a read here. This call answers from what is cached and never waits.
     func allColumnsFromCachedTables() async -> [SQLCompletionItem] {
         if hasEditorDemand { startColumnPreloadIfStale(retryingFailure: false) }
         guard !columnCache.isEmpty else { return [] }
 
+        let defaultSchema = getDefaultSchema()
+        if let cached = cachedTableColumnItems,
+           cached.defaultSchema == defaultSchema,
+           cached.eagerLoadSchema == eagerLoadSchema {
+            return cached.items
+        }
+        let items = buildTableColumnItems()
+        tableColumnItemsBuildCount += 1
+        cachedTableColumnItems = TableColumnItems(
+            defaultSchema: defaultSchema,
+            eagerLoadSchema: eagerLoadSchema,
+            items: items
+        )
+        return items
+    }
+
+    private func buildTableColumnItems() -> [SQLCompletionItem] {
         let canonicalNames = Dictionary(
             tables.map { ($0.name.lowercased(), $0.name) },
             uniquingKeysWith: { first, _ in first }

@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProDocumentPath
 import TableProPluginKit
 
 internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -14,6 +15,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     private let lock = NSLock()
     private var _connection: ElasticsearchConnection?
     private var _mappingCache: [String: [ElasticsearchColumn]] = [:]
+    private var _arrayTextColumns: [String: Set<String>] = [:]
 
     static let logger = Logger(subsystem: "com.TablePro", category: "ElasticsearchPluginDriver")
     static let maxResultWindow = 10_000
@@ -35,7 +37,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     var supportsTransactions: Bool { false }
 
-    var capabilities: PluginCapabilities { [.cancelQuery] }
+    var capabilities: PluginCapabilities { [.cancelQuery, .columnDefaultMarks] }
 
     init(config: DriverConnectionConfig) {
         self.config = config
@@ -58,6 +60,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
             _connection?.disconnect()
             _connection = nil
             _mappingCache.removeAll()
+            _arrayTextColumns.removeAll()
         }
     }
 
@@ -248,14 +251,67 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
+    }
+
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes.filter { $0.type != .insert }) {
+            throw refusal
+        }
+        var insertedRowData = insertedRowData
+        let changes = changes.map { Self.leavingDefaultsOut($0, insertedRowData: &insertedRowData) }
         let typeNames = columnTypeNames(for: columns, index: table)
-        let generator = ElasticsearchStatementGenerator(index: table, columns: columns, columnTypeNames: typeNames)
+        let generator = ElasticsearchStatementGenerator(
+            index: table,
+            columns: columns,
+            columnTypeNames: typeNames,
+            columnPathKeys: columnPathKeys(index: table),
+            rowLocators: context.rowLocators,
+            arrayTextColumns: lock.withLock { _arrayTextColumns[table] } ?? []
+        )
         return try generator.generateRowWrites(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,
             insertedRowIndices: insertedRowIndices
         )
+    }
+
+    // A new document leaves out a field left to its default, and one whose `_id` is left to it gets an id from the server.
+    private static func leavingDefaultsOut(
+        _ change: PluginRowChange,
+        insertedRowData: inout [Int: [PluginCellValue]]
+    ) -> PluginRowChange {
+        guard change.type == .insert, let defaults = change.defaultColumns, !defaults.isEmpty else { return change }
+        if var row = insertedRowData[change.rowIndex] {
+            for index in defaults where row.indices.contains(index) { row[index] = .null }
+            insertedRowData[change.rowIndex] = row
+        }
+        var cleared = PluginRowChange(
+            rowIndex: change.rowIndex,
+            type: change.type,
+            cellChanges: change.cellChanges.map { cell in
+                defaults.contains(cell.columnIndex) ? (cell.columnIndex, cell.columnName, cell.oldValue, .null) : cell
+            },
+            originalRow: change.originalRow
+        )
+        cleared.absentColumns = change.absentColumns
+        cleared.expressionColumns = change.expressionColumns
+        return cleared
     }
 
     // MARK: - Caching
@@ -275,7 +331,33 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     /// nothing. The whole cache goes rather than one index: a console request can name a list, a
     /// wildcard or an alias, and refilling it costs one `GET /<index>/_mapping` per index reopened.
     func invalidateMappingCache() {
-        lock.withLock { _mappingCache.removeAll() }
+        lock.withLock {
+            _mappingCache.removeAll()
+            _arrayTextColumns.removeAll()
+        }
+    }
+
+    // The grid shows a string and an array that read the same alike, so a new row's text in such a field stays text.
+    func rememberArrayText(in hits: [[String: Any]], index: String, mappingColumns: [ElasticsearchColumn]) {
+        let stringColumns = mappingColumns.filter { ElasticsearchStatementGenerator.stringTypes.contains($0.type) }
+        guard !stringColumns.isEmpty else { return }
+        var found: Set<String> = []
+        for hit in hits {
+            guard let source = hit["_source"] as? [String: Any] else { continue }
+            for column in stringColumns where !found.contains(column.name) {
+                if let text = DocumentPath.value(in: source, atPath: column.name) as? String,
+                   ElasticsearchStatementGenerator.parsedArray(text) != nil {
+                    found.insert(column.name)
+                }
+            }
+        }
+        guard !found.isEmpty else { return }
+        lock.withLock { _arrayTextColumns[index, default: []].formUnion(found) }
+    }
+
+    private func columnPathKeys(index: String) -> [String: [String]] {
+        let cached = lock.withLock { _mappingCache[index] } ?? []
+        return Dictionary(cached.map { ($0.name, $0.pathKeys) }) { first, _ in first }
     }
 
     private func columnTypeNames(for columns: [String], index: String) -> [String] {

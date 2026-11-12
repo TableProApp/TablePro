@@ -64,6 +64,8 @@ protocol ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload?
     func readGridCells() -> GridCellsClipboardPayload?
     func writeText(_ text: String)
+    // A requirement, so a call on `ClipboardService.shared` reaches a provider's own concealed write.
+    func writeSecretText(_ text: String)
     func writeCsv(_ csv: String)
     func writeImage(_ image: NSImage)
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload)
@@ -75,8 +77,7 @@ protocol ClipboardProvider {
 }
 
 extension ClipboardProvider {
-    /// Text a clipboard-history app should not retain. Providers that cannot express that
-    /// fall back to a plain write rather than refusing to copy.
+    // A provider that cannot mark text concealed still copies it rather than refusing.
     func writeSecretText(_ text: String) {
         writeText(text)
     }

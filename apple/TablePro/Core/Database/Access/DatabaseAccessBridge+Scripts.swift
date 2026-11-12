@@ -21,30 +21,59 @@ extension DatabaseAccessBridge {
 
         internal let executionTimeMs: Double
 
+        // What the answer spent, nil when it ran with none.
+        internal var budget: ExternalAnswerBudget?
+
         internal var rowsReturned: Int {
             resultSets.reduce(0) { $0 + $1.rows.count }
         }
 
-        internal static func statement(_ result: QueryResult, executionTimeMs: Double) -> ScriptOutcome {
-            ScriptOutcome(resultSets: [result], primary: result, executionTimeMs: executionTimeMs)
+        internal static func statement(
+            _ result: QueryResult,
+            executionTimeMs: Double,
+            budget: ExternalAnswerBudget? = nil
+        ) -> ScriptOutcome {
+            ScriptOutcome(resultSets: [result], primary: result, executionTimeMs: executionTimeMs, budget: budget)
         }
     }
 
-    // An approved statement as a statement; an approved SQL Server script batch by batch at its GO lines.
+    // An approved statement as a statement; an approved SQL Server script batch by batch at its GO lines. One
+    // `budget` holds every result set; AppleScript and Shortcuts pass none.
     internal func runScript(
         _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
-        cancellation: (any StatementCancellationSignal)?
+        cancellation: (any StatementCancellationSignal)?,
+        budget: ExternalAnswerBudget? = nil
+    ) async throws -> ScriptOutcome {
+        let reach = DriverReach()
+        do {
+            return try await runApprovedScript(
+                operation, maxRows: maxRows, timeoutSeconds: timeoutSeconds, cancellation: cancellation, budget: budget,
+                reach: reach
+            )
+        } catch {
+            throw await externalError(error, on: operation.scope.connectionId, reach: reach)
+        }
+    }
+
+    private func runApprovedScript(
+        _ operation: ApprovedOperation,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        cancellation: (any StatementCancellationSignal)?,
+        budget: ExternalAnswerBudget?,
+        reach: DriverReach
     ) async throws -> ScriptOutcome {
         guard operation.unit == .script else {
             let outcome = try await runStatement(
                 operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                budget: budget
             )
-            return .statement(outcome.result, executionTimeMs: outcome.executionTimeMs)
+            return .statement(outcome.result, executionTimeMs: outcome.executionTimeMs, budget: outcome.budget)
         }
         guard operation.statements.count == 1, let script = operation.statements.first, script.parameters.isEmpty
         else { throw Self.notApproved }
@@ -63,13 +92,34 @@ extension DatabaseAccessBridge {
             rowCap: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            context: operation.context
+            context: operation.context(readingAtMost: budget?.remainingBytes),
+            budget: budget,
+            reach: reach
         )
-        let policy = await maskingPolicy(for: scope.connectionId)
+        guard var spent = outcome.budget else {
+            let policy = await maskingPolicy(for: scope.connectionId)
+            return ScriptOutcome(
+                resultSets: outcome.resultSets.map { $0.maskedForExternalCaller(by: policy) },
+                primary: outcome.primary.maskedForExternalCaller(by: policy),
+                executionTimeMs: outcome.executionTimeMs
+            )
+        }
+        // Masked and held to the budget batch by batch. The payload writes the first of several sets twice, so the sets
+        // are counted again with it doubled, their values as already cut.
+        guard outcome.resultSets.count > 1 else { return outcome }
+        var recount = ExternalAnswerBudget(bytes: spent.limitBytes, longValues: .whole)
+        var kept: [QueryResult] = []
+        for (index, set) in outcome.resultSets.enumerated() {
+            kept.append(recount.keep(set, weight: index == 0 ? 2 : 1))
+        }
+        if recount.sizeLimited {
+            spent.markSizeLimited()
+        }
         return ScriptOutcome(
-            resultSets: outcome.resultSets.map { $0.masked(by: policy) },
-            primary: outcome.primary.masked(by: policy),
-            executionTimeMs: outcome.executionTimeMs
+            resultSets: kept,
+            primary: outcome.primary.keepingLeadingRows(kept[0].rows, truncated: kept[0].isTruncated),
+            executionTimeMs: outcome.executionTimeMs,
+            budget: spent
         )
     }
 
@@ -83,7 +133,9 @@ extension DatabaseAccessBridge {
         rowCap: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
-        context: PluginStatementContext
+        context: PluginStatementContext,
+        budget: ExternalAnswerBudget?,
+        reach: DriverReach
     ) async throws -> ScriptOutcome {
         let classification = QueryClassifier.classify(text, databaseType: databaseType)
         let connectionId = scope.connectionId
@@ -95,6 +147,13 @@ extension DatabaseAccessBridge {
 
         let manager = await databaseManager
         let route = await MainActor.run { manager.executionRoute(for: scope) }
+        let commitMode = await MainActor.run { manager.commitMode(for: connectionId) }
+        let statementTexts = batches.flatMap { $0.statements.map(\.sql) }
+        let agentGuard = AgentTransactionGuard(
+            commitMode: commitMode, databaseType: databaseType, grammar: databaseType.lexicalGrammar,
+            connectionId: connectionId
+        )
+        let writes = classification.tier != .safe
         let startLines = BatchErrorText.lines(of: batches.map(\.range.location), in: text)
         let startTime = CFAbsoluteTimeGetCurrent()
         let statementsRan = CatalogEvent.statementsRan(
@@ -102,6 +161,13 @@ extension DatabaseAccessBridge {
             statements: batches.flatMap { $0.statements.map(\.sql) },
             databaseType: databaseType
         )
+
+        // With a budget each answer is masked as it arrives, so it can be held to the budget before the next batch runs.
+        var masking = MaskingPolicy.none
+        if budget != nil {
+            masking = await maskingPolicy(for: connectionId)
+        }
+        let answerMasking = masking
 
         let progress = ScriptBatchProgress()
         let run: ScriptBatchRun
@@ -111,11 +177,27 @@ extension DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                onLateCompletion: { CatalogChangeService.post(statementsRan) }
             ) { driver in
-                try await ScriptBatchRun.run(
-                    batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context
-                )
+                reach.mark()
+                let ran = try await agentGuard.running(statementTexts, writes: writes, on: driver) { opened in
+                    do {
+                        let answered = try await ScriptBatchRun.run(
+                            batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress,
+                            context: context, commitMode: commitMode, heldByApp: opened,
+                            budget: budget, masking: answerMasking
+                        )
+                        await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                        return answered
+                    } catch {
+                        await manager.noteSessionStatements(Self.ranStatements(of: batches, progress), ranOn: driver, scope: scope)
+                        throw error
+                    }
+                }
+                var run = ran.value
+                run.transactionNotice = ran.notice
+                return run
             }
         } catch {
             if classification.tier != .safe {
@@ -128,6 +210,11 @@ extension DatabaseAccessBridge {
         CatalogChangeService.post(statementsRan)
         Self.postSucceededBatches(of: batches, progress: progress, scope: scope, databaseType: databaseType)
         return run.outcome(executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+    }
+
+    // The batch a script stopped at ran too, and can have created a temporary table before its error.
+    private static func ranStatements(of batches: [ExecutableBatch], _ progress: ScriptBatchProgress) -> [String] {
+        batches.prefix(progress.completedBatchCount + 1).flatMap { $0.statements.map(\.sql) }
     }
 
     private static func postSucceededBatches(
@@ -201,6 +288,10 @@ final class ScriptBatchProgress: Sendable {
 struct ScriptBatchRun: Sendable {
     let answers: [QueryBatchResult]
     let sessionState: PluginSessionTransactionState
+    // With a budget, every answer was masked and held to it as it came in; this is what they spent.
+    var budget: ExternalAnswerBudget?
+    // What the agent is told instead of "commit or roll it back": the work is pending, or the transaction ended.
+    var transactionNotice: String?
 
     /// The session is asked what it holds before and after, as the editor asks: the first answer decides how a
     /// failure reads, and the second whether the script left a transaction open. A batch that raised an error ends the
@@ -211,15 +302,24 @@ struct ScriptBatchRun: Sendable {
         rowCap: Int,
         driver: DatabaseDriver,
         progress: ScriptBatchProgress,
-        context: PluginStatementContext? = nil
+        context: PluginStatementContext? = nil,
+        commitMode: ConnectionCommitMode = .automatic,
+        heldByApp: Bool = false,
+        budget: ExternalAnswerBudget? = nil,
+        masking: MaskingPolicy = .none
     ) async throws -> ScriptBatchRun {
         let startState = await driver.heldSessionTransactionState()
         progress.begin(in: startState)
-        let plan = BatchTransactionPlan.autocommit.joining(startState)
+        let plan: BatchTransactionPlan = heldByApp
+            ? .heldTransaction
+            : BatchTransactionPlan.autocommit.joining(startState, commitMode: commitMode)
         var answers: [QueryBatchResult] = []
+        var held = budget
         for (batch, startLine) in zip(batches, startLines) {
             try Task.checkCancellation()
-            let answer = try await repeatedAnswer(to: batch, rowCap: rowCap, driver: driver, context: context)
+            let answer = try await repeatedAnswer(
+                to: batch, rowCap: rowCap, driver: driver, context: context, held: &held, masking: masking
+            )
             answers.append(answer)
             guard answer.errors.isEmpty else {
                 let endState = await driver.heldSessionTransactionState()
@@ -239,27 +339,59 @@ struct ScriptBatchRun: Sendable {
         }
         let endState = await driver.heldSessionTransactionState()
         progress.end(in: endState)
-        return ScriptBatchRun(answers: answers, sessionState: endState)
+        return ScriptBatchRun(answers: answers, sessionState: endState, budget: held)
     }
 
     /// `GO 5` sends the batch five times and keeps every answer. A repetition that raised an error ends the
-    /// repeating, as it ends the run.
+    /// repeating, as it ends the run. With a budget, each answer is cut down to it before the next is read, so rows
+    /// past it are not held between batches. Once it is spent a batch still runs, since it may write and what was
+    /// approved runs to its end, but it reads one row per result set and keeps none.
     private static func repeatedAnswer(
         to batch: ExecutableBatch,
         rowCap: Int,
         driver: DatabaseDriver,
-        context: PluginStatementContext?
+        context: PluginStatementContext?,
+        held: inout ExternalAnswerBudget?,
+        masking: MaskingPolicy
     ) async throws -> QueryBatchResult {
         var combined = QueryBatchResult.empty
         for _ in 0..<max(batch.repeatCount, 1) {
             try Task.checkCancellation()
-            let repetition = try await driver.answerBatch(
-                query: batch.sql, rowCap: rowCap, parameters: nil, context: context
+            let spent = held?.sizeLimited == true
+            var repetition = try await driver.answerBatch(
+                query: batch.sql, rowCap: spent ? 1 : rowCap, parameters: nil, context: context
             )
+            if var budget = held {
+                let room = max(QueryBatchResult.keptResultSetLimit - combined.resultSets.count, 0)
+                repetition = holding(repetition, to: &budget, room: room, masking: masking)
+                held = budget
+            }
             combined = combined.followed(by: repetition)
             guard repetition.errors.isEmpty else { break }
         }
         return combined
+    }
+
+    // Masked first, so a partial mask reads the whole value before any cut. Sets past `room` are left as they are,
+    // since `followed(by:)` discards them uncounted.
+    private static func holding(
+        _ answer: QueryBatchResult,
+        to budget: inout ExternalAnswerBudget,
+        room: Int,
+        masking: MaskingPolicy
+    ) -> QueryBatchResult {
+        var sets: [QueryResult] = []
+        sets.reserveCapacity(answer.resultSets.count)
+        for (index, set) in answer.resultSets.enumerated() {
+            sets.append(index < room ? budget.keep(set.maskedForExternalCaller(by: masking)) : set)
+        }
+        return QueryBatchResult(
+            resultSets: sets,
+            rowsAffected: answer.rowsAffected,
+            errors: answer.errors,
+            discardedResultSetCount: answer.discardedResultSetCount,
+            executionTime: answer.executionTime
+        )
     }
 
     func outcome(executionTimeMs: Double) -> DatabaseAccessBridge.ScriptOutcome {
@@ -274,18 +406,21 @@ struct ScriptBatchRun: Sendable {
             error: nil
         )
         primary.isTruncated = first?.isTruncated ?? false
+        primary.columnOrigins = first?.columnOrigins
         let notes = [
             first?.statusMessage,
+            transactionNotice,
             BatchRunNotice.text(
                 discardedResultSetCount: answers.reduce(0) { $0 + $1.discardedResultSetCount },
-                sessionState: sessionState
+                sessionState: transactionNotice == nil ? sessionState : .idle
             )
         ].compactMap { $0 }
         primary.statusMessage = notes.isEmpty ? nil : notes.joined(separator: " ")
         return DatabaseAccessBridge.ScriptOutcome(
             resultSets: resultSets,
             primary: primary,
-            executionTimeMs: executionTimeMs
+            executionTimeMs: executionTimeMs,
+            budget: budget
         )
     }
 }

@@ -143,8 +143,15 @@ impl TrackedValues {
         !self.read_only && self.tracker.is_some()
     }
 
-    fn tracked_key(&self, row: &GridRow) -> Option<(&TabTrackerHandle, RowKey)> {
-        Some((self.tracker.as_ref()?, row.tracker_key()?))
+    /// Calls `read` with the tracker and the row's key, lent from the row
+    /// rather than copied: every draw reads it several times per cell.
+    fn with_key<R>(&self, row: &GridRow, read: impl FnOnce(&TabTrackerHandle, &RowKey) -> R) -> Option<R> {
+        let tracker = self.tracker.as_ref()?;
+        row.with_id(|id| match id {
+            GridRowId::Persisted(key) => Some(read(tracker, key)),
+            GridRowId::Draft(draft_id) => Some(read(tracker, &RowKey::Draft(*draft_id))),
+            GridRowId::Result | GridRowId::Unkeyed => None,
+        })
     }
 
     /// Why the cell cannot change, `None` when it can.
@@ -155,33 +162,32 @@ impl TrackedValues {
 
     /// `lock` for a cell whose mark the caller already read.
     pub fn lock_marked(&self, column: &GridColumn, row: &GridRow, row_deleted: bool) -> Option<CellLock> {
-        if let (Some(refusal), GridRowId::Result) = (self.result_lock, row.id()) {
-            return Some(CellLock::Result(refusal));
+        let locked = row.with_id(|id| {
+            if let (Some(refusal), GridRowId::Result) = (self.result_lock, id) {
+                return Some(CellLock::Result(refusal));
+            }
+            cell_editability(column, id, &self.identity, self.read_only, row_deleted).err()
+        });
+        if locked.is_some() {
+            return locked;
         }
-        if let Err(lock) = cell_editability(column, &row.id(), &self.identity, self.read_only, row_deleted) {
-            return Some(lock);
-        }
-        self.tracked_key(row)
-            .is_some_and(|(tracker, key)| tracker.cell_is_saving(&key, column.index))
-            .then_some(CellLock::Saving)
+        let saving = self.with_key(row, |tracker, key| tracker.cell_is_saving(key, column.index));
+        (saving == Some(true)).then_some(CellLock::Saving)
     }
 
     pub fn row_state(&self, row: &GridRow) -> RowPendingState {
-        self.tracked_key(row)
-            .map_or(RowPendingState::Unchanged, |(tracker, key)| {
-                RowPendingState::new(tracker.row_state(&key), tracker.is_error_row(&key))
-            })
+        self.with_key(row, |tracker, key| {
+            RowPendingState::new(tracker.row_state(key), tracker.is_error_row(key))
+        })
+        .unwrap_or(RowPendingState::Unchanged)
     }
 
     pub fn mark(&self, row: &GridRow, column: usize) -> CellMark {
-        match self.tracked_key(row) {
-            Some((tracker, key)) => {
-                let marks = tracker.cell_marks(&key, column);
-                CellMark {
-                    state: marks.state,
-                    row_deleted: marks.row_deleted,
-                }
-            }
+        match self.with_key(row, |tracker, key| tracker.cell_marks(key, column)) {
+            Some(marks) => CellMark {
+                state: marks.state,
+                row_deleted: marks.row_deleted,
+            },
             None => CellMark {
                 state: CellState::Clean,
                 row_deleted: false,
@@ -194,8 +200,8 @@ impl TrackedValues {
     /// as NULL.
     pub fn with_value<R>(&self, row: &GridRow, column: usize, f: impl FnOnce(&Value, Option<ServerValue>) -> R) -> R {
         let pending = self
-            .tracked_key(row)
-            .and_then(|(tracker, key)| tracker.cell_overlay(&key, column).pending);
+            .with_key(row, |tracker, key| tracker.pending_input(key, column))
+            .flatten();
         match pending {
             Some(CellInput::Value(value)) => f(&value, None),
             Some(CellInput::Default) => f(&Value::Null, Some(ServerValue::Default)),
@@ -220,13 +226,12 @@ impl TrackedValues {
     /// The row as the grid shows it. A draft's cell left to the server
     /// reads as NULL.
     pub fn snapshot(&self, row: &GridRow) -> RowSnapshot {
-        if let (GridRowId::Draft(draft_id), Some(tracker)) = (row.id(), self.tracker.as_ref()) {
+        if let (Some(draft_id), Some(tracker)) = (row.draft_id(), self.tracker.as_ref()) {
             return RowSnapshot::new(tracker.draft_values(draft_id).unwrap_or_default().into(), Vec::new());
         }
         let cells = row.cells().unwrap_or_else(|| Arc::from([]));
         let overrides = self
-            .tracked_key(row)
-            .map(|(tracker, key)| tracker.pending_values(&key, cells.len()))
+            .with_key(row, |tracker, key| tracker.pending_values(key, cells.len()))
             .unwrap_or_default();
         RowSnapshot::new(cells, overrides)
     }
@@ -236,23 +241,29 @@ impl TrackedValues {
     pub fn column_snapshot(&self, row: &GridRow, column: usize) -> RowSnapshot {
         let cells = row.cells().unwrap_or_else(|| Arc::from([]));
         let pending = self
-            .tracked_key(row)
-            .and_then(|(tracker, key)| tracker.cell_overlay(&key, column).pending)
+            .with_key(row, |tracker, key| tracker.pending_input(key, column))
+            .flatten()
             .map(|input| (column, input.value().cloned().unwrap_or(Value::Null)));
         RowSnapshot::new(cells, pending.into_iter().collect())
     }
 
-    /// Like `snapshot`, except a draft's cell left to the server stays
-    /// `Default`.
+    /// Like `snapshot`, except a cell left to the server stays `Default`,
+    /// a draft's or a saved row's pending one.
     pub fn inputs(&self, row: &GridRow) -> Vec<CellInput> {
-        if let (GridRowId::Draft(draft_id), Some(tracker)) = (row.id(), self.tracker.as_ref()) {
+        if let (Some(draft_id), Some(tracker)) = (row.draft_id(), self.tracker.as_ref()) {
             return tracker.draft_inputs(draft_id).unwrap_or_default();
         }
-        self.snapshot(row)
-            .to_values()
-            .into_iter()
-            .map(CellInput::Value)
-            .collect()
+        let width = row.cells().map_or(0, |cells| cells.len());
+        (0..width).map(|column| self.edit_input(row, column)).collect()
+    }
+
+    /// Whether the cell shows the value as it was read, with no edit over
+    /// it.
+    pub fn shows_read_value(&self, row: &GridRow, column: usize) -> bool {
+        row.draft_id().is_none()
+            && self
+                .with_key(row, |tracker, key| tracker.pending_input(key, column).is_none())
+                .unwrap_or(true)
     }
 }
 

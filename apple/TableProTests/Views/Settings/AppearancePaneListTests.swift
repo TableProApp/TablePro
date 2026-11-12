@@ -106,6 +106,18 @@ struct AppearancePaneListTests {
         #expect(scrollView.verticalScrollElasticity != .none)
     }
 
+    /// The Form above the list cannot scroll, so content taller than the pane pushes its first and last controls
+    /// past the window's edges, where nothing can reach them.
+    @Test("The pane's content fits the smallest Settings window")
+    func contentFitsTheSmallestPane() {
+        let paneSize = SettingsPaneTabViewController.paneSize
+        let hosting = NSHostingController(rootView: AppearanceSettingsView(settings: .constant(.default)))
+
+        let needed = hosting.sizeThatFits(in: paneSize)
+
+        #expect(needed.height <= paneSize.height, "The pane needs \(needed.height) points of \(paneSize.height)")
+    }
+
     @Test("Reading the Themes list for accessibility leaves its rows where they are")
     func themesListHoldsStillWhileAccessibilityReadsIt() throws {
         let pane = try Self.hostPane()

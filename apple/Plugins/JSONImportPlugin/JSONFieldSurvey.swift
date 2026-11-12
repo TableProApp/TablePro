@@ -15,8 +15,12 @@ struct JSONFieldSurvey {
     mutating func add(_ row: NSDictionary) {
         row.enumerateKeysAndObjects { key, value, _ in
             guard let name = key as? String else { return }
-            profiles[name, default: JSONFieldProfile()].add(value)
+            add(value, named: name)
         }
+    }
+
+    mutating func add(_ value: Any, named name: String) {
+        profiles[name, default: JSONFieldProfile()].add(value)
     }
 
     var fields: [PluginImportField] {

@@ -31,6 +31,10 @@ final class AIChatViewModel: ObservableObject {
     @Published var selectedProviderId: UUID?
     @Published var selectedModel: String?
     @Published var availableModels: [UUID: [String]] = [:]
+    @Published private(set) var providerSettingsRevision = 0
+    private var modelListSources: [UUID: AIModelListSource] = [:]
+    private var staleModelLists: Set<UUID> = []
+    private var modelListGenerations: [UUID: Int] = [:]
     @Published var attachedContext: [ContextItem] = []
     @Published var attachedImages: [ChatImageInput] = []
     @Published var savedQueries: [SQLFavorite] = []
@@ -52,7 +56,7 @@ final class AIChatViewModel: ObservableObject {
     @Published var queryResults: String?
     var editorTarget: AssistantEditorTarget?
 
-    /// The composer's text. It lives on `composerDraft`, which publishes it apart from the conversation.
+    // Lives on `composerDraft`, which publishes it apart from the conversation.
     var inputText: String {
         get { composerDraft.text }
         set { composerDraft.text = newValue }
@@ -113,10 +117,14 @@ final class AIChatViewModel: ObservableObject {
     var tableMentionSource: [TableInfo] = []
     var tableMentionBuild: Task<Void, Never>?
     var tableMentionObservation: AnyCancellable?
+    // Writes run in the order they were booked, and a transcript load waits for the ones before it.
+    var lastConversationWrite: Task<Void, Never>?
+    var transcriptLoad: Task<Void, Never>?
+    // A release bumps it, so a load still reading from disk lands in nothing.
+    var transcriptEpoch = 0
     var bulkColumnReadTableCount: Int?
     var schemaCacheScope: String?
-    // A custom command's message carries the schema it rendered, so its tables are ranked by the
-    // user's own words instead.
+    // A custom command's message carries its rendered schema, so its tables are ranked by the user's words.
     var schemaQuestionOverride: (turnID: UUID, text: String)?
     nonisolated(unsafe) var streamingTask: Task<Void, Never>?
     var prepTask: Task<Void, Never>?
@@ -125,36 +133,25 @@ final class AIChatViewModel: ObservableObject {
     var chatStorage: AIChatStorage { services.aiChatStorage }
     var cachedSavedQueries: [UUID: SQLFavorite] = [:]
     private var savedQueryCancellables: Set<AnyCancellable> = []
+    private var aiSettingsCancellables: Set<AnyCancellable> = []
 
     static let maxMessageCount = 200
 
-    /// The session this engine belongs to.
-    ///
-    /// Injected rather than minted here, because a restored session has to be the same session:
-    /// identity derived inside the engine cannot round-trip, so every guarantee keyed on it
-    /// (reopening by id, the rail's selection, per-session provider state) silently degraded to
-    /// "make another one".
+    // Injected, so a restored session keeps the identity the rail, reopening and provider state key on.
     let sessionId: UUID
 
-    /// The conversation to pull in when this engine is first looked at, if it is resuming one.
-    ///
-    /// Restore is lazy on purpose: reading every stored conversation at launch is quadratic in the
-    /// number of sessions, and `init` used to call `loadConversations()`, so opening any connection
-    /// window read the whole chat history off disk even with the assistant never revealed.
-    private var conversationToRestore: UUID?
+    // Read when the session is shown: reading every stored conversation at launch is quadratic in sessions.
+    var conversationToRestore: UUID?
     private var didRestoreConversation = false
 
-    var pendingConversationToRestore: UUID? { conversationToRestore }
     var hasRestoredConversation: Bool { didRestoreConversation }
 
-    /// Whether the connection this session names is still being opened.
-    ///
-    /// Agent mode draws its composer over a connect on purpose, so a turn can be submitted before
-    /// there is a session to run its tools against. Every such turn used to open a stream anyway,
-    /// which reached the tools with no connection behind them and answered the user's first
-    /// question with a row of failures. The turn is appended to the transcript as usual and the
-    /// stream is held until the connect lands, which is what a live composer during a connect
-    /// promises.
+    // Restored from disk or released: the session names its conversation and holds none of it yet.
+    var isAwaitingTranscript: Bool {
+        activeConversationID == nil && conversationToRestore != nil && messages.isEmpty
+    }
+
+    // A turn sent during a connect is held, so its tools never run with no connection behind them.
     var isAwaitingConnection = false {
         didSet {
             guard oldValue, !isAwaitingConnection else { return }
@@ -162,7 +159,6 @@ final class AIChatViewModel: ObservableObject {
         }
     }
 
-    /// A turn that was submitted during a connect and has not been streamed yet.
     var heldTurnAwaitsConnection = false
 
     private func releaseHeldTurn() {
@@ -185,6 +181,7 @@ final class AIChatViewModel: ObservableObject {
         self.conversationToRestore = conversationId
         self.queryContextMetadata = services.databaseManager
         observeSavedQueryUpdates()
+        observeAISettingsChanges()
     }
 
     deinit {
@@ -242,8 +239,7 @@ final class AIChatViewModel: ObservableObject {
         return Self.acceptsImages(config: config, model: selectedModel ?? config.model, catalog: .shared)
     }
 
-    /// The provider type sets the envelope, and the provider's own model list narrows it: a
-    /// router lists text-only models beside vision ones, and an image sent to one of those fails.
+    // A router lists text-only models beside vision ones, so the provider's own list narrows its type.
     nonisolated static func acceptsImages(config: AIProviderConfig, model: String, catalog: AIModelCatalog) -> Bool {
         guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else { return false }
         return descriptor.supportsImages(fetched: catalog.fetchedInfo(providerID: config.id, modelID: model))
@@ -279,6 +275,7 @@ final class AIChatViewModel: ObservableObject {
         streamingTask?.cancel()
         streamingTask = nil
         ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
+        settlePendingToolApprovals()
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
@@ -336,69 +333,105 @@ final class AIChatViewModel: ObservableObject {
         AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
+        conversationToRestore = nil
         messages.removeAll()
         activeConversationID = nil
         clearError()
     }
 
+    // The transcript on screen stays until the chosen one lands, and when its file is gone or a turn started.
     func switchConversation(to id: UUID) {
-        guard let conversation = conversations.first(where: { $0.id == id }) else { return }
+        guard conversations.contains(where: { $0.id == id }) else { return }
         AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
-        messages = conversation.messages.map { ChatTurn(wire: $0) }
-        activeConversationID = conversation.id
         clearError()
+        guard id != activeConversationID else {
+            conversationToRestore = nil
+            return
+        }
+        keepTurnsDiskMayTrim()
+        if let index = conversations.firstIndex(where: { $0.id == id }), !conversations[index].messages.isEmpty {
+            let kept = conversations[index]
+            conversations[index].messages = []
+            showTranscript(kept)
+            return
+        }
+        conversationToRestore = id
+        let storage = chatStorage
+        let epoch = transcriptEpoch
+        let saved = lastConversationWrite
+        transcriptLoad = Task { [weak self] in
+            await saved?.value
+            let stored = await storage.load(id: id)
+            guard let self, self.transcriptEpoch == epoch, self.conversationToRestore == id else { return }
+            guard !self.isBusy else {
+                self.conversationToRestore = nil
+                return
+            }
+            self.showTranscript(stored)
+        }
     }
 
-    /// Releases everything this conversation holds, keeping what the user typed.
-    ///
-    /// Window close, disconnect and a lost session all reach here, and none of them is the user
-    /// throwing a conversation away. It used to empty `messages` with nothing written to disk while
-    /// `cancelStream()` next door persisted first, so the three ordinary ways a window goes away
-    /// each dropped a reply that was still arriving.
-    ///
-    /// Cancelling the task is also not enough on its own to release a turn parked on an approval
-    /// card: a `CheckedContinuation` is not resumed by cancellation, so the suspended turn held the
-    /// provider and its open stream for the life of the process.
-    func clearSessionData() {
-        ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
-        persistCurrentConversation()
-        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
+    // Disk may hold only the last turns of a long transcript, so the ones it may drop stay on its entry.
+    private func keepTurnsDiskMayTrim() {
+        guard messages.count > AIChatStorage.turnsKeptWhenTrimmed,
+              let activeConversationID,
+              let index = conversations.firstIndex(where: { $0.id == activeConversationID })
+        else { return }
+        conversations[index].messages = messages.map { $0.wireSnapshot }
+    }
+
+    // Nil when no transcript was found: the one on screen stays.
+    func showTranscript(_ conversation: AIConversation?) {
+        conversationToRestore = nil
+        guard let conversation else { return }
+        activeConversationID = conversation.id
+        // A stored card can never be answered, and older builds saved some still waiting.
+        messages = ChatToolCallRepair.settlingPendingApprovals(conversation.messages).map { ChatTurn(wire: $0) }
+    }
+
+    // For a session no window shows; the next restore reads back what is written here.
+    func releaseLoadedState() {
+        if isBusy || streamingTask != nil {
+            cancelStream()
+        } else {
+            persistCurrentConversation()
+        }
+        let keepsTranscript = messages.count > AIChatStorage.turnsKeptWhenTrimmed
+        heldTurnAwaitsConnection = false
+        transcriptEpoch &+= 1
+        transcriptLoad?.cancel()
+        transcriptLoad = nil
+        didRestoreConversation = false
+        if !keepsTranscript {
+            if let activeConversationID {
+                conversationToRestore = activeConversationID
+            }
+            activeConversationID = nil
+            messages = []
+        }
+        conversations = conversations.filter { entry in
+            !entry.messages.isEmpty || (keepsTranscript && entry.id == activeConversationID)
+        }
         prepTask?.cancel()
         prepTask = nil
-        streamingTask?.cancel()
-        streamingTask = nil
-        AIProviderFactory.invalidateCache()
-        connection = nil
-        columnsByTable = [:]
-        foreignKeysByTable = [:]
         inFlightColumnFetches.values.forEach { $0.cancel() }
         inFlightColumnFetches.removeAll()
         inFlightSchemaLoad?.cancel()
         inFlightSchemaLoad = nil
+        columnsByTable = [:]
+        foreignKeysByTable = [:]
         relevantTableNames = []
         tableMentionBuild?.cancel()
         tableMentionBuild = nil
+        tableMentionObservation = nil
         tableMentionSource = []
         tableMentions = .empty
         bulkColumnReadTableCount = nil
         schemaCacheScope = nil
         schemaQuestionOverride = nil
-        currentQuery = nil
         queryResults = nil
-        editorTarget = nil
-        clearPendingWalkthrough()
-        messages = []
-        errorMessage = nil
-        activeConversationID = nil
-        streamingState = .idle
-        for image in attachedImages {
-            if case .cacheFile(let filename, _) = image.source {
-                AIImageCache.shared.delete(filename: filename)
-            }
-        }
-        attachedImages = []
     }
 
     func clearPendingWalkthrough() {
@@ -406,37 +439,92 @@ final class AIChatViewModel: ObservableObject {
         pendingWalkthroughSource = nil
     }
 
+    private func observeAISettingsChanges() {
+        services.appEvents.aiSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.dropSelectionOfRemovedProvider() }
+            .store(in: &aiSettingsCancellables)
+        services.appEvents.aiProviderSaved
+            .receive(on: RunLoop.main)
+            .sink { [weak self] id in self?.providerWasSaved(id) }
+            .store(in: &aiSettingsCancellables)
+    }
+
+    private func dropSelectionOfRemovedProvider() {
+        guard let selectedProviderId,
+              !services.appSettings.ai.providers.contains(where: { $0.id == selectedProviderId })
+        else { return }
+        self.selectedProviderId = nil
+        selectedModel = nil
+    }
+
+    // A save can bring a new key, which nothing in the provider list shows.
+    private func providerWasSaved(_ id: UUID) {
+        staleModelLists.insert(id)
+        modelListGenerations[id, default: 0] += 1
+        providerSettingsRevision += 1
+    }
+
+    func modelListIsStale(for config: AIProviderConfig) -> Bool {
+        modelListSources[config.id] != AIModelListSource(config: config) || staleModelLists.contains(config.id)
+    }
+
+    private enum ModelListOutcome: Sendable {
+        case listed([String])
+        case failed
+        case notReady
+    }
+
+    private struct PendingModelList {
+        let config: AIProviderConfig
+        let apiKey: String?
+        let source: AIModelListSource
+        let generation: Int
+        let catalogRevision: Int
+    }
+
     func loadAvailableModels() async {
         let settings = services.appSettings.ai
-        let pending = settings.providers.filter { availableModels[$0.id] == nil }
+        let providerIDs = Set(settings.providers.map(\.id))
+        if availableModels.keys.contains(where: { !providerIDs.contains($0) }) {
+            availableModels = availableModels.filter { providerIDs.contains($0.key) }
+        }
+        modelListSources = modelListSources.filter { providerIDs.contains($0.key) }
+
+        let pending = settings.providers.compactMap { config -> PendingModelList? in
+            guard modelListIsStale(for: config) else { return nil }
+            return PendingModelList(
+                config: config,
+                apiKey: config.authStyle.usesAPIKey ? services.aiKeyStorage.loadAPIKey(for: config.id) : nil,
+                source: AIModelListSource(config: config),
+                generation: modelListGenerations[config.id, default: 0],
+                catalogRevision: AIModelCatalog.shared.revision(providerID: config.id)
+            )
+        }
         guard !pending.isEmpty else { return }
 
-        let results = await withTaskGroup(of: (UUID, [String]?).self) { group in
-            for config in pending {
-                let apiKey: String?
-                switch config.authStyle {
-                case .apiKey, .optionalApiKey:
-                    apiKey = services.aiKeyStorage.loadAPIKey(for: config.id)
-                case .oauth, .none:
-                    apiKey = nil
-                }
+        let results = await withTaskGroup(of: (UUID, ModelListOutcome).self) { group in
+            for entry in pending {
+                let config = entry.config
+                let apiKey = entry.apiKey
+                let catalogRevision = entry.catalogRevision
                 group.addTask {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
                     do {
                         let models = try await transport.fetchAvailableModels()
-                        AIModelCatalog.shared.store(providerID: config.id, models: models)
-                        return (config.id, models.map(\.id))
+                        AIModelCatalog.shared.store(providerID: config.id, models: models, ifUnchangedSince: catalogRevision)
+                        return (config.id, .listed(models.map(\.id)))
                     } catch is CancellationError {
-                        return (config.id, nil)
+                        return (config.id, .notReady)
                     } catch CopilotError.serverNotRunning {
-                        return (config.id, nil)
+                        return (config.id, .notReady)
                     } catch {
-                        return (config.id, [])
+                        return (config.id, .failed)
                     }
                 }
             }
 
-            var collected: [(UUID, [String]?)] = []
+            var collected: [(UUID, ModelListOutcome)] = []
             for await result in group {
                 collected.append(result)
             }
@@ -445,23 +533,29 @@ final class AIChatViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
-        for (id, models) in results {
-            guard let models else { continue }
-            if models.isEmpty {
-                let fallback = pending.first(where: { $0.id == id })?.model
-                availableModels[id] = (fallback?.isEmpty == false) ? [fallback ?? ""] : []
-            } else {
+        for (id, outcome) in results {
+            // A save while this fetch was out may have brought a new key: its own fetch decides.
+            guard let entry = pending.first(where: { $0.config.id == id }),
+                  modelListGenerations[id, default: 0] == entry.generation
+            else { continue }
+            switch outcome {
+            case .notReady:
+                continue
+            case .listed(let models) where !models.isEmpty:
                 availableModels[id] = models
+                modelListSources[id] = entry.source
+            case .failed where modelListSources[id] == entry.source && availableModels[id]?.isEmpty == false:
+                break
+            case .listed, .failed:
+                // Recorded empty, so a dead server is asked again only after a change or a save.
+                availableModels[id] = []
+                modelListSources[id] = entry.source
             }
+            staleModelLists.remove(id)
         }
     }
 
-    /// The list is read once per connection and then kept current from the app-wide favorites
-    /// event, the same signal the sidebar, the Quick Switcher and the editor's keyword expansion
-    /// already follow. Without it a query saved from the editor during a session was offered by
-    /// every one of those and by nothing in the assistant, for as long as the window stayed open.
-    ///
-    /// A nil payload means a global record moved, which is every connection's business.
+    // A nil payload means a global record moved, which is every connection's business.
     internal func observeSavedQueryUpdates() {
         AppEvents.shared.sqlFavoritesDidUpdate
             .receive(on: RunLoop.main)
@@ -479,8 +573,7 @@ final class AIChatViewModel: ObservableObject {
             return
         }
         let favorites = await services.sqlFavoriteManager.fetchFavorites(connectionId: connectionId)
-        /// The connection can be switched while the read is in flight, and the list belongs to the
-        /// connection that is on screen now, not the one that asked.
+        // The connection can be switched while the read is in flight.
         guard connection?.id == connectionId else { return }
         savedQueries = favorites
         for favorite in favorites {
@@ -495,5 +588,20 @@ final class AIChatViewModel: ObservableObject {
         while messages.first?.role == .assistant {
             messages.removeFirst()
         }
+    }
+}
+
+// A change to any of these means another server, so the list on hand no longer describes it.
+struct AIModelListSource: Equatable, Sendable {
+    let id: UUID
+    let type: AIProviderType
+    let presetID: String?
+    let endpoint: String
+
+    init(config: AIProviderConfig) {
+        id = config.id
+        type = config.type
+        presetID = config.presetID
+        endpoint = config.endpoint
     }
 }

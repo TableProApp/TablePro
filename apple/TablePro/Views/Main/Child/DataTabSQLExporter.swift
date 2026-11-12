@@ -36,7 +36,10 @@ final class DataTabSQLExporter: DataGridSQLExporting {
               let tableName = tab.tableContext.tableName else { return nil }
         return Target(
             tableName: tableName,
-            schemaName: tab.tableContext.schemaName,
+            // A query tab's schema is the picker's; the rows name the schema they were read in.
+            schemaName: tab.tabType == .query
+                ? tab.display.activeResultSet?.origin?.schemaName ?? tab.tableContext.schemaName
+                : tab.tableContext.schemaName,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: coordinator.connection.type,
             connectionId: coordinator.connectionId,
@@ -123,7 +126,9 @@ final class DataTabSQLExporter: DataGridSQLExporting {
             columnTypes: [column.type ?? .text(rawType: nil)],
             escapeStringLiteral: driver?.escapeStringLiteral,
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
-            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState)
+            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState),
+            booleanLiteralStyle: (try? resolveSQLDialect(for: databaseType))?.booleanLiteralStyle ?? .truefalse,
+            databaseType: databaseType
         )
         return converter.generateInClause(rows: values.map { [$0] })
     }
@@ -142,7 +147,7 @@ final class DataTabSQLExporter: DataGridSQLExporting {
 
     private func sourceRow(_ row: Row, target: Target) -> SQLRowToStatementConverter.SourceRow {
         var stored = Array(row.values)
-        let pendingUpdate = target.changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        let pendingUpdate = target.changeManager.pendingUpdate(forRow: row.id)
         for cellChange in pendingUpdate?.cellChanges ?? [] where stored.indices.contains(cellChange.columnIndex) {
             stored[cellChange.columnIndex] = cellChange.oldValue
         }
@@ -155,14 +160,10 @@ final class DataTabSQLExporter: DataGridSQLExporting {
         )
     }
 
-    // Every marker in a row not saved yet, and in a saved row the cells a pending edit set to Default.
+    // The cells a pending insert or edit marked as the default.
     private func stagedDefaults(of row: Row, target: Target) -> Set<Int> {
-        let marker = PluginCellValue.text("__DEFAULT__")
-        if target.changeManager.insertedRowIDs.contains(row.id) {
-            return Set(row.values.indices.filter { row.values[$0] == marker })
-        }
-        let pendingUpdate = target.changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
-        return Set(pendingUpdate?.cellChanges.filter { $0.newValue == marker }.map(\.columnIndex) ?? [])
+        let marked = target.changeManager.expressionColumns(forRow: row.id)
+        return Set(marked.filter { row.values.indices.contains($0) && row.values[$0] == .columnDefault })
     }
 
     private func nonEmpty(_ statements: String) -> String? {

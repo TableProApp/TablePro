@@ -41,7 +41,8 @@ enum RecordDecoder {
         case TeradataType.decimal:
             return try reader.take(decimalByteWidth(precision: column.dataLength >> 8))
         default:
-            throw TeradataWireError.unsupported("record field type \(column.baseCode)")
+            // NUMBER's length byte is not documented well enough to read, and LOBs need the multipart request.
+            throw TeradataWireError.unreadableColumn(name: column.name, typeCode: column.typeCode)
         }
     }
 
@@ -115,7 +116,7 @@ enum RecordDecoder {
             let day = Int(packed % 100)
             return .text(String(format: "%04d-%02d-%02d", year, month, day))
         default:
-            throw TeradataWireError.unsupported("record field type \(column.baseCode)")
+            throw TeradataWireError.unreadableColumn(name: column.name, typeCode: column.typeCode)
         }
     }
 }

@@ -2,11 +2,12 @@ use std::collections::{BTreeSet, HashSet};
 use std::ops::RangeInclusive;
 
 use crate::sql_syntax::SqlGrammar;
+use crate::sql_syntax::script::unicode_spaces;
 
 /// How the lexer reads the text whose meaning hangs on who reads it. On
 /// MySQL, an executable comment (`/*! … */`, `/*!50100 … */`, MariaDB's
 /// `/*M!100100 … */`), a `$tag$` quote and a `DELIMITER` line. On SQL
-/// Server, a `--` after a number's `e`.
+/// Server, a `--` after a number's `e`. On DuckDB, a non-ASCII space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ServerReading {
     /// As the mysql client reads a script to split it: every executable
@@ -26,11 +27,20 @@ pub(crate) enum ServerReading {
     /// and the `--` of `1E--1` would be that sign and a minus where the
     /// client reads a comment. Nobody measured that, so both are read.
     SignedEmptyExponents,
+    /// As the client reads it, but with no DuckDB pass over its non-ASCII
+    /// spaces: each stays a name character, as DuckDB reads one the pass
+    /// keeps. The pass is mirrored from one DuckDB version, so a gate also
+    /// reads the text without it.
+    UnicodeSpacesInNames,
 }
 
 impl ServerReading {
     pub(crate) fn reads_directives(self) -> bool {
         !matches!(self, Self::Server { .. })
+    }
+
+    pub(crate) fn blanks_unicode_spaces(self) -> bool {
+        self != Self::UnicodeSpacesInNames
     }
 
     pub(crate) fn signs_empty_exponents(self) -> bool {
@@ -49,7 +59,7 @@ impl ServerReading {
 
     pub(crate) fn name_quotes(self) -> NameQuotes {
         match self {
-            Self::Client | Self::SignedEmptyExponents => NameQuotes::Default,
+            Self::Client | Self::SignedEmptyExponents | Self::UnicodeSpacesInNames => NameQuotes::Default,
             Self::Server { quotes, .. } => quotes,
         }
     }
@@ -201,12 +211,16 @@ pub(crate) fn dollar_tag_end(bytes: &[u8], at: usize) -> Option<usize> {
 /// The client's reading of `text`, then each distinct one the servers it
 /// may meet give it: each kind of server at version 0 and at each version
 /// the text's comments name, since only those change which comments run.
-/// On SQL Server, one more where a `--` follows an `e`. `None` when there
-/// are more than are worth trying.
+/// On SQL Server, one more where a `--` follows an `e`. On DuckDB, one more
+/// without its pass when the text holds a space the pass may blank. `None`
+/// when there are more than are worth trying.
 pub(crate) fn server_readings(text: &str, grammar: SqlGrammar) -> Option<Vec<ServerReading>> {
     let mut readings = vec![ServerReading::Client];
     if grammar == SqlGrammar::MsSql && (text.contains("e--") || text.contains("E--")) {
         readings.push(ServerReading::SignedEmptyExponents);
+    }
+    if grammar == SqlGrammar::DuckDb && unicode_spaces::any(text.as_bytes()) {
+        readings.push(ServerReading::UnicodeSpacesInNames);
     }
     if grammar != SqlGrammar::MySql {
         return Some(readings);
@@ -446,6 +460,20 @@ mod tests {
             server_readings("SELECT /*! 1 */", SqlGrammar::PostgreSql),
             Some(vec![ServerReading::Client])
         );
+        assert_eq!(
+            server_readings("SELECT\u{a0}1", SqlGrammar::DuckDb),
+            Some(vec![ServerReading::Client, ServerReading::UnicodeSpacesInNames])
+        );
+        for (text, grammar) in [
+            ("SELECT 'caf\u{e9}'", SqlGrammar::DuckDb),
+            ("SELECT\u{a0}1", SqlGrammar::PostgreSql),
+        ] {
+            assert_eq!(
+                server_readings(text, grammar),
+                Some(vec![ServerReading::Client]),
+                "{text:?}"
+            );
+        }
     }
 
     #[test]

@@ -76,6 +76,11 @@ internal final class WorkspaceRailTableView: NSTableView {
         )
     }
 
+    override internal func keyDown(with event: NSEvent) {
+        guard !interpretCommandKey(event) else { return }
+        super.keyDown(with: event)
+    }
+
     override internal func otherMouseUp(with event: NSEvent) {
         guard event.isMiddleButton else {
             super.otherMouseUp(with: event)
@@ -404,11 +409,15 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// The rail sits directly beside the object list, so it takes the same size. Following only the
     /// system preference left the two disagreeing the moment the user set a size of their own.
     private var resolvedRowSizeStyle: NSTableView.RowSizeStyle {
-        let preference = AppSettingsManager.shared.general.sidebarRowSize
-        guard preference == .matchSystem else {
+        switch AppSettingsManager.shared.general.sidebarRowSize {
+        case .matchSystem:
+            return rowSizeProbe.effectiveRowSizeStyle
+        case .compact:
+            /// Compact has no AppKit style of its own, and its tree is denser than Small's.
+            return .small
+        case let preference:
             return SidebarRowSizeResolver.rowSizeStyle(for: preference)
         }
-        return rowSizeProbe.effectiveRowSizeStyle
     }
 
     internal func refreshLayoutIfNeeded() {
@@ -485,8 +494,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         commit(row: tableView.clickedRow)
     }
 
-    /// Return opens the highlighted row, the same contract every AppKit list keeps. `NSTableView`
-    /// routes it here through the responder chain, so no key handling of the rail's own is needed.
+    /// Return opens the highlighted row, the same contract every AppKit list keeps.
     override func insertNewline(_ sender: Any?) {
         commit(row: tableView.selectedRow)
     }

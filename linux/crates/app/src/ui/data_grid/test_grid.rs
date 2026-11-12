@@ -149,15 +149,53 @@ impl GridSpec {
     }
 }
 
+struct GridStyles {
+    display: gtk::gdk::Display,
+    provider: gtk::CssProvider,
+    contrast: gtk::glib::Binding,
+}
+
+impl GridStyles {
+    fn new() -> Self {
+        let display = gtk::gdk::Display::default().expect("GTK display");
+        let provider = gtk::CssProvider::new();
+        provider.load_from_resource(&format!("{}/style.css", crate::config::RESOURCE_BASE_PATH));
+        let contrast = libadwaita::StyleManager::default()
+            .bind_property("high-contrast", &provider, "prefers-contrast")
+            .transform_to(|_, high: bool| {
+                Some(if high {
+                    gtk::InterfaceContrast::More
+                } else {
+                    gtk::InterfaceContrast::NoPreference
+                })
+            })
+            .sync_create()
+            .build();
+        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        Self {
+            display,
+            provider,
+            contrast,
+        }
+    }
+}
+
+impl Drop for GridStyles {
+    fn drop(&mut self) {
+        self.contrast.unbind();
+        gtk::style_context_remove_provider_for_display(&self.display, &self.provider);
+    }
+}
+
 pub(crate) struct Grid {
     pub window: gtk::Window,
     pub grid: DataGrid,
     pub tracker: TabTrackerHandle,
     pub columns: Arc<[GridColumn]>,
     requests: Rc<RefCell<Vec<GridRequest>>>,
-    style: gtk::CssProvider,
     _settings: MemorySettings,
     _runtime: AppRuntime,
+    _styles: GridStyles,
 }
 
 impl Grid {
@@ -169,14 +207,9 @@ impl Grid {
     pub(crate) fn build(spec: GridSpec, rows: Vec<RowData>) -> Self {
         crate::register_test_resources();
         libadwaita::init().expect("libadwaita initialises under the test backend");
-        // Filtered widget tests never start the application that installs this stylesheet.
-        let style = gtk::CssProvider::new();
-        style.load_from_resource("/app/tablepro/TablePro/style.css");
-        gtk::style_context_add_provider_for_display(
-            &gtk::gdk::Display::default().expect("test display"),
-            &style,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
+        // Filtered widget suites never start AdwApplication, which normally
+        // loads these rules. Resource registration alone leaves them unused.
+        let styles = GridStyles::new();
         let runtime = crate::test_support::test_runtime();
         let settings = MemorySettings::new();
         let tracker = TabTrackerHandle::default();
@@ -223,9 +256,9 @@ impl Grid {
             tracker,
             columns,
             requests,
-            style,
             _settings: settings,
             _runtime: runtime,
+            _styles: styles,
         };
         // A saved layout can hide columns, which draw no cells.
         let width = opened.grid.shown_columns().len();
@@ -321,7 +354,6 @@ impl Grid {
 
 impl Drop for Grid {
     fn drop(&mut self) {
-        gtk::style_context_remove_provider_for_display(&gtk::prelude::WidgetExt::display(&self.window), &self.style);
         self.window.destroy();
         drain_main_context();
     }

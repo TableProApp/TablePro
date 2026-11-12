@@ -18,11 +18,19 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     private let query: String
     private let driver: DatabaseDriver
     private let dbType: DatabaseType
+    private let safeModeIsReadOnly: Bool
+    private let rowCut = OSAllocatedUnfairLock<Int?>(initialState: nil)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "StreamingQueryExport")
 
-    init(query: String, driver: DatabaseDriver, databaseType: DatabaseType) {
+    // Where the driver stopped the stream at a limit it declared, so the file is partial.
+    var driverRowCut: Int? {
+        rowCut.withLock { $0 }
+    }
+
+    init(query: String, driver: DatabaseDriver, databaseType: DatabaseType, safeModeIsReadOnly: Bool = false) {
         self.query = query
+        self.safeModeIsReadOnly = safeModeIsReadOnly
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
@@ -33,7 +41,11 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
         guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        return adapter.streamRows(query: query)
+        let rowCut = rowCut
+        let rows = adapter.streamRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        return ExportRowCut<PluginStreamElement>.reporting(rows, engineCeiling: nil) { limit in
+            rowCut.withLock { $0 = limit }
+        }
     }
 
     func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
@@ -44,7 +56,11 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
         guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        return adapter.streamExportRows(query: query)
+        let rowCut = rowCut
+        let rows = adapter.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        return ExportRowCut<PluginExportStreamElement>.reporting(rows, engineCeiling: nil) { limit in
+            rowCut.withLock { $0 = limit }
+        }
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {

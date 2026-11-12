@@ -316,7 +316,7 @@ struct MCPPromptSchemaReader: Sendable {
             return MCPProtocolError(code: JsonRpcErrorCode.expired, message: detail, httpStatus: .ok)
         case .timeout(let detail, _):
             return MCPProtocolError.requestTimeout(detail: detail)
-        case .userCancelled:
+        case .userCancelled, .stoppedWhileRunning:
             return MCPProtocolError.requestCancelled()
         case .dataSourceError(let detail):
             return MCPProtocolError.internalError(detail: detail)

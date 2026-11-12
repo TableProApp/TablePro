@@ -77,6 +77,7 @@ fn build_update_binds_every_value_and_names_the_row() {
         &by_id(),
         &[Value::Int(7)],
         &[(1, CellInput::Value(Value::Text("new".to_owned())))],
+        &[],
     )
     .expect("the update");
 
@@ -107,6 +108,7 @@ fn an_update_of_partition_scoped_columns_alone_names_only_the_partition() {
         &identity,
         &key,
         &[(2, CellInput::Value(Value::Int(3)))],
+        &[],
     )
     .expect("the update");
     let mixed = build_update(
@@ -119,6 +121,7 @@ fn an_update_of_partition_scoped_columns_alone_names_only_the_partition() {
             (1, CellInput::Value(Value::Text("grace".to_owned()))),
             (2, CellInput::Value(Value::Int(3))),
         ],
+        &[],
     )
     .expect("the update");
 
@@ -148,6 +151,7 @@ fn build_update_null_key_renders_is_null_without_marker() {
         &identity,
         &[Value::Int(7), Value::Null],
         &[(1, CellInput::Value(Value::Text("new".to_owned())))],
+        &[],
     )
     .expect("the update");
 
@@ -170,6 +174,7 @@ fn build_update_undecodable_key_is_error() {
         &by_id(),
         &[undecodable()],
         &[(1, CellInput::Value(Value::Text("new".to_owned())))],
+        &[],
     )
     .expect_err("an unreadable key");
 
@@ -180,8 +185,8 @@ fn build_update_undecodable_key_is_error() {
 fn build_update_with_no_assignments_is_error() {
     let dialect = TestDialect::exact();
 
-    let error =
-        build_update(&dialect, &table(), &columns(), &by_id(), &[Value::Int(1)], &[]).expect_err("nothing to change");
+    let error = build_update(&dialect, &table(), &columns(), &by_id(), &[Value::Int(1)], &[], &[])
+        .expect_err("nothing to change");
 
     assert_eq!(error, BuildSqlError::NothingToUpdate);
 }
@@ -355,6 +360,7 @@ fn build_update_engine_row_id_uses_part_columns_and_targets() {
         &identity,
         &key,
         &[(1, CellInput::Value(Value::Text("new".to_owned())))],
+        &[],
     )
     .expect("the update");
 
@@ -387,6 +393,7 @@ fn positional_markers_bind_assignments_before_the_key() {
         &identity,
         &[Value::Int(7), Value::Int(3)],
         &[(1, CellInput::Value(Value::Text("new".to_owned())))],
+        &[],
     )
     .expect("the update");
 
@@ -421,6 +428,7 @@ fn a_value_of_the_wrong_type_is_refused_before_it_reaches_the_server() {
         &by_id(),
         &[Value::Int(7)],
         &[(0, CellInput::Value(Value::Text("not a number".to_owned())))],
+        &[],
     )
     .expect_err("text into an integer column");
 
@@ -454,6 +462,7 @@ fn an_expression_is_written_into_the_update_and_never_bound() {
         &by_id(),
         &[Value::Int(7)],
         &[(1, now()), (2, CellInput::Value(Value::Int(3)))],
+        &[],
     )
     .expect("the update");
 
@@ -496,6 +505,7 @@ fn a_default_in_an_update_is_written_only_where_the_engine_parses_it() {
         &by_id(),
         &[Value::Int(7)],
         &assignments,
+        &[],
     )
     .expect("the update");
     assert_eq!(
@@ -510,6 +520,7 @@ fn a_default_in_an_update_is_written_only_where_the_engine_parses_it() {
         &by_id(),
         &[Value::Int(7)],
         &assignments,
+        &[],
     );
     assert_eq!(
         refused,

@@ -45,7 +45,7 @@ use libadwaita::prelude::*;
 use sourceview5::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::{RowLimit, UserSql};
+use tablepro_core::{ByteLimit, RowLimit, UserSql};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -402,13 +402,13 @@ impl SqlEditor {
     }
 
     /// The grammar of the server the editor is pointed at, which decides
-    /// where statements begin and end. With no connection the split
-    /// still has to work, and PostgreSQL's is the strictest.
+    /// where statements begin and end, also while the window's link is
+    /// down and the tab's own connection still runs. With no session the
+    /// split still has to work, and PostgreSQL's is the strictest.
     fn grammar(&self) -> SqlGrammar {
         self.deps()
             .and_then(|deps| deps.session.get())
-            .and_then(|session| session.current_dialect())
-            .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar())
+            .map_or(SqlGrammar::PostgreSql, |session| session.grammar())
     }
 
     /// A one-line message where the run summary goes.
@@ -512,6 +512,7 @@ impl SqlEditor {
                 .resolve(deps.settings.query_timeout()),
             row_limit: RowLimit::EDITOR_DEFAULT,
             run_row_limit: RUN_ROW_LIMIT,
+            byte_limit: ByteLimit::EDITOR_DEFAULT,
         };
         let metadata = session.metadata().clone();
         // Read again at the end from the run's own session, never the

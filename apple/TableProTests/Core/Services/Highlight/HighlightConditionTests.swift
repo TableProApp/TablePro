@@ -91,6 +91,20 @@ struct HighlightConditionTests {
         #expect(matches("1", .equal, "true", type: .integer(rawType: "TINYINT(1)")))
     }
 
+    @Test("A boolean column holding integers compares them as numbers")
+    func booleanColumnHoldingIntegers() {
+        let tinyint = ColumnTypeClassifier(family: .mysql).classify(rawTypeName: "TINYINT(1)")
+        #expect(tinyint.isBooleanType)
+        #expect(matches("10", .greaterThan, "9", type: tinyint))
+        #expect(!matches("9", .greaterThan, "10", type: tinyint))
+        #expect(matches("-2", .lessThan, "-1", type: tinyint))
+        #expect(matches("5", .between, "2", second: "10", type: tinyint))
+        #expect(matches("1", .equal, "1.0", type: tinyint))
+        #expect(matches("1", .equal, "true", type: tinyint))
+        #expect(!matches("5", .equal, "true", type: tinyint))
+        #expect(matches("t", .greaterThan, "0", type: .boolean(rawType: "BOOLEAN")))
+    }
+
     @Test("Pattern operators ignore case by default and honour Match Case")
     func patterns() {
         #expect(matches("Hello World", .contains, "world"))

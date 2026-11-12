@@ -1,6 +1,6 @@
 import Foundation
 import os
-import TableProUtilities
+import TableProProcess
 
 public struct BridgeDiscovery: Sendable {
     let supportedVersions: [String]
@@ -82,6 +82,7 @@ public enum BridgeUpstreamHandshake {
         logger: any MCPBridgeLogger
     ) async throws -> BridgeDiscovery {
         let transport = MCPStreamableHttpClientTransport(
+            configuration: MCPStreamableHttpClientConfiguration(requestTimeout: probeTimeout),
             credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials },
             errorLogger: logger
         )
@@ -111,11 +112,13 @@ public enum BridgeUpstreamHandshake {
         ])
         let request = JsonRpcRequest(id: probeRequestId, method: "server/discover", params: params)
         let body = try JsonRpcCodec.encode(.request(request))
-        try await transport.send(
-            MCPUpstreamFrame(body: body, method: "server/discover", requestId: probeRequestId)
-        )
-
-        return try await withThrowingTaskGroup(of: BridgeDiscovery.self) { group in
+        return try await withThrowingTaskGroup(of: BridgeDiscovery?.self) { group in
+            group.addTask {
+                try await transport.sendAndWait(
+                    MCPUpstreamFrame(body: body, method: "server/discover", requestId: probeRequestId)
+                )
+                return nil
+            }
             group.addTask {
                 for try await payload in transport.inbound {
                     guard let message = try? JsonRpcCodec.decode(payload) else { continue }
@@ -134,11 +137,13 @@ public enum BridgeUpstreamHandshake {
                 try await Task.sleep(for: probeTimeout)
                 throw MCPBridgeStartupError.discoveryFailed("timed out")
             }
-            guard let first = try await group.next() else {
-                throw MCPBridgeStartupError.discoveryFailed("no answer")
+            while let result = try await group.next() {
+                if let discovery = result {
+                    group.cancelAll()
+                    return discovery
+                }
             }
-            group.cancelAll()
-            return first
+            throw MCPBridgeStartupError.discoveryFailed("no answer")
         }
     }
 
@@ -171,6 +176,7 @@ public actor BridgeProxy {
     private let hostLines: AsyncStream<Data>
     private let logger: any MCPBridgeLogger
     private let discovery: BridgeDiscovery
+    private let instanceId = UUID().uuidString
 
     private var clientInfo: JsonValue?
 
@@ -243,12 +249,12 @@ public actor BridgeProxy {
 
     private func forward(line: Data, peek: BridgeMessagePeek, method: String) async {
         var body = line
-        if !peek.declaresProtocolVersion {
-            if let stamped = BridgeJson.stampMeta(line, fields: metaFields()) {
-                body = stamped
-            } else {
-                logger.log(.warning, "Could not stamp request metadata onto \(method)")
-            }
+        // The instance goes on every message, so a cancellation sent without metadata meets the request it names.
+        let fields = peek.declaresProtocolVersion ? instanceField() : metaFields()
+        if let stamped = BridgeJson.stampMeta(line, fields: fields) {
+            body = stamped
+        } else {
+            logger.log(.warning, "Could not stamp request metadata onto \(method)")
         }
 
         do {
@@ -307,9 +313,15 @@ public actor BridgeProxy {
         await stdout.write(data)
     }
 
+    // Two sessions of one client send the same clientInfo and the same request ids; this keeps them apart.
+    private func instanceField() -> Data {
+        Data("\"\(MCPMetaKeys.bridgeInstance)\":\"\(instanceId)\"".utf8)
+    }
+
     private func metaFields() -> Data {
         var fields = Data("\"\(MCPMetaKeys.protocolVersion)\":\"\(MCPProtocolVersion.latest.rawValue)\"".utf8)
-        fields.append(Data(",\"\(MCPMetaKeys.clientCapabilities)\":{}".utf8))
+        fields.append(Data(",\"\(MCPMetaKeys.clientCapabilities)\":{},".utf8))
+        fields.append(instanceField())
         guard let clientInfo, let encoded = try? JSONEncoder().encode(clientInfo) else { return fields }
         fields.append(Data(",\"\(MCPMetaKeys.clientInfo)\":".utf8))
         fields.append(encoded)

@@ -67,7 +67,9 @@ internal extension LibPQPluginConnection {
             generation: generation
         )
 
-        return PostGISTypes.rendering(parsed, types: typeNames.postgisTypes)
+        var rendered = PostGISTypes.rendering(parsed, types: typeNames.postgisTypes)
+        rendered.columnSources = PostgreSQLColumnOrigins.sources(of: result)
+        return rendered
     }
 
     static func decodeCell(
@@ -83,6 +85,13 @@ internal extension LibPQPluginConnection {
 
         let length = Int(PQgetlength(result, row, column))
         return LibPQCellDecoding.value(from: UnsafeRawBufferPointer(start: valuePtr, count: length), oid: oid)
+    }
+
+    // The one row a single-row mode result holds.
+    static func singleRow(of result: OpaquePointer, oids: [UInt32]) -> [PluginCellValue] {
+        oids.enumerated().map { column in
+            decodeCell(from: result, row: 0, column: Int32(column.offset), oid: column.element)
+        }
     }
 
     private func parseRows(

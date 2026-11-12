@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 /// The window's bottom bar: what the result is, and the controls that change what of it you see.
@@ -50,6 +51,7 @@ struct ResultStatusBar: View {
     let resultSetActions: ResultSetActions
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
+    var autoRefresh: StatusBarAutoRefreshState = .unavailable
 
     @State private var showColumnPopover = false
     @State private var showHighlightPopover = false
@@ -60,6 +62,7 @@ struct ResultStatusBar: View {
     @State private var highlightPopoverTabId: UUID?
     @State private var revealedExecutionTabId: UUID?
     @State private var showSelectionSummaryPopover = false
+    @Environment(\.statusBarPlacement) private var placement
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -290,6 +293,9 @@ struct ResultStatusBar: View {
             if model.controls.showsHighlightRules {
                 highlightButton
             }
+            if model.controls.showsAutoRefresh, presentation.showsAutoRefresh {
+                autoRefreshMenu(presentation)
+            }
             if model.controls.showsFilters {
                 filtersToggle(presentation)
             }
@@ -343,7 +349,7 @@ struct ResultStatusBar: View {
         .accessibilityLabel(String(localized: "Columns"))
         .accessibilityValue(columnsAccessibilityValue)
         .accessibilityIdentifier("result-status-columns")
-        .popover(isPresented: $showColumnPopover, arrowEdge: .top) {
+        .popover(isPresented: $showColumnPopover, arrowEdge: placement.popoverArrowEdge) {
             ColumnVisibilityPopover(
                 columns: columnState.visibilityColumns,
                 hiddenColumns: columnState.hidden,
@@ -382,7 +388,7 @@ struct ResultStatusBar: View {
         .accessibilityLabel(String(localized: "Highlight Rules"))
         .accessibilityValue(highlightAccessibilityValue)
         .accessibilityIdentifier("result-status-highlight")
-        .popover(isPresented: $showHighlightPopover, arrowEdge: .top) {
+        .popover(isPresented: $showHighlightPopover, arrowEdge: placement.popoverArrowEdge) {
             HighlightRulesPopover(
                 columns: highlightState.columns,
                 rules: highlightState.rules,
@@ -400,6 +406,51 @@ struct ResultStatusBar: View {
         let count = highlightState.activeRuleCount
         guard count > 0 else { return String(localized: "No highlight rules") }
         return String(format: String(localized: "%d rules"), count)
+    }
+
+    // A Menu around an inline Picker: a pop-up button always spells out its choice, so it could not go to a glyph.
+    private func autoRefreshMenu(_ presentation: ResultStatusPresentation) -> some View {
+        Menu {
+            Picker(
+                String(localized: "Auto Refresh"),
+                selection: Binding(get: { autoRefresh.interval }, set: { autoRefresh.onChange($0) })
+            ) {
+                ForEach(TableAutoRefreshInterval.allCases) { interval in
+                    Text(interval.title).tag(interval)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Label {
+                Text(autoRefresh.interval.shortTitle)
+            } icon: {
+                (Self.autoRefreshSymbol(isOn: autoRefresh.interval.isOn).map(Image.init(nsImage:))
+                    ?? Image(systemName: Self.autoRefreshSymbolName))
+                    .statusBarControlIcon(besideTitle: presentation.showsControlTitles)
+            }
+        }
+        .menuStyle(.button)
+        .menuIndicator(presentation.showsControlTitles ? .visible : .hidden)
+        .statusBarLabelStyle(showsTitle: presentation.showsControlTitles)
+        .controlSize(.small)
+        .fixedSize()
+        .help(autoRefresh.help)
+        .accessibilityLabel(String(localized: "Auto Refresh"))
+        .accessibilityValue(autoRefresh.interval.title)
+        .accessibilityIdentifier("result-status-auto-refresh")
+    }
+
+    static let autoRefreshSymbolName = "clock.arrow.circlepath"
+
+    // A menu draws a SwiftUI symbol as a template and drops its tint, so the on state is an accent palette image.
+    static func autoRefreshSymbol(isOn: Bool) -> NSImage? {
+        let size = NSImage.SymbolConfiguration(pointSize: NSFont.systemFontSize(for: .small), weight: .regular)
+        let configuration = isOn ? size.applying(NSImage.SymbolConfiguration(paletteColors: [.controlAccentColor])) : size
+        guard let image = NSImage(systemSymbolName: autoRefreshSymbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return nil }
+        image.isTemplate = !isOn
+        return image
     }
 
     private func filtersToggle(_ presentation: ResultStatusPresentation) -> some View {

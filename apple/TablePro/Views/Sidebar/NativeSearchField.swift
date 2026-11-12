@@ -92,6 +92,8 @@ struct NativeSearchField: NSViewRepresentable {
         }
         field.placeholderString = placeholder
         field.isEnabled = context.environment.isEnabled
+        // A parent can hand this field another model's text, as the Objects tab does when its kind changes.
+        context.coordinator.text = $text
         context.coordinator.onMoveUp = onMoveUp
         context.coordinator.onMoveDown = onMoveDown
         context.coordinator.onSubmit = onSubmit

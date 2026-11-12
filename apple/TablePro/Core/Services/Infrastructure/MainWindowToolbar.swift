@@ -91,6 +91,30 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal var debugItemsRecord = ToolbarDebugItemsRecord()
 
+    // Whether Settings puts the Objects buttons in the toolbar; they are vended only then, so turning it off prunes them.
+    internal var objectKindsEnabled: @MainActor () -> Bool = {
+        AppSettingsManager.shared.general.showsObjectToolbar
+    }
+
+    internal var objectKindsRecord = ToolbarObjectKindsRecord()
+
+    // The Objects buttons' facts and what they were read from, kept from one validation pass to the next.
+    internal var objectKindFactsCache: ObjectKindFactsCache?
+
+    // Whether the Navigator Layout asks for labels under the icons.
+    internal var labelsEnabled: @MainActor () -> Bool = {
+        AppSettingsManager.shared.general.showsToolbarLabels
+    }
+
+    internal var labelsRecord = ToolbarLabelsRecord()
+
+    // Whether Settings keeps the connection and database capsules in the toolbar; they leave it while this is off.
+    internal var locationItemsEnabled: @MainActor () -> Bool = {
+        AppSettingsManager.shared.general.showsToolbarLocationItems
+    }
+
+    internal var locationItemsRecord = ToolbarLocationItemsRecord()
+
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
     internal let safeModeMenuDelegate = SafeModeMenuDelegate()
@@ -121,7 +145,16 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         /// reader who turns labels on keeps them.
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
-        self.managedToolbar.autosavesConfiguration = true
+        let environment = AppStorageEnvironment.shared
+        let autosaves = Self.autosavesArrangement(
+            isUnitTestHost: environment.isUnitTestHost,
+            isIsolated: environment.isIsolated
+        )
+        self.managedToolbar.autosavesConfiguration = autosaves
+        if !autosaves, !Self.hasStartedArrangementRecordsOver {
+            Self.hasStartedArrangementRecordsOver = true
+            Self.startArrangementRecordsOver(in: environment.defaults)
+        }
         self.managedToolbar.centeredItemIdentifiers = [Self.connection, Self.database]
         /// The hop off `AppSettingsManager.keyboard`'s own `didSet` matters: without it the toolbar
         /// items are mutated re-entrantly, part way through the settings write that triggered them.
@@ -234,6 +267,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         tabStateObservation = coordinator.tabManager.onMainActorChange { [weak self] in
             guard let self, self.isObserving(generation, coordinatorIdentifier) else { return }
             self.refreshContext()
+            self.refreshObjectKindSelection()
         }
         rewindAvailabilityObservation = coordinator.services.queryHistoryManager.rewindAvailability
             .onMainActorChange { [weak self] in
@@ -434,6 +468,27 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     ]
     // Xcode's pair. The steps live in the debug tab's own bar and the palette, which keeps a debug tab at eight hit targets.
     nonisolated static let debugDefaultItemIdentifiers: [NSToolbarItem.Identifier] = [debugContinue, debugStop]
+    // The Objects buttons a General setting adds. Their own identifiers, so Query never collides with New Tab in one
+    // toolbar. Top-level items, not one group: measured on macOS 27, a toolbar draws the selected item and a label under
+    // each icon only for a top-level item. A group of items draws its own label alone and no selection, whatever its
+    // selection mode, and the segmented group that does draw a selection has no label per segment. An arrangement saved
+    // with the former group identifier drops it, since no delegate vends it now.
+    nonisolated static let objectTables = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.tables")
+    nonisolated static let objectViews = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.views")
+    nonisolated static let objectFunctions = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.functions")
+    nonisolated static let objectUsers = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.users")
+    nonisolated static let objectQuery = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.query")
+    nonisolated static let objectBackup = NSToolbarItem.Identifier("com.TablePro.toolbar.objectKinds.backup")
+    nonisolated static let objectKindItemIdentifiers: [NSToolbarItem.Identifier] = [
+        objectTables, objectViews, objectFunctions, objectUsers, objectQuery, objectBackup,
+    ]
+    // The centred pair a General setting can take out. Still vended and still allowed while it is off: toolbars sharing
+    // the identifier replay a removal and an insertion by index, and one that refused either would fault on the next.
+    nonisolated static let locationItemIdentifiers: [NSToolbarItem.Identifier] = [connection, database]
+    // The buttons that name what the front tab shows. Query and Backup start something new, so neither stays selected.
+    nonisolated static let selectableObjectKindItemIdentifiers: [NSToolbarItem.Identifier] = [
+        objectTables, objectViews, objectFunctions, objectUsers,
+    ]
 
     // MARK: - NSToolbarDelegate
 
@@ -499,7 +554,12 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// Every identifier here must be one the delegate can build. Asked for one it cannot, the
     /// delegate answers nil, and with `autosavesConfiguration` on AppKit prunes it from the saved
     /// arrangement.
+    ///
+    /// `.space` is here for the Objects buttons, which are inserted with one: toolbars sharing the identifier replay
+    /// each other's edits by index, and one that refused the space would hold an item fewer and fault on the next
+    /// removal.
     nonisolated internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
+        .space,
         backForwardGroup,
         previewSQL,
         results,
@@ -513,22 +573,88 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     ]
 
     // Ahead of the Actions pull-down, in the content run Refresh and the commit control leave empty on a debug tab.
-    nonisolated internal static func defaultItems(includingDebugItems: Bool) -> [NSToolbarItem.Identifier] {
-        let items = defaultItemIdentifiers
+    // Without the connection and database, the two flexible spaces that centred them stay and split the room evenly.
+    nonisolated internal static func defaultItems(
+        includingDebugItems: Bool,
+        includingLocationItems: Bool = true
+    ) -> [NSToolbarItem.Identifier] {
+        var items = defaultItemIdentifiers
+        if !includingLocationItems {
+            items.removeAll { locationItemIdentifiers.contains($0) }
+        }
         guard includingDebugItems, let index = items.firstIndex(of: actions) else { return items }
         return Array(items[..<index]) + debugDefaultItemIdentifiers + Array(items[index...])
     }
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Self.defaultItems(includingDebugItems: debugItemsEnabled())
+        Self.defaultItems(includingDebugItems: debugItemsEnabled(), includingLocationItems: locationItemsEnabled())
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        debugItemsEnabled() ? Self.allowedItemIdentifiers + Self.debugItemIdentifiers : Self.allowedItemIdentifiers
+        var allowed = Self.allowedItemIdentifiers
+        if debugItemsEnabled() {
+            allowed += Self.debugItemIdentifiers
+        }
+        if objectKindsEnabled() {
+            allowed += Self.objectKindItemIdentifiers
+        }
+        return allowed
+    }
+
+    // Always the four, so the answer holds however early AppKit asks. An identifier with no item in the toolbar draws
+    // nothing, and `refreshObjectKindSelection()` selects one only while the setting is on.
+    internal func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Self.selectableObjectKindItemIdentifiers
     }
 
     // Replaced under test, where no window hosts the toolbar.
     internal var isInWindow: @MainActor () -> Bool = { false }
+
+    // The arrangement of every open window's toolbar that carries `identifier`, this one's included. Replaced under test.
+    internal var familyArrangements: @MainActor (NSToolbar.Identifier) -> [[NSToolbarItem.Identifier]] = { identifier in
+        NSApp.windows.compactMap(\.toolbar)
+            .filter { $0.identifier == identifier }
+            .map { toolbar in toolbar.items.map(\.itemIdentifier) }
+    }
+
+    /// Whether an insertion or a removal can be made now. AppKit copies each one into every other toolbar of this
+    /// identifier at the same index, and raises `_itemAtIndex` when one of them holds fewer items. A toolbar whose
+    /// owner went while it stayed on its window builds nothing for those copies and falls out of step, which the
+    /// unit host's window tests leave behind: the raise went up through the setting's write and took the process
+    /// down. Out of step, the change is not recorded, so the next reconcile, with the family back in step, makes it.
+    internal func familyIsInStep() -> Bool {
+        let own = managedToolbar.items.map(\.itemIdentifier)
+        let inStep = familyArrangements(managedToolbar.identifier).allSatisfy { $0 == own }
+        if !inStep {
+            Self.lifecycleLogger.error(
+                "toolbar arrangement edit skipped: another toolbar of \(self.managedToolbar.identifier, privacy: .public) is out of step"
+            )
+        }
+        return inStep
+    }
+
+    /// AppKit files the arrangement and the display mode under the toolbar's identifier in the real standard domain, which
+    /// the unit test host and the storage sandbox must leave alone, the reason `SplitViewAutosaveName.current(_:)` names no
+    /// split view there. A sandboxed run wrote its arrangement over the one the installed app reads.
+    nonisolated internal static func autosavesArrangement(isUnitTestHost: Bool, isIsolated: Bool) -> Bool {
+        !(isUnitTestHost || isIsolated)
+    }
+
+    private static var hasStartedArrangementRecordsOver = false
+
+    /// The records say what the saved arrangement already carries. With nothing saved, every launch starts from the
+    /// default items and the icon-only mode, while the records stay in the sandbox's defaults from the last run, so they
+    /// are cleared once per launch and the first reconcile adds the Objects buttons and labels again.
+    internal static func startArrangementRecordsOver(in defaults: UserDefaults) {
+        for key in [
+            ToolbarDebugItemsRecord.key,
+            ToolbarObjectKindsRecord.key,
+            ToolbarLocationItemsRecord.key,
+            ToolbarLabelsRecord.key,
+        ] {
+            defaults.removeObject(forKey: key)
+        }
+    }
 
     // Pushed by the one writer of a module's state, so no toolbar listens for module changes while the module is off.
     internal static func applyModuleChange() {
@@ -539,13 +665,82 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
+    // Pushed by the General setting's own write, so no toolbar listens for it while it stays off.
+    internal static func applyObjectToolbarSettingChange() {
+        for window in NSApp.windows {
+            guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
+            owner.reconcileObjectKindItems()
+            // Buttons inserted now take their enabled state at once rather than on the next window update. AppKit places
+            // an inserted item at the next layout and a pass validates only placed items, so the window lays out first.
+            window.layoutIfNeeded()
+            owner.managedToolbar.validateVisibleItems()
+        }
+    }
+
+    // Pushed by the General setting's own write, like the Objects buttons. A window whose context hid the database
+    // capsule gets it back hidden, so the context is applied again once the pair is in.
+    internal static func applyLocationItemsSettingChange() {
+        for window in NSApp.windows {
+            guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
+            owner.reconcileLocationItems()
+            window.layoutIfNeeded()
+            owner.refreshContext(forcing: true)
+        }
+    }
+
+    // Pushed by the General setting's own write, like the Objects buttons. The labels also decide whether a content
+    // command that cannot act hides or dims in place, so the visibility is applied again.
+    internal static func applyToolbarLabelsSettingChange() {
+        for window in NSApp.windows {
+            guard let owner = window.toolbar?.delegate as? MainWindowToolbar else { continue }
+            owner.reconcileDisplayMode()
+            owner.refreshContext()
+        }
+    }
+
+    // Only the space that sits where the Objects buttons put it, so a space the user placed elsewhere stays.
+    nonisolated internal static func isObjectKindsSpace(at index: Int, in items: [NSToolbarItem.Identifier]) -> Bool {
+        items[index] == .space && index > 0 && index + 1 < items.count
+            && items[index - 1] == objectUsers && items[index + 1] == objectQuery
+    }
+
+    /// With labels the titlebar has no room for the window title as well. It names the front tab, which the
+    /// tab strip and the selected Objects button already show, and it pushed the connection and its container
+    /// into the overflow menu. The title stays set for the Window menu and VoiceOver; it only stops drawing.
+    nonisolated internal static func titleVisibility(showsLabels: Bool) -> NSWindow.TitleVisibility {
+        showsLabels ? .hidden : .visible
+    }
+
+    nonisolated internal static func displayMode(showsLabels: Bool) -> NSToolbar.DisplayMode {
+        showsLabels ? .iconAndLabel : .iconOnly
+    }
+
+    // The layout's labels are written into the display mode once per change of the setting, so a mode the user picks
+    // later from the toolbar's own menu stays. AppKit autosaves the mode and copies it to every toolbar sharing the
+    // identifier, which is how windows opened later get it. Run when the toolbar reaches a window too, after it restored
+    // its saved mode, so a change made while no connection window was open still lands.
+    internal func reconcileDisplayMode() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let wanted = labelsEnabled()
+        // Follows the setting every time, unlike the mode, which the user can still pick from the toolbar's menu.
+        if let window = windowController?.view.window {
+            let visibility = Self.titleVisibility(showsLabels: wanted)
+            if window.titleVisibility != visibility {
+                window.titleVisibility = visibility
+            }
+        }
+        guard labelsRecord.isApplied != wanted else { return }
+        labelsRecord.record(wanted)
+        managedToolbar.displayMode = Self.displayMode(showsLabels: wanted)
+    }
+
     // Run when the module changes and when the toolbar reaches a window, after it restored its saved arrangement: a
     // change made while no connection window was open would otherwise never reach the arrangement. Inserted or removed
     // in place, because reassigning the toolbar rebuilds the whole titlebar.
     internal func reconcileDebugItems() {
         guard windowController?.view.window != nil || isInWindow() else { return }
         let wanted = debugItemsEnabled()
-        guard debugItemsRecord.isApplied != wanted else { return }
+        guard debugItemsRecord.isApplied != wanted, familyIsInStep() else { return }
         debugItemsRecord.record(wanted)
         let debugIdentifiers = Set(Self.debugItemIdentifiers)
         if wanted {
@@ -562,6 +757,91 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             }
         }
     }
+
+    // The debug items' rule for the Objects buttons: written once per change of the setting, so a button the user took
+    // out stays out. They go first in the content area, after the sidebar's strip, or first of all without that divider.
+    internal func reconcileObjectKindItems() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let wanted = objectKindsEnabled()
+        guard objectKindsRecord.isApplied != wanted, familyIsInStep() else { return }
+        objectKindsRecord.record(wanted)
+        let objectKinds = Set(Self.objectKindItemIdentifiers)
+        if wanted {
+            // AppKit throws on a second item with an identifier the toolbar already holds.
+            let present = Set(managedToolbar.items.map { $0.itemIdentifier })
+            let separator = managedToolbar.items.firstIndex { $0.itemIdentifier == .sidebarTrackingSeparator }
+            var index = separator.map { $0 + 1 } ?? 0
+            for identifier in Self.objectKindItemIdentifiers where !present.contains(identifier) {
+                // Tables, Views, Functions and Users pick what the tab shows; Query and Backup start something.
+                // A space keeps the two runs apart, so the actions do not read as two more kinds.
+                if identifier == Self.objectQuery, index > 0,
+                   managedToolbar.items[index - 1].itemIdentifier == Self.objectUsers {
+                    managedToolbar.insertItem(withItemIdentifier: .space, at: index)
+                    index += 1
+                }
+                managedToolbar.insertItem(withItemIdentifier: identifier, at: index)
+                index += 1
+            }
+        } else {
+            let items = managedToolbar.items.map(\.itemIdentifier)
+            for index in items.indices.reversed()
+            where objectKinds.contains(items[index]) || Self.isObjectKindsSpace(at: index, in: items) {
+                managedToolbar.removeItem(at: index)
+            }
+        }
+    }
+
+    // The Objects buttons' rule for the connection and database: written once per change of the setting, so a pair the
+    // user took out or put back with Customize Toolbar stays as they left it. Each identifier is looked up afresh before
+    // it is removed or inserted, since AppKit throws on a second item with one the toolbar holds and every toolbar sharing
+    // the identifier replays the edit at the same index. They come back beside each other, after the flexible space that
+    // centres them, which is the first one past the sidebar's strip.
+    internal func reconcileLocationItems() {
+        guard windowController?.view.window != nil || isInWindow() else { return }
+        let hidden = !locationItemsEnabled()
+        guard locationItemsRecord.isApplied != hidden, familyIsInStep() else { return }
+        locationItemsRecord.record(hidden)
+        if hidden {
+            let items = managedToolbar.items.map(\.itemIdentifier)
+            for index in items.indices.reversed() where Self.locationItemIdentifiers.contains(items[index]) {
+                managedToolbar.removeItem(at: index)
+            }
+            return
+        }
+        for identifier in Self.locationItemIdentifiers {
+            let items = managedToolbar.items.map(\.itemIdentifier)
+            guard !items.contains(identifier) else { continue }
+            managedToolbar.insertItem(withItemIdentifier: identifier, at: Self.locationInsertionIndex(for: identifier, in: items))
+        }
+    }
+
+    // Beside its partner when the partner is there, else after the first flexible space past the sidebar's strip, else
+    // ahead of Refresh, else at the end.
+    nonisolated internal static func locationInsertionIndex(
+        for identifier: NSToolbarItem.Identifier,
+        in items: [NSToolbarItem.Identifier]
+    ) -> Int {
+        if identifier == connection, let partner = items.firstIndex(of: database) {
+            return partner
+        }
+        if identifier == database, let partner = items.firstIndex(of: connection) {
+            return partner + 1
+        }
+        let start = items.firstIndex(of: .sidebarTrackingSeparator).map { $0 + 1 } ?? 0
+        if let space = items[start...].firstIndex(of: .flexibleSpace) {
+            return space + 1
+        }
+        return items.firstIndex(of: refresh) ?? items.count
+    }
+
+    // AppKit draws the toolbar's selected item on a rounded highlight and reports it to VoiceOver as the toolbar's
+    // selected child. AppKit also selects a selectable button when it is clicked, so the front tab decides here, and a
+    // click whose tab did not follow is put right on the next pass. Written only when it moves.
+    internal func refreshObjectKindSelection() {
+        let selected = objectKindsEnabled() ? selectedObjectKindItem() : nil
+        guard managedToolbar.selectedItemIdentifier != selected else { return }
+        managedToolbar.selectedItemIdentifier = selected
+    }
 }
 
 // The module state last written into the shared arrangement. Toolbars sharing an identifier copy each other's edits, so
@@ -571,6 +851,67 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 // arrangement saved before the module existed holds.
 internal struct ToolbarDebugItemsRecord {
     static let key = "com.TablePro.main.toolbar.v4.debugItems"
+
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
+    }
+
+    var isApplied: Bool {
+        defaults.bool(forKey: Self.key)
+    }
+
+    func record(_ applied: Bool) {
+        defaults.set(applied, forKey: Self.key)
+    }
+}
+
+// The General setting last written into the shared arrangement, kept for the same reasons as the debug items' record.
+// Not the former group's key: an arrangement that recorded the group lost it when the group stopped being vended, so it
+// takes the buttons once.
+internal struct ToolbarObjectKindsRecord {
+    static let key = "com.TablePro.main.toolbar.v4.objectKindItems"
+
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
+    }
+
+    var isApplied: Bool {
+        defaults.bool(forKey: Self.key)
+    }
+
+    func record(_ applied: Bool) {
+        defaults.set(applied, forKey: Self.key)
+    }
+}
+
+// Whether the connection and database were last taken out of the shared arrangement, kept for the same reasons as the
+// debug items' record. Missing reads as not taken out, which is what every arrangement saved before the setting holds.
+internal struct ToolbarLocationItemsRecord {
+    static let key = "com.TablePro.main.toolbar.v4.locationItemsHidden"
+
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
+    }
+
+    var isApplied: Bool {
+        defaults.bool(forKey: Self.key)
+    }
+
+    func record(_ applied: Bool) {
+        defaults.set(applied, forKey: Self.key)
+    }
+}
+
+// The Navigator Layout's labels last written into the shared display mode, kept for the same reasons as the debug items'
+// record: a mode the user picks afterwards from the toolbar's menu outlives the next launch.
+internal struct ToolbarLabelsRecord {
+    static let key = "com.TablePro.main.toolbar.v4.labels"
 
     let defaults: UserDefaults
 

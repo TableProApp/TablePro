@@ -307,9 +307,8 @@ final class AnthropicProvider: ChatTransport {
     }
 
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
-        guard line.hasPrefix("data: ") else { return nil }
-        let jsonString = String(line.dropFirst(6))
-        guard jsonString != "[DONE]",
+        guard let jsonString = SSEEventStream.dataPayload(line),
+              jsonString != "[DONE]",
               let data = jsonString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
@@ -406,7 +405,14 @@ final class AnthropicProvider: ChatTransport {
                let tokens = usage["output_tokens"] as? Int {
                 state.outputTokens = tokens
             }
-            return []
+            switch (json["delta"] as? [String: Any])?["stop_reason"] as? String {
+            case "max_tokens":
+                return [.outputLimitReached(.outputTokens)]
+            case "model_context_window_exceeded":
+                return [.outputLimitReached(.contextWindow)]
+            default:
+                return []
+            }
         case "error":
             if let errorObj = json["error"] as? [String: Any],
                let message = errorObj["message"] as? String {

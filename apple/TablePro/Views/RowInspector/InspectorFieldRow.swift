@@ -24,7 +24,8 @@ internal struct InspectorFieldRow: View {
     internal var onTabStopChange: ((Bool) -> Void)?
 
     @FocusState.Binding internal var focusedField: UUID?
-    internal let fieldID: UUID
+    internal let fieldID: FieldEditID
+    internal let editorID: UUID
 
     var body: some View {
         row
@@ -175,9 +176,22 @@ internal struct InspectorFieldRow: View {
             isExpanded: isExpanded,
             onTabStopChange: onTabStopChange
         )
+            .id(editorIdentity)
             .font(Self.valueFont(for: kind))
-            .focused($focusedField, equals: fieldID)
+            .focused($focusedField, equals: editorID)
             .accessibilityValue(context.valueState.placeholder ?? context.value.wrappedValue)
+    }
+
+    // An editor bound straight to the value follows a new row in place. The others seed state from the
+    // value, such as a draft, a parsed tree or a text view's typing undo, so they start over with it.
+    private var editorIdentity: AnyHashable {
+        switch kind {
+        case .singleLine, .boolean, .enumPicker:
+            return AnyHashable(fieldID)
+        case .json, .phpSerialized, .binaryValue, .image, .geometry, .blobHex, .setPicker, .arrayElements, .vector,
+             .multiLine:
+            return AnyHashable(editorID)
+        }
     }
 
     /// Exhaustive, so a new kind is classified instead of inheriting an arm. The structured editors

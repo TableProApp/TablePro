@@ -1,7 +1,9 @@
 using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Windows.Storage.Pickers;
@@ -19,6 +21,15 @@ namespace TablePro.App;
 // shell's own commands (the Connections page, Settings, the connection form) back to the primary.
 public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 {
+    // A change is on disk this long after it, however fast the typing goes on.
+    private static readonly TimeSpan SaveDelay = TimeSpan.FromSeconds(2);
+
+    // A session file another program holds is tried again, each time later, until this far apart.
+    private static readonly TimeSpan LongestRetry = TimeSpan.FromSeconds(30);
+
+    // A server that does not answer holds the exit only this long; the process ends what is left.
+    private static readonly TimeSpan CloseLimit = TimeSpan.FromSeconds(5);
+
     private readonly Workbench _workbench;
     private readonly MainWindow _primary;
     private readonly HomeView? _home;
@@ -29,6 +40,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private readonly OverlappedPresenter _presenter = OverlappedPresenter.Create();
     private readonly bool _restoreMaximized;
     private readonly IReadOnlyList<TabWindowState> _restoreWindows = [];
+
+    // The primary's alone: it writes the session for every window.
+    private readonly SessionWriter? _saves;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer;
+    private readonly SessionEnd? _sessionEnd;
+    private TimeSpan _nextRetry = SaveDelay;
     private SettingsView? _settings;
     private OpenConnection? _front;
 
@@ -45,6 +62,19 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         InitializeComponent();
         Prepare();
         Title = "TablePro";
+        _saves = new SessionWriter(workbench.Sessions);
+        _saveTimer = DispatcherQueue.CreateTimer();
+        _saveTimer.Interval = SaveDelay;
+        _saveTimer.IsRepeating = false;
+        _saveTimer.Tick += async (timer, _) =>
+        {
+            timer.Stop();
+            timer.Interval = SaveDelay;
+            await SaveSessionInBackgroundAsync();
+        };
+        var sessionEnd = new SessionEnd(this, OnSessionEnding, ShutdownBlockReason, OnSessionHeld);
+        _sessionEnd = sessionEnd;
+        Closed += (_, _) => sessionEnd.Dispose();
 
         // Where the window stood last time, whether or not its connections come back.
         var session = workbench.Sessions.Load();
@@ -91,6 +121,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         Add(connection);
         Show(connection);
     }
+
+    // Raised once the last session is written, before the connections close, so a new launch may own the data folder.
+    internal event EventHandler? SessionSaved;
 
     public bool IsPrimary => ReferenceEquals(_primary, this);
 
@@ -437,6 +470,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                     if (saved.Name != open.Name)
                     {
                         open.Rename(saved.Name);
+                        SessionChanged();
                         if (ReferenceEquals(_front, open))
                         {
                             ShowName(open);
@@ -458,9 +492,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         open.StateChanged += (_, _) => UpdateCommands();
         open.Cancelled += async (_, _) => await CloseConnectionAsync(open);
         open.View.CommandsChanged += (_, _) => UpdateCommands();
+        open.View.SessionChanged += (_, _) => SessionChanged();
         open.View.EditRequested += async (_, _) => await EditAsync(open);
         open.View.Host = this;
         _open.Add(open);
+        SessionChanged();
         if (IsPrimary)
         {
             var index = Rail.MenuItems.IndexOf(RailSeparator) + _open.Count;
@@ -500,6 +536,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         UpdateCommands();
+        SessionChanged();
     }
 
     private void Show(UIElement page)
@@ -567,11 +604,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
+    // Disconnect asks about held transactions in either window, and about a running query in neither, as Reconnect.
     private async Task CloseConnectionAsync(OpenConnection open)
     {
         if (!IsPrimary)
         {
-            await RequestCloseAsync();
+            await RequestCloseAsync(askAboutRunning: false);
+            return;
+        }
+
+        if (!await ConfirmDisconnectAsync(open))
+        {
             return;
         }
 
@@ -590,6 +633,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             _front = null;
         }
 
+        SessionChanged();
         UpdateRail();
         if (wasShown)
         {
@@ -648,18 +692,127 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             open.Rename(result.Saved.Name);
         }
 
+        // An edited connection that is open connects again with what was saved, and keeps its tabs.
+        var reconnecting = result.Connect && open is { State: ConnectionState.Connected or ConnectionState.Failed }
+            ? open
+            : null;
+        if (result.ChangesConnect)
+        {
+            RestartConnects(result.Saved);
+        }
+
+        await ApplySafeModeAsync(result.Saved, reconnecting);
         if (!result.Connect)
         {
             return;
         }
 
-        // An edited connection that is open connects again with what was saved.
-        if (open is not null && open.State is ConnectionState.Connected or ConnectionState.Failed)
+        if (reconnecting is not null)
         {
-            await open.DisconnectAsync();
+            if (!await ConfirmDisconnectAsync(reconnecting, offerSave: result.Saved.SafeMode != SafeMode.ReadOnly))
+            {
+                ShowChangesOnConnect(reconnecting, result.Saved);
+                return;
+            }
+
+            DropSpare();
+            await reconnecting.DisconnectAsync(keepTabs: true);
         }
 
         Connect(result.Saved);
+    }
+
+    // The core read the saved connection as each connect under way began, in every window.
+    private void RestartConnects(SavedConnection saved)
+    {
+        List<MainWindow> windows = [this, .. _tabWindows];
+        var matching = windows.SelectMany(window => window._open).Where(item => item.Matches(saved.Id, null));
+        foreach (var each in matching.ToList())
+        {
+            _ = each.RestartConnectAsync();
+        }
+    }
+
+    // A saved level reaches every window's open sessions of the connection at once, as on Linux. Read only is set
+    // as a connection opens, so a change across it reconnects once held transactions may go, or waits for the next
+    // connect.
+    private async Task ApplySafeModeAsync(SavedConnection saved, OpenConnection? reconnecting)
+    {
+        var crossed = new List<(MainWindow Window, OpenConnection Open)>();
+        List<MainWindow> windows = [this, .. _tabWindows];
+        foreach (var window in windows)
+        {
+            foreach (var each in window._open.Where(item => item.Matches(saved.Id, null)))
+            {
+                if (each.Session is not { } session)
+                {
+                    continue;
+                }
+
+                if (session.SetSafeMode(saved.SafeMode))
+                {
+                    each.View.HideChangesOnConnect();
+                    continue;
+                }
+
+                // Until a new connection opens read only, every write on this one is asked about.
+                if (saved.SafeMode == SafeMode.ReadOnly)
+                {
+                    _ = session.SetSafeMode(SafeMode.ConfirmWrites);
+                }
+
+                if (!ReferenceEquals(each, reconnecting))
+                {
+                    crossed.Add((window, each));
+                }
+            }
+        }
+
+        foreach (var (window, each) in crossed)
+        {
+            if (each.State != ConnectionState.Connected)
+            {
+                continue;
+            }
+
+            // Pending edits are not written on a connection the user is making read only.
+            if (await window.ConfirmDisconnectAsync(each, offerSave: saved.SafeMode != SafeMode.ReadOnly))
+            {
+                DropSpare();
+                await each.DisconnectAsync(keepTabs: true);
+                await each.ConnectAsync();
+            }
+            else
+            {
+                ShowChangesOnConnect(each, saved);
+            }
+        }
+    }
+
+    private static void ShowChangesOnConnect(OpenConnection open, SavedConnection saved) =>
+        open.View.ShowChangesOnConnect(saved.SafeMode == SafeMode.ReadOnly && open.Session is { IsReadOnly: false });
+
+    // Disconnecting ends each tab's own connection and its pending edits, so both are asked about first, as closing a
+    // tab asks. The connection shows first, since the question names one of its tabs.
+    private async Task<bool> ConfirmDisconnectAsync(OpenConnection open, bool offerSave = true)
+    {
+        var confirmed = new HashSet<IWorkspaceTab>();
+        if (!open.View.HasUnconfirmed(confirmed))
+        {
+            return true;
+        }
+
+        Activate();
+        if (IsPrimary)
+        {
+            Select(open);
+        }
+        else
+        {
+            Show(open);
+        }
+
+        return await open.View.ConfirmCloseAsync(confirmed, offerSave);
     }
 
     private void OnRailSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -707,7 +860,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    private async Task RequestCloseAsync()
+    private async Task RequestCloseAsync(bool askAboutRunning = true)
     {
         if (_primary._checkingClose || _closing)
         {
@@ -724,34 +877,38 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         RefreshTabTransfers();
         try
         {
-            var confirmed = new HashSet<ITabContent>();
-            while (windows.SelectMany(window => window._open).Any(open => open.View.HasUnconfirmedTransactions(confirmed)))
+            var confirmed = new HashSet<IWorkspaceTab>();
+            // Apart from confirmed, so a run that ends during the question and leaves a transaction open is asked about.
+            var stopped = new HashSet<IWorkspaceTab>();
+            while (true)
             {
-                foreach (var window in windows)
+                if (!await ConfirmTabsAsync(windows, confirmed))
                 {
-                    foreach (var open in window._open.Where(open => open.View.HasUnconfirmedTransactions(confirmed)).ToList())
-                    {
-                        window.Activate();
-                        if (window.IsPrimary)
-                        {
-                            window.Select(open);
-                        }
-                        else
-                        {
-                            window.Show(open);
-                        }
-
-                        if (!await open.View.ConfirmCloseAsync(confirmed))
-                        {
-                            return;
-                        }
-                    }
+                    return;
                 }
+
+                // A tab whose transaction was confirmed is not asked again: that question says its work goes with it.
+                var running = askAboutRunning ? RunningQueries(windows, confirmed, stopped) : [];
+                if (running.Count == 0)
+                {
+                    break;
+                }
+
+                if (!await ConfirmStopRunningAsync(running))
+                {
+                    return;
+                }
+
+                stopped.UnionWith(running.Select(each => each.Tab));
             }
 
             if (IsPrimary)
             {
-                ShutDown();
+                await ShutDownAsync();
+            }
+            else
+            {
+                HandTabsToPrimary();
             }
 
             CloseForGood();
@@ -760,6 +917,88 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             _primary._checkingClose = false;
             RefreshTabTransfers();
+        }
+    }
+
+    // Held transactions and unsaved changes, tab by tab in every window; a save chosen there runs before the close.
+    private static async Task<bool> ConfirmTabsAsync(List<MainWindow> windows, HashSet<IWorkspaceTab> confirmed)
+    {
+        while (windows.SelectMany(window => window._open).Any(open => open.View.HasUnconfirmed(confirmed)))
+        {
+            foreach (var window in windows)
+            {
+                foreach (var open in window._open.Where(open => open.View.HasUnconfirmed(confirmed)).ToList())
+                {
+                    window.Activate();
+                    if (window.IsPrimary)
+                    {
+                        window.Select(open);
+                    }
+                    else
+                    {
+                        window.Show(open);
+                    }
+
+                    if (!await open.View.ConfirmCloseAsync(confirmed))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static List<(string Connection, IWorkspaceTab Tab)> RunningQueries(
+        List<MainWindow> windows, HashSet<IWorkspaceTab> confirmed, HashSet<IWorkspaceTab> stopped) =>
+        [.. windows.SelectMany(window => window._open)
+            .SelectMany(open => open.View.RunningQueries()
+                .Where(tab => !confirmed.Contains(tab) && !stopped.Contains(tab))
+                .Select(tab => (Connection: open.Name, Tab: tab)))];
+
+    // One question for every query still running, as the macOS app asks before it quits; Cancel keeps every window.
+    private async Task<bool> ConfirmStopRunningAsync(List<(string Connection, IWorkspaceTab Tab)> running)
+    {
+        Activate();
+        var one = running.Count == 1;
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock
+        {
+            Text = Strings.Get(one ? "CloseRunningRollsBackOne" : "CloseRunningRollsBackMany"),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        var tabs = new TextBlock
+        {
+            Text = string.Join("\n", running.Select(each => Strings.Format("CloseRunningTab", each.Tab.Title, each.Connection))),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        AutomationProperties.SetAutomationId(tabs, "CloseRunningTabs");
+        content.Children.Add(tabs);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            RequestedTheme = Root.ActualTheme,
+            Title = one ? Strings.Get("CloseRunningTitleOne") : Strings.Format("CloseRunningTitleMany", running.Count),
+            Content = content,
+            PrimaryButtonText = Strings.Get("CloseRunningButton"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await WindowDialogs.ShowAsync(dialog, Root) == ContentDialogResult.Primary;
+    }
+
+    // A tab window's tabs close with it, so the primary reopens them as it reopens a tab closed there.
+    private void HandTabsToPrimary()
+    {
+        foreach (var open in _open)
+        {
+            var tabs = open.Snapshot().Tabs;
+            if (tabs.Count > 0
+                && _primary._open.FirstOrDefault(each => each.Matches(open.ConnectionId, open.Origin.FilePath)) is { } home)
+            {
+                home.View.KeepClosed(tabs);
+            }
         }
     }
 
@@ -777,7 +1016,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     // Window.Close raises no AppWindow.Closing, so Exit runs this itself before it closes the primary.
-    private void ShutDown()
+    private async Task ShutDownAsync()
     {
         if (_closing)
         {
@@ -785,21 +1024,45 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         _closing = true;
+        _saveTimer?.Stop();
         foreach (var form in _forms.Values.ToList())
         {
             form.Close();
         }
 
-        SaveSession();
-        foreach (var open in _open)
+        // Before any tab closes, since a closed tab is no longer in what the session lists.
+        _ = _saves?.Save(SessionSnapshot(), last: true);
+        _workbench.SaveUnsavedSettings();
+        SessionSaved?.Invoke(this, EventArgs.Empty);
+        DropSpare();
+        var windows = AllWindows.ToList();
+        foreach (var window in windows)
         {
-            open.CancelConnect();
+            window.AppWindow.Hide();
         }
 
-        DropSpare();
+        await CloseConnectionsAsync(windows);
         foreach (var window in _tabWindows.ToList())
         {
             window.CloseForGood();
+        }
+    }
+
+    // Each tab stops its run and closes its own connection, so a server ends them as a disconnect, not a dropped link.
+    private static async Task CloseConnectionsAsync(List<MainWindow> windows)
+    {
+        var closing = windows.SelectMany(window => window._open).Select(open => open.DisconnectAsync()).ToList();
+        try
+        {
+            await Task.WhenAll(closing).WaitAsync(CloseLimit).ConfigureAwait(true);
+        }
+        catch (TimeoutException)
+        {
+            // The process ends the connections still closing.
+        }
+        catch (TableProException)
+        {
+            // A connection that could not close cleanly ends with the process.
         }
     }
 
@@ -817,41 +1080,160 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             _primary._spare = null;
         }
+        else if (_primary._spare is { _front.Session: { } held }
+            && _open.Any(open => ReferenceEquals(open.Session, held)))
+        {
+            // The hidden spare adopted this window's session on a press on one of its tabs, and would keep it open.
+            _primary.DropSpare();
+        }
 
+        _primary.SessionChanged();
+        _primary._sessionEnd?.Update();
         foreach (var open in _open)
         {
             _ = open.DisconnectAsync();
         }
     }
 
-    private void SaveSession()
+    // A crash, a kill or a lost power then keeps what the tabs held a moment ago, not what the last exit saved.
+    private void SessionChanged()
     {
-        var connections = _open.Select(open => open.Snapshot()).ToList();
+        if (!IsPrimary)
+        {
+            _primary.SessionChanged();
+            return;
+        }
+
+        // Started by the first change and not again until it fires, so steady typing still saves every SaveDelay.
+        if (!_closing && _saveTimer is { IsRunning: false } timer)
+        {
+            timer.Start();
+        }
+    }
+
+    private async Task SaveSessionInBackgroundAsync()
+    {
+        if (_closing || _saves is null || _saveTimer is null)
+        {
+            return;
+        }
+
+        var saved = await _saves.SaveInBackgroundAsync(SessionSnapshot());
+        if (saved == SessionSave.Written)
+        {
+            _nextRetry = SaveDelay;
+            if (!_saveTimer.IsRunning)
+            {
+                _saveTimer.Interval = SaveDelay;
+            }
+        }
+        else if (saved == SessionSave.Refused && !_closing && !_saveTimer.IsRunning)
+        {
+            // Without a next change, the text the file refused would live only in memory until the exit.
+            _saveTimer.Interval = _nextRetry;
+            _nextRetry = TimeSpan.FromTicks(Math.Min(_nextRetry.Ticks * 2, LongestRetry.Ticks));
+            _saveTimer.Start();
+        }
+    }
+
+    // The app ends after an exception nothing caught, so what the tabs hold is written first.
+    internal void SaveSessionBeforeCrash()
+    {
+        if (_closing || _saves is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _saveTimer?.Stop();
+            _ = _saves.Save(SessionSnapshot(), last: true);
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+        }
+    }
+
+    // Windows may end the process once this returns, and closes no window first.
+    private void OnSessionEnding()
+    {
+        if (_closing || _saves is null)
+        {
+            return;
+        }
+
+        _saveTimer?.Stop();
+        _ = _saves.Save(SessionSnapshot(), last: true);
+        _workbench.SaveUnsavedSettings();
+        // Restart Manager asks the app to end itself; at a sign-out the process may be gone before this runs.
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await ShutDownAsync();
+            CloseForGood();
+        });
+    }
+
+    // A forced Restart Manager close ends the app with no WM_ENDSESSION after a FALSE, so the session is written first.
+    private void OnSessionHeld()
+    {
+        if (_closing || _saves is null)
+        {
+            return;
+        }
+
+        _ = _saves.Save(SessionSnapshot());
+        _workbench.SaveUnsavedSettings();
+    }
+
+    // A running query does not hold a sign-out: stopping it is the default the shutdown guidance asks for.
+    private string? ShutdownBlockReason()
+    {
+        if (_closing)
+        {
+            return null;
+        }
+
+        var pending = AllWindows
+            .SelectMany(window => window._open)
+            .Aggregate(PendingWork.None, (all, open) => all.Combine(open.View.Pending()));
+        return pending switch
+        {
+            { UnsavedChanges: true, HeldTransaction: true } => Strings.Get("ShutdownBlockedBoth"),
+            { UnsavedChanges: true } => Strings.Get("ShutdownBlockedUnsaved"),
+            { HeldTransaction: true } => Strings.Get("ShutdownBlockedTransaction"),
+            _ => null,
+        };
+    }
+
+    private SessionState SessionSnapshot()
+    {
+        var connections = _open.Select(open => Persisted(open.Snapshot())).ToList();
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
         var windows = _tabWindows
             .Where(window => window._front is not null)
             .Select(window => new TabWindowState
             {
-                Connection = window._front!.Snapshot(),
+                Connection = Persisted(window._front!.Snapshot()),
                 Placement = WindowInterop.Placement(window),
             })
             .Where(window => window.Connection.Tabs.Count > 0)
             .ToList();
-        try
+        return new SessionState
         {
-            _workbench.Sessions.Save(new SessionState
-            {
-                Connections = connections,
-                Front = front,
-                Window = WindowInterop.Placement(this),
-                ObjectPaneWidth = _workbench.ObjectPaneWidth,
-                TabWindows = windows,
-            });
-        }
-        catch (IOException)
-        {
-            // A session that cannot be written only means the next launch starts on the Connections page.
-        }
+            Connections = connections,
+            Front = front,
+            Window = WindowInterop.Placement(this),
+            ObjectPaneWidth = _workbench.ObjectPaneWidth,
+            TabWindows = windows,
+        };
+    }
+
+    // Only session.json leaves definition tabs out; a reconnect and a tab window keep them.
+    private static SessionConnection Persisted(SessionConnection connection)
+    {
+        var (tabs, selected) = SessionTabs.Persisted(connection.Tabs, connection.SelectedTab);
+        return connection with { Tabs = tabs, SelectedTab = selected };
     }
 
     private void UpdateCommands()
@@ -866,12 +1248,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuShowObjects.IsEnabled = workspace is not null;
         MenuShowObjects.IsChecked = workspace?.ObjectsVisible ?? true;
         MenuFilterObjects.IsEnabled = workspace is not null;
+        MenuShowHistory.IsEnabled = workspace is not null;
+        MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
+        MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuRefresh.IsEnabled = workspace is not null;
         MenuEditConnection.IsEnabled = front?.ConnectionId is not null;
         MenuReconnect.IsEnabled = front is { State: ConnectionState.Connected or ConnectionState.Failed };
         MenuDisconnect.IsEnabled = front is not null;
-        MenuRun.IsEnabled = tab is { IsRunning: false };
-        MenuStop.IsEnabled = tab is { IsRunning: true };
+        // A definition tab reads its text with Reload, not Run, and has nothing to stop.
+        MenuRun.IsEnabled = tab is QueryTabView { IsRunning: false } or TableTabView { IsRunning: false };
+        MenuRunStatement.IsEnabled = tab is QueryTabView { IsRunning: false };
+        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
         foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind })
         {
@@ -880,6 +1267,16 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         MenuCopy.IsEnabled = tab is not null;
         MenuSelectAll.IsEnabled = tab is not null;
+        // A query tab never edits; a table tab says what its page can do now.
+        var table = tab as TableTabView;
+        MenuFilterRows.IsEnabled = table is not null;
+        MenuSaveChanges.IsEnabled = table is { CanSave: true };
+        MenuDiscardChanges.IsEnabled = table is { CanDiscard: true };
+        MenuPreviewSql.IsEnabled = table is { CanPreview: true };
+        MenuAddRow.IsEnabled = table is { CanAddRow: true };
+        MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true };
+        MenuDeleteRows.IsEnabled = table is { CanChangeRows: true };
+        _primary._sessionEnd?.Update();
     }
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => NewConnection();
@@ -914,8 +1311,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             case { MessagesTarget: { } messages }:
                 messages.CopySelectionToClipboard();
                 break;
-            case { GridIsTarget: true } tab:
-                await tab.Grid.CopySelectionAsync();
+            case { GridIsTarget: true, Grid: { } grid }:
+                await grid.CopySelectionAsync();
                 break;
             case { Editor: { } editor }:
                 editor.Copy();
@@ -942,10 +1339,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        if (Workspace?.ActiveTab is { GridIsTarget: true } tab)
+        if (Workspace?.ActiveTab is { GridIsTarget: true, Grid: { } grid })
         {
-            tab.Grid.SelectAll();
-            tab.Grid.Focus(FocusState.Programmatic);
+            grid.SelectAll();
+            grid.Focus(FocusState.Programmatic);
             return;
         }
 
@@ -985,6 +1382,26 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnFilterObjects(object sender, RoutedEventArgs e) => Workspace?.FocusFilter();
 
+    private async void OnToggleHistory(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ToggleHistoryAsync();
+        }
+
+        UpdateCommands();
+    }
+
+    private async void OnExportResults(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ExportAsync();
+        }
+    }
+
+    private void OnFilterRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.ToggleFilter();
+
     private async void OnRefresh(object sender, RoutedEventArgs e)
     {
         if (Workspace is { } workspace)
@@ -1003,10 +1420,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private async void OnReconnect(object sender, RoutedEventArgs e)
     {
-        if (_front is { } open)
+        if (_front is { } open && await ConfirmDisconnectAsync(open))
         {
             _primary.DropSpare();
-            await open.DisconnectAsync();
+            await open.DisconnectAsync(keepTabs: true);
             await open.ConnectAsync();
         }
     }
@@ -1021,7 +1438,39 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnRun(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Run();
 
+    private void OnRunStatement(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as QueryTabView)?.RunStatement();
+
     private void OnStop(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Stop();
+
+    private async void OnSaveChanges(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is TableTabView table)
+        {
+            await table.SaveAsync();
+        }
+    }
+
+    private async void OnDiscardChanges(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is TableTabView table)
+        {
+            await table.DiscardAsync();
+        }
+    }
+
+    private async void OnPreviewSql(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is TableTabView table)
+        {
+            await table.PreviewAsync();
+        }
+    }
+
+    private void OnAddRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.AddRow();
+
+    private void OnDuplicateRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DuplicateRows();
+
+    private void OnDeleteRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DeleteRows();
 
     private async void OnDocumentation(object sender, RoutedEventArgs e) =>
         await Launcher.LaunchUriAsync(SettingsView.DocumentationUri);

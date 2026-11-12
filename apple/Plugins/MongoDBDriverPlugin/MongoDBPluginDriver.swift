@@ -23,6 +23,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     private var identityKindsByCollection: [String: Set<BsonValueKind>] = [:]
     private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
     private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
+    private let numberKinds = MongoDBNumberKindStore()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -35,7 +36,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     func quoteIdentifier(_ name: String) -> String { name }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .statementPolicy]
+        [.cancelQuery, .statementPolicy, .columnDefaultMarks]
     }
 
     func defaultExportQuery(table: String) -> String? {
@@ -835,8 +836,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         insertedRowIndices: Set<Int>,
         context: PluginRowWriteContext
     ) throws -> [PluginRowWrite]? {
-        var generator = writeGenerator(for: table, columns: columns, database: context.database)
-        generator.rowLocators = context.rowLocators
+        let generator = writeGenerator(for: table, columns: columns, database: context.database, rowLocators: context.rowLocators)
         return try generator.generateRowWrites(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
@@ -866,8 +866,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         absentCells: [Int: Set<Int>],
         context: PluginRowWriteContext
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        var generator = writeGenerator(for: table, columns: columns, database: context.database)
-        generator.rowLocators = context.rowLocators
+        let generator = writeGenerator(for: table, columns: columns, database: context.database, rowLocators: context.rowLocators)
         return generator.generateRestore(rows: rows, absentCells: absentCells)
     }
 
@@ -884,7 +883,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         return query + #".collation({"locale":"simple"})"#
     }
 
-    private func writeGenerator(for table: String, columns: [String], database: String? = nil) -> MongoDBStatementGenerator {
+    private func writeGenerator(for table: String, columns: [String], database: String?, rowLocators: [Int: String]) -> MongoDBStatementGenerator {
         let key = columnKindKey(table, database: database)
         return columnKindLock.withLock {
             let declared = declaredSchemasByCollection[key] ?? .empty
@@ -894,6 +893,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                 columnKinds: columnKindsByCollection[key] ?? [:],
                 declaredKinds: declared.valueKinds,
                 identityKinds: identityKindsByCollection[key],
+                rowLocators: rowLocators, readNumberKinds: numberKinds.kinds(ofRows: rowLocators, collection: key),
                 fieldKinds: fieldKindsByCollection[key] ?? .empty,
                 binarySubtypes: binarySubtypesByCollection[key] ?? .empty,
                 declaredBinaryFields: Self.binaryFields(declaredBy: declared),
@@ -1031,10 +1031,9 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             }
         )
         if !result.columns.isEmpty {
-            continuation.yield(.header(PluginStreamHeader(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames
-            )))
+            var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
+            if result.isTruncated { header.rowLimit = result.rows.count }
+            continuation.yield(.header(header))
         }
         if !result.rows.isEmpty {
             continuation.yield(.rows(result.rows, documents: result.exportDocuments))
@@ -1073,6 +1072,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             rememberIdentityKinds(of: documents, collection: collection)
             rememberBinarySubtypes(of: documents, collection: collection)
             rememberFieldKinds(of: documents, collection: collection)
+            if !collection.isEmpty { numberKinds.remember(read, representation: uuidRepresentation, collection: columnKindKey(collection)) }
         }
         let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
         let columns = sampled + unseen
@@ -1256,6 +1256,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             declaredSchemasByCollection = declaredSchemasByCollection.filter { !isStale($0.key) }
             identityKindsByCollection = identityKindsByCollection.filter { !isStale($0.key) }
         }
+        numberKinds.forget(collectionsWhere: isStale)
     }
 }
 

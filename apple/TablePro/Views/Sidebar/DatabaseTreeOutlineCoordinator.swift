@@ -10,6 +10,7 @@ import os
 import SwiftUI
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProUtilities
 
 @MainActor
 final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
@@ -36,8 +37,31 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var pendingTruncates: Set<DatabaseTreeTableRef> = []
     private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
+    internal var showsFavoritesSection = false
+    /// The setting as the view passes it. `listsConnections` is what the outline draws from, since
+    /// only the database tree takes the connections.
+    internal var showsConnectionsInTree = false
+    /// Settled once per reload, because AppKit asks `isGroupItem` of every row it lays out.
+    internal private(set) var listsConnections = false
+    /// The saved connections and what a row of them does. Built when the tree first lists them, or
+    /// handed in by a test, and kept while it does.
+    internal var connectionsModel: ConnectionNavigatorModel?
+    internal var connectionsModelObservations: [AnyCancellable] = []
+    /// Groups opened to show this tree's own connection. The outline holds them open and the stored
+    /// expansion never hears of them, as the connections column treats its reveal.
+    internal var revealedConnectionGroupIds: Set<UUID> = []
+    internal var hasRevealedOwnConnection = false
+    internal var connectionGroupSheet: NSViewController?
     internal var showSystemContainers = false
     internal var showsPartitions = true
+    /// Off, no row draws a detail list, so the loaded ones go and nothing reads them again: the
+    /// tree is the one it was before Table Details existed.
+    internal var showsTableDetails = false {
+        didSet {
+            guard oldValue, !showsTableDetails else { return }
+            service.dropTableDetails()
+        }
+    }
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
@@ -131,7 +155,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.reloadFavorites()
-                self.refreshVisibleRows()
+                // The Favorites section gains or loses a row, which a reconfigure in place cannot show.
+                if self.showsFavoritesSection {
+                    self.refresh()
+                } else {
+                    self.refreshVisibleRows()
+                }
             }
         }
         favoritesObservers.withLockUnchecked { $0.append(tableObserver) }
@@ -216,8 +245,11 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
+            || showsFavoritesSection != view.showsFavoritesSection
+            || showsConnectionsInTree != view.showsConnectionsInTree
             || showSystemContainers != view.showSystemContainers
             || showsPartitions != view.showsPartitions
+            || showsTableDetails != view.showsTableDetails
             || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
@@ -227,8 +259,11 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
+        showsFavoritesSection = view.showsFavoritesSection
+        showsConnectionsInTree = view.showsConnectionsInTree
         showSystemContainers = view.showSystemContainers
         showsPartitions = view.showsPartitions
+        showsTableDetails = view.showsTableDetails
         rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {
@@ -275,7 +310,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         ].compactMap { $0 }
     }
 
-    private func scheduleReconcile(forcing: Bool = false) {
+    internal func scheduleReconcile(forcing: Bool = false) {
         isReconcileForced = isReconcileForced || forcing
         guard !reconcileScheduled else { return }
         reconcileScheduled = true
@@ -312,6 +347,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             return
         }
         isReloading = true
+        listsConnections = DatabaseTreeConnectionRows.applies(settingEnabled: showsConnectionsInTree, rootShape: rootShape)
+        syncConnectionsModel()
         renderedInputs = currentRenderInputs()
         dropUnusedMemos()
         childrenCache.removeAll()
@@ -377,6 +414,33 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             schema: ref.favoriteSchema,
             name: ref.table.name
         )
+    }
+
+    /// The browsed database's favorite tables by schema and name. A table whose list is loaded takes its
+    /// listed `TableInfo`, so a favorite view opens as a view; one not read yet stands as a table.
+    internal func favoriteTableRefs() -> [DatabaseTreeTableRef] {
+        guard showsFavoritesSection else { return [] }
+        let database = browsingDatabase
+        let search = SidebarSearch(searchText)
+        return favoriteTables
+            .filter { $0.database == database }
+            .sorted { ($0.schema ?? "", $0.name) < ($1.schema ?? "", $1.name) }
+            .compactMap { entry -> DatabaseTreeTableRef? in
+                if !search.isEmpty {
+                    guard search.matchesObject(named: entry.name, database: database, schema: entry.schema) else {
+                        return nil
+                    }
+                }
+                // The tree reads per container; the flat list reads the session's own database.
+                let listed = database.flatMap { database in
+                    service.tables(connectionId: connectionId, database: database, schema: entry.schema)
+                        .first { $0.name == entry.name }
+                } ?? schemaService.tables(for: connectionId).first { table in
+                    table.name == entry.name && table.schema?.nilIfEmpty == entry.schema
+                }
+                let table = listed ?? TableInfo(name: entry.name, type: .table, rowCount: nil, schema: entry.schema)
+                return DatabaseTreeTableRef(database: database, schema: entry.schema, table: table)
+            }
     }
 
     internal func isFavorite(_ ref: DatabaseTreeTableRef) -> Bool {
@@ -513,7 +577,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         openWork = Task { @MainActor in
             defer { openSelectionDepth -= 1 }
             await inFlight?.value
-            await activate(ref)
+            guard await activate(ref) else { return }
             mainCoordinator?.openTableTab(
                 ref.table,
                 schema: ref.schema,
@@ -546,8 +610,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         windowState.select(tables: tables, rowCount: nodes.count)
     }
 
-    internal func activate(_ ref: DatabaseTreeTableRef) async {
-        await mainCoordinator?.switchContainers(database: ref.database, schema: ref.schema)
+    // False when the switch failed or was cancelled: the session is still on another database.
+    internal func activate(_ ref: DatabaseTreeTableRef) async -> Bool {
+        await mainCoordinator?.switchContainers(database: ref.database, schema: ref.schema) ?? true
     }
 
     internal func setActiveDatabase(_ database: String) {
@@ -560,7 +625,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
 
     private func refreshDatabase(_ database: String) {
         if supportsSchemaLevel {
-            Task { await service.refreshSchemas(connectionId: connectionId, database: database) }
+            let connectionId = connectionId
+            Task {
+                async let schemas: Void = service.refreshSchemas(connectionId: connectionId, database: database)
+                async let serverObjects: Void = service.refreshServerObjects(
+                    connectionId: connectionId, database: database, schema: nil
+                )
+                _ = await (schemas, serverObjects)
+            }
         } else {
             Task { await service.refreshObjects(connectionId: connectionId, database: database, schema: nil) }
         }
@@ -625,7 +697,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 self?.routineDisplayLabels[ref.id] ?? ref.routine.name
             },
             showsPartitions: showsPartitions,
-            listsAttachedSchemas: listsAttachedSchemas
+            listsAttachedSchemas: listsAttachedSchemas,
+            tableDetailCount: { [weak self] group in self?.tableDetailCount(group) },
+            drawsSectionsAsRows: listsConnections
         )
     }
 
@@ -647,8 +721,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
-    /// A table kind is refreshed as a catalog change, as Cmd+R is, so the partition lists the tree
-    /// holds under the section are marked stale along with the browsed list.
+    // A table kind refreshes as a catalog change, as Cmd+R does, so the partition lists under it go stale too.
     internal func refreshObjectKind(_ kind: SidebarObjectKind) {
         guard let mainCoordinator else { return }
         switch kind {
@@ -661,6 +734,18 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 database: mainCoordinator.browseDatabaseName,
                 kinds: .tables
             )))
+        case .server(let serverKind):
+            let connectionId = connectionId
+            let manager = DatabaseManager.shared
+            let scope = manager.browseScope(for: connectionId)
+            let kindId = serverKind.id
+            Task { [schemaService] in
+                try? await manager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                    _ = await schemaService.reloadServerObjects(
+                        connectionId: connectionId, driver: driver, scope: scope, kindId: kindId
+                    )
+                }
+            }
         }
     }
 
@@ -696,15 +781,32 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                     database: group.database,
                     schema: group.schema
                 )
+            case .server:
+                await service.refreshServerObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema,
+                    kindId: group.kind.serverKind?.id
+                )
             }
         }
     }
 
+    /// `SchemaService` holds no table's detail lists, so they read again beside the schema's objects,
+    /// under the database a hierarchical table row names.
     internal func reloadHierarchicalSchemaObjects(_ schema: String) {
         let connectionId = connectionId
         let database = browsingDatabase
+        let service = service
+        let schemaService = schemaService
         Task {
-            await schemaService.reloadSchemaObjects(connectionId: connectionId, schema: schema, database: database)
+            async let objects: Void = schemaService.reloadSchemaObjects(
+                connectionId: connectionId, schema: schema, database: database
+            )
+            async let details: Void = service.refreshTableDetails(
+                connectionId: connectionId, database: database ?? "", schema: schema
+            )
+            _ = await (objects, details)
         }
     }
 
@@ -745,6 +847,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             open(ref, activateGridFocus: true, forceNonPreview: true)
         case .openObjectSource(let objectRef):
             mainCoordinator?.showObjectSource(objectRef)
+        case .showStructure(let ref):
+            perform(SidebarMenuCommand.showStructure(ref))
+        case .activateConnection(let ref):
+            activateConnection(ref)
         case .toggleDisclosure:
             if outlineView.isItemExpanded(node) {
                 outlineView.collapseItem(node)
@@ -776,18 +882,12 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
     }
 
     /// `DatabaseTreeNode.isExpandable` answers from the node's kind alone and has no settings to
-    /// read, so the hide-partitions gate has to be applied here as well as in the node builder.
-    /// Without it a hidden table kept a disclosure triangle that opened on nothing.
+    /// read. Whether a table or a partition discloses also follows the Partitions and Table Details
+    /// options, so the gate reads the node's options rule. Without it a hidden set of children left
+    /// a disclosure triangle that opened on nothing.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        guard let node = item as? DatabaseTreeNode, node.isExpandable else { return false }
-        switch node.kind {
-        case .table(let ref) where ref.table.type == .partitionedTable:
-            return showsPartitions
-        case .partition:
-            return showsPartitions
-        default:
-            return true
-        }
+        guard let node = item as? DatabaseTreeNode else { return false }
+        return node.isExpandable(showsPartitions: showsPartitions, showsTableDetails: showsTableDetails)
     }
 }
 
@@ -846,13 +946,26 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         return DatabaseTreeSelection.isSelectable(node.kind)
     }
 
+    /// Refusing a row here keeps it closed, so it posts no expansion: nothing records it and
+    /// nothing reads its list. A row expanded on its own is never refused.
+    func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
+        guard let node = item as? DatabaseTreeNode,
+              (outlineView as? DatabaseTreeNSOutlineView)?.isExpandingAsDescendant(node) == true
+        else { return true }
+        return node.opensWithAncestor(showsTableDetails: showsTableDetails)
+    }
+
     /// Hands the section headers to AppKit. In `.sourceList` a group row is drawn at its own
     /// height with its own background and collapse control, and its children are laid out at the
     /// depth the group itself sits at rather than one level in. That last part is what makes a
     /// table under "Tables" line up with a database, the way a package lines up with the project
     /// in Xcode's navigator.
+    ///
+    /// Under a saved connection's row nothing is a group row: AppKit lays a group out at its own depth
+    /// and would pull a section out from under the connection that holds it.
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.isGroupRow ?? false
+        guard !listsConnections else { return false }
+        return (item as? DatabaseTreeNode)?.isGroupRow ?? false
     }
 
     func outlineView(
@@ -947,6 +1060,13 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isSyncingSelection, !isReloading, !isCollapsingItem else { return }
         let nodes = selectedNodes()
+        /// A click on another connection open here moves the window to it. The highlight goes back to
+        /// what this tree had, so the row is not left selected for when the user comes back.
+        if let target = connectionClickTarget(selected: nodes) {
+            scheduleSelectionSync(force: true)
+            connectionsModel?.perform(.switchTo(target), presentingWindow: outlineView?.window)
+            return
+        }
         lastSelectedNodeIds = nodes.map(\.id)
         let refs = Set(DatabaseTreeSelection.openableRefs(of: nodes))
         let target = DatabaseTreeSelection.navigationTarget(
@@ -966,6 +1086,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
             openRedis(redisNode)
         } else {
             publishSelection()
+            showObjectsForSelection(nodes)
         }
         lastSelection = refs
     }
@@ -992,6 +1113,32 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         }
         pendingOpenWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// With the setting on, a container or group row lists its objects as a preview, the way a table
+    /// row previews the table. A held arrow key waits out the burst, as a table open does.
+    private func showObjectsForSelection(_ nodes: [DatabaseTreeNode]) {
+        guard let mainCoordinator,
+              let target = DatabaseTreeSelection.selectionObjectsTarget(
+                  selectedNodes: nodes,
+                  showsObjectsOnSelection: AppSettingsManager.shared.general.showsObjectsOnSelection,
+                  databaseHoldsSchemas: supportsSchemaLevel,
+                  hierarchicalDatabase: browsingDatabase ?? ""
+              ),
+              target.kind != .table || mainCoordinator.allTablesListing() != nil
+        else { return }
+        let asPreview = AppSettingsManager.shared.tabs.enablePreviewTabs
+        pendingOpenWork?.cancel()
+        pendingOpenWork = nil
+        guard isAutorepeatingSelection else {
+            mainCoordinator.showObjects(target, asPreview: asPreview)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            self?.mainCoordinator?.showObjects(target, asPreview: asPreview)
+        }
+        pendingOpenWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.keyRepeatInterval, execute: work)
     }
 
     private func makeCell() -> DatabaseTreeCellView {

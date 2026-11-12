@@ -60,6 +60,18 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.passwordSource == .env(variable: "DB_PASS"))
     }
 
+    @Test("A tunneled connection keeps its credential profile, so it signs in with the profile's credentials")
+    func tunnelPreservesCredentialProfile() {
+        let profileId = UUID()
+        var connection = DatabaseConnection(name: "tunneled", host: "db.internal", port: 3_306, type: .mysql)
+        connection.credentialMode = .profile(id: profileId)
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 61_235)
+
+        #expect(tunneled.credentialMode.profileId == profileId)
+        #expect(ConnectionCredentialResolver.credentialOwner(for: tunneled) == profileId)
+    }
+
     @Test("A tunneled DuckDB Remote row dials the forward through its own Host and Port fields")
     func tunnelRewritesServerEndpointFields() {
         let connection = DatabaseConnection(
@@ -641,5 +653,44 @@ struct DatabaseManagerTunnelTests {
             ownsAttempt: false
         )
         #expect(phase == .unavailable(.disconnected(info)))
+    }
+}
+
+extension GlobalStateSuites {
+    // Writes the shared SSH profile store across suspensions.
+    @MainActor
+    struct PinnedSSHRouteTests {
+        @Test("A pinned route is refused once the linked profile moves, and followed while it stays")
+        func pinnedRouteRefusesAMovedProfile() async throws {
+            let profiles = SSHProfileStorage.shared
+            let saved = profiles.loadProfiles()
+            let profile = SSHProfile(name: "Jump", host: "bastion-b.example", port: 22, username: "ops", authMethod: .password)
+            #expect(profiles.saveProfilesWithoutSync(saved + [profile]))
+            defer { profiles.saveProfilesWithoutSync(saved) }
+            var dialed = profile.toSSHConfiguration()
+            dialed.host = "bastion-a.example"
+            var connection = DatabaseConnection(
+                name: "file",
+                type: .duckdb,
+                additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/tmp/tablepro-tests.duckdb"]
+            )
+            connection.sshTunnelMode = .profile(id: profile.id, snapshot: dialed)
+
+            await #expect(throws: ConnectionTunnelError.sshProfileMoved) {
+                try await DatabaseManager.shared.buildEffectiveConnection(
+                    for: connection,
+                    pinnedSSHRoute: connection.destinationTunnel,
+                    deadline: ConnectionDeadline(configuredSeconds: 5)
+                )
+            }
+
+            let current = profiles.refreshingLinkedProfile(connection)
+            let effective = try await DatabaseManager.shared.buildEffectiveConnection(
+                for: connection,
+                pinnedSSHRoute: current.destinationTunnel,
+                deadline: ConnectionDeadline(configuredSeconds: 5)
+            )
+            #expect(effective.additionalFields["duckdbFilePath"] == "/tmp/tablepro-tests.duckdb")
+        }
     }
 }

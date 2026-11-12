@@ -131,7 +131,7 @@ extension TeradataPluginDriver {
     }
 
     func switchDatabase(to database: String) async throws {
-        _ = try await execute(query: TeradataSchemaQueries.setDatabase(database))
+        try await liveConnection().switchDatabase(to: database)
         currentDatabaseName = database
     }
 

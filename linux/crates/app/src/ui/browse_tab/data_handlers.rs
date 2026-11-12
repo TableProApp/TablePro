@@ -35,12 +35,18 @@ impl BrowseModel {
                 self.grid.commit_edit();
                 self.sequencer.cancel_all();
                 self.table = name;
-                if let Some(connection) = self.connection_id {
+                if let Some(state_key) = self.state_key.as_ref() {
                     self.filter_settings.set_filters(
-                        connection,
+                        state_key,
                         self.schema.as_deref(),
                         &self.table,
                         self.current_filter.clone(),
+                    );
+                    self.highlight_rules.set_rules(
+                        state_key,
+                        self.schema.as_deref(),
+                        &self.table,
+                        self.grid.highlight_rules(),
                     );
                 }
                 self.grid.rename_table(&self.table);
@@ -135,7 +141,7 @@ impl BrowseModel {
     /// on screen: rows behind the loading or the error page are not what
     /// the table holds under the tab's filter.
     pub(super) fn show_grid_actions(&mut self) {
-        let shown = self.load.has_content() && self.this.upgrade().is_some_and(|tab| !tab.shows_structure());
+        let shown = self.load.has_content() && self.this.upgrade().is_some_and(|tab| tab.shows_data());
         if self.grid_actions_shown == shown {
             return;
         }
@@ -171,6 +177,12 @@ impl BrowseModel {
     }
 
     pub(super) fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
+        if let Some((behavior, direction)) = self.default_sort.take() {
+            let result: Vec<ResultColumn> = columns.iter().map(ColumnInfo::result_column).collect();
+            let sortable = self.grid_columns_for_catalog(&result, &columns);
+            self.current_sort =
+                super::default_sort::resolve(behavior, direction, &sortable).filter(|_| self.sorts_rows());
+        }
         if self.current_columns != columns {
             self.page = None;
             self.shown_view = None;
@@ -250,13 +262,15 @@ impl BrowseModel {
     /// its place. A document's field whose name a filter, a sort or an
     /// update cannot spell takes none of them (ADR 0026).
     fn grid_columns_for(&self, result: &[ResultColumn]) -> Arc<[GridColumn]> {
+        self.grid_columns_for_catalog(result, &self.current_columns)
+    }
+
+    fn grid_columns_for_catalog(&self, result: &[ResultColumn], catalog: &[ColumnInfo]) -> Arc<[GridColumn]> {
         let documents = self
             .dialect
             .as_ref()
             .is_some_and(|dialect| dialect.grammar() == SqlGrammar::Mongo);
-        grid_columns(result, &self.current_columns, |name| {
-            !documents || is_addressable_field(name)
-        })
+        grid_columns(result, catalog, |name| !documents || is_addressable_field(name))
     }
 
     /// Give the grid `columns` when it shows others. Its rows go with the

@@ -332,6 +332,42 @@ final class WelcomeViewModelTests {
         #expect(viewModel.listState == .noFilterMatch)
     }
 
+    @Test func testExcludingFromSyncAsksFirst() throws {
+        let prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        save([prod])
+        viewModel.loadConnections()
+
+        viewModel.perform(.setIncludedInSync([prod.id], false))
+
+        #expect(viewModel.showExcludeFromSyncConfirmation)
+        #expect(viewModel.connectionsToExcludeFromSync.map(\.id) == [prod.id])
+        #expect(try #require(connectionStorage.loadConnection(id: prod.id)).localOnly == false)
+    }
+
+    @Test func testConfirmingExcludeFromSyncMarksTheConnectionLocalOnly() throws {
+        let prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        save([prod])
+        viewModel.loadConnections()
+        viewModel.perform(.setIncludedInSync([prod.id], false))
+
+        viewModel.confirmExcludeFromSync()
+
+        #expect(viewModel.connectionsToExcludeFromSync.isEmpty)
+        #expect(try #require(connectionStorage.loadConnection(id: prod.id)).localOnly)
+    }
+
+    @Test func testIncludingInSyncNeedsNoConfirmation() throws {
+        var prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        prod.localOnly = true
+        save([prod])
+        viewModel.loadConnections()
+
+        viewModel.perform(.setIncludedInSync([prod.id], true))
+
+        #expect(!viewModel.showExcludeFromSyncConfirmation)
+        #expect(try #require(connectionStorage.loadConnection(id: prod.id)).localOnly == false)
+    }
+
     @Test func testDeletingTheLastConnectionClearsTheSearchItCanNoLongerRun() {
         let only = DatabaseConnection(name: "Only", type: .mysql, sortOrder: 0)
         save([only])

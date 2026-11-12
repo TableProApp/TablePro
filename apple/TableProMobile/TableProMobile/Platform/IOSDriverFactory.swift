@@ -8,6 +8,8 @@ import TableProRedisCore
 
 nonisolated final class IOSDriverFactory: DriverFactory {
     private static let logger = Logger(subsystem: "com.TablePro", category: "IOSDriverFactory")
+    // A lookup still waiting after this has failed; each hop would otherwise wait out dnssd's 30-second timeout.
+    private static let endpointLookupSeconds = 10
 
     private let bookmarkStore: FileBookmarkStore
     private let materializer: CertificateMaterializer
@@ -16,6 +18,9 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     private let secureStore: any SecureStore
     // The session configuration of an engine reached over HTTPS, which a test points at its own URLProtocol.
     private let apiSessionConfiguration: @Sendable () -> URLSessionConfiguration
+    // Times how long a MySQL kill may reuse the token its session signed in with.
+    private let clock: any Clock<Duration>
+    private let cnameResolver: any CNAMEResolving
 
     init(
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
@@ -23,7 +28,9 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         localFiles: LocalDatabaseFileLocator = .live,
         mint: IAMPasswordMint = IAMPasswordMint(),
         secureStore: any SecureStore = KeychainSecureStore(),
-        apiSessionConfiguration: @escaping @Sendable () -> URLSessionConfiguration = { .default }
+        apiSessionConfiguration: @escaping @Sendable () -> URLSessionConfiguration = { .default },
+        clock: any Clock<Duration> = ContinuousClock(),
+        cnameResolver: any CNAMEResolving = SystemCNAMEResolver()
     ) {
         self.bookmarkStore = bookmarkStore
         self.materializer = materializer
@@ -31,6 +38,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         self.mint = mint
         self.secureStore = secureStore
         self.apiSessionConfiguration = apiSessionConfiguration
+        self.clock = clock
+        self.cnameResolver = cnameResolver
     }
 
     private func sqliteSource(for connection: DatabaseConnection) throws -> LocalDatabaseFileSource {
@@ -102,6 +111,32 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         return resolved
     }
 
+    // RDS takes a token only for the endpoint AWS issued, so a CNAME of the user's own is dialled as that endpoint
+    // too: signing it while dialling the CNAME would hand the token to whoever answers the CNAME's next lookup. Not
+    // behind SSH, where the server resolves the name and its PermitOpen matches it as typed.
+    func resolvingEndpointAlias(for connection: DatabaseConnection) async throws -> DatabaseConnection {
+        guard connection.iamSignIn?.isAWS == true,
+              IAMSignIn.engine(for: connection.type)?.awsService == .rds,
+              !dialsSSHTunnel(for: connection)
+        else { return connection }
+        let lookup = await AWSEndpointHost.rdsEndpoint(
+            behind: connection.host,
+            resolver: cnameResolver,
+            within: .seconds(connection.connectTimeoutSeconds ?? Self.endpointLookupSeconds)
+        )
+        try Task.checkCancellation()
+        switch lookup {
+        case .notFound:
+            return connection
+        case .failed:
+            throw AWSAuthError.endpointLookupFailed(host: connection.host)
+        case .found(let endpoint):
+            var resolved = connection
+            resolved.host = endpoint
+            return resolved
+        }
+    }
+
     func resolvePassword(
         for connection: DatabaseConnection,
         stored: String?,
@@ -119,6 +154,15 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         for connection: DatabaseConnection,
         password: String?,
         preTunnelHost: String?
+    ) throws -> any DatabaseDriver {
+        try createDriver(for: connection, password: password, preTunnelHost: preTunnelHost, refreshPassword: nil)
+    }
+
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?,
+        refreshPassword: (@Sendable () async throws -> String?)?
     ) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite where connection.isSample:
@@ -140,7 +184,11 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 ssl: try ssl(for: connection, serverName: preTunnelHost),
                 databaseType: connection.type,
                 connectionEncoding: MySQLConnectionEncoding(additionalFields: connection.additionalFields),
-                signsInWithToken: connection.iamSignIn != nil
+                signsInWithToken: connection.iamSignIn != nil,
+                queryTimeoutSeconds: connection.queryTimeoutSeconds,
+                // Only a token expires; a password session signs in again with the password it has.
+                refreshPassword: connection.iamSignIn == nil ? nil : refreshPassword,
+                clock: clock
             )
         case .postgresql, .redshift:
             guard connection.macSocketPath == nil else {
@@ -153,7 +201,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 password: password ?? "",
                 database: connection.database,
                 ssl: try ssl(for: connection, serverName: preTunnelHost),
-                databaseType: connection.type
+                databaseType: connection.type,
+                queryTimeoutSeconds: connection.queryTimeoutSeconds
             )
         case .redis:
             let dbIndex = RedisDatabaseIndex.resolve(

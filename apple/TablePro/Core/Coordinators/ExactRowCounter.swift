@@ -42,12 +42,15 @@ internal enum ExactRowCounter {
         return try await driver.fetchExactRowCount(table: table, browseFilters: search.pluginQueryFilters)
     }
 
+    // `safeModeIsReadOnly` reaches the host's COUNT(*), which carries the user's raw filter. A driver's own count builds
+    // its query from the filters behind a call that takes no context.
     internal static func count(
         on driver: DatabaseDriver,
         table: String,
         filters: [TableFilter],
         logicMode: FilterLogicMode,
-        countSQL: String?
+        countSQL: String?,
+        safeModeIsReadOnly: Bool = false
     ) async throws -> Int? {
         let chosen = route(
             countSQL: countSQL,
@@ -58,14 +61,14 @@ internal enum ExactRowCounter {
         case .driverCount:
             return try await driver.fetchExactRowCount(table: table, filters: filters, logicMode: logicMode)
         case .hostCountSQL(let sql):
-            return try await hostCount(sql, on: driver)
+            return try await hostCount(sql, on: driver, safeModeIsReadOnly: safeModeIsReadOnly)
         case .driverCountThenHostSQL(let sql):
             if let counted = try await driverCountAllowingFallback(
                 on: driver, table: table, filters: filters, logicMode: logicMode
             ) {
                 return counted
             }
-            return try await hostCount(sql, on: driver)
+            return try await hostCount(sql, on: driver, safeModeIsReadOnly: safeModeIsReadOnly)
         }
     }
 
@@ -84,8 +87,13 @@ internal enum ExactRowCounter {
         }
     }
 
-    private static func hostCount(_ sql: String, on driver: DatabaseDriver) async throws -> Int? {
-        let result = try await driver.execute(query: sql)
+    private static func hostCount(_ sql: String, on driver: DatabaseDriver, safeModeIsReadOnly: Bool) async throws -> Int? {
+        let result: QueryResult
+        if let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) {
+            result = try await driver.execute(query: sql, context: context)
+        } else {
+            result = try await driver.execute(query: sql)
+        }
         guard let countText = result.rows.first?.first?.asText else { return nil }
         return Int(countText)
     }

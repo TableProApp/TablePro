@@ -134,6 +134,7 @@ impl SqlDialect for DuckDbDialect {
         match value {
             Value::Null => Ok("NULL".to_owned()),
             Value::Bool(flag) => Ok(if *flag { "TRUE" } else { "FALSE" }.to_owned()),
+            Value::Int32(integer) => Ok(integer.to_string()),
             Value::Int(integer) => Ok(integer.to_string()),
             Value::UInt(integer) => Ok(integer.to_string()),
             Value::WideInt(integer) => Ok(integer.to_string()),
@@ -305,7 +306,7 @@ fn value_param(value: Value, column: &ColumnType) -> Result<(Value, ParamType), 
     let param_type = match &value {
         Value::Null | Value::Text(_) => ParamType::Text,
         Value::Bool(_) => ParamType::Bool,
-        Value::Int(_) => ParamType::Int64,
+        Value::Int32(_) | Value::Int(_) => ParamType::Int64,
         Value::UInt(_) => ParamType::UInt64,
         Value::WideInt(_) | Value::Decimal(_) => ParamType::Decimal,
         Value::Float32(_) => ParamType::Float32,
@@ -573,6 +574,8 @@ mod tests {
             "PRAGMA http_proxy_password = 'v'",
             "PRAGMA s3_secret_access_key='v'",
             "SET http_proxy = 'http://u:p@proxy:3128'",
+            // DuckDB turns the U+200B into a space, so the E'' string ends early and the secret is a statement.
+            "SELECT varchar\u{200b}E'\\''; CREATE SECRET s (TYPE s3, KEY_ID 'k', SECRET 'v'); --'",
         ] {
             assert_eq!(DuckDbDialect::new().history_recording(sql), withheld, "{sql}");
         }

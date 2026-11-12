@@ -30,6 +30,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let sourceFields: Set<String>
     private let sourceFieldsPerFoldedName: [String: Int]
     private let rowGenerator: SQLStatementGenerator?
+    private let typedRowGenerator = OSAllocatedUnfairLock<SQLStatementGenerator?>(uncheckedState: nil)
+    private let targetValues = OSAllocatedUnfairLock<ImportTargetValues?>(initialState: nil)
+    private let binaryText: ImportBinaryText?
     private let rowWriting: ImportRowWriting
     private let tally: OSAllocatedUnfairLock<ImportRowTally>
     private let immutableColumns = OSAllocatedUnfairLock<Set<String>?>(initialState: nil)
@@ -39,7 +42,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let tableEditDialect: TableEditDialect?
     private let nameHazards = OSAllocatedUnfairLock<[String]>(initialState: [])
     private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
+    private let leavesTransactionOpen = OSAllocatedUnfairLock(initialState: false)
+    private let disabledForeignKeys = OSAllocatedUnfairLock(initialState: false)
     private let joinsTransaction: Bool
+    private let commitMode: ConnectionCommitMode
     private let transactionRecord = OSAllocatedUnfairLock(initialState: TransactionRecord())
 
     private struct TransactionRecord {
@@ -70,17 +76,22 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         columnMapping: [String: String] = [:],
         sourceFields: Set<String> = [],
         rowWriting: ImportRowWriting = .insert,
+        binaryText: ImportBinaryText? = nil,
         joinsTransaction: Bool = false,
+        commitMode: ConnectionCommitMode = .automatic,
         importRun: ImportRun? = nil,
         fileIndex: Int? = 0,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.importControl = importRun.map {
             ImportSinkRun(run: $0, driver: driver, databaseType: databaseType, fileIndex: fileIndex,
-                          targetTable: targetTable, targetSchema: targetSchema, joinsTransaction: joinsTransaction)
+                          targetTable: targetTable, targetSchema: targetSchema, joinsTransaction: joinsTransaction,
+                          commitMode: commitMode)
         }
+        self.commitMode = commitMode
         self.isCancelled = isCancelled
         self.rowWriting = rowWriting
+        self.binaryText = binaryText
         self.tally = OSAllocatedUnfairLock(initialState: ImportRowTally(mode: rowWriting.mode))
         self.joinsTransaction = joinsTransaction
         self.driver = driver
@@ -94,21 +105,78 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.sourceFieldsPerFoldedName = Dictionary(sourceFields.map { ($0.lowercased(), 1) }, uniquingKeysWith: +)
         self.foldedMapping = Dictionary(grouping: columnMapping, by: { $0.key.lowercased() })
             .compactMapValues { $0.count == 1 ? $0.first?.value : nil }
-        // The driver's quoting, not the dialect's: ClickHouse reads a backslash escape inside backquotes.
         if let targetTable, Self.canWriteRows(into: databaseType) {
-            self.rowGenerator = try? SQLStatementGenerator(
-                tableName: targetTable,
-                schemaName: targetSchema,
-                columns: [],
-                primaryKeyColumns: [],
-                databaseType: databaseType,
-                quoteIdentifier: driver.quoteIdentifier,
-                rowUpdateStatement: driver.rowUpdateStatement,
-                rowDeleteStatement: driver.rowDeleteStatement
+            self.rowGenerator = Self.makeRowGenerator(
+                table: targetTable, schema: targetSchema, databaseType: databaseType, driver: driver
             )
         } else {
             self.rowGenerator = nil
         }
+    }
+
+    // The driver's quoting, not the dialect's: ClickHouse reads a backslash escape inside backquotes.
+    private static func makeRowGenerator(
+        table: String,
+        schema: String?,
+        databaseType: DatabaseType,
+        driver: DatabaseDriver,
+        columnTypeNames: [String: String] = [:]
+    ) -> SQLStatementGenerator? {
+        try? SQLStatementGenerator(
+            tableName: table,
+            schemaName: schema,
+            columns: [],
+            primaryKeyColumns: [],
+            databaseType: databaseType,
+            columnTypeNames: columnTypeNames,
+            quoteIdentifier: driver.quoteIdentifier,
+            rowUpdateStatement: driver.rowUpdateStatement,
+            rowDeleteStatement: driver.rowDeleteStatement
+        )
+    }
+
+    // The driver gets each parameter's column type: Oracle stored `00123` bound to a VARCHAR2 as 123 without it, and
+    // MySQL stores text bound to a BIT column as its bytes, so a 5 lands as 53.
+    private func writingGenerator() async throws -> SQLStatementGenerator? {
+        guard let rowGenerator, let targetTable else { return rowGenerator }
+        if let typed = typedRowGenerator.withLockUnchecked({ $0 }) { return typed }
+        let typed = Self.makeRowGenerator(
+            table: targetTable, schema: targetSchema, databaseType: databaseType, driver: driver,
+            columnTypeNames: try await targetColumnValues().typeNames
+        ) ?? rowGenerator
+        typedRowGenerator.withLockUnchecked { $0 = typed }
+        return typed
+    }
+
+    // Read once per import, for the typed binding above and for what a file's text means in each column.
+    private func targetColumnValues() async throws -> ImportTargetValues {
+        if let known = targetValues.withLock({ $0 }) { return known }
+        guard let targetTable else {
+            throw PluginImportError.importFailed("No target table configured for row import")
+        }
+        // A BIT family and Oracle write wrong values without the types; elsewhere the import goes on as it did before
+        // the types were read, and the error stays out of the run's list.
+        let family = SQLTypeFamily.of(databaseType)
+        let needsTypes = family.readsBitsAsDecimal || family == .oracle
+        let read: [ColumnInfo]? = try await importedData {
+            do {
+                return try await self.driver.fetchColumns(table: targetTable, schema: self.targetSchema)
+            } catch where !needsTypes && !(error is CancellationError) {
+                Self.logger.warning(
+                    "Import writes untyped values: the target's columns could not be read: \(error.localizedDescription, privacy: .private)"
+                )
+                return nil
+            }
+        }
+        let values = ImportTargetValues(
+            columns: (read ?? []).map {
+                (name: $0.name, typeName: $0.typeNameForClassification, isGenerated: $0.isGenerated)
+            },
+            databaseType: databaseType,
+            binaryText: binaryText
+        )
+        targetValues.withLock { $0 = values }
+        return values
     }
 
     func execute(statement: String) async throws {
@@ -189,19 +257,17 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard let targetTable else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        guard let rowGenerator else {
+        guard let rowGenerator = try await writingGenerator() else {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for \(targetTable)")
         }
 
-        let row = mappedRow(values)
-        guard !row.columns.isEmpty else {
-            guard values.isEmpty else {
-                throw PluginImportError.importFailed(Self.unmappedRowMessage)
-            }
-            return
-        }
+        let row = try await writableRows([values])[0]
         guard !rowWriting.mode.matchesExistingRows else {
             try await writeMatching([row], generator: rowGenerator)
+            return
+        }
+        guard !row.columns.isEmpty else {
+            try await insertDefaultRows(1, generator: rowGenerator)
             return
         }
         guard let statement = rowGenerator.insertStatement(columns: row.columns, values: row.values) else {
@@ -211,7 +277,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
 
         try await importedData(rows: 1, writes: true) {
-            _ = try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+            _ = try await self.driver.executeParameterized(
+                query: statement.sql, parameters: statement.parameters, context: statement.context
+            )
             self.tally.withLock { $0.inserted += 1 }
         }
     }
@@ -220,15 +288,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard targetTable != nil else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        guard let rowGenerator else {
+        guard let rowGenerator = try await writingGenerator() else {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for row import")
         }
 
-        let mapped = rows.map(mappedRow)
-        if zip(rows, mapped).contains(where: { !$0.0.isEmpty && $0.1.columns.isEmpty }) {
-            throw PluginImportError.importFailed(Self.unmappedRowMessage)
-        }
-        let writable = mapped.filter { !$0.columns.isEmpty }
+        let writable = try await writableRows(rows)
 
         if rowWriting.mode.matchesExistingRows {
             try await writeMatching(writable, generator: rowGenerator)
@@ -242,9 +306,17 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         let values: [PluginCellValue]
     }
 
-    private func mappedRow(_ values: [String: PluginCellValue]) -> MappedRow {
-        let (columns, mappedValues) = mappedColumnsAndValues(values)
-        return MappedRow(columns: columns, values: mappedValues)
+    // A row with no field, such as JSON's `{}` for an all-NULL row, is a row of defaults; a row whose fields all
+    // missed the mapping is an error.
+    private func writableRows(_ rows: [[String: PluginCellValue]]) async throws -> [MappedRow] {
+        let target = try await targetColumnValues()
+        return try rows.map { values in
+            let (columns, mappedValues) = mappedColumnsAndValues(values)
+            if columns.isEmpty, !values.isEmpty {
+                throw PluginImportError.importFailed(Self.unmappedRowMessage)
+            }
+            return MappedRow(columns: columns, values: try target.values(mappedValues, columns: columns))
+        }
     }
 
     private func insertGrouped(_ rows: [MappedRow], generator: SQLStatementGenerator) async throws {
@@ -259,7 +331,30 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             }
             index = next
 
-            try await insertGroup(groupValues, columns: columns, generator: generator)
+            if columns.isEmpty {
+                try await insertDefaultRows(groupValues.count, generator: generator)
+            } else {
+                try await insertGroup(groupValues, columns: columns, generator: generator)
+            }
+        }
+    }
+
+    private func insertDefaultRows(_ count: Int, generator: SQLStatementGenerator) async throws {
+        let firstColumn = try await targetColumnValues().firstWritableColumn
+        guard let statement = generator.allDefaultsInsertStatement(firstColumn: firstColumn) else {
+            throw PluginImportError.importFailed(String(
+                format: String(localized: "This row has no values, and %@ has no way to insert a row of only defaults."),
+                databaseType.rawValue
+            ))
+        }
+        for _ in 0..<count {
+            guard !isCancelled() else { throw PluginImportCancellationError() }
+            try await importedData(rows: 1, writes: true) {
+                _ = try await self.driver.executeParameterized(
+                    query: statement.sql, parameters: statement.parameters, context: statement.context
+                )
+                self.tally.withLock { $0.inserted += 1 }
+            }
         }
     }
 
@@ -269,11 +364,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         values rows: [[PluginCellValue]],
         onWrite: (Int) -> Void = { _ in }
     ) async throws {
-        guard let rowGenerator else {
+        guard rowGenerator != nil else {
             throw PluginImportError.importFailed("No target table configured for row import")
         }
-        guard !columns.isEmpty, !rows.isEmpty else { return }
-        try await insertGroup(rows, columns: columns, generator: rowGenerator, onWrite: onWrite)
+        guard !columns.isEmpty, !rows.isEmpty, let generator = try await writingGenerator() else { return }
+        try await insertGroup(rows, columns: columns, generator: generator, onWrite: onWrite)
     }
 
     private func insertGroup(
@@ -308,7 +403,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             )
         }
         try await importedData(rows: batch.count, writes: true) {
-            _ = try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+            _ = try await self.driver.executeParameterized(
+                query: statement.sql, parameters: statement.parameters, context: statement.context
+            )
             self.tally.withLock { $0.inserted += batch.count }
         }
     }
@@ -421,7 +518,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             throw PluginImportError.importFailed(String(localized: "Could not build an UPDATE for the mapped columns"))
         }
         try await importedData(rows: 1, writes: true) {
-            _ = try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+            _ = try await self.driver.executeParameterized(
+                query: statement.sql, parameters: statement.parameters, context: statement.context
+            )
             self.tally.withLock { $0.updated += 1 }
         }
     }
@@ -451,7 +550,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 throw PluginImportError.importFailed(String(localized: "Could not build the query that matches rows"))
             }
             let result = try await importedData {
-                try await self.driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                try await self.driver.executeParameterized(
+                    query: statement.sql, parameters: statement.parameters, context: statement.context
+                )
             }
             counts += try Self.counts(in: result, expected: chunk.count)
             start += chunk.count
@@ -529,19 +630,32 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     func beginTransaction() async throws {
         if let importControl { return try await importControl.begin() }
         guard !joinsTransaction else { return }
+        let state = await driver.heldSessionTransactionState()
+        if commitMode == .manual {
+            guard !disabledForeignKeys.withLock({ $0 }) else { throw ManualCommitForeignKeyRefusal() }
+            try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
+        }
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: state,
+            commitMode: commitMode
         )
-        ownsTransaction.withLock { $0 = owner.opensTransaction }
+        ownsTransaction.withLock { $0 = owner.sendsBegin }
+        leavesTransactionOpen.withLock { $0 = owner.sendsBegin && !owner.commitsAtEnd }
         transactionRecord.withLock { $0 = TransactionRecord() }
-        guard owner.opensTransaction else { return }
+        guard owner.sendsBegin else { return }
         try await driver.beginTransaction(mode: .readWrite)
+        if owner == .held { ManualCommit.turnHold?.mark(true) }
     }
 
     func commitTransaction() async throws {
         if let importControl { return try await importControl.commit() }
         guard ownsTransaction.withLock({ $0 }) else { return }
+        // Manual Commit: the imported rows stay pending in the transaction the user commits.
+        guard !leavesTransactionOpen.withLock({ $0 }) else {
+            ownsTransaction.withLock { $0 = false }
+            return
+        }
         try await driver.commitTransaction()
         ownsTransaction.withLock { $0 = false }
         transactionRecord.withLock { $0.ending = .committed }
@@ -607,6 +721,8 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 _ = try await self.driver.execute(query: stmt)
             }
         }
+        disabledForeignKeys.withLock { $0 = true }
+        importControl?.noteForeignKeysDisabled()
     }
 
     func enableForeignKeyChecks() async throws {
@@ -624,7 +740,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func prepareImportRun() async throws {
-        try await importControl?.prepare()
+        if let importControl { return try await importControl.prepare() }
+        guard commitMode == .manual else { return }
+        let state = await driver.heldSessionTransactionState()
+        try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
     }
 
     func importCheckpoint() async throws {

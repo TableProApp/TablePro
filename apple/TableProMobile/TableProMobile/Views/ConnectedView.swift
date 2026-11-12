@@ -86,9 +86,13 @@ struct ConnectedView: View {
             guard !Task.isCancelled else { return }
             switch resolved.phase {
             case .connected:
-                resolved.loadHistory()
+                await resolved.loadHistory()
                 hapticSuccess.toggle()
-            case .failed, .lost:
+            case .lost:
+                // A lost open comes back to the tabs through Reconnect, which never runs this task.
+                await resolved.loadHistory()
+                hapticError.toggle()
+            case .failed:
                 hapticError.toggle()
             case .notConnected, .connecting:
                 break
@@ -123,24 +127,32 @@ struct ConnectedView: View {
         case .notConnected:
             statusScreen { notConnectedView }
         case .failed(let error):
-            statusScreen { unavailableView(error, title: nil, systemImage: nil) }
+            statusScreen { unavailableView(error, title: nil, systemImage: nil) { retries += 1 } }
         case .lost(let error):
             let presentation = ConnectionStatusPresentation(coordinator.displayStatus)
             statusScreen {
-                unavailableView(error, title: presentation.title, systemImage: presentation.symbol?.systemName)
+                // The toolbar's Reconnect: a redial where the window was, not a fresh open of the saved database.
+                unavailableView(error, title: presentation.title, systemImage: presentation.symbol?.systemName) {
+                    await coordinator.reconnect()
+                }
             }
         case .tabs:
             connectedContent(coordinator)
         }
     }
 
-    private func unavailableView(_ error: AppError, title: String?, systemImage: String?) -> some View {
+    private func unavailableView(
+        _ error: AppError,
+        title: String?,
+        systemImage: String?,
+        retry: @escaping () async -> Void
+    ) -> some View {
         ErrorView(
             error: error,
             title: title,
             systemImage: systemImage,
             retryTitle: String(localized: "Reconnect"),
-            onRetry: error.canRetry ? { retries += 1 } : nil,
+            onRetry: error.canRetry ? retry : nil,
             onEditConnection: connection.isSample ? nil : { presenter.presentConnectionEditor(for: connection.id) }
         )
     }

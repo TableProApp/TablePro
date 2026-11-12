@@ -3,7 +3,7 @@ using Native = TablePro.Interop.Native;
 namespace TablePro.Interop;
 
 // Each catalog level is read when first asked for and shared by every caller.
-public sealed class DatabaseSession : IAsyncDisposable
+public sealed partial class DatabaseSession : IAsyncDisposable
 {
     private readonly Native.DatabaseSession _session;
     private readonly CredentialPrompterAdapter? _prompter;
@@ -24,6 +24,8 @@ public sealed class DatabaseSession : IAsyncDisposable
     public string EngineId { get; }
 
     public bool IsReadOnly => _session.ReadOnly();
+
+    internal Native.DatabaseSession Handle => _session;
 
     public async Task<IReadOnlyList<SchemaEntry>> GetSchemasAsync(CancellationToken cancellationToken = default)
     {
@@ -65,10 +67,24 @@ public sealed class DatabaseSession : IAsyncDisposable
         return [.. columns.Select(Mapping.Column)];
     }
 
-    // The core writes the ORDER BY and the page in the engine's own dialect.
-    public async Task<TableQuery> GetTableQueryAsync(
+    // What the filter bar offers on the table: the engine's operators per column, its combinators, raw SQL or not.
+    public async Task<FilterChoices> GetFilterChoicesAsync(
+        TableName table,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var choices = await CoreCall.RunAsync(
+                token => _session.FilterChoices(Mapping.Table(table), token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Choices(choices);
+    }
+
+    // Returns once the read starts, so a bad filter throws here unsent; the token also stops the read, as Run's does.
+    public async Task<TablePageRun> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
+        TableFilter? filter,
         long limit,
         long offset = 0,
         CancellationToken cancellationToken = default)
@@ -76,26 +92,76 @@ public sealed class DatabaseSession : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(table);
         ArgumentOutOfRangeException.ThrowIfNegative(limit);
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
-        var native = sort is null ? null : new Native.ColumnSort(checked((uint)sort.Column), sort.Ascending);
-        var query = await CoreCall.RunAsync(
-                token => _session.TableQuery(
+        var nativeFilter = filter is null ? null : Mapping.Filter(filter);
+        var wake = new RunWake();
+        using var page = await CoreCall.RunAsync(
+                token => _session.ReadTablePage(
                     Mapping.Table(table),
-                    native,
+                    Mapping.Sort(sort),
+                    nativeFilter,
                     checked((ulong)limit),
                     checked((ulong)offset),
+                    wake,
                     token),
                 cancellationToken)
             .ConfigureAwait(false);
-        return new TableQuery(query.Sql, checked((int)query.VisibleColumns), query.CanSeek);
+        return new TablePageRun(
+            new QueryRun(page.Run(), wake, cancellationToken),
+            checked((int)page.VisibleColumns()),
+            page.CanSeek());
     }
 
-    // Every row of the table, counted by the server.
-    public async Task<long> CountRowsAsync(TableName table, CancellationToken cancellationToken = default)
+    // Every row the filter selects, counted by the server.
+    public async Task<long> CountRowsAsync(
+        TableName table,
+        TableFilter? filter = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(table);
-        var count = await CoreCall.RunAsync(token => _session.TableRowCount(Mapping.Table(table), token), cancellationToken)
+        var nativeFilter = filter is null ? null : Mapping.Filter(filter);
+        var count = await CoreCall.RunAsync(
+                token => _session.TableRowCount(Mapping.Table(table), nativeFilter, token),
+                cancellationToken)
             .ConfigureAwait(false);
         return Mapping.Count(count);
+    }
+
+    // The whole table's, from the engine's statistics, so it costs no count; null where the engine keeps none.
+    public async Task<RowEstimate?> EstimateRowsAsync(TableName table, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var estimate = await CoreCall.RunAsync(
+                token => _session.TableRowEstimate(Mapping.Table(table), token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Estimate(estimate);
+    }
+
+    // Kind decides whether a CREATE script belongs: a view gets none.
+    public async Task<TableStructure> GetStructureAsync(
+        TableName table,
+        ObjectKind kind,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var structure = await CoreCall.RunAsync(
+                token => _session.TableStructure(Mapping.Table(table), Mapping.Tag(kind), token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Structure(structure);
+    }
+
+    // Null when the object is gone or unreadable; a kind the engine keeps no text for throws driver.unsupported.
+    public async Task<ObjectSource?> GetObjectDefinitionAsync(
+        ObjectEntry entry,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        var source = await CoreCall.RunAsync(
+                token => _session.ObjectDefinition(Mapping.Entry(entry), token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return source is null ? null : Mapping.Source(source);
     }
 
     public SessionHealth Health => Mapping.Health(_session.Health());
@@ -122,6 +188,42 @@ public sealed class DatabaseSession : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(columns);
         ArgumentOutOfRangeException.ThrowIfNegative(column);
         return CoreCall.Run(() => _session.SortedQuery(sql, [.. columns], checked((uint)column), ascending));
+    }
+
+    // At the session's Safe Mode level now, read with the engine's own statement split.
+    public RunGate GateRun(string sql)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        var gate = _session.GateRun(sql);
+        return new RunGate(gate.Refused, [.. gate.Confirm], gate.Destructive);
+    }
+
+    // The statement the caret is in, or the last one before it, split as GateRun and the driver split the text.
+    public Range? StatementAt(string sql, int caret)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        ArgumentOutOfRangeException.ThrowIfNegative(caret);
+        return _session.StatementAt(sql, checked((uint)caret)) is { } span
+            ? new Range(checked((int)span.Start), checked((int)span.End))
+            : null;
+    }
+
+    // A level saved while the session is open applies to it at once. False when it crosses Read only, which only a
+    // new connection can do; the session keeps its level until then.
+    public bool SetSafeMode(SafeMode level) => _session.SetSafeMode(Mapping.Level(level));
+
+    // A table's rows as a save sees them. Refresh reads the catalog again, as a tab's Refresh does.
+    public async Task<TableEditor> OpenTableEditorAsync(
+        TableName table,
+        bool refresh,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var editor = await CoreCall.RunAsync(
+                token => _session.TableEditor(Mapping.Table(table), refresh, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new TableEditor(editor);
     }
 
     // An editor tab's own connection, which keeps its transaction from one run to the next.

@@ -37,6 +37,7 @@ struct DatabaseTreeBucketSource: Equatable {
     let routines: SameRows<RoutineInfo>
     let triggers: SameRows<TriggerInfo>
     let userTypes: SameRows<UserDefinedTypeInfo>
+    let serverObjects: [String: SameRows<ServerObjectInfo>]
     let searchText: String
     let database: String?
 
@@ -45,6 +46,7 @@ struct DatabaseTreeBucketSource: Equatable {
         routines: [RoutineInfo],
         triggers: [TriggerInfo],
         userTypes: [UserDefinedTypeInfo],
+        serverObjects: [String: [ServerObjectInfo]] = [:],
         searchText: String,
         database: String?
     ) {
@@ -52,6 +54,7 @@ struct DatabaseTreeBucketSource: Equatable {
         self.routines = SameRows(rows: routines)
         self.triggers = SameRows(rows: triggers)
         self.userTypes = SameRows(rows: userTypes)
+        self.serverObjects = serverObjects.mapValues { SameRows(rows: $0) }
         self.searchText = searchText
         self.database = database
     }
@@ -62,6 +65,7 @@ struct DatabaseTreeBucketSource: Equatable {
             routines: routines.rows,
             triggers: triggers.rows,
             userTypes: userTypes.rows,
+            serverObjects: serverObjects.mapValues(\.rows),
             searchText: searchText,
             database: database
         )
@@ -87,25 +91,27 @@ struct DatabaseTreeBucketMemo<Key: Hashable> {
     }
 }
 
-/// One filtered pass over a container's objects, split by kind. The container row needs the counts
-/// and each group row under it needs one bucket, so both read this rather than filtering the whole
-/// list again per group.
+// One filtered pass per container, read by the container row and every group under it.
 struct DatabaseTreeObjectBuckets {
     let tables: [SidebarObjectKind: [TableInfo]]
     let routines: [SidebarObjectKind: [RoutineInfo]]
     let triggers: [TriggerInfo]
     let userTypes: [UserDefinedTypeInfo]
+    // Keyed by the declared kind's id.
+    let serverObjects: [String: [ServerObjectInfo]]
 
     init(
         tables: [SidebarObjectKind: [TableInfo]],
         routines: [SidebarObjectKind: [RoutineInfo]],
         triggers: [TriggerInfo],
-        userTypes: [UserDefinedTypeInfo] = []
+        userTypes: [UserDefinedTypeInfo] = [],
+        serverObjects: [String: [ServerObjectInfo]] = [:]
     ) {
         self.tables = tables
         self.routines = routines
         self.triggers = triggers
         self.userTypes = userTypes
+        self.serverObjects = serverObjects
     }
 
     var isEmpty: Bool {
@@ -113,8 +119,10 @@ struct DatabaseTreeObjectBuckets {
             && routines.values.allSatisfy(\.isEmpty)
             && triggers.isEmpty
             && userTypes.isEmpty
+            && serverObjects.values.allSatisfy(\.isEmpty)
     }
 
+    // A declared kind compares by id, so the key built here finds the declared descriptor.
     var itemCounts: [SidebarObjectKind: Int] {
         var counts = tables.mapValues(\.count)
         for (kind, list) in routines {
@@ -123,6 +131,9 @@ struct DatabaseTreeObjectBuckets {
         counts[.trigger, default: 0] += triggers.count
         if !userTypes.isEmpty {
             counts[.type, default: 0] += userTypes.count
+        }
+        for (kindId, list) in serverObjects where !list.isEmpty {
+            counts[.server(SidebarServerObjectKind(id: kindId)), default: 0] += list.count
         }
         return counts
     }
@@ -230,11 +241,21 @@ enum DatabaseTreeFilter {
         return deduplicated(matched, by: \.id)
     }
 
+    static func filteredServerObjects(
+        _ objects: [ServerObjectInfo],
+        searchText: String,
+        database: String? = nil
+    ) -> [ServerObjectInfo] {
+        let matched = SidebarSearch(searchText).ranked(objects, name: { $0.name }, database: database, schema: { $0.schema })
+        return deduplicated(matched, by: \.id)
+    }
+
     static func objectBuckets(
         tables: [TableInfo],
         routines: [RoutineInfo],
         triggers: [TriggerInfo],
         userTypes: [UserDefinedTypeInfo] = [],
+        serverObjects: [String: [ServerObjectInfo]] = [:],
         searchText: String,
         database: String? = nil
     ) -> DatabaseTreeObjectBuckets {
@@ -250,7 +271,10 @@ enum DatabaseTreeFilter {
             tables: tableBuckets,
             routines: routineBuckets,
             triggers: filteredTriggers(triggers, searchText: searchText, database: database),
-            userTypes: filteredUserTypes(userTypes, searchText: searchText, database: database)
+            userTypes: filteredUserTypes(userTypes, searchText: searchText, database: database),
+            serverObjects: serverObjects.mapValues {
+                filteredServerObjects($0, searchText: searchText, database: database)
+            }
         )
     }
 
@@ -310,6 +334,7 @@ enum DatabaseTreeFilter {
                 routines: service.routines(for: connectionId, schema: schema),
                 triggers: service.triggers(for: connectionId, schema: schema),
                 userTypes: service.userDefinedTypes(for: connectionId, schema: schema),
+                serverObjects: service.serverObjectsByKind(for: connectionId, schema: schema),
                 searchText: searchText,
                 database: database
             )),
@@ -324,14 +349,14 @@ enum DatabaseTreeFilter {
         return kept
     }
 
-    /// A schema the search matched by name shows everything inside it. Filtering its objects by the
-    /// same query leaves the matched schema reporting no items.
+    // A schema matched by name shows everything inside it, or it would report no items.
     static func hierarchicalBucketSource(
         schema: String,
         tables: [TableInfo],
         routines: [RoutineInfo],
         triggers: [TriggerInfo],
         userTypes: [UserDefinedTypeInfo],
+        serverObjects: [String: [ServerObjectInfo]] = [:],
         searchText: String,
         database: String? = nil
     ) -> DatabaseTreeBucketSource {
@@ -341,6 +366,7 @@ enum DatabaseTreeFilter {
             routines: routines,
             triggers: triggers,
             userTypes: userTypes,
+            serverObjects: serverObjects,
             searchText: matchesSchema ? "" : searchText,
             database: database
         )
@@ -557,11 +583,15 @@ enum DatabaseTreeFilter {
            !service.isTablesCurrent(connectionId: connectionId, database: database, schema: schema) {
             tables = listingMatches.rowsBySchema[schema] ?? []
         }
+        let serverKinds = service.serverKinds(connectionId: connectionId, database: database, schema: schema)
         return objectBuckets(
             tables: tables,
             routines: service.routines(connectionId: connectionId, database: database, schema: schema),
             triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
             userTypes: service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
+            serverObjects: Dictionary(uniqueKeysWithValues: serverKinds.map { kind in
+                (kind.id, service.serverObjects(connectionId: connectionId, database: database, schema: schema, kindId: kind.id))
+            }),
             searchText: searchText,
             database: database
         )

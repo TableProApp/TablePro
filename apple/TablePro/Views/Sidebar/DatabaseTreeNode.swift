@@ -5,16 +5,16 @@
 
 import Foundation
 
-/// Which groups a container shows. A group stands for objects the container holds, and a container
-/// with nothing to list answers with its own status row instead.
+// A group stands for objects the container holds; a container with nothing to list shows its own status row.
 internal enum DatabaseTreeObjectGroupResolver {
     internal static func groups(
         database: String,
         schema: String?,
         itemCounts: [SidebarObjectKind: Int],
-        keeping: Set<SidebarObjectKind> = []
+        keeping: Set<SidebarObjectKind> = [],
+        declared: [SidebarServerObjectKind] = []
     ) -> [DatabaseTreeObjectGroup] {
-        SidebarObjectKind.visible(itemCounts: itemCounts, keeping: keeping)
+        SidebarObjectKind.visible(itemCounts: itemCounts, keeping: keeping, declared: declared)
             .map { DatabaseTreeObjectGroup(database: database, schema: schema, kind: $0) }
     }
 }
@@ -31,36 +31,48 @@ internal extension DatabaseTreeNode.Status {
     }
 }
 
-/// Where each side kind's fetch stands for one container. A kind the engine does not declare has no
-/// phase, because a fetch the engine never runs stays idle and would read as loading forever.
+// An undeclared kind has no phase: a fetch the engine never runs stays idle and would read as loading forever.
 internal struct DatabaseTreeSidePhases: Equatable {
     let routines: MetadataLoadPhase
     let triggers: MetadataLoadPhase?
     let types: MetadataLoadPhase?
+    // Keyed by kind id, holding only the declared kinds this container lists.
+    let serverObjects: [String: MetadataLoadPhase]
 
-    var all: [MetadataLoadPhase] {
-        [routines] + [triggers, types].compactMap { $0 }
+    init(
+        routines: MetadataLoadPhase,
+        triggers: MetadataLoadPhase?,
+        types: MetadataLoadPhase?,
+        serverObjects: [String: MetadataLoadPhase] = [:]
+    ) {
+        self.routines = routines
+        self.triggers = triggers
+        self.types = types
+        self.serverObjects = serverObjects
     }
 
-    func phase(for category: SidebarObjectCategory) -> MetadataLoadPhase {
-        switch category {
+    var all: [MetadataLoadPhase] {
+        [routines] + [triggers, types].compactMap { $0 } + serverObjects.keys.sorted().compactMap { serverObjects[$0] }
+    }
+
+    func phase(for kind: SidebarObjectKind) -> MetadataLoadPhase {
+        switch kind.category {
         case .table: return .loaded
         case .routine: return routines
         case .trigger: return triggers ?? .loaded
         case .type: return types ?? .loaded
+        case .server: return kind.serverKind.flatMap { serverObjects[$0.id] } ?? .loaded
         }
     }
 
-    /// The declared kinds whose fetch failed. Each keeps its group, empty of rows, so the failure shows
-    /// where the rows would be: hiding the group would make a list the server refused read as empty.
+    // A failed kind keeps its group, so a list the server refused never reads as empty.
     func failedKinds(among declared: Set<SidebarObjectKind>) -> Set<SidebarObjectKind> {
-        declared.filter { phase(for: $0.category).failureMessage != nil }
+        declared.filter { phase(for: $0).failureMessage != nil }
     }
 
-    /// The row a group with no rows shows: the failure, or nothing, since a group without rows is
-    /// listed only to show a failure or to take filed objects back out of their folders.
+    // A group without rows is listed only for a failure or to take filed objects back out of their folders.
     func placeholder(for kind: SidebarObjectKind) -> DatabaseTreeNode.Status? {
-        phase(for: kind.category).failureMessage.map(DatabaseTreeNode.Status.error)
+        phase(for: kind).failureMessage.map(DatabaseTreeNode.Status.error)
     }
 }
 
@@ -76,8 +88,15 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     enum Kind {
+        /// A group of saved connections, at the top of a tree that lists them.
+        case connectionGroup(ConnectionNavigatorGroupRow)
+        /// A saved connection. The tree's own one holds everything the tree lists without connections.
+        case savedConnection(DatabaseTreeSavedConnectionRef)
         case recentSection
         case recentTable(DatabaseTreeTableRef)
+        /// The browsed database's favorite tables, above Recent. Each table also keeps its own row.
+        case favoritesSection
+        case favoriteTable(DatabaseTreeTableRef)
         case temporarySection
         case temporaryTable(DatabaseTreeTableRef)
         /// Flat shape: the section the browsed schema's folders sit in, above the object kinds.
@@ -91,9 +110,16 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         /// A partition of a partitioned table. Separate from `.table` because on MySQL and Oracle a
         /// partition is not a relation and cannot be opened, dropped or renamed on its own.
         case partition(DatabaseTreePartitionRef)
+        /// A heading under a table for one kind of detail. An ordinary row, not a source list group,
+        /// so it indents under its table the way an object group indents under its schema.
+        case tableDetailGroup(DatabaseTreeTableDetailGroupRef)
+        /// A column, index, foreign key or check. A trigger under a table stays `.trigger`, so it
+        /// opens and offers its menu the way it does under a schema.
+        case tableDetail(DatabaseTreeTableDetailRef)
         case routine(DatabaseTreeRoutineRef)
         case trigger(DatabaseTreeTriggerRef)
         case userType(DatabaseTreeUserTypeRef)
+        case serverObject(DatabaseTreeServerObjectRef)
         case status(Status)
 
         /// Flat shape: one collapsible section per object kind.
@@ -117,8 +143,8 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
 
     var isExpandable: Bool {
         switch kind {
-        case .recentSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
-             .objectKindSection, .containerObjectKindSection,
+        case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
+             .objectKindSection, .containerObjectKindSection, .tableDetailGroup,
              .hierarchicalSchemaSection, .redisKeysSection:
             return true
         case .table(let ref):
@@ -128,8 +154,49 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
-        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status:
+        case .connectionGroup(let group):
+            return !group.children.isEmpty
+        case .savedConnection(let ref):
+            return ref.ownsTree
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .serverObject, .status, .tableDetail:
             return false
+        }
+    }
+
+    /// The disclosure a row offers under the sidebar's options, the one rule every expandability gate
+    /// reads. `isExpandable` answers for the kind alone, as the outline drew it before Table Details:
+    /// partitions shown, details hidden.
+    func isExpandable(showsPartitions: Bool, showsTableDetails: Bool) -> Bool {
+        switch kind {
+        case .table(let ref):
+            if showsTableDetails, TableDetailGroupResolver.listsDetails(of: ref.table.type) { return true }
+            return showsPartitions && ref.table.type == .partitionedTable
+        case .partition:
+            return showsPartitions && isExpandable
+        default:
+            return isExpandable
+        }
+    }
+
+    /// Whether an Option-click on a row above this one opens it too. With Table Details on, every
+    /// table holds groups that each read a list as they open, so a schema of 2,000 tables queued
+    /// about 10,000 reads and saved every row it opened. A table and its groups then open only by
+    /// their own click; a partitioned table keeps opening with its schema while the option is off.
+    func opensWithAncestor(showsTableDetails: Bool) -> Bool {
+        switch kind {
+        case .table:
+            return !showsTableDetails
+        case .tableDetailGroup:
+            return false
+        // Opening a group with Option held must not open every database of the connection inside it,
+        // each of which reads its schemas as it opens.
+        case .savedConnection:
+            return false
+        case .connectionGroup, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .database, .schema, .partition, .tableDetail, .routine, .trigger, .userType, .serverObject, .status,
+             .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection,
+             .redisNode:
+            return true
         }
     }
 
@@ -151,24 +218,30 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         return nil
     }
 
+    var favoriteTableRef: DatabaseTreeTableRef? {
+        if case .favoriteTable(let ref) = kind { return ref }
+        return nil
+    }
+
+    var savedConnectionRef: DatabaseTreeSavedConnectionRef? {
+        if case .savedConnection(let ref) = kind { return ref }
+        return nil
+    }
+
     var temporaryTableRef: DatabaseTreeTableRef? {
         if case .temporaryTable(let ref) = kind { return ref }
         return nil
     }
 
-    /// A source-list group row: chrome the app invented to bucket objects, not an object the
-    /// database has. AppKit draws these itself once `isGroupItem` says so, and it stops indenting
-    /// their children, which is what puts a table at the same depth as a database in the tree.
-    ///
-    /// A schema is deliberately not one. It is a real object with its own menu and its own
-    /// children, so it stays an ordinary container row the way a folder does in Xcode's navigator.
+    // Chrome the app invented to bucket objects; a schema is a real object, so it stays an ordinary container row.
     var isGroupRow: Bool {
         switch kind {
-        case .recentSection, .temporarySection, .foldersSection, .objectKindSection, .redisKeysSection:
+        case .recentSection, .favoritesSection, .temporarySection, .foldersSection, .objectKindSection,
+             .redisKeysSection:
             return true
-        case .database, .schema, .containerObjectKindSection, .tableFolder,
-             .hierarchicalSchemaSection, .recentTable, .temporaryTable, .table, .partition,
-             .routine, .trigger, .userType, .status, .redisNode:
+        case .connectionGroup, .savedConnection, .database, .schema, .containerObjectKindSection, .tableFolder,
+             .hierarchicalSchemaSection, .recentTable, .favoriteTable, .temporaryTable, .table, .partition,
+             .routine, .trigger, .userType, .serverObject, .status, .redisNode, .tableDetailGroup, .tableDetail:
             return false
         }
     }
@@ -177,9 +250,11 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         switch kind {
         case .database, .schema:
             return true
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
-             .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
-             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable,
+             .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .table, .partition, .routine, .trigger, .userType, .serverObject, .status, .objectKindSection,
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return false
         }
     }
@@ -190,9 +265,10 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
-             .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
-             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+        case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .table, .partition, .routine, .trigger, .userType, .serverObject, .status, .objectKindSection,
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,
+             .tableDetailGroup, .tableDetail:
             return nil
         }
     }
@@ -202,7 +278,10 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         return nil
     }
 
+    static func connectionGroupId(_ groupId: UUID) -> String { "conngroup\u{1}\(groupId.uuidString)" }
+    static func savedConnectionId(_ connectionId: UUID) -> String { "savedconn\u{1}\(connectionId.uuidString)" }
     static let recentSectionId = "recent-section"
+    static let favoritesSectionId = "favorites-section"
     /// The flat shape's root, which has no row of its own; its status row hangs off this id.
     static let flatRootId = "flat-root"
     static let foldersSectionId = "folders-section"
@@ -250,12 +329,24 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
     }
 
     static func partitionId(_ ref: DatabaseTreePartitionRef) -> String { "partition\u{1}\(ref.id)" }
+    /// Under the table's own id, so a trigger listed under its table and under its schema's Triggers
+    /// group is two rows: `NSOutlineView` holds each item once.
+    static func tableDetailGroupId(_ group: DatabaseTreeTableDetailGroupRef) -> String {
+        "\(tableId(group.table))\u{1}detailgroup\u{1}\(group.kind.rawValue)"
+    }
+
+    static func tableDetailId(groupId: String, key: String) -> String {
+        "\(groupId)\u{1}detail\u{1}\(key)"
+    }
+
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
+    static func favoriteTableId(_ ref: DatabaseTreeTableRef) -> String { "favorite\u{1}table\u{1}\(ref.id)" }
     static let temporarySectionId = "temporary-section"
     static func temporaryTableId(_ ref: DatabaseTreeTableRef) -> String { "temporary\u{1}table\u{1}\(ref.id)" }
     static func routineId(_ ref: DatabaseTreeRoutineRef) -> String { "routine\u{1}\(ref.id)" }
     static func triggerId(_ ref: DatabaseTreeTriggerRef) -> String { "trigger\u{1}\(ref.id)" }
     static func userTypeId(_ ref: DatabaseTreeUserTypeRef) -> String { "usertype\u{1}\(ref.id)" }
+    static func serverObjectId(_ ref: DatabaseTreeServerObjectRef) -> String { "serverobject\u{1}\(ref.id)" }
     static func statusId(parentId: String, status: Status) -> String {
         switch status {
         case .loading: return "\(parentId)\u{1}status.loading"
@@ -265,9 +356,9 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
         }
     }
 
-    static func objectKindSectionId(_ kind: SidebarObjectKind) -> String { "kindSection\u{1}\(kind.rawValue)" }
+    static func objectKindSectionId(_ kind: SidebarObjectKind) -> String { "kindSection\u{1}\(kind.persistenceName)" }
     static func containerObjectKindSectionId(_ group: DatabaseTreeObjectGroup) -> String {
-        "containerKindSection\u{1}\(group.database)\u{1}\(group.schema ?? "")\u{1}\(group.kind.rawValue)"
+        "containerKindSection\u{1}\(group.database)\u{1}\(group.schema ?? "")\u{1}\(group.kind.persistenceName)"
     }
     static func hierarchicalSchemaSectionId(_ schema: String) -> String { "hschema\u{1}\(schema)" }
     static let redisKeysSectionId = "redis-keys-section"

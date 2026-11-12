@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 @testable import TableProMobile
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -27,6 +28,57 @@ struct SessionTransactionMonitorTests {
         driver.scriptedTransactionState = state
         live.drivers[id] = driver
         return driver
+    }
+
+    @Test("A run that moves the database waits for a write already on the session")
+    func moveWaitsForAWriteInFlight() async throws {
+        attach()
+        await monitor.statementsFinished(for: id)
+        let log = EventLog()
+        let gate = TestGate()
+        let write = Task {
+            await monitor.track(id) {
+                await gate.enter()
+                log.events.append("write")
+            }
+        }
+        await gate.waitUntilEntered()
+        let run = Task {
+            log.events.append("waiting")
+            await monitor.statementsFinished(for: id)
+            log.events.append("run")
+        }
+        try await waitUntil { log.events.contains("waiting") }
+
+        await gate.open()
+        await write.value
+        await run.value
+
+        #expect(log.events == ["waiting", "write", "run"])
+    }
+
+    @Test("Stop ends the wait for a write that is still running")
+    func stopEndsTheWait() async throws {
+        attach()
+        let log = EventLog()
+        let gate = TestGate()
+        let write = Task { await monitor.track(id) { await gate.enter() } }
+        await gate.waitUntilEntered()
+        let run = Task {
+            log.events.append("waiting")
+            await monitor.statementsFinished(for: id)
+            log.events.append("run")
+        }
+        try await waitUntil { log.events.contains("waiting") }
+
+        run.cancel()
+        await run.value
+
+        #expect(log.events == ["waiting", "run"])
+        #expect(monitor.isRunningStatements(id))
+        await gate.open()
+        await write.value
+        #expect(!monitor.isRunningStatements(id))
     }
 
     @Test("A run that leaves a transaction open shows it, explicit or implicit")
@@ -218,6 +270,39 @@ struct SessionTransactionMonitorTests {
         #expect(monitor.hold(for: id) == nil)
     }
 
+    @Test("A session that ends with a transaction open keeps what it held for the window still on it")
+    func endedSessionKeepsItsHold() async {
+        let driver = attach(.explicitTransaction)
+        await monitor.refresh(id)
+
+        live.drivers[id] = nil
+        monitor.sessionEnded(id, driver: driver)
+
+        #expect(monitor.endedHold(for: id, on: driver) == SessionTransactionMonitor.EndedHold(hold: .open, duringWork: false))
+        #expect(monitor.endedHold(for: id, on: MockDatabaseDriver()) == nil)
+
+        attach(.idle)
+        await monitor.refresh(id)
+        #expect(monitor.endedHold(for: id, on: driver) == nil)
+    }
+
+    @Test("A session that ends under a running statement is kept as ended during work, whichever notices first")
+    func sessionEndedUnderAStatement() async {
+        let driver = attach(.explicitTransaction)
+        await monitor.refresh(id)
+        let gate = TestGate()
+
+        let work = Task { await monitor.track(id) { await gate.enter() } }
+        await gate.waitUntilEntered()
+        live.drivers[id] = nil
+        await gate.open()
+        await work.value
+        monitor.sessionEnded(id, driver: driver)
+
+        #expect(monitor.hold(for: id) == nil)
+        #expect(monitor.endedHold(for: id, on: driver) == SessionTransactionMonitor.EndedHold(hold: .open, duringWork: true))
+    }
+
     @Test("An unknown answer keeps what the session last reported")
     func unknownKeepsTheEntry() async {
         let driver = attach(.explicitTransaction)
@@ -298,4 +383,9 @@ struct SessionTransactionMonitorTests {
         #expect(afterCommit == nil)
         #expect(serverState == .idle)
     }
+}
+
+@MainActor
+private final class EventLog {
+    var events: [String] = []
 }

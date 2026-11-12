@@ -24,15 +24,32 @@ struct QueryEditorViewModelTests {
         let vm = QueryEditorViewModel(windowCapacity: 100)
         await vm.run(driver: driver, script: .statements("SELECT * FROM t"), maxRows: 3)
 
-        #expect(vm.legacyRows.count == 3)
-        #expect(vm.legacyRows.first?.first == "0")
-        #expect(vm.legacyRows.last?.first == "2")
+        #expect(vm.window.shownValues.count == 3)
+        #expect(vm.window.shownValues.first?.first == "0")
+        #expect(vm.window.shownValues.last?.first == "2")
         #expect(vm.truncationReason != nil)
         #expect(vm.truncationMessage != nil)
         if case .truncated(let reason) = vm.phase, case .rowCap(let cap) = reason {
             #expect(cap == 3)
         } else {
             Issue.record("expected truncated(.rowCap) phase, got \(vm.phase)")
+        }
+    }
+
+    @Test("Share and Copy Results format the rows on screen, and refuse a result the free memory cannot hold")
+    func exportResultsFormatsTheRows() async throws {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1"], ["2"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = QueryEditorViewModel(windowCapacity: 100)
+        await vm.run(driver: driver, script: .statements("SELECT id FROM t"), maxRows: 100)
+
+        let csv = try await vm.exportResults(as: .csv, databaseType: .mysql, driver: driver, availableBytes: 0)
+        #expect(csv == "id\n1\n2")
+
+        await #expect(throws: ClipboardExporter.TooLarge(source: .queryResult)) {
+            try await vm.exportResults(as: .csv, databaseType: .mysql, driver: driver, availableBytes: 1)
         }
     }
 
@@ -106,7 +123,7 @@ struct QueryEditorViewModelTests {
         let vm = QueryEditorViewModel(windowCapacity: 100)
         await vm.run(driver: driver, script: .statements("SELECT id FROM t"), maxRows: 100)
 
-        #expect(vm.legacyRows.count == 2)
+        #expect(vm.window.shownValues.count == 2)
         #expect(vm.truncationReason == nil)
         #expect(vm.truncationMessage == nil)
         if case .finished = vm.phase {} else {
@@ -127,7 +144,7 @@ struct QueryEditorViewModelTests {
 
         await vm.handlePressure(.warning)
 
-        #expect(vm.legacyRows.count == 2)
+        #expect(vm.window.shownValues.count == 2)
         #expect(vm.truncationReason == nil)
         #expect(vm.truncationMessage == nil)
         if case .finished = vm.phase {} else {
@@ -144,11 +161,11 @@ struct QueryEditorViewModelTests {
 
         let vm = QueryEditorViewModel(windowCapacity: 100)
         await vm.run(driver: driver, script: .statements("SELECT id FROM t"), maxRows: 100)
-        #expect(vm.legacyRows.count == 1)
+        #expect(vm.window.shownValues.count == 1)
 
         vm.reset()
 
-        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.window.shownValues.isEmpty)
         #expect(vm.columns.isEmpty)
         if case .idle = vm.phase {} else {
             Issue.record("expected idle phase after reset")
@@ -400,6 +417,95 @@ struct QueryEditorViewModelTests {
             "INSERT INTO t VALUES (1)",
         ])
         #expect(vm.requestCount == 3)
+    }
+
+    private static let longValue = String(repeating: "x", count: 10_000)
+
+    private func longValueResult(rows: Int) -> QueryResult {
+        QueryResult(
+            columns: [ColumnInfo(name: "body", typeName: "TEXT", ordinalPosition: 0)],
+            rows: Array(repeating: [Self.longValue], count: rows),
+            rowsAffected: 0,
+            executionTime: 0
+        )
+    }
+
+    @Test("a long value comes back whole, and one past the budget keeps a preview and says so")
+    func longValuesStayWholeWithinTheBudget() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [.success(longValueResult(rows: 2))]
+
+        let vm = QueryEditorViewModel(windowCapacity: 100, textBudgetBytes: { 15_000 })
+        await vm.run(driver: driver, script: .statements("SELECT body FROM notes"))
+
+        let cells = vm.window.rows.compactMap { $0.cells.first }
+        guard cells.count == 2, case .text(let kept) = cells[0], case .truncatedText(_, let totalBytes, let ref) = cells[1] else {
+            Issue.record("expected the first value whole and the second cut, got \(cells)")
+            return
+        }
+        #expect(kept == Self.longValue)
+        #expect(totalBytes == 10_000)
+        #expect(ref == nil)
+        #expect(vm.longValuesNotice == String(localized: "Some long values are shown in part to stay within memory."))
+        let shown = vm.window.shownValues.first?.first ?? nil
+        #expect(shown?.utf8.count == Cell.previewByteLimit)
+    }
+
+    @Test("each request of a script starts with a budget of its own")
+    func eachRequestGetsAFreshBudget() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [.success(longValueResult(rows: 1)), .success(longValueResult(rows: 1))]
+
+        let vm = QueryEditorViewModel(windowCapacity: 100, textBudgetBytes: { 15_000 })
+        await vm.run(driver: driver, script: .statements("SELECT body FROM a", "SELECT body FROM b"))
+
+        #expect(driver.executedQueries == ["SELECT body FROM a", "SELECT body FROM b"])
+        guard case .text(let kept)? = vm.window.rows.first?.cells.first else {
+            Issue.record("the second request's value should be whole, got \(vm.window.rows)")
+            return
+        }
+        #expect(kept == Self.longValue)
+        #expect(vm.longValuesNotice == nil)
+    }
+
+    @Test("a new run clears the notice of the one before")
+    func newRunClearsTheNotice() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [.success(longValueResult(rows: 2)), .success(longValueResult(rows: 1))]
+        let vm = QueryEditorViewModel(windowCapacity: 100, textBudgetBytes: { 15_000 })
+
+        await vm.run(driver: driver, script: .statements("SELECT body FROM notes"))
+        #expect(vm.longValuesNotice != nil)
+        await vm.run(driver: driver, script: .statements("SELECT body FROM notes LIMIT 1"))
+
+        #expect(vm.longValuesNotice == nil)
+    }
+
+    @Test("Copy and Share Results ask for the memory the data browser's export asks for")
+    func resultsExportChecksMemory() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [.success(longValueResult(rows: 1))]
+        let vm = QueryEditorViewModel(windowCapacity: 100, textBudgetBytes: { 15_000 })
+        await vm.run(driver: driver, script: .statements("SELECT body FROM notes"))
+        let margin = 64 * 1_024 * 1_024
+
+        let rows = vm.window.rows
+        #expect(QueryEditorViewModel.resultsFitExport(rows: rows, availableBytes: 0))
+        #expect(QueryEditorViewModel.resultsFitExport(rows: rows, availableBytes: margin + 40_001))
+        #expect(!QueryEditorViewModel.resultsFitExport(rows: rows, availableBytes: margin + 40_000))
+    }
+
+    @Test("the budget is a quarter of the headroom past 64 MB, at most 64 MB, and 64 MB when the headroom is unknown")
+    func textBudgetFollowsTheHeadroom() {
+        let megabyte = 1_024 * 1_024
+        #expect(MemoryPressureMonitor.textBudgetBytes(availableBytes: 0) == 64 * megabyte)
+        #expect(MemoryPressureMonitor.textBudgetBytes(availableBytes: 32 * megabyte) == 0)
+        #expect(MemoryPressureMonitor.textBudgetBytes(availableBytes: 100 * megabyte) == 6 * megabyte)
+        // A result that spent its whole budget still exports, with the kept text off the headroom.
+        let available = 200 * megabyte
+        let spent = MemoryPressureMonitor.textBudgetBytes(availableBytes: available)
+        #expect(DataBrowserViewModel.exportFits(pendingBytes: spent, availableBytes: available - spent))
+        #expect(MemoryPressureMonitor.textBudgetBytes(availableBytes: 4_096 * megabyte) == 64 * megabyte)
     }
 }
 

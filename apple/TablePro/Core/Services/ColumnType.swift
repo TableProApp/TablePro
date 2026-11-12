@@ -8,17 +8,12 @@
 
 import Foundation
 
-/// Which editor an array's elements get.
-///
-/// A Bool could only say that an array has a per-element editor, never which one, and the two are
-/// not the same control: a scalar element fits a one-line field, a JSON element is a document and
-/// needs the JSON viewer.
+// Not a Bool: a scalar element fits a one-line field, a JSON element is a document and needs the JSON viewer.
 enum ArrayElementEditor: Equatable, Sendable {
     case scalar
     case json
 }
 
-/// Represents the semantic type of a database column
 enum ColumnType: Equatable, Sendable {
     case text(rawType: String?)
     case integer(rawType: String?)
@@ -35,7 +30,6 @@ enum ColumnType: Equatable, Sendable {
     case vector(rawType: String?)
     indirect case array(rawType: String?, element: ColumnType)
 
-    /// Raw database type name (e.g., "LONGTEXT", "VARCHAR(255)", "CLOB")
     var rawType: String? {
         switch self {
         case .text(let raw), .integer(let raw), .decimal(let raw),
@@ -50,7 +44,6 @@ enum ColumnType: Equatable, Sendable {
 
     // MARK: - Display Properties
 
-    /// Human-readable name for this column type
     var displayName: String {
         switch self {
         case .text: return "Text"
@@ -70,7 +63,6 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// Whether this type represents a JSON value that should use JSON editor
     var isJsonType: Bool {
         switch self {
         case .json:
@@ -80,7 +72,6 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// Whether this type represents a date/time value that should be formatted
     var isDateType: Bool {
         switch self {
         case .date, .timestamp, .datetime:
@@ -99,8 +90,6 @@ enum ColumnType: Equatable, Sendable {
             || base == "TIME WITH TIME ZONE"
     }
 
-    /// Whether this type represents long text that should use multi-line editor
-    /// Checks for TEXT, LONGTEXT, MEDIUMTEXT, TINYTEXT, CLOB types
     var isLongText: Bool {
         guard let raw = rawType?.uppercased() else {
             return false
@@ -119,14 +108,12 @@ enum ColumnType: Equatable, Sendable {
         return false
     }
 
-    /// Whether this type is a very large text type that should be excluded from browse queries.
-    /// Only MEDIUMTEXT (16MB), LONGTEXT (4GB), and CLOB — not plain TEXT (65KB) or TINYTEXT (255B).
+    // Kept out of browse queries: MEDIUMTEXT runs to 16MB and LONGTEXT to 4GB, where TEXT stops at 65KB.
     var isVeryLongText: Bool {
         guard let raw = rawType?.uppercased() else { return false }
         return raw == "MEDIUMTEXT" || raw == "LONGTEXT" || raw == "CLOB"
     }
 
-    /// Whether this type is an enum column
     var isEnumType: Bool {
         switch self {
         case .enumType:
@@ -136,7 +123,6 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// Whether this type is a SET column
     var isSetType: Bool {
         switch self {
         case .set:
@@ -146,7 +132,7 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// True from the result set alone, before the allowed values arrive on the metadata round trip.
+    // True from the result set alone, before the allowed values arrive on the metadata round trip.
     var isEnumOrSetType: Bool {
         isEnumType || isSetType
     }
@@ -165,13 +151,7 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// Whether `''` is a value of this type, so an emptied cell can be written as one.
-    ///
-    /// A date, number, boolean, JSON document, geometry or array has no empty value. Sent `''`,
-    /// MySQL without strict mode stores its zero value (`0000-00-00 00:00:00`, `0`), SQL Server
-    /// stores `1900-01-01` or `0`, SQLite keeps the text, and a strict MySQL or PostgreSQL refuses
-    /// the save. An empty SET is the empty set, and an enum has an empty value only when one of
-    /// its labels is the empty string.
+    // Sent '', non-strict MySQL stores a zero value, SQL Server 1900-01-01 or 0, SQLite keeps the text, and strict engines refuse it.
     var hasEmptyValue: Bool {
         switch self {
         case .text(let rawType):
@@ -185,14 +165,13 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// Types the classifier files under `.text`, either by name or because nothing else matched,
-    /// that hold no empty string either.
+    // Filed under .text by the classifier, by name or as the fallback, yet none of them holds an empty string.
     private static let nonCharacterTextTypes: Set<String> = [
         "YEAR", "UUID", "TIMEUUID", "UNIQUEIDENTIFIER",
         "INET", "CIDR", "MACADDR", "MACADDR8", "IPV4", "IPV6", "INTERVAL"
     ]
 
-    /// A column the engine types as a UUID. Cassandra's `timeuuid` is one, though it takes version 1 only.
+    // Cassandra's `timeuuid` counts, though it takes version 1 only.
     var isUUIDType: Bool {
         guard case .text(let rawType) = self else { return false }
         return Self.uuidTypeNames.contains(Self.baseTypeName(rawType))
@@ -205,16 +184,26 @@ enum ColumnType: Equatable, Sendable {
 
     private static let uuidTypeNames: Set<String> = ["UUID", "UNIQUEIDENTIFIER", "TIMEUUID"]
 
-    /// `Nullable(UUID)`, `year(4)` and `INTERVAL DAY TO SECOND` all name their type in the first word.
-    private static func baseTypeName(_ rawType: String?) -> String {
+    // `Nullable(UUID)`, `year(4)` and `INTERVAL DAY TO SECOND` all name their type in the first word.
+    static func baseTypeName(_ rawType: String?) -> String {
         guard var name = rawType?.uppercased() else { return "" }
-        while let wrapper = ["NULLABLE(", "LOWCARDINALITY("].first(where: { name.hasPrefix($0) }) {
+        while let wrapper = typeWrappers.first(where: { name.hasPrefix($0) }) {
             name.removeFirst(wrapper.count)
         }
         return String(name.prefix { $0.isLetter || $0.isNumber || $0 == "_" })
     }
 
-    /// The element type of an array column, if this is one
+    // ClickHouse's `Nullable(String)` and `LowCardinality(Nullable(String))` are the type they wrap.
+    static func unwrappedTypeName(_ rawType: String?) -> String? {
+        guard var name = rawType?.trimmingCharacters(in: .whitespaces) else { return nil }
+        while name.hasSuffix(")"), let wrapper = typeWrappers.first(where: { name.uppercased().hasPrefix($0) }) {
+            name = String(name.dropFirst(wrapper.count).dropLast()).trimmingCharacters(in: .whitespaces)
+        }
+        return name
+    }
+
+    private static let typeWrappers = ["NULLABLE(", "LOWCARDINALITY("]
+
     var arrayElement: ColumnType? {
         switch self {
         case .array(_, let element): return element
@@ -222,11 +211,7 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// The editor this array's elements get, or nil where they cannot be edited one at a time.
-    ///
-    /// A JSON element is included because PostgreSQL's array quoting round-trips it exactly: the
-    /// literal a `jsonb[]` cell carries parses to its elements and re-serializes byte for byte,
-    /// SQL NULL and JSON null included. Binary, spatial and nested arrays stay out.
+    // JSON elements qualify because PostgreSQL's array quoting round-trips a `jsonb[]` literal byte for byte, NULLs included.
     var arrayElementEditor: ArrayElementEditor? {
         guard let element = arrayElement else { return nil }
         switch element {
@@ -239,7 +224,6 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// Whether this array's elements can be edited one at a time
     var supportsElementEditing: Bool { arrayElementEditor != nil }
 
     var isVectorType: Bool {
@@ -257,7 +241,6 @@ enum ColumnType: Equatable, Sendable {
         return dimensions
     }
 
-    /// Compact lowercase badge label for sidebar
     var badgeLabel: String {
         switch self {
         case .boolean: return "bool"
@@ -278,12 +261,7 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// The same type with the labels the catalog declared, reaching inside an array to its element.
-    ///
-    /// The classifier cannot know them: a column's labels arrive separately in
-    /// `TableRows.columnEnumValues`. Injecting them on the scalar cases alone left an `ENUM[]`
-    /// column's element editor with no vocabulary, so it offered free-form text where the grid
-    /// offers the declared labels.
+    // Reaches into arrays: setting the labels on the scalar cases alone left an `ENUM[]` element editor offering free text.
     func withAllowedValues(_ values: [String]) -> ColumnType {
         switch self {
         case .enumType(let rawType, _):
@@ -297,7 +275,6 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// The allowed enum/set values, if known
     var enumValues: [String]? {
         switch self {
         case .enumType(_, let values), .set(_, let values):

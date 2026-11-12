@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::deletion_error::DeletionError;
 use super::deletion_report::{DeletionReport, PurgeFailure};
-use crate::persistence::{ColumnLayoutStore, FilterSettingsStore};
+use crate::persistence::{ColumnLayoutStore, FilterSettingsStore, HighlightRulesStore};
 use crate::workspace::{WorkspaceSaveError, WorkspaceStore};
 
 /// What the user chose in the delete dialog.
@@ -31,6 +31,7 @@ pub struct ConnectionDeletion {
     pub connections: Arc<dyn ConnectionWrites>,
     pub column_layouts: ColumnLayoutStore,
     pub filters: FilterSettingsStore,
+    pub highlight_rules: HighlightRulesStore,
     pub workspaces: WorkspaceStore,
     /// `None` when the history database did not open.
     pub history: Option<QueryHistory>,
@@ -54,13 +55,25 @@ impl ConnectionDeletion {
         let mut report = DeletionReport::default();
         self.column_layouts.forget_connection(id);
         self.filters.forget_connection(id);
+        self.highlight_rules.forget_connection(id);
         // Awaited inside the delete's hold, so a quit right after it
         // cannot leave them on disk.
-        self.column_layouts.flush().await;
-        self.filters.flush().await;
+        for result in [
+            self.column_layouts.flush().await,
+            self.filters.flush().await,
+            self.highlight_rules.flush().await,
+        ] {
+            if let Err(error) = result {
+                report.purge_failures.push(PurgeFailure::Settings(error));
+            }
+        }
         // Copies kept before an upgrade hold the connection's tables and filter values, and are not
         // worth keeping without them.
-        let files = [self.column_layouts.path().to_owned(), self.filters.path().to_owned()];
+        let files = [
+            self.column_layouts.path().to_owned(),
+            self.filters.path().to_owned(),
+            self.highlight_rules.path().to_owned(),
+        ];
         let copies = self
             .spawner
             .spawn_blocking_task(move || {
@@ -179,6 +192,7 @@ mod tests {
         vault: Arc<FakeSecretVault>,
         layouts: ColumnLayoutStore,
         filters: FilterSettingsStore,
+        highlight_rules: HighlightRulesStore,
         workspaces: WorkspaceStore,
         drafts: DraftStore,
         history: QueryHistory,
@@ -251,6 +265,7 @@ mod tests {
         let vault = Arc::new(FakeSecretVault::new());
         let layouts = ColumnLayoutStore::load(paths.column_layouts_file(), &tasks);
         let filters = FilterSettingsStore::load(paths.filter_settings_file(), &tasks);
+        let highlight_rules = HighlightRulesStore::load(paths.highlight_rules_file(), &tasks);
         let drafts = DraftStore::new(paths.drafts_dir());
         let workspaces = WorkspaceStore::start(paths.workspaces_dir(), drafts.clone(), &tasks);
         let history = QueryHistory::open(&paths).await.expect("the history");
@@ -268,6 +283,12 @@ mod tests {
                 .expect("the password");
             layouts.save(connection_id, Some("public"), "users", &named_width());
             filters.set_filters(connection_id, Some("public"), "users", filter());
+            highlight_rules.set_rules(
+                connection_id,
+                Some("public"),
+                "users",
+                vec![crate::services::grid::HighlightRule::new("name")],
+            );
             let key = SessionKey::Saved(connection_id);
             let draft = DraftId::new();
             drafts
@@ -309,6 +330,7 @@ mod tests {
             vault,
             layouts,
             filters,
+            highlight_rules,
             workspaces,
             drafts,
             history,
@@ -330,6 +352,7 @@ mod tests {
                 }),
                 column_layouts: self.layouts.clone(),
                 filters: self.filters.clone(),
+                highlight_rules: self.highlight_rules.clone(),
                 workspaces: self.workspaces.clone(),
                 history: Some(self.history.clone()),
                 spawner: paused_tasks(),
@@ -502,6 +525,7 @@ mod tests {
         for file in [
             fixture.paths.column_layouts_file(),
             fixture.paths.filter_settings_file(),
+            fixture.paths.highlight_rules_file(),
         ] {
             let on_disk = std::fs::read_to_string(&file).expect("the file");
             assert!(
@@ -523,6 +547,28 @@ mod tests {
         assert!(fixture.listed(fixture.other));
         assert!(fixture.has_password(fixture.other));
         fixture.kept_everything_for(fixture.other).await;
+    }
+
+    #[tokio::test]
+    async fn a_failed_table_state_purge_is_reported() {
+        let fixture = fixture().await;
+        fixture.highlight_rules.flush().await.expect("initial write");
+        let path = fixture.paths.highlight_rules_file();
+        std::fs::remove_file(&path).expect("remove saved file");
+        std::fs::create_dir(&path).expect("block replacement");
+        let report = fixture
+            .deletion()
+            .run(fixture.id, DeletionOptions::default())
+            .await
+            .expect("deleted entry");
+        assert!(!fixture.listed(fixture.id));
+        assert!(
+            report
+                .purge_failures
+                .iter()
+                .any(|failure| matches!(failure, PurgeFailure::Settings(_)))
+        );
+        assert!(report.summary("Prod").expect("purge notice").contains("settings"));
     }
 
     #[tokio::test]

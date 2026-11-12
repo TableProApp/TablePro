@@ -469,8 +469,7 @@ internal final class CreateTableDraft: ObservableObject {
                     coordinator: coordinator
                 )
             } catch {
-                Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
-                reportFailure(error.localizedDescription, on: coordinator)
+                reportFailure(error: error, on: coordinator)
             }
         }
     }
@@ -508,8 +507,7 @@ internal final class CreateTableDraft: ObservableObject {
             } catch let formError as PluginCreateTableFormError {
                 form?.recordSubmissionError(formError)
             } catch {
-                Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
-                reportFailure(error.localizedDescription, on: coordinator)
+                reportFailure(error: error, on: coordinator)
             }
         }
     }
@@ -558,6 +556,15 @@ internal final class CreateTableDraft: ObservableObject {
         AppCommands.shared.objectChanged.send(
             DatabaseObjectChange(connectionId: connection.id, scope: scope, name: name, kind: .rows)
         )
+    }
+
+    private func reportFailure(error: any Error, on coordinator: MainContentCoordinator) {
+        let failure = GatedOperationFailure(error)
+        if failure.reportsFailure {
+            Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
+        }
+        guard let message = failure.message else { return }
+        reportFailure(message, on: coordinator)
     }
 
     private func reportFailure(_ message: String, on coordinator: MainContentCoordinator) {

@@ -1,13 +1,8 @@
-//
-//  MCPTokenStoreTests.swift
-//  TableProTests
-//
 //  Minting a token is a grant, so the store makes the caller state the grant: `generate` takes the
 //  connection scope and the expiry with no defaults, because the defaults it used to carry handed
 //  every caller that forgot them a token over every connection that never expired. Two tokens may
 //  share a name; pairing no longer revokes an existing token because a new client claimed the same
 //  one, which let any caller name an installed client and take its access away.
-//
 
 import Foundation
 import TableProMCP
@@ -21,21 +16,36 @@ import Testing
 private final class InMemoryCredentialStore: MCPTokenCredentialStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: Data?
+    private var refusesWrites = false
 
     init(seed: Data? = Data("[]".utf8)) {
         self.stored = seed
     }
 
-    func read() -> Data? {
+    var failsWrites: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return refusesWrites
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            refusesWrites = newValue
+        }
+    }
+
+    func read() -> MCPTokenBlob {
         lock.lock()
         defer { lock.unlock() }
-        return stored
+        return stored.map(MCPTokenBlob.found) ?? .missing
     }
 
     @discardableResult
     func write(_ data: Data) -> Bool {
         lock.lock()
         defer { lock.unlock() }
+        guard !refusesWrites else { return false }
         stored = data
         return true
     }
@@ -61,10 +71,15 @@ struct MCPTokenStoreTests {
         MCPTokenStore(credentialStore: credentialStore)
     }
 
-    private func makeToken(isActive: Bool = true, expiresAt: Date? = nil) -> MCPAuthToken {
+    private func makeToken(
+        name: String = "test-token",
+        isActive: Bool = true,
+        expiresAt: Date? = nil,
+        isClaudeAgentCredential: Bool = false
+    ) -> MCPAuthToken {
         MCPAuthToken(
             id: UUID(),
-            name: "test-token",
+            name: name,
             prefix: "tp_abc12",
             tokenHash: "fakehash",
             salt: "fakesalt",
@@ -73,7 +88,8 @@ struct MCPTokenStoreTests {
             createdAt: Date.now,
             lastUsedAt: nil,
             expiresAt: expiresAt,
-            isActive: isActive
+            isActive: isActive,
+            isClaudeAgentCredential: isClaudeAgentCredential
         )
     }
 
@@ -130,6 +146,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .limited(allowed),
             expiresAt: expiry,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -157,6 +174,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let second = try await store.generate(
@@ -165,6 +183,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -185,6 +204,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -203,6 +223,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -220,6 +241,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(-1),
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -236,6 +258,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -255,6 +278,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(-1),
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -271,6 +295,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -289,6 +314,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(-1),
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let authenticator = MCPBearerTokenAuthenticator(
@@ -318,6 +344,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -334,6 +361,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -351,6 +379,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let recorder = RevocationRecorder()
@@ -365,6 +394,84 @@ struct MCPTokenStoreTests {
         #expect(await recorder.keys().contains(key))
     }
 
+    @Test("Revoking by id reports whether the Keychain took the change")
+    func revokeByIdReportsPersistence() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "settings",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+
+        credentials.failsWrites = true
+        #expect(await store.revoke(tokenId: result.token.id) == false)
+        #expect(await store.validate(bearerToken: result.plaintext) == nil)
+
+        credentials.failsWrites = false
+        #expect(await store.revoke(tokenId: result.token.id))
+        let reloaded = makeStore(credentials)
+        await reloaded.loadFromDisk()
+        #expect(await reloaded.token(id: result.token.id)?.isActive == false)
+    }
+
+    @Test("A presented token whose revoke the Keychain refused reports it, and a retry saves it as already revoked")
+    func unsavedRevocationIsRetried() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "tablepro command",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+
+        credentials.failsWrites = true
+        #expect(await store.revoke(presentedToken: result.plaintext) == .notPersisted)
+        #expect(await store.validate(bearerToken: result.plaintext) == nil)
+        #expect(await store.revoke(presentedToken: result.plaintext) == .notPersisted)
+
+        let afterFailure = makeStore(credentials)
+        await afterFailure.loadFromDisk()
+        #expect(await afterFailure.token(id: result.token.id)?.isActive == true)
+
+        credentials.failsWrites = false
+        #expect(await store.revoke(presentedToken: result.plaintext) == .alreadyRevoked)
+
+        let afterRetry = makeStore(credentials)
+        await afterRetry.loadFromDisk()
+        #expect(await afterRetry.token(id: result.token.id)?.isActive == false)
+        #expect(await afterRetry.validate(bearerToken: result.plaintext) == nil)
+    }
+
+    @Test("A presented active token whose revoke the Keychain took reports revoked")
+    func savedRevocationReportsRevoked() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "tablepro command",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+
+        #expect(await store.revoke(presentedToken: result.plaintext) == .revoked)
+
+        let reloaded = makeStore(credentials)
+        await reloaded.loadFromDisk()
+        #expect(await reloaded.token(id: result.token.id)?.isActive == false)
+    }
+
     @Test("Deleting drops the token from the list entirely")
     func deleteRemovesTheToken() async throws {
         let store = makeStore()
@@ -374,6 +481,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -381,6 +489,170 @@ struct MCPTokenStoreTests {
 
         #expect(await store.list().contains(where: { $0.id == result.token.id }) == false)
         #expect(await store.validate(bearerToken: result.plaintext) == nil)
+    }
+
+    @Test("A token the Keychain did not save is never handed out")
+    func unsavedTokenIsRefused() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        credentials.failsWrites = true
+
+        await #expect(throws: MCPTokenStoreError.notSaved) {
+            _ = try await store.generate(
+                name: "Raycast",
+                permissions: .readOnly,
+                connectionAccess: .all,
+                expiresAt: nil,
+                isBridgeCredential: false,
+                isClaudeAgentCredential: false,
+                extraScopes: []
+            )
+        }
+
+        #expect(await store.list().isEmpty)
+    }
+
+    @Test("The bridge credential is still minted when the Keychain refuses the write")
+    func bridgeCredentialLivesInMemory() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        credentials.failsWrites = true
+
+        let bridge = try await store.generate(
+            name: MCPTokenStore.stdioBridgeTokenName,
+            permissions: MCPTokenStore.bridgeTokenPermissions,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(3_600),
+            isBridgeCredential: true,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+
+        #expect(await store.validate(bearerToken: bridge.plaintext)?.id == bridge.token.id)
+    }
+
+    @Test("Deleting reports whether the Keychain took the change")
+    func deleteReportsPersistence() async throws {
+        let credentials = InMemoryCredentialStore()
+        let store = makeStore(credentials)
+        let result = try await store.generate(
+            name: "settings",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+
+        credentials.failsWrites = true
+        #expect(await store.delete(tokenId: result.token.id) == false)
+        #expect(await store.validate(bearerToken: result.plaintext) == nil)
+
+        let reloaded = makeStore(credentials)
+        await reloaded.loadFromDisk()
+        #expect(await reloaded.token(id: result.token.id) != nil)
+
+        credentials.failsWrites = false
+        let second = try await store.generate(
+            name: "second",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        #expect(await store.delete(tokenId: second.token.id))
+        let afterSave = makeStore(credentials)
+        await afterSave.loadFromDisk()
+        #expect(await afterSave.list().isEmpty)
+    }
+
+    @Test("Only the Claude Agent's own mint may take its token name")
+    func agentNameIsReserved() async throws {
+        let store = makeStore()
+        let paired = try await store.generate(
+            name: MCPTokenStore.claudeAgentTokenName,
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let agent = try await store.generate(
+            name: MCPTokenStore.claudeAgentTokenName,
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(900),
+            isBridgeCredential: false,
+            isClaudeAgentCredential: true,
+            extraScopes: []
+        )
+
+        #expect(paired.token.name != MCPTokenStore.claudeAgentTokenName)
+        #expect(agent.token.name == MCPTokenStore.claudeAgentTokenName)
+    }
+
+    @Test("A superseded bridge credential stops working at once and no revocation observer hears of it")
+    func supersededBridgeCredentialIsDroppedWithoutARevocation() async throws {
+        let store = makeStore()
+        let superseded = try await store.generate(
+            name: MCPTokenStore.stdioBridgeTokenName,
+            permissions: MCPTokenStore.bridgeTokenPermissions,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(3_600),
+            isBridgeCredential: true,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let paired = try await store.generate(
+            name: "paired",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let recorder = RevocationRecorder()
+        await store.addRevocationObserver { key, _ in
+            await recorder.append(key)
+        }
+
+        await store.dropSupersededBridgeCredential(tokenId: superseded.token.id)
+        await store.delete(tokenId: paired.token.id)
+        let pairedKey = paired.token.id.uuidString
+        try await waitUntil { await recorder.keys().contains(pairedKey) }
+
+        #expect(await store.validate(bearerToken: superseded.plaintext) == nil)
+        #expect(await store.list().contains(where: { $0.id == superseded.token.id }) == false)
+        #expect(await recorder.keys() == [pairedKey])
+    }
+
+    @Test("Only a bridge credential is dropped quietly: any other token passed in is deleted as a revocation")
+    func supersedingAPairedTokenStillRevokesIt() async throws {
+        let store = makeStore()
+        let paired = try await store.generate(
+            name: "paired",
+            permissions: .readWrite,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let recorder = RevocationRecorder()
+        await store.addRevocationObserver { key, _ in
+            await recorder.append(key)
+        }
+
+        await store.dropSupersededBridgeCredential(tokenId: paired.token.id)
+        let key = paired.token.id.uuidString
+        try await waitUntil { await recorder.keys().contains(key) }
+
+        #expect(await store.validate(bearerToken: paired.plaintext) == nil)
     }
 
     @Test("A second token claiming the same client name leaves the first one working")
@@ -392,6 +664,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -401,6 +674,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -420,6 +694,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .limited([UUID()]),
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -443,6 +718,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: Date.now.addingTimeInterval(3_600),
             isBridgeCredential: true,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let survivor = try await writer.generate(
@@ -451,6 +727,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
 
@@ -460,6 +737,28 @@ struct MCPTokenStoreTests {
         let names = await reader.list().map(\.name)
         #expect(names == ["user token"])
         #expect(await reader.token(id: survivor.token.id) != nil)
+    }
+
+    @Test("A token an older build let a client name like the Claude Agent is renamed and saved at load")
+    func claimedAgentNameIsReleasedAtLoad() async throws {
+        let claimed = makeToken(name: MCPTokenStore.claudeAgentTokenName)
+        let agent = makeToken(name: MCPTokenStore.claudeAgentTokenName, isClaudeAgentCredential: true)
+        let credentials = InMemoryCredentialStore(
+            seed: try MCPTokenStore.encodeStored(tokens: [claimed, agent], undecoded: [])
+        )
+
+        let store = makeStore(credentials)
+        await store.loadFromDisk()
+
+        let renamed = try #require(await store.token(id: claimed.id))
+        #expect(renamed.name == MCPTokenStore.claudeAgentTokenName + " (client)")
+        #expect(renamed.tokenHash == claimed.tokenHash)
+        #expect(renamed.isClaudeAgentCredential == false)
+        #expect(await store.token(id: agent.id)?.name == MCPTokenStore.claudeAgentTokenName)
+
+        let saved = MCPTokenStore.decodeStored(Data(credentials.storedText.utf8)).tokens
+        #expect(saved.first { $0.id == claimed.id }?.name == MCPTokenStore.claudeAgentTokenName + " (client)")
+        #expect(saved.first { $0.id == agent.id }?.name == MCPTokenStore.claudeAgentTokenName)
     }
 
     @Test("An optional grant survives a reload and adds to the tier's scopes")
@@ -472,6 +771,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: [.connectionsDisplay]
         )
 
@@ -494,6 +794,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         #expect(credentials.storedText.contains("extraScopes") == false)
@@ -536,6 +837,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: true,
+            isClaudeAgentCredential: false,
             extraScopes: [.connectionsDisplay]
         )
         #expect(result.token.extraScopes.isEmpty)
@@ -550,6 +852,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: []
         )
         let launcher = try await store.generate(
@@ -558,6 +861,7 @@ struct MCPTokenStoreTests {
             connectionAccess: .all,
             expiresAt: nil,
             isBridgeCredential: false,
+            isClaudeAgentCredential: false,
             extraScopes: [.connectionsDisplay]
         )
 

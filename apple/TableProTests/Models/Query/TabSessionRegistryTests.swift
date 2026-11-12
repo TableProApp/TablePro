@@ -118,6 +118,32 @@ struct TabSessionRegistryTests {
         #expect(session.dataRevision > before)
     }
 
+    // A buffer allocated while the old one is still held cannot share its address, so a copy always moves it.
+    @Test("An edit writes into the session's buffer instead of copying every row")
+    func editWritesInPlace() {
+        let registry = TabSessionRegistry()
+        let session = TabSession()
+        registry.register(session)
+        registry.setTableRows(makeRows((0..<1_000).map { "r\($0)" }), for: session.id)
+
+        for row in [0, 499, 999] {
+            let before = Self.bufferAddress(registry.tableRows(for: session.id))
+            registry.updateTableRows(for: session.id) { rows in
+                rows.edit(row: row, column: 0, value: .text("edited"))
+            }
+            #expect(Self.bufferAddress(registry.tableRows(for: session.id)) == before)
+        }
+
+        let rows = registry.tableRows(for: session.id)
+        #expect(rows.rows.count == 1_000)
+        #expect(rows.rows[499].values[0] == .text("edited"))
+        #expect(rows.rows[500].values[0] == .text("r500"))
+    }
+
+    private static func bufferAddress(_ rows: TableRows) -> UInt {
+        rows.rows.withUnsafeBufferPointer { UInt(bitPattern: $0.baseAddress) }
+    }
+
     // MARK: - rowSetRevision
 
     @Test("A cell edit moves dataRevision and leaves rowSetRevision alone")

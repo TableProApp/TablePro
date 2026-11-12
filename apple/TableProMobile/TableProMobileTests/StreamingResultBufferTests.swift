@@ -15,25 +15,42 @@ struct StreamingResultBufferTests {
         buffer.apply(.row(Row(cells: [.text("2")])))
         buffer.flush()
 
-        #expect(buffer.legacyRows.count == 2)
+        #expect(buffer.window.shownValues.count == 2)
         #expect(buffer.window.count == 2)
         #expect(buffer.columns.count == 1)
-        #expect(buffer.legacyRows.first?.first == "1")
+        #expect(buffer.window.shownValues.first?.first == "1")
     }
 
-    @Test("shrink keeps window and legacy rows in lockstep")
-    func shrinkLockstep() {
+    @Test("shrink keeps the newest rows")
+    func shrinkKeepsNewest() {
         let buffer = StreamingResultBuffer(capacity: 100)
         for index in 0..<10 {
             buffer.apply(.row(Row(cells: [.text("\(index)")])))
         }
         buffer.flush()
-        #expect(buffer.legacyRows.count == 10)
+        #expect(buffer.count == 10)
 
         buffer.shrink(to: 4)
 
-        #expect(buffer.legacyRows.count == 4)
-        #expect(buffer.window.count == 4)
+        #expect(buffer.count == 4)
+        #expect(buffer.window.shownValues.map { $0.first ?? nil } == ["6", "7", "8", "9"])
+    }
+
+    @Test("the grid gets a preview of a long value the row keeps whole")
+    func gridTextOfKeptValueIsCapped() throws {
+        let buffer = StreamingResultBuffer(capacity: 10)
+        let long = String(repeating: "界", count: 5_000)
+        buffer.apply(.row(Row(cells: [.text(long)])))
+        buffer.flush()
+
+        let shown = try #require(buffer.window.shownValues.first?.first ?? nil)
+        #expect(shown.utf8.count <= Cell.previewByteLimit)
+        #expect(long.hasPrefix(shown))
+        guard case .text(let kept)? = buffer.window.rows.first?.cells.first else {
+            Issue.record("the row should keep the whole value")
+            return
+        }
+        #expect(kept == long)
     }
 
     @Test("reset clears all state")

@@ -112,6 +112,20 @@
     {
       "target" : {
         "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProCommandLineTests",
+        "name" : "TableProCommandLineTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProMCPClientsTests",
+        "name" : "TableProMCPClientsTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
         "identifier" : "TableProMCPTests",
         "name" : "TableProMCPTests"
       }

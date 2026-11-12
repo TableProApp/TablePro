@@ -109,6 +109,8 @@ extension MainContentView {
         guard let tab = currentTab else { return nil }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         guard !tableRows.columns.isEmpty, !tableRows.rows.isEmpty else { return nil }
+        // The summary goes to the provider, so it is masked as an external caller's result is.
+        let overlay = coordinator.externalOverlay(forTab: tab.id)
 
         let columns = tableRows.columns
         let rows = tableRows.rows
@@ -125,13 +127,14 @@ extension MainContentView {
                     return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
                 }
                 let raw: String
-                switch row.values[i] {
+                switch overlay.value(row.values[i], column: i) {
                 case .null:
                     raw = "NULL"
                 case .text(let s):
                     raw = s
                 case .bytes(let data):
-                    raw = BlobFormattingService.shared.format(data, for: .copy) ?? ""
+                    // The grid's form stops at 64 bytes, under the cut below; a full copy would hex the whole value.
+                    raw = BlobFormattingService.shared.format(data, for: .grid) ?? ""
                 }
                 return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "…" : raw
             }

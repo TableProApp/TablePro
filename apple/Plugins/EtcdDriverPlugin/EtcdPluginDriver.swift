@@ -17,6 +17,13 @@ private extension Array where Element == String {
     var asCells: [PluginCellValue] { map(PluginCellValue.text) }
 }
 
+private extension Error {
+    var isEtcdRevisionCompacted: Bool {
+        guard let fault = (self as? EtcdError)?.serverFault else { return false }
+        return EtcdCompaction.isCompacted(grpcCode: fault.grpcCode, message: fault.message)
+    }
+}
+
 final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var _httpClient: EtcdHttpClient?
@@ -30,7 +37,9 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdPluginDriver")
     private static let maxKeys = PluginRowLimits.emergencyMax
-
+    // Values make a response as large as the data, so a batch of them is kept far smaller than a batch of keys.
+    private static let valueBatchSize = 1_000
+    private static let keyBatchSize = 10_000
 
     private static let columns = EtcdColumn.allCases.map(\.rawValue)
     private static let columnTypeNames = ["String", "String", "Int64", "Int64", "Int64", "String"]
@@ -42,7 +51,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { false }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .statementPolicy]
+        [.cancelQuery, .statementPolicy, .columnDefaultMarks]
     }
 
     // etcd has no transactions.
@@ -176,7 +185,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, context: context, continuation: continuation)
@@ -185,9 +194,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
             }
 
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -233,31 +240,57 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let matcher = try filter.matcher()
-        continuation.yield(.header(PluginStreamHeader(
+        var header = PluginStreamHeader(
             columns: Self.columns,
             columnTypeNames: Self.columnTypeNames,
             estimatedRowCount: nil
-        )))
+        )
 
         let range = Self.prefixRange(prefix)
-        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: Int64(Self.maxKeys))
-        req.sortOrder = sortAscending ? "ASCEND" : "DESCEND"
-        req.sortTarget = "KEY"
-
-        let response = try await client.rangeRequest(req)
-        var rows: [PluginRow] = []
-
-        for kv in response.kvs ?? [] {
-            try Task.checkCancellation()
-            let row = Self.filterRow(kv)
-            guard matcher.matches(row) else { continue }
-            rows.append(row.cells)
+        guard sortAscending else {
+            // etcd reads only in ascending key order and sorts a descending range whole, so the range is one response.
+            var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: Int64(Self.maxKeys))
+            req.sortOrder = "DESCEND"
+            req.sortTarget = "KEY"
+            let response = try await client.rangeRequest(req)
+            let rows = (response.kvs ?? []).map(Self.filterRow).filter(matcher.matches).map(\.cells)
+            // `more` says the range held keys past the limit.
+            if response.more == true { header.rowLimit = rows.count }
+            continuation.yield(.header(header))
+            if !rows.isEmpty {
+                continuation.yield(.rows(rows))
+            }
+            continuation.finish()
+            return
         }
 
-        if !rows.isEmpty {
-            continuation.yield(.rows(rows))
+        continuation.yield(.header(header))
+        // The scan hands each batch over synchronously, so a batch goes out just before the next is read, where the
+        // read can wait for the consumer.
+        var unsent: [PluginRow] = []
+        do {
+            try await scanKeyValues(
+                in: range,
+                client: client,
+                beforeNextBatch: {
+                    guard !unsent.isEmpty else { return }
+                    _ = await PluginRowStream.deliver(.rows(unsent), to: continuation)
+                    unsent = []
+                },
+                body: { kvs in
+                    unsent = kvs.map(Self.filterRow).filter(matcher.matches).map(\.cells)
+                    return true
+                }
+            )
+        } catch let error where error.isEtcdRevisionCompacted {
+            // Rows already went out, so the read cannot start over at a newer revision without repeating them.
+            throw EtcdError.serverError(String(
+                localized: "etcd compacted the revision this export started from, so it stopped part way. Run it again."
+            ))
         }
-
+        if !unsent.isEmpty {
+            _ = await PluginRowStream.deliver(.rows(unsent), to: continuation)
+        }
         continuation.finish()
     }
 
@@ -278,17 +311,24 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
 
-        let range = Self.prefixRange(keyspace.root)
-
-        let response = try await client.rangeRequest(EtcdRangeRequest(
-            key: range.key,
-            rangeEnd: range.rangeEnd,
-            limit: Int64(Self.maxKeys),
-            keysOnly: true
-        ))
-
-        let keys = (response.kvs ?? []).map(\.key)
-        return keyspace.tables(forKeys: keys).map {
+        let keyCounts: [String: Int] = try await restartingOnCompaction {
+            var keyCounts: [String: Int] = [:]
+            try await EtcdRangeScan.scan(
+                Self.prefixRange(keyspace.root),
+                batchSize: Self.keyBatchSize,
+                maxItems: Self.maxKeys,
+                key: { $0 },
+                fetch: { range, limit, revision in
+                    try await Self.keyBatch(in: range, limit: limit, revision: revision, client: client)
+                },
+                body: { (keys: [Data]) in
+                    keyspace.count(keys, into: &keyCounts)
+                    return true
+                }
+            )
+            return keyCounts
+        }
+        return keyspace.tables(fromKeyCounts: keyCounts).map {
             PluginTableInfo(name: $0.name, type: "PREFIX", rowCount: $0.keyCount)
         }
     }
@@ -419,6 +459,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
         let generator = EtcdStatementGenerator(
             prefix: keyspace.prefix(forTable: table),
             columns: columns
@@ -451,6 +492,18 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         case .put(let key, let value, let leaseId):
             return try await dispatchPut(key: key, value: value, leaseId: leaseId, client: client, startTime: startTime)
+
+        case .create(let key, let value, let leaseId):
+            return try await dispatchGuardedWrite(
+                .create(key: key, value: value, lease: leaseId),
+                key: key, value: value, client: client, startTime: startTime
+            )
+
+        case .move(let source, let target, let value, let leaseId, let modRevision):
+            return try await dispatchGuardedWrite(
+                .move(from: source, to: target, value: value, lease: leaseId, modRevision: modRevision),
+                key: target, value: value, client: client, startTime: startTime
+            )
 
         case .del(let key, let prefix):
             return try await dispatchDel(key: key, prefix: prefix, client: client, startTime: startTime)
@@ -609,6 +662,32 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             rowsAffected: 1,
             executionTime: Date().timeIntervalSince(startTime)
         )
+    }
+
+    private func dispatchGuardedWrite(
+        _ request: EtcdTxnRequest, key: Data, value: Data,
+        client: EtcdHttpClient, startTime: Date
+    ) async throws -> PluginQueryResult {
+        let response = try await client.txnRequest(request)
+        switch response.outcome {
+        case .applied:
+            return PluginQueryResult(
+                columns: ["Key", "Value", "Revision"],
+                columnTypeNames: ["String", "String", "Int64"],
+                rows: [[.etcd(key), .etcd(value), .text(response.revision ?? "unknown")]],
+                rowsAffected: 1,
+                executionTime: Date().timeIntervalSince(startTime)
+            )
+        case .targetExists:
+            throw EtcdGuardedWriteRefusal(message: String(
+                format: String(localized: "A key named '%@' already exists."),
+                EtcdCommandText.text(key) ?? EtcdCommandText.quoted(key)
+            ))
+        case .sourceChanged:
+            throw EtcdGuardedWriteRefusal(
+                message: String(localized: "The key changed on the server after it was read. Refresh and try again.")
+            )
+        }
     }
 
     private func dispatchDel(
@@ -803,15 +882,17 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         if let parsed = EtcdQueryBuilder.parseRangeQuery(query) {
-            return try await fetchKeysPage(
-                prefix: parsed.prefix,
-                offset: parsed.offset,
-                limit: parsed.limit,
-                sortAscending: parsed.sortAscending,
-                filter: parsed.filter,
-                client: client,
-                startTime: startTime
-            )
+            return try await restartingOnCompaction {
+                try await fetchKeysPage(
+                    prefix: parsed.prefix,
+                    offset: parsed.offset,
+                    limit: parsed.limit,
+                    sortAscending: parsed.sortAscending,
+                    filter: parsed.filter,
+                    client: client,
+                    startTime: startTime
+                )
+            }
         }
 
         if let parsed = EtcdQueryBuilder.parseCountQuery(query) {
@@ -841,20 +922,129 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let matcher = try filter.matcher()
         let range = Self.prefixRange(prefix)
-        let fetchLimit = filter.isUnfiltered ? Int64(min(offset + limit, Self.maxKeys)) : Int64(Self.maxKeys)
+        let pageLimit = min(limit, max(0, Self.maxKeys - offset))
+        guard pageLimit > 0 else { return emptyResult(startTime: startTime) }
 
-        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: fetchLimit)
-        req.sortOrder = sortAscending ? "ASCEND" : "DESCEND"
-        req.sortTarget = "KEY"
-
-        let response = try await client.rangeRequest(req)
-        let rows = (response.kvs ?? []).map(Self.filterRow).filter(matcher.matches)
-
-        guard offset < rows.count else {
-            return emptyResult(startTime: startTime)
+        guard filter.isUnfiltered else {
+            // Past the row ceiling an ascending scan stops at the smallest keys, while a descending page reads from
+            // the largest, so that page still comes from one sorted request.
+            if !sortAscending, try await countKeys(prefix: prefix, client: client) > Self.maxKeys {
+                return try await sortedDescendingPage(
+                    of: range, offset: offset, limit: limit, matcher: matcher, client: client, startTime: startTime
+                )
+            }
+            var collector = EtcdPageCollector<EtcdFilterRow>(offset: offset, limit: limit, ascending: sortAscending)
+            try await scanKeyValues(in: range, client: client) { kvs in
+                for kv in kvs {
+                    let row = Self.filterRow(kv)
+                    guard matcher.matches(row) else { continue }
+                    guard collector.add(row) else { return false }
+                }
+                return true
+            }
+            return result(of: collector.page, startTime: startTime)
         }
-        let pageEnd = min(offset + limit, rows.count)
-        return result(of: Array(rows[offset ..< pageEnd]), startTime: startTime)
+
+        let kvs = sortAscending
+            ? try await ascendingPage(of: range, offset: offset, limit: pageLimit, client: client)
+            : try await descendingPage(of: range, offset: offset, limit: pageLimit, client: client)
+        return result(of: kvs.map(Self.filterRow), startTime: startTime)
+    }
+
+    private func sortedDescendingPage(
+        of range: EtcdKeyRange,
+        offset: Int,
+        limit: Int,
+        matcher: EtcdRowMatcher,
+        client: EtcdHttpClient,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: Int64(Self.maxKeys))
+        req.sortOrder = "DESCEND"
+        req.sortTarget = "KEY"
+        let rows = (try await client.rangeRequest(req).kvs ?? []).map(Self.filterRow).filter(matcher.matches)
+        guard offset < rows.count else { return emptyResult(startTime: startTime) }
+        return result(of: Array(rows[offset ..< min(offset + limit, rows.count)]), startTime: startTime)
+    }
+
+    private func restartingOnCompaction<Value>(_ read: () async throws -> Value) async throws -> Value {
+        try await EtcdCompaction.restartingOnce(when: { $0.isEtcdRevisionCompacted }, read)
+    }
+
+    // Keys alone carry the read up to the page, then one request reads the page's values from where it starts.
+    private func ascendingPage(
+        of range: EtcdKeyRange, offset: Int, limit: Int, client: EtcdHttpClient
+    ) async throws -> [EtcdKeyValue] {
+        let start = try await EtcdRangeScan.pageStart(of: range, skipping: offset, batchSize: Self.keyBatchSize) {
+            try await Self.keyBatch(in: $0, limit: $1, revision: $2, client: client)
+        }
+        guard let start else { return [] }
+        var req = EtcdRangeRequest(key: start.range.key, rangeEnd: start.range.rangeEnd, limit: Int64(limit))
+        req.revision = start.revision
+        return try await client.rangeRequest(req).kvs ?? []
+    }
+
+    // A descending read sorts the whole range on the server however it is split, so the skip stays one request,
+    // of keys alone.
+    private func descendingPage(
+        of range: EtcdKeyRange, offset: Int, limit: Int, client: EtcdHttpClient
+    ) async throws -> [EtcdKeyValue] {
+        var pageRange = range
+        var revision: Int64?
+        if offset > 0 {
+            var skip = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: Int64(offset), keysOnly: true)
+            skip.sortOrder = "DESCEND"
+            skip.sortTarget = "KEY"
+            let skipped = try await client.rangeRequest(skip)
+            guard skipped.more == true, let last = skipped.kvs?.last else { return [] }
+            pageRange = EtcdRangeScan.range(before: last.key, in: range)
+            revision = Self.revision(of: skipped)
+        }
+        var req = EtcdRangeRequest(key: pageRange.key, rangeEnd: pageRange.rangeEnd, limit: Int64(limit))
+        req.sortOrder = "DESCEND"
+        req.sortTarget = "KEY"
+        req.revision = revision
+        return try await client.rangeRequest(req).kvs ?? []
+    }
+
+    // Ascending key order, a bounded batch per response, all at one revision.
+    private func scanKeyValues(
+        in range: EtcdKeyRange,
+        client: EtcdHttpClient,
+        beforeNextBatch: () async -> Void = {},
+        body: ([EtcdKeyValue]) throws -> Bool
+    ) async throws {
+        try await EtcdRangeScan.scan(
+            range,
+            batchSize: Self.valueBatchSize,
+            maxItems: Self.maxKeys,
+            key: { $0.key },
+            fetch: { range, limit, revision in
+                await beforeNextBatch()
+                var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: limit)
+                req.revision = revision
+                let response = try await client.rangeRequest(req)
+                return EtcdRangeBatch(
+                    items: response.kvs ?? [], more: response.more ?? false, revision: Self.revision(of: response)
+                )
+            },
+            body: body
+        )
+    }
+
+    private static func keyBatch(
+        in range: EtcdKeyRange, limit: Int64, revision: Int64?, client: EtcdHttpClient
+    ) async throws -> EtcdRangeBatch<Data> {
+        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: limit, keysOnly: true)
+        req.revision = revision
+        let response = try await client.rangeRequest(req)
+        return EtcdRangeBatch(
+            items: (response.kvs ?? []).map(\.key), more: response.more ?? false, revision: Self.revision(of: response)
+        )
+    }
+
+    private static func revision(of response: EtcdRangeResponse) -> Int64? {
+        response.header?.revision.flatMap { Int64($0) }
     }
 
     private func countKeys(prefix: String, client: EtcdHttpClient) async throws -> Int {

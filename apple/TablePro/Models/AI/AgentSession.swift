@@ -6,22 +6,12 @@
 import Combine
 import Foundation
 
-/// One conversation with the assistant about one connection.
-///
-/// A session outlives the window that opened it. Closing a window stops its sessions and keeps
-/// their transcripts; opening one again continues where it stopped, and nothing is replayed.
-///
-/// It owns exactly one `AIChatViewModel`, which is what makes "one session, two presentations"
-/// true: the trailing-pane chat in Browse mode and the conversation column in Agent mode render
-/// this same view model, so there is one transcript, one composer draft and one scroll position
-/// however the user is looking at it.
+// Both presentations render this one `AIChatViewModel`, so there is one transcript, draft and scroll position.
 @MainActor
 internal final class AgentSession: ObservableObject, Identifiable {
     internal let id: UUID
     internal let connectionId: UUID
 
-    /// The engine. Built with this session's id so a restored session is the same session rather
-    /// than a new one wearing its transcript.
     internal let viewModel: AIChatViewModel
 
     @Published internal private(set) var status: AgentSessionStatus
@@ -29,32 +19,15 @@ internal final class AgentSession: ObservableObject, Identifiable {
 
     internal let startedAt: Date
 
-    /// When the session last went to work: the start of the reply it last began, or its own start.
-    /// The rail lists the latest first.
-    ///
-    /// Opening a session is not work, so it does not move one. It used to, and the rail was ordered
-    /// by start time while it did, so the stamp changed nothing anyone could see; ordered by this, a
-    /// session double-clicked in the middle of the list would have jumped to the top from under the
-    /// pointer that opened it.
+    // The rail's order. Opening a session is not work, or a row would jump from under the pointer.
     @Published internal private(set) var lastActiveAt: Date
 
-    /// Which of the result column's views this session is showing.
-    ///
-    /// On the session rather than in the column: the column is one hosting controller per window,
-    /// drawing whichever session is open, so view state there carried one session's choice into the
-    /// next. Not stored, so a relaunch opens on the statements.
+    // The result column is one hosting controller per window, so state kept there leaks between sessions.
     @Published internal var resultSegment: AgentResultSegment = .sql
 
-    /// Text typed before the session could send it, which a connect long enough to notice a typo in
-    /// needs. Cleared before it is dispatched so three flush sites still send once.
     internal var pendingPrompt: String?
 
-    /// Hands the pending prompt over once the connection is up, and clears it as it goes.
-    ///
-    /// The conversation asks from a `task` keyed on the session, the connect and the prompt, and a
-    /// reparent re-runs every such task on the same view: a mode toggle and a connection switch are
-    /// both one. Taking rather than reading is what keeps each of those re-runs from sending the
-    /// prompt a second time.
+    // A reparent re-runs the task that asks for this, so taking rather than reading sends it once.
     internal func takePendingPrompt(isConnecting: Bool) -> String? {
         guard !isConnecting, let prompt = pendingPrompt else { return nil }
         pendingPrompt = nil
@@ -82,27 +55,16 @@ internal final class AgentSession: ObservableObject, Identifiable {
         observeEngine()
     }
 
-    /// The conversation this session's transcript is stored under, or nil before the first reply.
+    // A session restored from disk or released holds its conversation's id before its transcript.
     internal var conversationId: UUID? {
-        viewModel.activeConversationID
+        viewModel.activeConversationID ?? viewModel.conversationToRestore
     }
 
-    /// What the rail, the conversation and the delete confirmation call the session. A session names
-    /// itself from its first question, so one that has not been asked anything goes by the command
-    /// that made it.
     internal var displayTitle: String {
         title.isEmpty ? String(localized: "New Session") : title
     }
 
-    /// Republishes the engine's changes as the session's own, so a rail row bound to the session
-    /// redraws when the transcript moves. `AIChatViewModel` is an `ObservableObject` of its own and
-    /// nothing else forwards it.
-    /// Republishes the engine's changes, and its turns'.
-    ///
-    /// A `ChatTurn` is an `ObservableObject` of its own, and appending a tool-use block mutates the
-    /// turn rather than the view model's `messages` array, so the view model never announced it.
-    /// The result pane could not show a proposed statement until some later top-level change
-    /// happened to fire, which for a card waiting on an answer is never.
+    // A tool-use block mutates its turn rather than `messages`, so each turn is observed as well.
     private func observeEngine() {
         viewModel.objectWillChange
             .sink { [weak self] _ in
@@ -132,14 +94,7 @@ internal final class AgentSession: ObservableObject, Identifiable {
         }
     }
 
-    /// A stopped session keeps the state it ended on; a failed one does not.
-    ///
-    /// Retry is offered on a failure and moves the engine back through idle, loading and streaming,
-    /// so freezing on `.failed` left the rail reporting Failed for the whole of a successful retry
-    /// and session resolution still treating it as ended.
-    ///
-    /// Going to work is what makes a session the latest, so the rail moves it up as a reply starts
-    /// rather than as someone looks at it.
+    // A failed session follows the engine, since Retry moves it back through streaming.
     private func refreshDerivedState() {
         let engineStatus = derivedStatus()
         if status != .stopped, status != engineStatus {
@@ -148,15 +103,15 @@ internal final class AgentSession: ObservableObject, Identifiable {
             }
             status = engineStatus
         }
+        // Empty lists say nothing about the title of a transcript that is not read yet.
+        guard !viewModel.isAwaitingTranscript else { return }
         let derivedTitle = derivedTitle()
         if title != derivedTitle {
             title = derivedTitle
         }
     }
 
-    /// Waiting is asked before working, because an ordinary tool card leaves `streamingState` on
-    /// `.streaming`: the stream is parked on the answer, not producing. `.awaitingApproval` is the
-    /// connection's own AI-access confirmation and is a different question.
+    // A tool card leaves `streamingState` on `.streaming` while the stream waits on the answer.
     private func derivedStatus() -> AgentSessionStatus {
         if ToolApprovalCenter.shared.hasPending(sessionId: id) { return .waitingOnYou }
         if case .awaitingApproval = viewModel.streamingState { return .waitingOnYou }
@@ -190,43 +145,22 @@ internal final class AgentSession: ObservableObject, Identifiable {
         status = newStatus
     }
 
-    /// Ends the session without touching what it said.
-    ///
-    /// Window close, disconnect and a lost session all reach here, and none of them is the user
-    /// throwing a conversation away, so the transcript is written first and kept.
+    // None of the callers is the user throwing a conversation away, so the transcript is written first.
     internal func stop() {
         viewModel.cancelStream()
-        settlePendingApprovals()
         viewModel.persistCurrentConversation()
         mark(.stopped)
     }
 
-    /// Puts a stopped session back to work. Nothing is replayed: a statement that was waiting for an
-    /// answer when the window closed was cancelled by the stop, and the model is asked again rather
-    /// than the call being re-issued behind the user's back.
-    ///
-    /// Resuming is opening, not working, so the session keeps its place in the rail until it is
-    /// asked something.
+    // Only once no window shows the session; its next showing reads back from disk what this drops.
+    internal func release() {
+        viewModel.releaseLoadedState()
+    }
+
+    // Nothing is replayed: a statement waiting for an answer was cancelled by the stop.
     internal func resume() {
         guard status.isEnded else { return }
         mark(.ready)
-    }
-
-    /// Settles a card that is still waiting before the transcript is written.
-    ///
-    /// `cancelStream()` resumes the continuation, but the suspended task only marks the block
-    /// `.cancelled` once it is back on the main actor, and the snapshot was taken before that. The
-    /// restored transcript then held a `.pending` card with no continuation behind it, whose Run
-    /// button could never work.
-    private func settlePendingApprovals() {
-        for turn in viewModel.messages {
-            for block in turn.blocks {
-                guard case .toolUse(var use) = block.kind,
-                      case .pending = use.approvalState else { continue }
-                use.approvalState = .cancelled
-                block.setKind(.toolUse(use))
-            }
-        }
     }
 
     internal var record: AgentSessionRecord {
@@ -242,8 +176,7 @@ internal final class AgentSession: ObservableObject, Identifiable {
     }
 }
 
-/// What a session is on disk. It points at a conversation rather than copying its turns, so the
-/// transcript has one home and a restored session cannot disagree with it.
+// Points at a conversation rather than copying its turns, so the transcript has one home.
 internal struct AgentSessionRecord: Codable, Equatable, Identifiable, Sendable {
     internal static let currentSchemaVersion = 1
 

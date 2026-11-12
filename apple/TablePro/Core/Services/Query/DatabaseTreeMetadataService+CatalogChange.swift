@@ -15,14 +15,17 @@ struct CatalogTreeRefreshPlan: Equatable, Sendable {
     /// Planned from their own keys: a flat or hierarchical tree takes its tables from `SchemaService`,
     /// so a loaded partition list can have no table list beside it.
     var partitions: Set<DatabaseTreeMetadataService.PartitionsKey> = []
+    var tableDetails: Set<DatabaseTreeMetadataService.TableDetailsKey> = []
     var routines: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var triggers: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var types: Set<DatabaseTreeMetadataService.ObjectsKey> = []
+    var serverObjects: Set<DatabaseTreeMetadataService.ServerObjectsKey> = []
     var allSchemaTables: Set<DatabaseTreeMetadataService.DatabaseKey> = []
 
     var isEmpty: Bool {
         !refreshesDatabaseList && schemaLists.isEmpty && tables.isEmpty && partitions.isEmpty
-            && routines.isEmpty && triggers.isEmpty && types.isEmpty && allSchemaTables.isEmpty
+            && tableDetails.isEmpty && routines.isEmpty && triggers.isEmpty && types.isEmpty && serverObjects.isEmpty
+            && allSchemaTables.isEmpty
     }
 }
 
@@ -40,9 +43,11 @@ extension DatabaseTreeMetadataService {
             schemaListKeys: schemaList.keys,
             tableKeys: tablesState.keys,
             partitionKeys: partitionsState.keys,
+            tableDetailKeys: tableDetailsState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
             typeKeys: typesState.keys,
+            serverObjectKeys: serverObjectsState.keys,
             allSchemaTableKeys: allSchemaTablesState.keys
         )
         guard !plan.isEmpty else { return }
@@ -62,9 +67,11 @@ extension DatabaseTreeMetadataService {
             schemaListKeys: schemaList.keys,
             tableKeys: tablesState.keys,
             partitionKeys: partitionsState.keys,
+            tableDetailKeys: tableDetailsState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
             typeKeys: typesState.keys,
+            serverObjectKeys: serverObjectsState.keys,
             allSchemaTableKeys: allSchemaTablesState.keys
         )
         markAllSchemaTablesChanged(plan.allSchemaTables)
@@ -77,9 +84,11 @@ extension DatabaseTreeMetadataService {
         schemaListKeys: some Sequence<DatabaseKey>,
         tableKeys: some Sequence<ObjectsKey>,
         partitionKeys: some Sequence<PartitionsKey> = EmptyCollection(),
+        tableDetailKeys: some Sequence<TableDetailsKey> = EmptyCollection(),
         routineKeys: some Sequence<ObjectsKey>,
         triggerKeys: some Sequence<ObjectsKey>,
         typeKeys: some Sequence<ObjectsKey>,
+        serverObjectKeys: some Sequence<ServerObjectsKey> = EmptyCollection(),
         allSchemaTableKeys: some Sequence<DatabaseKey> = EmptyCollection()
     ) -> CatalogTreeRefreshPlan {
         func reached(_ key: ObjectsKey) -> Bool {
@@ -105,9 +114,26 @@ extension DatabaseTreeMetadataService {
                 key.connectionId == change.connectionId && change.reaches(database: key.database)
             })
         }
+        // By database alone, as partitions are: a key in another schema can point at the table a change dropped.
+        let reachesDetails = change.kinds.contains(.tables)
+        let reachesTriggerDetails = reachesDetails || change.kinds.contains(.triggers)
+        if reachesTriggerDetails {
+            plan.tableDetails = Set(tableDetailKeys.filter { key in
+                key.connectionId == change.connectionId && change.reaches(database: key.database)
+                    && (reachesDetails || key.kind == .triggers)
+            })
+        }
         plan.routines = objectKeys(routineKeys, for: .routines)
         plan.triggers = objectKeys(triggerKeys, for: .triggers)
         plan.types = objectKeys(typeKeys, for: .types)
+        // A key with no schema lists a whole database, which a change in any of its schemas reaches.
+        if change.kinds.contains(.serverObjects) {
+            plan.serverObjects = Set(serverObjectKeys.filter { key in
+                guard key.connectionId == change.connectionId else { return false }
+                guard let schema = key.schema else { return change.reaches(database: key.database) }
+                return change.reaches(database: key.database, schema: schema)
+            })
+        }
         if !change.kinds.isDisjoint(with: [.tables, .schemas]) {
             plan.allSchemaTables = Set(allSchemaTableKeys.filter { key in
                 key.connectionId == change.connectionId && change.reaches(database: key.database)

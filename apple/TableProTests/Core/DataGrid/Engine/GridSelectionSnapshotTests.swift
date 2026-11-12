@@ -213,4 +213,29 @@ struct GridSelectionSnapshotTests {
         #expect(snapshot(.empty) == .empty)
         #expect(GridSelectionSnapshot.empty.resolved(order: .unfiltered, rows: storage, columns: columns()) == .empty)
     }
+
+    @Test("Rows a new read gave other ids keep their place in the selection, and rows that went leave it")
+    func remappingFollowsMovedRows() {
+        let selected = snapshot(GridSelection(
+            rectangles: [GridRect(rows: 1...2, columns: 0...3)],
+            activeCell: cell(2, 1),
+            anchor: cell(1, 0),
+            mode: .cursor
+        ))
+
+        let moved = selected.remappingRows([.existing(1): .existing(4), .existing(2): .existing(5)])
+        #expect(moved.rowIDs == [.existing(4), .existing(5)])
+        #expect(moved.rectangles.map(\.rowIDs) == [[.existing(4), .existing(5)]])
+        #expect(moved.activeCell?.rowID == .existing(5))
+        #expect(moved.activeCell?.columnID == selected.activeCell?.columnID)
+        #expect(moved.anchor?.rowID == .existing(4))
+        #expect(moved.mode == .cursor)
+
+        let partly = selected.remappingRows([.existing(2): .existing(0)])
+        #expect(partly.rowIDs == [.existing(0)])
+        #expect(partly.activeCell?.rowID == .existing(0))
+        #expect(partly.anchor == nil)
+
+        #expect(selected.remappingRows([:]) == .empty)
+    }
 }

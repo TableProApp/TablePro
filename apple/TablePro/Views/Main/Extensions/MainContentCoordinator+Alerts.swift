@@ -41,6 +41,8 @@ extension MainContentCoordinator {
             return String(localized: "Navigating to another page will discard all unsaved changes.")
         case .filter:
             return String(localized: "Applying or clearing filters will reload data and discard all unsaved changes.")
+        case .run:
+            return String(localized: "Running the query will replace this result and discard all unsaved changes.")
         case .resultSwitch:
             return String(localized: "Showing another result will discard all unsaved changes.")
         case .resultClose:
@@ -59,6 +61,8 @@ extension MainContentCoordinator {
         /// edits: the table is fetched again with a different column list.
         case .columnVisibility:
             return String(localized: "Showing or hiding columns will reload data and discard all unsaved changes.")
+        case .containerChange:
+            return String(localized: "Moving this tab to another database or schema will discard all unsaved changes.")
         }
     }
 

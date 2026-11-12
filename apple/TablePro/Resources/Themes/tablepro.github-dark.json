@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#161B22",
     "background": "#0D1117",
-    "boolFalse": "#F85149",
+    "binary": "#FF9BCE",
+    "boolFalse": "#FF574F",
     "boolTrue": "#3FB950",
+    "dateTime": "#D2A8FF",
     "deleted": "#F8514926",
     "deletedText": "#F8514980",
+    "enum": "#E3B341",
     "focusBorder": "#1F6FEB",
     "gridLine": "#30363D",
     "headerBackground": "#161B22",
     "headerText": "#E6EDF3",
     "inactiveSelection": "#343941",
     "inserted": "#2EA04326",
+    "json": "#FFA657",
     "modified": "#BB800926",
     "nullValue": "#8B949E",
+    "number": "#79C0FF",
     "rowNumber": "#6E7681",
     "selection": "#142744",
     "selectionText": "#E6EDF3",
-    "text": "#E6EDF3"
+    "string": "#A5D6FF",
+    "text": "#E6EDF3",
+    "uuid": "#FFA28B"
   },
   "editor": {
     "background": "#0D1117",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.github-dark",
   "name": "GitHub Dark",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#0D1117"
   }

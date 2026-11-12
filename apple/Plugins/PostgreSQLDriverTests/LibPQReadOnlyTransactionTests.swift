@@ -20,14 +20,20 @@ struct LibPQReadOnlyTransactionTests {
 
     private static let statement = "SELECT * FROM orders"
 
-    private static func context(readOnly: Bool, origin: PluginStatementOrigin) -> PluginStatementContext {
+    private static func context(
+        readOnly: Bool,
+        origin: PluginStatementOrigin,
+        enforcesReadOnly: Bool = false
+    ) -> PluginStatementContext {
         var context = PluginStatementContext()
         context.readOnly = readOnly
         context.origin = origin
+        context.enforcesReadOnly = enforcesReadOnly
         return context
     }
 
     private static let externalRead = context(readOnly: true, origin: .external)
+    private static let safeModeRead = context(readOnly: false, origin: .app, enforcesReadOnly: true)
 
     private static let config = DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: "")
 
@@ -35,7 +41,7 @@ struct LibPQReadOnlyTransactionTests {
     func wrapsTheStatement() throws {
         let wire = Wire()
 
-        let rows = try LibPQReadOnlyTransaction.run(state: .idle, send: wire.send) {
+        let rows = try LibPQReadOnlyTransaction.run(state: .idle, reason: .externalClients, send: wire.send) {
             try wire.send(Self.statement)
             return 3
         }
@@ -53,13 +59,31 @@ struct LibPQReadOnlyTransactionTests {
         let wire = Wire()
 
         let error = #expect(throws: LibPQPluginError.self) {
-            try LibPQReadOnlyTransaction.run(state: state, send: wire.send) {
+            try LibPQReadOnlyTransaction.run(state: state, reason: .externalClients, send: wire.send) {
                 try wire.send(Self.statement)
             }
         }
 
         #expect(wire.sent.isEmpty)
         #expect(error?.message == LibPQReadOnlyTransaction.sessionNotIdle.message)
+    }
+
+    @Test(
+        "At Read-Only a session that is not idle is refused before anything is sent, and told to roll back",
+        arguments: [PluginSessionTransactionState.inTransaction, .abortedTransaction, .holdsSessionLocks, .unknown]
+    )
+    func safeModeRefusesUnlessIdle(state: PluginSessionTransactionState) {
+        let wire = Wire()
+
+        let error = #expect(throws: LibPQPluginError.self) {
+            try LibPQReadOnlyTransaction.run(state: state, reason: .safeMode, send: wire.send) {
+                try wire.send(Self.statement)
+            }
+        }
+
+        #expect(wire.sent.isEmpty)
+        #expect(error?.message == LibPQReadOnlyTransaction.safeModeSessionNotIdle.message)
+        #expect(error?.message != LibPQReadOnlyTransaction.sessionNotIdle.message)
     }
 
     @Test("A write the read-only transaction refuses comes back as a read-only refusal, and the rollback still goes out",
@@ -70,14 +94,33 @@ struct LibPQReadOnlyTransactionTests {
         wire.failing[Self.statement] = LibPQPluginError(message: serverMessage, sqlState: sqlState, detail: nil)
 
         let error = #expect(throws: LibPQPluginError.self) {
-            try LibPQReadOnlyTransaction.run(state: .idle, send: wire.send) {
+            try LibPQReadOnlyTransaction.run(state: .idle, reason: .externalClients, send: wire.send) {
                 try wire.send(Self.statement)
             }
         }
 
         #expect(wire.sent == ["START TRANSACTION READ ONLY; SELECT 1", Self.statement, "ROLLBACK"])
         #expect(error?.sqlState == sqlState)
-        #expect(error?.message != serverMessage)
+        #expect(error?.message == LibPQReadOnlyTransaction.refusalMessage(.externalClients))
+        #expect(error?.detail == serverMessage)
+    }
+
+    @Test("A write refused at Read-Only names Safe Mode and keeps the server's text")
+    func safeModeRefusalNamesSafeMode() {
+        let wire = Wire()
+        let serverMessage = "ERROR:  cannot execute DELETE in a read-only transaction"
+        wire.failing[Self.statement] = LibPQPluginError(message: serverMessage, sqlState: "25006", detail: nil)
+
+        let error = #expect(throws: LibPQPluginError.self) {
+            try LibPQReadOnlyTransaction.run(state: .idle, reason: .safeMode, send: wire.send) {
+                try wire.send(Self.statement)
+            }
+        }
+
+        #expect(wire.sent == ["START TRANSACTION READ ONLY; SELECT 1", Self.statement, "ROLLBACK"])
+        #expect(error?.sqlState == "25006")
+        #expect(error?.message == LibPQReadOnlyTransaction.refusalMessage(.safeMode))
+        #expect(error?.message != LibPQReadOnlyTransaction.refusalMessage(.externalClients))
         #expect(error?.detail == serverMessage)
     }
 
@@ -88,7 +131,7 @@ struct LibPQReadOnlyTransactionTests {
         wire.failing[Self.statement] = missing
 
         let error = #expect(throws: LibPQPluginError.self) {
-            try LibPQReadOnlyTransaction.run(state: .idle, send: wire.send) {
+            try LibPQReadOnlyTransaction.run(state: .idle, reason: .safeMode, send: wire.send) {
                 try wire.send(Self.statement)
             }
         }
@@ -103,7 +146,7 @@ struct LibPQReadOnlyTransactionTests {
         wire.failing[LibPQReadOnlyTransaction.begin] = LibPQPluginError(message: "refused", sqlState: "0A000", detail: nil)
 
         #expect(throws: LibPQPluginError.self) {
-            try LibPQReadOnlyTransaction.run(state: .idle, send: wire.send) {
+            try LibPQReadOnlyTransaction.run(state: .idle, reason: .externalClients, send: wire.send) {
                 try wire.send(Self.statement)
             }
         }
@@ -111,11 +154,12 @@ struct LibPQReadOnlyTransactionTests {
         #expect(!wire.sent.contains(Self.statement))
     }
 
-    @Test("Only an external read on a driver that declares read-only statements is wrapped")
-    func wrapsOnlyExternalReads() {
+    @Test("An external read and an app read at Read-Only are wrapped; the app's own read-only marks are not")
+    func wrapsOnlyExternalAndSafeModeReads() {
         let capabilities = PostgreSQLPluginDriver(config: Self.config).capabilities
 
-        #expect(LibPQReadOnlyTransaction.applies(to: Self.externalRead, capabilities: capabilities))
+        #expect(LibPQReadOnlyTransaction.reason(for: Self.externalRead, capabilities: capabilities) == .externalClients)
+        #expect(LibPQReadOnlyTransaction.reason(for: Self.safeModeRead, capabilities: capabilities) == .safeMode)
         #expect(!LibPQReadOnlyTransaction.applies(to: PluginStatementContext(), capabilities: capabilities))
         #expect(!LibPQReadOnlyTransaction.applies(
             to: Self.context(readOnly: true, origin: .app), capabilities: capabilities
@@ -125,7 +169,27 @@ struct LibPQReadOnlyTransactionTests {
         ))
     }
 
-    @Test("PostgreSQL, PGlite and CockroachDB declare read-only statements")
+    // `executeCatalogRead` marks its read `readOnly` from the app with `readsCatalog`; a wrap would drop the pin.
+    @Test("An app catalog read keeps its pin, because only Read-Only wraps an app read")
+    func catalogReadIsNotWrapped() {
+        let capabilities = PostgreSQLPluginDriver(config: Self.config).capabilities
+        var catalogRead = Self.context(readOnly: true, origin: .app)
+        catalogRead.readsCatalog = true
+
+        #expect(LibPQReadOnlyTransaction.reason(for: catalogRead, capabilities: capabilities) == nil)
+    }
+
+    @Test("An external read keeps the external clients' wording when Read-Only is also set")
+    func externalReasonWinsForAnExternalRead() {
+        let capabilities = PostgreSQLPluginDriver(config: Self.config).capabilities
+        let both = Self.context(readOnly: true, origin: .external, enforcesReadOnly: true)
+        let writeAtReadOnly = Self.context(readOnly: false, origin: .external, enforcesReadOnly: true)
+
+        #expect(LibPQReadOnlyTransaction.reason(for: both, capabilities: capabilities) == .externalClients)
+        #expect(LibPQReadOnlyTransaction.reason(for: writeAtReadOnly, capabilities: capabilities) == .safeMode)
+    }
+
+    @Test("PostgreSQL, PGlite and CockroachDB declare read-only statements and honor Read-Only")
     func declaringDrivers() {
         let drivers: [any PluginDatabaseDriver] = [
             PostgreSQLPluginDriver(config: Self.config),
@@ -135,16 +199,29 @@ struct LibPQReadOnlyTransactionTests {
 
         for driver in drivers {
             #expect(driver.capabilities.contains(.readOnlyStatements), "\(type(of: driver))")
+            #expect(driver.capabilities.contains(.enforcesReadOnlyMode), "\(type(of: driver))")
             #expect(LibPQReadOnlyTransaction.applies(to: Self.externalRead, capabilities: driver.capabilities))
+            #expect(LibPQReadOnlyTransaction.applies(to: Self.safeModeRead, capabilities: driver.capabilities))
         }
     }
 
     // Redshift documents READ ONLY, but nobody has measured whether it refuses a write there.
-    @Test("Redshift runs an external read as it always has")
+    @Test("Redshift runs an external read as it always has, and declares no Read-Only mode")
     func redshiftDoesNotWrap() {
         let redshift = RedshiftPluginDriver(config: Self.config)
 
         #expect(!redshift.capabilities.contains(.readOnlyStatements))
+        #expect(!redshift.capabilities.contains(.enforcesReadOnlyMode))
         #expect(!LibPQReadOnlyTransaction.applies(to: Self.externalRead, capabilities: redshift.capabilities))
+        #expect(!LibPQReadOnlyTransaction.applies(to: Self.safeModeRead, capabilities: redshift.capabilities))
+    }
+
+    @Test("Redshift hands a bounded read at Read-Only back to the host instead of running it without the mode")
+    func redshiftReturnsBoundedReadAtReadOnly() async throws {
+        let redshift = RedshiftPluginDriver(config: Self.config)
+
+        let result = try await redshift.executeBoundedQuery(query: Self.statement, rowCap: 10, context: Self.safeModeRead)
+
+        #expect(result == nil)
     }
 }

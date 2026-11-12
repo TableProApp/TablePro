@@ -6,7 +6,7 @@ public sealed record TablePage(long Offset, int Size, long Rows, long? Total, bo
     // Past this a typed size is a mistake, not an intent, as macOS caps its Custom size.
     public const int MaximumSize = 1_000_000;
 
-    // All rows can go further; a run's limit is one past the page, so the page stays under int.MaxValue.
+    // All rows can go further, short of int.MaxValue, which the grid counts rows in.
     public const int LargestSize = int.MaxValue - 1;
 
     // The sizes the macOS page size menu offers.
@@ -15,6 +15,12 @@ public sealed record TablePage(long Offset, int Size, long Rows, long? Total, bo
     public static TablePage First(int size) => new(0, Math.Clamp(size, 1, LargestSize), 0, null, true);
 
     public static int Clamp(int size) => Math.Clamp(size, 1, MaximumSize);
+
+    // The engine's estimate of the table, shown as about N while no count gave Total; nothing pages by it.
+    public long? Estimate { get; init; }
+
+    // Statistics can lag far behind the table, as MySQL's cached TABLE_ROWS or a table never analysed reading 0.
+    public long? ShownEstimate => Estimate is { } estimate && estimate > LastRow ? estimate : null;
 
     public long FirstRow => Rows == 0 ? 0 : Offset + 1;
 

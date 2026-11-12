@@ -1,35 +1,12 @@
-//
-//  TableLoadHistoryStore.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
-/// Where a finished trace goes. The one requirement is that the producer is a synchronous
-/// `@MainActor` method, so this cannot be `async`: the call has to return before any disk work
-/// happens or the measurement pays for its own recording.
+// Not async: the producer is a synchronous main-actor method that must return before any disk work, or the measurement pays for its own recording.
 internal protocol TableLoadSummarySink: Sendable {
     func record(_ record: TableLoadPerformanceRecord)
 }
 
-/// What `TableLoadTracer.shared` gets under XCTest. Dozens of coordinator suites drive
-/// `openTableTab`, which begins real traces, and `AppStorageEnvironment` resolves to the production
-/// directory under a unit-test host, so a live sink would append to the developer's own history on
-/// every test run. Discarding at the sink means no file is opened and nothing needs cleaning up.
-internal struct DiscardingTableLoadSummarySink: TableLoadSummarySink {
-    internal func record(_ record: TableLoadPerformanceRecord) {}
-}
-
-/// A bounded, device-local history of how long table loads took, kept so an intermittent slowdown
-/// can be looked at after it happened rather than only while `log stream` is running.
-///
-/// Newline-delimited JSON rather than the single re-encoded array `ExecutionAuditLog` uses. Two
-/// reasons, both about the caps this store has and that one does not: rewriting the whole array costs
-/// the size of the store on every append, which at the ten thousand records allowed here is megabytes
-/// written per table click; and a write torn by a crash takes the entire array with it, where a torn
-/// final line costs one record. Nothing is held in memory between appends either, because ten
-/// thousand decoded records is a lot of residency for a file the running app never reads.
+// Newline-delimited JSON: the retention pass rewrites the file, and a write torn by a crash costs one line, not the file.
 internal actor TableLoadHistoryStore: TableLoadSummarySink {
     internal static let shared = TableLoadHistoryStore()
 
@@ -41,8 +18,7 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
     private static let newline = UInt8(ascii: "\n")
     private static let logger = Logger(subsystem: "com.TablePro", category: "TableLoadHistory")
 
-    /// Fractional seconds, because a store that measures milliseconds and stamps whole seconds
-    /// cannot order a burst of navigation inside one, and the retention pass sorts on this field.
+    // Fractional seconds: the retention pass sorts on this field, and whole seconds cannot order a burst of navigation.
     private static let timestamps = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
     private let fileURL: URL
@@ -55,8 +31,6 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
         self.fileURL = fileURL
     }
 
-    /// Resolved through `AppStorageEnvironment` like every other store, so a UI test writes into its
-    /// own sandbox rather than the history of the person running it.
     internal static func defaultFileURL() -> URL {
         let directory = AppStorageEnvironment.shared.supportDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -75,8 +49,7 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
         pruneIfNeeded()
     }
 
-    /// The first touch in a process reconciles the file against the retention rules, so a history
-    /// left behind by a build that quit before pruning cannot grow past its caps.
+    // A history left by a build that quit before pruning must not grow past the caps.
     private func loadIfNeeded() {
         guard !loaded else { return }
         loaded = true
@@ -90,14 +63,7 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
         prune()
     }
 
-    /// An undecodable line is dropped rather than refused. A history whose tail was torn by a crash
-    /// has to keep working, because it is diagnostic data and refusing to read it would make the
-    /// store itself the outage. The count is logged rather than swallowed, so a schema change that
-    /// makes an older record unreadable shows up as a number instead of a file that quietly shrank.
-    ///
-    /// The counts are set from the file as read before the rewrite, so a write that fails leaves the
-    /// caps reflecting what is still on disk. Left at zero they would read as under capacity and the
-    /// only retry would be the hourly one, which is an hour of appending with no bound enforced.
+    // A torn line is dropped and counted; the caps come from the file as read, so a failed rewrite leaves them true.
     private func prune() {
         lastPrunedAt = Date()
 

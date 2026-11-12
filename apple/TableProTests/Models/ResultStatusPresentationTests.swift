@@ -35,6 +35,13 @@ struct ResultStatusPresentationTests {
         #expect(!presentation(.narrow).pageSizeIsInline)
     }
 
+    @Test("Only the narrowest tier leaves Auto Refresh to the Database menu")
+    func narrowLeavesAutoRefreshToTheMenu() {
+        #expect(presentation(.regular).showsAutoRefresh)
+        #expect(presentation(.compact).showsAutoRefresh)
+        #expect(!presentation(.narrow).showsAutoRefresh)
+    }
+
     @Test("The narrowest tier swaps the segmented switcher for a pull-down")
     func narrowUsesAMenuSwitcher() {
         #expect(!presentation(.narrow).modeSwitcherIsSegmented)

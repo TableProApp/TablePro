@@ -121,6 +121,42 @@ struct HanaExplainRequest: Encodable, Sendable {
     let timeoutSeconds: Int
 }
 
+struct HanaCursorRequest: Encodable, Sendable {
+    let sql: String
+    let timeoutSeconds: Int
+    let batchRows: Int
+}
+
+struct HanaCursorHeader: Decodable, Equatable, Sendable {
+    let columns: [String]
+    let columnTypeNames: [String]
+    let columnClassifications: [String?]
+    let rowsAffected: Int64
+    let hasResultSet: Bool
+}
+
+struct HanaCursorBatch: Decodable, Equatable, Sendable {
+    let rows: [[HanaBridgeCell]]
+    let truncatedLobCount: Int
+    let done: Bool
+    let sessionLost: Bool
+}
+
+struct HanaCursorOpening: Decodable, Sendable {
+    let header: HanaCursorHeader
+    let batch: HanaCursorBatch
+
+    // The helper sends the header and the first batch as one flat object.
+    init(from decoder: any Decoder) throws {
+        header = try HanaCursorHeader(from: decoder)
+        batch = try HanaCursorBatch(from: decoder)
+    }
+}
+
+struct HanaCursorClosing: Decodable, Sendable {
+    let sessionLost: Bool
+}
+
 struct HanaConnectResult: Decodable, Equatable, Sendable {
     let serverVersion: String
     let currentSchema: String

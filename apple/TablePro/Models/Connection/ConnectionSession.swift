@@ -24,6 +24,7 @@ struct ConnectionSession: Identifiable {
 
     // The level in force; the toolbar changes it, so `connection.safeModeLevel` goes stale.
     var safeModeLevel: SafeModeLevel
+    var commitMode: ConnectionCommitMode
 
     // Per-connection state
     var selectedTables: Set<DatabaseTreeTableRef> = []
@@ -64,6 +65,7 @@ struct ConnectionSession: Identifiable {
             globalSeconds: 0
         )
         self.safeModeLevel = connection.safeModeLevel
+        self.commitMode = connection.commitMode
         self.connectedAt = Date()
         self.lastActiveAt = Date()
     }

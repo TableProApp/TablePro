@@ -8,18 +8,29 @@ import TableProPluginKit
 import TableProSQLVocabulary
 import TableProUtilities
 
-/// What the app knows about a database type before its plugin loads.
-///
-/// The primary type ids here are overwritten by `buildMetadataSnapshot` the moment the plugin
-/// registers, so these are the pre-load answer for those, apart from an explain list the plugin
-/// leaves empty, which keeps the one here. For a variant id they are the whole
-/// answer: `registerVariant` keeps the curated entry and ignores the plugin's own statics, which
-/// is the only reason MariaDB, TiDB, Databend, OceanBase, Redshift, CockroachDB and PGlite can differ from
-/// the plugin that drives them.
+// What the app knows about a database type before its plugin loads.
+// The primary type ids here are overwritten by `buildMetadataSnapshot` the moment the plugin
+// registers, so these are the pre-load answer for those, apart from an explain list the plugin
+// leaves empty, which keeps the one here. For a variant id they are the whole
+// answer: `registerVariant` keeps the curated entry and ignores the plugin's own statics, which
+// is the only reason MariaDB, TiDB, Databend, OceanBase, Redshift, CockroachDB and PGlite can differ from
+// the plugin that drives them.
 extension PluginMetadataRegistry {
-    /// SQLite's own extensions. libSQL and Turso name a new local file with them too, since the file
-    /// their driver creates is a SQLite database.
+    // SQLite's own extensions. libSQL and Turso name a new local file with them too, since the file
+    // their driver creates is a SQLite database.
     static let sqliteFileExtensions = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
+
+    // Engines where a function a SELECT calls can change data: an autonomous-transaction function on Oracle and Dameng,
+    // a stored function on MySQL, MariaDB and OceanBase, PL/pgSQL on the PostgreSQL family. Read-Only asks before such a
+    // call only when the live driver cannot run the statement in the engine's read-only mode. MySQL and MariaDB are
+    // listed by type because an OceanBase server answers as MySQL, so only the driver's own bit tells them apart. TiDB,
+    // StarRocks and Databend have no stored function or UDF that writes; SQL Server, Snowflake, BigQuery, Trino and
+    // Redshift refuse a write from a function a query calls; ClickHouse, the SQLite engines and Cassandra have none.
+    static let queryFunctionsCanWrite: Set<DatabaseType> = [
+        .oracle, .dameng,
+        .mysql, .mariadb, .oceanbase,
+        .postgresql, .cockroachdb, .pglite, .kingbasees,
+    ]
 
     // swiftlint:disable:next function_body_length
     static func curatedDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
@@ -192,8 +203,8 @@ extension PluginMetadataRegistry {
             )
         ]
 
-        /// Cloud SQL signs IAM principals in to MySQL and PostgreSQL only, so SQL Server and the
-        /// MySQL and PostgreSQL forks keep the AWS-only picker.
+        // Cloud SQL signs IAM principals in to MySQL and PostgreSQL only, so SQL Server and the
+        // MySQL and PostgreSQL forks keep the AWS-only picker.
         let cloudIAMFields = GoogleCloudSQLAuthFields.standardWithAWS() + [AWSAuthFields.rdsEndpointField()]
 
         let postgresqlAuthFields = KerberosAuthFields.standardWithAWSAndGoogleCloud() + [
@@ -201,8 +212,8 @@ extension PluginMetadataRegistry {
             AWSAuthFields.rdsEndpointField()
         ]
 
-        /// The MySQL plugin's types only. PostgreSQL shares the IAM fields and must not pick this up:
-        /// its driver holds no releasable resource, so the setting would do nothing.
+        // The MySQL plugin's types only. PostgreSQL shares the IAM fields and must not pick this up:
+        // its driver holds no releasable resource, so the setting would do nothing.
         let mysqlIdleReleaseField = ConnectionField(
             id: "mysqlIdleReleaseMinutes",
             label: String(localized: "Release the Server Connection After (minutes, 0 to keep it)"),
@@ -409,6 +420,7 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred,
+                    verifiesServerWithSystemTrust: true,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -470,7 +482,8 @@ extension PluginMetadataRegistry {
                     supportsDropSchema: true,
                     supportsCreateSchema: true,
                     supportsSchemaOwner: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    verifiesServerWithSystemTrust: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -548,6 +561,7 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraintEditing: false,
                     supportsGeneratedColumns: true,
                     defaultSSLMode: .preferred,
+                    verifiesServerWithSystemTrust: true,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

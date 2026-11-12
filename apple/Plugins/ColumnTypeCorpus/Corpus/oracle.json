@@ -146,7 +146,8 @@
     {
       "type": "TIMESTAMP WITH TIME ZONE",
       "values": [
-        {"sql": "TO_TIMESTAMP_TZ('2026-10-06 15:22:20.000001 -05:30', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')", "cell": "2026-10-06 15:22:20.000001-05:30"}
+        {"sql": "TO_TIMESTAMP_TZ('2026-10-06 15:22:20.000001 -05:30', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')", "cell": "2026-10-06 15:22:20.000001-05:30"},
+        {"sql": "TIMESTAMP '2026-01-01 00:00:00 Europe/Paris'", "cell": "2026-01-01 00:00:00.000000 Europe/Paris"}
       ],
       "edit": {"text": "2000-01-01 00:00:00.000000+00:00", "cell": "2000-01-01 00:00:00.000000+00:00"},
       "known": {

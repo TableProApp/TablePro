@@ -89,11 +89,13 @@ extension DatabaseTreeOutlineCoordinator {
             }
         case .truncateTables(let targets, let ref):
             activateThen(ref) { [weak self] in
-                self?.viewModel?.batchToggleTruncate(refs: targets)
+                guard let self, let windowState = self.windowState else { return }
+                self.viewModel?.batchToggleTruncate(refs: targets, from: windowState)
             }
         case .dropTables(let targets, let ref):
             activateThen(ref) { [weak self] in
-                self?.viewModel?.batchToggleDelete(refs: targets)
+                guard let self, let windowState = self.windowState else { return }
+                self.viewModel?.batchToggleDelete(refs: targets, from: windowState)
             }
         case .beginRenameTable(let ref, let isRecentRow):
             activateThen(ref) { [weak self] in
@@ -127,8 +129,10 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.requestContainerDrop(targets)
         case .copyObjectsTo, .copyContainerTo, .duplicateDatabase, .searchContainer:
             performSheetCommand(command)
-        case .showAllTablesMetadata:
-            mainCoordinator?.showAllTablesMetadata()
+        case .showObjects(let target):
+            mainCoordinator?.showObjects(target, asPreview: false)
+        case .showBrowsedObjects(let kind):
+            mainCoordinator?.showBrowsedObjects(kind)
         case .refreshObjectKind(let kind):
             refreshObjectKind(kind)
         case .refreshContainerObjectKind(let group):
@@ -152,7 +156,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .openRedisKey(let key, let keyType):
             mainCoordinator?.openRedisKey(key, keyType: keyType)
         case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
-             .setRowSize:
+             .toggleTableDetails, .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
         }
     }
@@ -227,10 +231,11 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     /// A command that opens or edits an object has to reach the database that object lives in
-    /// first, which is what a click on the row would have done.
-    private func activateThen(_ ref: DatabaseTreeTableRef, _ body: @escaping @MainActor () -> Void) {
+    /// first, which is what a click on the row would have done. A failed or cancelled switch runs
+    /// nothing: the command would act on a same-named object where the session still is.
+    internal func activateThen(_ ref: DatabaseTreeTableRef, _ body: @escaping @MainActor () -> Void) {
         Task { @MainActor in
-            await activate(ref)
+            guard await activate(ref) else { return }
             body()
         }
     }

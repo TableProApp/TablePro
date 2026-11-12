@@ -55,6 +55,7 @@ public struct PluginRowChange: Sendable {
         case delete
     }
 
+    // One row can arrive as several changes, each with its own key and the row as it stands before that change.
     public let rowIndex: Int
     public let type: ChangeType
     public let cellChanges: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)]
@@ -70,6 +71,11 @@ public struct PluginRowChange: Sendable {
     /// that declares `PluginCapabilities.cellExpressions` is handed any.
     public var expressionColumns: Set<Int>?
 
+    // The columns whose new value is the column's default rather than a value: an update's `cellChanges`, or a new
+    // row's `insertedRowData` cells. Such a cell still holds the text `__DEFAULT__`, which a driver built before this
+    // field reads as the default. Every other cell is a value, that text included.
+    public var defaultColumns: Set<Int>?
+
     public init(
         rowIndex: Int,
         type: ChangeType,
@@ -80,6 +86,10 @@ public struct PluginRowChange: Sendable {
         self.type = type
         self.cellChanges = cellChanges
         self.originalRow = originalRow
+    }
+
+    public func isColumnDefault(_ columnIndex: Int) -> Bool {
+        defaultColumns?.contains(columnIndex) ?? false
     }
 }
 
@@ -116,6 +126,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// bounding a fetch means abandoning the rest of it, which for some drivers means cancelling the
     /// statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult?
+
+    // The same bounded read with what the host decided about it, under the same contract. The default runs the
+    // requirement above for a context that asks nothing that call cannot honor, and returns nil otherwise, so the host
+    // falls back to a call that takes the context.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult?
 
     /// Sends `query` to the server as one batch and reads it to the end, returning every result set it produced and
     /// every error it raised. `rowCap` bounds each result set on its own. A driver that implements this declares
@@ -199,6 +218,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// and nothing above has to know which engines those are.
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo]
     func fetchEventDDL(_ event: PluginEventInfo) async throws -> String
+
+    // Asked of the live driver, so one plugin can answer per server flavor and version.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    // `schema` is the container for a `.container` kind and nil for a `.database` kind. A server
+    // without the catalog answers empty rather than throwing.
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo]
+    // Reads one listed object again with its definition; `identity` is the driver's own key.
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo
 
     /// The settings the server recorded for an object when it was created and applies whenever it runs, such as a
     /// MySQL routine's `sql_mode`, as statements a script writes around the object's `CREATE`. Nil when there are none.
@@ -306,6 +333,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     var providesBulkColumnFetch: Bool { get }
+    var fetchesAllColumnsInOneRequest: Bool { get }
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     var providesBulkForeignKeyFetch: Bool { get }
@@ -494,6 +522,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// after is what turns that into a refusal instead of silent loss. Nil where the driver cannot
     /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
+
+    // A cheap value that changes whenever the catalog does, so a write to a database file that left the schema
+    // alone needs no catalog reload. Nil where the engine keeps none; the host then reloads on every change.
+    func schemaChangeToken() async throws -> String?
 
     var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
     var unsupportedIndexTypes: Set<String> { get }
@@ -824,6 +856,17 @@ public extension PluginDatabaseDriver {
         return definition
     }
 
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
+    }
+
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope? { nil }
 
     func fetchTriggerCreationScope(_ trigger: PluginTriggerInfo) async throws -> PluginStatementScope? { nil }
@@ -1021,12 +1064,16 @@ public extension PluginDatabaseDriver {
     /// difference at all.
     var providesBulkColumnFetch: Bool { false }
 
+    // Whether `fetchAllColumns` reads every table in one request or a fixed few, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { providesBulkColumnFetch }
+
     /// Default: fetches columns per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginColumnInfo]] = [:]
         for table in tables {
+            try Task.checkCancellation()
             result[table.name] = try await fetchColumns(table: table.name, schema: schema)
         }
         return result
@@ -1061,6 +1108,7 @@ public extension PluginDatabaseDriver {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginForeignKeyInfo]] = [:]
         for table in tables {
+            try Task.checkCancellation()
             let fks = try await fetchForeignKeys(table: table.name, schema: schema)
             if !fks.isEmpty { result[table.name] = fks }
         }
@@ -1090,6 +1138,7 @@ public extension PluginDatabaseDriver {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginIndexInfo]] = [:]
         for table in tables {
+            try Task.checkCancellation()
             let indexes = try await fetchIndexes(table: table.name, schema: schema)
             if !indexes.isEmpty { result[table.name] = indexes }
         }
@@ -1108,6 +1157,7 @@ public extension PluginDatabaseDriver {
         let tables = try await fetchTables(schema: schema)
         var result: [String: PluginTableMetadata] = [:]
         for table in tables {
+            try Task.checkCancellation()
             guard let metadata = try? await fetchTableMetadata(table: table.name, schema: schema) else { continue }
             result[table.name] = metadata
         }
@@ -1118,6 +1168,7 @@ public extension PluginDatabaseDriver {
         let dbs = try await fetchDatabases()
         var result: [PluginDatabaseMetadata] = []
         for db in dbs {
+            try Task.checkCancellation()
             do {
                 result.append(try await fetchDatabaseMetadata(db))
             } catch {
@@ -1315,6 +1366,8 @@ public extension PluginDatabaseDriver {
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
 
+    func schemaChangeToken() async throws -> String? { nil }
+
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
@@ -1440,6 +1493,19 @@ public extension PluginDatabaseDriver {
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? { nil }
 
+    // A driver built before the context overload ignores every field, so a read-only mode, a statement policy or a
+    // catalog pin it was asked for would silently not happen.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+              context.allowsDestructive, context.allowsServerCode
+        else { return nil }
+        return try await executeBoundedQuery(query: query, rowCap: rowCap)
+    }
+
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
         nil
     }
@@ -1471,7 +1537,7 @@ public extension PluginDatabaseDriver {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await PluginParameterBinder.$hostFeatures.withValue(context.lexicalFeatures) {
+        try await PluginParameterBinder.withHostContext(context) {
             try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
     }
@@ -1481,7 +1547,7 @@ public extension PluginDatabaseDriver {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await PluginParameterBinder.$hostFeatures.withValue(context.lexicalFeatures) {
+        try await PluginParameterBinder.withHostContext(context) {
             try await executeParameterized(query: query, parameters: parameters)
         }
     }
@@ -1500,13 +1566,15 @@ public extension PluginDatabaseDriver {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let producer = Task {
                 do {
+                    try Task.checkCancellation()
                     let result = try await self.execute(query: query)
-                    let header = PluginStreamHeader(
+                    var header = PluginStreamHeader(
                         columns: result.columns,
                         columnTypeNames: result.columnTypeNames
                     )
+                    if result.isTruncated { header.rowLimit = result.rows.count }
                     continuation.yield(.header(header))
                     if !result.rows.isEmpty {
                         continuation.yield(.rows(result.rows))
@@ -1516,6 +1584,8 @@ public extension PluginDatabaseDriver {
                     continuation.finish(throwing: error)
                 }
             }
+            // An unstructured task is no child of the consumer, so its cancel reaches execute only through here.
+            continuation.onTermination = { @Sendable _ in producer.cancel() }
         }
     }
 
@@ -1531,9 +1601,12 @@ public extension PluginDatabaseDriver {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
+        let kinds = PluginParameterBinder.hostParameterKinds
         let sql = try PluginParameterBinder.bind(
             query,
-            literals: parameters.map(sqlLiteral(for:)),
+            literals: parameters.enumerated().map { index, value in
+                sqlLiteral(for: value, kind: kinds.flatMap { $0.indices.contains(index) ? $0[index] : nil })
+            },
             style: parameterStyle,
             features: literalFeatures
         )
@@ -1541,11 +1614,17 @@ public extension PluginDatabaseDriver {
     }
 
     func sqlLiteral(for value: PluginCellValue) -> String {
+        sqlLiteral(for: value, kind: nil)
+    }
+
+    // A nil kind is a value nobody typed, such as a grid cell, whose text the host wrote: number-shaped text is a number.
+    func sqlLiteral(for value: PluginCellValue, kind: PluginColumnKind?) -> String {
         switch value {
         case .null:
             return "NULL"
         case .text(let s):
-            return escapedParameterValue(s)
+            guard let kind else { return escapedParameterValue(s) }
+            return typedParameterValue(s, kind: kind)
         case .bytes(let data):
             var hex = "X'"
             hex.reserveCapacity(2 + data.count * 2 + 1)
@@ -1558,7 +1637,8 @@ public extension PluginDatabaseDriver {
     }
 
     func escapedParameterValue(_ value: String) -> String {
-        if Self.isNumericLiteral(value) {
+        // No numeric column reads as `00123` or `-007`, so that text is a code or a zip and stays a string.
+        if Self.isNumericLiteral(value), !opensWithPaddingZero(value) {
             return value
         }
         return PluginSQLQuoting.stringLiteral(value, escapes: PluginSQLQuoting.Escapes(features: literalFeatures))
@@ -1566,6 +1646,23 @@ public extension PluginDatabaseDriver {
 
     static func isNumericLiteral(_ value: String) -> Bool {
         PluginNumericLiteral.isValid(value)
+    }
+
+    // Text the server cannot read as the declared number or boolean is sent as a string, for the server to refuse.
+    func typedParameterValue(_ value: String, kind: PluginColumnKind) -> String {
+        switch kind {
+        case .integer, .decimal:
+            if PluginSQLLiteral.isNumericLiteral(value, kind: kind) { return value }
+        case .boolean:
+            switch PluginSQLLiteral.booleanSynonym(for: value, kind: kind) {
+            case .isTrue: return "TRUE"
+            case .isFalse: return "FALSE"
+            case nil: break
+            }
+        case .text, .other:
+            break
+        }
+        return PluginSQLQuoting.stringLiteral(value, escapes: PluginSQLQuoting.Escapes(features: literalFeatures))
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
@@ -1601,4 +1698,11 @@ extension PluginDatabaseDriver {
         }
         return backslash ? [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes] : []
     }
+}
+
+// `007`, `-0042`: an integer part that opens with 0 and goes on with another digit.
+private func opensWithPaddingZero(_ value: String) -> Bool {
+    let unsigned = value.unicodeScalars.drop { $0 == "-" || $0 == "+" }
+    guard unsigned.first == "0", let next = unsigned.dropFirst().first else { return false }
+    return ("0"..."9").contains(next)
 }

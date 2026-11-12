@@ -19,17 +19,32 @@ public struct PluginRowWrite: Sendable {
     public let parameters: [PluginCellValue]
     public let rowIndices: [Int]
     public let lookup: PluginRowLookup?
+    // Set only when the engine's count for this statement is the rows it matched, a row that already held the value
+    // included. The host then refuses the save when the count is higher, or lower for an UPDATE, and rolls it back.
+    public let expectedRowCount: Int?
 
     @_disfavoredOverload
     public init(statement: String, parameters: [PluginCellValue] = [], rowIndices: [Int]) {
-        self.init(statement: statement, parameters: parameters, rowIndices: rowIndices, lookup: nil)
+        self.init(statement: statement, parameters: parameters, rowIndices: rowIndices, lookup: nil, expectedRowCount: nil)
     }
 
+    @_disfavoredOverload
     public init(statement: String, parameters: [PluginCellValue] = [], rowIndices: [Int], lookup: PluginRowLookup? = nil) {
+        self.init(statement: statement, parameters: parameters, rowIndices: rowIndices, lookup: lookup, expectedRowCount: nil)
+    }
+
+    public init(
+        statement: String,
+        parameters: [PluginCellValue] = [],
+        rowIndices: [Int],
+        lookup: PluginRowLookup? = nil,
+        expectedRowCount: Int? = nil
+    ) {
         self.statement = statement
         self.parameters = parameters
         self.rowIndices = rowIndices
         self.lookup = lookup
+        self.expectedRowCount = expectedRowCount
     }
 }
 
@@ -76,4 +91,13 @@ public struct PluginRowWriteRefusal: Error, LocalizedError, Sendable, Equatable 
     }
 
     public var errorDescription: String? { reason }
+
+    // For a driver whose engine has no column defaults: the first change that leaves a cell to one.
+    public static func columnDefaultsUnsupported(in changes: [PluginRowChange]) -> PluginRowWriteRefusal? {
+        guard let change = changes.first(where: { !($0.defaultColumns ?? []).isEmpty }) else { return nil }
+        return PluginRowWriteRefusal(
+            rowIndex: change.rowIndex,
+            reason: String(localized: "This database has no column defaults, so a cell cannot be left to one. Enter a value.")
+        )
+    }
 }

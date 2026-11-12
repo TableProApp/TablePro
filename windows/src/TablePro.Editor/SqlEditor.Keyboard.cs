@@ -1,7 +1,7 @@
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml.Input;
 using TablePro.Editor.Model;
-using Windows.ApplicationModel.DataTransfer;
+using TablePro.Graphics;
 using Windows.System;
 using Windows.UI.Core;
 
@@ -21,6 +21,7 @@ public sealed partial class SqlEditor
             base.OnKeyDown(e);
             return;
         }
+        RestartBlink();
         _tsf?.FlushPendingComposition();
         // While the IME composes, its keys are its own; it hands back the ones it does not use after.
         if (IsComposing || e.Key == (VirtualKey)229)
@@ -220,37 +221,30 @@ public sealed partial class SqlEditor
         var text = _model.CopyText();
         if (text.Length > 0)
         {
-            SetClipboard(text);
+            _ = SetClipboard(text);
         }
     }
 
+    // The text leaves the document only once the clipboard took it, so a held clipboard loses nothing.
     public void Cut()
     {
-        string text = string.Empty;
-        Edit(() => text = _model.Cut());
-        if (text.Length > 0)
+        var text = _model.CopyText();
+        if (text.Length > 0 && SetClipboard(text))
         {
-            SetClipboard(text);
+            Edit(() => _model.Cut());
         }
     }
 
     public async Task PasteAsync()
     {
-        var content = Clipboard.GetContent();
-        if (!content.Contains(StandardDataFormats.Text))
+        if (await ClipboardText.TryGetAsync() is { } text)
         {
-            return;
+            Edit(() => _model.Paste(text));
         }
-        var text = await content.GetTextAsync();
-        Edit(() => _model.Paste(text));
     }
 
-    private void SetClipboard(string text)
-    {
-        var package = new DataPackage();
-        package.SetText(Document.LineEnding == LineEnding.CrLf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text);
-        Clipboard.SetContent(package);
-    }
+    private bool SetClipboard(string text) => ClipboardText.TrySet(
+        Document.LineEnding == LineEnding.CrLf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text);
 
     private static bool Down(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);

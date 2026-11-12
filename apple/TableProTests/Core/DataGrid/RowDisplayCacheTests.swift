@@ -211,6 +211,36 @@ struct RowDisplayCacheTests {
         #expect(cache.highlight(forID: .existing(3)) == nil)
     }
 
+    @Test("A cell's formatted flag is written with its text and cleared with it")
+    func formattedFlagFollowsTheText() {
+        let cache = RowDisplayCache()
+        let box = makeBox(Array(repeating: nil, count: 70))
+        box.setText("uuid", at: 1, isFormatted: true)
+        box.setText("hex", at: 2, isFormatted: false)
+        box.setText("date", at: 65, isFormatted: true)
+        cache.setBox(box, forID: .existing(0))
+
+        #expect(box.isFormatted(at: 1))
+        #expect(!box.isFormatted(at: 2))
+        #expect(box.isFormatted(at: 65))
+        #expect(!box.isFormatted(at: 69))
+        #expect(!box.isFormatted(at: 200))
+        #expect(!box.isFormatted(at: -1))
+
+        box.setText("raw", at: 1, isFormatted: false)
+        #expect(!box.isFormatted(at: 1))
+        box.setText("uuid", at: 1, isFormatted: true)
+
+        cache.clearValues(forDataIndexes: [1])
+        #expect(box.values[1] == nil)
+        #expect(!box.isFormatted(at: 1))
+        #expect(box.isFormatted(at: 65))
+
+        cache.clearValues(forID: .existing(0))
+        #expect(box.values[65] == nil)
+        #expect(!box.isFormatted(at: 65))
+    }
+
     @Test("Inserted row IDs of both kinds round-trip")
     func mixedRowIDKinds() {
         let cache = RowDisplayCache()

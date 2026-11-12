@@ -29,6 +29,27 @@ struct IAMErrorClassifierTests {
         #expect(error.opensEditor)
     }
 
+    @Test("A DNS lookup that failed reads as a network problem")
+    func endpointLookupFailed() {
+        let error = classify(AWSAuthError.endpointLookupFailed(host: "reader.db.example.com"))
+
+        #expect(error.title == String(localized: "DNS Lookup Failed"))
+        #expect(error.category == .network)
+        #expect(!error.opensEditor)
+    }
+
+    @Test("An RDS Endpoint that names another database than Host says to clear it")
+    func rdsEndpointNotDialed() {
+        let error = classify(AWSAuthError.rdsEndpointNotDialed(
+            endpoint: "prod.abc123.us-east-1.rds.amazonaws.com",
+            host: "db.internal.example.com"
+        ))
+
+        #expect(error.title == String(localized: "RDS Endpoint Does Not Match"))
+        #expect(error.category == .config)
+        #expect(error.opensEditor)
+    }
+
     @Test("The PluginKit missing-key error reads as the same problem, though its message says authentication")
     func pluginKitMissingAccessKey() {
         let error = classify(AWSAuthError.missingAccessKey)

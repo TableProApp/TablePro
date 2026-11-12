@@ -51,13 +51,19 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .temporaryTables,
-            .readOnlyStatements
+            .readOnlyStatements,
+            .enforcesReadOnlyMode
         ]
     }
 
     // In the class body so PGlite, which inherits the debugger conformance, can turn it off.
     var canDebugRoutines: Bool { true }
     var canFollowNotifications: Bool { true }
+
+    // In the class body so KingbaseES, whose catalog is not established, can answer none.
+    var serverObjectKinds: [PluginServerObjectKind] {
+        PostgreSQLExtensions.isDeclared(capabilities: catalogCapabilities) ? [PostgreSQLExtensions.kind] : []
+    }
 
     init(config: DriverConnectionConfig, singleConnectionMode: Bool = false) {
         self.core = LibPQDriverCore(config: config, singleConnectionMode: singleConnectionMode)
@@ -74,16 +80,22 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     /// Runs inside the connect's deadline and cancellation, before the connection is handed out.
     func probeAfterConnect() async throws {
-        await probeSessionFacts()
-        await probeCatalogPresence()
-        await probePostgisOids()
-        await probeEnumOids()
-        await probeVectorTypes()
+        let probes: [(statement: String, apply: (Result<PluginQueryResult, Error>) -> Void)] = [
+            (PostgreSQLSessionFacts.probeQuery, applySessionFactsProbe),
+            (PostgreSQLCatalogPresence.probeQuery, applyCatalogPresenceProbe),
+            (PostGISTypes.probeQuery, applyPostgisProbe),
+            (PostgreSQLSchemaQueries.enumTypeOidQuery, applyEnumProbe),
+            (PgvectorTypes.probeQuery, applyVectorTypesProbe)
+        ]
+        let reads = await core.executeCatalogReads(probes.map { $0.statement })
+        for (probe, read) in zip(probes, reads) {
+            probe.apply(read)
+        }
     }
 
-    private func probeCatalogPresence() async {
+    private func applyCatalogPresenceProbe(_ read: Result<PluginQueryResult, Error>) {
         do {
-            let result = try await core.executeCatalogRead(PostgreSQLCatalogPresence.probeQuery)
+            let result = try read.get()
             let relationNames = result.rows.compactMap { $0.first?.asText }
             catalogPresence = PostgreSQLCatalogPresence(relationNames: relationNames)
         } catch {
@@ -91,18 +103,18 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
-    private func probePostgisOids() async {
+    private func applyPostgisProbe(_ read: Result<PluginQueryResult, Error>) {
         do {
-            let result = try await core.executeCatalogRead(PostGISTypes.probeQuery)
+            let result = try read.get()
             core.setPostgisOidMap(PostGISTypes.names(fromProbeRows: result.rows.map { row in row.map(\.asText) }))
         } catch {
             Self.logger.debug("PostGIS type probe failed; spatial values stay as hex: \(error.localizedDescription)")
         }
     }
 
-    private func probeVectorTypes() async {
+    private func applyVectorTypesProbe(_ read: Result<PluginQueryResult, Error>) {
         do {
-            let result = try await core.executeCatalogRead(PgvectorTypes.probeQuery)
+            let result = try read.get()
             let rows = result.rows.map { row in row.map(\.asText) }
             core.mergeCatalogTypeNames(PgvectorTypes.names(fromProbeRows: rows))
         } catch {
@@ -413,10 +425,16 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             schema: resolvedSchema, table: table
         )
 
+        let shapeQuery = PostgreSQLTableDDL.shapeQuery(
+            schema: resolvedSchema, table: table, capabilities: versionedCapabilities
+        )
+
         async let columnsResult = catalogRead(columnsQuery)
         async let constraintsResult = catalogRead(constraintsQuery)
+        async let shapeResult = try? catalogRead(shapeQuery)
 
         let (cols, cons) = try await (columnsResult, constraintsResult)
+        let shapeRows = await shapeResult
 
         /// `pg_attribute` covers views and materialized views as well as tables, so a view reached
         /// here as a `CREATE TABLE` of its columns. The Structure tab's DDL and every other caller
@@ -440,10 +458,45 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         var parts = columnDefs
         parts.append(contentsOf: constraints)
 
+        var shape = PostgreSQLTableDDL.shape(fromRows: shapeRows?.rows.map { $0.map(\.asText) })
+        var partitions: [PostgreSQLTableDDL.Partition] = []
+        var partitionIndexes: [String] = []
+        var partitionComments: [String] = []
+        if shape.partitionKey != nil {
+            let tree = try await catalogRead(PostgreSQLTableDDL.partitionTreeQuery(schema: resolvedSchema, table: table))
+            partitions = tree.rows.compactMap { PostgreSQLTableDDL.partition(from: $0.map(\.asText)) }
+            if !partitions.isEmpty {
+                async let elementRows = catalogRead(PostgreSQLTableDDL.partitionElementsQuery(
+                    schema: resolvedSchema, table: table, scope: .below, capabilities: versionedCapabilities
+                ))
+                async let indexRows = catalogRead(PostgreSQLTableDDL.partitionIndexesQuery(schema: resolvedSchema, table: table))
+                async let commentRows = catalogRead(PostgreSQLTableDDL.partitionCommentsQuery(schema: resolvedSchema, table: table))
+                let elements = PostgreSQLTableDDL.elementsByPartition(try await elementRows.rows.map { $0.map(\.asText) })
+                partitions = partitions.map { partition in
+                    var partition = partition
+                    partition.elements = elements[partition.name] ?? []
+                    return partition
+                }
+                partitionIndexes = try await indexRows.rows.compactMap { $0.first?.asText }
+                partitionComments = PostgreSQLTableDDL.partitionComments(try await commentRows.rows.map { $0.map(\.asText) })
+            }
+        } else if shape.partitionOf != nil {
+            let elementRows = try await catalogRead(PostgreSQLTableDDL.partitionElementsQuery(
+                schema: resolvedSchema, table: table, scope: .itself, capabilities: versionedCapabilities
+            ))
+            shape.partitionElements = PostgreSQLTableDDL.elementsByPartition(elementRows.rows.map { $0.map(\.asText) })
+                .values.first ?? []
+        }
+
         let quotedSchema = quoteIdentifier(resolvedSchema)
-        return "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
+        return PostgreSQLTableDDL.script(
+            name: "\(quotedSchema).\(quotedTable)",
+            definitions: parts,
+            shape: shape,
+            partitions: partitions,
+            partitionIndexes: partitionIndexes,
+            partitionComments: partitionComments
+        )
     }
 
     /// `pg_get_indexdef` is what `pg_dump` itself emits, and it round-trips an expression key, an
@@ -452,6 +505,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// spanning two schemas attaches each index to the right one.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
         try await fetchStandaloneIndexes(table: table, schema: schema ?? core.currentSchema).definitions
+            .map(PostgreSQLTableDDL.indexCoveringPartitions)
     }
 
     func fetchStandaloneIndexes(table: String, schema: String) async throws -> PostgreSQLStandaloneIndexes {

@@ -1,18 +1,11 @@
-//
-//  SQLLineFoldProvider.swift
-//  TablePro
-//
-
 import Foundation
 import TableProEditorKit
 import TableProSQLGrammar
 import TableProTextEngine
 import TableProUtilities
 
-/// Answers the editor's per-line fold queries from a whole-document scan.
-///
-/// The editor restarts its walk at line zero every time the document changes, so the scan is refreshed there and every
-/// other line is a dictionary lookup. That keeps the main-thread cost of a pass linear in the document, not quadratic.
+// The editor runs `documentFoldScanner()` off the main thread on a copy of the text. The per-line answers below are
+// for callers that ask a line at a time; they rescan at line zero, so a pass stays linear in the document.
 final class SQLLineFoldProvider: LineFoldProvider {
     var grammar: SQLLexicalGrammar
 
@@ -21,6 +14,15 @@ final class SQLLineFoldProvider: LineFoldProvider {
 
     init(grammar: SQLLexicalGrammar = .ansi) {
         self.grammar = grammar
+    }
+
+    func documentFoldScanner() -> LineFoldDocumentScanner? {
+        let grammar = grammar
+        return { text in
+            SQLFoldScanner.scan(text as NSString, grammar: grammar).regions.map {
+                LineFoldProviderFold(depth: $0.depth, range: $0.range)
+            }
+        }
     }
 
     func foldLevelAtLine(

@@ -166,6 +166,7 @@ fn stored_form(value: &Value) -> Option<StoredForm<'_>> {
     Some(match value {
         Value::Null => return None,
         Value::Bool(flag) => StoredForm::Integer(i128::from(*flag)),
+        Value::Int32(integer) => StoredForm::Integer(i128::from(*integer)),
         Value::Int(integer) => StoredForm::Integer(i128::from(*integer)),
         Value::UInt(integer) => StoredForm::Integer(i128::from(*integer)),
         Value::WideInt(integer) => StoredForm::Integer(integer.to_i128()?),

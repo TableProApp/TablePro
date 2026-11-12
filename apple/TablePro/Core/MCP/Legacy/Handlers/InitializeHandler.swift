@@ -11,7 +11,7 @@ public struct InitializeHandler: MCPMethodHandler {
 
     public func handle(params: JsonValue?, context: MCPRequestContext) async throws -> MCPResult {
         let negotiated = try Self.negotiate(requestedVersion: params?["protocolVersion"]?.stringValue)
-        return Self.result(protocolVersion: negotiated)
+        return Self.result(protocolVersion: negotiated, scopes: context.principal.scopes)
     }
 
     public static func negotiate(requestedVersion: String?) throws -> MCPProtocolVersion {
@@ -25,12 +25,25 @@ public struct InitializeHandler: MCPMethodHandler {
         return requested
     }
 
-    public static func result(protocolVersion: MCPProtocolVersion) -> MCPResult {
+    public static func result(protocolVersion: MCPProtocolVersion, scopes: Set<MCPScope>) -> MCPResult {
         MCPResult.complete([
             "protocolVersion": .string(protocolVersion.rawValue),
-            "capabilities": MCPMethodRegistry.capabilities().asJsonValue(era: .legacy),
+            "capabilities": capabilities(for: scopes).asJsonValue(era: .legacy),
             "serverInfo": MCPMethodRegistry.serverInfo.asJsonValue,
             "instructions": .string(MCPMethodRegistry.instructions)
         ])
+    }
+
+    // A client told it has resources or prompts lists them at connect, and a 403 there can end the session.
+    static func capabilities(for scopes: Set<MCPScope>) -> MCPServerCapabilities {
+        let all = MCPMethodRegistry.capabilities()
+        let readsResources = scopes.contains(.resourcesRead)
+        return MCPServerCapabilities(
+            tools: scopes.contains(.toolsRead) ? all.tools : nil,
+            resources: readsResources ? all.resources : nil,
+            prompts: readsResources ? all.prompts : nil,
+            completions: readsResources && all.completions,
+            extensions: all.extensions
+        )
     }
 }

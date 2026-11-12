@@ -589,6 +589,13 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         }
 
         for fk in workingForeignKeys where isStaged(.foreignKey(fk.id)) && fk.isValid {
+            // Create Table refuses this too; otherwise the server does, after a MySQL save's earlier DDL already applied.
+            guard fk.columns.count == fk.referencedColumns.count else {
+                validationErrors[.foreignKey(fk.id)] = String(
+                    localized: "A foreign key needs as many referenced columns as it has columns."
+                )
+                continue
+            }
             for columnName in fk.columns where !namesAColumn(columnName, in: columnNames) {
                 validationErrors[.foreignKey(fk.id)] = String(
                     format: String(localized: "Foreign key references a column that does not exist: %@"), columnName
@@ -886,6 +893,81 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         currentForeignKeys = workingForeignKeys.filter { !isPendingDeletion(.foreignKey($0.id)) }
         currentCheckConstraints = workingCheckConstraints.filter { !isPendingDeletion(.checkConstraint($0.id)) }
         currentPrimaryKey = workingPrimaryKey
+    }
+
+    // MARK: - Rebase
+
+    // After a save that stopped part way on an engine that commits each DDL statement: what the read shows as done
+    // is dropped, the rest is staged against the table as it is. False, touching nothing, when the baseline held.
+    @discardableResult
+    func rebaseStagedChanges(onto baseline: StructureRebase.Baseline) -> Bool {
+        guard !isHeldForSave else { return false }
+        endTableCommentRun()
+        endTypingRun()
+
+        let rebasedColumns = StructureRebase.entities(
+            onto: baseline.columns, in: self, using: Self.columnOperations, \.name, \.id
+        )
+        let rebasedIndexes = StructureRebase.entities(
+            onto: baseline.indexes, in: self, using: Self.indexOperations, \.name, \.id
+        )
+        let rebasedForeignKeys = StructureRebase.entities(
+            onto: baseline.foreignKeys, in: self, using: Self.foreignKeyOperations, \.name, \.id
+        )
+        let rebasedCheckConstraints = StructureRebase.entities(
+            onto: baseline.checkConstraints, in: self, using: Self.checkConstraintOperations, \.name, \.id
+        )
+
+        let baselineMoved = rebasedColumns.current != currentColumns
+            || rebasedIndexes.current != currentIndexes
+            || rebasedForeignKeys.current != currentForeignKeys
+            || rebasedCheckConstraints.current != currentCheckConstraints
+            || baseline.primaryKey != currentPrimaryKey
+            || baseline.comment.original != tableComment.original
+            || baseline.options.original != tableOptions.original
+        guard baselineMoved else { return false }
+
+        currentColumns = rebasedColumns.current
+        workingColumns = StructureRebase.keepingKeyFlags(of: rebasedColumns.working, from: workingColumns)
+        currentIndexes = rebasedIndexes.current
+        workingIndexes = rebasedIndexes.working
+        currentForeignKeys = rebasedForeignKeys.current
+        workingForeignKeys = rebasedForeignKeys.working
+        currentCheckConstraints = rebasedCheckConstraints.current
+        workingCheckConstraints = rebasedCheckConstraints.working
+        currentPrimaryKey = baseline.primaryKey
+        adopt(rebasedColumns)
+        adopt(rebasedIndexes)
+        adopt(rebasedForeignKeys)
+        adopt(rebasedCheckConstraints)
+
+        let stagedComment = tableComment.hasChanges ? tableComment.text : nil
+        tableComment = baseline.comment
+        if let stagedComment { tableComment.text = stagedComment }
+        tableCommentRunStart = nil
+        restageTableComment()
+
+        let stagedOptions = tableOptions.hasChanges ? tableOptions.current : nil
+        tableOptions = baseline.options
+        if let stagedOptions, baseline.options.original != nil { tableOptions.current = stagedOptions }
+        restageTableOptions()
+
+        indexesAddedClustered = indexesAddedClustered.filter { id in !currentIndexes.contains { $0.id == id } }
+        changeOrder.removeAll { pendingChanges[$0] == nil }
+        undoManager.removeAllActions()
+        workingCopyDidChange()
+        reloadVersion += 1
+        return true
+    }
+
+    private func adopt<Entity>(_ rebased: StructureRebase.Entities<Entity>) {
+        for key in rebased.staleKeys {
+            pendingChanges.removeValue(forKey: key)
+        }
+        for staged in rebased.changes {
+            pendingChanges[staged.key] = staged.change
+            trackChangeKey(staged.key)
+        }
     }
 
     // MARK: - Undo/Redo Operations

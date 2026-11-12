@@ -71,11 +71,22 @@ struct InvisibleCharacterRemoverTests {
         #expect(clean(text, grammar: TestGrammar.postgres) == text)
     }
 
-    /// Measured on PostgreSQL 17: `SELECT<NBSP>$$a b$$` is a syntax error, because every byte over 0x7F continues an
-    /// identifier there and a `$` glued to one opens no literal. So the text is code, and its blanks are cleaned.
-    @Test("A dollar sign glued to a non-ASCII blank opens no literal")
-    func dollarQuoteBehindABlankIsCode() {
-        #expect(clean("SELECT\u{A0}$$a\u{A0}b$$", grammar: TestGrammar.postgres) == "SELECT $$a b$$")
+    // PostgreSQL reads the raw NBSP into the name, but the cleaned text that runs opens a dollar quote there.
+    @Test("A dollar-quoted body after a non-ASCII blank keeps its characters")
+    func dollarQuoteBehindABlankKeepsItsBody() {
+        #expect(clean("SELECT\u{A0}$$a\u{A0}b$$", grammar: TestGrammar.postgres) == "SELECT $$a\u{A0}b$$")
+        #expect(clean("SELECT\u{1680}$$a\u{A0}b$$", grammar: TestGrammar.duckdb) == "SELECT $$a\u{A0}b$$")
+    }
+
+    @Test("A line separator before an escape string ends the name, as the line break it becomes does")
+    func lineSeparatorBeforeEscapeString() {
+        #expect(clean("SELECT\u{2028}E'a\\'\u{A0}b'", grammar: TestGrammar.postgres) == "SELECT\nE'a\\'\u{A0}b'")
+    }
+
+    @Test("A removed character joins its neighbours when deciding where an escape string starts")
+    func removedCharacterBeforeEscapeString() {
+        #expect(clean("SELECT \u{200B}E'a\\'\u{A0}b'", grammar: TestGrammar.postgres) == "SELECT E'a\\'\u{A0}b'")
+        #expect(clean("x\u{8}E'a\\'\u{A0}b'", grammar: TestGrammar.postgres) == "xE'a\\' b'")
     }
 
     @Test("A MySQL conditional comment runs, so it is cleaned like code")

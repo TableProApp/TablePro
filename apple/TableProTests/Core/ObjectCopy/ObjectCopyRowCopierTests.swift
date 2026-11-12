@@ -17,6 +17,7 @@ private final class CopyDriver: PluginDriverStub, @unchecked Sendable {
     var batchSize = 2
     var executedQueries: [String] = []
     var executedParameters: [[PluginCellValue]] = []
+    var executedTypeNames: [[String?]?] = []
     var quote: (String) -> String = { "`\($0)`" }
     var declaredParameterStyle: ParameterStyle = .questionMark
     var transactionEvents: [String] = []
@@ -32,6 +33,15 @@ private final class CopyDriver: PluginDriverStub, @unchecked Sendable {
         executedQueries.append(query)
         executedParameters.append(parameters)
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        executedTypeNames.append(context.parameterTypeNames)
+        return try await executeParameterized(query: query, parameters: parameters)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -59,6 +69,7 @@ private final class CopyDriver: PluginDriverStub, @unchecked Sendable {
 struct ObjectCopyRowCopierTests {
     private func step(
         columns: [String] = ["id", "name"],
+        columnTypeNames: [String: String] = [:],
         schema: String? = "public",
         coercer: CrossEngineValueCoercer? = nil,
         serverSideInsert: SyncStatement? = nil,
@@ -71,6 +82,7 @@ struct ObjectCopyRowCopierTests {
             createStatements: [],
             truncateStatements: [],
             columns: columns,
+            targetColumnTypeNames: columnTypeNames,
             primaryKeyColumns: ["id"],
             sourceQuery: "SELECT `id`, `name` FROM `public`.`orders`",
             targetTable: "orders",
@@ -265,6 +277,172 @@ struct ObjectCopyRowCopierTests {
         ).copy(from: source, to: target) { _ in }
 
         #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "1"])
+    }
+
+    // MARK: - BIT columns
+
+    // Bound as text, MySQL stores the characters' bytes in a BIT column: 5 lands as 53.
+    @Test
+    func aMySQLBitColumnIsWrittenAsTheNumber() async throws {
+        let source = CopyDriver()
+        source.streamed = [[.text("1"), .text("5")]]
+        let target = CopyDriver()
+
+        _ = try await ObjectCopyRowCopier(
+            step: step(columns: ["id", "flags"], columnTypeNames: ["id": "int", "flags": "bit(8)"]),
+            sourceDatabaseType: .mysql,
+            targetDatabaseType: .mysql
+        ).copy(from: source, to: target) { _ in }
+
+        #expect(target.executedQueries.first == "INSERT INTO `public`.`orders` (`id`, `flags`) VALUES (?, CAST(? AS UNSIGNED))")
+        #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "5"])
+    }
+
+    @Test
+    func aMySQLTableCopyCarriesItsBitTypes() throws {
+        let draft = try Self.draft(
+            columns: [
+                PluginColumnInfo(name: "id", dataType: "int", isNullable: false, isPrimaryKey: true),
+                PluginColumnInfo(name: "flags", dataType: "bit(8)")
+            ],
+            from: .mysql,
+            to: .mysql
+        )
+
+        #expect(draft.targetColumnTypeNames["flags"] == "bit(8)")
+        #expect(draft.coercer == nil)
+    }
+
+    // PostgreSQL reads a bit string as its digits, which MySQL would take as the decimal number 101.
+    @Test
+    func aPostgresBitStringCopiedToMySQLArrivesAsItsNumber() async throws {
+        let draft = try Self.draft(
+            columns: [
+                PluginColumnInfo(name: "id", dataType: "integer", isNullable: false, isPrimaryKey: true),
+                PluginColumnInfo(name: "flags", dataType: "bit(8)")
+            ],
+            from: .postgresql,
+            to: .mysql
+        )
+        let source = CopyDriver()
+        source.streamed = [[.text("1"), .text("00000101")]]
+        let target = CopyDriver()
+
+        _ = try await ObjectCopyRowCopier(
+            step: step(
+                columns: draft.targetColumns,
+                columnTypeNames: draft.targetColumnTypeNames,
+                coercer: draft.coercer
+            ),
+            sourceDatabaseType: .postgresql,
+            targetDatabaseType: .mysql
+        ).copy(from: source, to: target) { _ in }
+
+        #expect(target.executedQueries.first?.hasSuffix("VALUES (?, CAST(? AS UNSIGNED))") == true)
+        #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "5"])
+    }
+
+    @Test
+    func aMySQLBitCopiedToPostgresArrivesAsItsDigits() async throws {
+        let draft = try Self.draft(
+            columns: [
+                PluginColumnInfo(name: "id", dataType: "int", isNullable: false, isPrimaryKey: true),
+                PluginColumnInfo(name: "flags", dataType: "bit(8)")
+            ],
+            from: .mysql,
+            to: .postgresql
+        )
+        let source = CopyDriver()
+        source.streamed = [[.text("1"), .text("5")]]
+        let target = CopyDriver()
+        target.declaredParameterStyle = .dollar
+
+        _ = try await ObjectCopyRowCopier(
+            step: step(
+                columns: draft.targetColumns,
+                columnTypeNames: draft.targetColumnTypeNames,
+                coercer: draft.coercer
+            ),
+            sourceDatabaseType: .mysql,
+            targetDatabaseType: .postgresql
+        ).copy(from: source, to: target) { _ in }
+
+        #expect(target.executedQueries.first?.contains("CAST") == false)
+        #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "00000101"])
+    }
+
+    // MARK: - Column types
+
+    // Oracle stored a copied `00123` in a VARCHAR2 as 123: the driver was never told the column was text.
+    @Test
+    func eachValueTellsTheTargetItsColumnType() async throws {
+        let source = CopyDriver()
+        source.streamed = [[.text("1"), .text("00123")], [.text("2"), .text("0.50")]]
+        let target = CopyDriver()
+
+        _ = try await ObjectCopyRowCopier(
+            step: step(columnTypeNames: ["id": "NUMBER", "name": "VARCHAR2(20 BYTE)"]),
+            sourceDatabaseType: .postgresql,
+            targetDatabaseType: .oracle
+        ).copy(from: source, to: target) { _ in }
+
+        // Oracle takes one row per INSERT.
+        #expect(target.executedTypeNames == [["NUMBER", "VARCHAR2(20 BYTE)"], ["NUMBER", "VARCHAR2(20 BYTE)"]])
+        #expect(target.executedParameters.map { row in row.map { $0.sortKey } } == [["1", "00123"], ["2", "0.50"]])
+    }
+
+    @Test
+    func aTargetOfNoKnownColumnTypesIsToldNone() async throws {
+        let source = CopyDriver()
+        source.streamed = rows(1)
+        let target = CopyDriver()
+
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
+            .copy(from: source, to: target) { _ in }
+
+        #expect(target.executedTypeNames == [nil])
+    }
+
+    private static func draft(
+        columns: [PluginColumnInfo],
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) throws -> ObjectCopyTableDraft {
+        let read = TableStructureRead(
+            table: PluginTableInfo(name: "orders", type: "TABLE", schema: nil, comment: nil),
+            columns: columns,
+            indexes: [],
+            foreignKeys: [],
+            metadata: nil,
+            failure: nil
+        )
+        return ObjectCopyTableDraft(
+            selection: ObjectCopySelection(kind: .table, name: "orders", schema: nil),
+            read: read,
+            snapshot: try #require(read.snapshot),
+            targetSnapshot: nil,
+            existsInTarget: false,
+            sourceSchema: nil,
+            targetSchema: nil,
+            targetServerVersion: nil,
+            request: ObjectCopyRequest(
+                source: endpoint(source),
+                destination: .existing(endpoint(target)),
+                objects: [],
+                content: .structureAndData,
+                existingPolicy: .skip
+            )
+        )
+    }
+
+    private static func endpoint(_ type: DatabaseType) -> DatabaseEndpoint {
+        DatabaseEndpoint(
+            scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
+            connectionName: type.rawValue,
+            databaseType: type,
+            safeModeLevel: .silent,
+            color: .blue
+        )
     }
 
     // MARK: - The server-side path

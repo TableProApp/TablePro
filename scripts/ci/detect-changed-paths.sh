@@ -2,19 +2,19 @@
 set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes from <base> to <head>, "false" when it can skip.
-# Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>
+# Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] <suite>
 # Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, linux-deps, packages, core,
 # windows.
+# No suite reads apple/CHANGELOG.md or apple/changelog.d/, so a release PR runs Lint only and its tag takes
+# the tests of an earlier commit on the line (apple/scripts/release/version.py, untested_errors).
 
 BASE=""
 HEAD_REV="HEAD"
-REF=""
 SUITE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --base) BASE="${2:-}"; shift 2 ;;
         --head) HEAD_REV="${2:-}"; shift 2 ;;
-        --ref) REF="${2:-}"; shift 2 ;;
         -*) echo "detect-changed-paths.sh: unknown flag $1" >&2; exit 2 ;;
         *) SUITE="$1"; shift ;;
     esac
@@ -33,7 +33,9 @@ case "$SUITE" in
             'apple/scripts/lib/' 'apple/scripts/ci/(summarize-xcresult|verify-plugin-loads)\.sh$'
             'apple/scripts/localization\.py$' 'scripts/ci/detect-changed-paths\.sh$'
             'apple/scripts/check-pluginkit-abi\.sh$' 'apple/scripts/release/notes\.py$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$') ;;
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$'
+            # The app bundles the MCP client catalog the Linux app compiles in.
+            'core/crates/mcp/clients\.json$') ;;
     plugins)
         # Registry plugins link the TableProCore and TableProOracle products.
         PATTERNS=('apple/Plugins/' 'apple/Packages/TableProCore/' 'apple/Packages/TableProOracle/' 'apple/Native/'
@@ -74,7 +76,8 @@ case "$SUITE" in
             'apple/scripts/lib/' 'apple/scripts/release/(build|package|dmg)\.sh$'
             'apple/scripts/release/dmg\.DS_Store$' 'apple/scripts/release/(notes|registry|version)\.py$'
             'apple/scripts/ci/verify-plugin-loads\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|nightly)\.yml$')
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|nightly)\.yml$'
+            'core/crates/mcp/clients\.json$')
         SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/'
         # shipped is what an X.Y.0 may not change after its newest beta: the release build minus its CI.
         if [ "$SUITE" = shipped ]; then
@@ -133,14 +136,6 @@ case "$SUITE" in
     *)
         echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, linux-deps, packages, core or windows, got '$SUITE'" >&2
         exit 2 ;;
-esac
-
-# Every suite runs on a release line: a tag's verify needs its commit's own runs, and a release PR
-# changes only the changelog.
-case "$REF" in
-    refs/heads/release/*)
-        echo "true"
-        exit 0 ;;
 esac
 
 # A new branch has no previous commit, so it is compared with the point where it left main.

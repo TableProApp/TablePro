@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Run TableProQdrantCore against a live Qdrant node: cursor paging, every filter kind, sorting with
-# keyless points, typed payload and vector writes, the insert id check, facet, export, truncate and
-# drop. The probe creates and drops a collection named tablepro_probe.
+# Run TableProQdrantCore and TableProQdrantClient against a live Qdrant node: cursor paging, every
+# filter kind, sorting with keyless points, typed payload and vector writes, the insert id check,
+# facet, export, truncate and drop. The probe creates and drops a collection named tablepro_probe.
 #
 # Usage:
 #   scripts/probes/check-qdrant.sh [host] [port]
@@ -35,7 +35,10 @@ let package = Package(
     name: "probe",
     platforms: [.macOS(.v14)],
     dependencies: [.package(path: "$CORE")],
-    targets: [.executableTarget(name: "probe", dependencies: [.product(name: "TableProQdrantCore", package: "TableProCore")])]
+    targets: [.executableTarget(name: "probe", dependencies: [
+        .product(name: "TableProQdrantCore", package: "TableProCore"),
+        .product(name: "TableProQdrantClient", package: "TableProCore")
+    ])]
 )
 MANIFEST
 

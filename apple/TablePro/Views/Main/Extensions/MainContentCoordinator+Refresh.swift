@@ -2,8 +2,6 @@
 //  MainContentCoordinator+Refresh.swift
 //  TablePro
 //
-//  Refresh handling operations for MainContentCoordinator
-//
 
 import AppKit
 import Combine
@@ -44,8 +42,13 @@ extension MainContentCoordinator {
     ) {
         guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
         switch tab.tabType {
-        case .versionHistory, .tableListing, .serverDashboard, .insights, .tableHealth, .objectSource:
+        case .versionHistory, .tableListing, .serverDashboard, .insights, .objectSource:
             AppEvents.shared.tabRefreshRequested.send(tab.id)
+            return
+        case .tableHealth:
+            if let model = tableHealthModels[tab.id] {
+                Task { await model.refresh() }
+            }
             return
         case .erDiagram:
             if let diagram = erDiagramModels[tab.id] {
@@ -97,5 +100,7 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIndex) { $0.pagination.retireDerivedRowCount() }
         rebuildTableQuery(at: tabIndex)
         runQuery(viewport: .keepPlace)
+        // The next tick counts from this load settling, not from the last one.
+        restartAutoRefresh()
     }
 }

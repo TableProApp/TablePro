@@ -233,6 +233,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH host keys saved on this device could not be read, so this server's key could not be checked." : {
+
+    },
     "The SSH port %lld is not between 1 and 65535." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -1782,6 +1785,9 @@
     "A cursor has no .%@() modifier." : {
 
     },
+    "A damaged history file from every connection was kept on this device. Clear All History deletes it." : {
+
+    },
     "A database name must be shorter than %ld bytes." : {
 
     },
@@ -1920,6 +1926,9 @@
       }
     },
     "A number in %@ is larger than a 64-bit integer. Write it as a decimal, such as {\"$numberDecimal\": \"12345678901234567890\"}." : {
+
+    },
+    "A query that switches the database is running on this connection. Try again once it ends." : {
 
     },
     "A renamed column's foreign key is rewritten, so its MATCH and DEFERRABLE clauses are not carried over." : {
@@ -4826,6 +4835,9 @@
     "Check the host name, or set SSL Mode to Verify CA to skip the name check." : {
 
     },
+    "Check the network connection and try again." : {
+
+    },
     "Check the server's TLS settings and this connection's SSL Mode." : {
 
     },
@@ -5423,6 +5435,9 @@
           }
         }
       }
+    },
+    "Clear the RDS Endpoint in this connection's Authentication section." : {
+
     },
     "ClickHouse ended the result partway through a row, so the rows that arrived are incomplete." : {
 
@@ -7205,6 +7220,10 @@
         }
       }
     },
+    "Could not read this Mac's trusted certificates to verify the server. Choose the server's CA certificate under SSL, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not run the credential_process command for profile \"%@\": %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -7482,6 +7501,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "DNS Lookup Failed" : {
+
+    },
     "Data & Analytics" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -7719,6 +7741,9 @@
           }
         }
       }
+    },
+    "Database Switch Running" : {
+
     },
     "Database Type" : {
       "localizations" : {
@@ -9874,6 +9899,9 @@
         }
       }
     },
+    "Failed to configure the connection timeout" : {
+
+    },
     "Failed to decode the SSO portal response for profile \"%@\"." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -10878,6 +10906,9 @@
           }
         }
       }
+    },
+    "Go to First Page" : {
+
     },
     "Go to Page" : {
       "localizations" : {
@@ -12776,6 +12807,9 @@
       }
     },
     "Its uncommitted changes are discarded." : {
+
+    },
+    "Join Condition" : {
 
     },
     "JSON" : {
@@ -15398,6 +15432,9 @@
           }
         }
       }
+    },
+    "No Rows on This Page" : {
+
     },
     "No Tables" : {
       "localizations" : {
@@ -18454,6 +18491,9 @@
     "RDS Endpoint (optional)" : {
 
     },
+    "RDS Endpoint Does Not Match" : {
+
+    },
     "RDS Endpoint Invalid" : {
 
     },
@@ -18634,6 +18674,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新連線…"
+          }
+        }
+      }
+    },
+    "Record %lld of the CSV data has %lld fields, but the header has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Record %1$lld of the CSV data has %2$lld fields, but the header has %3$lld."
           }
         }
       }
@@ -19946,6 +19996,9 @@
         }
       }
     },
+    "Safe Mode is set to Read-Only for this connection, and the database refused the statement." : {
+
+    },
     "Same Key as SSH Server" : {
 
     },
@@ -20698,6 +20751,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Session in Another Database" : {
+
+    },
     "Session Token" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -21119,6 +21175,9 @@
         }
       }
     },
+    "Shown in part. Run a query that returns fewer rows or columns to see it in full." : {
+
+    },
     "SID" : {
       "localizations" : {
         "ko" : {
@@ -21424,6 +21483,9 @@
 
     },
     "Some documents may already have been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "Some long values are shown in part to stay within memory." : {
 
     },
     "Sort" : {
@@ -23224,6 +23286,16 @@
     "TablePro cannot upload changes until there is space in iCloud. Changes on this device are kept here and upload once you free up space or add storage." : {
 
     },
+    "TablePro closed %@ when it went to the background while a statement was running, so its open transaction may have been committed or rolled back. It has been reopened; check which of its changes were saved before running them again." : {
+
+    },
+    "TablePro closed %@ when it went to the background, which rolled back its open transaction. It has been reopened; run the statements again, and commit before you leave the app." : {
+
+    },
+    "TablePro could not look up \"%@\" in DNS to find the AWS endpoint it points to. Check the network and try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro could not read that file." : {
       "localizations" : {
         "ko" : {
@@ -24401,6 +24473,9 @@
         }
       }
     },
+    "The connection moved to another database or schema. Choose the row again." : {
+
+    },
     "The connection moved to another database or schema. Choose the table again." : {
 
     },
@@ -24897,6 +24972,9 @@
     "The FreeTDS configuration could not be written: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The full values in this result need more memory than this device has free. Run a query that returns fewer rows and try again." : {
+
     },
     "The full values on this page need more memory than this device has free. Choose a smaller page size and try again." : {
 
@@ -25684,6 +25762,26 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The query moved the session to “%@” and it could not go back to “%@”. To save the unsaved changes, run USE %@ in the Query tab of the window that holds them." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The query moved the session to “%1$@” and it could not go back to “%2$@”. To save the unsaved changes, run USE %3$@ in the Query tab of the window that holds them."
+          }
+        }
+      }
+    },
+    "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The query moved the session to “%1$@” and it could not go back to “%2$@”. Unsaved changes still save to “%3$@”."
+          }
+        }
+      }
+    },
     "The query names its own output format, %@. Remove its FORMAT clause to read it as rows." : {
 
     },
@@ -25727,6 +25825,10 @@
       "generatesSymbol" : false
     },
     "the reference “%@” is used more than once" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The referential action of foreign key %@ is not one SQL Server has: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -26276,6 +26378,16 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The session is in “%@”, not “%@”, so this change cannot be saved now." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The session is in “%1$@”, not “%2$@”, so this change cannot be saved now."
+          }
+        }
+      }
+    },
     "The shell drops a field named __proto__ from a new document. Remove the field, then set it on the saved document." : {
 
     },
@@ -26294,6 +26406,10 @@
     },
     "The socket path must start with /." : {
 
+    },
+    "The RDS Endpoint \"%1$@\" is not the database at \"%2$@\", where the connection goes. Clear the RDS Endpoint unless you connect through a port forward." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The SQLite extensions for this connection could not be loaded." : {
       "extractionState" : "manual",
@@ -26398,6 +26514,10 @@
     },
     "The statement before it stays applied." : {
 
+    },
+    "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The table \"%@\" and all its data will be permanently deleted." : {
       "localizations" : {
@@ -27132,6 +27252,10 @@
         }
       }
     },
+    "This database has no column defaults, so a cell cannot be left to one. Enter a value." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This database has no Create Table form" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -27519,6 +27643,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This page is past the last row." : {
+
+    },
     "This query will modify data. Are you sure you want to continue?" : {
       "localizations" : {
         "ko" : {
@@ -27867,6 +27994,9 @@
           }
         }
       }
+    },
+    "This window has unsaved changes on this connection, so the session stayed on its database. Save or discard them before switching database." : {
+
     },
     "Ticket" : {
       "extractionState" : "manual",
@@ -29401,6 +29531,9 @@
 
     },
     "View as JSON" : {
+
+    },
+    "View Full Value" : {
 
     },
     "Views" : {

@@ -7,28 +7,19 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-internal enum ConnectionState
-{
-    NotConnected,
-    Connecting,
-    Connected,
-    Failed,
-}
-
-// A saved connection is reopened by id, a file opened without saving by its path.
-internal sealed class OpenConnection
+// The rail item and the workspace of one open connection; connecting and closing it are ConnectionLife's.
+internal sealed class OpenConnection : IConnectionView<DatabaseSession>
 {
     private readonly Workbench _workbench;
-    private CancellationTokenSource? _connecting;
-    private SessionConnection? _restore;
-    private SessionShare? _share;
+    private readonly ConnectionLife<DatabaseSession> _life;
 
     public OpenConnection(Workbench workbench, SessionConnection origin)
     {
         _workbench = workbench;
-        Origin = origin;
-        _restore = origin.Tabs.Count > 0 ? origin : null;
         View = new WorkspaceView(workbench, this);
+        _life = new ConnectionLife<DatabaseSession>(
+            origin, this, new CoreConnector(workbench.Core, View.CredentialPrompter));
+        _life.Cancelled += (_, _) => Cancelled?.Invoke(this, EventArgs.Empty);
         RailItem = new NavigationViewItem
         {
             Content = origin.Name,
@@ -49,7 +40,7 @@ internal sealed class OpenConnection
     // Raised when a connect the user cancelled is over, so the window can take the connection away.
     public event EventHandler? Cancelled;
 
-    public SessionConnection Origin { get; private set; }
+    public SessionConnection Origin => _life.Origin;
 
     public string Name => Origin.Name;
 
@@ -59,14 +50,11 @@ internal sealed class OpenConnection
 
     public WorkspaceView View { get; }
 
-    public DatabaseSession? Session => _share?.Session;
+    public DatabaseSession? Session => _life.Session;
 
-    public ConnectionState State { get; private set; } = ConnectionState.NotConnected;
+    public ConnectionState State => _life.State;
 
-    public bool Matches(Guid? connectionId, string? filePath) =>
-        connectionId is not null
-            ? connectionId == Origin.ConnectionId
-            : filePath is not null && string.Equals(filePath, Origin.FilePath, StringComparison.OrdinalIgnoreCase);
+    public bool Matches(Guid? connectionId, string? filePath) => _life.Matches(connectionId, filePath);
 
     public string? Color { get; private set; }
 
@@ -78,7 +66,7 @@ internal sealed class OpenConnection
             return;
         }
 
-        Origin = Origin with { EngineId = engineId };
+        _life.SetEngine(engineId);
         Color = color;
         RailItem.Icon = EngineIcons.Mark(engineId, color);
         // The glyph says the engine to the eye; the item says it to a screen reader.
@@ -87,170 +75,39 @@ internal sealed class OpenConnection
 
     public void Rename(string name)
     {
-        Origin = Origin with { Name = name };
+        _life.Rename(name);
         RailItem.Content = name;
         AutomationProperties.SetName(RailItem, name);
         ToolTipService.SetToolTip(RailItem, name);
         View.Rename(name);
     }
 
-    public async Task ConnectAsync()
-    {
-        if (State is ConnectionState.Connecting or ConnectionState.Connected)
-        {
-            return;
-        }
+    public Task ConnectAsync() => _life.ConnectAsync();
 
-        using var connecting = new CancellationTokenSource();
-        _connecting = connecting;
-        SetState(ConnectionState.Connecting);
-        View.ShowConnecting();
-        try
-        {
-            var session = Origin.ConnectionId is { } id
-                ? await ConnectSavedAsync(id, connecting.Token).ConfigureAwait(true)
-                : await _workbench.Core.OpenFileAsync(
-                    new FileOpenOptions(Origin.FilePath!, string.IsNullOrEmpty(Origin.EngineId) ? null : Origin.EngineId),
-                    connecting.Token).ConfigureAwait(true);
-            _share = new SessionShare(session);
-            if (Origin.EngineId != session.EngineId)
-            {
-                Mark(session.EngineId, Color);
-            }
+    public Task RestartConnectAsync() => _life.RestartConnectAsync();
 
-            SetState(ConnectionState.Connected);
-            View.ShowConnected(_share, _restore);
-            _restore = null;
-            if (Origin.ConnectionId is not null)
-            {
-                _workbench.NotifyLibraryChanged();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            SetState(ConnectionState.NotConnected);
-            Cancelled?.Invoke(this, EventArgs.Empty);
-        }
-        catch (TableProException exception)
-        {
-            SetState(ConnectionState.Failed);
-            View.ShowFailed(Strings.Error(exception.Error), Details(exception.Error));
-        }
-        finally
-        {
-            _connecting = null;
-        }
-    }
-
-    public void CancelConnect()
-    {
-        _connecting?.Cancel();
-        View.CancelRecovery();
-    }
+    public void CancelConnect() => _life.CancelConnect();
 
     // The same connection in another window, on the same session, ready for the tab moved into it.
     public OpenConnection Adopt()
     {
-        var share = _share ?? throw new InvalidOperationException("Only a connected workspace gives up a tab.");
+        if (_life.Share is null)
+        {
+            throw new InvalidOperationException("Only a connected workspace gives up a tab.");
+        }
+
         var adopted = new OpenConnection(_workbench, Origin with { Tabs = [], SelectedTab = 0 });
         adopted.Mark(Origin.EngineId, Color);
-        adopted._share = share.Hold();
-        adopted.SetState(ConnectionState.Connected);
-        adopted.View.ShowConnected(adopted._share, null, adopted: true);
+        adopted._life.Adopt(_life);
         return adopted;
     }
 
-    // A secret with none saved is asked for, as macOS asks; closing the dialog cancels the connect.
-    private async Task<DatabaseSession> ConnectSavedAsync(Guid id, CancellationToken cancellationToken)
+    public Task DisconnectAsync(bool keepTabs = false) => _life.DisconnectAsync(keepTabs);
+
+    public SessionConnection Snapshot() => _life.Snapshot();
+
+    void IConnectionView<DatabaseSession>.ShowState(ConnectionState state)
     {
-        var secrets = ConnectionSecrets.None;
-        var remembered = ConnectionSecrets.None;
-        var prompted = new HashSet<SecretKind>();
-        var replaced = new HashSet<string>(StringComparer.Ordinal);
-        while (true)
-        {
-            try
-            {
-                var session = await _workbench.Core.ConnectAsync(
-                    id, secrets, View.CredentialPrompter, cancellationToken).ConfigureAwait(true);
-                if (remembered != ConnectionSecrets.None)
-                {
-                    await SaveSecretAsync(id, remembered).ConfigureAwait(true);
-                }
-
-                return session;
-            }
-            catch (TableProException exception) when (exception.Error.HostKey is { TrustAllowed: true } key && replaced.Add(key.Host))
-            {
-                var snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
-                var saved = snapshot.Connections.FirstOrDefault(connection => connection.Id == id);
-                if (saved is null || !await View.CredentialPrompter.RecoverHostKeyAsync(
-                    _workbench.Core, saved, exception.Error.HostKey!, cancellationToken).ConfigureAwait(true))
-                {
-                    throw;
-                }
-            }
-            catch (TableProException exception) when (exception.Code == "keyring.secret_not_stored")
-            {
-                var kind = exception.Error.Secret ?? SecretKind.DatabasePassword;
-                if (!prompted.Add(kind))
-                {
-                    throw;
-                }
-
-                var answer = await View.AskSecretAsync(kind, cancellationToken).ConfigureAwait(true)
-                    ?? throw new OperationCanceledException(cancellationToken);
-                secrets = WithSecret(secrets, kind, answer.Secret);
-                if (answer.Save)
-                {
-                    remembered = WithSecret(remembered, kind, answer.Secret);
-                }
-            }
-        }
-    }
-
-    private static ConnectionSecrets WithSecret(ConnectionSecrets secrets, SecretKind kind, string value) => kind switch
-    {
-        SecretKind.SshPassword => secrets with { SshPassword = value },
-        SecretKind.SshPassphrase => secrets with { SshPassphrase = value },
-        _ => secrets with { DatabasePassword = value },
-    };
-
-    private async Task SaveSecretAsync(Guid id, ConnectionSecrets secrets)
-    {
-        try
-        {
-            var snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
-            if (snapshot.Connections.FirstOrDefault(connection => connection.Id == id) is { } saved)
-            {
-                await _workbench.Library.SaveAsync(saved, secrets).ConfigureAwait(true);
-            }
-        }
-        catch (TableProException)
-        {
-            // The connect worked; a password that could not be saved is asked for again next time.
-        }
-    }
-
-    public async Task DisconnectAsync()
-    {
-        CancelConnect();
-        var share = _share;
-        _share = null;
-        await View.CloseTabsAsync().ConfigureAwait(true);
-        if (share is not null)
-        {
-            await share.ReleaseAsync().ConfigureAwait(true);
-        }
-
-        SetState(ConnectionState.NotConnected);
-    }
-
-    public SessionConnection Snapshot() => View.Snapshot(_restore ?? Origin);
-
-    private void SetState(ConnectionState state)
-    {
-        State = state;
         RailItem.InfoBadge = state switch
         {
             ConnectionState.Connecting => new InfoBadge { Style = Badge("AttentionDotInfoBadgeStyle") },
@@ -268,6 +125,51 @@ internal sealed class OpenConnection
         ToolTipService.SetToolTip(RailItem, status.Length == 0 ? Name : $"{Name} ({status})");
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    void IConnectionView<DatabaseSession>.ShowConnecting() => View.ShowConnecting();
+
+    // A session that names another engine than the one saved marks the rail with it.
+    void IConnectionView<DatabaseSession>.ShowConnected(
+        SessionShare<DatabaseSession> share, SessionConnection? restore, bool adopted)
+    {
+        if (!adopted && Origin.EngineId != share.Session.EngineId)
+        {
+            Mark(share.Session.EngineId, Color);
+        }
+
+        View.ShowConnected(share, restore, adopted);
+        if (!adopted && ConnectionId is not null)
+        {
+            _workbench.NotifyLibraryChanged();
+        }
+    }
+
+    void IConnectionView<DatabaseSession>.ShowFailed(CoreError failure) =>
+        View.ShowFailed(Strings.Error(failure), Details(failure));
+
+    void IConnectionView<DatabaseSession>.ShowCancelledKeepsTabs()
+    {
+        var message = Strings.Get("ConnectCancelledKeepsTabs");
+        View.ShowFailed(message, message);
+    }
+
+    Task<SecretAnswer?> IConnectionView<DatabaseSession>.AskSecretAsync(
+        SecretKind kind, CancellationToken cancellationToken) => View.AskSecretAsync(kind, cancellationToken);
+
+    async Task<bool> IConnectionView<DatabaseSession>.RecoverHostKeyAsync(
+        Guid id, HostKeyFailure failure, CancellationToken cancellationToken)
+    {
+        var snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
+        var saved = snapshot.Connections.FirstOrDefault(connection => connection.Id == id);
+        return saved is not null && await View.CredentialPrompter.RecoverHostKeyAsync(
+            _workbench.Core, saved, failure, cancellationToken).ConfigureAwait(true);
+    }
+
+    void IConnectionView<DatabaseSession>.CancelRecovery() => View.CancelRecovery();
+
+    Task IConnectionView<DatabaseSession>.CloseTabsAsync(bool keepClosed) => View.CloseTabsAsync(keepClosed);
+
+    SessionConnection IConnectionView<DatabaseSession>.Snapshot(SessionConnection origin) => View.Snapshot(origin);
 
     private static Style Badge(string key) => (Style)Application.Current.Resources[key];
 

@@ -29,10 +29,10 @@ struct SQLLexicalFeatureMappingTests {
             .sqlScriptBlocks, .cqlBatches, .hashAndAtInIdentifiers, .angleQuotedIdentifiers,
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
             .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
-            .withoutDashComments, .escapeStringContinuations, .databendTokens,
+            .withoutDashComments, .escapeStringContinuations, .databendTokens, .psqlScripts, .nonASCIISpacesEndNames,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 41) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 43) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -78,6 +78,7 @@ struct SQLLexicalFeatureMappingTests {
             SQLLexicalGrammar(pluginFeatures: cockroach.pluginFeatures)
                 == cockroach.subtracting([
                     .escapeBytesPrefix, .escapeStringContinuations, .atomicRoutineBodies, .bracketedStatementSources,
+                    .psqlScripts,
                 ])
         )
     }
@@ -93,7 +94,7 @@ struct SQLLexicalFeatureMappingTests {
     @Test("A grammar survives the trip through the kit's features, less the facts only the curated table sets")
     func roundTrip() {
         let grammar = DatabaseType.postgresql.lexicalGrammar
-        let curatedOnly: SQLLexicalGrammar = [.atomicRoutineBodies, .escapeStringContinuations]
+        let curatedOnly: SQLLexicalGrammar = [.atomicRoutineBodies, .escapeStringContinuations, .psqlScripts]
         #expect(grammar.isSuperset(of: curatedOnly))
         #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar.subtracting(curatedOnly))
         #expect(SQLLexicalGrammar(pluginFeatures: DatabaseType.mysql.lexicalGrammar.pluginFeatures) == DatabaseType.mysql.lexicalGrammar)
@@ -121,6 +122,9 @@ struct SQLLexicalFeatureMappingTests {
         "SELECT $$it's$$; DROP TABLE t; SELECT 'x'",
         "SELECT $ü$it's$ü$; DROP TABLE t; SELECT 'x'",
         "SELECT E'\\''; DROP TABLE t; --'",
+        "SELECT x$e'\\'; DROP TABLE t; --'",
+        "SELECT x$q'['; DROP TABLE t; --]' FROM dual",
+        "SELECT x#q'['; DROP TABLE t; --]' FROM dual",
         "SELECT 1 # '\n; DROP TABLE t; -- '",
         "SELECT 'a\\'; DROP TABLE t; -- '",
         "SELECT 1 AS [a]]'b]; DROP TABLE t; SELECT 'x'",

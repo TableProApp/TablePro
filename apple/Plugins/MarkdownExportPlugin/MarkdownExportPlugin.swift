@@ -54,13 +54,15 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
             if !committed { PluginExportUtilities.rollbackAtomicWrite(at: tempURL) }
         }
 
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-export.
+        let options = settings
         for (index, table) in tables.enumerated() {
             try progress.checkCancellation()
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
-            if settings.includesTableNames {
+            if options.includesTableNames {
                 try fileHandle.write(contentsOf: "## \(table.qualifiedName)\n\n".toUTF8Data())
             }
-            try await writeTable(table, dataSource: dataSource, to: fileHandle, progress: progress)
+            try await writeTable(table, options: options, dataSource: dataSource, to: fileHandle, progress: progress)
             try fileHandle.write(contentsOf: "\n".toUTF8Data())
         }
 
@@ -73,6 +75,7 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
 
     private func writeTable(
         _ table: PluginExportTable,
+        options: MarkdownExportOptions,
         dataSource: any PluginExportDataSource,
         to fileHandle: FileHandle,
         progress: PluginExportProgress
@@ -89,9 +92,9 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
                 columns = header.columns
             case .rows(let rows):
                 for row in rows {
-                    let cells = row.map { cellText($0) }
+                    let cells = row.map { cellText($0, nullPlaceholder: options.nullPlaceholder) }
                     progress.incrementRow()
-                    guard settings.alignsColumns, !wroteHeader else {
+                    guard options.alignsColumns, !wroteHeader else {
                         if !wroteHeader {
                             try writeHeader(columns, widths: nil, to: fileHandle)
                             wroteHeader = true
@@ -115,7 +118,7 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
         }
 
         if !wroteHeader {
-            widths = settings.alignsColumns
+            widths = options.alignsColumns
                 ? MarkdownTableRenderer.widths(header: columns, sample: buffered)
                 : nil
             try writeHeader(columns, widths: widths, to: fileHandle)
@@ -138,10 +141,10 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
         ).toUTF8Data())
     }
 
-    private func cellText(_ value: PluginCellValue) -> String {
+    private func cellText(_ value: PluginCellValue, nullPlaceholder: String) -> String {
         switch value {
         case .null:
-            return MarkdownTableRenderer.cell(settings.nullPlaceholder)
+            return MarkdownTableRenderer.cell(nullPlaceholder)
         case .bytes(let data):
             return MarkdownTableRenderer.cell("0x\(data.map { String(format: "%02X", $0) }.joined())")
         case .text(let text):

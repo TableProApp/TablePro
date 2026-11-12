@@ -7,8 +7,11 @@ import AppKit
 import SwiftUI
 
 /// A read-only text view that holds thousands of lines of server output without laying them out as SwiftUI text.
+/// The Message tab's run log uses it for the same reason.
 struct ServerOutputTextView: NSViewRepresentable {
     let text: String
+    var accessibilityLabel = String(localized: "Server output")
+    var accessibilityIdentifier = "server-output-text"
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -24,8 +27,8 @@ struct ServerOutputTextView: NSViewRepresentable {
             textView: textView,
             natives: ThemeTextViewStyle.Natives(of: textView)
         )
-        textView.setAccessibilityLabel(String(localized: "Server output"))
-        textView.setAccessibilityIdentifier("server-output-text")
+        textView.setAccessibilityLabel(accessibilityLabel)
+        textView.setAccessibilityIdentifier(accessibilityIdentifier)
         textView.string = text
         return scrollView
     }

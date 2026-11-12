@@ -89,14 +89,14 @@ struct SQLStatementGeneratorTests {
         #expect(statements[0].parameters[2] == nil)
     }
 
-    @Test("Insert skips __DEFAULT__ columns")
+    @Test("Insert leaves out a column marked as its default")
     func testInsertSkipsDefaultColumns() throws {
         let generator = try makeGenerator()
         let insertedRowData: [RowID: [PluginCellValue]] = [
-            .existing(0): ["__DEFAULT__", "John", "john@example.com"]
+            .existing(0): [.columnDefault, "John", "john@example.com"]
         ]
         let changes: [RowChange] = [
-            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil, expressionColumns: [0])
         ]
 
         let statements = generator.generateStatements(
@@ -114,11 +114,35 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.parameters.count == 2)
     }
 
+    @Test("Insert binds text that only reads like the default, unmarked", arguments: ["__DEFAULT__", "DEFAULT"])
+    func testInsertBindsUnmarkedDefaultText(text: String) throws {
+        let generator = try makeGenerator()
+        let insertedRowData: [RowID: [PluginCellValue]] = [
+            .existing(0): [.columnDefault, .text(text), "john@example.com"]
+        ]
+        let changes: [RowChange] = [
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil, expressionColumns: [0])
+        ]
+
+        let statements = generator.generateStatements(
+            from: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
+        )
+
+        #expect(statements.count == 1)
+        let stmt = statements[0]
+        #expect(!stmt.sql.contains("`id`"))
+        #expect(stmt.sql.contains("`name`"))
+        #expect(stmt.parameters.compactMap { $0 as? String } == [text, "john@example.com"])
+    }
+
     /// This used to expect no statement at all, which dropped the row from the batch while the rest
     /// of the save committed and reported success. A table of nothing but an identity column and
     /// defaults is exactly the shape that produces it.
     @Test(
-        "Insert with all __DEFAULT__ names no column",
+        "Insert with every column marked as its default names no column",
         arguments: [
             (DatabaseType.mysql, "() VALUES ()"),
             (DatabaseType.postgresql, "DEFAULT VALUES"),
@@ -128,10 +152,10 @@ struct SQLStatementGeneratorTests {
     func testInsertAllDefaultNamesNoColumn(databaseType: DatabaseType, expected: String) throws {
         let generator = try makeGenerator(databaseType: databaseType)
         let insertedRowData: [RowID: [PluginCellValue]] = [
-            .existing(0): ["__DEFAULT__", "__DEFAULT__", "__DEFAULT__"]
+            .existing(0): [.columnDefault, .columnDefault, .columnDefault]
         ]
         let changes: [RowChange] = [
-            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil, expressionColumns: [0, 1, 2])
         ]
 
         let statements = generator.generateStatements(
@@ -378,7 +402,7 @@ struct SQLStatementGeneratorTests {
         #expect(statements[0].parameters[0] == nil)
     }
 
-    @Test("Update with __DEFAULT__ value")
+    @Test("Update with a cell marked as its default")
     func testUpdateWithDefaultValue() throws {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
@@ -386,7 +410,10 @@ struct SQLStatementGeneratorTests {
                 rowID: .existing(0),
                 type: .update,
                 cellChanges: [
-                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "__DEFAULT__")
+                    CellChange(
+                        columnIndex: 1, columnName: "name", oldValue: "John", newValue: .columnDefault,
+                        newIsExpression: true
+                    )
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -403,6 +430,32 @@ struct SQLStatementGeneratorTests {
         let stmt = statements[0]
         #expect(stmt.sql.contains("`name` = DEFAULT"))
         #expect(stmt.parameters.count == 1)
+    }
+
+    @Test("Update binds typed text that only reads like the default", arguments: ["__DEFAULT__", "DEFAULT"])
+    func testUpdateBindsUnmarkedDefaultText(text: String) throws {
+        let generator = try makeGenerator()
+        let changes: [RowChange] = [
+            RowChange(
+                rowID: .existing(0),
+                type: .update,
+                cellChanges: [CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: .text(text))],
+                originalRow: ["1", "John", "john@example.com"]
+            )
+        ]
+
+        let statements = generator.generateStatements(
+            from: changes,
+            insertedRowData: [:],
+            deletedRowIDs: [],
+            insertedRowIDs: []
+        )
+
+        #expect(statements.count == 1)
+        let stmt = statements[0]
+        #expect(stmt.sql.contains("`name` = ?"))
+        #expect(!stmt.sql.contains("DEFAULT"))
+        #expect(stmt.parameters.compactMap { $0 as? String } == [text, "1"])
     }
 
     @Test("Update with a cell marked as SQL inlines it")

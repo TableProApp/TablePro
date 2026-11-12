@@ -10,8 +10,6 @@ import TableProSQLQuoting
 /// the grid loaded, so it neither recreates an item someone deleted nor overwrites one someone
 /// changed.
 struct DynamoDBWriteStatements {
-    static let defaultSentinel = "__DEFAULT__"
-
     let table: String
     let columns: [String]
     let keyColumns: [String]
@@ -55,13 +53,12 @@ struct DynamoDBWriteStatements {
         return writes.map { (statement: $0.statement, parameters: $0.parameters) }
     }
 
-    func insert(row: [PluginCellValue]) -> (statement: String, parameters: [PluginCellValue]) {
+    func insert(row: [PluginCellValue], defaults: Set<Int> = []) -> (statement: String, parameters: [PluginCellValue]) {
         var names: [String] = []
         var parameters: [PluginCellValue] = []
-        for (index, column) in columns.enumerated() where index < row.count {
+        for (index, column) in columns.enumerated() where index < row.count && !defaults.contains(index) {
             let value = row[index]
             if case .null = value { continue }
-            if case .text(let text) = value, text == Self.defaultSentinel { continue }
             names.append(column)
             parameters.append(value)
         }
@@ -73,14 +70,15 @@ struct DynamoDBWriteStatements {
         _ change: PluginRowChange,
         rowData: [PluginCellValue]?
     ) -> (statement: String, parameters: [PluginCellValue]) {
+        let defaults = change.defaultColumns ?? []
         if let rowData {
-            return insert(row: rowData)
+            return insert(row: rowData, defaults: defaults)
         }
         var row = [PluginCellValue](repeating: .null, count: columns.count)
         for cell in change.cellChanges where cell.columnIndex < row.count {
             row[cell.columnIndex] = cell.newValue
         }
-        return insert(row: row)
+        return insert(row: row, defaults: defaults)
     }
 
     private func update(_ change: PluginRowChange) throws -> (statement: String, parameters: [PluginCellValue])? {
@@ -92,7 +90,7 @@ struct DynamoDBWriteStatements {
         var guardValues: [PluginCellValue] = []
 
         for cell in change.cellChanges {
-            if case .text(let text) = cell.newValue, text == Self.defaultSentinel {
+            if change.isColumnDefault(cell.columnIndex) {
                 throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(
                     format: String(localized: "DynamoDB has no default values, so %@ cannot be set to DEFAULT."),
                     cell.columnName
@@ -239,7 +237,7 @@ struct DynamoDBParameterBinder {
             }
             return .binary(data)
         case .text(let text):
-            guard !text.isEmpty, text != DynamoDBWriteStatements.defaultSentinel else {
+            guard !text.isEmpty else {
                 throw DynamoDBError.invalidValue(
                     attribute: attribute, reason: String(localized: "A key attribute needs a value")
                 )

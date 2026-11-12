@@ -26,6 +26,17 @@ struct RowDetailViewModelTests {
         ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "test")
     }
 
+    @Test("A row opened before the browser read its foreign keys shows them once they arrive")
+    func foreignKeysArriveAfterTheRowOpened() {
+        let source = ForeignKeySource()
+        let vm = RowDetailViewModel(columns: makeColumns(), rows: makeRows(), initialIndex: 0, foreignKeys: source.keys)
+        #expect(vm.foreignKeys.isEmpty)
+
+        source.keys = [ForeignKeyInfo(name: "fk_owner", column: "id", referencedTable: "owners", referencedColumn: "id")]
+
+        #expect(vm.foreignKeys.map { $0.referencedTable } == ["owners"])
+    }
+
     @Test("canEdit requires session, table, primary key, and not safe-mode-blocked")
     func canEditPreconditions() {
         let driver = MockDatabaseDriver()
@@ -1125,4 +1136,64 @@ struct RowDetailViewModelTests {
         #expect(vm.exportCurrentRow(as: .csv)?.contains("abc and the rest") == true)
         #expect(vm.operationError == nil)
     }
+
+    @Test("A query result's row copies as an INSERT in its engine's quoting, not SQLite's")
+    func queryResultRowExportsInTheEnginesQuoting() throws {
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            session: makeSession(driver: MockDatabaseDriver()), databaseType: .mysql
+        )
+
+        let insert = try #require(vm.exportCurrentRow(as: .sqlInsert))
+
+        #expect(insert.hasPrefix("INSERT INTO `table` (`id`, `name`) VALUES"))
+        #expect(!vm.canEdit)
+    }
+
+    @Test("A long value shows an excerpt, while Copy Value and the full view get all of it")
+    func longValueShowsAnExcerpt() {
+        let long = String(repeating: "y", count: 10_000)
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: [Row(cells: [.text("1"), .text(long)])], initialIndex: 0
+        )
+
+        #expect(vm.longValue(forRow: 0, at: 1) == long)
+        #expect(vm.completeValue(forRow: 0, at: 1) == long)
+        #expect(vm.longValue(forRow: 0, at: 0) == nil)
+        #expect(RowDetailViewModel.excerpt(of: long).utf8.count == RowDetailViewModel.inlineByteLimit)
+        #expect(!vm.isShownInPart(forRow: 0, at: 1))
+    }
+
+    @Test("A table value loaded in full is long enough to need the full view too")
+    func loadedValueShowsAnExcerpt() async {
+        let long = String(repeating: "z", count: 10_000)
+        let vm = makeViewModel(
+            lastCell: .truncatedText(prefix: "zzz", totalBytes: 10_000, ref: bodyRef(id: "1")),
+            loadFullValue: { _ in long }
+        )
+        #expect(vm.longValue(forRow: 0, at: 2) == nil)
+
+        await vm.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
+
+        #expect(vm.longValue(forRow: 0, at: 2) == long)
+    }
+
+    @Test("Only a value cut with no key to load it by is shown in part")
+    func cutValueWithoutRefIsShownInPart() {
+        let vm = RowDetailViewModel(
+            columns: makeColumns(),
+            rows: [Row(cells: [.text("1"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: nil)])],
+            initialIndex: 0
+        )
+        let loadable = makeViewModel(lastCell: .truncatedText(prefix: "a", totalBytes: 5_000, ref: bodyRef(id: "1")))
+
+        #expect(vm.isShownInPart(forRow: 0, at: 1))
+        #expect(vm.longValue(forRow: 0, at: 1) == nil)
+        #expect(!loadable.isShownInPart(forRow: 0, at: 2))
+    }
+}
+
+@MainActor
+private final class ForeignKeySource {
+    var keys: [ForeignKeyInfo] = []
 }

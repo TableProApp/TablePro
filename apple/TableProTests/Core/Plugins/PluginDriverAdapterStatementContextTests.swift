@@ -24,13 +24,21 @@ private final class ContextRecordingDriver: PluginDriverStub, @unchecked Sendabl
 
     private let lock = NSLock()
     private var recorded: [PluginStatementContext] = []
+    private var caps: [Int?] = []
 
     var contexts: [PluginStatementContext] {
         lock.withLock { recorded }
     }
 
-    private func record(_ context: PluginStatementContext) {
-        lock.withLock { recorded.append(context) }
+    var rowCaps: [Int?] {
+        lock.withLock { caps }
+    }
+
+    private func record(_ context: PluginStatementContext, rowCap: Int? = nil) {
+        lock.withLock {
+            recorded.append(context)
+            caps.append(rowCap)
+        }
     }
 
     private static let empty = PluginQueryResult(
@@ -59,13 +67,39 @@ private final class ContextRecordingDriver: PluginDriverStub, @unchecked Sendabl
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        record(context)
+        record(context, rowCap: rowCap)
         return Self.empty
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
         record(context)
         return AsyncThrowingStream { $0.finish() }
+    }
+}
+
+// A driver that bounds its read under a context, as one declaring `.enforcesReadOnlyMode` does.
+private final class BoundingContextDriver: PluginDriverStub, @unchecked Sendable {
+    var capabilities: PluginCapabilities { [.readOnlyStatements, .enforcesReadOnlyMode] }
+
+    private let lock = NSLock()
+    private var recorded: [PluginStatementContext?] = []
+
+    var boundedContexts: [PluginStatementContext?] {
+        lock.withLock { recorded }
+    }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        lock.withLock { recorded.append(nil) }
+        return .empty
+    }
+
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        lock.withLock { recorded.append(context) }
+        return .empty
     }
 }
 
@@ -318,5 +352,143 @@ struct UnenforcedStatementPolicyTests {
     func adapterReportsReadOnlyStatements() {
         #expect(!adapter(ContextRecordingDriver()).runsReadOnlyStatements)
         #expect(adapter(ContextRecordingDriver(capabilities: .readOnlyStatements)).runsReadOnlyStatements)
+    }
+}
+
+struct PluginDriverAdapterParameterKindTests {
+    private func adapter(_ driver: ContextRecordingDriver) -> PluginDriverAdapter {
+        PluginDriverAdapter(connection: DatabaseConnection(name: "Test", type: .postgresql), pluginDriver: driver)
+    }
+
+    @Test("A panel value reaches the driver with the type the user gave it")
+    func panelTypesReachTheDriver() async throws {
+        let driver = ContextRecordingDriver()
+        let values: [Any?] = [
+            TypedParameterValue(text: "00123", kind: .text), nil, TypedParameterValue(text: "7", kind: .integer),
+        ]
+
+        _ = try await adapter(driver).executeUserQuery(
+            query: "SELECT $1, $2, $3", rowCap: nil, parameters: values, context: PluginStatementContext()
+        )
+        _ = try await adapter(driver).executeParameterized(
+            query: "SELECT $1, $2, $3", parameters: values, context: PluginStatementContext()
+        )
+
+        #expect(driver.contexts.map { $0.parameterKinds } == [[.text, nil, .integer], [.text, nil, .integer]])
+    }
+
+    @Test("Values with no type, such as a grid save's, carry none")
+    func untypedValuesCarryNoKinds() async throws {
+        let driver = ContextRecordingDriver()
+
+        _ = try await adapter(driver).executeParameterized(
+            query: "UPDATE t SET a = $1", parameters: ["42"], context: PluginStatementContext()
+        )
+
+        #expect(driver.contexts.map { $0.parameterKinds } == [nil])
+    }
+
+    @Test("A typed value is written to the driver as its text")
+    func typedValueIsItsText() {
+        #expect(PluginDriverAdapter.cellValue(for: TypedParameterValue(text: "1E5", kind: .text)) == .text("1E5"))
+    }
+}
+
+// Read-Only Safe Mode reaches the driver as `enforcesReadOnly`, only where the driver declares it can hold the engine to
+// it, and never on the app's own catalog reads.
+struct PluginDriverAdapterReadOnlyModeTests {
+    private static let readOnly = PluginStatementContext(enforcesReadOnly: true)
+
+    private func adapter(_ driver: any PluginDatabaseDriver, type: DatabaseType = .postgresql) -> PluginDriverAdapter {
+        PluginDriverAdapter(connection: DatabaseConnection(name: "Test", type: type), pluginDriver: driver)
+    }
+
+    @Test("Only a driver that declares the mode reports that it enforces Read-Only")
+    func adapterReportsTheMode() {
+        #expect(!adapter(ContextRecordingDriver(capabilities: .readOnlyStatements)).enforcesReadOnlyMode)
+        #expect(adapter(ContextRecordingDriver(capabilities: .enforcesReadOnlyMode)).enforcesReadOnlyMode)
+    }
+
+    @Test("A run carries the field only at Read-Only and only on a driver that declares the mode")
+    func runContextNeedsTheLevelAndTheMode() {
+        let enforcing = adapter(ContextRecordingDriver(capabilities: .enforcesReadOnlyMode))
+        let older = adapter(ContextRecordingDriver(capabilities: .readOnlyStatements))
+
+        #expect(enforcing.readOnlyRunContext(safeModeIsReadOnly: true)?.enforcesReadOnly == true)
+        #expect(enforcing.readOnlyRunContext(safeModeIsReadOnly: false) == nil)
+        #expect(older.readOnlyRunContext(safeModeIsReadOnly: true) == nil)
+    }
+
+    @Test("Every entry point that takes a context forwards the field to the driver")
+    func everyEntryPointForwardsTheField() async throws {
+        let driver = ContextRecordingDriver(capabilities: .enforcesReadOnlyMode)
+        let adapter = adapter(driver)
+        let read = "SELECT purge_orders()"
+
+        _ = try await adapter.executeUserQuery(query: read, rowCap: 100, parameters: nil, context: Self.readOnly)
+        _ = try await adapter.executeParameterized(query: "SELECT $1", parameters: [1], context: Self.readOnly)
+        _ = try await adapter.execute(query: read, context: Self.readOnly)
+        for try await _ in adapter.streamExportRows(query: read, safeModeIsReadOnly: true) {}
+        for try await _ in adapter.streamRows(query: read, safeModeIsReadOnly: true) {}
+
+        #expect(driver.contexts.count == 5)
+        #expect(driver.contexts.allSatisfy { $0.enforcesReadOnly })
+        #expect(driver.contexts.allSatisfy { $0.origin == .app && !$0.readOnly })
+    }
+
+    @Test("The bounded read takes the context")
+    func boundedReadForwardsTheField() async throws {
+        let driver = BoundingContextDriver()
+        let adapter = adapter(driver)
+
+        _ = try await adapter.executeBoundedQuery(query: "SELECT 1", rowCap: 10, context: Self.readOnly)
+        _ = try await adapter.executeBoundedQuery(query: "SELECT 1", rowCap: 10)
+
+        #expect(driver.boundedContexts.count == 2)
+        #expect(driver.boundedContexts.first??.enforcesReadOnly == true)
+        #expect(driver.boundedContexts.last == .some(nil))
+    }
+
+    @Test("A driver that cannot bound under the context falls back to the user query with the same context and cap")
+    func boundedFallbackKeepsTheContext() async throws {
+        let driver = ContextRecordingDriver(capabilities: .enforcesReadOnlyMode)
+        let adapter = adapter(driver)
+
+        #expect(try await adapter.executeBoundedQuery(query: "SELECT 1", rowCap: 10, context: Self.readOnly) == nil)
+        _ = try await QueryExecutor.fetchQueryData(driver: adapter, sql: "SELECT 1", rowCap: 10, context: Self.readOnly)
+
+        #expect(driver.contexts.map { $0.enforcesReadOnly } == [true])
+        #expect(driver.rowCaps == [10])
+    }
+
+    @Test("At Silent nothing changes: the export stream keeps the default context")
+    func silentKeepsTheDefault() async throws {
+        let driver = ContextRecordingDriver(capabilities: .enforcesReadOnlyMode)
+        let adapter = adapter(driver)
+
+        for try await _ in adapter.streamExportRows(query: "SELECT 1") {}
+        _ = try await adapter.executeUserQuery(query: "SELECT 1", rowCap: nil, parameters: nil)
+
+        #expect(driver.contexts.count == 2)
+        #expect(driver.contexts.allSatisfy { !$0.enforcesReadOnly })
+    }
+
+    @Test("A driver without the mode is never told to enforce it, even at Read-Only")
+    func olderDriverIsNotTold() async throws {
+        let driver = ContextRecordingDriver(capabilities: .readOnlyStatements)
+
+        for try await _ in adapter(driver).streamExportRows(query: "SELECT 1", safeModeIsReadOnly: true) {}
+
+        #expect(driver.contexts.map { $0.enforcesReadOnly } == [false])
+    }
+
+    @Test("A catalog read never carries the field")
+    func catalogReadIsNotMarked() async throws {
+        let driver = ContextRecordingDriver(capabilities: .enforcesReadOnlyMode)
+
+        _ = try await adapter(driver).executeCatalogRead(query: "SELECT 1 FROM pg_catalog.pg_class")
+
+        #expect(driver.contexts.map { $0.enforcesReadOnly } == [false])
+        #expect(driver.contexts.first?.readsCatalog == true)
     }
 }

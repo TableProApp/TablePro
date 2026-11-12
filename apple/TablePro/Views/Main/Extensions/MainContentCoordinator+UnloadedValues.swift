@@ -17,6 +17,8 @@ extension MainContentCoordinator {
               !tab.tableContext.primaryKeyColumns.isEmpty,
               let scope = scope(for: tab) else { return nil }
         let builder = queryBuilder
+        // A view can call a function that writes, so the value is read the way the browse was.
+        let safeModeIsReadOnly = runsAtReadOnly
         return UnloadedValueReader(
             tableName: tableName,
             schemaName: tab.tableContext.schemaName,
@@ -31,10 +33,18 @@ extension MainContentCoordinator {
                     isTableTab: true,
                     lease: lease
                 ) { driver in
-                    try await driver.executeUserQuery(
+                    guard let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) else {
+                        return try await driver.executeUserQuery(
+                            query: statement.sql,
+                            rowCap: nil,
+                            parameters: statement.parameters
+                        ).rows
+                    }
+                    return try await driver.executeUserQuery(
                         query: statement.sql,
                         rowCap: nil,
-                        parameters: statement.parameters
+                        parameters: statement.parameters,
+                        context: context
                     ).rows
                 }
             }
@@ -208,7 +218,7 @@ extension MainContentCoordinator {
 
     // The server holds the row under its key as last read, not as a pending edit has it.
     private func storedValue(of row: Row, column: Int) -> PluginCellValue {
-        let pendingUpdate = changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        let pendingUpdate = changeManager.pendingUpdate(forRow: row.id)
         if let change = pendingUpdate?.cellChanges.first(where: { $0.columnIndex == column }) {
             return change.oldValue
         }

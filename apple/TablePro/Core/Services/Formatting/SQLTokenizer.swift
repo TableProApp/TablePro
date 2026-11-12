@@ -318,7 +318,6 @@ private struct Lexer {
     private static let tab = UInt16(UnicodeScalar("\t").value)
     private static let punctuationUnits: Set<UInt16> = Set("(),;.".utf16)
     private static let operatorUnits: Set<UInt16> = Set("=<>+-*/%&|^~!@#?:$".utf16)
-    private static let delimiterWord = "DELIMITER"
 
     static func isOperatorUnit(_ unit: UInt16) -> Bool {
         operatorUnits.contains(unit)
@@ -329,6 +328,7 @@ private struct Lexer {
     let grammar: SQLLexicalGrammar
     let tokenizer: SQLTokenizer
     private let batchSeparatorEnds: [Int: Int]
+    private let psqlTextEnds: [Int: Int]
     private var delimiter = ";"
     private var atStatementStart = true
     private var tokens: [SQLToken] = []
@@ -344,6 +344,11 @@ private struct Lexer {
             ends[separator.range.location] = NSMaxRange(separator.range)
         }
         self.batchSeparatorEnds = ends
+        var psqlEnds: [Int: Int] = [:]
+        for range in SQLStatementScanner.psqlScriptText(in: text as String, grammar: grammar) {
+            psqlEnds[range.location] = NSMaxRange(range)
+        }
+        self.psqlTextEnds = psqlEnds
     }
 
     mutating func run() -> [SQLToken] {
@@ -356,18 +361,19 @@ private struct Lexer {
     private mutating func step() {
         let unit = text.character(at: index)
 
-        if isBlank(unit) {
-            let start = index
-            while index < length, isBlank(text.character(at: index)) {
-                index += 1
-            }
-            emit(.whitespace, from: start)
-            return
-        }
-        if let end = batchSeparatorEnds[index] {
+        // A `GO` line, a `COPY ... FROM STDIN` with its rows and a psql `\restrict` line keep their text.
+        if let end = batchSeparatorEnds[index] ?? psqlTextEnds[index] {
             let start = index
             index = end
             emit(.directive, from: start)
+            return
+        }
+        if isBlank(unit) {
+            let start = index
+            while index < length, isBlank(text.character(at: index)), psqlTextEnds[index] == nil {
+                index += 1
+            }
+            emit(.whitespace, from: start)
             return
         }
         if unit == Self.slash, grammar.contains(.slashLineTerminators),
@@ -396,6 +402,12 @@ private struct Lexer {
             readWord()
             return
         }
+        if let end = SQLOperatorRun.end(at: index, in: text, grammar: grammar), end - index > 1 {
+            let start = index
+            index = end
+            emit(.operator, from: start)
+            return
+        }
         if readPrefixedName(unit) { return }
         readOperatorOrPunctuation(unit)
     }
@@ -420,6 +432,11 @@ private struct Lexer {
             emit(.placeholder, from: start)
         case .quoted:
             let opener = text.character(at: start)
+            if span.isTerminated, grammar.isQuote(opener), let end = accountHostEnd(at: index) {
+                index = end
+                emit(.identifier, from: start)
+                return
+            }
             emit(opener == Self.backtick || opener == Self.openBracket ? .identifier : .string, from: start)
         }
     }
@@ -429,23 +446,16 @@ private struct Lexer {
     // `DELIMITER //` at the start of a statement, on a line of its own, changes what ends a statement, as the mysql
     // client and the import read a script.
     private mutating func readDelimiterDirective() -> Bool {
-        guard grammar.contains(.delimiterDirective), atStatementStart, isAtLineStart(index) else { return false }
-        let wordLength = (Self.delimiterWord as NSString).length
-        guard index + wordLength < length,
-              substring(from: index, to: index + wordLength).uppercased() == Self.delimiterWord,
-              isLineBlank(text.character(at: index + wordLength))
+        guard grammar.contains(.delimiterDirective), atStatementStart, isAtLineStart(index),
+              let directive = SQLDelimiterDirective.line(startingAt: index, in: text, length: length)
         else {
             return false
         }
-        var end = index + wordLength
-        while end < length, text.character(at: end) != Self.newline {
-            end += 1
+        let end = NSMaxRange(directive.range)
+        if let newDelimiter = directive.delimiter {
+            delimiter = newDelimiter
         }
-        let line = substring(from: index, to: end).trimmingCharacters(in: .whitespaces)
-        let newDelimiter = String(line.dropFirst(Self.delimiterWord.count)).trimmingCharacters(in: .whitespaces)
-        guard !newDelimiter.isEmpty else { return false }
-        delimiter = newDelimiter
-        append(SQLToken(type: .directive, value: line))
+        append(SQLToken(type: .directive, value: substring(from: index, to: end).trimmingCharacters(in: .whitespaces)))
         index = end
         return true
     }
@@ -526,6 +536,11 @@ private struct Lexer {
         while index < length, continuesWord(at: index) {
             index += 1
         }
+        if let end = accountHostEnd(at: index) {
+            index = end
+            emit(.identifier, from: start)
+            return
+        }
         let word = substring(from: start, to: index)
         let upper = word.uppercased()
         if tokenizer.isKeyword(upper) {
@@ -559,7 +574,37 @@ private struct Lexer {
         return span
     }
 
-    // `@name`, `@@version`, `:name`, `$1`, `?1` and T-SQL's `#temp` and `##global` are one token each.
+    // `user@host` is one name: MySQL's ``'app'@'%'`` and `` `root`@`localhost` `` and Oracle's `emp@remote` take no
+    // space at the `@`, and a user name that spells a keyword keeps its case. Not where `@` is an operator character.
+    private func accountHostEnd(at position: Int) -> Int? {
+        guard !grammar.readsOperatorRuns, position + 1 < length, text.character(at: position) == Self.at else {
+            return nil
+        }
+        let host = position + 1
+        if let span = quotedName(at: host) { return span.end }
+        guard isWordPart(text.character(at: host)), text.character(at: host) != Self.at else { return nil }
+        var end = host
+        while end < length {
+            let isInnerDot = text.character(at: end) == Self.dot && end + 1 < length
+                && isWordPart(text.character(at: end + 1))
+            guard isInnerDot || continuesWord(at: end) else { break }
+            end += 1
+        }
+        return end
+    }
+
+    private func quotedName(at position: Int) -> SQLNonCodeSpan.Span? {
+        guard position < length, grammar.isQuote(text.character(at: position)),
+              let span = SQLNonCodeSpan.span(at: position, in: text, grammar: grammar), span.kind == .quoted,
+              span.isTerminated
+        else {
+            return nil
+        }
+        return span
+    }
+
+    // `@name`, `@@version`, `:name`, `$1`, `?1` and T-SQL's `#temp` and `##global` are one token each, and so is
+    // MySQL's quoted user variable, `` @`my var` ``.
     private mutating func readPrefixedName(_ unit: UInt16) -> Bool {
         let start = index
         switch unit {
@@ -582,6 +627,11 @@ private struct Lexer {
             emit(.placeholder, from: start)
             return true
         case Self.at, Self.hash:
+            if unit == Self.at, !grammar.readsOperatorRuns, let span = quotedName(at: index + 1) {
+                index = span.end
+                emit(.placeholder, from: start)
+                return true
+            }
             var cursor = index + 1
             if cursor < length, text.character(at: cursor) == unit {
                 cursor += 1

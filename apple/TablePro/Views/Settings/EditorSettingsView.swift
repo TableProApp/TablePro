@@ -21,6 +21,16 @@ struct EditorSettingsView: View {
                 Toggle("Highlight current statement", isOn: $settings.highlightCurrentStatement)
                 Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 Toggle("Word wrap", isOn: $settings.wordWrap)
+                Toggle("Show the query bar on two rows", isOn: $settings.queryBarTwoRows)
+                    .help(Text("""
+                        Puts Save, Query Builder, Format, Snippets and AI above the editor, and the connection, \
+                        the database and the run controls on a second row.
+                        """))
+                Toggle("Show Message and Summary tabs above query results", isOn: $settings.queryResultTabs)
+                    .help(Text("""
+                        After a run, Message lists what each statement did and Summary puts the same in a table, \
+                        beside a tab for each result.
+                        """))
             }
 
             Section("Gutter") {

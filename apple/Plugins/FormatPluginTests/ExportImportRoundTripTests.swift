@@ -85,6 +85,14 @@ struct ExportImportRoundTripTests {
         try RoundTrip.expectSame(target, RoundTripFixture.table, FormatLimits.csv.carried(RoundTripFixture.rows))
     }
 
+    @Test("A CSV file sanitized for a spreadsheet imports back with the quote it gave formula-like values")
+    func csvSanitizedImportsBackWithItsQuotes() async throws {
+        var options = CSVExportOptions()
+        options.sanitizeFormulas = true
+        let target = try await RoundTrip.csv(options)
+        try RoundTrip.expectSame(target, RoundTripFixture.table, FormatLimits.csvSanitized.carried(RoundTripFixture.rows))
+    }
+
     @Test("A CSV file written with a byte order mark imports back")
     func csvWithByteOrderMarkImportsBack() async throws {
         var options = CSVExportOptions()
@@ -166,9 +174,14 @@ struct ExportImportRoundTripTests {
 
 extension FormatLimits {
     // CSV has no NULL and no binary: both NULL and '' are written as an empty field and read as
-    // NULL, and a binary value is written as hex text. A value a spreadsheet would run as a
-    // formula gains a leading quote.
+    // NULL, and a binary value is written as hex text.
     static let csv = FormatLimits(
+        emptyTextIsNull: true,
+        binary: { .text(FormatLimits.hex($0)) }
+    )
+
+    // Sanitizing for a spreadsheet gives a value that would run as a formula a leading quote, which the import keeps.
+    static let csvSanitized = FormatLimits(
         emptyTextIsNull: true,
         binary: { .text(FormatLimits.hex($0)) },
         text: { FormatLimits.csvNeutralised[$0] ?? $0 }
@@ -183,11 +196,12 @@ extension FormatLimits {
     // JSON has no binary type: a binary value is written as base64 text.
     static let json = FormatLimits(binary: { .text($0.base64EncodedString()) })
 
-    // An empty cell is not written, so '' reads back as NULL; a binary value is written as hex text,
-    // and XML 1.0 cannot hold a control character other than tab and the two line breaks.
+    // An empty cell is not written, so '' reads back as NULL; a binary value, zero bytes too, is
+    // written as hex text, and XML 1.0 cannot hold a control character other than tab and the two
+    // line breaks.
     static let xlsx = FormatLimits(
         emptyTextIsNull: true,
-        binary: { $0.isEmpty ? .null : .text(FormatLimits.hex($0)) },
+        binary: { .text(FormatLimits.hex($0)) },
         text: { text in
             String(String.UnicodeScalarView(text.unicodeScalars.filter { scalar in
                 scalar.value >= 0x20 || scalar == "\t" || scalar == "\n" || scalar == "\r"

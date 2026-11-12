@@ -116,12 +116,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
     // Whether this driver runs a statement marked read-only in the engine's read-only mode.
     var runsReadOnlyStatements: Bool { get }
 
+    // Whether this driver runs a statement whose context `enforcesReadOnly` in the engine's read-only mode, or refuses
+    // it, from every call that takes a context.
+    var enforcesReadOnlyMode: Bool { get }
+
     /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
     /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
     ///
     /// Call this only for a statement already classified as a read. Bounding means abandoning the
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
+
+    // Nil also when the driver cannot honor `context` on a bounded read: the caller then runs `executeUserQuery` with the
+    // same context and cap.
+    func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult?
 
     /// Runs a statement the app wrote to read, telling the driver it may only read. A driver that
     /// evaluates statements in a scripting engine with state refuses any write the script reaches,
@@ -174,8 +182,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
-    // False when `fetchAllColumns` degrades to one round trip per table.
+    // One query that also reports every column `fetchColumns` does, so Compare can trust it.
     var providesBulkColumnFetch: Bool { get }
+
+    // Only whether `fetchAllColumns` reads every table in one request, whatever its completeness.
+    var fetchesAllColumnsInOneRequest: Bool { get }
 
     /// Dotted field paths a document store exposes for a collection, for query authoring.
     /// Default implementation returns nothing, which is correct for every SQL driver.
@@ -253,8 +264,6 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// per table, which is too expensive to run ahead of the user.
     var providesBulkForeignKeyFetch: Bool { get }
 
-    /// Fetch foreign keys for a specific set of tables.
-    /// Default implementation calls fetchAllForeignKeys and filters, or falls back to per-table.
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]]
 
     /// Fetch an approximate row count using fast database-specific metadata.
@@ -349,6 +358,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch the source of one trigger.
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
+
+    // Mirrors `PluginDatabaseDriver.serverObjectKinds`: asked of the live driver, never of the type.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo]
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -551,6 +565,24 @@ extension DatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    // A driver without its own overload ignores every field, so a read-only mode, a statement policy or a catalog pin
+    // it was asked for would silently not happen.
+    func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult? {
+        guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+              context.allowsDestructive, context.allowsServerCode
+        else { return nil }
+        return try await executeBoundedQuery(query: query, rowCap: rowCap)
+    }
+
+    var enforcesReadOnlyMode: Bool { false }
+
+    // What a run carries when Safe Mode is Read-Only and this driver can hold the engine to it. Nil otherwise, so the run
+    // keeps the calls it always made.
+    func readOnlyRunContext(safeModeIsReadOnly: Bool) -> PluginStatementContext? {
+        guard safeModeIsReadOnly, enforcesReadOnlyMode else { return nil }
+        return PluginStatementContext(enforcesReadOnly: true)
+    }
 
     func executeRead(query: String) async throws -> QueryResult {
         try await execute(query: query)
@@ -816,16 +848,16 @@ extension DatabaseDriver {
         )
     }
 
-    /// Default fetchAllDatabaseMetadata: falls back to per-database calls (N+1).
-    /// Drivers should override with a single bulk query where possible.
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
         let dbNames = try await fetchDatabases()
         var results: [DatabaseMetadata] = []
         for dbName in dbNames {
+            try Task.checkCancellation()
             do {
                 let metadata = try await fetchDatabaseMetadata(dbName)
                 results.append(metadata)
             } catch {
+                try Self.rethrowIfCancelled(error)
                 results.append(DatabaseMetadata.minimal(name: dbName))
             }
         }
@@ -833,6 +865,8 @@ extension DatabaseDriver {
     }
 
     var providesBulkColumnFetch: Bool { false }
+
+    var fetchesAllColumnsInOneRequest: Bool { false }
 
     var providesBulkForeignKeyFetch: Bool { false }
 
@@ -842,72 +876,67 @@ extension DatabaseDriver {
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()
-        var result: [String: [ForeignKeyInfo]] = [:]
-        for table in allTables {
-            do {
-                let fks = try await fetchForeignKeys(table: table.name)
-                if !fks.isEmpty { result[table.name] = fks }
-            } catch {
-                Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Failed to fetch foreign keys for \(table.name): \(error.localizedDescription)")
-            }
+        return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "foreign keys") { name in
+            let keys = try await fetchForeignKeys(table: name)
+            return keys.isEmpty ? nil : keys
         }
-        return result
     }
 
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]] {
-        // For small subsets, per-table fetch avoids scanning the entire schema
-        if tableNames.count <= 5 {
-            var result: [String: [ForeignKeyInfo]] = [:]
-            for tableName in tableNames {
-                do {
-                    let fks = try await fetchForeignKeys(table: tableName)
-                    if !fks.isEmpty { result[tableName] = fks }
-                } catch {
-                    Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                        .debug("Failed to fetch foreign keys for \(tableName): \(error.localizedDescription)")
-                }
-            }
-            return result
+        if providesBulkForeignKeyFetch, tableNames.count > 5 {
+            let all = try await fetchAllForeignKeys()
+            let nameSet = Set(tableNames)
+            return all.filter { nameSet.contains($0.key) }
         }
-        let all = try await fetchAllForeignKeys()
-        let nameSet = Set(tableNames)
-        return all.filter { nameSet.contains($0.key) }
+        // Without a bulk query the schema-wide read is a round trip per schema table; past five names an error still fails it.
+        return try await readEachTable(tableNames, skippingFailures: tableNames.count <= 5, reading: "foreign keys") { name in
+            let keys = try await fetchForeignKeys(table: name)
+            return keys.isEmpty ? nil : keys
+        }
     }
 
     func fetchIndexes(forTables tableNames: [String]) async throws -> [String: [IndexInfo]] {
-        var result: [String: [IndexInfo]] = [:]
-        for tableName in tableNames {
+        try await readEachTable(tableNames, skippingFailures: true, reading: "indexes") { name in
+            let indexes = try await fetchIndexes(table: name)
+            return indexes.isEmpty ? nil : indexes
+        }
+    }
+
+    private func readEachTable<Value>(
+        _ tableNames: [String],
+        skippingFailures: Bool,
+        reading what: String,
+        _ read: (String) async throws -> Value?
+    ) async throws -> [String: Value] {
+        var result: [String: Value] = [:]
+        for name in tableNames {
+            try Task.checkCancellation()
             do {
-                let indexes = try await fetchIndexes(table: tableName)
-                if !indexes.isEmpty { result[tableName] = indexes }
+                if let value = try await read(name) { result[name] = value }
             } catch {
+                try Self.rethrowIfCancelled(error)
+                guard skippingFailures else { throw error }
                 Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Failed to fetch indexes for \(tableName): \(error.localizedDescription)")
+                    .debug("Skipping \(what) for \(name): \(error.localizedDescription)")
             }
         }
         return result
+    }
+
+    private static func rethrowIfCancelled(_ error: any Error) throws {
+        try Task.checkCancellation()
+        if error is CancellationError { throw error }
     }
 
     func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
         []
     }
 
-    /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).
-    /// Drivers should override with a single bulk query where possible.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let allTables = try await fetchTables()
-        var result: [String: [ColumnInfo]] = [:]
-        for table in allTables {
-            do {
-                let columns = try await fetchColumns(table: table.name)
-                result[table.name] = columns
-            } catch {
-                Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Skipping columns for table '\(table.name)': \(error.localizedDescription)")
-            }
+        return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "columns") { name in
+            try await fetchColumns(table: name)
         }
-        return result
     }
 
     /// Default: no dependent types (MySQL/SQLite don't have standalone enum types)
@@ -1037,6 +1066,17 @@ extension DatabaseDriver {
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         throw PluginObjectSourceError.unsupported(trigger.name)
+    }
+
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
     }
 
     var supportsTransactions: Bool { true }

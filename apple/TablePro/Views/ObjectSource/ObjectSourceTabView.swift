@@ -2,7 +2,8 @@
 //  ObjectSourceTabView.swift
 //  TablePro
 //
-//  Tab showing the source of one stored procedure, function, trigger, user-defined type or view.
+//  Tab showing the source of one stored procedure, function, trigger, user-defined type, view or
+//  driver-declared server object.
 //
 
 import Combine
@@ -73,14 +74,12 @@ final class ObjectSourceLoader: ObservableObject {
         await load()
     }
 
-    /// One round trip. Re-listing the schema to recover the attributes cost a full catalog scan
-    /// per open and per reload, for values the sidebar's listing already carried into the ref. A
-    /// type is the exception: its definition and attributes are read fresh.
+    // One round trip, with the attributes the listing carried; a type and a server object read theirs fresh.
     private func fetch() async throws -> Fetched {
         let scope = DatabaseScope(
             connectionId: connectionId,
             database: objectRef.database,
-            schema: objectRef.schema
+            schema: objectRef.isDatabaseScoped ? nil : objectRef.schema
         )
         return try await metadata.withMetadataDriver(scope: scope) { [objectRef] driver in
             switch objectRef.kind {
@@ -105,6 +104,15 @@ final class ObjectSourceLoader: ObservableObject {
                     throw PluginObjectSourceError.unsupported(objectRef.name)
                 }
                 return Fetched(source: source, attributes: fetched.attributes)
+            case .serverObject:
+                guard let object = objectRef.serverObject else {
+                    throw PluginObjectSourceError.unsupported(objectRef.name)
+                }
+                let fetched = try await driver.fetchServerObject(object)
+                guard let source = fetched.definition, !source.isEmpty else {
+                    throw PluginObjectSourceError.unsupported(objectRef.name)
+                }
+                return Fetched(source: source, attributes: fetched.attributes.isEmpty ? objectRef.attributes : fetched.attributes)
             case .view, .materializedView:
                 let source = try await TableDDLComposer.fetchDDL(
                     for: objectRef.name,

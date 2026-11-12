@@ -369,3 +369,62 @@ struct DateFormattingServiceTimeZoneTests {
         #expect(written == wire)
     }
 }
+
+// Work off the main actor builds its own renderer, so it has to print exactly what the service prints.
+@MainActor
+struct DateDisplayRendererTests {
+    private struct Sample: Sendable {
+        let text: String
+        let columnType: ColumnType?
+    }
+
+    private static var samples: [Sample] {
+        let shapes: [ColumnType?] = [
+            .datetime(rawType: "DATETIME"),
+            .datetime(rawType: "DATETIME(6)"),
+            .date(rawType: "DATE"),
+            .timestamp(rawType: "TIME"),
+            .timestamp(rawType: "TIMETZ"),
+            .timestamp(rawType: "TIMESTAMPTZ"),
+            nil
+        ]
+        let texts = DatabaseDateParserTests.wireSpellings + [
+            "2024-12-31 23:59:59-03:30",
+            "2024-12-31 23:59:59+05:45",
+            "2024-12-31 23:59:59Z",
+            "2024-03-15 09:30:00.000000",
+            "2024-03-15 09:30:00.999999999",
+            "09:30:00.123456+05:30",
+            "not-a-date"
+        ]
+        return texts.flatMap { text in shapes.map { Sample(text: text, columnType: $0) } }
+    }
+
+    private static let instants: [Date] = [0, 1_700_000_000, 1_709_294_400.5, -86_400].map(Date.init(timeIntervalSince1970:))
+
+    // The service hands its calls to a renderer, so this pins the same text on and off the main actor; the literal tests above pin the text.
+    @Test("A renderer off the main actor prints the same text as the service on the main actor, under every format")
+    func rendererMatchesTheService() async {
+        let samples = Self.samples
+        let original = DateFormattingService.shared.currentFormat
+        var printed: [DateFormatOption: [String?]] = [:]
+        for format in DateFormatOption.allCases {
+            DateFormattingService.shared.updateFormat(format)
+            printed[format] = samples.map { DateFormattingService.shared.format(dateString: $0.text, columnType: $0.columnType) }
+                + Self.instants.map { Optional(DateFormattingService.shared.format($0)) }
+        }
+        DateFormattingService.shared.updateFormat(original)
+
+        for format in DateFormatOption.allCases {
+            let rendered = await Self.render(samples, instants: Self.instants, format: format)
+            #expect(rendered == printed[format], "\(format)")
+        }
+    }
+
+    @concurrent
+    nonisolated private static func render(_ samples: [Sample], instants: [Date], format: DateFormatOption) async -> [String?] {
+        let renderer = DateDisplayRenderer(format: format)
+        return samples.map { renderer.format(dateString: $0.text, columnType: $0.columnType) }
+            + instants.map { Optional(renderer.format($0)) }
+    }
+}

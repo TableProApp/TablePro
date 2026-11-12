@@ -7,12 +7,7 @@ import Foundation
 import TableProPluginKit
 
 internal enum DatabaseTreeMenuSpec {
-    /// A menu is a list of groups, and every group here is one intent: reach the object, note it,
-    /// move its data, change it. The HIG asks for a small number of items in about three groups and
-    /// for commands relevant to the clicked object only, so nothing connection-wide belongs on a
-    /// row. View Options used to be appended to every menu including every object row, and View ER
-    /// Diagram sat in the middle of a table row's clipboard and export commands; both now live on
-    /// the empty-area menu, where the thing they act on is the sidebar rather than an object.
+    // One intent per group, and only commands for the clicked object; connection-wide ones live on the empty-area menu.
     internal static func sections(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuSection] {
         guard let clicked = context.clicked else { return backgroundSections(context) }
         switch clicked {
@@ -23,7 +18,7 @@ internal enum DatabaseTreeMenuSpec {
                     .command(String(localized: "Clear Recent Tables"), .clearRecents)
                 ])
             ]
-        case .table(let ref):
+        case .table(let ref), .favoriteTable(let ref):
             return tableSections(ref, context: context)
         case .temporaryTable(let ref):
             return temporaryTableSections(ref)
@@ -33,6 +28,8 @@ internal enum DatabaseTreeMenuSpec {
             return folderSections(ref.folder)
         case .partition(let ref):
             return partitionSections(ref, context: context)
+        case .tableDetail(let ref):
+            return tableDetailSections(ref)
         case .database(let metadata):
             return containerSections(.database(metadata.name, isSystem: metadata.isSystemDatabase), context: context)
         case .schema(let database, let schema):
@@ -46,13 +43,17 @@ internal enum DatabaseTreeMenuSpec {
             return triggerSections(ref)
         case .userType(let ref):
             return userTypeSections(ref, context: context)
+        case .serverObject(let ref):
+            return serverObjectSections(ref)
         case .objectKindSection(let kind):
             return objectKindSections(kind, context: context)
         case .containerObjectKindSection(let group):
             let database = group.database.nilIfEmpty
             return [
                 DatabaseTreeMenuSection(newTypeItems(kind: group.kind, database: database, schema: group.schema, context: context)),
-                DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]),
+                DatabaseTreeMenuSection(
+                    showObjectsItems(context) + [.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]
+                ),
                 DatabaseTreeMenuSection(newFolderItems(
                     kind: group.kind,
                     container: .container(database: database, schema: group.schema)
@@ -64,8 +65,14 @@ internal enum DatabaseTreeMenuSpec {
             return redisSections(node)
         case .redisKeysSection:
             return [DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshRedisKeys)])]
-        case .status, .recentSection, .temporarySection:
+        // A group stands for no object. An empty menu still opens as an empty frame, so it gets the
+        // sidebar's own menu, as a status row does.
+        case .status, .recentSection, .favoritesSection, .temporarySection, .tableDetailGroup:
             return backgroundSections(context)
+        // A saved connection's menu is the connections column's, which the coordinator fills before this
+        // spec is asked. Nothing here acts on a connection, so none of the sidebar's own items apply.
+        case .connectionGroup, .savedConnection:
+            return []
         }
     }
 
@@ -336,6 +343,22 @@ internal enum DatabaseTreeMenuSpec {
         ]
     }
 
+    /// Editing a column or a key from the tree is out of reach on purpose: the Structure tab does it.
+    private static func tableDetailSections(_ ref: DatabaseTreeTableDetailRef) -> [DatabaseTreeMenuSection] {
+        [
+            DatabaseTreeMenuSection([.command(String(localized: "Copy Name"), .copyText(ref.item.name))]),
+            DatabaseTreeMenuSection([.command(String(localized: "Show Structure"), .showStructure(ref.table))])
+        ]
+    }
+
+    // List plus DDL only: the row offers nothing that writes.
+    private static func serverObjectSections(_ ref: DatabaseTreeServerObjectRef) -> [DatabaseTreeMenuSection] {
+        [
+            DatabaseTreeMenuSection([.command(String(localized: "Copy Name"), .copyText(ref.object.name))]),
+            DatabaseTreeMenuSection([.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef))])
+        ]
+    }
+
     private static func userTypeSections(
         _ ref: DatabaseTreeUserTypeRef,
         context: DatabaseTreeMenuContext
@@ -398,20 +421,36 @@ internal enum DatabaseTreeMenuSpec {
         _ kind: SidebarObjectKind,
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuSection] {
-        var items: [DatabaseTreeMenuItem] = []
-        if kind == .table, context.canShowAllTables {
-            let title = context.objectKindTitles[kind] ?? kind.pluralDisplayName
-            items.append(.command(
-                String(format: String(localized: "Show All %@"), title),
-                .showAllTablesMetadata
-            ))
-        }
-        items.append(.command(String(localized: "Refresh"), .refreshObjectKind(kind)))
+        let items = showObjectsItems(context) + [.command(String(localized: "Refresh"), .refreshObjectKind(kind))]
         return [
             DatabaseTreeMenuSection(newTypeItems(kind: kind, database: nil, schema: nil, context: context)),
             DatabaseTreeMenuSection(items),
             DatabaseTreeMenuSection(context.offersBrowsedFolders ? newFolderItems(kind: kind, container: .browsed) : [])
         ]
+    }
+
+    /// Opens the clicked container's objects, or its group's, to keep. Tables need the engine's
+    /// listing statement; the other kinds are the sidebar's own lists, there whenever their row is.
+    private static func showObjectsItems(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
+        guard let clicked = context.clicked else { return [] }
+        let command: SidebarMenuCommand
+        let kind: SidebarObjectKind
+        if case .objectKindSection(let sectionKind) = clicked {
+            command = .showBrowsedObjects(sectionKind)
+            kind = sectionKind
+        } else if let target = DatabaseTreeSelection.objectsTarget(
+            of: clicked,
+            databaseHoldsSchemas: context.databaseRowsHoldSchemas,
+            hierarchicalDatabase: context.activeDatabase ?? ""
+        ) {
+            command = .showObjects(target)
+            kind = target.kind
+        } else {
+            return []
+        }
+        // The Objects tab lists built-in kinds only.
+        guard kind != .table || context.canShowAllTables, kind.serverKind == nil else { return [] }
+        return [.command(String(localized: "Show Objects"), command)]
     }
 
     /// An engine whose tree hangs tables off schemas draws no database rows at all, so its schemas
@@ -433,7 +472,9 @@ internal enum DatabaseTreeMenuSpec {
         writes += editSchemaItems([ref], context: context)
         return [
             DatabaseTreeMenuSection(newSchemaItems(database: context.activeDatabase, context: context)),
-            DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshHierarchicalSchema(schema))]),
+            DatabaseTreeMenuSection(
+                showObjectsItems(context) + [.command(String(localized: "Refresh"), .refreshHierarchicalSchema(schema))]
+            ),
             /// Oracle, Snowflake, Trino, Dameng and BigQuery draw their schemas here rather than as
             /// container rows, and several of them need a schema-scoped source, so leaving Copy To
             /// on the container path alone put it out of reach on exactly the engines that require it.
@@ -449,13 +490,15 @@ internal enum DatabaseTreeMenuSpec {
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuSection] {
         let targets = SidebarMenuTarget.resolveContainers(clicked: clicked, selection: context.selectedContainers)
+        // A command for the clicked container alone, so not offered across a selection of several.
+        let showObjects = targets.count == 1 ? showObjectsItems(context) : []
         if context.listsAttachedSchemas, clicked.kind == .schema {
             return [
-                DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainers(targets))]),
+                DatabaseTreeMenuSection(showObjects + [.command(String(localized: "Refresh"), .refreshContainers(targets))]),
                 DatabaseTreeMenuSection([.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets))])
             ]
         }
-        var open: [DatabaseTreeMenuItem] = []
+        var open: [DatabaseTreeMenuItem] = showObjects
         /// Omitted rather than disabled: a menu item that can never fire in this state is noise, and
         /// the HIG prefers removing an item that does not apply over showing it greyed out.
         if targets.count == 1, !isActive(clicked, context: context) {

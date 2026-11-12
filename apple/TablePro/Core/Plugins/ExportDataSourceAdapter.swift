@@ -26,9 +26,12 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     private let pagination: PaginationCapability
     private let appliesRowScope: Bool
     private let commentableKinds: Set<PluginExportObjectKind>
-    private let cappedTables = OSAllocatedUnfairLock<[String]>(initialState: [])
+    private let cappedTables = OSAllocatedUnfairLock<[(table: String, limit: Int)]>(initialState: [])
+    // The caller reads the connection's level on the main actor, where the gate reads it.
+    private let safeModeIsReadOnly: Bool
 
-    init(driver: DatabaseDriver, databaseType: DatabaseType) {
+    init(driver: DatabaseDriver, databaseType: DatabaseType, safeModeIsReadOnly: Bool = false) {
+        self.safeModeIsReadOnly = safeModeIsReadOnly
         let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType)
         self.supportsCascadeDrop = snapshot?.capabilities.supportsCascadeDrop ?? false
         self.lexicalFeatures = SQLLexicalResolver.executionFeatures(for: databaseType, session: driver.sessionLexicalState)
@@ -59,17 +62,9 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         (driver as? PluginDriverAdapter)?.schemaPluginDriver
     }
 
-    /// One line per table that stopped at the engine's row ceiling, so a partial copy is never
-    /// reported as the whole table.
+    // One line per table whose rows stopped at a ceiling, so a partial copy is never reported as the whole table.
     var cappedTableWarnings: [String] {
-        guard let maximum = pagination.maximumRows else { return [] }
-        return cappedTables.withLock { $0 }.map { table in
-            String(
-                format: String(localized: "%1$@: only the first %2$lld rows were read, the most this database returns from one query."),
-                table,
-                maximum
-            )
-        }
+        cappedTables.withLock { $0 }.map { StreamRowCutWarning.text(table: $0.table, limit: $0.limit) }
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -88,7 +83,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             // A table export only reads, whatever the statement the driver chose classifies as.
             var context = PluginStatementContext()
             context.readOnly = true
-            return pluginDriver.streamExportRows(query: customQuery, context: context)
+            context.enforcesReadOnly = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) != nil
+            // The driver's own export query is not the app's capped SELECT, so only a limit it declares applies.
+            return reportingCut(
+                of: pluginDriver.streamExportRows(query: customQuery, context: context),
+                table: table,
+                engineCeiling: nil
+            )
         }
         let query = leadingRowsQuery(
             columns: "*",
@@ -132,26 +133,18 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        let stream = adapter.streamExportRows(query: query)
-        guard let maximum = pagination.maximumRows else { return stream }
+        let rows = adapter.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        return reportingCut(of: rows, table: table, engineCeiling: pagination.maximumRows)
+    }
+
+    private func reportingCut(
+        of stream: AsyncThrowingStream<PluginExportStreamElement, Error>,
+        table: String,
+        engineCeiling: Int?
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         let cappedTables = cappedTables
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                var rowCount = 0
-                do {
-                    for try await element in stream {
-                        if case .rows(let rows, _) = element { rowCount += rows.count }
-                        continuation.yield(element)
-                    }
-                    if rowCount >= maximum {
-                        cappedTables.withLock { $0.append(table) }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
+        return ExportRowCut<PluginExportStreamElement>.reporting(stream, engineCeiling: engineCeiling) { limit in
+            cappedTables.withLock { $0.append((table, limit)) }
         }
     }
 
@@ -190,10 +183,20 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchTableDDL(table: table, schema: exportSchema(for: databaseName))
     }
 
+    // At Read-Only each read runs in a read-only transaction of its own, which an open one refuses, so a format's
+    // snapshot (`BEGIN`, `START TRANSACTION`, `COMMIT`) is not opened and the export reads table by table.
     func execute(query: String) async throws -> PluginQueryResult {
-        let result = try await driver.execute(query: query)
-        return mapToPluginResult(result)
+        guard let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) else {
+            return mapToPluginResult(try await driver.execute(query: query))
+        }
+        let keyword = QueryClassifier.leadingKeyword(of: query, grammar: dbType.lexicalGrammar)
+        guard !Self.transactionKeywords.contains(keyword) else {
+            return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+        }
+        return mapToPluginResult(try await driver.execute(query: query, context: context))
     }
+
+    private static let transactionKeywords: Set<String> = ["BEGIN", "START", "COMMIT", "END", "ROLLBACK"]
 
     func quoteIdentifier(_ identifier: String) -> String {
         driver.quoteIdentifier(identifier)

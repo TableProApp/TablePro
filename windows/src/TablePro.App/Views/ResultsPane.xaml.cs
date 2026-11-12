@@ -8,14 +8,18 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// A sort of the rows held shows a sorted copy, so the run's own set keeps arrival order for the next sort.
-public sealed partial class ResultsPane : UserControl
+// A sort of the rows held shows a sorted copy, so the run's own sets keep arrival order for the next sort.
+public sealed partial class ResultsPane : UserControl, IResultsView
 {
     private readonly RunMessages _messages = new(Strings.Get("MessagesCutShort"));
-    private ResultSet? _source;
+    private List<HeldSet> _held = [];
+    private HeldSet? _picked;
+    private ResultSet? _sorted;
     private ResultSet? _shown;
+    private long? _milliseconds;
+    private bool _picking;
     private ResultsView _view;
-    private ResultsView? _picked;
+    private ResultsView? _pickedView;
     private bool _messagesQueued;
 
     public ResultsPane()
@@ -33,10 +37,16 @@ public sealed partial class ResultsPane : UserControl
     // The grid already shows the new sort; the tab runs it, or sets Sort back.
     public event EventHandler<GridSort>? SortRequested;
 
+    // The grid shows another set of the run, unsorted.
+    public event EventHandler? ResultPicked;
+
+    public event EventHandler? ShownSetChanged;
+
     public DataGridView GridView => ResultGrid;
 
     public TextBox MessagesBox => MessagesText;
 
+    // The columns of the set the grid shows.
     public IReadOnlyList<ResultColumn> Columns { get; private set; } = [];
 
     // Only a run with one result set can be sorted by running its statement again.
@@ -47,7 +57,14 @@ public sealed partial class ResultsPane : UserControl
     // A table tab words its own page of rows from the count, the milliseconds and whether the limit cut it.
     internal Func<long, long, bool, string>? RowsStatus { get; set; }
 
+    // A table tab lays its edits over each set, so the grid gets them without being given its data again.
+    internal bool ShowsEdits { get; set; }
+
     public TransactionState Transaction { get; private set; } = TransactionState.Idle;
+
+    public QueryOutcome? Outcome { get; private set; }
+
+    public long? RowsAffected { get; private set; }
 
     public GridSort Sort
     {
@@ -55,36 +72,36 @@ public sealed partial class ResultsPane : UserControl
         set => ResultGrid.Sort = value;
     }
 
-    public long ShownRows => _shown?.RowCount ?? 0;
+    public ResultSet? ShownSet => _sorted ?? _picked?.Set;
 
-    // False when no set is shown, or a run replaced it while the rows were being sorted.
-    internal async Task<bool> SortHeldRowsAsync(GridSort sort)
+    public long ShownRowCount => ShownSet?.RowCount ?? 0;
+
+    public async Task<bool> SortHeldRowsAsync(GridSort sort)
     {
-        var source = _source;
-        if (source is null || sort.Column < 0 || sort.Column >= Columns.Count)
+        var picked = _picked;
+        if (picked is null || sort.Column < 0 || sort.Column >= Columns.Count)
         {
             return false;
         }
 
-        var sorted = await source.SortedAsync(sort.Column, sort.Direction == SortDirection.Ascending)
+        var sorted = await picked.Set.SortedAsync(sort.Column, sort.Direction == SortDirection.Ascending)
             .ConfigureAwait(true);
-        if (!ReferenceEquals(source, _source))
+        if (!ReferenceEquals(picked, _picked))
         {
             sorted.Dispose();
             return false;
         }
 
-        var previous = _shown;
-        _shown = sorted;
-        ResultGrid.SetData(new ResultSetData(sorted, Columns));
+        var previous = _sorted;
+        _sorted = sorted;
+        ResultGrid.SetData(GridData(sorted, Columns));
         ResultGrid.Sort = sort;
-        if (!ReferenceEquals(previous, source))
-        {
-            previous?.Dispose();
-        }
-
+        previous?.Dispose();
+        ShownMayHaveChanged();
         return true;
     }
+
+    public void ShowError(CoreError failure) => ShowError(Strings.Error(failure));
 
     public void ShowError(string message)
     {
@@ -97,6 +114,8 @@ public sealed partial class ResultsPane : UserControl
     public void Clear()
     {
         Release();
+        Outcome = null;
+        RowsAffected = null;
         ErrorBar.IsOpen = false;
         Placeholder.Text = Strings.Get("ResultsEmpty");
         _messages.Reset();
@@ -104,77 +123,99 @@ public sealed partial class ResultsPane : UserControl
         SelectView(ResultsView.Results);
     }
 
-    // The rows shown stay until the new set has rows or ends, so a sort or a refresh never blanks the grid.
-    internal async Task ShowRunAsync(QueryRun run, GridSort sort, int visibleColumns = int.MaxValue)
+    // The sets shown stay until the new run's first set has rows or ends, so a sort or a refresh never blanks the grid.
+    public async Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(run);
         ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
         ResultSetCount = 0;
+        Outcome = null;
+        RowsAffected = null;
+        _milliseconds = null;
         // The last run's messages stay on screen until this one's arrive or it ends, as its rows do.
         _messages.Reset();
-        _picked = null;
-        var shownIndex = -1;
-        (ResultSet Set, IReadOnlyList<ResultColumn> Columns)? waiting = null;
-        long rows = 0;
+        _pickedView = null;
+        var results = new RunResults(Strings.Get("ResultSetItem"), Strings.Get("ResultSetItemMore"));
+        var incoming = new List<HeldSet>();
+        var heldBy = new Dictionary<RunResult, HeldSet>();
+        var adopted = false;
         long? affected = null;
-        var truncated = false;
-        void ShowWaiting()
+        // Only the counts a statement reported, so a run where none did keeps none.
+        long? counted = null;
+        void Adopt()
         {
-            if (waiting is { } next)
+            if (adopted || incoming.Count == 0)
             {
-                waiting = null;
-                Show(next.Set, next.Columns, sort);
-                if (_picked is null)
-                {
-                    SelectView(ResultsView.Results);
-                }
+                return;
+            }
+
+            adopted = true;
+            ShowRun(incoming, sort);
+            if (_pickedView is null)
+            {
+                SelectView(ResultsView.Results);
             }
         }
 
         try
         {
-            await foreach (var queryEvent in run.ReadEventsAsync().ConfigureAwait(true))
+            await foreach (var queryEvent in run.ReadEventsAsync(cancellationToken).ConfigureAwait(true))
             {
                 switch (queryEvent)
                 {
                     case QueryEvent.ResultSetStarted started:
                         ResultSetCount++;
-                        if (shownIndex < 0 && run.GetResultSet(started.SetIndex) is { } set)
+                        if (run.GetResultSet(started.SetIndex) is { } set)
                         {
-                            shownIndex = started.SetIndex;
-                            waiting = (set, started.Columns.Take(visibleColumns).ToList());
+                            var result = results.Add(started.SetIndex, started.Columns.Take(visibleColumns).ToList());
+                            var item = new ComboBoxItem { Content = results.Label(result) };
+                            var held = new HeldSet(result, set, item);
+                            incoming.Add(held);
+                            heldBy.Add(result, held);
+                            if (ReferenceEquals(_held, incoming))
+                            {
+                                ListInPicker(item);
+                            }
                         }
 
                         break;
-                    case QueryEvent.RowsAppended appended when appended.SetIndex == shownIndex:
-                        rows = appended.RowCount;
-                        ShowWaiting();
-                        ResultGrid.RowsChanged();
-                        break;
-                    case QueryEvent.RowLimitReached limit when limit.SetIndex == shownIndex:
-                        truncated = true;
-                        break;
-                    case QueryEvent.ResultSetFinished finished when finished.SetIndex == shownIndex:
-                        rows = finished.RowCount;
-                        truncated |= finished.Truncation != Truncation.Complete;
-                        ShowWaiting();
-                        ResultGrid.RowsChanged();
+                    case QueryEvent.RowsAppended
+                        or QueryEvent.RowLimitReached
+                        or QueryEvent.ByteLimitReached
+                        or QueryEvent.ResultSetFinished:
+                        if (results.Apply(queryEvent) is { } changed
+                            && heldBy.GetValueOrDefault(changed) is { } grown)
+                        {
+                            grown.Item.Content = results.Label(changed);
+                            if (queryEvent is QueryEvent.RowsAppended or QueryEvent.ResultSetFinished)
+                            {
+                                RowsArrived(grown, ended: queryEvent is QueryEvent.ResultSetFinished);
+                            }
+                        }
+
                         break;
                     case QueryEvent.CommandCompleted command:
                         affected = (affected ?? 0) + (command.RowsAffected ?? 0);
+                        if (command.RowsAffected is { } rows)
+                        {
+                            counted = (counted ?? 0) + rows;
+                        }
+
                         break;
                     case QueryEvent.Notice or QueryEvent.NoticeLimitReached:
                         _messages.Add(queryEvent);
                         QueueMessages();
                         break;
                     case QueryEvent.Finished finished:
-                        ShowWaiting();
-                        RowCount = shownIndex >= 0 ? rows : 0;
+                        Adopt();
+                        RowCount = adopted ? (_picked?.Result.Rows ?? 0) : 0;
                         Transaction = finished.Transaction;
-                        Finish(finished.Outcome, shownIndex >= 0, rows, affected, truncated);
+                        Outcome = finished.Outcome;
+                        RowsAffected = counted;
+                        Finish(finished.Outcome, adopted, affected);
                         ShowMessages();
-                        SelectView(_messages.ViewAtEnd(shownIndex >= 0, _picked));
+                        SelectView(_messages.ViewAtEnd(adopted, _pickedView));
                         break;
                     default:
                         break;
@@ -183,47 +224,176 @@ public sealed partial class ResultsPane : UserControl
         }
         finally
         {
-            // A run read no further, as when its tab closed, never shows the set it held back.
-            waiting?.Set.Dispose();
+            // A run read no further, as when its tab closed, never shows the sets it held back.
+            if (!ReferenceEquals(_held, incoming))
+            {
+                DisposeSets(incoming, null);
+            }
+        }
+
+        void RowsArrived(HeldSet held, bool ended)
+        {
+            if (ReferenceEquals(held, incoming[0]))
+            {
+                Adopt();
+            }
+
+            if (ReferenceEquals(held, _picked))
+            {
+                ResultGrid.RowsChanged();
+                if (ended)
+                {
+                    ShowPickedLabel();
+                }
+            }
         }
     }
 
-    private void Show(ResultSet set, IReadOnlyList<ResultColumn> columns, GridSort sort)
+    // The run's sets replace the last run's, and the grid shows its first.
+    private void ShowRun(List<HeldSet> incoming, GridSort sort)
     {
-        var (shown, source) = (_shown, _source);
-        _shown = set;
-        _source = set;
-        Columns = columns;
-        ResultGrid.SetData(new ResultSetData(set, columns));
+        var (held, sorted) = (_held, _sorted);
+        var first = incoming[0];
+        _held = incoming;
+        _picked = first;
+        _sorted = null;
+        Columns = first.Result.Columns;
+        ResultGrid.SetData(GridData(first.Set, first.Result.Columns));
         ResultGrid.Sort = sort;
         ResultGrid.Visibility = Visibility.Visible;
         Placeholder.Visibility = Visibility.Collapsed;
         // The grid disposed the old set's cursor in SetData.
-        Dispose(shown, source);
+        DisposeSets(held, sorted);
+        ListAllInPicker();
+        ShownMayHaveChanged();
+    }
+
+    private void Pick(HeldSet held)
+    {
+        var sorted = _sorted;
+        _picked = held;
+        _sorted = null;
+        Columns = held.Result.Columns;
+        ResultGrid.SetData(GridData(held.Set, held.Result.Columns));
+        ResultGrid.Sort = GridSort.None;
+        sorted?.Dispose();
+        ShownMayHaveChanged();
+        if (_milliseconds is { } milliseconds)
+        {
+            Status(RowsText(held.Result, milliseconds));
+        }
+
+        ResultPicked?.Invoke(this, EventArgs.Empty);
     }
 
     private void Release()
     {
+        var (held, sorted) = (_held, _sorted);
         ResultGrid.SetData(null);
         ResultGrid.Visibility = Visibility.Collapsed;
         Placeholder.Visibility = Visibility.Visible;
-        Dispose(_shown, _source);
-        _shown = null;
-        _source = null;
+        _held = [];
+        _picked = null;
+        _sorted = null;
         Columns = [];
+        DisposeSets(held, sorted);
+        ListAllInPicker();
+        ShownMayHaveChanged();
     }
 
-    private static void Dispose(ResultSet? shown, ResultSet? source)
+    // Said once per new set and after the grid shows it, so a table tab's edits follow the rows they were made on.
+    private void ShownMayHaveChanged()
     {
-        if (!ReferenceEquals(shown, source))
+        if (!ReferenceEquals(_shown, ShownSet))
         {
-            shown?.Dispose();
+            _shown = ShownSet;
+            ShownSetChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private IGridData GridData(ResultSet set, IReadOnlyList<ResultColumn> columns)
+    {
+        var data = new ResultSetData(set, columns);
+        if (ShowsEdits)
+        {
+            return new EditedGridData(data, GridEdits.None);
         }
 
-        source?.Dispose();
+        return data;
     }
 
-    private void Finish(QueryOutcome outcome, bool hasRows, long rows, long? affected, bool truncated)
+    private static void DisposeSets(List<HeldSet> held, ResultSet? sorted)
+    {
+        sorted?.Dispose();
+        foreach (var entry in held)
+        {
+            entry.Set.Dispose();
+        }
+    }
+
+    private void ListAllInPicker()
+    {
+        _picking = true;
+        try
+        {
+            ResultPicker.Items.Clear();
+            foreach (var entry in _held)
+            {
+                ResultPicker.Items.Add(entry.Item);
+            }
+
+            ResultPicker.SelectedItem = _picked?.Item;
+        }
+        finally
+        {
+            _picking = false;
+        }
+
+        ResultPicker.Visibility = _held.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Sets come one after another, so the first has ended by the time a second makes the picker appear.
+    private void ListInPicker(ComboBoxItem item)
+    {
+        ResultPicker.Items.Add(item);
+        if (_held.Count == 2)
+        {
+            ShowPickedLabel();
+        }
+
+        ResultPicker.Visibility = _held.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // A closed ComboBox shows the content its selected item had when it was selected.
+    private void ShowPickedLabel()
+    {
+        _picking = true;
+        try
+        {
+            ResultPicker.SelectedItem = null;
+            ResultPicker.SelectedItem = _picked?.Item;
+        }
+        finally
+        {
+            _picking = false;
+        }
+    }
+
+    // The picker's own changes come back here too, which _picking turns away.
+    private void OnResultPicked(object sender, SelectionChangedEventArgs e)
+    {
+        if (_picking
+            || ResultPicker.SelectedItem is not ComboBoxItem item
+            || _held.Find(entry => ReferenceEquals(entry.Item, item)) is not { } picked
+            || ReferenceEquals(picked, _picked))
+        {
+            return;
+        }
+
+        Pick(picked);
+    }
+
+    private void Finish(QueryOutcome outcome, bool hasRows, long? affected)
     {
         if (!hasRows)
         {
@@ -234,10 +404,10 @@ public sealed partial class ResultsPane : UserControl
         {
             case QueryOutcome.Completed completed:
                 var milliseconds = (long)completed.Elapsed.TotalMilliseconds;
-                if (hasRows)
+                _milliseconds = milliseconds;
+                if (_picked is { } picked)
                 {
-                    Status(RowsStatus?.Invoke(rows, milliseconds, truncated)
-                        ?? Strings.Format(truncated ? "StatusRowsLimited" : "StatusRows", rows, milliseconds));
+                    Status(RowsText(picked.Result, milliseconds));
                 }
                 else
                 {
@@ -260,6 +430,21 @@ public sealed partial class ResultsPane : UserControl
                 break;
         }
     }
+
+    private string RowsText(RunResult result, long milliseconds) =>
+        RowsStatus?.Invoke(result.Rows, milliseconds, result.Truncated)
+        ?? Strings.Format(
+            result switch
+            {
+                { SizeLimit: not null, StoppedOnServer: true } => "StatusRowsSizeLimitedStopped",
+                { SizeLimit: not null } => "StatusRowsSizeLimited",
+                { StoppedOnServer: true } => "StatusRowsStopped",
+                { Truncated: true } => "StatusRowsLimited",
+                _ => "StatusRows",
+            },
+            result.Rows,
+            milliseconds,
+            result.SizeLimit / 1_000_000.0);
 
     // Notices that arrive together are laid out once, after the batch: a TextBox lays out all its text on each change.
     private void QueueMessages()
@@ -294,9 +479,12 @@ public sealed partial class ResultsPane : UserControl
             return;
         }
 
-        _picked = view;
+        _pickedView = view;
         SelectView(view);
     }
 
     private void Status(string text) => StatusChanged?.Invoke(this, text);
+
+    // The pane owns each set until the next run replaces them or the tab closes.
+    private sealed record HeldSet(RunResult Result, ResultSet Set, ComboBoxItem Item);
 }

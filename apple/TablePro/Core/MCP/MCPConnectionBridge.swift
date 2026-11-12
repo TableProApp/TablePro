@@ -19,10 +19,6 @@ public actor MCPConnectionBridge {
         await listConnections(access: principal.connectionAccess, purpose: purpose)
     }
 
-    func listConnections() async -> JsonValue {
-        await listConnections(access: .all, purpose: .agent)
-    }
-
     private func listConnections(access: ConnectionAccess, purpose: MCPConnectionListPurpose) async -> JsonValue {
         let listings = await MainActor.run { ExternalConnectionDirectory.listings() }
         return MCPConnectionListEncoder.encode(listings, access: access, purpose: purpose)
@@ -86,6 +82,10 @@ public actor MCPConnectionBridge {
         return .object(result)
     }
 
+    func maskingPolicy(for connectionId: UUID) async -> MaskingPolicy {
+        await access.maskingPolicy(for: connectionId)
+    }
+
     func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
         try await access.resolveScope(connectionId: connectionId, database: database, schema: schema)
     }
@@ -121,19 +121,22 @@ public actor MCPConnectionBridge {
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?,
-        maskingTable: String? = nil
+        masking: ExternalRowMasking = .byOrigin,
+        budget: ExternalAnswerBudget = .mcpAnswer
     ) async throws -> JsonValue {
         let outcome = try await runStatement(
             operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            maskingTable: maskingTable
+            masking: masking,
+            budget: budget
         )
         return Self.encode(
             result: outcome.result,
             scope: operation.scope,
-            executionTimeMs: outcome.executionTimeMs
+            executionTimeMs: outcome.executionTimeMs,
+            notes: outcome.budget?.notes ?? []
         )
     }
 
@@ -141,45 +144,51 @@ public actor MCPConnectionBridge {
         _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        budget: ExternalAnswerBudget = .mcpAnswer
     ) async throws -> (payload: JsonValue, rowsReturned: Int) {
         let outcome = try await access.runScript(
             operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
+            cancellation: cancellation,
+            budget: budget
         )
         return (Self.encode(script: outcome, scope: operation.scope), outcome.rowsReturned)
     }
 
+    // A nil budget sends the rows whole, for a caller that holds them to a budget of its own.
     func runStatement(
         _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?,
-        maskingTable: String? = nil
-    ) async throws -> (result: QueryResult, executionTimeMs: Double) {
-        let outcome = try await access.runStatement(
+        masking: ExternalRowMasking = .byOrigin,
+        budget: ExternalAnswerBudget? = .mcpAnswer
+    ) async throws -> DatabaseAccessBridge.StatementOutcome {
+        try await access.runStatement(
             operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
-            maskingTable: maskingTable
+            masking: masking,
+            budget: budget
         )
-        return (outcome.result, outcome.executionTimeMs)
     }
 
     func runExplainPlan(
         _ operation: ApprovedOperation,
         step: ExplainRequest.DriverStep,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> (result: QueryResult, executionTimeMs: Double) {
         let outcome = try await access.runExplainPlan(
             operation,
             step: step,
             timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
+            cancellation: cancellation,
+            masking: masking
         )
         return (outcome.result, outcome.executionTimeMs)
     }
@@ -239,14 +248,24 @@ public actor MCPConnectionBridge {
         return .object(["status": .string("dropped"), "schema": .string(name)])
     }
 
-    static func encode(result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> JsonValue {
-        .object(fields(of: result, scope: scope, executionTimeMs: executionTimeMs))
+    static func encode(
+        result: QueryResult,
+        scope: DatabaseScope,
+        executionTimeMs: Double,
+        notes: [String] = []
+    ) -> JsonValue {
+        .object(fields(of: result, scope: scope, executionTimeMs: executionTimeMs, notes: notes))
     }
 
     /// A script's answer in the shape a statement's has, so a client that reads one result reads the first, plus
     /// `result_sets` with every one of them once there is more than one to read.
     static func encode(script: DatabaseAccessBridge.ScriptOutcome, scope: DatabaseScope) -> JsonValue {
-        var response = fields(of: script.primary, scope: scope, executionTimeMs: script.executionTimeMs)
+        var response = fields(
+            of: script.primary,
+            scope: scope,
+            executionTimeMs: script.executionTimeMs,
+            notes: script.budget?.notes ?? []
+        )
         if script.resultSets.count > 1 {
             response["result_sets"] = .array(script.resultSets.map(encode(resultSet:)))
         }
@@ -266,7 +285,12 @@ public actor MCPConnectionBridge {
         return .object(entry)
     }
 
-    private static func fields(of result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> [String: JsonValue] {
+    private static func fields(
+        of result: QueryResult,
+        scope: DatabaseScope,
+        executionTimeMs: Double,
+        notes: [String]
+    ) -> [String: JsonValue] {
         var response: [String: JsonValue] = [
             "columns": .array(result.columns.map { .string($0) }),
             "rows": .array(result.rows.map { row in .array(row.map(cellValue)) }),
@@ -281,6 +305,9 @@ public actor MCPConnectionBridge {
         }
         if let statusMessage = result.statusMessage {
             response["status_message"] = .string(statusMessage)
+        }
+        if !notes.isEmpty {
+            response["notes"] = .array(notes.map(JsonValue.string))
         }
         return response
     }

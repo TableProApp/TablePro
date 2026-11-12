@@ -83,10 +83,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
         WindowOpener.shared.setCompareSyncPresenter { CompareSyncWindowController.present(prefillSource: $0) }
         KeyRepeatFilter.shared.install()
+        TableClickFocus.shared.install()
         RecentTabSwitcherController.installEditorKeyClaim()
-        let syncSettings = AppSettingsStorage.shared.loadSync()
-        let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
-        AppStorageEnvironment.shared.defaults.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.set(
+            AppSettingsStorage.shared.loadSync().syncsPasswords,
+            forKey: KeychainHelper.passwordSyncEnabledKey
+        )
         DatabaseManager.shared.startObservingSystemEvents()
         DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
@@ -149,6 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             store.migrateIfNeeded()
         }
         ConnectionStorage.shared.moveMongoURISecretsToKeychain()
+        ConnectionStorage.shared.keepLocalOnlySecretsOnDeviceIfNeeded()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
         // Before the account starts, so a stored key's migration reaches it as a sign-in.
@@ -184,6 +187,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await AppModuleTermination.stopModuleWork()
             await MCPServerManager.shared.stop()
             await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
+            // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
+            await VaultDatabaseCredentials.shared.revokeAllLeases()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

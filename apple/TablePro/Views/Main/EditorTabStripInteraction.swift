@@ -49,6 +49,8 @@ internal final class EditorTabStripInteraction: ObservableObject {
     /// The last width the pointer's owner measured, kept so a tab opening or closing can re-lay
     /// the run without waiting for AppKit to schedule another layout pass.
     private var trackWidth: CGFloat = 0
+    /// The widths located tabs ask for, keyed by tab so a width follows its tab through a reorder.
+    private var preferredWidths: [UUID: CGFloat] = [:]
 
     internal var overflow: EditorTabStripOverflow = .scroll {
         didSet {
@@ -78,10 +80,12 @@ internal final class EditorTabStripInteraction: ObservableObject {
     internal func updateRun(trackWidth: CGFloat, count: Int) {
         self.trackWidth = trackWidth
         viewportWidth = max(trackWidth - EditorTabStripLayout.trackPadding * 2, 0)
+        let order = displayedIds
         let rebuilt = EditorTabRunLayoutBuilder.run(
             forTrack: trackWidth,
             count: count,
-            overflow: overflow
+            overflow: overflow,
+            preferredWidths: order.count == count && !preferredWidths.isEmpty ? order.map { preferredWidths[$0] } : []
         )
         guard rebuilt != run else { return }
         run = rebuilt
@@ -89,6 +93,14 @@ internal final class EditorTabStripInteraction: ObservableObject {
         guard run.rowCount != reportedRowCount else { return }
         reportedRowCount = run.rowCount
         onRowCountChanged?(run.rowCount)
+    }
+
+    /// Takes the widths the strip's labels ask for, from the view that resolves them. The run is rebuilt
+    /// only when one moved, since the view hands them over on every change of its labels.
+    internal func setPreferredWidths(_ widths: [UUID: CGFloat]) {
+        guard widths != preferredWidths else { return }
+        preferredWidths = widths
+        updateRun(trackWidth: trackWidth, count: tabIds.count)
     }
 
     internal func setHovered(_ id: UUID?, overCloseButton: Bool = false) {
@@ -134,14 +146,14 @@ internal final class EditorTabStripInteraction: ObservableObject {
         guard var live = reorder, let currentIndex = live.destinationIndex else { return false }
         let destination = EditorTabReorderResolver.settledDestination(
             forLocation: location,
-            tabWidth: run.tabWidth,
-            currentIndex: currentIndex,
-            count: live.order.count
+            boundaries: run.linearBoundaries,
+            currentIndex: currentIndex
         )
         guard let destination else { return false }
         live.move(to: destination)
         guard live != reorder else { return false }
         reorder = live
+        rebuildForNewOrder()
         return true
     }
 
@@ -160,6 +172,14 @@ internal final class EditorTabStripInteraction: ObservableObject {
     internal func clearReorder() {
         reorder = nil
         tearingOffTabId = nil
+        rebuildForNewOrder()
+    }
+
+    /// A tab that asked for its own width keeps it wherever the order puts it. An even run is the same
+    /// in any order, so it is left alone.
+    private func rebuildForNewOrder() {
+        guard !preferredWidths.isEmpty else { return }
+        updateRun(trackWidth: trackWidth, count: tabIds.count)
     }
 
     /// Takes the tab list and the overflow style from the model that owns them.

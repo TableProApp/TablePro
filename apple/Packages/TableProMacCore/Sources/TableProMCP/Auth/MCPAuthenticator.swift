@@ -21,6 +21,16 @@ public enum MCPClientAddress: Sendable, Equatable, Hashable {
             return host
         }
     }
+
+    // For the window only: the audit log stores displayValue, so that one stays English.
+    public var localizedDisplayValue: String {
+        switch self {
+        case .localSocket:
+            return String(localized: "Local socket")
+        case .loopback, .remote:
+            return displayValue
+        }
+    }
 }
 
 public protocol MCPAuthenticator: Sendable {

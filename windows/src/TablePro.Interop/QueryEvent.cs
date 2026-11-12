@@ -1,7 +1,7 @@
 namespace TablePro.Interop;
 
-// RowLimit: the most rows each set keeps, 10,000 by default. Timeout: beyond the connection's own limit.
-public sealed record QueryOptions(long? RowLimit = null, TimeSpan? Timeout = null);
+// Null takes the core's: 10,000 rows per set, 256,000,000 bytes of rows per run, no timeout past the connection's.
+public sealed record QueryOptions(long? RowLimit = null, TimeSpan? Timeout = null, long? ByteLimit = null);
 
 // TypeName: the type as the server spells it, for display.
 public sealed record ResultColumn(string Name, string TypeName, ValueKind ValueKind);
@@ -15,6 +15,9 @@ public enum Truncation
 
     // There were rows past the limit, which were not kept.
     ReadPastLimit,
+
+    // Rows past the cut were not kept; the engine may still have read them up to the row limit.
+    ByteLimit,
 }
 
 // In order, Finished last. Rows that arrive between two reads come as one RowsAppended with the latest count.
@@ -32,6 +35,9 @@ public abstract record QueryEvent
     public sealed record RowsAppended(int SetIndex, long RowCount) : QueryEvent;
 
     public sealed record RowLimitReached(int SetIndex, long Retained) : QueryEvent;
+
+    // LimitBytes: what the whole run keeps. The set's rows after its first Retained were read and not kept.
+    public sealed record ByteLimitReached(int SetIndex, long Retained, long LimitBytes) : QueryEvent;
 
     // TotalRows: every row the statement produced, where the engine counted past the limit.
     public sealed record ResultSetFinished(int SetIndex, long RowCount, long? TotalRows, Truncation Truncation)

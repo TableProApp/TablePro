@@ -21,6 +21,21 @@ extension DatabaseConnection {
         )
     }
 
+    // Read through the linked SSH profile as it stands now, which is where the next connect dials.
+    @MainActor var dialedDestination: ConnectionDestination {
+        SSHProfileStorage.shared.refreshingLinkedProfile(self).destination
+    }
+
+    // The SSH server and jump hosts this copy names, in order. A profile counts by its servers, never its id.
+    var destinationTunnel: ConnectionDestination.Tunnel {
+        let config = resolvedSSHConfig
+        guard config.enabled else { return .none }
+        return .ssh(
+            server: ConnectionDestination.Endpoint(host: config.host, port: config.port),
+            jumps: config.jumpHosts.map { ConnectionDestination.Endpoint(host: $0.host, port: $0.port) }
+        )
+    }
+
     // Host and port first, then every other server or project the connection may sign in to, so a prompt never
     // hides the real host behind a value the engine ignores, or a server behind "(+N more)". Where plugin fields name
     // the server, as DuckDB's Remote fields do, they stand in for Host, which nothing dials.
@@ -85,21 +100,6 @@ extension DatabaseConnection {
         case .disabled, .preferred, .required: return .unverified
         case .verifyCa: return .verifyCA
         case .verifyIdentity: return .verifyIdentity
-        }
-    }
-
-    private var destinationTunnel: ConnectionDestination.Tunnel {
-        switch sshTunnelMode {
-        case .disabled:
-            return .none
-        case .profile(let profileId, _):
-            return .profile(profileId)
-        case .inline(let config):
-            guard config.enabled else { return .none }
-            return .ssh(
-                server: ConnectionDestination.Endpoint(host: config.host, port: config.port),
-                jumps: config.jumpHosts.map { ConnectionDestination.Endpoint(host: $0.host, port: $0.port) }
-            )
         }
     }
 }

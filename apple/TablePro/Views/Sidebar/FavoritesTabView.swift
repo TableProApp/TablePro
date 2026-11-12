@@ -329,10 +329,6 @@ internal struct FavoritesTabView: View {
         )
     }
 
-    /// The Favorites list is an `NSOutlineView`. A SwiftUI `List` here drew no emphasized selection
-    /// and answered no arrow key, because the app hosts it in a bare `NSHostingController` with no
-    /// SwiftUI scene above it. Rows, menus and actions stay exactly where they were; only the list
-    /// container changed.
     private func favoritesList(
         _ items: [FavoriteNode],
         databaseGroups: [FavoriteDatabaseGroup],
@@ -433,14 +429,19 @@ internal struct FavoritesTabView: View {
     }
 
     private func favoriteDatabaseRow(_ entry: FavoriteDatabaseEntry) -> some View {
-        Label(entry.database, systemImage: "cylinder")
-            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
-            .lineLimit(1)
-            .accessibilityLabel(String(
-                format: String(localized: "%@: %@"),
-                databaseEntityName,
-                entry.database
-            ))
+        let icon = ObjectIconProvider.icon(for: .database, style: settingsManager.appearance.objectIconStyle)
+        return Label {
+            Text(entry.database)
+        } icon: {
+            icon.image.objectIconTint(icon)
+        }
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .lineLimit(1)
+        .accessibilityLabel(String(
+            format: String(localized: "%@: %@"),
+            databaseEntityName,
+            entry.database
+        ))
     }
 
     @ViewBuilder
@@ -495,7 +496,11 @@ internal struct FavoritesTabView: View {
     }
 
     private func favoriteTableRow(_ row: FavoriteTableRow) -> some View {
-        Label {
+        let icon = ObjectIconProvider.icon(
+            for: .relation(row.table.type),
+            style: settingsManager.appearance.objectIconStyle
+        )
+        return Label {
             HStack(spacing: 6) {
                 Text(row.entry.name)
                     .lineLimit(1)
@@ -508,8 +513,8 @@ internal struct FavoritesTabView: View {
                 }
             }
         } icon: {
-            Image(systemName: TableRowLogic.iconName(for: row.table.type))
-                .selectionAwareTint(Color.accentColor)
+            icon.image
+                .objectIconTint(icon, standard: Color.accentColor)
         }
         .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityLabel(

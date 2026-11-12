@@ -18,7 +18,7 @@ struct SnowflakeStatementGenerator {
     let primaryKeyColumns: [String]
 
     // Snowflake does not enforce a primary key, so a key match can reach several rows too: every update and delete
-    // first has to find exactly one.
+    // first has to find exactly one, and is then held to it by the rows-updated or rows-deleted count it reports.
     func rowWrites(
         from changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
@@ -51,7 +51,8 @@ struct SnowflakeStatementGenerator {
                     statement: "UPDATE \(qualifiedTable) SET \(setClauses.joined(separator: ", ")) WHERE \(condition.sql)",
                     parameters: parameters + condition.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: lookup(condition)
+                    lookup: lookup(condition),
+                    expectedRowCount: 1
                 ))
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
@@ -60,7 +61,8 @@ struct SnowflakeStatementGenerator {
                     statement: "DELETE FROM \(qualifiedTable) WHERE \(condition.sql)",
                     parameters: condition.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: lookup(condition)
+                    lookup: lookup(condition),
+                    expectedRowCount: 1
                 ))
             @unknown default:
                 continue
@@ -87,9 +89,6 @@ struct SnowflakeStatementGenerator {
         )
     }
 
-    /// What the grid stages for a column the user leaves to the server's default. It is a marker, never a value.
-    static let defaultMarker = PluginCellValue.text("__DEFAULT__")
-
     static func isSemiStructured(_ typeName: String) -> Bool {
         let base = typeName.uppercased().components(separatedBy: "(")[0].trimmingCharacters(in: .whitespaces)
         return ["VARIANT", "OBJECT", "ARRAY"].contains(base)
@@ -100,18 +99,22 @@ struct SnowflakeStatementGenerator {
         insertedRowData: [Int: [PluginCellValue]]
     ) -> (statement: String, parameters: [PluginCellValue])? {
         var values: [(column: String, value: PluginCellValue)] = []
+        var hasCells = false
         if let rowData = insertedRowData[change.rowIndex] {
             for (index, column) in columns.enumerated() where index < rowData.count {
+                hasCells = true
+                guard !change.isColumnDefault(index) else { continue }
                 values.append((column, rowData[index]))
             }
         } else {
             for cellChange in change.cellChanges {
+                hasCells = true
+                guard !change.isColumnDefault(cellChange.columnIndex) else { continue }
                 values.append((cellChange.columnName, cellChange.newValue))
             }
         }
-        guard !values.isEmpty else { return nil }
+        guard hasCells else { return nil }
         let expressions = Set((change.expressionColumns ?? []).compactMap { columns.indices.contains($0) ? columns[$0] : nil })
-        values.removeAll { $0.value == Self.defaultMarker }
         guard !values.isEmpty else {
             guard let firstColumn = columns.first else { return nil }
             return ("INSERT INTO \(qualifiedTable) (\(quoteIdentifier(firstColumn))) VALUES (DEFAULT)", [])

@@ -18,6 +18,8 @@ final class AdvancedPaneViewModel: ObservableObject {
     @Published var externalAccess: ExternalAccessLevel = .readOnly
     @Published var localOnly: Bool = false
     @Published var aiPolicy: AIConnectionPolicy?
+    @Published private(set) var aiAlwaysAllowedTools: [String] = []
+    @Published private(set) var revokedAIAlwaysAllowedTools: Set<String> = []
 
     @Published var coordinator: WeakCoordinatorRef?
 
@@ -139,8 +141,15 @@ final class AdvancedPaneViewModel: ObservableObject {
         postDisconnectScript = connection.postDisconnectScript ?? ""
         scriptTimeoutSeconds = connection.scriptTimeoutSeconds
         aiPolicy = connection.aiPolicy
+        aiAlwaysAllowedTools = connection.aiAlwaysAllowedTools.sorted()
+        revokedAIAlwaysAllowedTools = []
         externalAccess = connection.externalAccess
         localOnly = connection.localOnly
+    }
+
+    func forgetAlwaysAllowed(_ tool: String) {
+        aiAlwaysAllowedTools.removeAll { $0 == tool }
+        revokedAIAlwaysAllowedTools.insert(tool)
     }
 
     func write(into fields: inout [String: String]) {

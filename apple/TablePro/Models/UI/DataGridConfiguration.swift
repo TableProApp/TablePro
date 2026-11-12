@@ -13,6 +13,14 @@ struct DataGridConfiguration: Equatable {
     var primaryKeyColumns: [String] = []
     var showRowNumbers: Bool = true
 
+    // A second header line under each column name with the column's type; the data tabs follow the Data Grid setting.
+    var showsColumnTypes = false
+
+    // The type line names the table's own column definition (`int unsigned`, `decimal(12,2)`), which a result set can
+    // cut short (MySQL reports `INT`, `DECIMAL`). Only a table's data tab reads that table; a query's columns can be
+    // aliases or expressions that only share a name with one.
+    var namesDeclaredColumnTypes = false
+
     // Keyed by index: the column is the grid's own and has no name a table column could share.
     var checkboxColumns: Set<Int> = []
 
@@ -23,6 +31,11 @@ struct DataGridConfiguration: Equatable {
 
     // A result's rows, not a list of columns: the Data Grid sort preferences apply.
     var appliesRowSortPreferences: Bool = false
+
+    var colorsValuesByType: Bool = false
+
+    // The theme editor shows a theme's value colors even while Color values by type is off.
+    var overridesValueColorSetting: Bool = false
 
     // Off on the Structure grids, whose Copy writes definitions a paste reads back.
     var appliesRowCopyFormat: Bool = false

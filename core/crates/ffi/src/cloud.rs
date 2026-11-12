@@ -67,6 +67,7 @@ impl ConnectionLibrary {
                 .transpose()?,
         };
         let deleted = pull.deleted.connections.clone();
+        let _held = self.hold_writes().await;
         self.blocking(move |store| Ok(store.apply_cloud_pull_blocking(&pull)?))
             .await?;
         self.delete_secrets(deleted).await

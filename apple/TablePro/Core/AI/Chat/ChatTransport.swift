@@ -24,14 +24,14 @@ struct ChatTransportOptions: Sendable {
     var temperature: Double?
     var tools: [ChatToolSpec]
     var reasoningEffort: ReasoningEffort?
-    /// Which agent session this turn belongs to.
-    ///
-    /// A stateful transport keeps conversation state per session rather than per provider
-    /// configuration. `AIProviderFactory` caches one provider per configuration, so two sessions on
-    /// one Copilot configuration appended their turns to a single server-side conversation and each
-    /// was answered with the other's context, across connections included, while their local
-    /// transcripts stayed correctly separate.
+    // A stateful transport keys its conversation by session: providers are cached per configuration, and two
+    // sessions on one Copilot configuration once shared a single server-side conversation.
     var sessionId: UUID
+    // The connection the conversation is attached to. A transport that hands the model its own
+    // database tools scopes them to this one, and hands out none without it.
+    var connectionId: UUID?
+    // A transport that grants its own database tools narrows them by mode; a caller that leaves it out gets Ask.
+    var chatMode: AIChatMode
 
     init(
         model: String,
@@ -40,7 +40,9 @@ struct ChatTransportOptions: Sendable {
         temperature: Double? = nil,
         tools: [ChatToolSpec] = [],
         reasoningEffort: ReasoningEffort? = nil,
-        sessionId: UUID = UUID()
+        sessionId: UUID = UUID(),
+        connectionId: UUID? = nil,
+        chatMode: AIChatMode = .ask
     ) {
         self.model = model
         self.systemPrompt = systemPrompt
@@ -49,6 +51,8 @@ struct ChatTransportOptions: Sendable {
         self.tools = tools
         self.reasoningEffort = reasoningEffort
         self.sessionId = sessionId
+        self.connectionId = connectionId
+        self.chatMode = chatMode
     }
 }
 
@@ -78,6 +82,12 @@ struct ChatToolSpec: Codable, Equatable, Sendable {
     }
 }
 
+// Why a provider stopped the response before the model finished it.
+enum ChatOutputLimit: String, Codable, Sendable {
+    case outputTokens
+    case contextWindow
+}
+
 enum ChatStreamEvent: Sendable {
     case textDelta(String)
     case toolUseStart(id: String, name: String, providerMetadata: [String: String]? = nil)
@@ -88,6 +98,7 @@ enum ChatStreamEvent: Sendable {
     case reasoningStart(id: String)
     case reasoningDelta(id: String, text: String)
     case reasoningEnd(id: String, opaque: ReasoningOpaque?)
+    case outputLimitReached(ChatOutputLimit)
 }
 
 final class ToolReplyToken: Sendable {

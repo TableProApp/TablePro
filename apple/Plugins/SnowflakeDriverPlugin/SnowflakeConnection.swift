@@ -34,8 +34,9 @@ final class SnowflakeConnection: @unchecked Sendable {
     let params: ResolvedParameters
     private let connectionIdentifier: String
 
-    private let session: URLSession
-    private let connectSession: URLSession
+    private let sessions: SnowflakeURLSessions
+    private var session: URLSession { sessions.query }
+    private var connectSession: URLSession { sessions.connect }
     private let lock = NSLock()
     private let heartbeat = SnowflakeHeartbeat()
     private var sessionToken: String?
@@ -43,8 +44,17 @@ final class SnowflakeConnection: @unchecked Sendable {
     private var activeRequestIDs: [String: Set<String>] = [:]
     private var sequenceId = 0
     private var connectTask: Task<Void, Error>?
+    private var renewalTask: Task<Void, Error>?
 
     var sessionFingerprint: String {
+        Self.sessionFingerprint(params: params, account: account, connectionIdentifier: connectionIdentifier)
+    }
+
+    static func sessionFingerprint(
+        params: ResolvedParameters,
+        account: SnowflakeAccount?,
+        connectionIdentifier: String
+    ) -> String {
         SnowflakeSessionKey.fingerprint(
             connectionId: connectionIdentifier,
             host: account?.host ?? params.account,
@@ -52,6 +62,18 @@ final class SnowflakeConnection: @unchecked Sendable {
             authMethod: params.authMethod,
             role: params.role
         )
+    }
+
+    static func connectionIdentifier(of config: DriverConnectionConfig) -> String {
+        config.additionalFields["connectionId"] ?? ""
+    }
+
+    private var _serverVersion: String?
+
+    // Read once per shared session: every pooled driver reports the same server.
+    var serverVersion: String? {
+        get { lock.withLock { _serverVersion } }
+        set { lock.withLock { _serverVersion = newValue } }
     }
 
     /// Statements the connection issues for itself, such as the connect-time `USE` calls, belong to
@@ -75,22 +97,28 @@ final class SnowflakeConnection: @unchecked Sendable {
     var currentWarehouse: String? { lock.withLock { _currentWarehouse } }
     var currentRole: String? { lock.withLock { _currentRole } }
 
-    init(config: DriverConnectionConfig) {
-        self.params = Self.resolveParameters(from: config)
+    convenience init(config: DriverConnectionConfig) {
+        self.init(config: config, params: Self.resolveParameters(from: config))
+    }
+
+    init(config: DriverConnectionConfig, params: ResolvedParameters) {
+        self.params = params
         self.account = SnowflakeAccount(params.account)
-        self.connectionIdentifier = config.additionalFields["connectionId"] ?? ""
+        self.connectionIdentifier = Self.connectionIdentifier(of: config)
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = Self.requestTimeout
         configuration.timeoutIntervalForResource = 600
-        self.session = URLSession(
-            configuration: configuration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
-        )
         let connectConfiguration = URLSessionConfiguration.ephemeral
         connectConfiguration.timeoutIntervalForRequest = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
         connectConfiguration.timeoutIntervalForResource = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
-        self.connectSession = URLSession(
-            configuration: connectConfiguration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+        self.sessions = SnowflakeURLSessions(
+            query: URLSession(
+                configuration: configuration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+            ),
+            connect: URLSession(
+                configuration: connectConfiguration, delegate: PluginRedirectRefusingDelegate(), delegateQueue: nil
+            )
         )
 
         self._currentDatabase = params.database.isEmpty ? nil : params.database
@@ -101,7 +129,7 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Parameter Resolution
 
-    private static func resolveParameters(from config: DriverConnectionConfig) -> ResolvedParameters {
+    static func resolveParameters(from config: DriverConnectionConfig) -> ResolvedParameters {
         let fields = config.additionalFields
         func field(_ key: String) -> String {
             fields[key]?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -465,23 +493,52 @@ final class SnowflakeConnection: @unchecked Sendable {
         owner: String = SnowflakeConnection.sessionOwner,
         singleStatement: Bool = false
     ) async throws -> SnowflakeQueryResult {
-        try await withReauthentication {
-            try await performQuery(sql, parameters: parameters, owner: owner, singleStatement: singleStatement)
-        }
+        try await performQuery(sql, parameters: parameters, owner: owner, singleStatement: singleStatement)
     }
 
-    private func withReauthentication<T>(_ operation: () async throws -> T) async throws -> T {
-        do {
-            return try await operation()
-        } catch SnowflakeError.queryFailed(let code, _) where SnowflakeError.isReauthenticationCode(code) {
-            do {
-                try await renewSession()
-            } catch {
-                lock.withLock { sessionToken = nil }
-                try await connectIfNeeded()
+    // Renewal is per request. Running a whole query again after one would submit its statement a
+    // second time, under a new request id, while the first is still running.
+    private func sendWithSession(
+        _ request: (_ token: String) async throws -> [String: Any]
+    ) async throws -> (response: [String: Any], token: String) {
+        let sent = try await SnowflakeSessionRenewal.send(
+            currentToken: { lock.withLock { sessionToken } },
+            isExpired: { SnowflakeError.isReauthenticationCode(Self.codeString($0["code"])) },
+            renew: { try await self.renewOrReconnect(replacing: $0) },
+            request: request
+        )
+        guard let sent else { throw SnowflakeError.notConnected }
+        return sent
+    }
+
+    // One renewal at a time. A second one would send a token the first already replaced, and the
+    // server's refusal of it would log the shared session in again, dropping its state.
+    private func renewOrReconnect(replacing expired: String) async throws {
+        let pending: Task<Void, Error>? = lock.withLock {
+            if let renewalTask { return renewalTask }
+            guard sessionToken == expired else { return nil }
+            let task = Task {
+                defer { self.lock.withLock { self.renewalTask = nil } }
+                do {
+                    try await self.renewSession()
+                } catch {
+                    self.lock.withLock { self.sessionToken = nil }
+                    try await self.connectIfNeeded()
+                }
             }
-            return try await operation()
+            renewalTask = task
+            return task
         }
+        try await pending?.value
+    }
+
+    private func abortRequest(_ requestID: String, token: String) async {
+        _ = try? await postJSON(
+            path: "/queries/v1/abort-request",
+            queryItems: Self.trackingQueryItems(),
+            body: ["requestId": requestID],
+            token: token
+        )
     }
 
     /// One Snowflake session is shared by the driver the user sees and by every pooled metadata
@@ -493,12 +550,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         guard !requestIDs.isEmpty, let token else { return }
         Task { [weak self] in
             for requestID in requestIDs {
-                _ = try? await self?.postJSON(
-                    path: "/queries/v1/abort-request",
-                    queryItems: Self.trackingQueryItems(),
-                    body: ["requestId": requestID],
-                    token: token
-                )
+                await self?.abortRequest(requestID, token: token)
             }
         }
     }
@@ -513,7 +565,7 @@ final class SnowflakeConnection: @unchecked Sendable {
             sql, parameters: parameters, owner: owner, singleStatement: singleStatement
         )
         if let resultIds = data["resultIds"] as? String, !resultIds.isEmpty {
-            return try await collectMultiStatementResults(ids: resultIds, token: token)
+            return try await collectMultiStatementResults(ids: resultIds)
         }
         applyFinalSessionInfo(data)
         return try await buildResult(from: data, token: token)
@@ -525,7 +577,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         owner: String,
         singleStatement: Bool = false
     ) async throws -> (data: [String: Any], token: String) {
-        guard let token = lock.withLock({ sessionToken }) else {
+        guard lock.withLock({ sessionToken }) != nil else {
             throw SnowflakeError.notConnected
         }
 
@@ -557,14 +609,18 @@ final class SnowflakeConnection: @unchecked Sendable {
             body["parameters"] = ["MULTI_STATEMENT_COUNT": 0]
         }
 
-        var response = try await postJSON(
-            path: "/queries/v1/query-request",
-            queryItems: Self.trackingQueryItems(requestID: requestID),
-            body: body,
-            token: token
+        let requestBody = body
+        let submitted = try await sendWithSession { token in
+            try await self.postJSON(
+                path: "/queries/v1/query-request",
+                queryItems: Self.trackingQueryItems(requestID: requestID),
+                body: requestBody,
+                token: token
+            )
+        }
+        let (response, token) = try await pollIfInProgress(
+            submitted.response, token: submitted.token, requestID: requestID
         )
-
-        response = try await pollIfInProgress(response, token: token)
 
         guard (response["success"] as? Bool) == true else {
             let message = response["message"] as? String ?? "Query failed"
@@ -578,12 +634,14 @@ final class SnowflakeConnection: @unchecked Sendable {
         return (data, token)
     }
 
-    private func collectMultiStatementResults(ids: String, token: String) async throws -> SnowflakeQueryResult {
+    private func collectMultiStatementResults(ids: String) async throws -> SnowflakeQueryResult {
         var combinedAffected = 0
         var last: SnowflakeQueryResult?
         for id in ids.components(separatedBy: ",") where !id.isEmpty {
-            var response = try await getJSON(path: "/queries/\(id)/result", token: token)
-            response = try await pollIfInProgress(response, token: token)
+            let fetched = try await sendWithSession { token in
+                try await self.getJSON(path: "/queries/\(id)/result", token: token)
+            }
+            let (response, token) = try await pollIfInProgress(fetched.response, token: fetched.token, requestID: nil)
             guard (response["success"] as? Bool) == true,
                   let data = response["data"] as? [String: Any] else {
                 let message = response["message"] as? String ?? "Statement failed"
@@ -610,8 +668,13 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     private static let queryPollTimeout: TimeInterval = 2_700
 
-    private func pollIfInProgress(_ initial: [String: Any], token: String) async throws -> [String: Any] {
+    private func pollIfInProgress(
+        _ initial: [String: Any],
+        token initialToken: String,
+        requestID: String?
+    ) async throws -> (response: [String: Any], token: String) {
         var response = initial
+        var token = initialToken
         let deadline = Date().addingTimeInterval(Self.queryPollTimeout)
         while Self.isInProgress(response) {
             guard let data = response["data"] as? [String: Any],
@@ -619,14 +682,20 @@ final class SnowflakeConnection: @unchecked Sendable {
                 break
             }
             guard Date() < deadline else {
+                // The statement would keep running after the caller is told it failed.
+                if let requestID {
+                    await abortRequest(requestID, token: token)
+                }
                 throw SnowflakeError.timeout("Query did not finish within 45 minutes")
             }
-            response = try await getJSON(path: resultPath, token: token)
+            (response, token) = try await sendWithSession { token in
+                try await self.getJSON(path: resultPath, token: token)
+            }
         }
         if Self.isInProgress(response) {
             throw SnowflakeError.invalidResponse("Query is still running but Snowflake returned no result URL")
         }
-        return response
+        return (response, token)
     }
 
     private static func chunkRequestHeaders(from data: [String: Any]) -> [String: String] {
@@ -672,16 +741,15 @@ final class SnowflakeConnection: @unchecked Sendable {
         let columns: [SnowflakeColumnMeta]
         let inlineRows: [[PluginCellValueBox]]
         let estimatedRowCount: Int
-        let batches: AsyncThrowingStream<[[PluginCellValueBox]], Error>
+        let chunkURLs: [URL]
+        let chunkHeaders: [String: String]
     }
 
     func queryStreamed(
         _ sql: String,
         owner: String = SnowflakeConnection.sessionOwner
     ) async throws -> StreamedResult {
-        let (data, _) = try await withReauthentication {
-            try await submitQuery(sql, parameters: [], owner: owner)
-        }
+        let (data, _) = try await submitQuery(sql, parameters: [], owner: owner)
         applyFinalSessionInfo(data)
 
         let columns = Self.parseColumns(data["rowtype"] as? [[String: Any]] ?? [])
@@ -691,58 +759,56 @@ final class SnowflakeConnection: @unchecked Sendable {
         let headers = Self.chunkRequestHeaders(from: data)
         let urls = try Self.chunkURLs(chunks)
 
-        let stream = AsyncThrowingStream<[[PluginCellValueBox]], Error> { continuation in
-            guard !urls.isEmpty else {
-                continuation.finish()
-                return
-            }
-            let task = Task { [session] in
-                do {
-                    var buffer: [Int: [[PluginCellValueBox]]] = [:]
-                    var nextToYield = 0
-                    try await withThrowingTaskGroup(of: (Int, [[PluginCellValueBox]]).self) { group in
-                        var nextIndex = 0
-                        while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
-                            let index = nextIndex
-                            group.addTask {
-                                (index, try await Self.downloadChunk(
-                                    urls[index], headers: headers, session: session, columns: columns
-                                ))
-                            }
-                            nextIndex += 1
-                        }
-                        while let (index, rows) = try await group.next() {
-                            buffer[index] = rows
-                            while let ready = buffer[nextToYield] {
-                                buffer[nextToYield] = nil
-                                continuation.yield(ready)
-                                nextToYield += 1
-                            }
-                            if nextIndex < urls.count {
-                                let next = nextIndex
-                                group.addTask {
-                                    (next, try await Self.downloadChunk(
-                                        urls[next], headers: headers, session: session, columns: columns
-                                    ))
-                                }
-                                nextIndex += 1
-                            }
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
-        }
-
         return StreamedResult(
             columns: columns,
             inlineRows: inlineRows,
             estimatedRowCount: inlineRows.count + chunkRowCount,
-            batches: stream
+            chunkURLs: urls,
+            chunkHeaders: headers
         )
+    }
+
+    // Chunks reach `body` in order. A download starts only as a chunk is handed on, so the chunks downloading or
+    // waiting for one that lags never number more than `chunkDownloadWorkers`.
+    func forEachChunk(
+        of result: StreamedResult,
+        _ body: ([[PluginCellValueBox]]) async throws -> Void
+    ) async throws {
+        let urls = result.chunkURLs
+        guard !urls.isEmpty else { return }
+        let headers = result.chunkHeaders
+        let columns = result.columns
+        let session = self.session
+        try await withThrowingTaskGroup(of: (Int, [[PluginCellValueBox]]).self) { group in
+            var nextIndex = 0
+            while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
+                let index = nextIndex
+                group.addTask {
+                    (index, try await Self.downloadChunk(
+                        urls[index], headers: headers, session: session, columns: columns
+                    ))
+                }
+                nextIndex += 1
+            }
+            var held: [Int: [[PluginCellValueBox]]] = [:]
+            var nextToHandOn = 0
+            while let (index, rows) = try await group.next() {
+                held[index] = rows
+                while let ready = held.removeValue(forKey: nextToHandOn) {
+                    try await body(ready)
+                    nextToHandOn += 1
+                    if nextIndex < urls.count {
+                        let next = nextIndex
+                        group.addTask {
+                            (next, try await Self.downloadChunk(
+                                urls[next], headers: headers, session: session, columns: columns
+                            ))
+                        }
+                        nextIndex += 1
+                    }
+                }
+            }
+        }
     }
 
     private static let chunkDownloadWorkers = 4
@@ -760,9 +826,9 @@ final class SnowflakeConnection: @unchecked Sendable {
             var nextIndex = 0
             while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
                 let index = nextIndex
-                group.addTask { [session] in
+                group.addTask { [sessions] in
                     (index, try await Self.downloadChunk(
-                        urls[index], headers: headers, session: session, columns: columns
+                        urls[index], headers: headers, session: sessions.query, columns: columns
                     ))
                 }
                 nextIndex += 1
@@ -771,9 +837,9 @@ final class SnowflakeConnection: @unchecked Sendable {
                 rowsByChunk[index] = rows
                 if nextIndex < urls.count {
                     let next = nextIndex
-                    group.addTask { [session] in
+                    group.addTask { [sessions] in
                         (next, try await Self.downloadChunk(
-                            urls[next], headers: headers, session: session, columns: columns
+                            urls[next], headers: headers, session: sessions.query, columns: columns
                         ))
                     }
                     nextIndex += 1
@@ -1031,5 +1097,23 @@ private extension SnowflakeConnection.ResolvedParameters {
             default: break
             }
         }
+    }
+}
+
+// A URLSession keeps its delegate until it is invalidated, so each connection's two sessions are
+// invalidated when the last request path holding them lets go. Invalidating any earlier would make a
+// late request raise instead of fail.
+final class SnowflakeURLSessions: Sendable {
+    let query: URLSession
+    let connect: URLSession
+
+    init(query: URLSession, connect: URLSession) {
+        self.query = query
+        self.connect = connect
+    }
+
+    deinit {
+        query.finishTasksAndInvalidate()
+        connect.finishTasksAndInvalidate()
     }
 }

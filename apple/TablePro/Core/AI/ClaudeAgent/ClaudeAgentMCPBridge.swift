@@ -1,8 +1,3 @@
-//
-//  ClaudeAgentMCPBridge.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProMCP
@@ -10,53 +5,113 @@ import TableProMCP
 struct ClaudeAgentToolGrant: Sendable, Equatable {
     let configPath: String
     let tokenId: UUID
+    // Nil leaves every tool the token's scopes allow.
+    let allowedToolNames: [String]?
+}
+
+// A turn that was asked to use a connection stops with one of these rather than run without its tools.
+enum ClaudeAgentToolGrantError: Error, LocalizedError, Equatable {
+    case tokenNotSaved
+    case tokenNotCreated
+    case configNotWritten
+
+    var errorDescription: String? {
+        switch self {
+        case .tokenNotSaved:
+            String(localized: "Claude Agent can't use this connection: TablePro couldn't save its access token to the Keychain. Try again.")
+        case .tokenNotCreated:
+            String(localized: "Claude Agent can't use this connection: TablePro couldn't create its access token. Try again.")
+        case .configNotWritten:
+            String(localized: "Claude Agent can't use this connection: TablePro couldn't write its MCP settings file. Try again.")
+        }
+    }
 }
 
 protocol ClaudeAgentMCPBridging: Sendable {
-    func makeGrant() async -> ClaudeAgentToolGrant?
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async throws -> ClaudeAgentToolGrant?
     func release(_ grant: ClaudeAgentToolGrant?) async
 }
 
 struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClaudeAgentMCPBridge")
-    private static let tokenName = "__claude_agent__"
     private static let tokenLifetime: TimeInterval = 15 * 60
 
     private let permissions: TokenPermissions
-    private let connectionAccess: ConnectionAccess
+    private let endpoint: @Sendable () async -> URL?
+    private let tokenStore: @Sendable () async -> MCPTokenStore?
 
-    init(permissions: TokenPermissions = .readOnly, connectionAccess: ConnectionAccess = .all) {
+    init(
+        permissions: TokenPermissions = .readOnly,
+        endpoint: (@Sendable () async -> URL?)? = nil,
+        tokenStore: (@Sendable () async -> MCPTokenStore?)? = nil
+    ) {
         self.permissions = permissions
-        self.connectionAccess = connectionAccess
+        self.endpoint = endpoint ?? { await ClaudeAgentMCPBridge.resolveEndpoint() }
+        self.tokenStore = tokenStore ?? { await MCPServerManager.shared.tokenStore }
     }
 
-    func makeGrant() async -> ClaudeAgentToolGrant? {
-        guard let endpoint = await Self.resolveEndpoint() else { return nil }
-        guard let tokenStore = await MCPServerManager.shared.tokenStore else { return nil }
+    static func connectionAccess(for connectionId: UUID?) -> ConnectionAccess? {
+        guard let connectionId else { return nil }
+        return .limited([connectionId])
+    }
 
-        guard let generated = try? await tokenStore.generate(
-            name: Self.tokenName,
-            permissions: permissions,
-            connectionAccess: connectionAccess,
-            expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
-            isBridgeCredential: false,
-            extraScopes: []
-        ) else { return nil }
+    // Ask promises schema lookups only, so the server holds the token to them; Edit and Agent keep the read-only token.
+    static func toolProfile(for mode: AIChatMode) -> MCPToolProfile? {
+        switch mode {
+        case .ask: .schemaLookup
+        case .edit, .agent: nil
+        }
+    }
+
+    func makeGrant(connectionId: UUID?, mode: AIChatMode) async throws -> ClaudeAgentToolGrant? {
+        guard let connectionAccess = Self.connectionAccess(for: connectionId) else {
+            Self.logger.info("No connection attached; Claude Agent runs without database tools")
+            return nil
+        }
+        guard let endpoint = await self.endpoint() else { return nil }
+        guard let tokenStore = await self.tokenStore() else { return nil }
+
+        let toolProfile = Self.toolProfile(for: mode)
+        let generated: (token: MCPAuthToken, plaintext: String)
+        do {
+            generated = try await tokenStore.generate(
+                name: MCPTokenStore.claudeAgentTokenName,
+                permissions: permissions,
+                connectionAccess: connectionAccess,
+                expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
+                isBridgeCredential: false,
+                isClaudeAgentCredential: true,
+                extraScopes: [],
+                toolProfile: toolProfile
+            )
+        } catch {
+            Self.logger.error("Claude Agent token was not issued: \(error.publicLogShape, privacy: .public)")
+            switch error as? MCPTokenStoreError {
+            case .notSaved?, .keychainUnavailable?:
+                throw ClaudeAgentToolGrantError.tokenNotSaved
+            case .storedTokensUnreadable?, .randomGenerationFailed?, nil:
+                throw ClaudeAgentToolGrantError.tokenNotCreated
+            }
+        }
 
         guard let configPath = Self.writeConfig(endpoint: endpoint, token: generated.plaintext) else {
-            await tokenStore.delete(tokenId: generated.token.id)
-            return nil
+            await tokenStore.retire(tokenId: generated.token.id)
+            throw ClaudeAgentToolGrantError.configNotWritten
         }
 
         Self.logger.debug("Issued Claude Agent MCP grant")
-        return ClaudeAgentToolGrant(configPath: configPath, tokenId: generated.token.id)
+        return ClaudeAgentToolGrant(
+            configPath: configPath,
+            tokenId: generated.token.id,
+            allowedToolNames: toolProfile.map { $0.toolNames.sorted() }
+        )
     }
 
     func release(_ grant: ClaudeAgentToolGrant?) async {
         guard let grant else { return }
         try? FileManager.default.removeItem(atPath: grant.configPath)
-        guard let tokenStore = await MCPServerManager.shared.tokenStore else { return }
-        await tokenStore.delete(tokenId: grant.tokenId)
+        guard let tokenStore = await self.tokenStore() else { return }
+        await tokenStore.retire(tokenId: grant.tokenId)
         Self.logger.debug("Released Claude Agent MCP grant")
     }
 

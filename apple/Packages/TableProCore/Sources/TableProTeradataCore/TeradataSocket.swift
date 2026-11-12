@@ -8,6 +8,10 @@ public enum TeradataWireError: Error, CustomStringConvertible, LocalizedError {
     case server(code: Int, message: String)
     case unsupported(String)
     case cancelled
+    // Stop aborted the request, and the server rolled back the transaction it ran in.
+    case rolledBackByStop
+    case unreadableColumn(name: String, typeCode: UInt16)
+    case openTransactionBlocksDatabaseSwitch
 
     public var description: String {
         switch self {
@@ -17,7 +21,19 @@ public enum TeradataWireError: Error, CustomStringConvertible, LocalizedError {
         case .server(let code, let message): return "\(message) (\(code))"
         case .unsupported(let what): return "unsupported: \(what)"
         case .cancelled: return "cancelled"
+        case .rolledBackByStop: return "stopped, and the server rolled back the transaction (\(TeradataConnection.userAbortCode))"
+        case .unreadableColumn(let name, let typeCode): return Self.unreadableColumnMessage(name: name, typeCode: typeCode)
+        case .openTransactionBlocksDatabaseSwitch:
+            return String(localized: "Commit or roll back the open transaction before switching database.")
         }
+    }
+
+    private static func unreadableColumnMessage(name: String, typeCode: UInt16) -> String {
+        let typeName = TeradataColumnType.knownWireTypeName(typeCode) ?? String(typeCode)
+        let format = typeCode & 0xFFFE == TeradataType.number
+            ? String(localized: "Column \"%1$@\" has Teradata type %2$@, which TablePro cannot read yet. CAST it to DECIMAL or VARCHAR in the query.")
+            : String(localized: "Column \"%1$@\" has Teradata type %2$@, which TablePro cannot read yet. CAST it to VARCHAR in the query.")
+        return String(format: format, name, typeName)
     }
 
     public var errorDescription: String? { description }

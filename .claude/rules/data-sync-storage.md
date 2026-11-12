@@ -142,7 +142,7 @@ paths:
 This path holds user data. A silent wrong answer here looks exactly like an empty database, so prove late-completion and cancellation behavior with a test.
 
 - **A synced CKRecord type or field reaches CloudKit Production before anything writes it.** Both apps pin the container to Production, where nothing is auto-created, and CloudKit rejects a whole record that carries an undeclared field. Write fields only through `record.fields(SomeSyncField.self)`, never `record["..."]`. To ship one: add it in Development, deploy to Production in the Console, run `apple/scripts/export-cloudkit-schema.sh`, commit `apple/CloudKit/production-schema.ckdb`, then add it to the matching `verifiedInProduction`. `ProductionSchemaParityTests` checks code against the snapshot in both directions, not against the server, so never edit the snapshot by hand: `apple/scripts/export-cloudkit-schema.sh --check` compares it with Production. A tag's `app` job runs `--check-deployed` instead, which fails only on a record type, field, field type, index, role or grant the tag's snapshot has and Production lacks.
-- **A storage format stays readable by the previous stable.** Sparkle never downgrades, and a beta user can turn betas off (`apple/RELEASING.md`, Storage check).
+- **A storage format stays readable by the previous stable.** Sparkle never downgrades, and a beta user can turn betas off (`apple/RELEASING.md`, Storage check). The one exception is a value the previous stable has no field for, such as a theme color in a slot added after it: that file and its synced record are written at the oldest schema that holds it, and everything else keeps the old format (`.claude/rules/theme.md`, Model and Sync).
 - **Persist, then notify.** `SyncChangeTracker.markDeleted()` runs after the storage write, because its notification can start a sync that re-uploads the record from the stale file.
 - **Concurrent schema loads await the one in-flight `loadTask`** in `SQLSchemaProvider`; never guard with a flag that returns without data.
 - **Every metadata read goes through `DatabaseManager.withMetadataDriver`**, never `MetadataConnectionPool.shared` directly, so an embedded engine with `supportsConnectionPooling = false` (DuckDB, PGlite) stays on its session driver; a second connection to it is a different, empty database.
@@ -156,9 +156,10 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Preferences | UserDefaults | `AppSettingsStorage`, `AppSettingsManager` |
 | Editor and grid fonts | UserDefaults, device-local, never synced | `TypographySettings` through `AppSettingsManager` |
 | Appearance mode (Auto, Light, Dark) | UserDefaults, device-local, never synced | `AppSettingsStorage` through `AppSettingsManager.appearanceMode` |
-| Light and dark theme ids (iCloud-synced, category `appearance`) | UserDefaults | `AppearanceSettings` through `AppSettingsManager` |
+| Light and dark theme ids and the object icon style (iCloud-synced, category `appearance`) | UserDefaults | `AppearanceSettings` through `AppSettingsManager` |
 | User themes (iCloud-synced, one `AppSettings` record `theme.<id>` each) | JSON, one file per theme | `ThemeCatalog` (sync rules: `.claude/rules/theme.md`, Sync) |
 | Query history | SQLite FTS5 | `QueryHistoryStorage` |
+| Query tab edit history: up to 50 versions per tab, kept 30 days or the shorter Query History window, after the tab closes too; purged with the connection and by Clear History | SQLite `query_tab_versions.db`, device-local, never synced | `QueryTabVersionStorage` |
 | Tab state | JSON | `TabPersistenceCoordinator`, `TabDiskActor` |
 | Filter defaults and presets | UserDefaults | `FilterSettingsStorage`, `FilterPresetStorage` |
 | Per-table filters | JSON, one file per table | `FilterSettingsStorage` |
@@ -167,17 +168,29 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
 | Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
+| Objects tab column choices, per object kind | UserDefaults `com.TablePro.objectsList.columns.<kind>`, device-local, never synced | `ObjectListingColumnVisibilityStore` |
+| Connection navigator group expansion, shared with the database tree's connection groups | UserDefaults `com.TablePro.navigator.groupExpansion`, device-local, never synced | `ConnectionNavigatorExpansionStore` |
+| Connection navigator column width | AppKit split view autosave `com.TablePro.connectionNavigator`, device-local | `NavigationSidebarViewController` through `SplitViewAutosaveName.current(_:)` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
+| Table Health history, per connection and database: when each finding was first and last seen, resolved findings, ignored findings | JSON, one file per connection under `TableHealth/`, device-local, never synced | `TableHealthHistoryStorage` |
 | Module on/off (Settings > Extensions) | UserDefaults, device-local, never synced | `AppModuleSettings` |
 | Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
 | Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
+| Whether the toolbar arrangement already carries the Objects buttons | UserDefaults, device-local | `MainWindowToolbar` |
+| Whether the toolbar display mode already carries the Navigator Layout's labels | UserDefaults, device-local | `MainWindowToolbar` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |
 | Approved environment variable references, per connection, names and destination digest | UserDefaults, device-local, never synced | `ConnectionApprovalStore.envVarReferences` |
 | Approved sign-ins with this Mac's own credentials (Entra, AWS profile or SSO, Google ADC or OAuth, Kerberos, `~/.pgpass`), per connection, field values and destination digest | UserDefaults `com.TablePro.localCredentialApprovals`, plus `com.TablePro.localCredentialApprovalsMigrated` for the one-time approval of this Mac's rows; device-local, never synced | `ConnectionApprovalStore.localCredentials` |
 | Snowflake SSO and MFA tokens, per host and user. A bare account's `NAME.USER` item stays for 0.83.1, which reads only that key | Keychain, device-local | `SnowflakeTokenCache` |
+| Whether `connections.json` was ever given an integrity tag, so a deleted tag reads as modified | Keychain `com.TablePro.connectionStoreStamped.<sha256 of path>`, device-local | `ConnectionStoreIntegrity` |
+| Whether Local only connections' secrets were copied to device-only items | UserDefaults `com.TablePro.localOnlySecretsKeptOnDevice`, device-local, never synced | `ConnectionStorage` |
+| iCloud Keychain copies of Local only secrets the keychain refused to remove, retried at launch | UserDefaults `com.TablePro.localOnlySyncedCopiesPendingRemoval`, device-local, never synced | `ConnectionStorage` |
+| Whether plugin secure fields moved out of `connections.json` into the Keychain, set only when every field moved and the save succeeded | UserDefaults `com.TablePro.pluginSecureFieldsMovedToKeychain`, device-local, never synced | `ConnectionStorage` |
+| Whether a saved-queries store replaced a damaged file and waits for a full fetch, so push treats it as unreadable | Table `sync_refill` in the saved-queries SQLite store, dropped once a full fetch applied | `SQLFavoriteStorage` |
+| Deletions the server reported for a sync category that is off, applied when the category is next read | UserDefaults, device-local, never synced | `SyncMetadataStorage.deferredDeletions` |
 | Where a connection came from (`origin`): this Mac, imported, iCloud | `connections.json`, never synced or exported | `ConnectionStorage` |
 | Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

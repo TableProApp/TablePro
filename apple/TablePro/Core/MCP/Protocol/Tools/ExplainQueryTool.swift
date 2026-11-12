@@ -53,6 +53,14 @@ public struct ExplainQueryTool: MCPToolImplementation {
                 of: .object(["type": .string("array"), "items": MCPToolSchema.cell])
             ),
             "plan_text": MCPToolSchema.string(String(localized: "Flattened plan text")),
+            "status_message": MCPToolSchema.string(String(localized: "Why values are masked, when they are")),
+            "is_truncated": MCPToolSchema.boolean(
+                String(localized: "Present and true when the answer's size limit cut plan_text or left the parsed plan or rows out")
+            ),
+            "notes": MCPToolSchema.array(
+                String(localized: "Why rows were left out or values cut, when they were"),
+                of: MCPToolSchema.stringItem
+            ),
             "plan": MCPToolSchema.object(
                 properties: [
                     "root": MCPToolSchema.anyValue,
@@ -169,20 +177,18 @@ public struct ExplainQueryTool: MCPToolImplementation {
             )
         }
 
-        do {
-            var payload = try await services.connectionBridge.explainQuery(
-                operation,
-                request: request,
-                timeoutSeconds: timeoutSeconds,
-                cancellation: context.cancellation
-            )
-            if case .object(var fields) = payload {
-                fields["available_variants"] = MCPConnectionBridge.explainVariants(for: meta.databaseType)
-                payload = .object(fields)
-            }
-            return .structured(payload)
-        } catch {
-            throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+        var payload = try await ToolQueryExecutor.explainAndLog(
+            services: services,
+            operation: operation,
+            request: request,
+            timeoutSeconds: timeoutSeconds,
+            context: context,
+            secrets: meta.redactionSecrets
+        )
+        if case .object(var fields) = payload {
+            fields["available_variants"] = MCPConnectionBridge.explainVariants(for: meta.databaseType)
+            payload = .object(fields)
         }
+        return .structured(payload)
     }
 }

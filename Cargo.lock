@@ -1230,6 +1230,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "037e2a1a92236d0aff7e845093f64661d6df4c02c9fcc61a60e9e1d736fa392f"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2265,7 +2274,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2803,7 +2812,7 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps 9.0.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5717,7 +5726,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6106,6 +6115,7 @@ dependencies = [
  "pastey",
  "pin-project-lite",
  "rand 0.10.2",
+ "reqwest",
  "schemars 1.2.2",
  "serde",
  "serde_json",
@@ -6305,15 +6315,15 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.4"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6371,7 +6381,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7581,6 +7591,7 @@ dependencies = [
  "sqlformat",
  "tablepro-account",
  "tablepro-ai",
+ "tablepro-cli",
  "tablepro-core",
  "tablepro-driver-cassandra",
  "tablepro-driver-clickhouse",
@@ -7674,6 +7685,36 @@ name = "tablepro-bindgen"
 version = "0.0.0"
 dependencies = [
  "uniffi",
+]
+
+[[package]]
+name = "tablepro-cli"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "clap",
+ "clap_complete",
+ "http",
+ "hyper-util",
+ "reqwest",
+ "rmcp",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tablepro-core",
+ "tablepro-driver-sqlite",
+ "tablepro-mcp",
+ "tablepro-session",
+ "tablepro-ssh",
+ "tablepro-storage",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tracing",
+ "unicode-width",
+ "uuid",
 ]
 
 [[package]]
@@ -7847,6 +7888,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
+ "deadpool",
  "deadpool-postgres",
  "fallible-iterator 0.2.0",
  "futures-util",
@@ -8014,6 +8056,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "toml_edit",
  "tracing",
  "uuid",
 ]
@@ -8108,6 +8151,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "tracing",
  "unicode-normalization",
  "uuid",
 ]
@@ -8196,7 +8240,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8584,6 +8628,7 @@ dependencies = [
  "indexmap 2.14.2",
  "toml_datetime 1.1.1+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.4",
 ]
 
@@ -9391,7 +9436,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

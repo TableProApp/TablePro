@@ -437,26 +437,37 @@ extension MainContentCoordinator {
         tabManager.promotePreviewTab(id: selectedTabId)
     }
 
-    func showAllTablesMetadata() {
-        guard allTablesListing() != nil else { return }
-        openTableListing()
+    /// The flat list's sections are the browsed container's, so their Show Objects lists that one.
+    func showBrowsedObjects(_ kind: SidebarObjectKind) {
+        let scope = browsedObjectsScope
+        showObjects(
+            DatabaseTreeObjectGroup(database: scope.database, schema: scope.schema, kind: kind),
+            asPreview: false
+        )
     }
 
-    /// A read-only grid of the browsed container's tables, never an editor holding the statement that
-    /// lists them: the tab builds its statement from the plugin each time it loads.
-    func openTableListing() {
+    /// The container `showBrowsedObjects` opens, which the toolbar's object buttons also read.
+    var browsedObjectsScope: DatabaseScope {
         let schemaName = EngineNamespaceSlot(databaseType: connection.type) == .schema ? browseSchemaName : nil
-        let kindTitle = SidebarObjectKind.table.title(
-            tableEntityName: PluginManager.shared.tableEntityName(for: connection.type)
+        return DatabaseScope(connectionId: connectionId, database: browseDatabaseName, schema: schemaName)
+    }
+
+    /// The kinds an Objects tab on the browsed container offers, from the lists the sidebar holds for
+    /// it, so a toolbar button is live exactly where the sidebar has a group to show.
+    func browsedObjectKinds() -> [SidebarObjectKind] {
+        let scope = browsedObjectsScope
+        let tree = DatabaseTreeMetadataService.shared
+        let counts = ObjectListingKinds.itemCounts(
+            tables: tree.tables(connectionId: connectionId, database: scope.database, schema: scope.schema),
+            routines: tree.routines(connectionId: connectionId, database: scope.database, schema: scope.schema),
+            triggers: tree.triggers(connectionId: connectionId, database: scope.database, schema: scope.schema),
+            types: tree.userDefinedTypes(connectionId: connectionId, database: scope.database, schema: scope.schema)
         )
-        let tabId = tabManager.addTableListingTab(
-            title: QueryTabManager.tableListingTitle(kindTitle: kindTitle, schemaName: schemaName),
-            databaseName: browseDatabaseName,
-            schemaName: schemaName
+        return ObjectListingKinds.available(
+            itemCounts: counts,
+            declared: connection.type.declaredObjectKinds,
+            current: .table
         )
-        /// Asking again for a listing already open brings it up to date, the way Refresh would. A tab
-        /// opened just now loads when its view first appears, and nothing is listening for this yet.
-        AppEvents.shared.tabRefreshRequested.send(tabId)
     }
 
     /// The schema the sidebar lists, which a cross-database tab can leave the shared driver off.
@@ -560,7 +571,10 @@ extension MainContentCoordinator {
     /// Each value comes from the live session, never from `toolbarState`: a database switch moves
     /// the session schema without touching the toolbar, so comparing against the toolbar skips
     /// the switch exactly when the session needs it.
-    func switchContainers(database: String?, schema: String?) async {
+    ///
+    /// False when a step failed or was cancelled: the session is still wherever it was.
+    @discardableResult
+    func switchContainers(database: String?, schema: String?) async -> Bool {
         let steps = ContainerSwitchPlanner.plan(
             database: database,
             schema: schema,
@@ -579,17 +593,19 @@ extension MainContentCoordinator {
                 didSwitch = true
                 /// A schema belongs to a database, so a failed database switch stops the plan
                 /// rather than applying the schema against whatever is still open.
-                guard await switchDatabase(to: name) else { return }
+                guard await switchDatabase(to: name) else { return false }
             case .schema(let name):
                 guard name != session?.browseSchema || !isSettled else { continue }
                 didSwitch = true
                 await switchSchema(to: name)
+                guard services.databaseManager.session(for: connectionId)?.browseSchema == name else { return false }
             }
         }
         /// Already there is still a request to be there: the window may be showing another entry.
         if !didSwitch {
             browseCursorCoordinator.showBrowsedContainer()
         }
+        return true
     }
 
     private var schemaEntityName: String {
@@ -672,10 +688,13 @@ extension MainContentCoordinator {
                 try await dropContainer(target)
                 services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
-                navigationLogger.error(
-                    "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
-                )
-                failures.append((target.name, error.localizedDescription))
+                let failure = GatedOperationFailure(error)
+                if failure.reportsFailure {
+                    navigationLogger.error(
+                        "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
+                    )
+                }
+                if let message = failure.message { failures.append((target.name, message)) }
             }
         }
 

@@ -9,7 +9,6 @@
 import Foundation
 import os
 
-/// Persistent storage for app settings
 final class AppSettingsStorage: Sendable {
     static let shared = AppSettingsStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsStorage")
@@ -27,6 +26,7 @@ final class AppSettingsStorage: Sendable {
         static let editor = "com.TablePro.settings.editor"
         static let formatter = "com.TablePro.settings.formatter"
         static let dataGrid = "com.TablePro.settings.dataGrid"
+        static let valueColors = "com.TablePro.settings.valueColors"
         static let history = "com.TablePro.settings.history"
         static let tabs = "com.TablePro.settings.tabs"
         static let keyboard = "com.TablePro.settings.keyboard"
@@ -47,11 +47,7 @@ final class AppSettingsStorage: Sendable {
         ]
     }
 
-    /// The storage environment's defaults, not `.standard`. A UI test runs against a per-sandbox
-    /// suite, and reading the standard domain here put every setting, the onboarding flag among
-    /// them, in the machine's real preferences: a developer who had finished onboarding never saw
-    /// it under test, a fresh runner saw it until the first case skipped it, and every case after
-    /// that inherited the skip.
+    // Not `.standard`: a UI test runs against a per-sandbox suite, and the standard domain leaked the onboarding flag between runs.
     init(userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = userDefaults
     }
@@ -127,8 +123,7 @@ final class AppSettingsStorage: Sendable {
         }
     }
 
-    /// The first launch with no typography setting lifts the fonts out of the old theme files once,
-    /// so an upgrade does not return everyone to System Mono 13.
+    // The first launch with no typography setting lifts the fonts out of the old theme files, so an upgrade keeps them.
     func loadTypography(
         systemIsDark: Bool,
         legacyThemesDirectory: URL = ThemeCatalog.defaultUserDirectory
@@ -184,6 +179,16 @@ final class AppSettingsStorage: Sendable {
 
     func saveDataGrid(_ settings: DataGridSettings) {
         save(settings, key: Keys.dataGrid)
+    }
+
+    // MARK: - Value Color Settings
+
+    func loadValueColors() -> ValueColorSettings {
+        load(key: Keys.valueColors, default: .default)
+    }
+
+    func saveValueColors(_ settings: ValueColorSettings) {
+        save(settings, key: Keys.valueColors)
     }
 
     // MARK: - History Settings
@@ -295,7 +300,6 @@ final class AppSettingsStorage: Sendable {
 
     // MARK: - Reset
 
-    /// Reset all settings to defaults
     func resetToDefaults() {
         saveGeneral(.default)
         saveAppearance(.default)
@@ -303,10 +307,11 @@ final class AppSettingsStorage: Sendable {
         saveEditor(.default)
         saveFormatter(.default)
         saveDataGrid(.default)
+        saveValueColors(.default)
         saveHistory(.default)
         saveTabs(.default)
         saveKeyboard(.default)
-        saveAI(.default)
+        saveAI(loadAI().resetKeepingProviders)
         saveSync(.default)
         saveMCP(.default)
         saveTypography(.default)

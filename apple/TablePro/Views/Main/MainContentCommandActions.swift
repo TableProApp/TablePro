@@ -66,6 +66,9 @@ final class MainContentCommandActions: ObservableObject {
         await RunningWorkApproval.confirm(prompt, window: window)
     }
 
+    // What a window close waits on while another connection's pane mounts.
+    var paneWaitClock: any Clock<Duration> = ContinuousClock()
+
     private var notificationTasks: [Task<Void, Never>] = []
 
     private var eventCancellables: Set<AnyCancellable> = []
@@ -212,9 +215,12 @@ final class MainContentCommandActions: ObservableObject {
         let rowIDs = selectedDataRowIDs
         if !rowIDs.isEmpty {
             coordinator?.deleteRows(rowIDs)
-        } else if !selectedTables.wrappedValue.isEmpty {
-            // Through the sidebar's own path, which asks before it queues a drop.
-            coordinator?.sidebarViewModel?.batchToggleDelete(refs: Array(selectedTables.wrappedValue))
+        } else if !selectedTables.wrappedValue.isEmpty, let coordinator {
+            // Through the sidebar's own path, which asks this window before it queues a drop.
+            coordinator.sidebarViewModel?.batchToggleDelete(
+                refs: Array(selectedTables.wrappedValue),
+                from: coordinator.windowSidebarState
+            )
         }
     }
 
@@ -468,6 +474,12 @@ final class MainContentCommandActions: ObservableObject {
         return !coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
     }
 
+    // Export Results on a Table Health tab exports its findings, which are not a result set.
+    var hasTableHealthFindings: Bool {
+        guard let coordinator, let tab = coordinator.tabManager.selectedTab, tab.tabType == .tableHealth else { return false }
+        return coordinator.tableHealthModels[tab.id]?.hasExportableRows == true
+    }
+
     var hasRowSelection: Bool {
         selectionOwner != .none && coordinator?.activeGridModel?.selection.isEmpty == false
     }
@@ -550,12 +562,7 @@ final class MainContentCommandActions: ObservableObject {
 
     // Every connection in the window: closing it closes them all, and skipping a background one is silent data loss.
     internal var hasUnsavedWorkInWindow: Bool {
-        guard let host = window?.contentViewController as? MainSplitViewController else {
-            return coordinator?.hasAnyUnsavedWork() ?? false
-        }
-        return host.workspaces.workspaces.contains { workspace in
-            workspace.sessionState?.coordinator.hasAnyUnsavedWork() == true
-        }
+        coordinatorsInWindow.contains { $0.hasAnyUnsavedWork() }
     }
 
     // This connection only: closing its tabs leaves another connection's pending work alone.
@@ -644,13 +651,16 @@ final class MainContentCommandActions: ObservableObject {
             return .closed
         }
         // Work is stopped only once the close is certain: a cancelled or failed save keeps it running.
-        let result = await AlertHelper.confirmSaveChanges(
-            message: RunningWorkPrompt.saveMessage(
-                String(localized: "Your changes will be lost if you don't save them."),
+        let keepsTabsOpen = coordinatorsInWindow.contains { hosted in
+            hosted.tabManager.tabs.contains { hosted.savability(of: $0) == .mountedOnly }
+        }
+        let result = await confirmSaveChanges(
+            RunningWorkPrompt.saveMessage(
+                Self.unsavedWorkMessage(keepsTabsOpen: keepsTabsOpen),
                 action: .close,
                 alsoStopping: work
             ),
-            window: closeAnchorWindow
+            closeAnchorWindow
         )
 
         switch result {
@@ -752,6 +762,8 @@ final class MainContentCommandActions: ObservableObject {
             return await withCheckedContinuation { continuation in
                 coordinator.saveCompletionContinuation = continuation
                 saveChanges()
+                // Still there when the command went somewhere other than the grid save, which reports nothing back.
+                coordinator.takeSaveCompletion()?.resume(returning: false)
             }
         }
 
@@ -767,13 +779,17 @@ final class MainContentCommandActions: ObservableObject {
         return true
     }
 
+    // The prompt asked about every connection in the window, so Save reaches every tab of each; one it cannot save keeps the window.
     private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
-        guard let coordinator else {
-            finish(asBatchSurvivor: asBatchSurvivor)
-            return true
+        let host = window?.contentViewController as? MainSplitViewController
+        let shown = host?.workspaces.selectedConnectionId
+        for hosted in coordinatorsInWindow where hosted === coordinator || hosted.hasAnyUnsavedWork() {
+            // A save can raise a sheet, which has to sit over the connection it is about.
+            host?.workspaces.select(hosted.connectionId)
+            guard let actions = await shownActions(of: hosted) else { return false }
+            guard await actions.saveEveryTabsWork() else { return false }
         }
-        guard await applyStagedStructureEdits(in: coordinator.tabManager.tabs) else { return false }
-        guard await saveSelectedTabWork() else { return false }
+        if let shown { host?.workspaces.select(shown) }
         finish(asBatchSurvivor: asBatchSurvivor)
         return true
     }
@@ -801,13 +817,16 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func copyTableNames() {
-        coordinator?.sidebarViewModel?.copySelectedTableNames()
+        SidebarViewModel.copyTableNames(of: selectedTables.wrappedValue)
     }
 
     func truncateTables() {
         guard coordinator?.admitsSheetCommand() == true else { return }
-        guard canTruncateSelectedTables else { return }
-        coordinator?.sidebarViewModel?.batchToggleTruncate()
+        guard canTruncateSelectedTables, let coordinator else { return }
+        coordinator.sidebarViewModel?.batchToggleTruncate(
+            refs: Array(selectedTables.wrappedValue),
+            from: coordinator.windowSidebarState
+        )
     }
 
     // MARK: - Filter Operations (Group A: Called Directly)
@@ -920,6 +939,9 @@ final class MainContentCommandActions: ObservableObject {
 
     @discardableResult
     func saveFileAsAwaiting() async -> Bool {
+        if let tabId = coordinator?.tabManager.selectedTabId {
+            coordinator?.flushEditorText(forTab: tabId)
+        }
         guard let tab = coordinator?.tabManager.selectedTab,
               tab.tabType == .query else { return false }
         let content = tab.content.query
@@ -976,8 +998,12 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func exportQueryResults() {
-        guard coordinator?.admitsSheetCommand() == true else { return }
-        coordinator?.openExportQueryResultsDialog()
+        guard let coordinator, coordinator.admitsSheetCommand() else { return }
+        if let tab = coordinator.tabManager.selectedTab, tab.tabType == .tableHealth {
+            coordinator.openTableHealthExport(forTab: tab.id)
+            return
+        }
+        coordinator.openExportQueryResultsDialog()
     }
 
     func importData() {
@@ -1111,14 +1137,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func clearQuery() {
-        guard let coordinator,
-              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex,
-              tab.tabType == .query else { return }
-        coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = "" }
-        coordinator.toolbarState.hasQueryText = false
-        coordinator.scheduleDraftSave()
-        // Emptying from a command bypasses the editor binding that recomputes the dirty indicator on each keystroke.
-        coordinator.refreshUnsavedIndicator()
+        coordinator?.clearSelectedQuery()
     }
 
     var canClearQuery: Bool {
@@ -1269,6 +1288,19 @@ final class MainContentCommandActions: ObservableObject {
         )
     }
 
+    // Nil off a table tab, which the Database menu's Auto Refresh items dim for.
+    var tableAutoRefreshInterval: TableAutoRefreshInterval? {
+        guard let tab = coordinator?.tabManager.selectedTab,
+              tab.tabType == .table,
+              tab.tableContext.tableName != nil else { return nil }
+        return tab.autoRefreshInterval
+    }
+
+    func setTableAutoRefreshInterval(_ interval: TableAutoRefreshInterval) {
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return }
+        coordinator.setAutoRefreshInterval(interval, forTab: tabId)
+    }
+
     private var hasPendingTableOps: Bool {
         !pendingTruncates.wrappedValue.isEmpty || !pendingDeletes.wrappedValue.isEmpty
     }
@@ -1392,6 +1424,38 @@ final class MainContentCommandActions: ObservableObject {
 }
 
 extension MainContentCommandActions {
+    // This connection's first.
+    private var coordinatorsInWindow: [MainContentCoordinator] {
+        guard let host = window?.contentViewController as? MainSplitViewController else {
+            return [coordinator].compactMap { $0 }
+        }
+        let hosted = host.workspaces.workspaces.compactMap { $0.sessionState?.coordinator }
+        guard let coordinator else { return hosted }
+        return [coordinator] + hosted.filter { $0 !== coordinator }
+    }
+
+    // A connection never shown has no actions until its pane mounts, a few run loop turns after it is selected.
+    private func shownActions(of hosted: MainContentCoordinator) async -> MainContentCommandActions? {
+        if hosted === coordinator { return self }
+        return await Self.actions(of: hosted, waitingOn: paneWaitClock)
+    }
+
+    // A cancelled close stops waiting at once rather than polling out the rest of the deadline.
+    private static func actions<C: Clock<Duration>>(
+        of hosted: MainContentCoordinator,
+        waitingOn clock: C
+    ) async -> MainContentCommandActions? {
+        let deadline = clock.now.advanced(by: .seconds(2))
+        while hosted.commandActions == nil, clock.now < deadline {
+            do {
+                try await clock.sleep(for: .milliseconds(20))
+            } catch {
+                return nil
+            }
+        }
+        return hosted.commandActions
+    }
+
     // Copy with the grid not focused takes the selected rows in the row copy format; a focused grid answers `copy:` itself.
     func copySelectedRowsInCopyFormat() {
         guard dataGridOwnsSelection, let model = coordinator?.activeGridModel else {

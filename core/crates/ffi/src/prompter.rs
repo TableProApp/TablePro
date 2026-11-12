@@ -5,6 +5,8 @@ use secrecy::SecretString;
 use tablepro_core::credentials::{CredentialPrompt, CredentialPrompter, PromptPurpose, PromptReason, PromptReply};
 use tablepro_session::runtime::Tasks;
 
+use crate::library::Redacted;
+
 // The app asks the user and returns the answer; the core calls it on a thread it lets block.
 #[uniffi::export(callback_interface)]
 pub trait HostPrompter: Send + Sync {
@@ -60,11 +62,24 @@ pub struct PromptFieldInfo {
     pub secret: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Clone, uniffi::Enum)]
 pub enum PromptAnswer {
     // One value per field; a host key or a confirmation is trusted with none.
-    Submitted { values: Vec<String>, remember: bool },
+    Submitted { values: Vec<SecretString>, remember: bool },
     Cancelled,
+}
+
+impl std::fmt::Debug for PromptAnswer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Submitted { values, remember } => f
+                .debug_struct("Submitted")
+                .field("values", &values.iter().map(|_| Redacted).collect::<Vec<_>>())
+                .field("remember", remember)
+                .finish(),
+            Self::Cancelled => f.write_str("Cancelled"),
+        }
+    }
 }
 
 pub(crate) struct HostPrompterBridge {
@@ -162,10 +177,7 @@ impl From<PromptReason> for PromptReasonTag {
 impl From<PromptAnswer> for PromptReply {
     fn from(answer: PromptAnswer) -> Self {
         match answer {
-            PromptAnswer::Submitted { values, remember } => Self::Submitted {
-                values: values.into_iter().map(SecretString::from).collect(),
-                remember,
-            },
+            PromptAnswer::Submitted { values, remember } => Self::Submitted { values, remember },
             PromptAnswer::Cancelled => Self::Cancelled,
         }
     }
@@ -227,7 +239,7 @@ mod tests {
         let prompter = bridge(Answering {
             asked: asked.clone(),
             answer: PromptAnswer::Submitted {
-                values: vec!["correct horse".to_owned()],
+                values: vec![SecretString::from("correct horse")],
                 remember: true,
             },
         });
@@ -256,6 +268,19 @@ mod tests {
                 }],
                 offer_remember: false,
             }]
+        );
+    }
+
+    #[test]
+    fn debug_output_of_an_answer_holds_no_typed_value() {
+        let answer = PromptAnswer::Submitted {
+            values: vec![SecretString::from("correct horse")],
+            remember: true,
+        };
+
+        assert_eq!(
+            format!("{answer:?}"),
+            "Submitted { values: [[REDACTED]], remember: true }"
         );
     }
 

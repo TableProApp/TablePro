@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use tablepro_core::browse::{
-    BrowseSqlError, DeclaredPrecisionSink, ExportRequest, PageRequest, build_export, read_page,
+    BrowseSqlError, DeclaredPrecisionSink, ExportFields, ExportRequest, PageRequest, build_export, read_page,
 };
 use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
 use tablepro_core::export::value_text;
@@ -175,6 +175,7 @@ async fn export(connection: &dyn Connection, table: &TableRef) -> Result<Read, C
             filter: &FilterSet::default(),
             sort: &[],
             identity: &identity,
+            fields: ExportFields::Every,
         },
     )
     .map_err(ConformanceFailure::setup)?;
@@ -241,6 +242,7 @@ fn by_id(columns: &[ResultColumn], rows: Vec<Vec<Value>>) -> Result<Read, Confor
     for mut row in rows {
         // An editor run on PostgreSQL reads every value as the server's text.
         let key = match row.get(id) {
+            Some(Value::Int32(key)) => Some(i64::from(*key)),
             Some(Value::Int(key)) => Some(*key),
             Some(Value::UInt(key)) => i64::try_from(*key).ok(),
             Some(Value::Text(key)) => key.parse().ok(),

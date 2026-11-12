@@ -514,7 +514,7 @@ fn target(key: &SessionKey) -> Option<String> {
 }
 
 /// Each menu item's action and target, sections and submenus flattened.
-fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
+pub(crate) fn menu_items(menu: &gio::MenuModel) -> Vec<(String, Option<glib::Variant>)> {
     let mut found = Vec::new();
     for index in 0..menu.n_items() {
         if let Some(action) = menu
@@ -1264,6 +1264,7 @@ fn a_row_tells_a_screen_reader_its_kind() {
     );
     shown.open(&alpha, &view);
     shown.row("public").set_expanded(true);
+    shown.row("Views").set_expanded(true);
 
     let description = |name: &str| {
         let row = shown.row_widget(name);
@@ -1273,8 +1274,52 @@ fn a_row_tells_a_screen_reader_its_kind() {
     assert_eq!(description("orders").as_deref(), Some("Table"));
     assert_eq!(description("totals").as_deref(), Some("View"));
     assert_eq!(description("public").as_deref(), Some("Schema"));
+    assert_eq!(description("Views").as_deref(), Some("1 object"));
     assert_eq!(description("Alpha").as_deref(), Some("Connection, connected"));
     assert_eq!(description("Beta").as_deref(), Some("Connection"));
+
+    let view_named = |name: &str| ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", name)
+    };
+    view.show(SidebarIndex::build(
+        &[object("public", "orders"), view_named("totals"), view_named("weekly")],
+        &public(),
+    ));
+    assert_eq!(
+        description("Views").as_deref(),
+        Some("2 objects"),
+        "a new list recounts the group"
+    );
+}
+
+#[gtk4::test]
+fn other_kinds_sit_in_groups_that_open_reveal_their_objects_and_offer_no_menu() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let totals = ObjectInfo {
+        kind: ObjectKind::View,
+        ..object("public", "totals")
+    };
+    let (view, _) = session(&[object("public", "orders"), totals], every_affordance());
+    let key = shown.open(&alpha, &view);
+    shown.row("Alpha").set_expanded(true);
+    shown.row("public").set_expanded(true);
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "orders"]);
+
+    shown.activate("Views");
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "totals", "orders"]);
+    shown.menu("Views");
+    assert!(!shown.popover().is_visible(), "a group has a menu");
+    shown.activate("Views");
+    assert_eq!(shown.rows(), ["Alpha", "public", "Views", "orders"]);
+
+    shown.tree.select(Some(&key), Some(&table("totals")));
+    assert_eq!(
+        shown.selected().as_deref(),
+        Some("totals"),
+        "the view's group stayed folded"
+    );
 }
 
 #[gtk4::test]
@@ -1661,6 +1706,38 @@ fn the_selection_follows_the_tab_and_survives_a_new_list() {
 
     shown.tree.select(None, None);
     assert_eq!(shown.selected(), None, "no tab, yet a row selected");
+}
+
+#[gtk4::test]
+fn a_rows_menu_opens_beside_the_pointer_so_a_long_one_slides_instead_of_shrinking() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(&[object("public", "a")], every_affordance());
+    shown.open(&alpha, &view);
+    let pointer = gdk::Rectangle::new(40, 60, 1, 1);
+
+    shown.inner().pressed(
+        Which::Tree,
+        shown.position("a"),
+        gdk::BUTTON_SECONDARY,
+        gdk::ModifierType::empty(),
+        Some(pointer),
+    );
+
+    let popover = shown.popover();
+    assert!(popover.is_visible(), "the menu did not open");
+    assert!(
+        matches!(popover.position(), gtk::PositionType::Left | gtk::PositionType::Right),
+        "opened above or below, a long menu cannot slide"
+    );
+    assert_eq!(
+        popover.valign(),
+        gtk::Align::Start,
+        "the menu does not start at the pointer"
+    );
+    assert!(!popover.has_arrow(), "a context menu has no arrow");
+    assert_eq!(popover.pointing_to(), (true, pointer));
+    popover.popdown();
 }
 
 #[gtk4::test]
@@ -2554,6 +2631,42 @@ fn a_search_finds_tables_under_their_schema_past_an_empty_one() {
 
     wait_until(WAIT, || shown.rows() == ["leads"]).expect("only the table it finds");
     wait_until(WAIT, || shown.headings() == ["sales (Alpha)"]).expect("the table's own schema");
+}
+
+#[gtk4::test]
+fn the_add_menu_offers_what_the_engine_makes_for_its_own_session() {
+    let key = SessionKey::Saved(Uuid::new_v4());
+    let offered = |affordances| {
+        let menu = creation_menu(&key, affordances).upcast::<gio::MenuModel>();
+        crate::test_support::assert_access_keys(&menu);
+        let targets = menu_items(&menu)
+            .into_iter()
+            .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+            .collect::<Vec<_>>();
+        (menu_labels(&menu), targets)
+    };
+
+    let (labels, targets) = offered(catalog_affordance());
+    assert_eq!(labels, ["New _Table…", "New _Schema…", "New _Database…"]);
+    assert_eq!(
+        targets,
+        [
+            ("win.new-table-in".to_owned(), target(&key)),
+            ("win.new-schema-in".to_owned(), target(&key)),
+            ("win.new-database-in".to_owned(), target(&key)),
+        ]
+    );
+
+    let mut keyspaces = catalog_affordance();
+    keyspaces.catalog.database_noun = tablepro_core::ddl::DatabaseNoun::Keyspace;
+    keyspaces.lists_databases = true;
+    assert_eq!(offered(keyspaces).0, ["New _Table…", "New _Keyspace…"]);
+
+    let read_only = SidebarAffordances {
+        read_only: true,
+        ..catalog_affordance()
+    };
+    assert!(offered(read_only).0.is_empty(), "a read-only connection makes nothing");
 }
 
 #[gtk4::test]

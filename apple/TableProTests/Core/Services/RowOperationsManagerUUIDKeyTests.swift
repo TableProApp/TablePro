@@ -80,7 +80,7 @@ struct RowOperationsManagerUUIDKeyTests {
 
         let result = try #require(manager.addNewRow(tableRows: &rows, uuidKeyForms: Self.uuidKey))
 
-        #expect(result.values[0] == .text("__DEFAULT__"))
+        #expect(result.values[0] == .columnDefault)
         #expect(result.prefilledColumns.isEmpty)
     }
 
@@ -99,7 +99,7 @@ struct RowOperationsManagerUUIDKeyTests {
         #expect(copyKey != sourceKey)
         #expect(copy.values[1] == .text("a"))
         #expect(copy.prefilledColumns == [0])
-        #expect(plain.values[0] == .text("__DEFAULT__"))
+        #expect(plain.values[0] == .columnDefault)
     }
 
     @Test("Duplicating a pending row keeps the SQL staged in it, except in the columns the copy resets")
@@ -118,14 +118,16 @@ struct RowOperationsManagerUUIDKeyTests {
         #expect(uuidText(copy.values[0]) != nil)
     }
 
-    @Test("Duplicating a saved row stages no SQL")
+    @Test("Duplicating a saved row stages no SQL but the default its reset key takes")
     func duplicateOfASavedRowHasNoMarks() throws {
         let (manager, changeManager) = makeManager()
         var rows = makeRows([[.text("0b1e7c9a-58f4-4b8e-9c55-1f1c86f0a001"), .text("now()"), .null]])
 
         let copy = try #require(manager.duplicateRow(sourceRowIndex: 0, tableRows: &rows))
 
-        #expect(changeManager.expressionColumns(forRow: copy.rowID).isEmpty)
+        #expect(changeManager.expressionColumns(forRow: copy.rowID) == [0])
+        #expect(copy.values[0] == .columnDefault)
+        #expect(copy.values[1] == .text("now()"))
     }
 
     // MARK: - Paste rows
@@ -174,8 +176,8 @@ struct RowOperationsManagerUUIDKeyTests {
         #expect(key != "0b1e7c9a-58f4-4b8e-9c55-1f1c86f0a001")
     }
 
-    @Test("Pasted rows on a key that is not a UUID key still hand it to the server")
-    func pasteWithoutUUIDKeysKeepsDefault() {
+    @Test("A pasted key that is neither a UUID key nor filled by the server keeps its value")
+    func pasteWithoutUUIDKeysKeepsTheKey() {
         let (manager, _) = makeManager()
         var rows = makeRows()
         let clipboard = RecordingClipboard()
@@ -188,7 +190,7 @@ struct RowOperationsManagerUUIDKeyTests {
             clipboard: clipboard
         )
 
-        #expect(result.pastedRows.first?.values[0] == .text("__DEFAULT__"))
+        #expect(result.pastedRows.first?.values[0] == .text("k1"))
     }
 }
 
@@ -210,11 +212,13 @@ extension GlobalStateSuites {
             return (RowOperationsManager(changeManager: changeManager), changeManager)
         }
 
+        // `id` is an identity, so a pasted row hands it back to the server.
         private func makeRows(_ queryRows: [[PluginCellValue]] = []) -> TableRows {
             TableRows.from(
                 queryRows: queryRows,
                 columns: Self.columns,
                 columnTypes: [.text(rawType: "text"), .text(rawType: "text"), .timestamp(rawType: "timestamptz")],
+                columnIdentity: ["id": .byDefault],
                 hasAuthoritativeSchema: true
             )
         }
@@ -249,8 +253,8 @@ extension GlobalStateSuites {
 
             let pasted = result.pastedRows.map(\.rowID)
             #expect(pasted.count == 2)
-            #expect(changeManager.expressionColumns(forRow: pasted[0]).isEmpty)
-            #expect(changeManager.expressionColumns(forRow: pasted[1]) == [2])
+            #expect(changeManager.expressionColumns(forRow: pasted[0]) == [0])
+            #expect(changeManager.expressionColumns(forRow: pasted[1]) == [0, 2])
             #expect(result.pastedRows[0].values[2] == .text("CURRENT_TIMESTAMP"))
             #expect(result.pastedRows[1].values[2] == .text("now()"))
         }
@@ -268,8 +272,9 @@ extension GlobalStateSuites {
 
             let result = try paste(manager, into: &rows)
 
-            let rowID = try #require(result.pastedRows.first?.rowID)
-            #expect(changeManager.expressionColumns(forRow: rowID) == [2])
+            let pastedRow = try #require(result.pastedRows.first)
+            #expect(pastedRow.values[0] == .columnDefault)
+            #expect(changeManager.expressionColumns(forRow: pastedRow.rowID) == [0, 2])
         }
 
         @Test("Cells the grid copied as wide as the table paste as rows with their marks")
@@ -287,8 +292,8 @@ extension GlobalStateSuites {
 
             let pasted = result.pastedRows.map(\.rowID)
             #expect(pasted.count == 2)
-            #expect(changeManager.expressionColumns(forRow: pasted[0]) == [2])
-            #expect(changeManager.expressionColumns(forRow: pasted[1]).isEmpty)
+            #expect(changeManager.expressionColumns(forRow: pasted[0]) == [0, 2])
+            #expect(changeManager.expressionColumns(forRow: pasted[1]) == [0])
         }
     }
 }

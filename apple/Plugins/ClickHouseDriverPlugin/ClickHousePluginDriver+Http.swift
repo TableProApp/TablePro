@@ -18,7 +18,7 @@ nonisolated extension ClickHousePluginDriver {
         _ query: String,
         queryId: String? = nil,
         requestTimeout: TimeInterval? = nil,
-        readOnly: Bool = false
+        readOnly: ClickHouseReadOnlyReason? = nil
     ) async throws -> CHQueryResult {
         try await sendStatement(
             query,
@@ -34,7 +34,7 @@ nonisolated extension ClickHousePluginDriver {
         _ query: String,
         params: [String: String?],
         queryId: String? = nil,
-        readOnly: Bool = false
+        readOnly: ClickHouseReadOnlyReason? = nil
     ) async throws -> CHQueryResult {
         try await sendStatement(
             query,
@@ -51,7 +51,7 @@ nonisolated extension ClickHousePluginDriver {
         params: [String: String?]?,
         executionTimeLimit: Int?,
         requestTimeout: TimeInterval? = nil,
-        readOnly: Bool = false
+        readOnly: ClickHouseReadOnlyReason? = nil
     ) async throws -> CHQueryResult {
         let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
             guard let session = self.session else { throw ClickHouseError.notConnected }
@@ -68,26 +68,34 @@ nonisolated extension ClickHousePluginDriver {
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
             shape: .buffered(parameters: params),
-            readOnly: readOnly
+            readOnly: readOnly != nil
         )
         request.timeoutInterval = requestTimeout ?? _queryTimeout.requestTimeoutInterval
         return try await killingOnCancel(queryId: queryId) {
             do {
                 return try await perform(request: request, session: session)
             } catch {
-                throw readOnly ? Self.readOnlyRefusal(error) : error
+                throw Self.readOnlyRefusal(error, reason: readOnly)
             }
         }
     }
 
     // 164 is READONLY: the request's own `readonly` refused the statement.
-    static func readOnlyRefusal(_ error: Error) -> Error {
-        guard let failure = error as? ClickHouseError, failure.exceptionCode == 164 else { return error }
-        return ClickHouseError(
-            message: String(localized: "This request is read only, and the statement is not a read."),
-            exceptionCode: failure.exceptionCode,
-            detail: failure.message
-        )
+    static func readOnlyRefusal(_ error: Error, reason: ClickHouseReadOnlyReason?) -> Error {
+        guard let reason, let failure = error as? ClickHouseError, failure.exceptionCode == 164 else { return error }
+        return ClickHouseError(message: reason.refusalMessage, exceptionCode: failure.exceptionCode, detail: failure.message)
+    }
+
+    // Text as UTF-8, bytes as they are, null as nothing: never more than the host counts for the same row, so a read
+    // never stops before the host's own budget is full.
+    static func decodedByteCount(of row: PluginRow) -> Int {
+        row.reduce(0) { total, cell in
+            switch cell {
+            case .null: total
+            case .text(let text): total + text.utf8.count
+            case .bytes(let data): total + data.count
+            }
+        }
     }
 
     // Two callers can share this driver, so a cancelled statement stops its own query, never the one sent last.
@@ -327,6 +335,32 @@ nonisolated extension ClickHousePluginDriver {
             trimmed = String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return trimmed
+    }
+}
+
+// Who asked for `readonly`, which is what a refusal names. ClickHouse has no transaction a request could find open.
+nonisolated enum ClickHouseReadOnlyReason: Sendable, Equatable {
+    case externalClients
+    case safeMode
+
+    // An app read marked `readOnly` alone, a catalog read or a dashboard tile, runs as it is.
+    init?(_ context: PluginStatementContext) {
+        if context.readOnly, context.origin == .external {
+            self = .externalClients
+        } else if context.enforcesReadOnly {
+            self = .safeMode
+        } else {
+            return nil
+        }
+    }
+
+    var refusalMessage: String {
+        switch self {
+        case .externalClients:
+            String(localized: "This request is read only, and the statement is not a read.")
+        case .safeMode:
+            String(localized: "Safe Mode is set to Read-Only for this connection, and the database refused the statement.")
+        }
     }
 }
 

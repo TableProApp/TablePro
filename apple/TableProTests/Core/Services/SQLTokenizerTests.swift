@@ -305,6 +305,22 @@ struct SQLTokenizerTests {
         #expect(code("select 1;\ndelimiter $$", .mysql).last?.type == .directive)
     }
 
+    @Test("A DELIMITER line sets the first word after it, as the mysql client reads it")
+    func delimiterArgumentIsTheFirstWord() {
+        let tokens = code("DELIMITER // -- set\nselect 1//\nDELIMITER\nselect 2;", .mysql)
+        #expect(tokens.map(\.value) == ["DELIMITER // -- set", "select", "1", "//", "DELIMITER", "select", "2", ";"])
+        #expect(tokens.first?.type == .directive)
+        #expect(tokens[4].type == .directive)
+    }
+
+    @Test("A COPY with its rows and a psql \\restrict line keep their text")
+    func psqlScriptText() {
+        let tokens = code("\\restrict k\nCOPY t FROM stdin;\n\tselect 'x\n\\.\nselect 2;", .postgresql)
+        #expect(tokens.map(\.value) == ["\\restrict k", "COPY t FROM stdin;\n\tselect 'x\n\\.", "select", "2", ";"])
+        #expect(tokens[0].type == .directive)
+        #expect(tokens[1].type == .directive)
+    }
+
     @Test("A MySQL # comment runs to the end of its line")
     func hashComment() {
         #expect(code("a # b and\nc", .mysql).map(\.value) == ["a", "# b and", "c"])
@@ -397,6 +413,56 @@ struct SQLTokenizerTests {
     func prefixedNames() {
         #expect(code("#tmp ##global @@rowcount @p", .mssql).map(\.value) == ["#tmp", "##global", "@@rowcount", "@p"])
         #expect(code("v$session SYS#1", .oracle).map(\.value) == ["v$session", "SYS#1"])
+    }
+
+    // MARK: - Account names and operator runs
+
+    @Test("An account name is one name, whatever quotes it wears")
+    func accountNames() {
+        #expect(code("grant all on db.* to 'app'@'%'", .mysql).last == SQLToken(type: .identifier, value: "'app'@'%'"))
+        #expect(code("definer=`root`@`localhost`", .mysql).map(\.value) == ["definer", "=", "`root`@`localhost`"])
+        #expect(
+            code("to admin@localhost, app@10.0.0.1, 'app'@localhost", .mysql).map(\.value)
+                == ["to", "admin@localhost", ",", "app@10.0.0.1", ",", "'app'@localhost"]
+        )
+        #expect(code("create user user@localhost", .mysql).last == SQLToken(type: .identifier, value: "user@localhost"))
+        #expect(code("select * from emp@remote.example.com", .oracle).last?.value == "emp@remote.example.com")
+    }
+
+    @Test("A quoted user variable is one variable")
+    func quotedUserVariables() {
+        let tokens = code("select @`my var`, @'v'", .mysql)
+        #expect(tokens.map(\.value) == ["select", "@`my var`", ",", "@'v'"])
+        #expect(tokens[1].type == .placeholder)
+        #expect(tokens[3].type == .placeholder)
+    }
+
+    @Test("A variable after an operator or a comma is still a variable")
+    func variablesStayApart() {
+        #expect(code("set @a=@b, c=1", .mysql).map(\.value) == ["set", "@a", "=", "@b", ",", "c", "=", "1"])
+        #expect(code("a<@b", .mssql).map(\.value) == ["a", "<", "@b"])
+    }
+
+    @Test(
+        "A PostgreSQL operator no list holds is one operator",
+        arguments: ["<#>", "<%", "%>", "&&&", "?-|", "<<|", "@-@", "<<->>", "|=|", "!=-"]
+    )
+    func operatorRun(symbol: String) {
+        #expect(code("a\(symbol)b", .postgresql) == [
+            SQLToken(type: .identifier, value: "a"),
+            SQLToken(type: .operator, value: symbol),
+            SQLToken(type: .identifier, value: "b"),
+        ])
+    }
+
+    @Test("A sign after a PostgreSQL operator stays a sign, and a comment ends the operator")
+    func operatorRunEnds() {
+        #expect(
+            code("a=-1 and b>=+2 and c*-d", .postgresql).map(\.value)
+                == ["a", "=", "-", "1", "and", "b", ">=", "+", "2", "and", "c", "*", "-", "d"]
+        )
+        #expect(code("a <-> b -- c", .postgresql).map(\.value) == ["a", "<->", "b", "-- c"])
+        #expect(code("a+/* c */b", .postgresql).map(\.value) == ["a", "+", "/* c */", "b"])
     }
 }
 

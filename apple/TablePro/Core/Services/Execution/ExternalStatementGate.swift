@@ -350,6 +350,15 @@ internal struct ApprovedOperation: Sendable {
         context = Self.context(for: pending)
     }
 
+    // A read stops once its rows pass the caller's answer budget. A write runs to its end whatever it returns.
+    internal func context(readingAtMost byteLimit: Int?) -> PluginStatementContext {
+        var bounded = context
+        if !kind.declaresWrite {
+            bounded.resultByteLimit = byteLimit
+        }
+        return bounded
+    }
+
     private static func context(for pending: PendingOperation) -> PluginStatementContext {
         let graded = pending.gradedSQL.map { [$0] } ?? pending.statements.map(\.sql)
         let approvedAsDestructive = pending.kind.declaresDestructive

@@ -21,6 +21,21 @@ struct ResultSetMenuModel: Equatable {
     let entries: [ResultSetMenuEntry]
     let activeOrdinal: Int
     let total: Int
+    // Counted once here: the pull-down names every entry, and counting per entry made a 10,000-statement run quadratic.
+    private let positions: [UUID: Int]
+    private let occurrences: [Int?]
+
+    init(entries: [ResultSetMenuEntry], activeOrdinal: Int, total: Int) {
+        self.entries = entries
+        self.activeOrdinal = activeOrdinal
+        self.total = total
+        positions = Dictionary(entries.enumerated().map { ($1.id, $0) }) { first, _ in first }
+        occurrences = Self.occurrenceNumbers(in: entries.map(\.label))
+    }
+
+    static func == (lhs: ResultSetMenuModel, rhs: ResultSetMenuModel) -> Bool {
+        lhs.entries == rhs.entries && lhs.activeOrdinal == rhs.activeOrdinal && lhs.total == rhs.total
+    }
 
     // HIG, Tab views: "Avoid providing more than six tabs". Past that the pull-down alone lists them.
     static let maximumTabCount = 6
@@ -48,28 +63,39 @@ struct ResultSetMenuModel: Equatable {
     }
 
     func displayLabel(of entry: ResultSetMenuEntry) -> String {
-        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return entry.label }
-        return Self.displayLabel(at: index, in: entries.map(\.label))
+        guard let index = positions[entry.id] else { return entry.label }
+        return Self.counted(entries[index].label, occurrence: occurrences[index])
     }
 
     // The name is cut before the occurrence is added, so "(2)" always survives.
     func tabTitle(of entry: ResultSetMenuEntry) -> String {
-        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return entry.label }
-        let labels = entries.map(\.label)
-        let name = Self.truncated(entry.label, limit: Self.tabTitleCharacterLimit)
-        guard let occurrence = Self.occurrence(at: index, in: labels) else { return name }
-        return String(format: String(localized: "%1$@ (%2$d)"), name, occurrence)
+        guard let index = positions[entry.id] else { return entry.label }
+        return Self.counted(Self.truncated(entry.label, limit: Self.tabTitleCharacterLimit), occurrence: occurrences[index])
     }
 
     // Two results read from one table share a name; the later ones carry their occurrence so two never look alike.
     static func displayLabel(at index: Int, in labels: [String]) -> String {
-        guard let occurrence = occurrence(at: index, in: labels) else { return labels[index] }
-        return String(format: String(localized: "%1$@ (%2$d)"), labels[index], occurrence)
+        let earlier = labels[..<index].filter { $0 == labels[index] }.count
+        return counted(labels[index], occurrence: earlier > 0 ? earlier + 1 : nil)
     }
 
-    private static func occurrence(at index: Int, in labels: [String]) -> Int? {
-        let earlier = labels[..<index].filter { $0 == labels[index] }.count
-        return earlier > 0 ? earlier + 1 : nil
+    // Every name at once, for a caller naming each result of a tab.
+    static func displayLabels(for labels: [String]) -> [String] {
+        zip(labels, occurrenceNumbers(in: labels)).map { counted($0, occurrence: $1) }
+    }
+
+    private static func occurrenceNumbers(in labels: [String]) -> [Int?] {
+        var seen: [String: Int] = [:]
+        return labels.map { label in
+            let earlier = seen[label, default: 0]
+            seen[label] = earlier + 1
+            return earlier > 0 ? earlier + 1 : nil
+        }
+    }
+
+    private static func counted(_ name: String, occurrence: Int?) -> String {
+        guard let occurrence else { return name }
+        return String(format: String(localized: "%1$@ (%2$d)"), name, occurrence)
     }
 
     // A pinned result is pinned precisely so that nothing takes it away.
@@ -93,4 +119,26 @@ struct ResultSetMenuModel: Equatable {
 
     private static let compactTitleCharacterLimit = 16
     private static let tabTitleCharacterLimit = 24
+}
+
+extension ResultSetMenuModel {
+    /// The tab's results in order, the active one marked and numbered from 1.
+    @MainActor
+    init(resultSets: [ResultSet], activeId: UUID?, isComparable: (ResultSet) -> Bool) {
+        let entries = resultSets.enumerated().map { index, resultSet in
+            ResultSetMenuEntry(
+                id: resultSet.id,
+                label: resultSet.label,
+                isPinned: resultSet.isPinned,
+                isActive: resultSet.id == activeId,
+                ordinal: index + 1,
+                isComparable: isComparable(resultSet)
+            )
+        }
+        self.init(
+            entries: entries,
+            activeOrdinal: entries.first(where: \.isActive)?.ordinal ?? entries.count,
+            total: entries.count
+        )
+    }
 }

@@ -19,7 +19,10 @@ extension DamengPluginDriver {
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex), let row = insertedRowData[change.rowIndex],
-                      let statement = insertStatement(table: qualifiedTable, columns: columns, values: row, expressions: expressions)
+                      let statement = insertStatement(
+                          table: qualifiedTable, columns: columns, values: row, expressions: expressions,
+                          defaults: change.defaultColumns ?? []
+                      )
                 else { continue }
                 writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
             case .update:
@@ -28,16 +31,18 @@ extension DamengPluginDriver {
                 var parameters: [PluginCellValue] = []
                 let assignments = change.cellChanges.map { cell -> String in
                     let column = quoteIdentifier(cell.columnName)
-                    if cell.newValue == Self.defaultMarker { return "\(column) = DEFAULT" }
+                    if change.isColumnDefault(cell.columnIndex) { return "\(column) = DEFAULT" }
                     if expressions.contains(cell.columnIndex), case .text(let sql) = cell.newValue { return "\(column) = \(sql)" }
                     parameters.append(cell.newValue)
                     return "\(column) = ?"
                 }
+                // Measured on DM8: the count takes in a row already holding the value and leaves out rows a trigger writes.
                 writes.append(PluginRowWrite(
                     statement: "UPDATE \(qualifiedTable) SET \(assignments.joined(separator: ", ")) WHERE \(match.predicate) AND ROWNUM = 1",
                     parameters: parameters + match.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: match.lookup
+                    lookup: match.lookup,
+                    expectedRowCount: 1
                 ))
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
@@ -46,7 +51,8 @@ extension DamengPluginDriver {
                     statement: "DELETE FROM \(qualifiedTable) WHERE \(match.predicate) AND ROWNUM = 1",
                     parameters: match.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: match.lookup
+                    lookup: match.lookup,
+                    expectedRowCount: 1
                 ))
             }
         }
@@ -61,10 +67,10 @@ extension DamengPluginDriver {
         rows: [[PluginCellValue]]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let qualifiedTable = qualifiedName(schema: schema, object: table)
-        return rows.compactMap { insertStatement(table: qualifiedTable, columns: columns, values: $0, expressions: []) }
+        return rows.compactMap {
+            insertStatement(table: qualifiedTable, columns: columns, values: $0, expressions: [], defaults: [])
+        }
     }
-
-    private static let defaultMarker = PluginCellValue.text("__DEFAULT__")
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         guard !definition.columns.isEmpty else { return nil }
@@ -200,14 +206,15 @@ extension DamengPluginDriver {
         table: String,
         columns: [String],
         values: [PluginCellValue],
-        expressions: Set<Int>
+        expressions: Set<Int>,
+        defaults: Set<Int>
     ) -> (statement: String, parameters: [PluginCellValue])? {
         var insertColumns: [String] = []
         var placeholders: [String] = []
         var parameters: [PluginCellValue] = []
         for (index, value) in values.enumerated() where index < columns.count {
             insertColumns.append(quoteIdentifier(columns[index]))
-            if value == Self.defaultMarker {
+            if defaults.contains(index) {
                 placeholders.append("DEFAULT")
             } else if expressions.contains(index), case .text(let sql) = value {
                 placeholders.append(sql)

@@ -71,6 +71,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             .cellExpressions,
             .uuidCellText,
             .rowWrites,
+            .columnDefaultMarks,
         ]
     }
 
@@ -413,6 +414,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             updateTime: date(fromMilliseconds: resource.lastModifiedTime)
         )
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let datasetId = dataset(for: schema)

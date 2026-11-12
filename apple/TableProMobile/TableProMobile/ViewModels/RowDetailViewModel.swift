@@ -11,7 +11,9 @@ final class RowDetailViewModel {
 
     let columns: [ColumnInfo]
     let columnDetails: [ColumnInfo]
-    let foreignKeys: [ForeignKeyInfo]
+    // Read when shown: the browser reads the keys after its rows appear, so a row opened first gets them too.
+    @ObservationIgnored private let readForeignKeys: () -> [ForeignKeyInfo]
+    var foreignKeys: [ForeignKeyInfo] { readForeignKeys() }
     let table: TableInfo?
     // Decides what the row is and how it is located; writes go to `session`, which follows a redial.
     private let openedSession: ConnectionSession?
@@ -47,7 +49,7 @@ final class RowDetailViewModel {
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
-        foreignKeys: [ForeignKeyInfo] = [],
+        foreignKeys: @escaping @autoclosure () -> [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
         loadFullValue: ((CellRef) async throws -> String?)? = nil,
         liveSession: (() -> Result<ConnectionSession, AppError>)? = nil
@@ -62,7 +64,7 @@ final class RowDetailViewModel {
         self.databaseType = databaseType
         self.schema = schema
         self.readSafeModeLevel = safeModeLevel
-        self.foreignKeys = foreignKeys
+        self.readForeignKeys = foreignKeys
         self.onSaved = onSaved
         self.loadFullValueProvider = loadFullValue
     }
@@ -154,6 +156,27 @@ final class RowDetailViewModel {
         case .null, .binary:
             return nil
         }
+    }
+
+    // Past this the row shows an excerpt, and the whole value opens on a screen of its own.
+    static let inlineByteLimit = Cell.previewByteLimit
+
+    static func excerpt(of value: String) -> String {
+        Cell.preview(of: value, maxBytes: inlineByteLimit)
+    }
+
+    func longValue(forRow rowIndex: Int, at index: Int) -> String? {
+        guard let value = completeValue(forRow: rowIndex, at: index), value.utf8.count > Self.inlineByteLimit else {
+            return nil
+        }
+        return value
+    }
+
+    // Cut with no key to read it again by: a query result past its memory budget, or a table without a primary key.
+    func isShownInPart(forRow rowIndex: Int, at index: Int) -> Bool {
+        let rowCells = cells(at: rowIndex)
+        guard rowCells.indices.contains(index), case .truncatedText(_, _, .none) = rowCells[index] else { return false }
+        return true
     }
 
     // MariaDB's catalog names a JSON column longtext while its result column says JSON, so either type decides.

@@ -51,6 +51,28 @@ struct ConnectionStoragePersistenceTests {
         #expect(reloaded.contains { $0.id == connection.id })
     }
 
+    @Test("A missing connections.json is a fresh, trusted library")
+    func missingFileIsAFreshLibrary() {
+        #expect(storage.loadConnections().isEmpty)
+        #expect(!storage.lastLoadFailed)
+        #expect(storage.storeIsTrusted)
+    }
+
+    @Test("A connections.json that cannot be read is a failed load, never saved over")
+    func unreadableFileIsNeverOverwritten() throws {
+        try FileManager.default.createDirectory(at: fileURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        #expect(storage.loadConnections().isEmpty)
+        #expect(storage.lastLoadFailed)
+        #expect(!storage.storeIsTrusted)
+        #expect(!storage.saveConnections([DatabaseConnection(name: "Fresh")]))
+
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+    }
+
     @Test("updateSafeModeLevel writes the new level through to disk")
     func updateSafeModeLevelWritesThrough() {
         let connection = DatabaseConnection(

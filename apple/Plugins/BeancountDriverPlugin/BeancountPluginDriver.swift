@@ -451,26 +451,30 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
+        PluginRowStream.make { continuation, abort in
+            let task = Task {
                 do {
-                    let result = try await perform { [self] () -> PluginQueryResult in
+                    try Task.checkCancellation()
+                    let result = try await self.perform { [self] () -> PluginQueryResult in
                         if let bql = Self.extractBQLQuery(from: query) {
                             return try executeBQL(query: bql)
                         }
                         return try executeSQLite(query: query, parameters: [])
                     }
-                    continuation.yield(.header(PluginStreamHeader(
+                    var header = PluginStreamHeader(
                         columns: result.columns,
                         columnTypeNames: result.columnTypeNames,
                         estimatedRowCount: result.rows.count
-                    )))
+                    )
+                    if result.isTruncated { header.rowLimit = result.rows.count }
+                    continuation.yield(.header(header))
                     continuation.yield(.rows(result.rows))
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+            abort.onAbort { task.cancel() }
         }
     }
 

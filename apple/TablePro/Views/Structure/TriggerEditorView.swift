@@ -28,7 +28,13 @@ struct TriggerEditorView: View {
     @State private var editorConfiguration: SourceEditorConfiguration
     @State private var isApplying = false
     @State private var errorMessage: String?
-    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
+    @State private var droppedDefinition: String?
+    @AppStorage(TriggerEditorView.fontSizeKey, store: AppStorageEnvironment.shared.defaults)
+    private var fontSize = TriggerEditorView.defaultFontSize
+
+    // The Structure tab's DDL pane writes its zoom here too.
+    static let fontSizeKey = "structureCodeFontSize"
+    static let defaultFontSize = 13.0
 
     init(
         scope: DatabaseScope,
@@ -44,7 +50,14 @@ struct TriggerEditorView: View {
         self.mode = mode
         self.onClose = onClose
         self._sql = State(wrappedValue: initialSQL)
-        self._editorConfiguration = State(wrappedValue: Self.makeConfiguration(fontSize: 13))
+        self._editorConfiguration = State(wrappedValue: Self.initialConfiguration())
+    }
+
+    // The State is seeded once, here, so it reads the store; `fontSize` only follows later zooms.
+    static func initialConfiguration(
+        in defaults: UserDefaults = AppStorageEnvironment.shared.defaults
+    ) -> SourceEditorConfiguration {
+        makeConfiguration(fontSize: defaults.object(forKey: fontSizeKey) as? Double ?? defaultFontSize)
     }
 
     var body: some View {
@@ -71,6 +84,13 @@ struct TriggerEditorView: View {
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
+                if let droppedDefinition {
+                    Button("Copy Original Definition") {
+                        ClipboardService.shared.writeText(droppedDefinition)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding([.horizontal, .bottom], 8)
+                }
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)
@@ -84,7 +104,7 @@ struct TriggerEditorView: View {
 
     private var header: some View {
         HStack {
-            Text(isEdit ? "Edit Trigger" : "New Trigger")
+            Text(isOriginalEdit ? "Edit Trigger" : "New Trigger")
                 .font(.headline)
             Spacer()
             Button("Cancel", role: .cancel) { onClose() }
@@ -97,9 +117,14 @@ struct TriggerEditorView: View {
         .padding()
     }
 
-    private var isEdit: Bool {
+    private var isOriginalEdit: Bool {
         if case .edit = mode { return true }
         return false
+    }
+
+    // Once a failed save has left the trigger dropped, the next save creates it; a second DROP would fail.
+    private var isEdit: Bool {
+        isOriginalEdit && droppedDefinition == nil
     }
 
     private func apply() {
@@ -108,12 +133,12 @@ struct TriggerEditorView: View {
         let originalName: String?
         let originalDefinition: String?
         switch mode {
-        case .create:
-            originalName = nil
-            originalDefinition = nil
-        case let .edit(name, definition):
+        case let .edit(name, definition) where droppedDefinition == nil:
             originalName = name
             originalDefinition = definition
+        case .create, .edit:
+            originalName = nil
+            originalDefinition = nil
         }
         Task {
             defer { isApplying = false }
@@ -129,7 +154,10 @@ struct TriggerEditorView: View {
                 )
                 onClose()
             } catch {
-                errorMessage = error.localizedDescription
+                if let dropped = (error as? TriggerEditingError)?.droppedDefinition {
+                    droppedDefinition = dropped
+                }
+                errorMessage = GatedOperationFailure(error).message
             }
         }
     }

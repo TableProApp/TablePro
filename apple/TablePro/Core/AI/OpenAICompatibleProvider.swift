@@ -22,6 +22,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     private let model: String
     private let maxOutputTokens: Int?
     private let treatsForbiddenAsAuthFailure: Bool
+    private let modelIDs: AIModelIDFilter
     private let providerID: UUID?
     private let catalog: AIModelCatalog
     private let session: URLSession
@@ -36,6 +37,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         model: String = "",
         maxOutputTokens: Int? = nil,
         treatsForbiddenAsAuthFailure: Bool = false,
+        modelIDs: AIModelIDFilter = .all,
         providerID: UUID? = nil,
         catalog: AIModelCatalog = .shared,
         session: URLSession = URLSession(configuration: .ephemeral)
@@ -49,6 +51,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.treatsForbiddenAsAuthFailure = treatsForbiddenAsAuthFailure
+        self.modelIDs = modelIDs
         self.providerID = providerID
         self.catalog = catalog
         self.session = session
@@ -66,6 +69,7 @@ final class OpenAICompatibleProvider: ChatTransport {
             model: config.model,
             maxOutputTokens: config.maxOutputTokens,
             treatsForbiddenAsAuthFailure: config.preset?.rejectsBadKeyWithForbidden ?? false,
+            modelIDs: config.preset?.modelIDFilter(forEndpoint: config.endpoint) ?? .all,
             providerID: config.id,
             session: session
         )
@@ -89,12 +93,27 @@ final class OpenAICompatibleProvider: ChatTransport {
             buildRequest: { [self] in try buildChatCompletionRequest(turns: turns, options: options) },
             decodeLine: { Self.decodeStreamLine($0, providerType: providerType) },
             makeState: { OpenAIStreamState() },
-            parse: { Self.parseChunk($0, state: &$1).events },
-            finalEvents: { state in
-                var state = state
-                return [state.flushReasoningEnd(), state.finalUsageEvent()].compactMap { $0 }
-            }
+            parse: { try Self.streamEvents(from: $0, state: &$1) },
+            finalEvents: { try Self.finalStreamEvents($0) }
         )
+    }
+
+    static func streamEvents(
+        from json: [String: Any],
+        state: inout OpenAIStreamState
+    ) throws -> [ChatStreamEvent] {
+        if let error = AIProviderError.streamError(in: json) { throw error }
+        return parseChunk(json, state: &state).events
+    }
+
+    static func finalStreamEvents(_ state: OpenAIStreamState) throws -> [ChatStreamEvent] {
+        guard state.receivedOutput else {
+            throw AIProviderError.streamingFailed(
+                String(localized: "The provider ended the response without sending any content.")
+            )
+        }
+        var state = state
+        return [state.flushReasoningEnd(), state.finalUsageEvent()].compactMap { $0 }
     }
 
     static func decodeStreamLine(_ line: String, providerType: AIProviderType) -> [String: Any]? {
@@ -103,9 +122,7 @@ final class OpenAICompatibleProvider: ChatTransport {
             guard !line.isEmpty else { return nil }
             jsonString = line
         } else {
-            guard line.hasPrefix("data: ") else { return nil }
-            let payload = String(line.dropFirst(6))
-            guard payload != "[DONE]" else { return nil }
+            guard let payload = SSEEventStream.dataPayload(line), payload != "[DONE]" else { return nil }
             jsonString = payload
         }
         guard let data = jsonString.data(using: .utf8),
@@ -158,6 +175,13 @@ final class OpenAICompatibleProvider: ChatTransport {
             if finishReason == "tool_calls" {
                 events.append(contentsOf: state.flushToolUseEnds())
             }
+            if finishReason == "length" {
+                events.append(.outputLimitReached(.outputTokens))
+            }
+        }
+        // Ollama's own API names the cut in `done_reason`.
+        if (json["done"] as? Bool) == true, (json["done_reason"] as? String) == "length" {
+            events.append(.outputLimitReached(.outputTokens))
         }
 
         if let usage = json["usage"] as? [String: Any],
@@ -175,6 +199,10 @@ final class OpenAICompatibleProvider: ChatTransport {
         let shouldBreak = (json["done"] as? Bool) == true
         if shouldBreak, !state.toolCallIndexToId.isEmpty {
             events.append(contentsOf: state.flushToolUseEnds())
+        }
+        let finished = (firstChoice?["finish_reason"] as? String)?.isEmpty == false
+        if !events.isEmpty || finished || shouldBreak {
+            state.receivedOutput = true
         }
         return (events, shouldBreak)
     }
@@ -302,6 +330,11 @@ final class OpenAICompatibleProvider: ChatTransport {
                 return Self.looksLikeAnAPIResponse(data: data, response: httpResponse)
             }
 
+            // The placeholder model is unknown by design; that answer proves the route and the key.
+            if model.isEmpty, statusCode == 404, Self.isUnknownModelError(data) {
+                return true
+            }
+
             let errorBody = String(data: data, encoding: .utf8) ?? ""
             throw AIProviderError.mapHTTPError(
                 statusCode: statusCode,
@@ -310,6 +343,13 @@ final class OpenAICompatibleProvider: ChatTransport {
                 requestURL: url
             )
         }
+    }
+
+    private static func isUnknownModelError(_ data: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any]
+        else { return false }
+        return error["code"] as? String == "model_not_found"
     }
 
     /// A wrong Base URL often lands on a reverse proxy's login page or a single-page app's
@@ -583,7 +623,9 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        return modelsArray.compactMap(Self.decodeModel(_:)).sorted { $0.id < $1.id }
+        return modelsArray.compactMap(Self.decodeModel(_:))
+            .filter { modelIDs.lists($0.id) }
+            .sorted { $0.id < $1.id }
     }
 
     private func fetchOllamaModels() async throws -> [String] {
@@ -634,6 +676,7 @@ struct OpenAIStreamState {
     var toolCallIndexToId: [Int: String] = [:]
     var toolCallOrder: [Int] = []
     var reasoningBlockID: String?
+    var receivedOutput = false
 
     mutating func flushReasoningEnd() -> ChatStreamEvent? {
         guard let id = reasoningBlockID else { return nil }

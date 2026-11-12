@@ -12,11 +12,11 @@
 //
 //  The read side is only as incremental as the driver is. `streamRows` has a
 //  protocol default that calls `execute` and yields the whole result at once,
-//  which Dameng and Teradata still inherit, so on those two a large table is
-//  materialised before the first batch is written and Stop cannot land until
-//  it is. Every other SQL driver implements it for real. Export has the same
-//  property through the same call; a capability that lets this refuse rather
-//  than inherit would have to be declared by all 32 plugins.
+//  which Dameng still inherits, so there a large table is materialised before
+//  the first batch is written and Stop cannot land until it is. Every other SQL
+//  driver implements it for real. Export has the same property through the same
+//  call; a capability that lets this refuse rather than inherit would have to be
+//  declared by every plugin.
 //
 //  This is the write path CSV and JSON import already use, through the same
 //  `SQLStatementGenerator` and its per-engine bind-parameter ceiling. The one
@@ -38,6 +38,8 @@ internal struct ObjectCopyRowCopier: Sendable {
     internal struct Outcome: Sendable {
         internal let inserted: Int
         internal let cancelled: Bool
+        // The limit the source's stream stopped at, so the table holds only its leading rows.
+        internal var rowCut: Int?
     }
 
     /// A table that failed after some of its batches were written. Outside a transaction those stay
@@ -53,14 +55,18 @@ internal struct ObjectCopyRowCopier: Sendable {
     internal let sourceDatabaseType: DatabaseType
     internal let targetDatabaseType: DatabaseType
 
+    // `readContext` is Read-Only's, for a source whose connection runs at it: a view as the source runs its functions.
     internal func copy(
         from sourceDriver: any PluginDatabaseDriver,
         to targetDriver: any PluginDatabaseDriver,
+        readContext: PluginStatementContext? = nil,
         onProgress: @Sendable (Int) -> Void
     ) async throws -> Outcome {
         let scopes = await openSessionScopes(source: sourceDriver, target: targetDriver)
         do {
-            let outcome = try await transfer(from: sourceDriver, to: targetDriver, onProgress: onProgress)
+            let outcome = try await transfer(
+                from: sourceDriver, to: targetDriver, readContext: readContext, onProgress: onProgress
+            )
             await scopes?.close()
             return outcome
         } catch {
@@ -86,6 +92,7 @@ internal struct ObjectCopyRowCopier: Sendable {
     private func transfer(
         from sourceDriver: any PluginDatabaseDriver,
         to targetDriver: any PluginDatabaseDriver,
+        readContext: PluginStatementContext?,
         onProgress: @Sendable (Int) -> Void
     ) async throws -> Outcome {
         if let statement = step.serverSideInsert {
@@ -94,7 +101,13 @@ internal struct ObjectCopyRowCopier: Sendable {
         let generator = try makeGenerator(targetDriver: targetDriver)
         let budget = SQLWriteBatchBudget(columnCount: step.columns.count, generator: generator)
         var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
-        var stream = sourceDriver.streamRows(query: step.sourceQuery).makeAsyncIterator()
+        let cut = OSAllocatedUnfairLock<Int?>(initialState: nil)
+        // The copy's SELECT states no engine ceiling, so only a limit the driver declares applies, as for its own export query.
+        let rows = readContext.map { sourceDriver.streamRows(query: step.sourceQuery, context: $0) }
+            ?? sourceDriver.streamRows(query: step.sourceQuery)
+        var stream = ExportRowCut<PluginStreamElement>.reporting(rows, engineCeiling: nil) { limit in
+            cut.withLock { $0 = limit }
+        }.makeAsyncIterator()
 
         var inserted = 0
 
@@ -121,7 +134,7 @@ internal struct ObjectCopyRowCopier: Sendable {
                 inserted += try await write(batch, generator: generator, driver: targetDriver)
                 onProgress(inserted)
             }
-            return Outcome(inserted: inserted, cancelled: Task.isCancelled)
+            return Outcome(inserted: inserted, cancelled: Task.isCancelled, rowCut: cut.withLock { $0 })
         } catch is CancellationError {
             return Outcome(inserted: inserted, cancelled: true)
         } catch where inserted > 0 {
@@ -163,6 +176,7 @@ internal struct ObjectCopyRowCopier: Sendable {
             columns: step.columns,
             primaryKeyColumns: step.primaryKeyColumns,
             databaseType: targetDatabaseType,
+            columnTypeNames: step.targetColumnTypeNames,
             parameterStyle: targetDriver.parameterStyle,
             quoteIdentifier: targetDriver.quoteIdentifier
         )
@@ -179,13 +193,13 @@ internal struct ObjectCopyRowCopier: Sendable {
                 format: String(localized: "Could not build an INSERT for %@."), step.qualifiedTargetName
             ))
         }
-        /// The generator's own parameter array rather than the batch flattened again: the two
-        /// agree today, and taking the statement's own leaves no second place for the placeholder
-        /// order to be decided. The round trip is lossless because `PluginCellValue` is text,
-        /// bytes or null and `asAny` maps each to itself.
+        // The generator's own parameter array rather than the batch flattened again, so the placeholder order is
+        // decided in one place. `PluginCellValue` is text, bytes or null and `asAny` maps each to itself. The context
+        // carries each value's target column type: Oracle wrote `00123` into a VARCHAR2 as 123 without it.
         _ = try await driver.executeParameterized(
             query: statement.sql,
-            parameters: statement.parameters.map(PluginDriverAdapter.cellValue(for:))
+            parameters: statement.parameters.map(PluginDriverAdapter.cellValue(for:)),
+            context: statement.context
         )
         return batch.count
     }

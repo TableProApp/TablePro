@@ -26,11 +26,27 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let schema: String?
     }
 
+    // A `.database` kind, and every kind on an engine without schemas, is keyed with no schema.
+    struct ServerObjectsKey: Hashable, Sendable {
+        let connectionId: UUID
+        let database: String
+        let schema: String?
+        let kindId: String
+    }
+
     struct PartitionsKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
         let schema: String?
         let table: String
+    }
+
+    struct TableDetailsKey: Hashable, Sendable {
+        let connectionId: UUID
+        let database: String
+        let schema: String?
+        let table: String
+        let kind: TableDetailKind
     }
 
     /// Carries the revision it started under, so a read after a change never joins a fetch that
@@ -58,7 +74,11 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let commit: ReferenceWritableKeyPath<DatabaseTreeMetadataService, ListCommitState<Key>>
         let dedup: OnceTask<ListFetchKey<Key>, Value>
         let label: String
+        // What a read uses while nothing is on screen; a reread of rows already shown always goes bulk.
+        let workload: MetadataConnectionPool.Workload
     }
+
+    private typealias ListFetch<Value> = @Sendable (MetadataConnectionPool.Workload) async throws -> Value
 
     @Published private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
     @Published private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
@@ -66,7 +86,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     @Published private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
     @Published private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
     @Published private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
+    @Published private(set) var serverObjectsState: [ServerObjectsKey: MetadataLoadState<[ServerObjectInfo]>] = [:]
     @Published private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[PartitionInfo]>] = [:]
+    @Published private(set) var tableDetailsState: [TableDetailsKey: MetadataLoadState<TableDetailList>] = [:]
     @Published private(set) var allSchemaTablesState: [DatabaseKey: MetadataLoadState<CatalogTableListing.Result>] = [:]
     @Published private(set) var listsRevisions: [UUID: Int] = [:]
 
@@ -76,7 +98,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private let routinesDedup = OnceTask<ListFetchKey<ObjectsKey>, [RoutineInfo]>()
     private let triggersDedup = OnceTask<ListFetchKey<ObjectsKey>, [TriggerInfo]>()
     private let typesDedup = OnceTask<ListFetchKey<ObjectsKey>, [UserDefinedTypeInfo]>()
+    private let serverObjectsDedup = OnceTask<ListFetchKey<ServerObjectsKey>, [ServerObjectInfo]>()
     private let partitionsDedup = OnceTask<ListFetchKey<PartitionsKey>, [PartitionInfo]>()
+    private let tableDetailsDedup = OnceTask<ListFetchKey<TableDetailsKey>, TableDetailList>()
     private let allSchemaTablesDedup = OnceTask<AllSchemaTablesLoadKey, CatalogTableListing.Result>()
 
     private var databaseListFence = CommitFence<UUID>()
@@ -85,7 +109,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private var routinesCommit = ListCommitState<ObjectsKey>()
     private var triggersCommit = ListCommitState<ObjectsKey>()
     private var typesCommit = ListCommitState<ObjectsKey>()
+    private var serverObjectsCommit = ListCommitState<ServerObjectsKey>()
     private var partitionsCommit = ListCommitState<PartitionsKey>()
+    private var tableDetailsCommit = ListCommitState<TableDetailsKey>()
     private var allSchemaTablesFence = CommitFence<DatabaseKey>()
     private var allSchemaTablesFreshness = CatalogFreshness<DatabaseKey>()
     private var allSchemaTablesRequested: [DatabaseKey: CatalogTableListing.SchemaSelection] = [:]
@@ -98,27 +124,41 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private init() {}
 
     private var schemaLists: TreeList<DatabaseKey, [String]> {
-        TreeList(state: \.schemaList, commit: \.schemaListCommit, dedup: schemaDedup, label: "schemas")
+        TreeList(state: \.schemaList, commit: \.schemaListCommit, dedup: schemaDedup, label: "schemas", workload: .interactive)
     }
 
     private var tableLists: TreeList<ObjectsKey, [TableInfo]> {
-        TreeList(state: \.tablesState, commit: \.tablesCommit, dedup: tablesDedup, label: "tables")
+        TreeList(state: \.tablesState, commit: \.tablesCommit, dedup: tablesDedup, label: "tables", workload: .interactive)
     }
 
     private var routineLists: TreeList<ObjectsKey, [RoutineInfo]> {
-        TreeList(state: \.routinesState, commit: \.routinesCommit, dedup: routinesDedup, label: "routines")
+        TreeList(state: \.routinesState, commit: \.routinesCommit, dedup: routinesDedup, label: "routines", workload: .bulk)
     }
 
     private var triggerLists: TreeList<ObjectsKey, [TriggerInfo]> {
-        TreeList(state: \.triggersState, commit: \.triggersCommit, dedup: triggersDedup, label: "triggers")
+        TreeList(state: \.triggersState, commit: \.triggersCommit, dedup: triggersDedup, label: "triggers", workload: .bulk)
     }
 
     private var typeLists: TreeList<ObjectsKey, [UserDefinedTypeInfo]> {
-        TreeList(state: \.typesState, commit: \.typesCommit, dedup: typesDedup, label: "types")
+        TreeList(state: \.typesState, commit: \.typesCommit, dedup: typesDedup, label: "types", workload: .bulk)
+    }
+
+    private var serverObjectLists: TreeList<ServerObjectsKey, [ServerObjectInfo]> {
+        TreeList(
+            state: \.serverObjectsState,
+            commit: \.serverObjectsCommit,
+            dedup: serverObjectsDedup,
+            label: "server objects",
+            workload: .bulk
+        )
     }
 
     private var partitionLists: TreeList<PartitionsKey, [PartitionInfo]> {
-        TreeList(state: \.partitionsState, commit: \.partitionsCommit, dedup: partitionsDedup, label: "partitions")
+        TreeList(state: \.partitionsState, commit: \.partitionsCommit, dedup: partitionsDedup, label: "partitions", workload: .interactive)
+    }
+
+    private var tableDetailLists: TreeList<TableDetailsKey, TableDetailList> {
+        TreeList(state: \.tableDetailsState, commit: \.tableDetailsCommit, dedup: tableDetailsDedup, label: "table details", workload: .interactive)
     }
 
     // MARK: - Reads
@@ -173,11 +213,57 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         typesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
     }
 
+    func serverObjectsLoadState(
+        connectionId: UUID, database: String, schema: String?, kindId: String
+    ) -> MetadataLoadState<[ServerObjectInfo]> {
+        serverObjectsState[Self.serverObjectsKey(connectionId: connectionId, database: database, schema: schema, kindId: kindId)]
+            ?? .idle
+    }
+
+    func serverObjects(connectionId: UUID, database: String, schema: String?, kindId: String) -> [ServerObjectInfo] {
+        serverObjectsLoadState(connectionId: connectionId, database: database, schema: schema, kindId: kindId).value ?? []
+    }
+
+    func isServerObjectsCurrent(connectionId: UUID, database: String, schema: String?, kindId: String) -> Bool {
+        isConnected(connectionId) && serverObjectsCommit.freshness.isCurrent(
+            Self.serverObjectsKey(connectionId: connectionId, database: database, schema: schema, kindId: kindId)
+        )
+    }
+
+    // A container lists the kinds of its own level: a schema its `.container` kinds, a schema engine's
+    // database its `.database` kinds, and a database without schemas every kind.
+    nonisolated static func serverKinds(
+        declared: [SidebarServerObjectKind],
+        schema: String?,
+        listsTablesPerSchema: Bool
+    ) -> [SidebarServerObjectKind] {
+        if schema?.isEmpty == false { return declared.filter { $0.scope == .container } }
+        return listsTablesPerSchema ? declared.filter { $0.scope == .database } : declared
+    }
+
+    func serverKinds(connectionId: UUID, database: String, schema: String?) -> [SidebarServerObjectKind] {
+        guard let session = DatabaseManager.shared.session(for: connectionId) else { return [] }
+        return Self.serverKinds(
+            declared: SidebarServerObjectKind.declared(by: DatabaseManager.shared.driver(for: connectionId)),
+            schema: schema,
+            listsTablesPerSchema: Self.listsTablesPerSchema(
+                PluginManager.shared.databaseGroupingStrategy(for: session.connection.type)
+            )
+        )
+    }
+
     func partitionsLoadState(
         connectionId: UUID, database: String, schema: String?, table: String
     ) -> MetadataLoadState<[PartitionInfo]> {
         let key = Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
         return partitionsState[key] ?? .idle
+    }
+
+    func tableDetailsLoadState(
+        connectionId: UUID, database: String, schema: String?, table: String, kind: TableDetailKind
+    ) -> MetadataLoadState<TableDetailList> {
+        let key = Self.tableDetailsKey(connectionId: connectionId, database: database, schema: schema, table: table, kind: kind)
+        return tableDetailsState[key] ?? .idle
     }
 
     func allSchemaTablesLoadState(
@@ -235,9 +321,23 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             .isEmpty
     }
 
+    func serverObjectsNeedFetch(connectionId: UUID, database: String, schema: String?) -> Bool {
+        guard isConnected(connectionId) else { return false }
+        return !serverKindsNeedingFetch(Self.objectsKey(connectionId: connectionId, database: database, schema: schema))
+            .isEmpty
+    }
+
     func partitionsNeedFetch(connectionId: UUID, database: String, schema: String?, table: String) -> Bool {
         isConnected(connectionId) && partitionsCommit.freshness.needsFetch(
             Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
+        )
+    }
+
+    func tableDetailsNeedFetch(
+        connectionId: UUID, database: String, schema: String?, table: String, kind: TableDetailKind
+    ) -> Bool {
+        isConnected(connectionId) && tableDetailsCommit.freshness.needsFetch(
+            Self.tableDetailsKey(connectionId: connectionId, database: database, schema: schema, table: table, kind: kind)
         )
     }
 
@@ -260,6 +360,10 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             partitionsCommit.freshness.markChanged(key)
             marked = true
         }
+        for key in plan.tableDetails {
+            tableDetailsCommit.freshness.markChanged(key)
+            marked = true
+        }
         for key in plan.routines {
             routinesCommit.freshness.markChanged(key)
             marked = true
@@ -272,6 +376,10 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             typesCommit.freshness.markChanged(key)
             marked = true
         }
+        for key in plan.serverObjects {
+            serverObjectsCommit.freshness.markChanged(key)
+            marked = true
+        }
         guard marked else { return }
         listsRevisions[connectionId, default: 0] &+= 1
     }
@@ -282,7 +390,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         if routinesCommit.freshness.needsFetch(key) { kinds.insert(.routines) }
         if browsesTriggers(key.connectionId), triggersCommit.freshness.needsFetch(key) { kinds.insert(.triggers) }
         if browsesUserDefinedTypes(key.connectionId), typesCommit.freshness.needsFetch(key) { kinds.insert(.types) }
+        if !serverKindsNeedingFetch(key).isEmpty { kinds.insert(.serverObjects) }
         return kinds
+    }
+
+    private func serverKindsNeedingFetch(_ key: ObjectsKey) -> [SidebarServerObjectKind] {
+        serverKinds(connectionId: key.connectionId, database: key.database, schema: key.schema).filter {
+            serverObjectsCommit.freshness.needsFetch(serverObjectsKey(key, kindId: $0.id))
+        }
     }
 
     // MARK: - All-schema tables
@@ -467,10 +582,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
     }
 
-    private func fetchDatabaseList(connectionId: UUID, databaseType: DatabaseType) async throws -> [DatabaseMetadata] {
+    private func fetchDatabaseList(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        workload: MetadataConnectionPool.Workload = .interactive
+    ) async throws -> [DatabaseMetadata] {
         let systemNames = Set(PluginManager.shared.systemDatabaseNames(for: databaseType))
         return try await databaseDedup.execute(key: connectionId) { [self] in
-            try await withDriver(connectionId: connectionId, database: nil) { driver in
+            try await withDriver(connectionId: connectionId, database: nil, workload: workload) { driver in
                 try await driver.fetchDatabases().sorted().map {
                     DatabaseMetadata.minimal(name: $0, isSystem: systemNames.contains($0))
                 }
@@ -512,6 +631,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await read(key, connectionId: connectionId, in: partitionLists, fetch: partitionListFetch(key))
     }
 
+    /// One kind for one table: a group reads its own list and nothing beside it.
+    func loadTableDetails(
+        connectionId: UUID, database: String, schema: String?, table: String, kind: TableDetailKind
+    ) async {
+        let key = Self.tableDetailsKey(connectionId: connectionId, database: database, schema: schema, table: table, kind: kind)
+        await read(key, connectionId: connectionId, in: tableDetailLists, fetch: tableDetailFetch(key))
+    }
+
     /// Reads only the kinds that need it, so a container whose tables alone a change overtook reads
     /// its tables alone.
     func loadObjects(connectionId: UUID, database: String, schema: String?) async {
@@ -532,7 +659,27 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
                     await self.loadUserDefinedTypes(connectionId: connectionId, database: database, schema: schema)
                 }
             }
+            if kinds.contains(.serverObjects) {
+                group.addTask { await self.loadServerObjects(connectionId: connectionId, database: database, schema: schema) }
+            }
         }
+    }
+
+    // Only the kinds of this container's level, and only those a change overtook or nobody has read.
+    func loadServerObjects(connectionId: UUID, database: String, schema: String?) async {
+        guard isConnected(connectionId) else { return }
+        let container = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let kinds = serverKindsNeedingFetch(container)
+        await withTaskGroup(of: Void.self) { group in
+            for kind in kinds {
+                let key = serverObjectsKey(container, kindId: kind.id)
+                group.addTask { await self.loadServerObjectList(key) }
+            }
+        }
+    }
+
+    private func loadServerObjectList(_ key: ServerObjectsKey) async {
+        await read(key, connectionId: key.connectionId, in: serverObjectLists, fetch: serverObjectListFetch(key))
     }
 
     // MARK: - Refresh
@@ -550,7 +697,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
         guard isConnected(connectionId) else { return }
         do {
-            let list = try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType)
+            let list = try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType, workload: .bulk)
             guard databaseListFence.isCurrent(token, for: connectionId) else { return }
             databaseList[connectionId] = .loaded(list)
         } catch is CancellationError {
@@ -566,44 +713,82 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await reread(key, connectionId: connectionId, in: schemaLists, fetch: schemaListFetch(key))
     }
 
+    /// The schema's trigger list alone beside the tables: the table refresh already reads every detail
+    /// list, the per-table Triggers among them, and reading one twice at once cancels the first read.
     func refreshObjects(connectionId: UUID, database: String, schema: String?) async {
-        async let tables: Void = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
-        async let routines: Void = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
-        async let triggers: Void = refreshTriggerObjects(connectionId: connectionId, database: database, schema: schema)
-        async let types: Void = refreshUserDefinedTypeObjects(
+        async let tables = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
+        async let routines = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
+        async let triggers = rereadTriggers(
+            Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        )
+        async let types = refreshUserDefinedTypeObjects(
             connectionId: connectionId, database: database, schema: schema
         )
-        _ = await (tables, routines, triggers, types)
+        async let serverObjects: Void = refreshServerObjects(connectionId: connectionId, database: database, schema: schema)
+        _ = await (tables, routines, triggers, types, serverObjects)
     }
 
-    /// A row refreshes only the fetch its kind comes from. Partitions ride with the tables, because
-    /// a partition row is drawn as a child of its table.
-    func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async {
+    func refreshServerObjects(connectionId: UUID, database: String, schema: String?, kindId: String? = nil) async {
+        let container = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let kinds = serverKinds(connectionId: connectionId, database: database, schema: schema)
+            .filter { kindId == nil || $0.id == kindId }
+        for kind in kinds {
+            let key = serverObjectsKey(container, kindId: kind.id)
+            await reread(key, connectionId: connectionId, in: serverObjectLists, fetch: serverObjectListFetch(key))
+        }
+    }
+
+    /// A row refreshes only the fetch its kind comes from. Partitions and a table's detail lists ride
+    /// with the tables, because their rows are drawn as children of a table. Each says whether a newer
+    /// read overtook it, for a reader that needs that read's rows rather than the ones the list kept
+    /// meanwhile.
+    @discardableResult
+    func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        async let tables: Void = rereadTables(key)
+        async let tables = rereadTables(key)
         async let partitions: Void = refreshPartitions(under: key)
-        _ = await (tables, partitions)
+        async let details: Void = refreshTableDetails(under: key)
+        let (overtaken, _, _) = await (tables, partitions, details)
+        return overtaken
     }
 
-    func refreshRoutineObjects(connectionId: UUID, database: String, schema: String?) async {
+    @discardableResult
+    func refreshRoutineObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        await reread(key, connectionId: connectionId, in: routineLists, fetch: routineListFetch(key))
+        return await reread(key, connectionId: connectionId, in: routineLists, fetch: routineListFetch(key))
     }
 
-    func refreshTriggerObjects(connectionId: UUID, database: String, schema: String?) async {
-        guard browsesTriggers(connectionId) else { return }
+    /// A table's Triggers group lists the same triggers one table at a time, so it reads again with
+    /// the schema's list rather than staying stale beside it.
+    @discardableResult
+    func refreshTriggerObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        await reread(key, connectionId: connectionId, in: triggerLists, fetch: triggerListFetch(key))
+        async let triggers = rereadTriggers(key)
+        async let details: Void = refreshTableDetails(under: key, kinds: [.triggers])
+        let (overtaken, _) = await (triggers, details)
+        return overtaken
     }
 
-    func refreshUserDefinedTypeObjects(connectionId: UUID, database: String, schema: String?) async {
-        guard browsesUserDefinedTypes(connectionId) else { return }
+    /// The hierarchical layout reloads a schema through `SchemaService`, which holds no detail list,
+    /// so its Refresh reads the schema's detail lists here.
+    func refreshTableDetails(connectionId: UUID, database: String, schema: String?) async {
+        await refreshTableDetails(under: Self.objectsKey(connectionId: connectionId, database: database, schema: schema))
+    }
+
+    @discardableResult
+    func refreshUserDefinedTypeObjects(connectionId: UUID, database: String, schema: String?) async -> Bool {
+        guard browsesUserDefinedTypes(connectionId) else { return false }
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
-        await reread(key, connectionId: connectionId, in: typeLists, fetch: typeListFetch(key))
+        return await reread(key, connectionId: connectionId, in: typeLists, fetch: typeListFetch(key))
     }
 
-    private func rereadTables(_ key: ObjectsKey) async {
+    private func rereadTables(_ key: ObjectsKey) async -> Bool {
         await reread(key, connectionId: key.connectionId, in: tableLists, fetch: tableListFetch(key))
+    }
+
+    private func rereadTriggers(_ key: ObjectsKey) async -> Bool {
+        guard browsesTriggers(key.connectionId) else { return false }
+        return await reread(key, connectionId: key.connectionId, in: triggerLists, fetch: triggerListFetch(key))
     }
 
     /// A list that is not loaded is dropped and read by its next reader rather than now.
@@ -620,6 +805,47 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
                 partitionKey, connectionId: partitionKey.connectionId,
                 in: partitionLists, fetch: partitionListFetch(partitionKey)
             )
+        }
+    }
+
+    /// The rule partitions follow: a loaded list reads again over its rows, and one that never
+    /// loaded is dropped for its next reader.
+    private func refreshTableDetails(
+        under key: ObjectsKey, kinds: Set<TableDetailKind> = Set(TableDetailKind.allCases)
+    ) async {
+        let detailKeys = tableDetailsState.keys.filter {
+            $0.connectionId == key.connectionId && $0.database == key.database && $0.schema == key.schema
+                && kinds.contains($0.kind)
+        }
+        for detailKey in detailKeys {
+            guard case .loaded = tableDetailsState[detailKey] ?? .idle else {
+                tableDetailsCommit.fence.supersede(detailKey)
+                tableDetailsCommit.freshness.markChanged(detailKey)
+                tableDetailsState.removeValue(forKey: detailKey)
+                await tableDetailsDedup.cancel { $0.key == detailKey }
+                continue
+            }
+            await reread(detailKey, connectionId: detailKey.connectionId, in: tableDetailLists, fetch: tableDetailFetch(detailKey))
+        }
+    }
+
+    /// Table Details is one option for every window, so turning it off drops every detail list: no
+    /// row draws one, and a refresh would read each of them again. Each key is superseded before any
+    /// suspension, so a read still running commits nothing, and only reads started before the drop
+    /// are cancelled, never one a group opened after the option came back on.
+    func dropTableDetails() {
+        guard !tableDetailsState.isEmpty else { return }
+        var dropped: [TableDetailsKey: Int] = [:]
+        for key in tableDetailsState.keys {
+            tableDetailsCommit.fence.supersede(key)
+            tableDetailsCommit.freshness.markChanged(key)
+            dropped[key] = tableDetailsCommit.freshness.revision(for: key)
+        }
+        tableDetailsState.removeAll()
+        Task { [dropped] in
+            await tableDetailsDedup.cancel { fetch in
+                dropped[fetch.key].map { fetch.revision < $0 } ?? false
+            }
         }
     }
 
@@ -648,7 +874,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         connectionId: UUID,
         in list: TreeList<Key, Value>,
         token explicitToken: Int? = nil,
-        fetch: @Sendable @escaping () async throws -> Value
+        fetch: @escaping ListFetch<Value>
     ) async {
         guard isConnected(connectionId) else { return }
         let token = explicitToken ?? self[keyPath: list.commit].fence.token(for: key)
@@ -656,15 +882,24 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
               !self[keyPath: list.commit].freshness.isCurrent(key) else { return }
         let revision = self[keyPath: list.commit].freshness.revision(for: key)
         self[keyPath: list.commit].freshness.noteFetchStarted(revision, for: key)
+        // Rows on screen mean nobody waits on this read, so completion goes ahead of it.
+        let workload: MetadataConnectionPool.Workload
         switch self[keyPath: list.state][key] ?? .idle {
-        case .loaded, .loading: break
-        case .idle, .failed: self[keyPath: list.state][key] = .loading
+        case .loaded:
+            workload = .bulk
+        case .loading:
+            workload = list.workload
+        case .idle, .failed:
+            workload = list.workload
+            self[keyPath: list.state][key] = .loading
         }
 
         let outcome: MetadataFetchOutcome<Value>
         var failure: Error?
         do {
-            outcome = .fetched(try await list.dedup.execute(key: ListFetchKey(key: key, revision: revision), work: fetch))
+            outcome = .fetched(try await list.dedup.execute(key: ListFetchKey(key: key, revision: revision)) {
+                try await fetch(workload)
+            })
         } catch is CancellationError {
             outcome = .cancelled
         } catch {
@@ -709,70 +944,106 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     /// Refresh and Retry: supersede before the first suspension, so a fetch still in flight cannot
     /// commit, and a reread superseded meanwhile stops rather than committing under the newer token.
+    /// Returns whether it was superseded so.
+    @discardableResult
     private func reread<Key: Hashable & Sendable, Value: Sendable & Equatable>(
         _ key: Key,
         connectionId: UUID,
         in list: TreeList<Key, Value>,
-        fetch: @Sendable @escaping () async throws -> Value
-    ) async {
+        fetch: @escaping ListFetch<Value>
+    ) async -> Bool {
         let token = self[keyPath: list.commit].fence.supersede(key)
         self[keyPath: list.commit].freshness.markChanged(key)
         let revision = self[keyPath: list.commit].freshness.revision(for: key)
         await list.dedup.cancel { $0.key == key && $0.revision != revision }
         await read(key, connectionId: connectionId, in: list, token: token, fetch: fetch)
+        return !self[keyPath: list.commit].fence.isCurrent(token, for: key)
     }
 
-    private func schemaListFetch(_ key: DatabaseKey) -> @Sendable () async throws -> [String] {
-        { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+    private func schemaListFetch(_ key: DatabaseKey) -> ListFetch<[String]> {
+        { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchSchemas()
             }
         }
     }
 
-    private func tableListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [TableInfo] {
+    private func tableListFetch(_ key: ObjectsKey) -> ListFetch<[TableInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchTables(schema: schema)
             }
         }
     }
 
-    private func routineListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [RoutineInfo] {
+    private func routineListFetch(_ key: ObjectsKey) -> ListFetch<[RoutineInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchRoutines(schema: schema)
             }
         }
     }
 
-    private func triggerListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [TriggerInfo] {
+    private func triggerListFetch(_ key: ObjectsKey) -> ListFetch<[TriggerInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchAllTriggers(schema: schema)
             }
         }
     }
 
-    private func typeListFetch(_ key: ObjectsKey) -> @Sendable () async throws -> [UserDefinedTypeInfo] {
+    private func typeListFetch(_ key: ObjectsKey) -> ListFetch<[UserDefinedTypeInfo]> {
         let schema = key.schema
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchUserDefinedTypes(schema: schema)
             }
         }
     }
 
-    private func partitionListFetch(_ key: PartitionsKey) -> @Sendable () async throws -> [PartitionInfo] {
+    private func serverObjectListFetch(_ key: ServerObjectsKey) -> ListFetch<[ServerObjectInfo]> {
+        let schema = key.schema
+        let kindId = key.kindId
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
+                try await driver.fetchServerObjects(ofKind: kindId, schema: schema)
+            }
+        }
+    }
+
+    private func partitionListFetch(_ key: PartitionsKey) -> ListFetch<[PartitionInfo]> {
         let schema = key.schema
         let table = key.table
-        return { [self] in
-            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
                 try await driver.fetchPartitionDetails(table: table, schema: schema)
             }
+        }
+    }
+
+    private func tableDetailFetch(_ key: TableDetailsKey) -> ListFetch<TableDetailList> {
+        let table = key.table
+        let schema = key.schema
+        let kind = key.kind
+        return { [self] workload in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: workload) { driver in
+                try await Self.fetchTableDetails(kind, table: table, schema: schema, from: driver)
+            }
+        }
+    }
+
+    nonisolated private static func fetchTableDetails(
+        _ kind: TableDetailKind, table: String, schema: String?, from driver: DatabaseDriver
+    ) async throws -> TableDetailList {
+        switch kind {
+        case .columns: return .columns(try await driver.fetchColumns(table: table, schema: schema))
+        case .indexes: return .indexes(try await driver.fetchIndexes(table: table, schema: schema))
+        case .foreignKeys: return .foreignKeys(try await driver.fetchForeignKeys(table: table, schema: schema))
+        case .checks: return .checks(try await driver.fetchCheckConstraints(table: table, schema: schema))
+        case .triggers: return .triggers(try await driver.fetchTriggers(table: table, schema: schema))
         }
     }
 
@@ -800,7 +1071,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         routinesCommit.freshness.removeAll { $0.connectionId == connectionId }
         triggersCommit.freshness.removeAll { $0.connectionId == connectionId }
         typesCommit.freshness.removeAll { $0.connectionId == connectionId }
+        serverObjectsCommit.freshness.removeAll { $0.connectionId == connectionId }
         partitionsCommit.freshness.removeAll { $0.connectionId == connectionId }
+        tableDetailsCommit.freshness.removeAll { $0.connectionId == connectionId }
         allSchemaTablesFreshness.removeAll { $0.connectionId == connectionId }
         allSchemaTablesRequested = allSchemaTablesRequested.filter { $0.key.connectionId != connectionId }
         allSchemaTablesCovered = allSchemaTablesCovered.filter { $0.key.connectionId != connectionId }
@@ -812,7 +1085,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         routinesState = routinesState.filter { $0.key.connectionId != connectionId }
         triggersState = triggersState.filter { $0.key.connectionId != connectionId }
         typesState = typesState.filter { $0.key.connectionId != connectionId }
+        serverObjectsState = serverObjectsState.filter { $0.key.connectionId != connectionId }
         partitionsState = partitionsState.filter { $0.key.connectionId != connectionId }
+        tableDetailsState = tableDetailsState.filter { $0.key.connectionId != connectionId }
     }
 
     // MARK: - Private
@@ -835,8 +1110,14 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             triggersCommit.fence.supersede(key)
             typesCommit.fence.supersede(key)
         }
+        for key in serverObjectsState.keys where key.connectionId == connectionId {
+            serverObjectsCommit.fence.supersede(key)
+        }
         for key in connectionPartitionKeys(connectionId) {
             partitionsCommit.fence.supersede(key)
+        }
+        for key in tableDetailsState.keys where key.connectionId == connectionId {
+            tableDetailsCommit.fence.supersede(key)
         }
         for key in allSchemaTablesState.keys where key.connectionId == connectionId {
             allSchemaTablesFence.supersede(key)
@@ -850,7 +1131,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         await routinesDedup.cancel { $0.key.connectionId == connectionId }
         await triggersDedup.cancel { $0.key.connectionId == connectionId }
         await typesDedup.cancel { $0.key.connectionId == connectionId }
+        await serverObjectsDedup.cancel { $0.key.connectionId == connectionId }
         await partitionsDedup.cancel { $0.key.connectionId == connectionId }
+        await tableDetailsDedup.cancel { $0.key.connectionId == connectionId }
         await allSchemaTablesDedup.cancel { $0.database.connectionId == connectionId }
     }
 
@@ -863,7 +1146,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         idlePending(\.routinesState) { $0.connectionId == connectionId }
         idlePending(\.triggersState) { $0.connectionId == connectionId }
         idlePending(\.typesState) { $0.connectionId == connectionId }
+        idlePending(\.serverObjectsState) { $0.connectionId == connectionId }
         idlePending(\.partitionsState) { $0.connectionId == connectionId }
+        idlePending(\.tableDetailsState) { $0.connectionId == connectionId }
         idlePending(\.allSchemaTablesState) { $0.connectionId == connectionId }
     }
 
@@ -922,11 +1207,29 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         return ObjectsKey(connectionId: connectionId, database: database, schema: normalized)
     }
 
+    private static func serverObjectsKey(
+        connectionId: UUID, database: String, schema: String?, kindId: String
+    ) -> ServerObjectsKey {
+        let normalized: String? = (schema?.isEmpty == true) ? nil : schema
+        return ServerObjectsKey(connectionId: connectionId, database: database, schema: normalized, kindId: kindId)
+    }
+
+    private func serverObjectsKey(_ container: ObjectsKey, kindId: String) -> ServerObjectsKey {
+        ServerObjectsKey(connectionId: container.connectionId, database: container.database, schema: container.schema, kindId: kindId)
+    }
+
     private static func partitionsKey(
         connectionId: UUID, database: String, schema: String?, table: String
     ) -> PartitionsKey {
         let normalized: String? = (schema?.isEmpty == true) ? nil : schema
         return PartitionsKey(connectionId: connectionId, database: database, schema: normalized, table: table)
+    }
+
+    private static func tableDetailsKey(
+        connectionId: UUID, database: String, schema: String?, table: String, kind: TableDetailKind
+    ) -> TableDetailsKey {
+        let normalized: String? = (schema?.isEmpty == true) ? nil : schema
+        return TableDetailsKey(connectionId: connectionId, database: database, schema: normalized, table: table, kind: kind)
     }
 
     private func partitionKeys(matching key: ObjectsKey) -> [PartitionsKey] {

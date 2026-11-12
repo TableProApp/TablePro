@@ -26,7 +26,7 @@ Native database clients with a native UI per platform: `apple/` holds the macOS 
 
 - The PR title is the squash commit subject, `type(scope): description`. The body follows `.github/pull_request_template.md`.
 - A rename or signature change updates every caller and test in the same commit.
-- Agents merge on green with `gh pr merge <N> --auto`: main's merge queue squashes and refuses `--squash`; a `release/*` pull request takes `--auto --squash`. They create a `release/*` branch or a tag only when the maintainer says to release, and use `--admin` only on the maintainer's word.
+- Agents merge on green with `gh pr merge <N> --auto --squash`, into main or a `release/*` line. They create a `release/*` branch or a tag only when the maintainer says to release, and use `--admin` only on the maintainer's word.
 
 ## CI
 

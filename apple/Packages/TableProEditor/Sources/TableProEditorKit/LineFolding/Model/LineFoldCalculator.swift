@@ -8,33 +8,50 @@
 import AppKit
 import TableProTextEngine
 
-/// `LineFoldCalculator` receives text edits and rebuilds fold regions asynchronously.
-///
-/// This is an actor, all methods and modifications happen in isolation in it's async region. All text requests are
-/// marked `@MainActor` for safety.
+// Each pass carries the document version it read, so the model can drop a result for text that has since changed.
+struct LineFoldPass: Sendable {
+    let storage: LineFoldStorage
+    let documentVersion: Int
+}
+
+@MainActor
+final class LineFoldDocumentVersion {
+    private(set) var value = 0
+
+    func advance() {
+        value &+= 1
+    }
+}
+
 actor LineFoldCalculator {
     weak var foldProvider: LineFoldProvider?
     weak var controller: TextViewController?
 
-    var valueStream: AsyncStream<LineFoldStorage>
+    var valueStream: AsyncStream<LineFoldPass>
 
-    private var valueStreamContinuation: AsyncStream<LineFoldStorage>.Continuation
+    private var valueStreamContinuation: AsyncStream<LineFoldPass>.Continuation
     private var textChangedTask: Task<Void, Never>?
+    private let documentVersion: LineFoldDocumentVersion
 
-    /// Create a new calculator object that listens to a given stream for text changes.
-    /// - Parameters:
-    ///   - foldProvider: The object to use to calculate fold regions.
-    ///   - controller: The text controller to use for text and attachment fetching.
-    ///   - textChangedStream: A stream of text changes, received as the document is edited.
+    private struct PassStart: Sendable {
+        let documentRange: NSRange
+        let sizeLimit: Int
+        let documentVersion: Int
+        let scanner: LineFoldDocumentScanner?
+        let text: String?
+    }
+
     init(
         foldProvider: LineFoldProvider,
         controller: TextViewController,
+        documentVersion: LineFoldDocumentVersion,
         textChangedStream: AsyncStream<Void>
     ) {
         // This could be grabbed from the controller, but Swift 6 doesn't like that (concurrency safety)
         self.foldProvider = foldProvider
         self.controller = controller
-        (valueStream, valueStreamContinuation) = AsyncStream<LineFoldStorage>.makeStream()
+        self.documentVersion = documentVersion
+        (valueStream, valueStreamContinuation) = AsyncStream<LineFoldPass>.makeStream()
         Task { await listenToTextChanges(textChangedStream: textChangedStream) }
     }
 
@@ -42,8 +59,6 @@ actor LineFoldCalculator {
         textChangedTask?.cancel()
     }
 
-    /// Sets up an attached task to listen to values on a stream of text changes.
-    /// - Parameter textChangedStream: A stream of text changes.
     private func listenToTextChanges(textChangedStream: AsyncStream<Void>) {
         textChangedTask = Task {
             for await _ in textChangedStream {
@@ -52,18 +67,63 @@ actor LineFoldCalculator {
         }
     }
 
-    /// Build out the folds for the entire document.
-    ///
-    /// For each line in the document, find the indentation level using the ``levelProvider``. At each line, if the
-    /// indent increases from the previous line, we start a new fold. If it decreases we end the fold we were in.
     private func buildFoldsForDocument() async {
         guard let controller = self.controller, let foldProvider = self.foldProvider else { return }
-        let documentRange = await controller.textView.documentRange
-        let sizeLimit = await controller.configuration.peripherals.foldingSizeLimit
-        guard documentRange.length <= sizeLimit else {
-            valueStreamContinuation.yield(LineFoldStorage(documentLength: documentRange.length))
+        let start = await Self.startPass(
+            controller: controller,
+            foldProvider: foldProvider,
+            documentVersion: documentVersion
+        )
+        guard start.documentRange.length <= start.sizeLimit else {
+            valueStreamContinuation.yield(
+                LineFoldPass(
+                    storage: LineFoldStorage(documentLength: start.documentRange.length),
+                    documentVersion: start.documentVersion
+                )
+            )
             return
         }
+
+        let folds: [LineFoldStorage.RawFold]
+        if let scanner = start.scanner, let text = start.text {
+            folds = scanner(text).map { LineFoldStorage.RawFold(depth: $0.depth, range: $0.range) }
+        } else {
+            folds = await walkLines(controller: controller, foldProvider: foldProvider, documentRange: start.documentRange)
+        }
+
+        await yieldNewStorage(
+            newFolds: folds,
+            controller: controller,
+            documentRange: start.documentRange,
+            documentVersion: start.documentVersion
+        )
+    }
+
+    // Bridging the storage's mutable string gives an immutable copy, so the scanner can read it from the calculator's
+    // own executor while the main thread goes on editing.
+    @MainActor
+    private static func startPass(
+        controller: TextViewController,
+        foldProvider: LineFoldProvider,
+        documentVersion: LineFoldDocumentVersion
+    ) -> PassStart {
+        let documentRange = controller.textView.documentRange
+        let sizeLimit = controller.configuration.peripherals.foldingSizeLimit
+        let scanner = documentRange.length <= sizeLimit ? foldProvider.documentFoldScanner() : nil
+        return PassStart(
+            documentRange: documentRange,
+            sizeLimit: sizeLimit,
+            documentVersion: documentVersion.value,
+            scanner: scanner,
+            text: scanner == nil ? nil : controller.textView.textStorage.string
+        )
+    }
+
+    private func walkLines(
+        controller: TextViewController,
+        foldProvider: LineFoldProvider,
+        documentRange: NSRange
+    ) async -> [LineFoldStorage.RawFold] {
         var foldCache: [LineFoldStorage.RawFold] = []
         // Depth: Open range
         var openFolds: [Int: LineFoldStorage.RawFold] = [:]
@@ -109,19 +169,14 @@ actor LineFoldCalculator {
                 )
             )
         }
-
-        await yieldNewStorage(newFolds: foldCache, controller: controller, documentRange: documentRange)
+        return foldCache
     }
 
-    /// Yield a new storage value on the value stream using a new set of folds.
-    /// - Parameters:
-    ///   - newFolds: The new folds to yield with the storage value.
-    ///   - controller: The text controller used for range and attachment fetching.
-    ///   - documentRange: The total range of the current document.
     private func yieldNewStorage(
         newFolds: [LineFoldStorage.RawFold],
         controller: TextViewController,
-        documentRange: NSRange
+        documentRange: NSRange,
+        documentVersion: Int
     ) async {
         let attachments = await controller.textView.layoutManager.attachments
             .getAttachmentsOverlapping(documentRange)
@@ -136,16 +191,17 @@ actor LineFoldCalculator {
             documentLength: newFolds.max(
                 by: { $0.range.upperBound < $1.range.upperBound }
             )?.range.upperBound ?? documentRange.length,
-            folds: newFolds.sorted(by: { $0.range.lowerBound < $1.range.lowerBound }),
+            // The store keeps the fold set last where two overlap, so of folds that start together the outermost goes
+            // last and is the one shown, whichever order the provider reported them in.
+            folds: newFolds.sorted {
+                $0.range.lowerBound == $1.range.lowerBound ? $0.depth > $1.depth : $0.range.lowerBound < $1.range.lowerBound
+            },
             collapsedRanges: Set(attachments)
         )
-        valueStreamContinuation.yield(storage)
+        valueStreamContinuation.yield(LineFoldPass(storage: storage, documentVersion: documentVersion))
     }
 
-    /// Asynchronously gets more line information from the fold provider.
-    /// Runs on the main thread so all text-related calculations are safe with the main text storage.
-    ///
-    /// Has to be an `AsyncSequence` so it can be main actor isolated.
+    // An `AsyncSequence` so the provider's per-line calls run on the main actor, where the text storage lives.
     @MainActor
     struct ChunkedLineIterator: AsyncSequence, AsyncIteratorProtocol {
         var controller: TextViewController

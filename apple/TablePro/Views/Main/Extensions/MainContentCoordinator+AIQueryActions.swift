@@ -43,13 +43,14 @@ extension MainContentCoordinator {
             target: AssistantEditorTarget(
                 tabId: tab.id,
                 scope: scope(for: tab),
-                errorMessage: tab.latestError?.message,
+                errorMessage: externalErrorText(tab.latestError?.message),
                 errorQuery: tab.latestError?.query
             )
         )
     }
 
     func runAIQueryAction(_ action: AIQueryAction, target: AIQueryTarget = .selectionOrStatementAtCursor) {
+        if let tabId = tabManager.selectedTabId { flushEditorText(forTab: tabId) }
         guard aiQueryActionAvailability.isEnabled,
               let tab = tabManager.selectedTab,
               let request = aiQueryRequest(for: action, in: tab, target: target) else { return }
@@ -66,7 +67,7 @@ extension MainContentCoordinator {
             scope: scope(for: tab),
             databaseType: connection.type,
             source: source,
-            errorMessage: error
+            errorMessage: externalErrorText(error)
         )
         presentIdleAssistant()?.runQueryAction(request)
     }
@@ -98,8 +99,14 @@ extension MainContentCoordinator {
             scope: scope(for: tab),
             databaseType: connection.type,
             source: QueryEditorAnchor(tabId: tab.id, range: range),
-            explainPlan: explainPlan(in: tab, covering: range)
+            explainPlan: externalPlanText(explainPlan(in: tab, covering: range))
         )
+    }
+
+    // A plan can hold values the planner read, as MySQL's does from a const table; see `ExternalRowMasking.plan(in:)`.
+    private func externalPlanText(_ plan: String?) -> String? {
+        guard plan != nil, !maskingPolicy.isEmpty else { return plan }
+        return ExternalRowMasking.plan(in: connection.type.explainVariants.first?.format) == .byName ? plan : nil
     }
 
     func editorText(for target: AIQueryTarget, in fullQuery: String) -> (sql: String, offset: Int) {
@@ -139,13 +146,8 @@ extension MainContentCoordinator {
         }
         switch WalkthroughApplyPlan.resolve(beforeSQL: beforeSQL, source: source, tabText: tabText) {
         case .replace(let tabId, let range):
-            guard let owner else { return }
-            owner.tabManager.mutate(tabId: tabId) { tab in
-                let text = tab.content.query as NSString
-                guard NSMaxRange(range) <= text.length else { return }
-                tab.content.query = text.replacingCharacters(in: range, with: afterSQL)
-                tab.hasUserInteraction = true
-            }
+            guard let owner, owner.replaceQueryText(inTab: tabId, range: range, with: afterSQL) else { return }
+            owner.tabManager.mutate(tabId: tabId) { $0.hasUserInteraction = true }
         case .insertAsNewQuery:
             insertQueryFromAI(afterSQL)
         }

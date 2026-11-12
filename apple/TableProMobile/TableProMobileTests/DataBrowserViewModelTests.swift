@@ -54,7 +54,7 @@ struct DataBrowserViewModelTests {
         vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
         await vm.load(isInitial: true)
 
-        #expect(vm.legacyRows.count == 2)
+        #expect(vm.window.shownValues.count == 2)
         #expect(vm.columnDetails.count == 2)
         #expect(vm.hasPrimaryKeys == true)
         #expect(vm.loadError == nil)
@@ -85,7 +85,7 @@ struct DataBrowserViewModelTests {
         #expect(log.tracked == 1)
         #expect(log.callsInside == driver.fetchColumnsCalls + driver.executedQueries.count)
         #expect(log.callsInside > 0)
-        #expect(vm.legacyRows.count == 1)
+        #expect(vm.window.shownValues.count == 1)
     }
 
     @Test("A page cut short is not taken as the end of the table")
@@ -103,7 +103,7 @@ struct DataBrowserViewModelTests {
         vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
         await vm.load(isInitial: true)
 
-        #expect(vm.legacyRows.count == 1)
+        #expect(vm.window.shownValues.count == 1)
         #expect(vm.pagination.totalRows == 120)
         #expect(vm.canGoToNextPage)
     }
@@ -150,7 +150,7 @@ struct DataBrowserViewModelTests {
         let vm = DataBrowserViewModel()
         vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
         await vm.load(isInitial: true)
-        #expect(vm.legacyRows.count == 1)
+        #expect(vm.window.shownValues.count == 1)
         #expect(vm.isLoading == false)
         #expect(vm.isPageLoading == false)
 
@@ -162,7 +162,7 @@ struct DataBrowserViewModelTests {
 
         #expect(vm.isLoading == false)
         #expect(vm.isPageLoading == false)
-        #expect(vm.legacyRows.count == 2)
+        #expect(vm.window.shownValues.count == 2)
     }
 
     @Test("pagination prev/next clamps at boundaries")
@@ -220,7 +220,7 @@ struct DataBrowserViewModelTests {
         vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "customers"), databaseType: .mysql, host: "localhost")
         await vm.load(isInitial: true)
 
-        #expect(vm.legacyRows.count == 1)
+        #expect(vm.window.shownValues.count == 1)
         #expect(vm.rowLocator(forRowAt: 0) == nil)
     }
 
@@ -411,6 +411,67 @@ struct DataBrowserViewModelTests {
         #expect((userDriver.executedQueries.first ?? "").contains("\"code\" IN (5, '5')"))
     }
 
+    private func fullPage(_ vm: DataBrowserViewModel, from start: Int = 0) -> Result<QueryResult, Error> {
+        let rows = (start..<start + vm.pagination.pageSize).map { [String($0), "name \($0)"] as [String?] }
+        return .success(QueryResult(columns: makeColumns(), rows: rows, rowsAffected: 0, executionTime: 0))
+    }
+
+    private func rowCount(_ total: Int) -> Result<QueryResult, Error> {
+        .success(QueryResult(columns: [], rows: [[String(total)]], rowsAffected: 0, executionTime: 0))
+    }
+
+    @Test("The rows show and take taps while the row count still runs")
+    func rowsShowBeforeTheCount() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let gate = ExecuteGate(holding: [2])
+        driver.beforeExecute = { await gate.pass() }
+        let vm = DataBrowserViewModel()
+        driver.scriptedExecuteResults = [fullPage(vm), rowCount(5_000)]
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+
+        let load = Task { await vm.load(isInitial: true) }
+        await gate.arrival(of: 2)
+
+        #expect(vm.isLoading == false)
+        #expect(vm.isPageLoading == false)
+        #expect(vm.window.count == vm.pagination.pageSize)
+        #expect(driver.fetchForeignKeysCalls == 1)
+        #expect(vm.pagination.totalRows == nil)
+        #expect(vm.canGoToNextPage)
+        #expect(vm.paginationLabel == "1-\(vm.pagination.pageSize)")
+
+        await gate.release(2)
+        await load.value
+        #expect(vm.pagination.totalRows == 5_000)
+    }
+
+    @Test("A sort or a new page size keeps the total, and a page turn reads the keys of a table without any only once")
+    func reloadsReadNoCountOrKeysAgain() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        driver.scriptedExecuteResults = [fullPage(vm), rowCount(5_000)]
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+        #expect(driver.executedQueries.count == 2)
+
+        driver.scriptedExecuteResults = [fullPage(vm)]
+        vm.sortState.columns = [SortColumn(name: "name", ascending: false)]
+        await vm.applySort()
+        #expect(driver.executedQueries.count == 3)
+        #expect(vm.pagination.totalRows == 5_000)
+
+        driver.scriptedExecuteResults = [fullPage(vm, from: vm.pagination.pageSize)]
+        await vm.goToNextPage()
+        #expect(driver.executedQueries.count == 4)
+        #expect(driver.fetchForeignKeysCalls == 1)
+
+        await vm.changePageSize(50)
+        #expect(driver.executedQueries.count == 5)
+        #expect(vm.pagination.totalRows == 5_000)
+    }
+
     @Test("A load overtaken during its row count leaves the newer load's total and loading state alone")
     func overtakenCountIsDropped() async {
         let driver = MockDatabaseDriver()
@@ -440,7 +501,7 @@ struct DataBrowserViewModelTests {
         await gate.release(3)
         await filtered.value
         #expect(vm.pagination.totalRows == 1)
-        #expect(vm.legacyRows.count == 1)
+        #expect(vm.window.shownValues.count == 1)
         #expect(vm.isLoading == false)
         #expect(vm.isPageLoading == false)
     }
@@ -467,6 +528,40 @@ struct DataBrowserViewModelTests {
         #expect(success == true)
         #expect(vm.operationError == nil)
         #expect(driver.executedQueries.contains(where: { $0.uppercased().hasPrefix("DELETE") }))
+    }
+
+    @Test("A delete confirmed after another window moved the browser to another schema is refused")
+    func deleteRaisedInAnotherSchemaIsRefused() {
+        let driver = MockDatabaseDriver()
+        let session = makeSession(driver: driver)
+        let vm = DataBrowserViewModel()
+        vm.attach(session: session, table: TableInfo(name: "users"), databaseType: .mssql, host: "localhost", schema: "dbo")
+        let raised = vm.rowSource
+        #expect(!vm.refusesDelete(raisedOn: raised))
+        #expect(vm.operationError == nil)
+
+        vm.attach(session: session, table: TableInfo(name: "users"), databaseType: .mssql, host: "localhost", schema: "archive")
+
+        #expect(vm.refusesDelete(raisedOn: raised))
+        #expect(vm.operationError != nil)
+        #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("A delete confirmed after a redial handed the browser a new session is refused")
+    func deleteRaisedOnAnOlderSessionIsRefused() {
+        let vm = DataBrowserViewModel()
+        vm.attach(
+            session: makeSession(driver: MockDatabaseDriver()), table: TableInfo(name: "users"),
+            databaseType: .postgresql, host: "localhost", schema: "public"
+        )
+        let raised = vm.rowSource
+
+        vm.attach(
+            session: makeSession(driver: MockDatabaseDriver()), table: TableInfo(name: "users"),
+            databaseType: .postgresql, host: "localhost", schema: "public"
+        )
+
+        #expect(vm.refusesDelete(raisedOn: raised))
     }
 
     @Test("A binary, NULL or ref-less cut key cell gives no key, and a cut one with a ref gives the whole key")
@@ -525,7 +620,7 @@ struct DataBrowserViewModelTests {
         #expect(success == false)
         #expect(vm.operationError?.title == String(localized: "Row Not Deleted"))
         #expect(driver.executedQueries.contains { $0.hasPrefix("SELECT `id` FROM `users` WHERE `id` = 1") })
-        #expect(vm.legacyRows == [["1", "Alice"]])
+        #expect(vm.window.shownValues == [["1", "Alice"]])
     }
 
     @Test("A delete whose count reads 0, as under SET NOCOUNT ON, succeeds once the row is gone")
@@ -766,7 +861,7 @@ struct DataBrowserViewModelTests {
         }
     }
 
-    @Test("changePageSize resets currentPage and totalRows")
+    @Test("changePageSize returns to the first page")
     func changePageSizeResets() async {
         let driver = MockDatabaseDriver()
         driver.scriptedColumns = makeColumns()
@@ -820,7 +915,7 @@ struct DataBrowserViewModelTests {
         driver.scriptedExecuteResults = [emptyResult()]
         await vm.applySearch("nobody")
 
-        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.window.shownValues.isEmpty)
         #expect(vm.showsPaginationBar)
     }
 
@@ -837,7 +932,7 @@ struct DataBrowserViewModelTests {
         driver.scriptedExecuteResults = [emptyResult()]
         await vm.applyFilters()
 
-        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.window.shownValues.isEmpty)
         #expect(vm.showsPaginationBar)
     }
 
@@ -865,6 +960,127 @@ struct DataBrowserViewModelTests {
         #expect(vm.pagination.currentPage == 1)
         #expect(vm.canGoToPreviousPage)
         #expect(vm.canGoToNextPage == false)
+    }
+
+    private func numberedPage(from first: Int, count: Int) -> QueryResult {
+        let rows: [[String?]] = (first ..< first + count).map { [String($0), "user\($0)"] }
+        return QueryResult(columns: makeColumns(), rows: rows, rowsAffected: 0, executionTime: 0)
+    }
+
+    private func firstPageQuery(
+        _ type: DatabaseType,
+        columns: [ColumnInfo],
+        sort: SortState = SortState()
+    ) async -> String? {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = columns
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "events"), databaseType: type, host: "localhost")
+        vm.sortState = sort
+        await vm.load(isInitial: true)
+        // The page size is the user's default, so the expected text names it as `{limit}`.
+        return driver.executedQueries.first?.replacingOccurrences(of: "LIMIT \(vm.pagination.pageSize) ", with: "LIMIT {limit} ")
+            .replacingOccurrences(of: "NEXT \(vm.pagination.pageSize) ROWS", with: "NEXT {limit} ROWS")
+    }
+
+    private var compositeKey: [ColumnInfo] {
+        [
+            ColumnInfo(name: "tenant", typeName: "INT", isPrimaryKey: true, ordinalPosition: 0),
+            ColumnInfo(name: "id", typeName: "INT", isPrimaryKey: true, ordinalPosition: 1),
+            ColumnInfo(name: "status", typeName: "TEXT", ordinalPosition: 2)
+        ]
+    }
+
+    @Test("A PostgreSQL page orders by every key column, so paging neither repeats nor skips rows")
+    func postgresPageOrdersByTheWholeKey() async {
+        let query = await firstPageQuery(.postgresql, columns: compositeKey)
+        #expect(query == #"SELECT * FROM "events" ORDER BY "tenant" ASC, "id" ASC LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("A ClickHouse page orders by its key columns")
+    func clickHousePageOrdersByTheKey() async {
+        let columns = [
+            ColumnInfo(name: "day", typeName: "Date", isPrimaryKey: true, ordinalPosition: 0),
+            ColumnInfo(name: "hits", typeName: "UInt64", ordinalPosition: 1)
+        ]
+        let query = await firstPageQuery(.clickhouse, columns: columns)
+        #expect(query == "SELECT * FROM `events` ORDER BY `day` ASC LIMIT {limit} OFFSET 0")
+    }
+
+    @Test("A PostgreSQL table with no key pages as before")
+    func keylessPostgresPageHasNoOrder() async {
+        let columns = [ColumnInfo(name: "note", typeName: "TEXT", ordinalPosition: 0)]
+        let query = await firstPageQuery(.postgresql, columns: columns)
+        #expect(query == #"SELECT * FROM "events" LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("The user's sort comes first and the key breaks its ties")
+    func userSortKeepsTheKeyAsTiebreak() async {
+        let sort = SortState(columns: [SortColumn(name: "status", ascending: false)])
+        let query = await firstPageQuery(.postgresql, columns: compositeKey, sort: sort)
+        #expect(query == #"SELECT * FROM "events" ORDER BY "status" DESC, "tenant" ASC, "id" ASC LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("A key column the user sorts by is not repeated")
+    func userSortOnAKeyColumnIsNotRepeated() async {
+        let sort = SortState(columns: [SortColumn(name: "id", ascending: false)])
+        let query = await firstPageQuery(.postgresql, columns: compositeKey, sort: sort)
+        #expect(query == #"SELECT * FROM "events" ORDER BY "id" DESC, "tenant" ASC LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("SQL Server orders by the whole key, and a keyless table by its first column")
+    func sqlServerOrdersByTheWholeKey() async {
+        let keyed = await firstPageQuery(.mssql, columns: compositeKey)
+        #expect(keyed == "SELECT * FROM [events] ORDER BY [tenant] ASC, [id] ASC OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY")
+        let keyless = await firstPageQuery(.mssql, columns: [ColumnInfo(name: "note", typeName: "NVARCHAR", ordinalPosition: 0)])
+        #expect(keyless == "SELECT * FROM [events] ORDER BY [note] ASC OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY")
+    }
+
+    @Test("MySQL and Redshift pages keep their scan order")
+    func scanOrderedEnginesAddNoOrder() async {
+        #expect(await firstPageQuery(.mysql, columns: compositeKey) == "SELECT * FROM `events` LIMIT {limit} OFFSET 0")
+        #expect(await firstPageQuery(.redshift, columns: compositeKey) == #"SELECT * FROM "events" LIMIT {limit} OFFSET 0"#)
+    }
+
+    @Test("A page trimmed under memory pressure labels the rows it kept, not the ones it dropped")
+    func trimmedPageLabelsTheRowsItKept() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [
+            .success(numberedPage(from: 1, count: 500)),
+            .success(QueryResult(columns: [], rows: [["3503"]], rowsAffected: 0, executionTime: 0))
+        ]
+        await vm.changePageSize(500)
+        driver.scriptedExecuteResults = [.success(numberedPage(from: 501, count: 500))]
+        await vm.goToNextPage()
+        #expect(vm.paginationLabel == DataBrowserViewModel.pageRangeLabel(start: 501, end: 1_000, total: 3_503))
+
+        await vm.handlePressure(.warning)
+
+        #expect(vm.window.shownValues.count == 100)
+        #expect(vm.window.shownValues.first?.first == "901")
+        #expect(vm.paginationLabel == DataBrowserViewModel.pageRangeLabel(start: 901, end: 1_000, total: 3_503))
+    }
+
+    @Test("A memory notice from a trimmed page does not cover the result of a later load")
+    func memoryNoticeEndsWithItsPage() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [.success(numberedPage(from: 1, count: 2))]
+        await vm.load(isInitial: true)
+        await vm.handlePressure(.warning)
+        #expect(vm.memoryWarning != nil)
+
+        vm.filters = [TableFilter(columnName: "name", value: "nobody")]
+        driver.scriptedExecuteResults = [emptyResult()]
+        await vm.applyFilters()
+
+        #expect(vm.window.shownValues.isEmpty)
+        #expect(vm.memoryWarning == nil)
     }
 
     private func keyPage(from start: Int, count: Int, total: Int) -> KeyContentsPage {
@@ -904,7 +1120,7 @@ struct DataBrowserViewModelTests {
         #expect(vm.pagination.totalRows == pageSize * 3)
         #expect(vm.columnDetails.map(\.name) == ["index", "element"])
         #expect(vm.hasPrimaryKeys == false)
-        #expect(vm.legacyRows.first == [String(pageSize), "e\(pageSize)"])
+        #expect(vm.window.shownValues.first == [String(pageSize), "e\(pageSize)"])
         #expect(vm.loadError == nil)
         #expect(vm.isLoading == false)
     }
@@ -931,7 +1147,7 @@ struct DataBrowserViewModelTests {
         await overtaken.value
 
         #expect(driver.pageRequests.count == 2)
-        #expect(vm.legacyRows.first == [String(pageSize), "e\(pageSize)"])
+        #expect(vm.window.shownValues.first == [String(pageSize), "e\(pageSize)"])
         #expect(vm.loadError == nil)
         #expect(vm.isLoading == false)
     }
@@ -971,9 +1187,40 @@ struct DataBrowserViewModelTests {
         await vm.load(isInitial: true)
 
         #expect(vm.loadError?.title == String(localized: "Key Not Found"))
-        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.window.shownValues.isEmpty)
         #expect(vm.isLoading == false)
         #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("a long value in a key's contents stays whole within the budget, and the grid shows a preview of it")
+    func longKeyValueStaysWhole() async {
+        let long = String(repeating: "v", count: 10_000)
+        let driver = MockKeyContentsDriver()
+        driver.scriptedPages = [
+            .success(KeyContentsPage(
+                result: QueryResult(
+                    columns: [ColumnInfo(name: "value", typeName: "string", ordinalPosition: 0)],
+                    rows: [[long]],
+                    rowsAffected: 0,
+                    executionTime: 0
+                ),
+                totalCount: 1
+            ))
+        ]
+        let vm = DataBrowserViewModel(textBudgetBytes: { 1_000_000 })
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "profile"), databaseType: .redis, host: "localhost")
+
+        await vm.load(isInitial: true)
+
+        guard case .text(let kept)? = vm.cells(at: 0).first else {
+            Issue.record("the value should be kept whole, got \(vm.cells(at: 0))")
+            return
+        }
+        #expect(kept == long)
+        #expect(DataBrowserViewModel.canComplete(vm.cells(at: 0)))
+        let shown = vm.window.shownValues.first?.first ?? nil
+        #expect(shown?.utf8.count == Cell.previewByteLimit)
     }
 }
 

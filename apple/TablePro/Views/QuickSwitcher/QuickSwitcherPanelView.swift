@@ -96,6 +96,8 @@ struct QuickSwitcherPanelContent: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     @ObservedObject var viewModel: QuickSwitcherViewModel
+    /// Observed so the glyphs follow the object icon style while the panel is open.
+    @ObservedObject private var settings = AppSettingsManager.shared
     let onCommit: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
 
     var body: some View {
@@ -320,9 +322,10 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private func iconView(for item: QuickSwitcherItem, isSelected: Bool) -> some View {
-        Image(systemName: item.iconName)
+        let icon = item.icon(style: settings.appearance.objectIconStyle)
+        return icon.image
             .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(isSelected ? Color.emphasizedSelectionLabel : Color.secondary)
+            .foregroundStyle(isSelected ? Color.emphasizedSelectionLabel : icon.tint?.color ?? Color.secondary)
             .frame(width: QuickSwitcherMetrics.iconContainerSize, height: QuickSwitcherMetrics.iconContainerSize)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)

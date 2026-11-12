@@ -59,13 +59,19 @@ extension DatabaseManager {
             }
         }
 
+        let dialled: DatabaseConnection
+        do {
+            dialled = try await resolvingRDSEndpointAlias(of: connection, trigger: .request)
+        } catch {
+            throw await diagnosedConnectFailure(error, for: connection)
+        }
         let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: connection)
         let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
 
         let testConnection: DatabaseConnection
         do {
             testConnection = try await buildEffectiveConnection(
-                for: connection,
+                for: dialled,
                 sshPasswordOverride: sshPassword,
                 deadline: deadline
             )
@@ -74,6 +80,13 @@ extension DatabaseManager {
         }
 
         let tunnelManager = activeTunnelManager(for: connection)
+        // The form tests under a throwaway id, so a role of the connection's own leases a user no connect reuses.
+        defer {
+            let owner = ConnectionCredentialResolver.credentialOwner(for: connection)
+            if owner == connection.id, activeSessions[connection.id] == nil {
+                VaultDatabaseCredentials.shared.endUse(connection: connection.id, live: Set(activeSessions.keys))
+            }
+        }
 
         let result: ConnectionTestResult
         do {

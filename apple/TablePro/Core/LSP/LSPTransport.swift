@@ -32,6 +32,45 @@ enum LSPTransportError: Error, LocalizedError {
     }
 }
 
+// MARK: - LSPMessageWriter
+
+// Writes on its own queue, so a server that stops reading blocks the queue and never the transport.
+final class LSPMessageWriter: @unchecked Sendable {
+    private let handle: FileHandle
+    private let queue = DispatchQueue(label: "com.TablePro.LSPTransport.writer")
+    private var isClosed = false
+
+    init(_ handle: FileHandle) throws {
+        // Without it, a write to a server that has exited raises SIGPIPE and ends the app.
+        guard fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        self.handle = handle
+    }
+
+    func write(_ frame: Data, onFailure: @escaping @Sendable (any Error) -> Void) {
+        queue.async { [self] in
+            guard !isClosed else {
+                onFailure(LSPTransportError.processNotRunning)
+                return
+            }
+            do {
+                try handle.write(contentsOf: frame)
+            } catch {
+                onFailure(error)
+            }
+        }
+    }
+
+    func close() {
+        queue.async { [self] in
+            guard !isClosed else { return }
+            isClosed = true
+            try? handle.close()
+        }
+    }
+}
+
 // MARK: - LSPTransport
 
 actor LSPTransport {
@@ -39,8 +78,10 @@ actor LSPTransport {
 
     private var process: Process?
     private var stdinPipe: Pipe?
+    private var writer: LSPMessageWriter?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
+    private var stdoutReader: PipeReader?
     private var stderrReader: PipeReader?
     private var nextRequestID: Int = 1
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
@@ -66,6 +107,7 @@ actor LSPTransport {
         proc.standardOutput = stdout
         proc.standardError = stderr
 
+        self.writer = try LSPMessageWriter(stdin.fileHandleForWriting)
         self.stdinPipe = stdin
         self.stdoutPipe = stdout
         self.stderrPipe = stderr
@@ -87,9 +129,15 @@ actor LSPTransport {
 
         try proc.run()
 
-        let handle = stdout.fileHandleForReading
+        // Not FileHandle.bytes: its reads share one queue, so an idle server would stall every other AsyncBytes read.
+        let (chunks, chunkSink) = AsyncStream.makeStream(of: Data.self)
+        let stdoutReader = PipeReader(stdout.fileHandleForReading)
+        stdoutReader.start { chunkSink.yield($0) } atEnd: { _ in
+            chunkSink.finish()
+        }
+        self.stdoutReader = stdoutReader
         readerTask = Task { [weak self] in
-            await self?.runReadLoop(handle: handle)
+            await self?.runReadLoop(chunks)
         }
 
         Self.logger.info("LSP transport started: \(executablePath)")
@@ -105,9 +153,10 @@ actor LSPTransport {
         readerTask?.cancel()
         readerTask = nil
 
-        if let stdinHandle = stdinPipe?.fileHandleForWriting {
-            try? stdinHandle.close()
-        }
+        writer?.close()
+        writer = nil
+        stdoutReader?.stop()
+        stdoutReader = nil
         if let stdoutHandle = stdoutPipe?.fileHandleForReading {
             try? stdoutHandle.close()
         }
@@ -144,7 +193,7 @@ actor LSPTransport {
         return try await withCheckedThrowingContinuation { continuation in
             pendingRequests[requestID] = continuation
             do {
-                try writeMessage(data)
+                try writeMessage(data, failingRequest: requestID)
             } catch {
                 pendingRequests.removeValue(forKey: requestID)
                 continuation.resume(throwing: error)
@@ -212,40 +261,37 @@ actor LSPTransport {
 
     // MARK: - Private
 
-    private func writeMessage(_ data: Data) throws {
-        guard let stdinPipe else {
+    private func writeMessage(_ data: Data, failingRequest requestID: Int? = nil) throws {
+        guard let writer else {
             throw LSPTransportError.processNotRunning
         }
-
-        let header = "Content-Length: \(data.count)\r\n\r\n"
-        guard let headerData = header.data(using: .utf8) else {
-            throw LSPTransportError.invalidResponse
+        let frame = Data("Content-Length: \(data.count)\r\n\r\n".utf8) + data
+        writer.write(frame) { [weak self] error in
+            Task { [weak self] in
+                await self?.writeFailed(error, requestID: requestID)
+            }
         }
-
-        let handle = stdinPipe.fileHandleForWriting
-        handle.write(headerData)
-        handle.write(data)
     }
 
-    private func runReadLoop(handle: FileHandle) async {
+    private func writeFailed(_ error: any Error, requestID: Int?) {
+        Self.logger.warning("LSP write failed: \(error.localizedDescription)")
+        guard let requestID, let continuation = pendingRequests.removeValue(forKey: requestID) else { return }
+        continuation.resume(throwing: error)
+    }
+
+    private func runReadLoop(_ chunks: AsyncStream<Data>) async {
         var buffer = Data()
-        do {
-            for try await byte in handle.bytes {
-                if Task.isCancelled { return }
-                buffer.append(byte)
-                while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
-                    dispatchMessage(messageData)
-                }
-            }
-        } catch {
-            if !Task.isCancelled {
-                Self.logger.debug("LSP read loop ended: \(error.localizedDescription)")
+        for await chunk in chunks {
+            // A stream ended by cancellation still hands over the chunks it buffered.
+            if Task.isCancelled { return }
+            buffer.append(chunk)
+            while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
+                dispatchMessage(messageData)
             }
         }
     }
 
-    /// Parse a single LSP message from the buffer.
-    /// Returns (messageBody, totalBytesConsumed) or nil if buffer is incomplete.
+    // Nil until the buffer holds a whole message; the Int is the bytes it consumed.
     private static func parseMessageFromBuffer(_ buffer: inout Data) -> (Data, Int)? {
         let separator: [UInt8] = [0x0D, 0x0A, 0x0D, 0x0A]
         guard let separatorRange = buffer.range(of: Data(separator)) else {
@@ -320,7 +366,7 @@ actor LSPTransport {
             if let handler = notificationHandlers[method] {
                 handler(data)
             }
-            // Server-initiated request (has both id and method) — reply with handler result or null
+            // Server-initiated request (has both id and method): reply with the handler's result or null
             if let id {
                 if let deferred = deferredRequestHandlers[method] {
                     deferred(data, id)
@@ -341,6 +387,9 @@ actor LSPTransport {
 
     private func handleProcessExit(code: Int32) {
         Self.logger.info("LSP process exited with code \(code)")
+        writer?.close()
+        writer = nil
+        stdinPipe = nil
         let pending = pendingRequests
         pendingRequests.removeAll()
         for (_, continuation) in pending {

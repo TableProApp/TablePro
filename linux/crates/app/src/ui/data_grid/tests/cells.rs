@@ -27,6 +27,7 @@ fn paint() -> Rc<ColumnPaint> {
     let columns = grid_columns(&[info.result_column()], &[info], |_| true);
     Rc::new(ColumnPaint {
         column: columns[0].clone(),
+        grid: glib::WeakRef::new(),
         tracked: TrackedValues::untracked(),
         attributes: Rc::new(TextAttributes::new()),
         preferences: Default::default(),
@@ -524,6 +525,144 @@ fn cells_are_freed_with_the_grid() {
 }
 
 #[gtk4::test]
+fn highlight_rules_tint_the_rows_and_cells_that_meet_them() {
+    use crate::services::grid::{HighlightColor, HighlightRule, HighlightTarget};
+    use tablepro_core::filter::{FilterOp, FilterValue};
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let mut row_rule = HighlightRule::new("name");
+    row_rule.op = FilterOp::Eq;
+    row_rule.value = Some(FilterValue::Single("B".to_owned()));
+    row_rule.color = HighlightColor::Red;
+    let mut cell_rule = HighlightRule::new("id");
+    cell_rule.op = FilterOp::Eq;
+    cell_rule.value = Some(FilterValue::Single("1".to_owned()));
+    cell_rule.color = HighlightColor::Green;
+    cell_rule.target = HighlightTarget::Cell;
+
+    grid.grid.set_highlight_rules(vec![row_rule, cell_rule]);
+    drain_main_context();
+
+    let tint = |id: i64, column: usize| {
+        let cell = grid.cell_of(id, column);
+        HighlightColor::ALL
+            .into_iter()
+            .find(|color| cell.has_css_class(color.css_class()))
+    };
+    assert_eq!(tint(2, 0), Some(HighlightColor::Red), "the row that meets the rule");
+    assert_eq!(tint(2, 1), Some(HighlightColor::Red));
+    assert!(described(&grid.cell_of(2, 1)), "a highlight needs a spoken description");
+    assert_eq!(
+        tint(1, 0),
+        Some(HighlightColor::Green),
+        "the cell that meets its own rule"
+    );
+    assert_eq!(tint(1, 1), None, "a cell rule leaves the row's other cells");
+
+    grid.grid.set_highlight_rules(Vec::new());
+    drain_main_context();
+    assert_eq!(tint(2, 1), None, "the tint outlived its rule");
+    assert!(!described(&grid.cell_of(2, 1)));
+}
+
+#[gtk4::test]
+fn highlights_announce_their_colour_and_keep_modified_text_readable() {
+    use crate::services::grid::{HighlightColor, HighlightRule};
+    use tablepro_core::filter::FilterValue;
+
+    let grid = two_text_rows();
+    let mut rule = HighlightRule::new("name");
+    rule.value = Some(FilterValue::Single("edited".to_owned()));
+    rule.color = HighlightColor::Red;
+    grid.grid.set_highlight_rules(vec![rule]);
+    rename_first(&grid, "edited");
+    let cell = grid.cell_of(1, 1);
+    assert!(cell.has_css_class(HighlightColor::Red.css_class()));
+    assert!(has_attribute(&cell, pango::AttrType::Weight));
+    assert!(!has_class(&cell, "warning"));
+    assert!(described(&cell));
+    grid.grid.set_highlight_rules(Vec::new());
+    assert!(has_class(&cell, "warning"));
+}
+
+/// A host that keeps the rules hears of each change, and only of changes.
+#[gtk4::test]
+fn the_grid_tells_its_host_when_the_highlight_rules_change() {
+    use crate::services::grid::HighlightRule;
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let heard = Rc::new(Cell::new(0));
+    let count = heard.clone();
+    grid.grid
+        .connect_highlight_rules_changed(move |_| count.set(count.get() + 1));
+
+    grid.grid.set_highlight_rules(vec![HighlightRule::new("name")]);
+    assert_eq!(heard.get(), 1);
+    assert_eq!(grid.grid.highlight_rules().len(), 1);
+
+    grid.grid.set_highlight_rules(Vec::new());
+    assert_eq!(heard.get(), 2);
+}
+
+#[gtk4::test]
+fn restored_highlights_apply_to_the_first_rows_without_a_refresh() {
+    use crate::services::grid::{HighlightColor, HighlightRule, HighlightTarget};
+    use tablepro_core::filter::FilterValue;
+
+    let grid = Grid::open(two_text_columns(), Vec::new());
+    grid.grid
+        .set_columns([].into(), crate::ui::data_grid::GridSorting::None, None);
+    let mut row_rule = HighlightRule::new("name");
+    row_rule.value = Some(FilterValue::Single("B".to_owned()));
+    row_rule.color = HighlightColor::Red;
+    let mut cell_rule = HighlightRule::new("id");
+    cell_rule.value = Some(FilterValue::Single("1".to_owned()));
+    cell_rule.target = HighlightTarget::Cell;
+    cell_rule.color = HighlightColor::Green;
+    grid.grid.set_highlight_rules(vec![row_rule, cell_rule]);
+    grid.grid
+        .set_columns(grid.columns.clone(), crate::ui::data_grid::GridSorting::None, None);
+    grid.grid
+        .replace_rows(crate::ui::data_grid::test_grid::persisted(&two_text_values()), 0);
+    wait_until(WAIT, || grid.cells().len() == 4).expect("first rows bind");
+
+    assert!(grid.cell_of(2, 0).has_css_class(HighlightColor::Red.css_class()));
+    assert!(grid.cell_of(2, 1).has_css_class(HighlightColor::Red.css_class()));
+    assert!(grid.cell_of(1, 0).has_css_class(HighlightColor::Green.css_class()));
+    assert!(!grid.cell_of(1, 1).has_css_class(HighlightColor::Green.css_class()));
+    assert!(described(&grid.cell_of(2, 1)));
+}
+
+#[gtk4::test]
+fn a_cell_can_read_highlights_when_bound_before_it_is_parented() {
+    use crate::services::grid::{HighlightColor, HighlightRule};
+    use tablepro_core::filter::FilterValue;
+
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let mut rule = HighlightRule::new("name");
+    rule.value = Some(FilterValue::Single("A".to_owned()));
+    rule.color = HighlightColor::Red;
+    grid.grid.set_highlight_rules(vec![rule]);
+    let cell = GridCell::new(Rc::new(ColumnPaint {
+        column: grid.columns[1].clone(),
+        grid: grid.grid.downgrade(),
+        tracked: grid.grid.tracked(),
+        attributes: Rc::new(TextAttributes::new()),
+        preferences: Default::default(),
+        numbers: Cell::new(false),
+    }));
+    assert!(cell.parent().is_none());
+    cell.bind(&grid.grid.store().row(0).expect("first row"));
+    assert!(cell.has_css_class(HighlightColor::Red.css_class()));
+    assert!(described(&cell));
+    cell.unbind();
+    let owner = grid.grid.downgrade();
+    drop(grid);
+    drain_main_context();
+    assert!(owner.upgrade().is_none(), "cell paint kept the grid alive");
+}
+
+#[gtk4::test]
 fn null_text_reaches_every_grid_and_stays_with_its_settings() {
     let editable = Grid::open(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
     let settings = editable.grid.config().expect("configured grid").settings.clone();
@@ -606,4 +745,114 @@ fn row_height_preferences_change_the_allocated_row_height() {
     wait_until(WAIT, || row.height() == normal).expect("normal rows restore their original height");
     assert_eq!(row_widget(&cell), row);
     assert_eq!(grid.cell_of(1, 1), cell);
+}
+
+#[gtk4::test]
+fn date_formats_update_every_grid_without_crossing_settings_backends() {
+    use tablepro_core::value::Temporal;
+
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).expect("a date");
+    let columns = || vec![named("id", "integer", true), named("day", "date", false)];
+    let values = vec![vec![Value::Int(1), Value::Date(Temporal::Finite(day))]];
+    let first = Grid::open(columns(), values.clone());
+    let settings = first.grid.config().expect("configured grid").settings.clone();
+    let shared = || {
+        Grid::build(
+            GridSpec {
+                settings: Some(settings.clone()),
+                ..GridSpec::results(columns())
+            },
+            results(&values),
+        )
+    };
+    let second = shared();
+    let isolated = Grid::open(columns(), values.clone());
+    let first_cell = first.cell_of(1, 1);
+    let second_cell = second.cell_at(0, 1);
+    assert_eq!(Grid::display_text(&first_cell), "2026-11-08");
+    assert_eq!(Grid::display_text(&second_cell), "2026-11-08");
+
+    settings.set_date_format("eu-short").expect("choose European dates");
+    drain_main_context();
+    assert_eq!(Grid::display_text(&first_cell), "08/11/2026");
+    assert_eq!(Grid::display_text(&second_cell), "08/11/2026");
+    assert_eq!(Grid::display_text(&isolated.cell_of(1, 1)), "2026-11-08");
+    let reopened = shared();
+    assert_eq!(Grid::display_text(&reopened.cell_at(0, 1)), "08/11/2026");
+
+    settings.set_date_format("us-short").expect("choose US dates");
+    drain_main_context();
+    assert_eq!(Grid::display_text(&first_cell), "11/08/2026");
+    assert_eq!(Grid::display_text(&second_cell), "11/08/2026");
+    assert_eq!(Grid::display_text(&reopened.cell_at(0, 1)), "11/08/2026");
+}
+
+fn marked_value(text: &str) -> Grid {
+    Grid::open(
+        two_text_columns(),
+        vec![vec![Value::Int(1), Value::Text(text.to_owned())]],
+    )
+}
+
+#[gtk4::test]
+fn cells_mark_invisible_characters_until_preferences_turn_it_off() {
+    let grid = marked_value("a\u{200b}b\u{a0}c\nd\te f");
+
+    let cell = grid.cell_of(1, 1);
+    assert_eq!(Grid::display_text(&cell), "aZWSPb\u{a0}cLFd\te f");
+    assert!(has_attribute(&cell, pango::AttrType::Background));
+    assert!(has_attribute(&cell, pango::AttrType::Scale));
+
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    settings.set_show_invisible_characters(false).expect("store the flag");
+    drain_main_context();
+    let cell = grid.cell_of(1, 1);
+    assert_eq!(Grid::display_text(&cell), "a\u{200b}b\u{a0}c\nd\te f");
+    assert!(!has_attribute(&cell, pango::AttrType::Background));
+
+    settings.set_show_invisible_characters(true).expect("store the flag");
+    drain_main_context();
+    assert_eq!(Grid::display_text(&grid.cell_of(1, 1)), "aZWSPb\u{a0}cLFd\te f");
+}
+
+#[gtk4::test]
+fn a_cell_with_nothing_to_mark_draws_its_value_as_it_is() {
+    let grid = marked_value("plain text");
+
+    let cell = grid.cell_of(1, 1);
+    assert_eq!(Grid::display_text(&cell), "plain text");
+    assert!(!has_attribute(&cell, pango::AttrType::Background));
+}
+
+#[gtk4::test]
+fn the_inline_editor_marks_invisible_characters_and_keeps_its_text() {
+    let grid = marked_value("a\u{200b}b");
+    let cell = grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&cell));
+    let field = grid.grid.edit().open_text().expect("an inline editor");
+    let shown = |field: &gtk::Text| -> Vec<(u32, u32)> {
+        field
+            .attributes()
+            .map(|list| {
+                list.attributes()
+                    .iter()
+                    .filter(|attr| attr.type_() == pango::AttrType::Show)
+                    .map(|attr| (attr.start_index(), attr.end_index()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    assert_eq!(field.text(), "a\u{200b}b");
+    assert_eq!(shown(&field), [(1, 4)]);
+    field.set_text("plain");
+    assert!(shown(&field).is_empty());
+    field.set_text("x\u{1}");
+    assert_eq!(shown(&field), [(1, 2)]);
+
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+    settings.set_show_invisible_characters(false).expect("store the flag");
+    drain_main_context();
+    assert!(shown(&field).is_empty());
+    assert_eq!(field.text(), "x\u{1}");
 }

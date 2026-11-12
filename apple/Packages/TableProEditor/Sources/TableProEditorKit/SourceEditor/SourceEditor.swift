@@ -39,7 +39,8 @@ public struct SourceEditor: NSViewControllerRepresentable {
         foldProvider: LineFoldProvider? = nil,
         undoManager: CEUndoManager? = nil,
         coordinators: [any TextViewCoordinator] = [],
-        completionDelegate: CodeSuggestionDelegate? = nil
+        completionDelegate: CodeSuggestionDelegate? = nil,
+        documentID: AnyHashable? = nil
     ) {
         self.text = .binding(text)
         self.language = language
@@ -50,6 +51,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         self.undoManager = undoManager
         self.coordinators = coordinators
         self.completionDelegate = completionDelegate
+        self.documentID = documentID
     }
 
     /// Initializes a new source editor
@@ -96,6 +98,8 @@ public struct SourceEditor: NSViewControllerRepresentable {
     var undoManager: CEUndoManager?
     var coordinators: [any TextViewCoordinator]
     var completionDelegate: CodeSuggestionDelegate?
+    // While it stays the same, a new binding value is an edit Undo can take back; a new one starts a new history.
+    var documentID: AnyHashable?
 
     public typealias NSViewControllerType = TextViewController
 
@@ -135,6 +139,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
     public func makeCoordinator() -> Coordinator {
         Coordinator(
             text: text,
+            documentID: documentID,
             editorState: $state,
             highlightProviders: highlightProviders,
             textCoordinators: coordinators
@@ -166,7 +171,11 @@ public struct SourceEditor: NSViewControllerRepresentable {
 
         coordinator.textSync.text = text
         if case .binding(let binding) = text {
-            coordinator.textSync.applyRepresentableText(binding.wrappedValue, controller: controller)
+            coordinator.textSync.applyRepresentableText(
+                binding.wrappedValue,
+                documentID: documentID,
+                controller: controller
+            )
         }
 
         if !coordinator.phase.consumePendingEditorChange() {

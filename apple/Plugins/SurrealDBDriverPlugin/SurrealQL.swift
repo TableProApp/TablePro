@@ -46,6 +46,21 @@ public enum SurrealQL {
         }
     }
 
+    // `recordIdPart` backticks a uuid, an array and an object id like a string that needs quoting, so a backticked
+    // string is that string only when it cannot read as one of them.
+    public static func isRecoverableFromText(_ id: SurrealValue) -> Bool {
+        switch id {
+        case .int:
+            return true
+        case let .string(text):
+            if isSimpleIdentifier(text) { return true }
+            guard UUID(uuidString: text) == nil, let first = text.unicodeScalars.first else { return false }
+            return first != "[" && first != "{"
+        default:
+            return false
+        }
+    }
+
     public static func recordLiteral(_ record: SurrealRecordID) -> String {
         quoteIdentifier(record.table) + ":" + recordIdPart(record.id)
     }

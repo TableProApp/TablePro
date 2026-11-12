@@ -262,6 +262,43 @@ struct EditorTabOpenerTests {
         #expect(manager.tabs.isEmpty)
     }
 
+    @Test("A Table Health payload opens on the database it names, else the entry on screen, once each")
+    func tableHealthPayloadBindsItsDatabase() {
+        let connection = TestFixtures.makeConnection(database: "tenant_a", type: .postgresql)
+        let manager = QueryTabManager(containerTarget: .database, visibleContainer: "tenant_b")
+        let openTableHealth = { (database: String?) in
+            EditorTabOpener.apply(
+                EditorTabPayload(connectionId: connection.id, tabType: .tableHealth, databaseName: database),
+                to: manager,
+                connection: connection,
+                toolbarState: nil
+            )
+        }
+
+        openTableHealth(nil)
+        openTableHealth("analytics")
+        openTableHealth("tenant_b")
+
+        let databases = manager.tabs.map { $0.tableContext.databaseName }
+        #expect(databases == ["tenant_b", "analytics"])
+        #expect(manager.selectedTab?.tableContext.databaseName == "tenant_b")
+    }
+
+    @Test("A Table Health payload with no database to check opens nothing")
+    func tableHealthPayloadWithoutDatabaseOpensNothing() {
+        let connection = TestFixtures.makeConnection(database: "", type: .mysql)
+        let manager = QueryTabManager(containerTarget: .database)
+
+        EditorTabOpener.apply(
+            EditorTabPayload(connectionId: connection.id, tabType: .tableHealth),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+
+        #expect(manager.tabs.isEmpty)
+    }
+
     @Test("A query payload carrying a query opens a tab holding it")
     func queryPayloadOpensTab() {
         let connection = makeConnection()

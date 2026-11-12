@@ -124,6 +124,13 @@ final class ToolApprovalCenter {
         }
     }
 
+    // Not observable: safe for a view to read only because every change here lands in the same
+    // main-actor turn as the transcript change that draws or settles the card.
+    func isAwaiting(sessionId: UUID, toolUseId: String) -> Bool {
+        let key = ApprovalRequestID(sessionId: sessionId, toolUseId: toolUseId)
+        return expected.contains(key) || pending[key] != nil
+    }
+
     func hasPending(sessionId: UUID) -> Bool {
         pending.keys.contains { $0.sessionId == sessionId }
             || expected.contains { key in

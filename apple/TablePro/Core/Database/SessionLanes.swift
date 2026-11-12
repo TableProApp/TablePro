@@ -5,6 +5,18 @@
 
 import Foundation
 import os
+import TableProSQLGrammar
+
+// What a connection replaced or closed without the user asking took with it: an open transaction, what the user's
+// own statements set up, or both.
+internal struct SessionLoss: Equatable, Sendable {
+    var transaction: Bool
+    var state: SQLSessionStateKinds
+
+    func merging(_ other: SessionLoss) -> SessionLoss {
+        SessionLoss(transaction: transaction || other.transaction, state: state.union(other.state))
+    }
+}
 
 /// The user connections a session keeps open on databases other than the one it is browsing.
 ///
@@ -33,9 +45,24 @@ internal final class SessionLanes {
     /// Drivers being checked before use. A turn held on one of these is not a query proving the
     /// driver answers, so a switch back waits for the check instead of promoting it on trust.
     private var verifying: [ObjectIdentifier: [CheckedContinuation<Void, Never>]] = [:]
-    /// Databases whose connection died holding a transaction and was replaced. The next turn there
-    /// is refused once, so work meant to continue that transaction does not carry on without it.
-    private var lostTransactions: [UUID: Set<String>] = [:]
+    // Databases whose connection died holding a transaction or session state and was replaced. The next turn there is
+    // refused once, so work meant for that session does not carry on without it.
+    private var losses: [UUID: [String: SessionLoss]] = [:]
+
+    private struct Opened {
+        weak var driver: AnyObject?
+        var lastUsed: Date
+    }
+
+    /// Connections opened for SQL on a database the user never browsed. Unlike a database the user
+    /// switched away from, nothing on screen closes one, so it is closed once idle. Browsing its
+    /// database takes it off this list.
+    private var opened: [UUID: [String: Opened]] = [:]
+    // Databases whose opened connection was closed for being idle. Work queued for one reopens it. One holding a
+    // transaction or session state the user's statements set up is never closed idle.
+    private var closedIdle: [UUID: Set<String>] = [:]
+
+    internal static let openedIdleTimeout: TimeInterval = MetadataConnectionPool.idleTimeout
 
     /// Opens the connection for a database the session has not browsed yet. Replaced under test,
     /// where plugins never load and no server is there to dial.
@@ -43,6 +70,9 @@ internal final class SessionLanes {
 
     /// Told after a parked connection closes, which ends any transaction it held.
     internal var onClose: (@MainActor (UUID) -> Void)?
+
+    // What the user's statements set up on a driver, from the ledger the session owns.
+    internal var recordedState: (@MainActor (DatabaseDriver, UUID) -> SQLSessionStateKinds)?
 
     internal init(opener: Opener? = nil) {
         self.opener = opener ?? { scope in
@@ -67,6 +97,10 @@ internal final class SessionLanes {
     internal func park(_ driver: DatabaseDriver, database: String, for connectionId: UUID) {
         let replaced = parked[connectionId]?[database].flatMap { $0 !== driver ? $0 : nil }
         parked[connectionId, default: [:]][database] = driver
+        closedIdle[connectionId]?.remove(database)
+        if opened[connectionId]?[database]?.driver !== driver {
+            opened[connectionId]?.removeValue(forKey: database)
+        }
         if let replaced {
             replaced.disconnect()
             onClose?(connectionId)
@@ -79,6 +113,7 @@ internal final class SessionLanes {
         if parked[connectionId]?.isEmpty == true {
             parked.removeValue(forKey: connectionId)
         }
+        opened[connectionId]?.removeValue(forKey: database)
         return driver
     }
 
@@ -91,6 +126,7 @@ internal final class SessionLanes {
         if supersedingOpens {
             generations[connectionId, default: 0] &+= 1
         }
+        closedIdle[connectionId]?.remove(database)
         guard let driver = unpark(database: database, for: connectionId) else { return }
         Self.logger.info("closing parked connection connId=\(connectionId, privacy: .public)")
         verifiedAt.removeValue(forKey: ObjectIdentifier(driver))
@@ -101,11 +137,13 @@ internal final class SessionLanes {
     /// Closes every parked connection of a session. A disconnect ends them, and so does a rebuilt
     /// transport: they were dialed through the tunnel port that is going away. Opens still in flight
     /// lose their generation, so one that lands afterwards closes its own driver.
-    internal func closeAll(for connectionId: UUID, keepingLostTransactions: Bool = false) {
+    internal func closeAll(for connectionId: UUID, keepingLosses: Bool = false) {
         generations[connectionId, default: 0] &+= 1
         let drivers = parked.removeValue(forKey: connectionId) ?? [:]
-        if !keepingLostTransactions {
-            lostTransactions.removeValue(forKey: connectionId)
+        opened.removeValue(forKey: connectionId)
+        closedIdle.removeValue(forKey: connectionId)
+        if !keepingLosses {
+            losses.removeValue(forKey: connectionId)
         }
         for driver in drivers.values {
             verifiedAt.removeValue(forKey: ObjectIdentifier(driver))
@@ -173,29 +211,85 @@ internal final class SessionLanes {
         }
     }
 
-    internal func markTransactionLost(database: String, for connectionId: UUID) {
-        lostTransactions[connectionId, default: []].insert(database)
+    internal func markLost(
+        database: String,
+        transaction: Bool = false,
+        state: SQLSessionStateKinds = [],
+        for connectionId: UUID
+    ) {
+        guard transaction || !state.isEmpty else { return }
+        let loss = SessionLoss(transaction: transaction, state: state)
+        losses[connectionId, default: [:]][database] = losses[connectionId]?[database]?.merging(loss) ?? loss
+        Self.logger.info(
+            "noted a lost session connId=\(connectionId, privacy: .public) transaction=\(transaction) kinds=\(state.rawValue)"
+        )
     }
 
-    internal func hasTransactionLoss(database: String, for connectionId: UUID) -> Bool {
-        lostTransactions[connectionId]?.contains(database) ?? false
+    internal func hasLoss(database: String, for connectionId: UUID) -> Bool {
+        losses[connectionId]?[database] != nil
     }
 
-    /// Closes every parked connection when the transport under them is rebuilt, first noting each
-    /// one that was holding a transaction, so the next work on that database is told the server
-    /// rolled it back instead of quietly starting over on a new connection.
-    internal func closeAllNotingLostTransactions(for connectionId: UUID) async {
+    // Closes every parked connection when the transport under them is rebuilt, first noting each one that held a
+    // transaction or session state, so the next work on that database is told what the server dropped instead of
+    // quietly starting over on a new connection.
+    internal func closeAllNotingLosses(for connectionId: UUID) async {
         for (database, driver) in parked[connectionId] ?? [:] {
             let held = await driver.heldSessionTransactionState()
-            if !held.permitsAppTransaction {
-                lostTransactions[connectionId, default: []].insert(database)
-            }
+            markLost(
+                database: database,
+                transaction: !held.permitsAppTransaction,
+                state: recordedState?(driver, connectionId) ?? [],
+                for: connectionId
+            )
         }
-        closeAll(for: connectionId, keepingLostTransactions: true)
+        closeAll(for: connectionId, keepingLosses: true)
     }
 
-    /// Reports a lost transaction once, clearing it.
-    internal func takeTransactionLoss(database: String, for connectionId: UUID) -> Bool {
-        lostTransactions[connectionId]?.remove(database) != nil
+    // Reported once, whole, to the first turn that owns session state, as a lost transaction always was.
+    internal func takeLoss(database: String, for connectionId: UUID) -> SessionLoss? {
+        let loss = losses[connectionId]?.removeValue(forKey: database)
+        if losses[connectionId]?.isEmpty == true {
+            losses.removeValue(forKey: connectionId)
+        }
+        return loss
+    }
+
+    // A connection with one driver for every database lost the session whichever name it was noted under.
+    internal func takeAnyLoss(for connectionId: UUID) -> (database: String, loss: SessionLoss)? {
+        guard let noted = losses.removeValue(forKey: connectionId), let database = noted.keys.min() else { return nil }
+        let loss = noted.values.reduce(SessionLoss(transaction: false, state: [])) { $0.merging($1) }
+        return (database: database, loss: loss)
+    }
+
+    internal func markOpened(_ driver: DatabaseDriver, database: String, for connectionId: UUID, at date: Date = Date()) {
+        guard parked[connectionId]?[database] === driver else { return }
+        opened[connectionId, default: [:]][database] = Opened(driver: driver, lastUsed: date)
+    }
+
+    internal func isOpened(database: String, for connectionId: UUID) -> Bool {
+        opened[connectionId]?[database] != nil
+    }
+
+    internal func noteOpenedUse(database: String, for connectionId: UUID, at date: Date = Date()) {
+        opened[connectionId]?[database]?.lastUsed = date
+    }
+
+    /// Least recently used first.
+    internal func openedLanes(for connectionId: UUID) -> [(database: String, driver: DatabaseDriver, lastUsed: Date)] {
+        (opened[connectionId] ?? [:])
+            .compactMap { database, entry in
+                guard let driver = parked[connectionId]?[database], entry.driver === driver else { return nil }
+                return (database, driver, entry.lastUsed)
+            }
+            .sorted { $0.lastUsed < $1.lastUsed }
+    }
+
+    internal func closeIdle(database: String, for connectionId: UUID) {
+        close(database: database, for: connectionId, supersedingOpens: false)
+        closedIdle[connectionId, default: []].insert(database)
+    }
+
+    internal func wasClosedIdle(database: String, for connectionId: UUID) -> Bool {
+        closedIdle[connectionId]?.contains(database) ?? false
     }
 }

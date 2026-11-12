@@ -122,312 +122,295 @@
                       <object class="GtkSeparator"/>
                     </child>
                     <child>
-                      <object class="GtkPaned">
+                      <object class="GtkBox">
                         <property name="orientation">vertical</property>
                         <property name="vexpand">true</property>
-                        <property name="shrink-start-child">false</property>
-                        <property name="shrink-end-child">false</property>
-                        <property name="start-child">
+                        <!-- On a row of two hundred columns, the only way to a field. -->
+                        <child>
                           <object class="GtkBox">
-                            <property name="orientation">vertical</property>
-                            <!-- On a row of two hundred columns, the only way to a field. -->
+                            <property name="spacing">6</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
                             <child>
-                              <object class="GtkBox">
-                                <property name="spacing">6</property>
-                                <property name="margin-top">6</property>
-                                <property name="margin-bottom">6</property>
-                                <property name="margin-start">12</property>
-                                <property name="margin-end">12</property>
-                                <child>
-                                  <object class="GtkSearchEntry" id="field_search">
-                                    <property name="hexpand">true</property>
-                                    <property name="placeholder-text" translatable="yes">Search fields</property>
-                                    <accessibility>
-                                      <property name="label" translatable="yes">Search fields</property>
-                                    </accessibility>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkToggleButton" id="edited_toggle">
-                                    <property name="icon-name">document-edit-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Show edited fields only</property>
-                                    <accessibility>
-                                      <property name="label" translatable="yes">Show edited fields only</property>
-                                    </accessibility>
-                                  </object>
-                                </child>
+                              <object class="GtkSearchEntry" id="field_search">
+                                <property name="hexpand">true</property>
+                                <property name="placeholder-text" translatable="yes">Search fields</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Search fields</property>
+                                </accessibility>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkStack" id="field_results">
-                                <property name="vexpand">true</property>
-                                <child>
-                                  <object class="GtkStackPage">
-                                    <property name="name">fields</property>
-                                    <property name="child">
-                                      <object class="GtkScrolledWindow">
-                                        <property name="hscrollbar-policy">never</property>
-                                        <property name="min-content-height">120</property>
-                                        <property name="child">
-                                          <object class="GtkListView" id="field_list">
-                                            <accessibility>
-                                              <property name="label" translatable="yes">Fields</property>
-                                            </accessibility>
-                                          </object>
-                                        </property>
-                                      </object>
-                                    </property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkStackPage">
-                                    <property name="name">empty</property>
-                                    <property name="child">
-                                      <object class="GtkLabel">
-                                        <property name="label" translatable="yes">No Matching Fields</property>
-                                        <property name="wrap">true</property>
-                                        <property name="margin-start">12</property>
-                                        <property name="margin-end">12</property>
-                                        <style>
-                                          <class name="dimmed"/>
-                                        </style>
-                                      </object>
-                                    </property>
-                                  </object>
-                                </child>
+                              <object class="GtkToggleButton" id="edited_toggle">
+                                <property name="icon-name">document-edit-symbolic</property>
+                                <property name="tooltip-text" translatable="yes">Show edited fields only</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Show edited fields only</property>
+                                </accessibility>
                               </object>
                             </child>
                           </object>
-                        </property>
-                        <property name="end-child">
-                          <object class="GtkBox">
-                            <property name="orientation">vertical</property>
+                        </child>
+                        <child>
+                          <object class="GtkStack" id="field_results">
+                            <property name="vexpand">true</property>
                             <child>
-                              <object class="GtkBox">
-                                <property name="spacing">6</property>
-                                <property name="margin-top">6</property>
-                                <property name="margin-bottom">6</property>
-                                <property name="margin-start">12</property>
-                                <property name="margin-end">6</property>
-                                <child>
-                                  <object class="GtkLabel" id="field_label">
-                                    <property name="hexpand">true</property>
-                                    <property name="xalign">0</property>
-                                    <property name="ellipsize">end</property>
-                                    <style>
-                                      <class name="caption-heading"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <!-- No icon: the menu button's own arrow, as a drop-down shows. -->
-                                  <object class="GtkMenuButton" id="choice_button">
-                                    <property name="visible">false</property>
-                                    <property name="tooltip-text" translatable="yes">Pick a Value</property>
-                                    <accessibility>
-                                      <property name="label" translatable="yes">Pick a Value</property>
-                                    </accessibility>
-                                    <style>
-                                      <class name="flat"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkMenuButton" id="calendar_button">
-                                    <property name="icon-name">x-office-calendar-symbolic</property>
-                                    <property name="visible">false</property>
-                                    <property name="tooltip-text" translatable="yes">Pick a Date</property>
-                                    <accessibility>
-                                      <property name="label" translatable="yes">Pick a Date</property>
-                                    </accessibility>
-                                    <style>
-                                      <class name="flat"/>
-                                    </style>
-                                    <property name="popover">
-                                      <object class="GtkPopover" id="calendar_popover">
-                                        <property name="child">
-                                          <object class="GtkCalendar" id="calendar">
-                                            <accessibility>
-                                              <property name="label" translatable="yes">Pick a Date</property>
-                                            </accessibility>
-                                          </object>
-                                        </property>
-                                      </object>
-                                    </property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkMenuButton" id="clock_button">
-                                    <property name="icon-name">preferences-system-time-symbolic</property>
-                                    <property name="visible">false</property>
-                                    <property name="tooltip-text" translatable="yes">Pick a Time</property>
-                                    <accessibility>
-                                      <property name="label" translatable="yes">Pick a Time</property>
-                                    </accessibility>
-                                    <style>
-                                      <class name="flat"/>
-                                    </style>
-                                    <property name="popover">
-                                      <object class="GtkPopover" id="clock_popover">
-                                        <property name="default-widget">clock_set</property>
-                                        <property name="child">
-                                          <object class="GtkBox">
-                                            <property name="spacing">6</property>
-                                            <property name="margin-top">6</property>
-                                            <property name="margin-bottom">6</property>
-                                            <property name="margin-start">6</property>
-                                            <property name="margin-end">6</property>
-                                            <child>
-                                              <object class="GtkSpinButton" id="hour">
-                                                <property name="orientation">vertical</property>
-                                                <property name="numeric">true</property>
-                                                <property name="wrap">true</property>
-                                                <property name="xalign">0.5</property>
-                                                <property name="activates-default">true</property>
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="upper">23</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">6</property>
-                                                  </object>
-                                                </property>
-                                                <accessibility>
-                                                  <property name="label" translatable="yes" context="clock">Hour</property>
-                                                </accessibility>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="GtkLabel">
-                                                <property name="label">:</property>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="GtkSpinButton" id="minute">
-                                                <property name="orientation">vertical</property>
-                                                <property name="numeric">true</property>
-                                                <property name="wrap">true</property>
-                                                <property name="xalign">0.5</property>
-                                                <property name="activates-default">true</property>
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="upper">59</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">10</property>
-                                                  </object>
-                                                </property>
-                                                <accessibility>
-                                                  <property name="label" translatable="yes" context="clock">Minute</property>
-                                                </accessibility>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="GtkLabel">
-                                                <property name="label">:</property>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="GtkSpinButton" id="second">
-                                                <property name="orientation">vertical</property>
-                                                <property name="numeric">true</property>
-                                                <property name="wrap">true</property>
-                                                <property name="xalign">0.5</property>
-                                                <property name="activates-default">true</property>
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="upper">59</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">10</property>
-                                                  </object>
-                                                </property>
-                                                <accessibility>
-                                                  <property name="label" translatable="yes" context="clock">Second</property>
-                                                </accessibility>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="GtkButton" id="clock_set">
-                                                <property name="label" translatable="yes" context="clock">Set</property>
-                                                <property name="valign">center</property>
-                                                <property name="margin-start">6</property>
-                                                <style>
-                                                  <class name="suggested-action"/>
-                                                </style>
-                                              </object>
-                                            </child>
-                                          </object>
-                                        </property>
-                                      </object>
-                                    </property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkMenuButton" id="value_menu_button">
-                                    <property name="icon-name">view-more-symbolic</property>
-                                    <property name="menu-model">value_menu</property>
-                                    <property name="tooltip-text" translatable="yes">More Actions</property>
-                                    <accessibility>
-                                      <property name="label" translatable="yes">More Actions</property>
-                                    </accessibility>
-                                    <style>
-                                      <class name="flat"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkPicture" id="value_picture">
-                                <property name="visible">false</property>
-                                <property name="content-fit">scale-down</property>
-                                <property name="margin-top">6</property>
-                                <property name="margin-start">12</property>
-                                <property name="margin-end">12</property>
-                                <property name="alternative-text" translatable="yes">Image preview</property>
-                              </object>
-                            </child>
-                            <child>
-                              <!-- A text view has no placeholder of its own, so
-                                   one is drawn over it while it is empty. -->
-                              <object class="GtkOverlay">
-                                <property name="vexpand">true</property>
+                              <object class="GtkStackPage">
+                                <property name="name">fields</property>
                                 <property name="child">
-                                  <object class="GtkScrolledWindow" id="value_scroller">
+                                  <object class="GtkScrolledWindow">
                                     <property name="hscrollbar-policy">never</property>
                                     <property name="min-content-height">120</property>
                                     <property name="child">
-                                      <object class="GtkSourceView" id="value_view">
-                                        <property name="monospace">true</property>
-                                        <property name="wrap-mode">word-char</property>
-                                        <property name="auto-indent">true</property>
-                                        <property name="top-margin">6</property>
-                                        <property name="bottom-margin">6</property>
-                                        <property name="left-margin">12</property>
-                                        <property name="right-margin">12</property>
-                                        <property name="buffer">
-                                          <object class="GtkSourceBuffer" id="value_buffer"/>
-                                        </property>
+                                      <object class="GtkListView" id="field_list">
+                                        <!-- Each field has buttons of its own, so Tab
+                                             leaves the list after them, and the
+                                             arrows go from field to field. -->
+                                        <property name="tab-behavior">item</property>
+                                        <accessibility>
+                                          <property name="label" translatable="yes">Fields</property>
+                                        </accessibility>
                                       </object>
                                     </property>
                                   </object>
                                 </property>
-                                <child type="overlay">
-                                  <object class="GtkLabel" id="placeholder_label">
-                                    <property name="halign">start</property>
-                                    <property name="valign">start</property>
-                                    <property name="margin-top">6</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkStackPage">
+                                <property name="name">empty</property>
+                                <property name="child">
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">No Matching Fields</property>
+                                    <property name="wrap">true</property>
                                     <property name="margin-start">12</property>
-                                    <property name="can-target">false</property>
-                                    <property name="visible">false</property>
-                                    <property name="accessible-role">presentation</property>
-                                    <attributes>
-                                      <attribute name="style" value="italic"/>
-                                    </attributes>
+                                    <property name="margin-end">12</property>
                                     <style>
-                                      <class name="monospace"/>
                                       <class name="dimmed"/>
                                     </style>
                                   </object>
-                                </child>
+                                </property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <!-- The value editor and its pickers wait here while no
+                           field's row holds them. -->
+                      <object class="GtkBox" id="editor_dock">
+                        <property name="visible">false</property>
+                        <child>
+                          <object class="GtkBox" id="editor_tools">
+                            <child>
+                              <!-- No icon: the menu button's own arrow, as a drop-down shows. -->
+                              <object class="GtkMenuButton" id="choice_button">
+                                <property name="visible">false</property>
+                                <property name="tooltip-text" translatable="yes">Pick a Value</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Pick a Value</property>
+                                </accessibility>
+                                <style>
+                                  <class name="flat"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkMenuButton" id="calendar_button">
+                                <property name="icon-name">x-office-calendar-symbolic</property>
+                                <property name="visible">false</property>
+                                <property name="tooltip-text" translatable="yes">Pick a Date</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Pick a Date</property>
+                                </accessibility>
+                                <style>
+                                  <class name="flat"/>
+                                </style>
+                                <property name="popover">
+                                  <object class="GtkPopover" id="calendar_popover">
+                                    <property name="child">
+                                      <object class="GtkCalendar" id="calendar">
+                                        <accessibility>
+                                          <property name="label" translatable="yes">Pick a Date</property>
+                                        </accessibility>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkMenuButton" id="clock_button">
+                                <property name="icon-name">preferences-system-time-symbolic</property>
+                                <property name="visible">false</property>
+                                <property name="tooltip-text" translatable="yes">Pick a Time</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Pick a Time</property>
+                                </accessibility>
+                                <style>
+                                  <class name="flat"/>
+                                </style>
+                                <property name="popover">
+                                  <object class="GtkPopover" id="clock_popover">
+                                    <property name="default-widget">clock_set</property>
+                                    <property name="child">
+                                      <object class="GtkBox">
+                                        <property name="spacing">6</property>
+                                        <property name="margin-top">6</property>
+                                        <property name="margin-bottom">6</property>
+                                        <property name="margin-start">6</property>
+                                        <property name="margin-end">6</property>
+                                        <child>
+                                          <object class="GtkSpinButton" id="hour">
+                                            <property name="orientation">vertical</property>
+                                            <property name="numeric">true</property>
+                                            <property name="wrap">true</property>
+                                            <property name="xalign">0.5</property>
+                                            <property name="activates-default">true</property>
+                                            <property name="adjustment">
+                                              <object class="GtkAdjustment">
+                                                <property name="upper">23</property>
+                                                <property name="step-increment">1</property>
+                                                <property name="page-increment">6</property>
+                                              </object>
+                                            </property>
+                                            <accessibility>
+                                              <property name="label" translatable="yes" context="clock">Hour</property>
+                                            </accessibility>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkLabel">
+                                            <property name="label">:</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkSpinButton" id="minute">
+                                            <property name="orientation">vertical</property>
+                                            <property name="numeric">true</property>
+                                            <property name="wrap">true</property>
+                                            <property name="xalign">0.5</property>
+                                            <property name="activates-default">true</property>
+                                            <property name="adjustment">
+                                              <object class="GtkAdjustment">
+                                                <property name="upper">59</property>
+                                                <property name="step-increment">1</property>
+                                                <property name="page-increment">10</property>
+                                              </object>
+                                            </property>
+                                            <accessibility>
+                                              <property name="label" translatable="yes" context="clock">Minute</property>
+                                            </accessibility>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkLabel">
+                                            <property name="label">:</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkSpinButton" id="second">
+                                            <property name="orientation">vertical</property>
+                                            <property name="numeric">true</property>
+                                            <property name="wrap">true</property>
+                                            <property name="xalign">0.5</property>
+                                            <property name="activates-default">true</property>
+                                            <property name="adjustment">
+                                              <object class="GtkAdjustment">
+                                                <property name="upper">59</property>
+                                                <property name="step-increment">1</property>
+                                                <property name="page-increment">10</property>
+                                              </object>
+                                            </property>
+                                            <accessibility>
+                                              <property name="label" translatable="yes" context="clock">Second</property>
+                                            </accessibility>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkButton" id="clock_set">
+                                            <property name="label" translatable="yes" context="clock">Set</property>
+                                            <property name="valign">center</property>
+                                            <property name="margin-start">6</property>
+                                            <style>
+                                              <class name="suggested-action"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox" id="editor_box">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">6</property>
+                            <child>
+                              <object class="GtkPicture" id="value_picture">
+                                <property name="visible">false</property>
+                                <property name="content-fit">scale-down</property>
+                                <property name="alternative-text" translatable="yes">Image preview</property>
+                              </object>
+                            </child>
+                            <child>
+                              <!-- Clips the source view's background to the frame's
+                                   rounded corners. -->
+                              <object class="GtkFrame">
+                                <property name="overflow">hidden</property>
+                                <property name="child">
+                                  <!-- A text view has no placeholder of its own, so
+                                       one is drawn over it while it is empty. -->
+                                  <object class="GtkOverlay">
+                                    <property name="child">
+                                      <object class="GtkScrolledWindow" id="value_scroller">
+                                        <property name="hscrollbar-policy">never</property>
+                                        <!-- As tall as the value up to a cap, so a field's
+                                             row grows with what it holds. -->
+                                        <property name="propagate-natural-height">true</property>
+                                        <property name="max-content-height">320</property>
+                                        <property name="child">
+                                          <object class="GtkSourceView" id="value_view">
+                                            <property name="monospace">true</property>
+                                            <property name="wrap-mode">word-char</property>
+                                            <property name="auto-indent">true</property>
+                                            <property name="top-margin">6</property>
+                                            <property name="bottom-margin">6</property>
+                                            <property name="left-margin">12</property>
+                                            <property name="right-margin">12</property>
+                                            <property name="buffer">
+                                              <object class="GtkSourceBuffer" id="value_buffer"/>
+                                            </property>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </property>
+                                    <child type="overlay">
+                                      <object class="GtkLabel" id="placeholder_label">
+                                        <property name="halign">start</property>
+                                        <property name="valign">start</property>
+                                        <property name="margin-top">6</property>
+                                        <property name="margin-start">12</property>
+                                        <property name="can-target">false</property>
+                                        <property name="visible">false</property>
+                                        <property name="accessible-role">presentation</property>
+                                        <attributes>
+                                          <attribute name="style" value="italic"/>
+                                        </attributes>
+                                        <style>
+                                          <class name="monospace"/>
+                                          <class name="dimmed"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </property>
                               </object>
                             </child>
                             <child>
@@ -436,17 +419,13 @@
                                 <property name="wrap">true</property>
                                 <property name="wrap-mode">word-char</property>
                                 <property name="visible">false</property>
-                                <property name="margin-top">6</property>
-                                <property name="margin-bottom">6</property>
-                                <property name="margin-start">12</property>
-                                <property name="margin-end">12</property>
                                 <style>
                                   <class name="caption"/>
                                 </style>
                               </object>
                             </child>
                           </object>
-                        </property>
+                        </child>
                       </object>
                     </child>
                   </object>

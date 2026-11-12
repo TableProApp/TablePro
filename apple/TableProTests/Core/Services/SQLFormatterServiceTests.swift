@@ -1235,6 +1235,25 @@ struct SQLFormatterServiceTests {
         )
     }
 
+    @Test("A pg_dump COPY block keeps its rows, its \\. line and the statements after it")
+    func copyBlockStaysAsWritten() throws {
+        let copy = "COPY public.t (a, b) FROM stdin;\n\tit's\n2\tselect -- x\n\\."
+        let sql = "\\restrict k\n\(copy)\nselect 1;"
+        let formatted = try formatter.format(sql, dialect: .postgresql, options: .default).formattedSQL
+        #expect(formatted.contains(copy + "\n"))
+        #expect(formatted.hasPrefix("\\restrict k\n"))
+        let grammar = DatabaseType.postgresql.lexicalGrammar
+        #expect(SQLStatementScanner.executableStatements(in: formatted, grammar: grammar).map { $0.sql.uppercased() } == [
+            "COPY PUBLIC.T (A, B) FROM STDIN", "SELECT 1",
+        ])
+    }
+
+    @Test("COPY rows that end the text keep a trailing tab")
+    func copyRowsAtTheEndKeepTheirTab() throws {
+        let sql = "COPY t (a, b) FROM stdin;\n1\t"
+        #expect(try formatter.format(sql, dialect: .postgresql, options: .default).formattedSQL == sql)
+    }
+
     @Test("PostgreSQL operators stay whole")
     func postgresOperators() throws {
         try expectFormat(
@@ -2232,5 +2251,26 @@ struct SQLFormatterServiceTests {
             + "group by u.id having count(*) > 1 and sum(o.total) > 2 order by n desc"
         let first = try format(sql, options: options)
         #expect(try format(first, options: options) == first)
+    }
+
+    // MARK: - Account names and operator runs
+
+    @Test("A MySQL account name and a quoted user variable keep their @ unspaced")
+    func mysqlAccountNames() throws {
+        #expect(try format("grant all on db.* to 'app'@'%'").hasSuffix("'app'@'%'"))
+        #expect(try format("create definer=`root`@`localhost` view v as select 1").contains("`root`@`localhost`"))
+        #expect(try format("create user admin@localhost").hasSuffix("admin@localhost"))
+        #expect(try format("select @`my var`").hasSuffix("@`my var`"))
+    }
+
+    @Test(
+        "A PostgreSQL operator outside the vocabulary is not split",
+        arguments: ["<#>", "<%", "%>", "&&&", "?-|", "<<|", "@-@"]
+    )
+    func postgresOperatorRun(symbol: String) throws {
+        let spaced = try formatter.format("select a \(symbol) b from t", dialect: .postgresql).formattedSQL
+        #expect(spaced.contains("a \(symbol) b"))
+        let glued = try formatter.format("select a\(symbol)b from t", dialect: .postgresql).formattedSQL
+        #expect(glued.contains("a \(symbol) b"))
     }
 }

@@ -333,4 +333,179 @@ struct DatabaseTreeNodeTests {
         #expect(groups.map(\.kind) == [.procedure])
         #expect(groups.allSatisfy { $0.schema == "HR" })
     }
+
+    @Test("A detail group and its rows sit under their table's id, apart from the same trigger under a schema")
+    func tableDetailIdsAreScopedToTheirTable() {
+        let orders = tableRef("orders")
+        let dotted = DatabaseTreeTableRef(
+            database: "shop", schema: nil, table: TableInfo(name: "b.c", type: .table, rowCount: 0, schema: "a")
+        )
+        let otherDotted = DatabaseTreeTableRef(
+            database: "shop", schema: nil, table: TableInfo(name: "c", type: .table, rowCount: 0, schema: "a.b")
+        )
+        let columns = DatabaseTreeTableDetailGroupRef(table: orders, kind: .columns)
+        let columnsId = DatabaseTreeNode.tableDetailGroupId(columns)
+        let ids = [
+            columnsId,
+            DatabaseTreeNode.tableDetailGroupId(DatabaseTreeTableDetailGroupRef(table: orders, kind: .indexes)),
+            DatabaseTreeNode.tableDetailGroupId(DatabaseTreeTableDetailGroupRef(table: tableRef("invoices"), kind: .columns)),
+            DatabaseTreeNode.tableDetailGroupId(DatabaseTreeTableDetailGroupRef(table: dotted, kind: .columns)),
+            DatabaseTreeNode.tableDetailGroupId(DatabaseTreeTableDetailGroupRef(table: otherDotted, kind: .columns)),
+            DatabaseTreeNode.tableId(orders),
+        ]
+
+        #expect(Set(ids).count == ids.count)
+        #expect(columnsId.hasPrefix(DatabaseTreeNode.tableId(orders)))
+
+        let trigger = TriggerInfo(name: "audit", timing: "AFTER", event: "INSERT", statement: "", table: "orders")
+        let schemaRow = DatabaseTreeNode.triggerId(DatabaseTreeTriggerRef(database: "shop", schema: "public", trigger: trigger))
+        let triggersId = DatabaseTreeNode.tableDetailGroupId(DatabaseTreeTableDetailGroupRef(table: orders, kind: .triggers))
+        #expect(DatabaseTreeNode.tableDetailId(groupId: triggersId, key: "audit") != schemaRow)
+        #expect(
+            DatabaseTreeNode.tableDetailId(groupId: columnsId, key: "status.loading")
+                != DatabaseTreeNode.statusId(parentId: columnsId, status: .loading)
+        )
+    }
+
+    @Test("Table Details opens every table but a sequence; partitions still follow their own option")
+    func expandabilityFollowsTheOptions() {
+        let plain = DatabaseTreeNode(id: "t", kind: .table(tableRef("users")))
+        let partitioned = DatabaseTreeNode(id: "p", kind: .table(partitionedRef("orders")))
+        let sequence = DatabaseTreeNode(id: "s", kind: .table(DatabaseTreeTableRef(
+            database: "shop", schema: "public", table: TableInfo(name: "order_ids", type: .sequence, rowCount: nil)
+        )))
+        let subpartitioned = DatabaseTreeNode(id: "sp", kind: .partition(partitionRef("p1", isSubpartitioned: true)))
+
+        #expect(!plain.isExpandable(showsPartitions: true, showsTableDetails: false))
+        #expect(plain.isExpandable(showsPartitions: false, showsTableDetails: true))
+        #expect(partitioned.isExpandable(showsPartitions: true, showsTableDetails: false))
+        #expect(!partitioned.isExpandable(showsPartitions: false, showsTableDetails: false))
+        #expect(partitioned.isExpandable(showsPartitions: false, showsTableDetails: true))
+        #expect(!sequence.isExpandable(showsPartitions: true, showsTableDetails: true))
+        #expect(subpartitioned.isExpandable(showsPartitions: true, showsTableDetails: true))
+        #expect(!subpartitioned.isExpandable(showsPartitions: false, showsTableDetails: true))
+    }
+
+    @Test("An Option-click above a table opens it only while Table Details is off, and never a detail group")
+    func optionClickReachesTablesOnlyWithoutDetails() {
+        let partitioned = DatabaseTreeNode(id: "p", kind: .table(partitionedRef("orders")))
+        let group = DatabaseTreeNode(
+            id: "g", kind: .tableDetailGroup(DatabaseTreeTableDetailGroupRef(table: tableRef("orders"), kind: .columns))
+        )
+        let subpartitioned = DatabaseTreeNode(id: "sp", kind: .partition(partitionRef("p1", isSubpartitioned: true)))
+        let tablesGroup = DatabaseTreeNode(id: "o", kind: .containerObjectKindSection(objectGroup()))
+
+        #expect(partitioned.opensWithAncestor(showsTableDetails: false))
+        #expect(!partitioned.opensWithAncestor(showsTableDetails: true))
+        #expect(!group.opensWithAncestor(showsTableDetails: true))
+        #expect(subpartitioned.opensWithAncestor(showsTableDetails: false))
+        #expect(tablesGroup.opensWithAncestor(showsTableDetails: true))
+    }
+
+    @Test("A detail group expands like an object group, a detail row is a leaf, and a click opens neither")
+    func detailRowShapes() {
+        let orders = tableRef("orders")
+        let groupKind = DatabaseTreeNode.Kind.tableDetailGroup(DatabaseTreeTableDetailGroupRef(table: orders, kind: .indexes))
+        let detailKind = DatabaseTreeNode.Kind.tableDetail(
+            DatabaseTreeTableDetailRef(table: orders, item: .column(TestFixtures.makeColumnInfo(name: "total")))
+        )
+        let group = DatabaseTreeNode(id: "g", kind: groupKind)
+        let detail = DatabaseTreeNode(id: "d", kind: detailKind)
+
+        #expect(group.isExpandable)
+        #expect(!detail.isExpandable)
+        #expect(!group.isGroupRow)
+        #expect(!detail.isGroupRow)
+        #expect(!group.isContainer)
+        #expect(group.containerRef(systemSchemas: []) == nil)
+        #expect(group.tableRef == nil)
+        #expect(detail.tableRef == nil)
+        #expect(DatabaseTreeSelection.isSelectable(groupKind))
+        #expect(DatabaseTreeSelection.isSelectable(detailKind))
+        #expect(DatabaseTreeTypeSelect.matchString(for: groupKind) == String(localized: "Indexes"))
+        #expect(DatabaseTreeTypeSelect.matchString(for: detailKind) == "total")
+    }
+
+    // MARK: - Server objects
+
+    private let events = SidebarServerObjectKind(
+        id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+    )
+    private let extensions = SidebarServerObjectKind(
+        id: "extension", displayName: "Extension", pluralDisplayName: "Extensions", iconName: "puzzlepiece.extension",
+        scope: .database
+    )
+
+    @Test("A container kind's group follows Types in a container and carries the declared descriptor")
+    func containerKindGroupFollowsTypes() {
+        let groups = DatabaseTreeObjectGroupResolver.groups(
+            database: "shop",
+            schema: nil,
+            itemCounts: [.table: 2, .trigger: 1, .type: 1, .server(SidebarServerObjectKind(id: "event")): 3],
+            declared: [events]
+        )
+
+        #expect(groups.map { $0.kind } == [.table, .trigger, .type, .server(events)])
+        #expect(groups.last?.kind.pluralDisplayName == "Events")
+    }
+
+    @Test("A database kind's group lists beside the schemas only when it holds rows or failed")
+    func databaseKindGroupNeedsRowsOrFailure() {
+        let empty = DatabaseTreeObjectGroupResolver.groups(database: "app", schema: nil, itemCounts: [:], declared: [extensions])
+        #expect(empty.isEmpty)
+
+        let phases = DatabaseTreeSidePhases(
+            routines: .idle, triggers: nil, types: nil, serverObjects: ["extension": .failed("permission denied")]
+        )
+        let failed = DatabaseTreeObjectGroupResolver.groups(
+            database: "app",
+            schema: nil,
+            itemCounts: [:],
+            keeping: phases.failedKinds(among: [.server(extensions)]),
+            declared: [extensions]
+        )
+        #expect(failed.map { $0.kind } == [.server(extensions)])
+        #expect(phases.placeholder(for: .server(extensions)) == .error("permission denied"))
+    }
+
+    @Test("A server kind's phase is its own fetch's, and an undeclared kind reads as loaded")
+    func serverKindPhases() {
+        let phases = DatabaseTreeSidePhases(
+            routines: .loaded, triggers: .loaded, types: nil, serverObjects: ["event": .loading]
+        )
+
+        #expect(phases.phase(for: .server(events)) == .loading)
+        #expect(phases.phase(for: .server(extensions)) == .loaded)
+        #expect(phases.all == [.loaded, .loaded, .loading])
+        #expect(DatabaseTreeNode.Status.emptyContainer(sideStates: phases.all) == .loading)
+        #expect(phases.placeholder(for: .server(events)) == nil)
+    }
+
+    @Test("A server object row is a selectable leaf with an id of its own")
+    func serverObjectRowIdentity() {
+        let object = ServerObjectInfo(kindId: "event", name: "nightly", schema: "shop")
+        let ref = DatabaseTreeServerObjectRef(database: "shop", schema: "shop", kind: events, object: object)
+        let node = DatabaseTreeNode(id: DatabaseTreeNode.serverObjectId(ref), kind: .serverObject(ref))
+        let trigger = DatabaseTreeTriggerRef(
+            database: "shop", schema: "shop",
+            trigger: TriggerInfo(name: "nightly", timing: "AFTER", event: "INSERT", statement: "")
+        )
+
+        #expect(!node.isExpandable)
+        #expect(!node.isGroupRow)
+        #expect(!node.isContainer)
+        #expect(DatabaseTreeSelection.isSelectable(node.kind))
+        #expect(DatabaseTreeNode.serverObjectId(ref) != DatabaseTreeNode.triggerId(trigger))
+        #expect(DatabaseTreeDoubleClickResolver.resolve(node: node) == .openObjectSource(ref.objectRef))
+    }
+
+    @Test("A declared kind's group id spells its persistence name, and built-in ids are unchanged")
+    func serverGroupIdsUsePersistenceName() {
+        #expect(DatabaseTreeNode.objectKindSectionId(.table) == "kindSection\u{1}table")
+        #expect(
+            DatabaseTreeNode.containerObjectKindSectionId(objectGroup(kind: .materializedView))
+                == "containerKindSection\u{1}shop\u{1}public\u{1}materializedView"
+        )
+        #expect(DatabaseTreeNode.objectKindSectionId(.server(events)) == "kindSection\u{1}server.event")
+    }
 }

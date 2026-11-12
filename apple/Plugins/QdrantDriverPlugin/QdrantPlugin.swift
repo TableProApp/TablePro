@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProQdrantClient
 import TableProQdrantCore
 
 final class QdrantPlugin: NSObject, TableProPlugin, DriverPlugin, PluginDefaultSortProvider {

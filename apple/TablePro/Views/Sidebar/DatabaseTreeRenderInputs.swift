@@ -10,6 +10,7 @@ import Foundation
 struct DatabaseTreeRenderInputs: Equatable {
     typealias DatabaseKey = DatabaseTreeMetadataService.DatabaseKey
     typealias ObjectsKey = DatabaseTreeMetadataService.ObjectsKey
+    typealias ServerObjectsKey = DatabaseTreeMetadataService.ServerObjectsKey
 
     struct Rows<Element: Sendable>: Equatable {
         let phase: MetadataLoadPhase
@@ -77,8 +78,11 @@ struct DatabaseTreeRenderInputs: Equatable {
     let routines: [ObjectsKey: Rows<RoutineInfo>]
     let triggers: [ObjectsKey: Rows<TriggerInfo>]
     let types: [ObjectsKey: Rows<UserDefinedTypeInfo>]
+    let serverObjects: [ServerObjectsKey: Rows<ServerObjectInfo>]
     let currency: [ObjectsKey: Currency]
+    let serverObjectsCurrency: [ServerObjectsKey: Bool]
     let partitions: [DatabaseTreeMetadataService.PartitionsKey: Rows<PartitionInfo>]
+    let tableDetails: [DatabaseTreeMetadataService.TableDetailsKey: MetadataLoadState<TableDetailList>]
     let listings: [DatabaseKey: Listing]
     let listsRevision: Int
     let catalogGeneration: Int
@@ -87,6 +91,7 @@ struct DatabaseTreeRenderInputs: Equatable {
     let catalogRoutines: Rows<RoutineInfo>
     let catalogTriggers: Rows<TriggerInfo>
     let catalogTypes: Rows<UserDefinedTypeInfo>
+    let catalogServerObjects: [String: Rows<ServerObjectInfo>]
     let temporaryTables: [TemporaryTableStore.Key: TemporaryTables]
     let sidebar: Sidebar?
 
@@ -105,6 +110,15 @@ struct DatabaseTreeRenderInputs: Equatable {
         let routines = Self.slice(treeMetadata.routinesState, where: ownsObjects) { Rows($0) }
         let triggers = Self.slice(treeMetadata.triggersState, where: ownsObjects) { Rows($0) }
         let types = Self.slice(treeMetadata.typesState, where: ownsObjects) { Rows($0) }
+        let serverObjects = Self.slice(treeMetadata.serverObjectsState, where: { $0.connectionId == connectionId }) {
+            Rows($0)
+        }
+        var serverObjectsCurrency: [ServerObjectsKey: Bool] = [:]
+        for key in serverObjects.keys {
+            serverObjectsCurrency[key] = treeMetadata.isServerObjectsCurrent(
+                connectionId: connectionId, database: key.database, schema: key.schema, kindId: key.kindId
+            )
+        }
         var currency: [ObjectsKey: Currency] = [:]
         for key in Set(tables.keys).union(routines.keys).union(triggers.keys).union(types.keys) {
             currency[key] = Currency(
@@ -131,8 +145,11 @@ struct DatabaseTreeRenderInputs: Equatable {
         self.routines = routines
         self.triggers = triggers
         self.types = types
+        self.serverObjects = serverObjects
         self.currency = currency
+        self.serverObjectsCurrency = serverObjectsCurrency
         self.partitions = Self.slice(treeMetadata.partitionsState, where: { $0.connectionId == connectionId }) { Rows($0) }
+        self.tableDetails = Self.slice(treeMetadata.tableDetailsState, where: { $0.connectionId == connectionId }) { $0 }
         self.listings = listings
         self.listsRevision = treeMetadata.listsRevision(for: connectionId)
         self.catalogGeneration = schemaService.generationToken(for: connectionId)
@@ -140,6 +157,7 @@ struct DatabaseTreeRenderInputs: Equatable {
         self.catalogRoutines = Rows(schemaService.routinesLoadState(for: connectionId))
         self.catalogTriggers = Rows(schemaService.triggersLoadState(for: connectionId))
         self.catalogTypes = Rows(schemaService.userDefinedTypesLoadState(for: connectionId))
+        self.catalogServerObjects = schemaService.serverObjectStates(for: connectionId).mapValues { Rows($0) }
         self.temporaryTables = Self.slice(temporaryTables.listings, where: { $0.connectionId == connectionId }) {
             TemporaryTables(tables: SameRows(rows: $0.tables), session: $0.session)
         }

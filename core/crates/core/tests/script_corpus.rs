@@ -6,10 +6,10 @@ use sqlparser::dialect::{
     SQLiteDialect,
 };
 use sqlparser::tokenizer::{Token, Tokenizer, TokenizerError};
-use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{
     BatchErrorPolicy, LexicalSettings, OpenConstruct, ScriptDiagnostic, ScriptPlan, ScriptTokenKind, text_offsets,
 };
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 
 fn plan(grammar: SqlGrammar, text: &str) -> ScriptPlan {
     ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar))
@@ -131,6 +131,116 @@ fn duckdb_ends_an_escape_string_at_its_quote_whatever_follows() {
         ["SELECT E'x'\n'\\'", "DELETE FROM orders"]
     );
     assert_eq!(statements(SqlGrammar::PostgreSql, text), [text]);
+}
+
+// Measured on DuckDB 2.0.0: each of these spaces ended `varchar` and the DROP ran; each other unit kept the name.
+#[test]
+fn duckdb_ends_a_name_at_the_spaces_it_blanks_before_lexing() {
+    for space in [
+        "\u{a0}", "\u{2000}", "\u{2005}", "\u{2009}", "\u{200a}", "\u{200b}", "\u{202f}", "\u{205f}", "\u{2060}",
+        "\u{3000}", "\u{feff}",
+    ] {
+        let text = format!("SELECT varchar{space}E'\\''; DROP TABLE t; --'");
+        let first = format!("SELECT varchar{space}E'\\''");
+        assert_eq!(
+            statements(SqlGrammar::DuckDb, &text),
+            [first.as_str(), "DROP TABLE t"],
+            "{space:?}"
+        );
+        assert_eq!(statements(SqlGrammar::PostgreSql, &text), [text.as_str()], "{space:?}");
+    }
+    for kept in [
+        "\u{85}", "\u{1680}", "\u{200c}", "\u{200d}", "\u{2019}", "\u{2028}", "\u{2029}",
+    ] {
+        let text = format!("SELECT varchar{kept}E'\\''; DROP TABLE t; --'");
+        assert_eq!(statements(SqlGrammar::DuckDb, &text), [text.as_str()], "{kept:?}");
+    }
+    assert_eq!(
+        statements(
+            SqlGrammar::DuckDb,
+            "SELECT 1 AS a,\u{200b}$$'$$; DROP TABLE t; SELECT 'x'"
+        ),
+        ["SELECT 1 AS a,\u{200b}$$'$$", "DROP TABLE t", "SELECT 'x'"]
+    );
+    let words: Vec<&str> = {
+        let text = "SELECT\u{a0}*\u{a0}FROM\u{3000}t";
+        plan(SqlGrammar::DuckDb, text)
+            .tokens(0..text.len())
+            .filter(|token| token.kind == ScriptTokenKind::Word)
+            .map(|token| &text[token.range.clone()])
+            .collect()
+    };
+    assert_eq!(words, ["SELECT", "FROM", "t"]);
+}
+
+// Measured on DuckDB 2.0.0. Its pass reads `'`, `"`, `$tag$` and `--` its own way, not block comments or
+// backslashes, and keeps a space inside what it takes for a quote: there the space is a name character.
+#[test]
+fn duckdb_keeps_a_space_where_its_pass_sees_a_quote() {
+    for (text, expected) in [
+        (
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$, varchar\u{200b}E'\\''; DROP TABLE t; --'x$$",
+            vec![
+                "SELECT 1 AS a$$, 2 AS b\u{200b}$$, varchar\u{200b}E'\\''",
+                "DROP TABLE t",
+            ],
+        ),
+        (
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$; DROP TABLE t; --$$",
+            vec!["SELECT 1 AS a$$, 2 AS b\u{200b}$$", "DROP TABLE t"],
+        ),
+        (
+            "SELECT $a\u{200b}$x$a\u{200b}$, varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            vec!["SELECT $a\u{200b}$x$a\u{200b}$, varchar\u{200b}E'\\''", "DROP TABLE t"],
+        ),
+        (
+            "-- it's\nSELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            vec!["SELECT varchar\u{200b}E'\\''", "DROP TABLE t"],
+        ),
+    ] {
+        assert_eq!(statements(SqlGrammar::DuckDb, text), expected, "{text:?}");
+    }
+}
+
+// Measured on DuckDB 2.0.0: whole, the pass is inside the comment's quote at the space and keeps it; the second
+// statement sent alone, as the driver sends it, has the space blanked and runs the DROP.
+#[test]
+fn duckdb_reads_each_statement_as_it_is_sent_alone() {
+    assert_eq!(
+        statements(
+            SqlGrammar::DuckDb,
+            "/* ' */ SELECT 1; SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'"
+        ),
+        ["SELECT 1", "SELECT varchar\u{200b}E'\\''", "DROP TABLE t"]
+    );
+    // It gets each one without the comments before it.
+    assert_eq!(
+        statements(
+            SqlGrammar::DuckDb,
+            "/* ' */ SELECT varchar\u{200b}E'\\''; /* $$ */ SELECT 1 AS a,\u{200b}$$'$$; DROP TABLE t; --'"
+        ),
+        [
+            "SELECT varchar\u{200b}E'\\''",
+            "SELECT 1 AS a,\u{200b}$$'$$",
+            "DROP TABLE t"
+        ]
+    );
+}
+
+// Measured on PostgreSQL 17.11: with a domain of each name, the server ran the DROP.
+#[test]
+fn postgresql_continues_a_name_with_a_dollar_and_every_non_ascii_unit() {
+    for glue in [
+        "$", "\u{e9}", "\u{a0}", "\u{200b}", "\u{2060}", "\u{3000}", "\u{feff}", "\u{2019}", "\u{ff0c}",
+    ] {
+        let text = format!("SELECT x{glue}e'\\'; DROP TABLE t; --'");
+        let first = format!("SELECT x{glue}e'\\'");
+        assert_eq!(
+            statements(SqlGrammar::PostgreSql, &text),
+            [first.as_str(), "DROP TABLE t"],
+            "{glue:?}"
+        );
+    }
 }
 
 #[test]
@@ -702,7 +812,7 @@ fn char_byte_roundtrip_multibyte() {
 proptest! {
     #[test]
     fn ranges_on_char_boundaries_and_batches_disjoint(
-        text in "[ -~\n\té😀]{0,160}",
+        text in "[ -~\n\té😀\u{a0}\u{200b}\u{3000}]{0,160}",
         backslash_escapes in any::<bool>(),
     ) {
         for grammar in SqlGrammar::SQL.into_iter().chain([SqlGrammar::Redis, SqlGrammar::Mongo]) {
@@ -836,6 +946,130 @@ fn mongo_each_statement_is_its_own_batch_and_a_failure_stops_the_script() {
 
     assert_eq!(batch_texts(&plan, text), ["db.a.find()", "db.b.find()"]);
     assert_eq!(plan.batch_error_policy(), BatchErrorPolicy::StopScript);
+}
+
+fn mongo_access(text: &str) -> StatementAccess {
+    statement_access(text, SqlGrammar::Mongo)
+}
+
+#[test]
+fn mongo_a_rename_that_drops_its_target_is_destructive() {
+    for text in [
+        "db.orders_new.renameCollection('orders', true)",
+        "db.orders_new.renameCollection('orders', {dropTarget: true})",
+        "db.adminCommand({renameCollection: 'shop.orders_new', to: 'shop.orders', dropTarget: true})",
+        "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: false, dropTarget: true})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.orders_new.renameCollection('orders')",
+        "db.adminCommand({renameCollection: 'shop.a', to: 'shop.b', dropTarget: true, dropTarget: false})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_dropping_an_index_is_destructive() {
+    for text in [
+        "db.orders.dropIndex('qty_1')",
+        "db.orders.dropIndexes()",
+        "db.orders.dropSearchIndex('default')",
+        "db.runCommand({dropIndexes: 'orders', index: '*'})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+}
+
+#[test]
+fn mongo_dropping_a_user_or_a_role_is_destructive() {
+    for text in [
+        "db.dropUser('ann')",
+        "db.dropRole('auditor')",
+        "db.dropAllUsers()",
+        "db.dropAllRoles()",
+        "db.runCommand({dropUser: 'ann'})",
+        "db.runCommand({dropRole: 'auditor'})",
+        "db.runCommand({dropAllUsersFromDatabase: 1})",
+        "db.adminCommand({dropAllRolesFromDatabase: 1})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_validate_that_repairs_is_a_write() {
+    for text in [
+        "db.runCommand({validate: 'orders', repair: true})",
+        "db.runCommand({validate: 'orders', repair: true, fixMultikey: true})",
+        "db.runCommand({validate: 'orders', fixMultikey: 1})",
+        "db.runCommand({validate: 'orders', repair: false, repair: true})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+    for text in [
+        "db.runCommand({validate: 'orders', full: true})",
+        "db.runCommand({validate: 'orders', repair: true, repair: false})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Read, "{text}");
+    }
+}
+
+#[test]
+fn mongo_what_replaces_a_collection_is_destructive() {
+    for text in [
+        "db.orders.aggregate([{$match: {}}, {$out: 'orders_copy'}])",
+        "db.runCommand({aggregate: 'orders', pipeline: [{$out: 'orders_copy'}], cursor: {}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: 'totals'})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {replace: 'totals'}})",
+        "db.adminCommand({applyOps: [{op: 'd', ns: 'shop.orders', o: {_id: 1}}]})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.orders.aggregate([{$merge: {into: 'totals'}}])",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {merge: 'totals'}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {reduce: 'totals'}})",
+        "db.runCommand({mapReduce: 'orders', map: 'm', reduce: 'r', out: {inline: 1}})",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_merge_into_its_own_collection_is_destructive() {
+    for text in [
+        "db.users.aggregate([{$match: {}}, {$merge: {into: 'users', whenMatched: 'replace'}}])",
+        "db.users.aggregate([{$merge: 'users'}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'shop', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Destructive, "{text}");
+    }
+    for text in [
+        "db.users.aggregate([{$merge: {into: 'users_archive', whenMatched: 'replace'}}])",
+        "db.getSiblingDB('shop').users.aggregate([{$merge: {into: {db: 'archive', coll: 'users'}}}])",
+    ] {
+        assert_eq!(mongo_access(text), StatementAccess::Write, "{text}");
+    }
+}
+
+#[test]
+fn mongo_a_bulk_write_that_reaches_every_document_is_destructive() {
+    for ops in [
+        "{delete: 0, filter: {}, multi: true}",
+        "{update: 0, filter: {}, updateMods: {$set: {a: 1}}, multi: true}",
+    ] {
+        let text = format!("db.adminCommand({{bulkWrite: 1, ops: [{ops}], nsInfo: [{{ns: 'shop.orders'}}]}})");
+        assert_eq!(mongo_access(&text), StatementAccess::Destructive, "{text}");
+    }
+    for ops in [
+        "{delete: 0, filter: {}}",
+        "{update: 0, filter: {_id: 1}, updateMods: {$set: {a: 1}}, multi: true}",
+    ] {
+        let text = format!("db.adminCommand({{bulkWrite: 1, ops: [{ops}], nsInfo: [{{ns: 'shop.orders'}}]}})");
+        assert_eq!(mongo_access(&text), StatementAccess::Write, "{text}");
+    }
 }
 
 const AGREED_CASES: &[(SqlGrammar, &str)] = &[

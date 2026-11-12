@@ -17,6 +17,12 @@ final class EditingGridOwner: DataGridDataSource, DataGridActions {
     weak var model: DataGridModel?
     private(set) var commits: [(edits: [DataGridResolvedEdit], actionName: String)] = []
     private(set) var loadRequests: [[RowID]] = []
+
+    private(set) var openedRows: [RowID] = []
+
+    func gridOpenRow(_ rowID: RowID) {
+        openedRows.append(rowID)
+    }
     var loadsValue: ((inout TableRows) -> Void)?
 
     init(_ tableRows: TableRows) {
@@ -144,6 +150,35 @@ struct EditingGrid {
 
 @MainActor
 struct DataGridEditingTests {
+    // MARK: - Opening rows
+
+    @Test("A grid whose rows open opens the row on a double click and on Return, and edits nothing")
+    func openRowTakesDoubleClickAndReturn() {
+        var configuration = DataGridConfiguration()
+        configuration.commands = [.openRow]
+        let grid = EditingGrid(configuration: configuration)
+        defer { grid.tearDown() }
+
+        grid.controller.handleCellDoubleClick(at: GridCoord(row: 1, displayColumn: 1))
+        grid.select(2, 1)
+        grid.controller.beginEditingActiveCell()
+
+        #expect(grid.owner.openedRows == [.existing(1), .existing(2)])
+        #expect(grid.controller.editedCell == nil)
+        #expect(!grid.model.isEditing)
+    }
+
+    @Test("A grid whose rows do not open keeps the double click for the cell")
+    func doubleClickEditsWithoutOpenRow() {
+        let grid = EditingGrid()
+        defer { grid.tearDown() }
+
+        grid.controller.handleCellDoubleClick(at: GridCoord(row: 1, displayColumn: 1))
+
+        #expect(grid.owner.openedRows.isEmpty)
+        #expect(grid.controller.editedCell == GridCoord(row: 1, displayColumn: 1))
+    }
+
     // MARK: - Field lifecycle
 
     @Test("Beginning an edit mounts the field in that one cell and hands it the field editor")

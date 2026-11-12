@@ -26,6 +26,9 @@ internal final class InfluxDBConnection: @unchecked Sendable {
 
     private let lock = NSLock()
     private var session: URLSession?
+    // A streamed read holds one response for as long as its consumer takes, and a suspended task still counts toward
+    // the resource limit, so streams run on a session that keeps the system default.
+    private var streamSession: URLSession?
     private var inFlight: [ObjectIdentifier: PluginURLSessionTaskBox] = [:]
     private let queryTimeout: HttpQueryTimeoutBox
 
@@ -44,6 +47,9 @@ internal final class InfluxDBConnection: @unchecked Sendable {
         configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         let delegate = skipTLSVerify ? InfluxDBTrustingDelegate() : PluginRedirectRefusingDelegate()
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        // The session made its own copy of the configuration above.
+        configuration.timeoutIntervalForResource = URLSessionConfiguration.default.timeoutIntervalForResource
+        streamSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }
 
     func close() {
@@ -51,6 +57,8 @@ internal final class InfluxDBConnection: @unchecked Sendable {
         lock.withLock {
             session?.invalidateAndCancel()
             session = nil
+            streamSession?.invalidateAndCancel()
+            streamSession = nil
         }
     }
 
@@ -63,17 +71,7 @@ internal final class InfluxDBConnection: @unchecked Sendable {
     }
 
     func send(_ request: InfluxRequest, timeout: TimeInterval? = nil) async throws -> InfluxDBResponse {
-        guard let url = request.url(base: baseURL) else {
-            throw InfluxError.invalidURL(baseURL.absoluteString + request.path)
-        }
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = request.method
-        urlRequest.httpBody = request.body
-        urlRequest.timeoutInterval = timeout ?? queryTimeout.requestTimeoutInterval
-        for (name, value) in request.headers {
-            urlRequest.setValue(value, forHTTPHeaderField: name)
-        }
-
+        let urlRequest = try makeURLRequest(request, timeout: timeout)
         let taskBox = PluginURLSessionTaskBox()
         let key = ObjectIdentifier(taskBox)
         lock.withLock { inFlight[key] = taskBox }
@@ -114,6 +112,48 @@ internal final class InfluxDBConnection: @unchecked Sendable {
             taskBox.set(task)
             task.resume()
         }
+    }
+
+    // The body chunk by chunk, the next one read only once `body` returns. A status outside 2xx throws what `send`'s
+    // caller would, and `cancelAll` stops it like any other request.
+    func stream(_ request: InfluxRequest, body: (Data) async throws -> Void) async throws {
+        let urlRequest = try makeURLRequest(request, timeout: nil)
+        let taskBox = PluginURLSessionTaskBox()
+        let key = ObjectIdentifier(taskBox)
+        lock.withLock { inFlight[key] = taskBox }
+        defer { lock.withLock { _ = inFlight.removeValue(forKey: key) } }
+        // Made under the lock `close()` invalidates with, as in `perform`.
+        guard let task = lock.withLock({ streamSession?.dataTask(with: urlRequest) }) else {
+            throw InfluxError.notConnected
+        }
+        let chunks = InfluxDBHTTPChunks(task: task)
+        taskBox.set(task)
+        task.resume()
+        try await withTaskCancellationHandler {
+            do {
+                try await chunks.forEachChunk(body)
+            } catch let error as URLError where error.code == .cancelled {
+                throw CancellationError()
+            }
+            // A cancelled reader ends the chunk sequence without an error.
+            try Task.checkCancellation()
+        } onCancel: {
+            taskBox.cancel()
+        }
+    }
+
+    private func makeURLRequest(_ request: InfluxRequest, timeout: TimeInterval?) throws -> URLRequest {
+        guard let url = request.url(base: baseURL) else {
+            throw InfluxError.invalidURL(baseURL.absoluteString + request.path)
+        }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = request.method
+        urlRequest.httpBody = request.body
+        urlRequest.timeoutInterval = timeout ?? queryTimeout.requestTimeoutInterval
+        for (name, value) in request.headers {
+            urlRequest.setValue(value, forHTTPHeaderField: name)
+        }
+        return urlRequest
     }
 }
 

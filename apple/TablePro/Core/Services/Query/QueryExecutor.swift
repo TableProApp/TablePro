@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let queryExecutorLog = Logger(subsystem: "com.TablePro", category: "QueryExecutor")
 
@@ -26,6 +27,8 @@ struct QueryFetchResult {
     var exportDocuments: [PluginExportDocument]?
     var absentCells: [Int: Set<Int>] = [:]
     var unloadedCells: [Int: [Int: Int]] = [:]
+    // See `PluginQueryResult.columnOrigins`.
+    var columnOrigins: [PluginColumnOrigin?]?
 
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
@@ -107,13 +110,18 @@ final class QueryExecutor {
         sql: String,
         parameters: [Any?]? = nil,
         rowCap: Int?,
+        safeModeIsReadOnly: Bool = false,
         capturingOutputInto failureOutput: ServerOutputBox?
     ) async throws -> QueryFetchResult {
         guard let failureOutput else {
-            return try await executeQuery(driver: driver, sql: sql, parameters: parameters, rowCap: rowCap)
+            return try await executeQuery(
+                driver: driver, sql: sql, parameters: parameters, rowCap: rowCap, safeModeIsReadOnly: safeModeIsReadOnly
+            )
         }
         return try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) {
-            try await executeQuery(driver: driver, sql: sql, parameters: parameters, rowCap: rowCap)
+            try await executeQuery(
+                driver: driver, sql: sql, parameters: parameters, rowCap: rowCap, safeModeIsReadOnly: safeModeIsReadOnly
+            )
         }
     }
 
@@ -121,20 +129,24 @@ final class QueryExecutor {
         driver: DatabaseDriver,
         sql: String,
         parameters: [Any?]? = nil,
-        rowCap: Int?
+        rowCap: Int?,
+        safeModeIsReadOnly: Bool = false
     ) async throws -> QueryFetchResult {
+        let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly)
         if let parameters {
             return try await Self.fetchQueryDataParameterized(
                 driver: driver,
                 sql: sql,
                 parameters: parameters,
-                rowCap: rowCap
+                rowCap: rowCap,
+                context: context
             )
         }
         return try await Self.fetchQueryData(
             driver: driver,
             sql: sql,
-            rowCap: rowCap
+            rowCap: rowCap,
+            context: context
         )
     }
 
@@ -147,11 +159,18 @@ final class QueryExecutor {
     nonisolated static func fetchBoundedQueryData(
         driver: DatabaseDriver,
         sql: String,
-        rowCap: Int?
+        rowCap: Int?,
+        context: PluginStatementContext? = nil
     ) async throws -> QueryFetchResult? {
         guard let rowCap, rowCap > 0 else { return nil }
         let start = CFAbsoluteTimeGetCurrent()
-        guard let result = try await driver.executeBoundedQuery(query: sql, rowCap: rowCap) else {
+        let bounded: QueryResult?
+        if let context {
+            bounded = try await driver.executeBoundedQuery(query: sql, rowCap: rowCap, context: context)
+        } else {
+            bounded = try await driver.executeBoundedQuery(query: sql, rowCap: rowCap)
+        }
+        guard let result = bounded else {
             return nil
         }
         let elapsed = CFAbsoluteTimeGetCurrent() - start
@@ -170,7 +189,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -193,17 +213,24 @@ final class QueryExecutor {
         )
     }
 
+    // A non-nil context is Read-Only's, which the bounded read and its fallback both carry.
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
-        rowCap: Int?
+        rowCap: Int?,
+        context: PluginStatementContext? = nil
     ) async throws -> QueryFetchResult {
-        if let bounded = try await fetchBoundedQueryData(driver: driver, sql: sql, rowCap: rowCap) {
+        if let bounded = try await fetchBoundedQueryData(driver: driver, sql: sql, rowCap: rowCap, context: context) {
             return bounded
         }
         let start = CFAbsoluteTimeGetCurrent()
         queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .private) rowCap=\(rowCap?.description ?? "nil")")
-        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
+        let result: QueryResult
+        if let context {
+            result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil, context: context)
+        } else {
+            result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
+        }
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
         return QueryFetchResult(
@@ -218,7 +245,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -226,11 +254,17 @@ final class QueryExecutor {
         driver: DatabaseDriver,
         sql: String,
         parameters: [Any?],
-        rowCap: Int?
+        rowCap: Int?,
+        context: PluginStatementContext? = nil
     ) async throws -> QueryFetchResult {
         let start = CFAbsoluteTimeGetCurrent()
         queryExecutorLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .private) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
-        let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters)
+        let result: QueryResult
+        if let context {
+            result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters, context: context)
+        } else {
+            result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters)
+        }
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQueryParameterized] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
         return QueryFetchResult(
@@ -245,7 +279,8 @@ final class QueryExecutor {
             timing: result.timing,
             rowLocators: result.rowLocators,
             exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            columnOrigins: result.columnOrigins
         )
     }
 
@@ -472,9 +507,10 @@ final class QueryExecutor {
 
     static func detectAndReconcileParameters(
         sql: String,
-        existing: [QueryParameter]
+        existing: [QueryParameter],
+        grammar: SQLLexicalGrammar = SQLParameterExtractor.unspecifiedGrammar
     ) -> [QueryParameter] {
-        let detectedNames = SQLParameterExtractor.extractParameters(from: sql)
+        let detectedNames = SQLParameterExtractor.extractParameters(from: sql, grammar: grammar)
         guard !detectedNames.isEmpty else { return [] }
 
         let existingByName = Dictionary(

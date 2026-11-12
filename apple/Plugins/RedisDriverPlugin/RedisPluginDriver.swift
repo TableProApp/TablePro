@@ -48,13 +48,22 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private let queuedCommandsLock = NSLock()
     private var queuedCommands: [String] = []
+    // Counted past the label cap: a conditional write EXEC skipped has to fail the save wherever it sits.
+    private var queuedCount = 0
+    private var conditionalPositions: Set<Int> = []
+
+    // Only a staging key this driver generated is ever deleted on a failed write: a leftover one the
+    // user renames from the grid is their data.
+    private let stagingLock = NSLock()
+    private var issuedStagingTokens: Set<String> = []
+    private static let maxIssuedStagingTokens = 10_000
 
     var serverVersion: String? {
         redisConnection?.serverVersion()
     }
 
     var capabilities: PluginCapabilities {
-        var supported: PluginCapabilities = [.truncateTable, .cancelQuery]
+        var supported: PluginCapabilities = [.truncateTable, .cancelQuery, .columnDefaultMarks]
         if redisConnection?.supportsTransactions ?? true { supported.insert(.transactions) }
         return supported
     }
@@ -212,24 +221,46 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// result rather than an error: the block is theirs to end, and `EXEC` will report every reply.
     static let queuedStatus = "QUEUED"
 
-    func recordQueued(_ command: String) {
+    func recordQueued(_ command: String, mustApply: Bool = false) {
         queuedCommandsLock.lock()
+        if mustApply { conditionalPositions.insert(queuedCount) }
+        queuedCount += 1
         if queuedCommands.count < Self.maxRecordedQueuedCommands { queuedCommands.append(command) }
         queuedCommandsLock.unlock()
     }
 
-    private func takeQueuedCommands() -> [String] {
+    func issueStagingToken() -> String {
+        let token = UUID().uuidString.lowercased()
+        stagingLock.withLock {
+            if issuedStagingTokens.count >= Self.maxIssuedStagingTokens { issuedStagingTokens.removeAll() }
+            issuedStagingTokens.insert(token)
+        }
+        return token
+    }
+
+    func isIssuedStagingKey(_ key: String) -> Bool {
+        guard let token = RedisConditionalWrite.stagingToken(in: key) else { return false }
+        return stagingLock.withLock { issuedStagingTokens.contains(token) }
+    }
+
+    private func takeQueuedCommands() -> (labels: [String], conditional: Set<Int>) {
         queuedCommandsLock.lock()
         defer { queuedCommandsLock.unlock() }
-        let recorded = queuedCommands
-        queuedCommands = []
+        let recorded = (labels: queuedCommands, conditional: conditionalPositions)
+        resetQueuedCommands()
         return recorded
     }
 
     private func clearQueuedCommands() {
         queuedCommandsLock.lock()
-        queuedCommands = []
+        resetQueuedCommands()
         queuedCommandsLock.unlock()
+    }
+
+    private func resetQueuedCommands() {
+        queuedCommands = []
+        queuedCount = 0
+        conditionalPositions = []
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -275,6 +306,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             PluginColumnInfo(name: "Value", dataType: "String", isNullable: true),
         ]
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
@@ -432,7 +465,9 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
         let queued = takeQueuedCommands()
         let reply = try await conn.run(["EXEC"])
-        let failed = RedisTransactionOutcome.failures(inExecReply: reply, queuedCommands: queued)
+        let failed = RedisTransactionOutcome.failures(
+            inExecReply: reply, queuedCommands: queued.labels, conditionalPositions: queued.conditional
+        )
         guard failed.isEmpty else { throw RedisTransactionError(failed: failed) }
     }
 
@@ -486,7 +521,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -494,9 +529,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -525,14 +558,18 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation: continuation
                 )
             }
+        case .keys(let pattern):
+            try await streamKeyRows(connection: conn, pattern: pattern, continuation: continuation)
         default:
             let startTime = Date()
             let result = try await executeOperation(operation, connection: conn, startTime: startTime)
-            continuation.yield(.header(PluginStreamHeader(
+            var header = PluginStreamHeader(
                 columns: result.columns,
                 columnTypeNames: result.columnTypeNames,
                 estimatedRowCount: nil
-            )))
+            )
+            if result.isTruncated { header.rowLimit = result.rows.count }
+            continuation.yield(.header(header))
             if !result.rows.isEmpty {
                 continuation.yield(.rows(result.rows))
             }
@@ -554,7 +591,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )))
 
         var cursor = RedisClusterCursor.start
-        let batchSize = 200
+        let batchSize = Self.keySummaryBatchSize
 
         repeat {
             try Task.checkCancellation()
@@ -569,14 +606,37 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 try Task.checkCancellation()
                 let batchEnd = min(batchStart + batchSize, page.keys.count)
                 let batchKeys = Array(page.keys[batchStart ..< batchEnd])
-                let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn)
+                let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn, stringByteLimit: nil)
                 if !rowBatch.isEmpty {
-                    continuation.yield(.rows(rowBatch))
+                    _ = await PluginRowStream.deliver(.rows(rowBatch), to: continuation)
                 }
                 batchStart = batchEnd
             }
         } while cursor != RedisClusterCursor.start
 
+        continuation.finish()
+    }
+
+    // KEYS names every match at once; their values are read a batch at a time, each string whole.
+    private func streamKeyRows(
+        connection conn: any RedisCommandChannel,
+        pattern: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let keys = (try await conn.run(["KEYS", pattern]).arrayValue ?? []).map(\.displayText)
+        continuation.yield(.header(PluginStreamHeader(
+            columns: Self.keyBrowseColumns,
+            columnTypeNames: Self.keyBrowseColumnTypeNames,
+            estimatedRowCount: keys.count
+        )))
+        for start in stride(from: 0, to: keys.count, by: Self.keySummaryBatchSize) {
+            try Task.checkCancellation()
+            let batch = Array(keys[start ..< min(start + Self.keySummaryBatchSize, keys.count)])
+            let rows = try await buildKeySummaryRows(keys: batch, connection: conn, stringByteLimit: nil)
+            if !rows.isEmpty {
+                _ = await PluginRowStream.deliver(.rows(rows), to: continuation)
+            }
+        }
         continuation.finish()
     }
 
@@ -622,10 +682,15 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
+        let partitioned = redisConnection?.partitionsKeyspace == true
         let generator = RedisStatementGenerator(
             namespaceName: table,
             columns: columns,
-            deleteBatching: redisConnection?.partitionsKeyspace == true ? .perHashSlot : .singleCommand
+            deleteBatching: partitioned ? .perHashSlot : .singleCommand,
+            keepsTTLOnSet: RedisStatementGenerator.serverKeepsTTLOnSet(version: redisConnection?.serverVersion()),
+            partitionsKeyspace: partitioned,
+            stagingToken: { [weak self] in self?.issueStagingToken() ?? UUID().uuidString.lowercased() }
         )
         let writes = try generator.generateRowWrites(
             from: changes, insertedRowData: insertedRowData,

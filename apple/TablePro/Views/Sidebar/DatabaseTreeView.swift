@@ -24,6 +24,9 @@ struct DatabaseTreeTriggerRef: Identifiable, Equatable {
     let database: String?
     let schema: String?
     let trigger: TriggerInfo
+    /// Set for a trigger listed under its own table, where the row captions when it fires rather
+    /// than the table name the row above already shows.
+    var listedUnderTable = false
 
     var id: String {
         IdentityPath.joined([database ?? "", schema ?? "", trigger.id], separator: "|")
@@ -45,6 +48,21 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
 
     var objectRef: DatabaseObjectRef {
         DatabaseObjectRef(userType: type, database: database ?? "")
+    }
+}
+
+struct DatabaseTreeServerObjectRef: Identifiable, Equatable {
+    let database: String?
+    let schema: String?
+    let kind: SidebarServerObjectKind
+    let object: ServerObjectInfo
+
+    var id: String {
+        IdentityPath.joined([database ?? "", schema ?? "", object.id], separator: "|")
+    }
+
+    var objectRef: DatabaseObjectRef {
+        DatabaseObjectRef(serverObject: object, kind: kind, database: database ?? "")
     }
 }
 
@@ -120,7 +138,32 @@ struct DatabaseTreeView: View {
         }
     }
 
+    /// Listing the saved connections, the outline stands whatever the database list is doing, so
+    /// the connections above it stay on screen. Its own connection's row says loading, failed or
+    /// empty in the states that replace the outline otherwise.
+    private var listsConnections: Bool {
+        settingsManager.general.showsConnectionsInTree
+    }
+
     var body: some View {
+        Group {
+            if listsConnections {
+                VStack(spacing: 0) {
+                    filterBanner
+                    outline
+                }
+            } else {
+                databaseListContent
+            }
+        }
+        .loadingRevealGate(isActive: isLoadingDatabases && !listsConnections, isRevealed: $showsDatabaseProgress)
+        .task(id: isConnected) {
+            await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
+        }
+    }
+
+    @ViewBuilder
+    private var databaseListContent: some View {
         Group {
             switch treeService.databaseListState(for: connectionId) {
             case .failed(let message):
@@ -141,10 +184,6 @@ struct DatabaseTreeView: View {
                     Color.clear
                 }
             }
-        }
-        .loadingRevealGate(isActive: isLoadingDatabases, isRevealed: $showsDatabaseProgress)
-        .task(id: isConnected) {
-            await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
         }
     }
 
@@ -188,7 +227,10 @@ struct DatabaseTreeView: View {
             showRecentTables: settingsManager.general.showRecentTables,
             showSystemContainers: showsSystemContainers,
             showsPartitions: settingsManager.general.showPartitions,
-            rowSizePreference: settingsManager.general.sidebarRowSize
+            showsTableDetails: settingsManager.general.showTableDetails,
+            rowSizePreference: settingsManager.general.sidebarRowSize,
+            showsFavoritesSection: settingsManager.general.showsFavoritesSection,
+            showsConnectionsInTree: listsConnections
         )
     }
 

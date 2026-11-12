@@ -362,6 +362,9 @@ fn adapt(value: Value, param_type: ParamType) -> Result<(Value, ParamType), Bind
         (Value::Int(number), ParamType::UInt64) if number >= 0 => {
             (Value::UInt(number.unsigned_abs()), ParamType::UInt64)
         }
+        (Value::Int32(number), ParamType::UInt64) if number >= 0 => {
+            (Value::UInt(u64::from(number.unsigned_abs())), ParamType::UInt64)
+        }
         (Value::Other(other), _) => (Value::Text(other.text), ParamType::Text),
         (value, param_type) => (value, param_type),
     })
@@ -374,6 +377,7 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
             true => "TRUE".to_owned(),
             false => "FALSE".to_owned(),
         },
+        Value::Int32(integer) => integer.to_string(),
         Value::Int(integer) => integer.to_string(),
         Value::UInt(integer) => integer.to_string(),
         Value::WideInt(integer) => integer.to_string(),

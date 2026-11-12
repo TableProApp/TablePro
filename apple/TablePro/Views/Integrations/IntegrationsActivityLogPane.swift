@@ -1,8 +1,3 @@
-//
-//  IntegrationsActivityLogPane.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -11,8 +6,10 @@ struct IntegrationsActivityLogPane: View {
     @ObservedObject private var mcpServerManager = MCPServerManager.shared
     @State private var entries: [AuditEntry] = []
     @State private var tokens: [MCPAuthToken] = []
+    @State private var clientNames: [String] = []
     @State private var connections: [DatabaseConnection] = []
-    @State private var selectedTokenId: UUID?
+    @State private var selectedToken: ActivityTokenFilter?
+    @State private var selectedClient: String?
     @State private var selectedCategory: AuditCategory?
     @State private var selectedRange: ActivityTimeRange = .last7Days
     @State private var searchText: String = ""
@@ -45,7 +42,8 @@ struct IntegrationsActivityLogPane: View {
         .onReceive(AppEvents.shared.mcpAuditLogChanged) { _ in
             Task { await reload() }
         }
-        .onChange(of: selectedTokenId) { _ in Task { await reload() } }
+        .onChange(of: selectedToken) { _ in Task { await reload() } }
+        .onChange(of: selectedClient) { _ in Task { await reload() } }
         .onChange(of: selectedCategory) { _ in Task { await reload() } }
         .onChange(of: selectedRange) { _ in Task { await reload() } }
         .onChange(of: sortOrder) { newValue in
@@ -108,16 +106,26 @@ struct IntegrationsActivityLogPane: View {
                     Text(category.displayName).tag(Optional(category))
                 }
             }
-            Picker(String(localized: "Token"), selection: $selectedTokenId) {
-                Text(String(localized: "All tokens")).tag(UUID?.none)
+            Picker(String(localized: "Client"), selection: $selectedClient) {
+                Text(String(localized: "All clients")).tag(String?.none)
+                ForEach(clientNames, id: \.self) { name in
+                    Text(verbatim: name).tag(Optional(name))
+                }
+            }
+            Picker(String(localized: "Token"), selection: $selectedToken) {
+                Text(String(localized: "All tokens")).tag(ActivityTokenFilter?.none)
+                ForEach(ActivityTokenFilter.ownCredentialNames, id: \.self) { name in
+                    Text(IntegrationsFormatting.displayTokenName(name)).tag(Optional(ActivityTokenFilter.named(name)))
+                }
                 ForEach(tokens) { token in
-                    Text(IntegrationsFormatting.displayTokenName(token.name)).tag(Optional(token.id))
+                    Text(IntegrationsFormatting.displayTokenName(token.name)).tag(Optional(ActivityTokenFilter.token(token.id)))
                 }
             }
             if hasActiveFilters {
                 Divider()
                 Button(String(localized: "Clear Filters")) {
-                    selectedTokenId = nil
+                    selectedToken = nil
+                    selectedClient = nil
                     selectedCategory = nil
                     selectedRange = .last7Days
                 }
@@ -125,8 +133,7 @@ struct IntegrationsActivityLogPane: View {
         } label: {
             Label(String(localized: "Filters"), systemImage: ToolbarSymbols.filter(isActive: hasActiveFilters))
         }
-        /// Named here for the reason `WelcomeViewOptionsMenu` gives: a toolbar-hosted `Menu`
-        /// publishes "chevron.pulldown" from its label alone.
+        // A toolbar-hosted Menu otherwise publishes "chevron.pulldown" from its label (see WelcomeViewOptionsMenu).
         .accessibilityLabel(String(localized: "Filters"))
         .help(String(localized: "Filter activity"))
     }
@@ -154,8 +161,7 @@ struct IntegrationsActivityLogPane: View {
         .disabled(isLoading)
     }
 
-    /// `sidebar.trailing` is the glyph AppKit's own inspector toggle draws, and unlike
-    /// `sidebar.right` it mirrors in a right-to-left layout.
+    // The glyph AppKit's own inspector toggle draws; unlike sidebar.right it mirrors right to left.
     private var inspectorToggle: some View {
         Button {
             showInspector.toggle()
@@ -166,11 +172,12 @@ struct IntegrationsActivityLogPane: View {
     }
 
     private var hasActiveFilters: Bool {
-        selectedTokenId != nil || selectedCategory != nil || selectedRange != .last7Days
+        selectedToken != nil || selectedClient != nil || selectedCategory != nil || selectedRange != .last7Days
     }
 
     private var hasNoFilters: Bool {
-        selectedTokenId == nil
+        selectedToken == nil
+            && selectedClient == nil
             && selectedCategory == nil
             && selectedRange == .all
             && searchText.isEmpty
@@ -184,16 +191,18 @@ struct IntegrationsActivityLogPane: View {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return entries }
         let needle = trimmed.lowercased()
-        return entries.filter { entry in
-            if entry.action.lowercased().contains(needle) { return true }
-            if let tokenName = entry.tokenName?.lowercased(), tokenName.contains(needle) { return true }
-            if let connectionName = connectionName(for: entry.connectionId)?.lowercased(),
-               connectionName.contains(needle) {
-                return true
-            }
-            if let details = entry.details?.lowercased(), details.contains(needle) { return true }
-            return false
-        }
+        return entries.filter { Self.searchMatches($0, needle: needle, connectionName: connectionName) }
+    }
+
+    static func searchMatches(_ entry: AuditEntry, needle: String, connectionName: (UUID?) -> String?) -> Bool {
+        let fields = [
+            entry.action,
+            entry.clientName,
+            entry.tokenName.map(IntegrationsFormatting.displayTokenName),
+            connectionName(entry.connectionId),
+            entry.details
+        ]
+        return fields.contains { $0?.lowercased().contains(needle) == true }
     }
 
     private func connectionName(for id: UUID?) -> String? {
@@ -213,13 +222,18 @@ struct IntegrationsActivityLogPane: View {
         }
 
         if let store = mcpServerManager.tokenStore {
-            tokens = await store.list().filter { !$0.isBridgeCredential }
+            // TablePro mints these afresh every rotation and every agent turn, so they are filtered by name.
+            tokens = await store.list().filter { !$0.isBridgeCredential && !$0.isClaudeAgentCredential }
         }
         connections = ConnectionStorage.shared.loadConnections()
 
-        let result = await MCPAuditLogStorage.shared.query(
+        let storage = MCPAuditLogStorage.shared
+        clientNames = await storage.clientNames()
+        let result = await storage.query(
             category: selectedCategory,
-            tokenId: selectedTokenId,
+            tokenId: selectedToken?.tokenId,
+            tokenName: selectedToken?.tokenName,
+            clientName: selectedClient,
             since: selectedRange.startDate,
             limit: 1_000
         )
@@ -246,7 +260,8 @@ struct IntegrationsActivityLogPane: View {
 
     private func writeActivityLog(to url: URL) {
         do {
-            try csvString(for: filteredEntries).write(to: url, atomically: true, encoding: .utf8)
+            try Self.csvString(for: filteredEntries, connectionName: connectionName)
+                .write(to: url, atomically: true, encoding: .utf8)
         } catch {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could not export activity log"),
@@ -256,8 +271,8 @@ struct IntegrationsActivityLogPane: View {
         }
     }
 
-    private func csvString(for entries: [AuditEntry]) -> String {
-        let header = ["Timestamp", "Category", "Action", "Connection", "Token", "Outcome", "Details"]
+    static func csvString(for entries: [AuditEntry], connectionName: (UUID?) -> String?) -> String {
+        let header = ["Timestamp", "Category", "Action", "Client", "Connection", "Token", "Outcome", "Details"]
             .joined(separator: ",")
         let timestampFormatter = ISO8601DateFormatter()
         let rows = entries.map { entry -> String in
@@ -265,12 +280,13 @@ struct IntegrationsActivityLogPane: View {
                 timestampFormatter.string(from: entry.timestamp),
                 entry.category.rawValue,
                 entry.action,
-                connectionName(for: entry.connectionId) ?? "",
+                entry.clientName ?? "",
+                connectionName(entry.connectionId) ?? "",
                 entry.tokenName ?? "",
                 entry.outcome,
                 entry.details ?? ""
             ]
-            return cells.map(CsvRowConverter.encode).joined(separator: ",")
+            return cells.map(CsvRowConverter.encodeForSpreadsheet).joined(separator: ",")
         }
         return ([header] + rows).joined(separator: "\n") + "\n"
     }
@@ -311,6 +327,11 @@ private struct ActivityLogTable: View {
             }
             .width(min: 160, ideal: 220)
 
+            TableColumn(String(localized: "Client")) { entry in
+                clientCell(for: entry)
+            }
+            .width(min: 100, ideal: 140)
+
             TableColumn(String(localized: "Token")) { entry in
                 tokenCell(for: entry)
             }
@@ -349,6 +370,15 @@ private struct ActivityLogTable: View {
     private func actionCell(for entry: AuditEntry) -> some View {
         Text(entry.action)
             .font(.system(.body, design: .monospaced))
+    }
+
+    @ViewBuilder
+    private func clientCell(for entry: AuditEntry) -> some View {
+        if let name = entry.clientName {
+            Text(verbatim: name)
+        } else {
+            Text(verbatim: "-").foregroundStyle(.tertiary)
+        }
     }
 
     @ViewBuilder
@@ -394,6 +424,7 @@ private struct ActivityLogTable: View {
             String(format: String(localized: "Category: %@"), entry.category.displayName),
             String(format: String(localized: "Action: %@"), entry.action),
             String(format: String(localized: "Outcome: %@"), outcome),
+            entry.clientName.map { String(format: String(localized: "Client: %@"), $0) },
             tokenLine,
             connectionLabel(entry.connectionId).map { String(format: String(localized: "Connection: %@"), $0) },
             entry.details.map { String(format: String(localized: "Details: %@"), $0) }
@@ -438,6 +469,11 @@ private struct ActivityLogInspector: View {
             }
 
             Section(String(localized: "Source")) {
+                LabeledContent(String(localized: "Client")) {
+                    Text(entry.clientName ?? String(localized: "None"))
+                        .foregroundStyle(entry.clientName == nil ? .tertiary : .primary)
+                        .textSelection(.enabled)
+                }
                 LabeledContent(String(localized: "Token")) {
                     let tokenText = entry.tokenName.map(IntegrationsFormatting.displayTokenName) ?? String(localized: "None")
                     Text(tokenText)
@@ -484,6 +520,24 @@ private struct ActivityLogInspector: View {
     }
 }
 
+enum ActivityTokenFilter: Hashable {
+    case token(UUID)
+    // TablePro's own credentials, minted afresh each bridge rotation and each Claude Agent turn.
+    case named(String)
+
+    static let ownCredentialNames = [MCPTokenStore.stdioBridgeTokenName, MCPTokenStore.claudeAgentTokenName]
+
+    var tokenId: UUID? {
+        if case .token(let id) = self { return id }
+        return nil
+    }
+
+    var tokenName: String? {
+        if case .named(let name) = self { return name }
+        return nil
+    }
+}
+
 enum ActivityTimeRange: String, CaseIterable, Identifiable {
     case last24Hours
     case last7Days
@@ -512,9 +566,7 @@ enum ActivityTimeRange: String, CaseIterable, Identifiable {
     }
 }
 
-/// `.inspector` and `.inspectorColumnWidth` are macOS 14. Before them the pane is shown beside
-/// the log in an `HSplitView`, which is the same arrangement without the system's show/hide
-/// animation and its width persistence.
+// .inspector is macOS 14; before it the pane sits beside the log in an HSplitView.
 private struct ActivityLogInspectorPane: ViewModifier {
     @Binding var isPresented: Bool
     let entry: AuditEntry?

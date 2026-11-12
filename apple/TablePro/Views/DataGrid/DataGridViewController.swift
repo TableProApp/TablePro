@@ -39,6 +39,9 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     var isFittingHeightScheduled = false
     var pendingPageReveal: NSRect?
     var isRevealingInGrid = false
+    var isLiveScrolling = false
+    var isTrackingSelectionDrag = false
+    var isShowingContextMenu = false
     private var observers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
     private var themeCancellable: AnyCancellable?
@@ -170,6 +173,16 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
 
     var isEditing: Bool { isEditingCell }
 
+    // An open context menu acts on the row ids it was built from, which a reload hands to other rows.
+    var holdsTransientUI: Bool {
+        let state = editingState
+        return isShowingContextMenu || state.textPopover != nil || state.typedPopover != nil
+            || state.poppedOutEditor != nil || state.foreignKeyPreview?.isShown == true
+            || menuState.valueFilterPopover != nil
+    }
+
+    var isTrackingInteraction: Bool { isLiveScrolling || isTrackingSelectionDrag }
+
     @discardableResult
     func beginEditing(row: Int, displayColumn: Int) -> Bool {
         beginEditingCell(row: row, displayColumn: displayColumn)
@@ -209,6 +222,10 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.dataGridSettingsDidChange() }
             .store(in: &cancellables)
+        AppEvents.shared.valueColorSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.valueColorSettingsDidChange() }
+            .store(in: &cancellables)
         AppEvents.shared.systemTimeZoneChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.reformatText() }
@@ -221,10 +238,16 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         })
         let scrollView = main.scrollView
         observers.append(center.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: scrollView, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pausePrewarm() }
+            MainActor.assumeIsolated {
+                self?.isLiveScrolling = true
+                self?.pausePrewarm()
+            }
         })
         observers.append(center.addObserver(forName: NSScrollView.didEndLiveScrollNotification, object: scrollView, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.schedulePrewarmResume() }
+            MainActor.assumeIsolated {
+                self?.isLiveScrolling = false
+                self?.schedulePrewarmResume()
+            }
         })
     }
 
@@ -286,6 +309,13 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         }
     }
 
+    private func valueColorSettingsDidChange() {
+        let settings = AppSettingsManager.shared.valueColors
+        guard settings.colorsValuesByType != presenter.registry.colorsValuesByType else { return }
+        presenter.registry.reloadValueColors(settings)
+        redrawVisibleRows()
+    }
+
     // Rebuilds every formatted string: the date format, NULL text or smart detection moved, or the Mac's time zone did.
     func reformatText() {
         model.display.cache.removeAll()
@@ -311,6 +341,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         main.scrollView.fitsRows = configuration.fitsRows
         container.followsPageScroll = configuration.fitsRows
         applyRowHeight()
+        applyHeaderLayout()
     }
 
     private func applyRowReorder(_ reorder: DataGridRowReorder, to table: DataGridTableView) {
@@ -388,8 +419,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             dataColumnsByDisplayPosition: model.columns.columns.map(\.dataIndex),
             policy: policy,
             deletedRowIDs: changeState?.deletedRowIDs ?? [],
-            insertedRowIDs: changeState?.insertedRowIDs ?? [],
-            modifiedCells: changeState?.modifiedCells ?? [:]
+            defaultedCells: changeState?.defaultedCells(in: rows) ?? [:]
         )
     }
 }

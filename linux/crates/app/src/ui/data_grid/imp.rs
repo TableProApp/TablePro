@@ -92,9 +92,16 @@ pub struct DataGrid {
     pub editing: Cell<bool>,
     /// The window's focus handler, while the grid is in a window.
     pub focus_watch: RefCell<Option<(glib::WeakRef<gtk4::Window>, glib::SignalHandlerId)>>,
+    pub(super) highlight_dialog: glib::WeakRef<adw::Dialog>,
+    pub(super) highlight_source: RefCell<Vec<crate::services::grid::HighlightRule>>,
+    pub(super) highlights: RefCell<std::rc::Rc<crate::services::grid::HighlightRules>>,
     pub(super) font_watch: RefCell<Option<HandlerGuard>>,
     pub(super) display_watch: RefCell<Option<HandlerGuard>>,
+    pub(super) applied_marks: Cell<Option<bool>>,
     pub(super) applied_null: RefCell<Option<String>>,
+    pub(super) scheme_style: RefCell<Option<super::scheme_colors::SchemeStyle>>,
+    pub(super) applied_date_format: Cell<Option<tablepro_linux_platform::settings::DateFormat>>,
+    pub(super) cell_font: RefCell<Option<super::cell_font::CellFont>>,
 }
 
 #[glib::object_subclass]
@@ -124,6 +131,7 @@ impl ObjectImpl for DataGrid {
                     .build(),
                 Signal::builder("selection-changed").build(),
                 Signal::builder("editing-changed").build(),
+                Signal::builder("highlight-rules-changed").build(),
             ]
         })
     }
@@ -134,7 +142,9 @@ impl ObjectImpl for DataGrid {
         self.summary.stop();
         self.obj().stop_watching_focus();
         drop(self.font_watch.take());
+        drop(self.cell_font.take());
         drop(self.display_watch.take());
+        drop(self.scheme_style.take());
         if let Some(menus) = self.menus.get() {
             menus.unparent();
         }

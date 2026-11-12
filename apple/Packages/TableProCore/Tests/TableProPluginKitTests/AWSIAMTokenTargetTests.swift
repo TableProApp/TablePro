@@ -86,10 +86,13 @@ struct AWSIAMTokenTargetTests {
         #expect(mixedCase == lowercase)
     }
 
-    @Test("The AWS Region field wins over the region in the host")
-    func rdsExplicitRegionWins() throws {
+    @Test("The region in the endpoint's name wins over the AWS Region field, which covers a name with none")
+    func rdsEndpointRegionWins() throws {
         let signed = try token(rds(), fields: ["awsRegion": "eu-west-1"])
-        #expect(signed.contains("%2Feu-west-1%2Frds-db%2Faws4_request"))
+        #expect(signed.contains("%2Fus-east-1%2Frds-db%2Faws4_request"))
+
+        let global = try token(rds(host: "app.global-abc123.global.rds.amazonaws.com"), fields: ["awsRegion": "eu-west-1"])
+        #expect(global.contains("%2Feu-west-1%2Frds-db%2Faws4_request"))
     }
 
     @Test("A host with no region and no AWS Region field is rejected")

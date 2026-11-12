@@ -14,7 +14,9 @@ use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, 
 
 pub use editor_font::EditorFont;
 pub use error::SettingsError;
-pub use grid_preferences::{GridPreferenceValues, GridPreferences, GridRowHeight};
+pub use grid_preferences::{
+    DateFormat, DefaultSort, GridPreferenceValues, GridPreferences, GridRowHeight, GridSortDirection, RowCopyFormat,
+};
 pub use window_geometry::WindowGeometry;
 
 /// The provider setting's value while the assistant is off.
@@ -115,6 +117,54 @@ impl AppSettings {
         self.set_string(keys::GRID_ROW_HEIGHT, height)
     }
 
+    pub fn auto_show_inspector(&self) -> bool {
+        self.grid_preferences().snapshot().auto_show_inspector
+    }
+
+    pub fn set_auto_show_inspector(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::AUTO_SHOW_INSPECTOR, show)
+    }
+
+    pub fn default_sort(&self) -> DefaultSort {
+        self.grid_preferences().snapshot().default_sort
+    }
+
+    pub fn set_default_sort(&self, behavior: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DEFAULT_SORT, behavior)
+    }
+
+    pub fn default_sort_direction(&self) -> GridSortDirection {
+        self.grid_preferences().snapshot().default_sort_direction
+    }
+
+    pub fn set_default_sort_direction(&self, direction: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DEFAULT_SORT_DIRECTION, direction)
+    }
+
+    pub fn show_invisible_characters(&self) -> bool {
+        self.grid_preferences().snapshot().show_invisible_characters
+    }
+
+    pub fn set_show_invisible_characters(&self, show: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, show)
+    }
+
+    pub fn date_format(&self) -> DateFormat {
+        self.grid_preferences().snapshot().date_format
+    }
+
+    pub fn set_date_format(&self, format: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::DATE_FORMAT, format)
+    }
+
+    pub fn row_copy_format(&self) -> RowCopyFormat {
+        self.grid_preferences().snapshot().row_copy_format
+    }
+
+    pub fn set_row_copy_format(&self, format: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::ROW_COPY_FORMAT, format)
+    }
+
     pub fn null_display(&self) -> String {
         self.grid_preferences().snapshot().null_display.clone()
     }
@@ -168,6 +218,20 @@ impl AppSettings {
             EditorFont::Custom(description) => {
                 self.set_string(keys::CUSTOM_FONT, description)?;
                 self.set_boolean(keys::USE_SYSTEM_FONT, false)
+            }
+        }
+    }
+
+    pub fn grid_font(&self) -> EditorFont {
+        self.grid_preferences().snapshot().font.clone()
+    }
+
+    pub fn set_grid_font(&self, font: &EditorFont) -> Result<(), SettingsError> {
+        match font {
+            EditorFont::System => self.set_boolean(keys::GRID_USE_SYSTEM_FONT, true),
+            EditorFont::Custom(description) => {
+                self.set_string(keys::GRID_FONT, description)?;
+                self.set_boolean(keys::GRID_USE_SYSTEM_FONT, false)
             }
         }
     }

@@ -166,13 +166,26 @@ enum MCPToolTestHarness {
     }
 
     // A test that reaches a confirmation passes a stub gate: the default is the real alert gate.
+    // A test whose connection asks passes an approval and a presenter: the defaults read Settings and raise an alert.
     static func authPolicy(
         connections: [UUID: MCPConnectionAuthSnapshot] = [:],
-        executionGate: any ExecutionGate = ExecutionGateProvider.shared
+        executionGate: any ExecutionGate = ExecutionGateProvider.shared,
+        approval: MCPConnectionApproval? = nil,
+        presenter: (any MCPApprovalPresenting)? = nil,
+        ledger: MCPApprovalLedger? = nil
     ) -> MCPAuthPolicy {
-        MCPAuthPolicy(
+        let approvalSetting: any MCPConnectionApprovalReading
+        if let approval {
+            approvalSetting = MCPFixedApprovalReader(approval)
+        } else {
+            approvalSetting = MCPSettingsApprovalReader()
+        }
+        return MCPAuthPolicy(
             connectionResolver: { id in connections[id] },
             connectionIdsProvider: { Set(connections.keys) },
+            approvalLedger: ledger ?? MCPApprovalLedger(),
+            approvalSetting: approvalSetting,
+            presenter: presenter ?? MCPApprovalAlertPresenter(),
             executionGate: executionGate
         )
     }

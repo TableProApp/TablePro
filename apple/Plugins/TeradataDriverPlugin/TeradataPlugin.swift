@@ -15,15 +15,19 @@ extension TeradataValue {
     }
 }
 
+extension TeradataColumn {
+    var pluginTypeName: String { TeradataColumnType.wireTypeName(typeCode) }
+}
+
 extension TeradataResultSet {
-    func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
+    func toPluginResult(executionTime: TimeInterval, isTruncated: Bool = false) -> PluginQueryResult {
         PluginQueryResult(
             columns: columns.map { $0.name },
-            columnTypeNames: columns.map { TeradataColumnType.wireTypeName($0.typeCode) },
+            columnTypeNames: columns.map { $0.pluginTypeName },
             rows: rows.map { row in row.map { $0.asPluginCell } },
             rowsAffected: activityCount,
             executionTime: executionTime,
-            isTruncated: false
+            isTruncated: isTruncated
         )
     }
 }
@@ -136,7 +140,10 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .transactions, .alterTableDDL, .dataCompare, .cellExpressions, .uuidCellText, .rowWrites]
+        [
+            .cancelQuery, .transactions, .alterTableDDL, .dataCompare, .cellExpressions, .uuidCellText, .rowWrites,
+            .columnDefaultMarks,
+        ]
     }
 
     init(config: DriverConnectionConfig) {
@@ -190,6 +197,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             connection.disconnect()
             throw error
         }
+        logSessionMode(connection)
         self.connection = connection
     }
 
@@ -203,34 +211,118 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
-        guard let connection else { throw TeradataWireError.connectionFailed("not connected") }
-        let start = Date()
-        let result = try await connection.execute(query)
-        return result.toPluginResult(executionTime: Date().timeIntervalSince(start))
+        try await execute(query, rowCap: nil)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        guard let parameters else { return try await execute(query: query) }
-        return try await executeParameterized(query: query, parameters: parameters)
+        try await execute(bound(query, parameters ?? []), rowCap: rowCap)
+    }
+
+    // Not the stream: a Stop cancels the reading task, which ends a stream before a rollback error can cross it.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await execute(query, rowCap: rowCap)
+    }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        try await execute(bound(query, parameters), rowCap: nil)
+    }
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let connection = self.connection
+        return PluginRowStream.makeBounded { continuation, abort in
+            let task = Task {
+                guard let connection else {
+                    continuation.finish(throwing: TeradataWireError.connectionFailed("not connected"))
+                    return
+                }
+                do {
+                    // Each reply's rows go out as it arrives, and the next one is asked for once the reader has room.
+                    try await connection.stream(
+                        query,
+                        onColumns: { columns in
+                            continuation.yield(.header(PluginStreamHeader(
+                                columns: columns.map { $0.name },
+                                columnTypeNames: columns.map { $0.pluginTypeName }
+                            )))
+                        },
+                        onRows: { rows in
+                            guard !abort.isAborted else { return false }
+                            let delivered = PluginRowStream.deliverBlocking(
+                                .rows(rows.map { row in row.map { $0.asPluginCell } }),
+                                to: continuation
+                            )
+                            return delivered && !abort.isAborted
+                        }
+                    )
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            abort.onAbort { task.cancel() }
+        }
     }
 
     // Teradata reads quotes, names and comments the ANSI way, which is no lexical feature.
-    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard !parameters.isEmpty else { return try await execute(query: query) }
-        let bound = try PluginParameterBinder.bind(
+    private func bound(_ query: String, _ parameters: [PluginCellValue]) throws -> String {
+        guard !parameters.isEmpty else { return query }
+        return try PluginParameterBinder.bind(
             query,
             literals: parameters.map(TeradataRowEditSQL.literal),
             style: .questionMark,
             features: []
         )
-        return try await execute(query: bound)
+    }
+
+    private func execute(_ query: String, rowCap: Int?) async throws -> PluginQueryResult {
+        guard let connection else { throw TeradataWireError.connectionFailed("not connected") }
+        let start = Date()
+        let capped = try await connection.execute(query, rowCap: rowCap)
+        return capped.resultSet.toPluginResult(
+            executionTime: Date().timeIntervalSince(start), isTruncated: capped.isTruncated)
     }
 
     func cancelQuery() throws {
         connection?.cancel()
     }
 
-    func beginTransaction() async throws { _ = try await execute(query: "BEGIN TRANSACTION") }
-    func commitTransaction() async throws { _ = try await execute(query: "END TRANSACTION") }
-    func rollbackTransaction() async throws { _ = try await execute(query: "ROLLBACK") }
+    func beginTransaction() async throws {
+        try await liveConnection().beginTransaction()
+    }
+
+    func commitTransaction() async throws {
+        try await liveConnection().commitTransaction()
+    }
+
+    func rollbackTransaction() async throws {
+        try await liveConnection().rollbackTransaction()
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let connection, !connection.hasLostConnection else { return .unknown }
+        switch connection.transactionState {
+        case .idle: return .idle
+        case .open: return .inTransaction
+        case .unknown: return .unknown
+        }
+    }
+
+    func liveConnection() throws -> TeradataAsyncConnection {
+        guard let connection else { throw TeradataWireError.connectionFailed("not connected") }
+        return connection
+    }
+
+    private func logSessionMode(_ connection: TeradataAsyncConnection) {
+        let mode = connection.sessionTransactionMode.rawValue
+        switch connection.sessionModeSource {
+        case .configured:
+            Self.logger.debug("Transaction mode \(mode, privacy: .public) as configured")
+        case .helpSession:
+            Self.logger.info("Transaction mode \(mode, privacy: .public) read from HELP SESSION")
+        case .sessionInfoView:
+            Self.logger.info("Transaction mode \(mode, privacy: .public) read from DBC.SessionInfoV")
+        case .unresolved:
+            Self.logger.warning("Neither HELP SESSION nor DBC.SessionInfoV gave the transaction mode; using Teradata semantics")
+        }
+    }
 }

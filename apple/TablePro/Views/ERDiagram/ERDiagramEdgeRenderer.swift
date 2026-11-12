@@ -11,13 +11,19 @@ enum ERDiagramEdgeRenderer {
     }
 
     private static let strokeWidth: CGFloat = 1.5
-    private static let selectedStrokeWidth: CGFloat = 3
+    nonisolated private static let selectedStrokeWidth: CGFloat = 3
     private static let dashPattern: [CGFloat] = [6, 4]
 
     struct Route {
         let edge: EREdge
         let path: CGPath
         let markers: [CGPath]
+
+        // Padded by the widest stroke, whose round caps reach half of it past the path.
+        func reaches(_ rect: CGRect) -> Bool {
+            let bounds = markers.reduce(path.boundingBoxOfPath) { $0.union($1.boundingBoxOfPath) }
+            return bounds.insetBy(dx: -selectedStrokeWidth, dy: -selectedStrokeWidth).intersects(rect)
+        }
     }
 
     struct Colors {
@@ -26,15 +32,16 @@ enum ERDiagramEdgeRenderer {
         let dropped: CGColor
     }
 
-    static func drawEdges(
-        edges: [EREdge],
-        nodeRects: [UUID: CGRect],
-        nodeIndex: [String: UUID],
+    // Every route is computed, since a node's ports are shared out among all its edges; only the
+    // strokes are limited to the edges that cross the rect being drawn.
+    static func drawRoutes(
+        _ routes: [Route],
         colors: Colors,
         selectedEdgeId: UUID?,
+        dirtyRect: CGRect,
         on canvas: some ERDiagramCanvas
     ) {
-        for route in routes(edges: edges, nodeRects: nodeRects, nodeIndex: nodeIndex) {
+        for route in routes where route.reaches(dirtyRect) {
             let isSelected = route.edge.id == selectedEdgeId
             let color: CGColor
             if isSelected {

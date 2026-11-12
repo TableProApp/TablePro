@@ -2,11 +2,12 @@ import SwiftUI
 
 struct CopyableCodeBlock: View {
     let text: String
+    var displayText: String?
     var isSecret = false
 
     var body: some View {
         HStack(alignment: .top) {
-            Text(text)
+            Text(verbatim: displayText ?? text)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
                 .padding(8)

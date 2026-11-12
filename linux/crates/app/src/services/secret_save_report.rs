@@ -175,13 +175,9 @@ impl SecretSaveReport {
         }
     }
 
-    // The Secret portal answers a missing default keyring the same way as a locked one
-    // (linux/docs/troubleshooting.md, Flatpak connections).
     fn remedy(&self) -> Option<String> {
         match Reason::of(&self.error) {
-            Reason::Locked => Some(gettext(
-                "Unlock the keyring, accept its prompt and try again. With automatic login, GNOME may have no default keyring yet: create one in Passwords and Keys and make it the default.",
-            )),
+            Reason::Locked => Some(keyring_locked_recovery()),
             Reason::NoKeyring => Some(match self.error {
                 SecretError::PortalUnavailable { .. } => {
                     gettext("Install xdg-desktop-portal and your desktop’s keyring, then log out and in.")
@@ -191,6 +187,15 @@ impl SecretSaveReport {
             Reason::Refused => None,
         }
     }
+}
+
+/// The way out of a locked keyring, shared by every surface that reads or saves a secret. The
+/// Secret portal answers a missing default keyring the same way as a locked one, so the advice
+/// covers both (linux/docs/troubleshooting.md, Flatpak connections).
+pub(crate) fn keyring_locked_recovery() -> String {
+    gettext(
+        "Unlock the keyring, accept its prompt and try again. With automatic login, GNOME may have no default keyring yet: create one in Passwords and Keys and make it the default.",
+    )
 }
 
 /// A session's credentials whose saves are reported. A secret typed at a reconnect prompt is

@@ -8,9 +8,10 @@
 //  A file removed outside TablePro is a conflict too: a save must never bring it back.
 //
 
-import AppKit
+import Combine
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import TableProTheme
 import Testing
 
@@ -18,7 +19,6 @@ import Testing
 struct ThemeCatalogTests {
     private struct Sandbox {
         let root: URL
-        let center = NotificationCenter()
         var themes: URL { root.appendingPathComponent("Themes", isDirectory: true) }
         var incoming: URL { root.appendingPathComponent("Incoming", isDirectory: true) }
         var trash: URL { root.appendingPathComponent("Trash", isDirectory: true) }
@@ -31,7 +31,7 @@ struct ThemeCatalogTests {
             }
         }
 
-        /// A trash inside the sandbox, so a test never puts a file in the user's own Trash.
+        // A trash inside the sandbox, so a test never puts a file in the user's own Trash.
         var fileTrash: ThemeFileTrash {
             let trash = trash
             return ThemeFileTrash { url in
@@ -43,7 +43,7 @@ struct ThemeCatalogTests {
 
         @MainActor
         func catalog() -> ThemeCatalog {
-            ThemeCatalog(userDirectory: themes, bundleDirectory: nil, notificationCenter: center, fileTrash: fileTrash)
+            ThemeCatalog(userDirectory: themes, bundleDirectory: nil, fileTrash: fileTrash)
         }
 
         @discardableResult
@@ -133,8 +133,7 @@ struct ThemeCatalogTests {
 
     // MARK: - Deleted on disk
 
-    /// The file is gone, so writing it again would bring back a theme deleted in Finder or on
-    /// another Mac.
+    // Writing the file again would bring back a theme deleted in Finder or on another Mac.
     @Test("A save of a theme whose file was deleted outside TablePro is refused and recreates nothing")
     func saveRefusesAFileDeletedOnDisk() throws {
         let sandbox = try Sandbox()
@@ -154,7 +153,7 @@ struct ThemeCatalogTests {
         #expect(try sandbox.fileNames().isEmpty)
     }
 
-    @Test("After an activation reload drops a deleted theme, a stale save is still refused")
+    @Test("After a reload drops a deleted theme, a stale save is still refused")
     func saveAfterReloadRefusesADeletedTheme() throws {
         let sandbox = try Sandbox()
         defer { sandbox.remove() }
@@ -163,15 +162,14 @@ struct ThemeCatalogTests {
         let stale = try #require(catalog.theme(id: "user.mine"))
 
         try sandbox.delete("Mine.json")
-        sandbox.center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        catalog.reloadSynchronously()
         #expect(catalog.theme(id: "user.mine") == nil)
 
         #expect(throws: ThemeLoadError.deletedOnDisk("Mine.json")) { try catalog.save(stale) }
         #expect(try sandbox.fileNames().isEmpty)
     }
 
-    /// A file edited into one that no longer loads keeps its name, so a stale save would otherwise
-    /// write `<id>-2.json` and leave two files with one id once the first is fixed.
+    // A stale save would write `<id>-2.json` beside the broken file, leaving two files with one id once it is fixed.
     @Test("A save of a theme whose file no longer loads is refused, and writes no second file")
     func saveRefusesAFileThatNoLongerLoads() throws {
         let sandbox = try Sandbox()
@@ -201,20 +199,58 @@ struct ThemeCatalogTests {
         #expect(catalog.theme(id: "user.mine") == nil)
     }
 
-    // MARK: - Activation
+    // MARK: - Watching the folder
 
-    @Test("The catalog reloads when TablePro becomes active")
-    func reloadsOnActivation() throws {
+    @Test("A watching catalog picks up a theme dropped into its folder, edited there and removed from it")
+    func picksUpChangesInItsFolder() async throws {
         let sandbox = try Sandbox()
         defer { sandbox.remove() }
         let catalog = sandbox.catalog()
-        #expect(catalog.theme(id: "user.dropped") == nil)
+        catalog.startWatchingUserDirectory()
+        defer { catalog.stopWatchingUserDirectory() }
+
+        try sandbox.write(try Self.userTheme(id: "user.dropped", name: "Dropped"), as: "Dropped.json")
+        try await waitUntil { catalog.theme(id: "user.dropped")?.name == "Dropped" }
+
+        try sandbox.write(try Self.userTheme(id: "user.dropped", name: "Edited"), as: "Dropped.json")
+        try await waitUntil { catalog.theme(id: "user.dropped")?.name == "Edited" }
+
+        try sandbox.delete("Dropped.json")
+        try await waitUntil { catalog.theme(id: "user.dropped") == nil }
+    }
+
+    @Test("A catalog that is not watching keeps its list until it reloads")
+    func unwatchedCatalogWaitsForAReload() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.remove() }
+        let catalog = sandbox.catalog()
 
         try sandbox.write(try Self.userTheme(id: "user.dropped", name: "Dropped"), as: "Dropped.json")
         #expect(catalog.theme(id: "user.dropped") == nil)
 
-        sandbox.center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        catalog.reloadSynchronously()
         #expect(catalog.theme(id: "user.dropped")?.name == "Dropped")
+    }
+
+    // The catalog's own save reports a change in its folder too.
+    @Test("A reload after the catalog's own save publishes nothing")
+    func reloadAfterOwnSavePublishesNothing() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.remove() }
+        let catalog = sandbox.catalog()
+        var published = 0
+        let subscription = catalog.$themes.dropFirst().sink { _ in published += 1 }
+        defer { subscription.cancel() }
+
+        try catalog.save(try Self.userTheme(id: "user.saved", name: "Saved", overrides: [.editorBackground: "#112233"]))
+        #expect(published == 1)
+        let rejected = catalog.rejected
+
+        catalog.reloadSynchronously()
+
+        #expect(published == 1)
+        #expect(catalog.rejected == rejected)
+        #expect(catalog.storedTheme(id: "user.saved")?.overrides[.editorBackground]?.hex == "#112233")
     }
 
     // MARK: - Trash
@@ -430,6 +466,8 @@ struct ThemeCatalogTests {
         let saved = try sandbox.read("legacy.json")
         #expect(saved.name == String(repeating: "N", count: cap))
         #expect(saved.author == "Someone on two lines")
+        let savedRoot = try JSONSerialization.jsonObject(with: try Data(contentsOf: url)) as? [String: Any]
+        #expect(savedRoot?["schema"] as? Int == 3)
 
         let picked = sandbox.incoming.appendingPathComponent("legacy.json")
         try bytes.write(to: picked)
@@ -446,7 +484,36 @@ struct ThemeCatalogTests {
         let catalog = sandbox.catalog()
 
         #expect(catalog.theme(id: "user.old") == nil)
-        #expect(catalog.rejected.first?.reason == ThemeLoadError.schemaTooOld(found: 2, supported: 3).localizedDescription)
+        #expect(
+            catalog.rejected.first?.reason
+                == ThemeLoadError.schemaTooOld(found: 2, supported: ThemeSchema.oldestReadable).localizedDescription
+        )
+    }
+
+    @Test("A format 4 file loads its value colors, and a format 3 file holding one is listed with the key")
+    func valueColorsNeedFormatFour() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.remove() }
+        let current: [String: Any] = [
+            "schema": 4, "id": "user.current", "name": "Current", "appearance": "dark",
+            "dataGrid": ["text": "#F8F8F2", "string": "#F1FA8C"],
+        ]
+        let mislabeled: [String: Any] = [
+            "schema": 3, "id": "user.mislabeled", "name": "Mislabeled", "appearance": "dark",
+            "dataGrid": ["text": "#F8F8F2", "string": "#F1FA8C"],
+        ]
+        try JSONSerialization.data(withJSONObject: current).write(to: sandbox.themes.appendingPathComponent("current.json"))
+        try JSONSerialization.data(withJSONObject: mislabeled).write(to: sandbox.themes.appendingPathComponent("mislabeled.json"))
+
+        let catalog = sandbox.catalog()
+
+        #expect(catalog.storedTheme(id: "user.current")?.overrides[.gridString]?.hex == "#F1FA8C")
+        #expect(catalog.theme(id: "user.mislabeled") == nil)
+        #expect(catalog.rejected.map(\.fileName) == ["mislabeled.json"])
+        #expect(
+            catalog.rejected.first?.reason
+                == ThemeLoadError.keysNeedNewerFormat(["dataGrid.string"], format: 4).localizedDescription
+        )
     }
 
     @Test("The bundled themes load after the two defaults, in the shared order")
@@ -456,13 +523,39 @@ struct ThemeCatalogTests {
         try sandbox.write(try Self.userTheme(id: "user.aardvark", name: "Aardvark"), as: "aardvark.json")
         let bundle = try #require(Bundle.main.resourceURL)
 
-        let catalog = ThemeCatalog(userDirectory: sandbox.themes, bundleDirectory: bundle, notificationCenter: sandbox.center)
+        let catalog = ThemeCatalog(userDirectory: sandbox.themes, bundleDirectory: bundle)
         let ids = catalog.themes.map(\.id)
 
         #expect(Array(ids.prefix(2)) == [BuiltInThemes.defaultLightId, BuiltInThemes.defaultDarkId])
         #expect(Set(ids).isSuperset(of: ["tablepro.dracula", "tablepro.nord"]))
         #expect(ids.last == "user.aardvark")
         #expect(catalog.themes == ThemeOrdering.sorted(catalog.themes))
+        #expect(catalog.rejected.isEmpty)
+    }
+
+    @Test("Bundled themes are read once: a reload keeps them as first read, whatever their files hold now")
+    func bundledThemesAreReadOnce() throws {
+        let sandbox = try Sandbox()
+        defer { sandbox.remove() }
+        let bundle = sandbox.root.appendingPathComponent("Bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        let original = try Self.userTheme(id: "tablepro.fixture", name: "Fixture", overrides: [.editorBackground: "#102030"])
+        let file = try sandbox.write(original, as: "tablepro.fixture.json", in: bundle)
+
+        let catalog = ThemeCatalog(userDirectory: sandbox.themes, bundleDirectory: bundle, fileTrash: sandbox.fileTrash)
+        #expect(catalog.theme(id: "tablepro.fixture") == original)
+
+        try sandbox.write(
+            try Self.userTheme(id: "tablepro.fixture", name: "Changed", overrides: [.editorBackground: "#FFFFFF"]),
+            as: "tablepro.fixture.json",
+            in: bundle
+        )
+        catalog.reloadSynchronously()
+        #expect(catalog.theme(id: "tablepro.fixture") == original)
+
+        try FileManager.default.removeItem(at: file)
+        catalog.reloadSynchronously()
+        #expect(catalog.theme(id: "tablepro.fixture") == original)
         #expect(catalog.rejected.isEmpty)
     }
 
@@ -568,8 +661,7 @@ struct ThemeCatalogTests {
         #expect(catalog.theme(id: BuiltInThemes.defaultDarkId) == BuiltInThemes.dark)
     }
 
-    /// The id in a file says nothing about which theme on this Mac it is: the same file imported
-    /// twice, or on two Macs, would otherwise collide in sync.
+    // The same file imported twice, or on two Macs, would otherwise collide in sync.
     @Test("Import mints a new id even when the file's id is free, and keeps a free name")
     func importMintsAFreshId() throws {
         let sandbox = try Sandbox()

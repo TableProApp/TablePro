@@ -174,6 +174,28 @@ extension QueryExecutionCoordinator {
         return definitionChanged ? [] : previous
     }
 
+    private func storeKeys(_ keys: [String], viewRowEditing: PluginViewRowEditing?, sameRelation: Bool, at index: Int) {
+        parent.tabManager.mutate(at: index) { tab in
+            tab.tableContext.primaryKeyColumns = keys
+            // Cached and inline metadata carry no answer, so the last one stands unless the relation changed.
+            let kept = sameRelation ? tab.tableContext.viewRowEditing : nil
+            tab.tableContext.adoptViewAnswer(viewRowEditing ?? kept, tabType: tab.tabType)
+        }
+    }
+
+    // Read before and inside `applyPhase1Result`, so rows built off the main actor install as built. A Reveal stays only on its table.
+    func phase1RowShape(tabId: UUID, tableName: String?, columns: [String], columnTypes: [ColumnType]) -> TableRows.RowShape {
+        let tab = parent.tabManager.tabs.first { $0.id == tabId }
+        let keepsReveal = tab?.revealsMaskedValues == true && tab?.tableContext.tableName == tableName
+        let policy = keepsReveal ? MaskingPolicy.none : parent.maskingPolicy
+        return TableRows.RowShape(
+            columns: columns,
+            masks: policy.columnMasks(table: tableName, columns: columns, columnTypes: columnTypes),
+            exportPolicy: policy,
+            exportTable: tableName
+        )
+    }
+
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -200,7 +222,10 @@ extension QueryExecutionCoordinator {
         rowLocators: [String?]? = nil,
         exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        columnOrigins: [PluginColumnOrigin?]? = nil,
+        prepared: TableRows.PreparedRows? = nil,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -240,11 +265,18 @@ extension QueryExecutionCoordinator {
         if parent.tabManager.tabs[idx].revealsMaskedValues, parent.tabManager.tabs[idx].tableContext.tableName != tableName {
             parent.tabManager.mutate(at: idx) { $0.revealsMaskedValues = false }
         }
-        let masks = parent.columnMasks(forTabId: tabId, table: tableName, columns: columns, columnTypes: columnTypes)
+        let shape = phase1RowShape(tabId: tabId, tableName: tableName, columns: columns, columnTypes: columnTypes)
+        let builtRows = prepared.flatMap { $0.fits(shape) ? $0 : nil } ?? TableRows.prepare(
+            rows,
+            rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
+            absentCells: absentCells,
+            unloadedCells: unloadedCells,
+            shape: shape
+        )
 
         let newTableRows = TableRows.from(
-            queryRows: rows,
-            columns: columns,
+            prepared: builtRows,
             columnTypes: columnTypes,
             columnDefaults: resolved.columnDefaults,
             columnForeignKeys: resolved.columnForeignKeys,
@@ -257,13 +289,7 @@ extension QueryExecutionCoordinator {
             rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched,
-            rowLocators: rowLocators,
-            exportDocuments: exportDocuments,
-            absentCells: absentCells,
-            unloadedCells: unloadedCells,
-            masks: masks,
-            exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
-            exportTable: tableName
+            columnOrigins: columnOrigins
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
@@ -334,12 +360,7 @@ extension QueryExecutionCoordinator {
             definitionChanged: definitionChanged
         )
 
-        parent.tabManager.mutate(at: idx) { tab in
-            tab.tableContext.primaryKeyColumns = resolvedPKs
-            // Cached and inline metadata carry no answer, so the last one stands unless the relation changed.
-            let kept = tableName == previousTableName ? tab.tableContext.viewRowEditing : nil
-            tab.tableContext.adoptViewAnswer(metadata?.viewRowEditing ?? kept, tabType: tab.tabType)
-        }
+        storeKeys(resolvedPKs, viewRowEditing: metadata?.viewRowEditing, sameRelation: tableName == previousTableName, at: idx)
         captureOrigin(
             tabIndex: idx,
             tabId: tabId,
@@ -359,22 +380,16 @@ extension QueryExecutionCoordinator {
                 rowMatchPolicy: resolved.rowMatchPolicy,
                 columnTypeNames: newTableRows.columnTypeNames
             )
+            parent.changeManagerMatchesSelectedResult()
         }
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
 
-        recordHistory(
-            QueryHistoryRecordRequest(
-                query: historySQL ?? sql,
-                connectionId: conn.id,
-                databaseName: historyDatabaseName(tabId: tabId),
-                databaseType: conn.type,
-                schemaName: historySchemaName(tabId: tabId),
-                source: historySource(tabId: tabId),
-                executionTime: executionTime,
-                rowCount: rows.count,
-                wasSuccessful: true,
-                timing: timing
+        if trigger.recordsHistory {
+            recordSuccessfulRun(
+                query: historySQL ?? sql, tabId: tabId, connection: conn,
+                executionTime: executionTime, rowCount: rows.count, timing: timing
             )
-        )
+        }
 
         if parent.tabManager.selectedTabId == tabId, isEditable, !parent.changeManager.hasChanges {
             parent.changeManager.clearChangesAndUndoHistory()
@@ -436,6 +451,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
+        parent.dropParkedEdits(ofBackgroundTab: tabId)
         parent.toolbarState.isResultsCollapsed = false
 
         recordHistory(
@@ -456,11 +472,36 @@ extension QueryExecutionCoordinator {
         )
     }
 
+    private func recordSuccessfulRun(
+        query: String,
+        tabId: UUID,
+        connection conn: DatabaseConnection,
+        executionTime: TimeInterval,
+        rowCount: Int,
+        timing: PluginQueryTiming?
+    ) {
+        recordHistory(
+            QueryHistoryRecordRequest(
+                query: query,
+                connectionId: conn.id,
+                databaseName: historyDatabaseName(tabId: tabId),
+                databaseType: conn.type,
+                schemaName: historySchemaName(tabId: tabId),
+                source: historySource(tabId: tabId),
+                executionTime: executionTime,
+                rowCount: rowCount,
+                wasSuccessful: true,
+                timing: timing
+            )
+        )
+    }
+
     func launchPhase2Work(
         tableName: String,
         tabId: UUID,
         connectionType: DatabaseType,
-        schemaTask: Task<FetchedTableSchema, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?,
+        countsRows: Bool = true
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
@@ -468,7 +509,7 @@ extension QueryExecutionCoordinator {
         Task(priority: .utility) { [weak self, parent] in
             // The caller marked the total pending; every exit that skips `resolveRowCount` must release it, or Count Exactly never returns.
             guard let self else {
-                parent.releaseCountPending(for: tabId)
+                if countsRows { parent.releaseCountPending(for: tabId) }
                 return
             }
             guard !parent.isTearingDown else { return }
@@ -480,14 +521,14 @@ extension QueryExecutionCoordinator {
 
             await MainActor.run { [weak self] in
                 guard let self else {
-                    parent.releaseCountPending(for: tabId)
+                    if countsRows { parent.releaseCountPending(for: tabId) }
                     return
                 }
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
                 // A retarget or newer run owns the tab now with its own pending mark; clearing here would release the successor's.
-                guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
                 resolveRowCount(
                     tableName: tableName,
                     tabId: tabId,
@@ -721,11 +762,30 @@ extension QueryExecutionCoordinator {
                     columns: queryColumns.columns,
                     columnTypes: queryColumns.columnTypes
                 )
-                return (plan, ExactCountInput(sql: sql, filters: filters, logicMode: logicMode), scope)
+                let input = ExactCountInput(
+                    sql: sql,
+                    filters: filters,
+                    logicMode: logicMode,
+                    safeModeIsReadOnly: parent.runsAtReadOnly,
+                    gate: parent.rawFilterNeedsReadOnlyGate(filters, tabId: tabId)
+                        ? sql.map { parent.rawFilterRequest(sql: $0, canPrompt: false) }
+                        : nil
+                )
+                return (plan, input, scope)
+            }
+
+            // Nobody asked for this count, so nothing may ask the user about it: a refusal leaves the total unknown.
+            var plan = prepared.plan
+            if let count = prepared.count, let gate = count.gate {
+                if await parent.executionGate.authorize(gate).isAuthorized {
+                    parent.approveReadOnlyRawFilter(count.filters, tabId: tabId)
+                } else {
+                    plan = .clear
+                }
             }
 
             let outcome = await Self.rowCountOutcome(
-                plan: prepared.plan,
+                plan: plan,
                 count: prepared.count,
                 scope: prepared.scope,
                 tableName: tableName
@@ -762,7 +822,7 @@ extension QueryExecutionCoordinator {
         case .clear:
             return .clear
         case .approximate:
-            guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, { driver in
+            guard let count = try? await DatabaseManager.shared.withMetadataRead(scope: scope, workload: .interactive, { driver in
                 try await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
             }) else { return nil }
             return .count(count, isApproximate: true)
@@ -792,7 +852,8 @@ extension QueryExecutionCoordinator {
                         table: tableName,
                         filters: exactCount.filters,
                         logicMode: exactCount.logicMode,
-                        countSQL: sql
+                        countSQL: sql,
+                        safeModeIsReadOnly: exactCount.safeModeIsReadOnly
                     )
                 }
                 return count.map { RowCountOutcome.count($0, isApproximate: false) }
@@ -837,7 +898,8 @@ extension QueryExecutionCoordinator {
         sql: String,
         tabId: UUID,
         connection conn: DatabaseConnection,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         let diagnosis = DatabaseWriteRejectionDiagnosis.formatted(error)
         let message = ServerOutputCapture.failureMessage(diagnosis, output: serverOutput)
@@ -850,6 +912,7 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = nil
         }
 
+        guard trigger.recordsHistory else { return }
         recordHistory(
             QueryHistoryRecordRequest(
                 query: sql,
@@ -898,6 +961,9 @@ internal struct ExactCountInput: Sendable {
     internal let sql: String?
     internal let filters: [TableFilter]
     internal let logicMode: FilterLogicMode
+    internal var safeModeIsReadOnly = false
+    // What the gate is asked before a raw filter that calls a function runs at Read-Only.
+    internal var gate: OperationRequest?
 }
 
 enum RowCountPlan: Equatable {

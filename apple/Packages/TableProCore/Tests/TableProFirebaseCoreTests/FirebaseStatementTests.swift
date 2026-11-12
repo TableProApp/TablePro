@@ -1,4 +1,5 @@
 import Foundation
+@testable import TableProFirebaseClient
 @testable import TableProFirebaseCore
 import TableProGoogleCloud
 import Testing

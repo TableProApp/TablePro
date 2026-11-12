@@ -514,6 +514,15 @@ internal sealed class AppSession : IDisposable
         Retry.WhileFalse(() => _application.HasExited, Wait, throwOnTimeout: false);
     }
 
+    public bool HasExited => _application.HasExited;
+
+    // As a crash, Task Manager or a power cut ends it: nothing runs on the way out.
+    public void Kill()
+    {
+        _application.Kill();
+        Retry.WhileFalse(() => _application.HasExited, Wait, throwOnTimeout: false);
+    }
+
     public void Dispose()
     {
         if (!_application.HasExited)

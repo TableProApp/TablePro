@@ -4,22 +4,29 @@
   "dataGrid": {
     "alternateRow": "#32302F",
     "background": "#282828",
-    "boolFalse": "#FB4934",
+    "binary": "#FFB7CA",
+    "boolFalse": "#FF9381",
     "boolTrue": "#B8BB26",
+    "dateTime": "#96B8AB",
     "deleted": "#FB493426",
     "deletedText": "#FB493480",
+    "enum": "#FF9651",
     "focusBorder": "#689D6A",
     "gridLine": "#504945",
     "headerBackground": "#32302F",
     "headerText": "#EBDBB2",
     "inactiveSelection": "#3C3836",
     "inserted": "#B8BB2626",
+    "json": "#FABD2F",
     "modified": "#D7992126",
     "nullValue": "#928374",
+    "number": "#E99BB0",
     "rowNumber": "#665C54",
     "selection": "#384539",
     "selectionText": "#EBDBB2",
-    "text": "#EBDBB2"
+    "string": "#A7DA95",
+    "text": "#EBDBB2",
+    "uuid": "#8EC07C"
   },
   "editor": {
     "background": "#282828",
@@ -43,7 +50,7 @@
   },
   "id": "tablepro.gruvbox-dark",
   "name": "Gruvbox Dark",
-  "schema": 3,
+  "schema": 4,
   "window": {
     "background": "#282828"
   }

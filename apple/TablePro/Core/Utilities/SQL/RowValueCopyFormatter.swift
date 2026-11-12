@@ -13,11 +13,11 @@ internal enum RowValueCopyFormatter {
             return nil
         case .text(let value):
             if columnType?.isBlobType ?? false {
-                return value.formattedAsCompactHex() ?? value
+                return BlobFormattingService.shared.format(value, for: .copy) ?? value
             }
             return value
         case .bytes(let data):
-            return String(data: data, encoding: .isoLatin1)?.formattedAsCompactHex() ?? ""
+            return BlobFormattingService.shared.format(data, for: .copy) ?? ""
         }
     }
 

@@ -12,6 +12,25 @@ import TableProSQLGrammar
 
 private let saveChangesLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator")
 
+// What the user staged, without the pre-images: a value loaded while a prompt is up completes those and edits nothing.
+struct PlannedEdits: Equatable {
+    private let changes: [RowChange]
+    private let deletedRowIDs: Set<RowID>
+    private let insertedRowIDs: Set<RowID>
+    private let insertedRowData: [RowID: [PluginCellValue]]
+
+    init(_ pending: PendingChanges) {
+        changes = pending.changes.map { change in
+            var change = change
+            change.originalRow = nil
+            return change
+        }
+        deletedRowIDs = pending.deletedRowIDs
+        insertedRowIDs = pending.insertedRowIDs
+        insertedRowData = pending.insertedRowData
+    }
+}
+
 extension RowEditingCoordinator {
     /// The plan carries the scope it was built for, so it runs where its statements were
     /// generated however long the destructive-delete sheet and the authorization prompt stay
@@ -23,32 +42,33 @@ extension RowEditingCoordinator {
         tableOperationOptions: inout [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         endInspectorEditRun()
+        // Taken now: the slot is a handoff, and a save still in flight keeps its own waiter when a second one starts.
+        let waiter = parent.takeSaveCompletion()
         let hasEditedCells = parent.changeManager.hasChanges
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
 
         guard hasEditedCells || hasPendingTableOps else {
-            parent.saveCompletionContinuation?.resume(returning: true)
-            parent.saveCompletionContinuation = nil
+            waiter?.resume(returning: true)
             return
         }
 
+        let savingTabId = parent.tabManager.selectedTabId
         /// One change manager serves the whole window, so a second save cannot start while one is
         /// in flight. Say so: over the slow link this guard exists for, a Save that silently does
         /// nothing is indistinguishable from a Save that is broken.
-        guard beginSaveInFlight() else {
+        guard beginSaveInFlight(tabId: savingTabId) else {
             saveChangesLogger.debug("Save already in flight, refusing the repeat")
             if let index = parent.tabManager.selectedTabIndex {
                 parent.tabManager.mutate(at: index) {
                     $0.execution.errorMessage = String(localized: "A save is already running in this window.")
                 }
             }
-            parent.saveCompletionContinuation?.resume(returning: false)
-            parent.saveCompletionContinuation = nil
+            waiter?.resume(returning: false)
             return
         }
 
         guard parent.selectedTabScope != nil else {
-            failSave(message: String(localized: "Not connected to database"))
+            failSave(message: String(localized: "Not connected to database"), tabId: savingTabId, waiter: waiter)
             return
         }
 
@@ -63,13 +83,17 @@ extension RowEditingCoordinator {
             failSave(
                 message: [error.localizedDescription, (error as? DataWriteError)?.recoverySuggestion]
                     .compactMap { $0 }
-                    .joined(separator: " ")
+                    .joined(separator: " "),
+                tabId: savingTabId,
+                waiter: waiter
             )
             return
         }
 
         guard !plan.isEmpty else {
-            failSave(message: String(localized: "Could not generate SQL for changes."))
+            failSave(
+                message: String(localized: "Could not generate SQL for changes."), tabId: savingTabId, waiter: waiter
+            )
             return
         }
 
@@ -89,17 +113,19 @@ extension RowEditingCoordinator {
             deletedRowCount: parent.changeManager.deletedRowIDs.count,
             tableName: plan.rowOperations.first(where: { $0.kind == .delete })?.target.table
         )
-        let confirmingTabId = parent.tabManager.selectedTabId
-        let confirmingChanges = parent.changeManager.pending
+        let confirmingChanges = PlannedEdits(parent.changeManager.pending)
         Task { [weak self, parent] in
-            guard let self else { return }
+            guard let self else {
+                waiter?.resume(returning: false)
+                return
+            }
 
             if deleteConfirmation.isRequired {
                 let preview = await previewCascade(of: plan)
                 // The window stays live while counting. A tab switched to holds the change manager this
                 // save would clear, and an edit made meanwhile is not in the plan, so either ends the save.
-                let planIsCurrent = parent.tabManager.selectedTabId == confirmingTabId
-                    && parent.changeManager.pending == confirmingChanges
+                let planIsCurrent = parent.tabManager.selectedTabId == savingTabId
+                    && PlannedEdits(parent.changeManager.pending) == confirmingChanges
                 var choice = BulkDeleteAlert.Choice.cancel
                 if planIsCurrent {
                     choice = await BulkDeleteAlert.present(deleteConfirmation.with(preview), window: parent.contentWindow)
@@ -114,9 +140,8 @@ extension RowEditingCoordinator {
                         )
                     }
                     endSaveInFlight()
-                    parent.saveCompletionContinuation?.resume(returning: false)
-                    parent.saveCompletionContinuation = nil
-                    if !planIsCurrent, let index = parent.tabManager.tabs.firstIndex(where: { $0.id == confirmingTabId }) {
+                    waiter?.resume(returning: false)
+                    if !planIsCurrent, let index = parent.tabManager.tabs.firstIndex(where: { $0.id == savingTabId }) {
                         parent.tabManager.mutate(at: index) {
                             $0.execution.errorMessage = String(
                                 localized: "The changes were edited while the save was checking other tables. Save again to include them."
@@ -146,12 +171,37 @@ extension RowEditingCoordinator {
             )
             switch decision {
             case .authorized:
+                // The approval prompt is not window-modal. A tab switched to holds the change manager this save
+                // would clear, and an edit made meanwhile is not in the plan, so either ends the save.
+                let editsAreCurrent = !hasEditedCells
+                    || (parent.tabManager.selectedTabId == savingTabId
+                        && PlannedEdits(parent.changeManager.pending) == confirmingChanges)
+                guard editsAreCurrent else {
+                    if hasPendingTableOps {
+                        restorePendingTableOperations(
+                            connectionId: connId,
+                            truncates: snapshotTruncates,
+                            deletes: snapshotDeletes,
+                            options: snapshotOptions
+                        )
+                    }
+                    failSave(
+                        message: String(
+                            localized: "The tab or its edits changed while the save waited for approval. Nothing was saved."
+                        ),
+                        tabId: savingTabId,
+                        waiter: waiter
+                    )
+                    return
+                }
                 var truncs = snapshotTruncates
                 var dels = snapshotDeletes
                 var opts = snapshotOptions
                 executeCommitPlan(
                     plan,
                     scope: plan.scope,
+                    savingTabId: savingTabId,
+                    waiter: waiter,
                     clearTableOps: hasPendingTableOps,
                     pendingTruncates: &truncs,
                     pendingDeletes: &dels,
@@ -166,7 +216,7 @@ extension RowEditingCoordinator {
                         options: snapshotOptions
                     )
                 }
-                failSave(message: reason)
+                failSave(message: reason, tabId: savingTabId, waiter: waiter)
             }
         }
     }
@@ -178,6 +228,8 @@ extension RowEditingCoordinator {
     private func executeCommitPlan(
         _ plan: DataWritePlan,
         scope: DatabaseScope,
+        savingTabId: UUID?,
+        waiter: CheckedContinuation<Bool, Never>?,
         clearTableOps: Bool,
         pendingTruncates: inout Set<DatabaseTreeTableRef>,
         pendingDeletes: inout Set<DatabaseTreeTableRef>,
@@ -186,8 +238,7 @@ extension RowEditingCoordinator {
         let validSteps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !validSteps.isEmpty else {
             endSaveInFlight()
-            parent.saveCompletionContinuation?.resume(returning: true)
-            parent.saveCompletionContinuation = nil
+            waiter?.resume(returning: true)
             return
         }
 
@@ -209,12 +260,15 @@ extension RowEditingCoordinator {
         }
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
-        let savingTabId = parent.tabManager.selectedTabId
+        let commitMode = DatabaseManager.shared.commitMode(for: conn.id)
         let serverOwned = serverOwnedColumns(of: savingTabId)
         let columnTypeNames = parent.changeManager.columnTypeNames
 
         Task { [weak self, parent] in
-            guard let self else { return }
+            guard let self else {
+                waiter?.resume(returning: false)
+                return
+            }
             let overallStartTime = Date()
             let operationStart = ContinuousClock.Instant.now
 
@@ -224,7 +278,7 @@ extension RowEditingCoordinator {
                     route: route,
                     cancellation: .protectedWrite
                 ) { driver in
-                    try await DataWriteExecutor.run(plan, mode: .readWrite, on: driver)
+                    try await DataWriteExecutor.run(plan, mode: .readWrite, commitMode: commitMode, on: driver)
                 }
 
                 let history = recordSuccessHistory(
@@ -248,8 +302,7 @@ extension RowEditingCoordinator {
                 )
 
                 endSaveInFlight()
-                parent.saveCompletionContinuation?.resume(returning: true)
-                parent.saveCompletionContinuation = nil
+                waiter?.resume(returning: true)
                 reportSaveFinished(
                     .succeeded(OperationSummary(rowsAffected: run.results.reduce(0) { $0 + $1.rowsAffected })),
                     connection: conn,
@@ -317,7 +370,9 @@ extension RowEditingCoordinator {
                     message: String(
                         format: String(localized: "Save failed: %@"),
                         DatabaseWriteRejectionDiagnosis.formatted(error)
-                    )
+                    ),
+                    tabId: savingTabId,
+                    waiter: waiter
                 )
             }
         }
@@ -632,13 +687,13 @@ extension RowEditingCoordinator {
         )
     }
 
-    private func failSave(message: String) {
+    // Written to the tab that started the save: the one in front may be another by the time it fails.
+    private func failSave(message: String, tabId: UUID?, waiter: CheckedContinuation<Bool, Never>?) {
         endSaveInFlight()
-        if let index = parent.tabManager.selectedTabIndex {
-            parent.tabManager.mutate(at: index) { $0.execution.errorMessage = message }
+        if let tabId {
+            parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = message }
         }
-        parent.saveCompletionContinuation?.resume(returning: false)
-        parent.saveCompletionContinuation = nil
+        waiter?.resume(returning: false)
     }
 
     private func restorePendingTableOperations(
@@ -672,5 +727,12 @@ fileprivate extension RowEditingCoordinator {
             databaseName: database,
             outcome: outcome
         )
+    }
+}
+
+extension MainContentCoordinator {
+    func takeSaveCompletion() -> CheckedContinuation<Bool, Never>? {
+        defer { saveCompletionContinuation = nil }
+        return saveCompletionContinuation
     }
 }

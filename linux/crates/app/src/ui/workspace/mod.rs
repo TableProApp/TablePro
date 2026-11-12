@@ -13,6 +13,7 @@ mod database_transfer;
 mod definitions;
 mod diagram;
 mod editor_label;
+mod favorite_folders;
 mod finished_work;
 mod health_banner;
 mod imp;
@@ -21,8 +22,11 @@ mod import_ledger;
 mod recent_tabs;
 mod references;
 mod saves;
+mod schema_chooser;
+mod schema_filter;
 mod session_watches;
 mod sidebar;
+mod sidebar_width;
 mod status_pages;
 mod structure;
 mod structure_target;
@@ -66,6 +70,7 @@ pub(crate) use self::catalog_ops::DatabaseDrop;
 pub(crate) use self::database_transfer::TransferInput;
 pub(crate) use self::saves::SaveRequest;
 use self::session_watches::SessionWatches;
+pub(crate) use self::status_pages::SearchInput;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_actions::show_transfer_actions;
 pub(crate) use self::workspace_shell::WorkspaceShell;
@@ -132,6 +137,7 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
+    schema_filter: schema_chooser::SidebarFilter,
     definition_reads: u64,
     /// The Show Definition read in flight, which a newer one supersedes.
     definition_read: Option<definitions::DefinitionRead>,
@@ -180,6 +186,7 @@ pub(crate) struct WorkspaceModel {
     /// The CSV imports running into this workspace's tables.
     imports: Rc<import_ledger::ImportLedger>,
     history_dialog: Option<HistoryDialog>,
+    quick_open_dialog: Option<super::quick_open::QuickOpen>,
     saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
     import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
@@ -517,6 +524,11 @@ pub(crate) enum WorkspaceInput {
         read: u64,
         listing: sidebar::SidebarListing,
     },
+    ShowSchema {
+        name: String,
+        shown: bool,
+    },
+    ShowAllSchemas,
     /// List a key-value engine's keys again, as the search now asks.
     ListKeys,
     /// The keys a listing found, indexed for the sidebar, or why they
@@ -544,8 +556,7 @@ pub(crate) enum WorkspaceInput {
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
     DraftsNotSaved,
-    ShowHistory,
-    ShowSavedQueries,
+    Search(SearchInput),
     ActiveTab(workspace_tabs::ActiveTabCommand),
     ConfirmReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
     ReplaceSavedQuery(tablepro_storage::saved_queries::NewSavedQuery),
@@ -813,11 +824,7 @@ impl Workspace {
         } = init;
         let workspace: Self = glib::Object::new();
         let imp = workspace.imp();
-        imp.shell.set(Some(&shell));
-        let input = workspace.pump_inputs();
-        let _ = imp.sender.set(input.clone());
-        let _ = imp.key.set(key.clone());
-        let _ = imp.connection_id.set(session.metadata().id);
+        let input = workspace.bind(&shell, &key, &session);
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -870,6 +877,7 @@ impl Workspace {
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
+            schema_filter: schema_chooser::SidebarFilter::new(&workspace),
             definition_reads: 0,
             definition_read: None,
             all_schemas_listed: false,
@@ -894,6 +902,7 @@ impl Workspace {
             exports: exports.clone(),
             imports: imports.clone(),
             history_dialog: None,
+            quick_open_dialog: None,
             saved_queries_dialog: None,
             import_dialog: None,
             workspace: persistence,
@@ -905,11 +914,22 @@ impl Workspace {
         workspace
     }
 
+    fn bind(&self, shell: &WorkspaceShell, key: &SessionKey, session: &Session) -> WorkspaceSender {
+        let imp = self.imp();
+        imp.shell.set(Some(shell));
+        let input = self.pump_inputs();
+        let _ = imp.sender.set(input.clone());
+        let _ = imp.key.set(key.clone());
+        let _ = imp.connection_id.set(session.metadata().id);
+        input
+    }
+
     /// Hold the model, and have every close of the window ask the
     /// `blockers` first. The session is named before the shell holds it,
     /// which titles its row and the header bars from these.
     fn hold(&self, model: WorkspaceModel, blockers: [Rc<dyn CloseBlocker>; 2]) {
         model.refresh_title();
+        model.show_affordances();
         model.refresh_assistant();
         self.imp().model.replace(Some(model));
         for blocker in blockers {
@@ -932,6 +952,23 @@ impl Workspace {
     /// workspace's signals.
     pub(crate) fn start(&self) {
         self.with_model(WorkspaceModel::open);
+    }
+
+    fn show_creation_menu(&self, menu: gio::MenuModel) {
+        self.imp().creation_menu.replace(Some(menu));
+        self.notify_creation_menu();
+    }
+
+    fn show_schema_filter_label(&self, label: String) {
+        if *self.imp().schema_filter_label.borrow() != label {
+            self.imp().schema_filter_label.replace(label);
+            self.notify_schema_filter_label();
+        }
+    }
+
+    // None while the workspace is handling input.
+    pub(super) fn schema_choices(&self) -> Option<schema_chooser::SchemaChoices> {
+        self.read(WorkspaceModel::schema_choices)
     }
 
     /// The key the session is open under.
@@ -1167,6 +1204,7 @@ impl WorkspaceModel {
     fn open(&mut self) {
         self.reconnect_banner.set_revealed(false);
         tracing::info!(driver = %self.driver_id, "workspace ready");
+        self.load_schema_filter();
         self.open_sidebar();
         self.refresh_title();
         self.restore_workspace_tabs(self.key.clone());
@@ -1273,6 +1311,7 @@ impl WorkspaceModel {
             keys.stop_listing();
         }
         self.sidebar.shutdown();
+        self.close_quick_open();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
             close_if_presented(dialog.upcast_ref());
@@ -1342,6 +1381,8 @@ impl WorkspaceModel {
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
             WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
+            WorkspaceInput::ShowSchema { name, shown } => self.on_schema_shown(&name, shown),
+            WorkspaceInput::ShowAllSchemas => self.on_all_schemas_shown(),
             WorkspaceInput::ListKeys => self.list_keys(),
             WorkspaceInput::KeysListed(listed) => self.on_keys_listed(listed),
             WorkspaceInput::LinkChanged => self.on_link_changed(),
@@ -1397,8 +1438,7 @@ impl WorkspaceModel {
             WorkspaceInput::SavedConnectionsChanged => self.on_saved_connections_changed(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.on_drafts_not_saved(),
-            WorkspaceInput::ShowHistory => self.on_show_history(),
-            WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
+            WorkspaceInput::Search(input) => self.on_search(input),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
             WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {

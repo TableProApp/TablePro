@@ -1,6 +1,7 @@
 //! The data grid every surface shows rows in: the table tab, the SQL
 //! editor's results and a key-value engine's key tab.
 
+mod cell_font;
 mod client_sorter;
 mod column_chooser;
 mod columns;
@@ -15,6 +16,8 @@ mod grid_menu;
 mod grid_request;
 mod grid_row;
 mod grid_store;
+mod highlight;
+mod highlight_dialog;
 mod imp;
 mod keys;
 mod layout_binding;
@@ -25,9 +28,11 @@ mod reversed_list;
 mod row_detail;
 mod row_json_dialog;
 mod row_number_column;
+mod scheme_colors;
 mod selection;
 mod selection_summary;
 mod server_sorter;
+mod special_marks;
 mod stripes;
 mod table_keys;
 #[cfg(test)]
@@ -46,6 +51,7 @@ use tablepro_core::dialect::SqlDialect;
 
 #[cfg(test)]
 pub(crate) use self::column_chooser::ColumnChooser;
+pub(crate) use self::copy::{JsonPreview, JsonPreviewRequest, json_preview};
 pub(crate) use self::edit::BULK_DELETE_CONFIRM_THRESHOLD;
 pub(crate) use self::grid_cell::GridCell;
 pub(crate) use self::grid_config::{DialectSource, EditRules, GridConfig, GridSorting};
@@ -91,9 +97,10 @@ impl DataGrid {
         pinned_numbers::install(&grid);
         find_bar::install(&grid);
         imp.detail_pane.attach(&grid);
-        grid.set_columns(columns, sorting, rules);
-        grid.watch_fonts();
         grid.watch_display_settings();
+        grid.set_columns(columns, sorting, rules);
+        scheme_colors::follow(&grid);
+        grid.watch_fonts();
         grid
     }
 
@@ -135,10 +142,14 @@ impl DataGrid {
         }
     }
 
+    /// The connection's dialect, SQL or not.
+    pub(crate) fn dialect(&self) -> Option<Arc<dyn SqlDialect>> {
+        (self.config()?.dialect.as_ref()?)()
+    }
+
     /// The connection's dialect, where the rows have an SQL spelling.
     pub(crate) fn sql_dialect(&self) -> Option<Arc<dyn SqlDialect>> {
-        let dialect = (self.config()?.dialect.as_ref()?)()?;
-        dialect.grammar().is_sql().then_some(dialect)
+        self.dialect().filter(|dialect| dialect.grammar().is_sql())
     }
 
     pub fn connect_request<F: Fn(&Self, GridRequest) + 'static>(&self, f: F) -> glib::SignalHandlerId {
@@ -227,6 +238,7 @@ impl DataGrid {
         self.imp().summary.forget_column();
         self.edit().set_rules(self, rules);
         self.rebuild_columns(columns, sorting);
+        self.compile_highlights();
         self.show_rows_or_empty();
         self.refresh_actions();
     }
@@ -416,6 +428,7 @@ impl DataGrid {
     fn selection_moved(&self) {
         self.refresh_actions();
         self.imp().detail_pane.follow_focus();
+        self.open_details_for_selection();
         self.emit_by_name::<()>("selection-changed", &[]);
     }
 

@@ -8,7 +8,8 @@ enum ToolQueryExecutor {
         maxRows: Int,
         timeoutSeconds: Int,
         context: MCPRequestContext,
-        secrets: [String]
+        secrets: [String],
+        masking: ExternalRowMasking = .byOrigin
     ) async throws -> JsonValue {
         try await context.cancellation.throwIfCancelled()
         return try await executeAndLog(
@@ -17,9 +18,12 @@ enum ToolQueryExecutor {
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             principal: context.principal,
+            client: MCPAuditLogger.clientName(for: context.meta),
             cancellation: context.cancellation,
             secrets: secrets,
-            source: historySource(for: context)
+            source: historySource(for: context),
+            masking: masking,
+            budget: .mcpAnswer
         )
     }
 
@@ -34,14 +38,18 @@ enum ToolQueryExecutor {
         maxRows: Int,
         timeoutSeconds: Int,
         principal: MCPPrincipal,
+        client: String? = nil,
         cancellation: MCPCancellationToken? = nil,
         secrets: [String] = [],
-        source: QueryHistorySource = .mcp
+        source: QueryHistorySource = .mcp,
+        masking: ExternalRowMasking = .byOrigin,
+        budget: ExternalAnswerBudget = .mcpAnswer
     ) async throws -> JsonValue {
         try await logged(
             services: services,
             approved: operation,
             principal: principal,
+            client: client,
             secrets: secrets,
             source: source
         ) {
@@ -50,24 +58,30 @@ enum ToolQueryExecutor {
                 services: services,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                masking: masking,
+                budget: budget
             )
         }
     }
 
+    // The rows held to `budget`, and what is left of it for the next table of the same export.
     static func executeResultAndLog(
         services: MCPToolServices,
         operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         context: MCPRequestContext,
-        secrets: [String]
-    ) async throws -> QueryResult {
+        secrets: [String],
+        masking: ExternalRowMasking = .byOrigin,
+        budget: ExternalAnswerBudget
+    ) async throws -> (result: QueryResult, budget: ExternalAnswerBudget) {
         try await context.cancellation.throwIfCancelled()
         return try await logged(
             services: services,
             approved: operation,
             principal: context.principal,
+            client: MCPAuditLogger.clientName(for: context.meta),
             secrets: secrets,
             source: historySource(for: context)
         ) {
@@ -75,9 +89,45 @@ enum ToolQueryExecutor {
                 operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: context.cancellation
+                cancellation: context.cancellation,
+                masking: masking,
+                budget: budget
             )
-            return (outcome.result, outcome.result.rows.count)
+            return ((result: outcome.result, budget: outcome.budget ?? budget), outcome.result.rows.count)
+        }
+    }
+
+    // An analyzed write ran, so it is recorded the way execute_query records one; a plan of a read is not.
+    static func explainAndLog(
+        services: MCPToolServices,
+        operation: ApprovedOperation,
+        request: MCPExplainRequest,
+        timeoutSeconds: Int,
+        context: MCPRequestContext,
+        secrets: [String]
+    ) async throws -> JsonValue {
+        guard operation.kind.declaresWrite else {
+            do {
+                return try await services.connectionBridge.explainQuery(
+                    operation, request: request, timeoutSeconds: timeoutSeconds, cancellation: context.cancellation
+                )
+            } catch {
+                throw translate(error, secrets: secrets)
+            }
+        }
+        try await context.cancellation.throwIfCancelled()
+        return try await logged(
+            services: services,
+            approved: operation,
+            principal: context.principal,
+            client: MCPAuditLogger.clientName(for: context.meta),
+            secrets: secrets,
+            source: historySource(for: context)
+        ) {
+            let payload = try await services.connectionBridge.explainQuery(
+                operation, request: request, timeoutSeconds: timeoutSeconds, cancellation: context.cancellation
+            )
+            return (payload, payload["rows"]?.arrayValue?.count ?? 0)
         }
     }
 
@@ -85,6 +135,7 @@ enum ToolQueryExecutor {
         services: MCPToolServices,
         approved: ApprovedOperation,
         principal: MCPPrincipal,
+        client: String?,
         secrets: [String],
         source: QueryHistorySource,
         operation: () async throws -> (Output, Int)
@@ -116,6 +167,7 @@ enum ToolQueryExecutor {
             )
             MCPAuditLogger.logQueryExecuted(
                 principal: principal,
+                client: client,
                 connectionId: connectionId,
                 sql: query,
                 durationMs: Int(elapsed * 1_000),
@@ -140,6 +192,7 @@ enum ToolQueryExecutor {
             )
             MCPAuditLogger.logQueryExecuted(
                 principal: principal,
+                client: client,
                 connectionId: connectionId,
                 sql: query,
                 durationMs: Int(elapsed * 1_000),
@@ -163,7 +216,9 @@ enum ToolQueryExecutor {
         services: MCPToolServices,
         maxRows: Int,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        masking: ExternalRowMasking,
+        budget: ExternalAnswerBudget
     ) async throws -> (payload: JsonValue, rowsReturned: Int) {
         switch operation.unit {
         case .statement:
@@ -171,7 +226,9 @@ enum ToolQueryExecutor {
                 operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                masking: masking,
+                budget: budget
             )
             return (payload, payload["row_count"]?.intValue ?? 0)
         case .script:
@@ -179,13 +236,16 @@ enum ToolQueryExecutor {
                 operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
+                cancellation: cancellation,
+                budget: budget
             )
         }
     }
 
     static func translate(_ error: Error, secrets: [String]) -> Error {
         if let dataError = error as? DatabaseAccessError {
+            // Kept as it is, so an MCP call answers it as the cancel it was and the assistant shows its own words.
+            if case .stoppedWhileRunning = dataError { return dataError }
             return MCPToolExecutionError.from(dataError, secrets: secrets)
         }
         if let toolError = error as? MCPToolExecutionError {
@@ -200,9 +260,7 @@ enum ToolQueryExecutor {
         return MCPToolExecutionError.queryFailed(MCPErrorRedactor.message(for: error, secrets: secrets))
     }
 
-    /// An MCP query has no tab and no window of its own, so its completion is owned by the
-    /// connection. Clicking the notification brings the connection's most recent window forward
-    /// rather than focusing a tab that never existed.
+    // An MCP query has no tab, so its notification brings the connection's most recent window forward.
     @MainActor
     private static func reportMcpQueryFinished(
         _ outcome: OperationOutcome,

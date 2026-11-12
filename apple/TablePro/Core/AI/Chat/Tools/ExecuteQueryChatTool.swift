@@ -118,7 +118,8 @@ struct ExecuteQueryChatTool: ChatTool {
             operation: operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            principal: .inAppAssistant
+            principal: .inAppAssistant,
+            budget: .assistantAnswer
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }

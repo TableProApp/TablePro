@@ -15,6 +15,17 @@ import TableProSQLGrammar
 extension MainContentCoordinator {
     @discardableResult
     func runExplain(variant: ExplainVariant? = nil) -> Task<Void, Never>? {
+        guard let tabId = tabManager.selectedTabId else { return nil }
+        // Nil when the discard prompt has to ask first: the plan follows the answer.
+        var started: Task<Void, Never>?
+        confirmRunDiscard(onTab: tabId) { [weak self] in
+            started = self?.startExplain(variant: variant)
+        }
+        return started
+    }
+
+    private func startExplain(variant: ExplainVariant?) -> Task<Void, Never>? {
+        if let tabId = tabManager.selectedTabId { flushEditorText(forTab: tabId) }
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return nil }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runExplain")
@@ -22,6 +33,7 @@ extension MainContentCoordinator {
         }
         guard !isShowingSafeModePrompt else { return nil }
         guard let statement = explainStatement(in: tab) else { return nil }
+        endEditorCompletion()
         let anchor = tab.tabType == .table ? nil : StatementAnchor(statement)
         guard let request = ExplainRequest.make(
             variant: variant,
@@ -104,10 +116,12 @@ extension MainContentCoordinator {
 
         let (claim, lease) = beginTabExecution(for: tabId)
         let conn = connection
+        let safeModeIsReadOnly = runsAtReadOnly
 
         tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = nil }
 
         // EXPLAIN ANALYZE and an actual plan run the statement, and a CREATE TABLE AS among them changes the catalog.
+        // Under Manual Commit such a run is held, as the write itself would be.
         let ranWrite = request.operationKind(databaseType: conn.type).declaresWrite
         let failureOutput = ServerOutputBox()
         let explainTask = Task { [weak self] in
@@ -117,16 +131,18 @@ extension MainContentCoordinator {
                     scope: scope,
                     route: services.databaseManager.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
-                ) { [queryExecutor] driver in
-                    try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) { () async throws -> QueryFetchResult in
-                        if let step = request.driverStep {
-                            return try await QueryExecutor.fetchExplainPlan(
-                                driver: driver, statement: request.subjectSQL, variantId: step.variantId
+                ) { [queryExecutor, held = manualCommitRun(skipped: !ranWrite)] driver in
+                    try await held.running([request.gatedSQL(databaseType: conn.type)], on: driver) {
+                        try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) { () async throws -> QueryFetchResult in
+                            if let step = request.driverStep {
+                                return try await QueryExecutor.fetchExplainPlan(
+                                    driver: driver, statement: request.subjectSQL, variantId: step.variantId
+                                )
+                            }
+                            return try await queryExecutor.executeQuery(
+                                driver: driver, sql: request.sql, parameters: nil, rowCap: nil, safeModeIsReadOnly: safeModeIsReadOnly
                             )
                         }
-                        return try await queryExecutor.executeQuery(
-                            driver: driver, sql: request.sql, parameters: nil, rowCap: nil
-                        )
                     }
                 }
                 if ranWrite { Self.postStatementRan(request.subjectSQL, on: conn) }
@@ -192,12 +208,12 @@ extension MainContentCoordinator {
                                 serverOutput: fetchResult.serverOutput
                             )]
                         )
-                        if tab.display.isResultsCollapsed {
-                            tab.display.isResultsCollapsed = false
-                        }
+                        if tab.display.isResultsCollapsed { tab.display.isResultsCollapsed = false }
                     }
                     seedBufferFromActiveResult(tabId: tabId)
+                    dropParkedEdits(ofBackgroundTab: tabId)
                     toolbarState.isResultsCollapsed = false
+                    queryExecutionCoordinator.recordStatementRun(request.sql, tabId: tabId, startedAt: claim.startedAt)
 
                     recordHistory(
                         QueryHistoryRecordRequest(
@@ -251,6 +267,7 @@ extension MainContentCoordinator {
                         toolbarState.isResultsCollapsed = false
                         announceQueryError(error.localizedDescription)
                     }
+                    queryExecutionCoordinator.recordStatementFailure(request.sql, error: error, tabId: tabId, startedAt: claim.startedAt)
 
                     recordHistory(
                         QueryHistoryRecordRequest(

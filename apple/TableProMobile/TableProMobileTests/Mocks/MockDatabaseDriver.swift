@@ -3,6 +3,7 @@ import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
+@testable import TableProMobile
 
 final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     enum MockError: Error { case scripted }
@@ -16,6 +17,10 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedDatabases: [String] = []
     // The database the driver says it is in, which may be named differently from the one the connection stores.
     var scriptedCurrentDatabase: String?
+    // What `SELECT DATABASE()` and `current_schema()` answer; nil keeps the driver where it is.
+    var scriptedSessionDatabase: String?
+    var scriptedSessionSchema: String?
+    private(set) var sessionDatabaseReads = 0
     var scriptedSchemas: [String] = []
     var scriptedTransactionState: DriverTransactionState = .unknown
     // Answered in order, one per call, before falling back to `scriptedTransactionState`.
@@ -40,6 +45,11 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var didRollbackTransaction = false
     private(set) var pingCount = 0
     private(set) var switchedDatabases: [String] = []
+    private(set) var switchedSchemas: [String] = []
+    private(set) var fetchTablesSchemas: [String?] = []
+    private(set) var fetchSchemasCalls = 0
+    private(set) var fetchDatabasesCalls = 0
+    private(set) var transactionStateReads = 0
 
     var supportsSchemas: Bool = false
     var currentSchema: String?
@@ -90,6 +100,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
+        fetchTablesSchemas.append(schema)
         await beforeFetchTables?()
         if let fetchTablesError { throw fetchTablesError }
         return scriptedTables
@@ -111,15 +122,26 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
         return scriptedForeignKeys
     }
 
-    func fetchDatabases() async throws -> [String] { scriptedDatabases }
-    func fetchSchemas() async throws -> [String] { scriptedSchemas }
+    func fetchDatabases() async throws -> [String] {
+        fetchDatabasesCalls += 1
+        return scriptedDatabases
+    }
+
+    func fetchSchemas() async throws -> [String] {
+        fetchSchemasCalls += 1
+        return scriptedSchemas
+    }
     var currentDatabase: String? { scriptedCurrentDatabase }
+
+    var refusedDatabases: Set<String> = []
 
     func switchDatabase(to name: String) async throws {
         if let switchDatabaseError { throw switchDatabaseError }
+        if refusedDatabases.contains(name) { throw MockError.scripted }
         switchedDatabases.append(name)
     }
     func switchSchema(to name: String) async throws {
+        switchedSchemas.append(name)
         currentSchema = name
     }
     func beginTransaction() async throws { didBeginTransaction = true }
@@ -145,6 +167,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func sessionTransactionState() async -> DriverTransactionState {
+        transactionStateReads += 1
         await beforeTransactionState?()
         guard !scriptedTransactionStates.isEmpty else { return scriptedTransactionState }
         return scriptedTransactionStates.removeFirst()
@@ -177,5 +200,19 @@ final class MockSecureStore: SecureStore, @unchecked Sendable {
 
     func seed(_ key: String, _ value: String) {
         storage[key] = value
+    }
+}
+
+extension MockDatabaseDriver: SessionDatabaseReporting, SessionSchemaReporting {
+    var reportsDatabaseWithoutStatement: Bool { false }
+
+    func sessionDatabase() async throws -> String? {
+        sessionDatabaseReads += 1
+        return scriptedSessionDatabase
+    }
+
+    func settleCurrentSchema() async {
+        guard let scriptedSessionSchema else { return }
+        currentSchema = scriptedSessionSchema
     }
 }

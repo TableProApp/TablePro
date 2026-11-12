@@ -40,6 +40,8 @@ struct OracleDictionaryQualificationTests {
             ("columns 23ai", OracleSchemaQueries.columns(schema: "HR", table: "T", release: OracleServerRelease(major: 23))),
             ("indexes", OracleSchemaQueries.indexes(schema: "HR", table: "T")),
             ("foreignKeys", OracleSchemaQueries.foreignKeys(schema: "HR", table: "T")),
+            ("tableConstraints 11g", OracleSchemaQueries.tableConstraints(schema: "HR", table: "T", release: OracleServerRelease(major: 11))),
+            ("tableConstraints 23ai", OracleSchemaQueries.tableConstraints(schema: "HR", table: "T", release: OracleServerRelease(major: 23))),
             ("allColumns 11g", OracleSchemaQueries.allColumns(schema: "HR", release: OracleServerRelease(major: 11))),
             ("allColumns 23ai", OracleSchemaQueries.allColumns(schema: "HR", release: OracleServerRelease(major: 23))),
             ("allForeignKeys", OracleSchemaQueries.allForeignKeys(schema: "HR")),

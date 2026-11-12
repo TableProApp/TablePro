@@ -95,14 +95,14 @@ struct MultiRowEditStateTests {
             #expect(field.effectiveValue == nil)
         }
 
-        @Test("effectiveValue returns __DEFAULT__ when isPendingDefault")
+        @Test("effectiveValue returns the DEFAULT keyword when isPendingDefault")
         func effectiveValueReturnsDefaultWhenPendingDefault() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
                 isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: true
             )
-            #expect(field.effectiveValue == "__DEFAULT__")
+            #expect(field.effectiveValue == "DEFAULT")
         }
 
         @Test("effectiveValue returns nil when no edit is pending")
@@ -348,6 +348,59 @@ struct MultiRowEditStateTests {
             #expect(sut.fields[0].pendingValue == nil)
             #expect(sut.fields[1].pendingValue == nil)
             #expect(sut.fields[2].pendingValue == nil)
+        }
+
+        @Test("A new selection keeps each field's identity and gives every editor a new one")
+        func newSelectionKeepsFieldIdentity() {
+            let sut = makeSUT(rows: [["1", "Alice", "alice@test.com"]], selectedIndices: [0])
+            let fieldIDs = sut.fields.map(\.id)
+            let editorIDs = sut.fields.map(\.editorID)
+
+            sut.configure(
+                rowIDs: [.existing(1)],
+                allRows: [["1", "Bob", "alice@test.com"]],
+                columns: ["id", "name", "email"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+            )
+
+            #expect(sut.fields.map(\.id) == fieldIDs)
+            #expect(zip(editorIDs, sut.fields.map(\.editorID)).allSatisfy { $0 != $1 })
+        }
+
+        @Test("The same selection and values keep every editor's identity")
+        func sameSelectionKeepsEditorIdentity() {
+            let sut = makeSUT(rows: [["1", "Alice", "alice@test.com"]])
+            let editorIDs = sut.fields.map(\.editorID)
+
+            sut.configure(
+                rowIDs: [.existing(0)],
+                allRows: [["1", "Alicia", "alice@test.com"]],
+                columns: ["id", "name", "email"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+            )
+
+            let after = sut.fields.map(\.editorID)
+            #expect(after[0] == editorIDs[0])
+            #expect(after[1] != editorIDs[1])
+            #expect(after[2] == editorIDs[2])
+        }
+
+        @Test("A column renamed in place is a different field")
+        func renamedColumnIsANewField() {
+            let sut = makeSUT()
+            let before = sut.fields.map(\.id)
+
+            sut.configure(
+                rowIDs: [.existing(0)],
+                allRows: [["1", "Alice", "alice@test.com"]],
+                columns: ["id", "full_name", "email"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+            )
+
+            let after = sut.fields.map(\.id)
+            #expect(after[0] == before[0])
+            #expect(after[1] != before[1])
+            #expect(after[2] == before[2])
         }
     }
 
@@ -644,13 +697,14 @@ struct MultiRowEditStateTests {
             #expect(edited[0].newValue == nil)
         }
 
-        @Test("Returns __DEFAULT__ for default edit")
+        @Test("Returns the DEFAULT keyword marked as SQL for a default edit")
         func returnsDefaultForDefaultEdit() {
             let sut = makeSUT()
             sut.setFieldToDefault(at: 0)
             let edited = sut.getEditedFields()
             #expect(edited.count == 1)
-            #expect(edited[0].newValue == "__DEFAULT__")
+            #expect(edited[0].newValue == "DEFAULT")
+            #expect(edited[0].isExpression)
         }
 
         @Test("Returns empty array when no edits")
@@ -774,18 +828,22 @@ struct MultiRowEditStateTests {
             #expect(callbackCalls[0].value == nil)
         }
 
-        @Test("setFieldToDefault fires callback with __DEFAULT__")
+        // Through `onFieldChanged` the keyword would be a literal, which a stored value can also be.
+        @Test("setFieldToDefault sends the DEFAULT keyword through the expression callback")
         func setFieldToDefaultFiresCallback() {
             let sut = makeSUT()
-            var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value, _ in
-                callbackCalls.append((index, value.asText))
+            var literals: [PluginCellValue] = []
+            var callbackCalls: [(index: Int, sql: String)] = []
+            sut.onFieldChanged = { _, value, _ in literals.append(value) }
+            sut.onFieldExpressionChanged = { index, sql, _ in
+                callbackCalls.append((index, sql))
             }
 
             sut.setFieldToDefault(at: 0)
+            #expect(literals.isEmpty)
             #expect(callbackCalls.count == 1)
             #expect(callbackCalls[0].index == 0)
-            #expect(callbackCalls[0].value == "__DEFAULT__")
+            #expect(callbackCalls[0].sql == "DEFAULT")
         }
 
         // `onFieldChanged` carries a literal, so an expression sent through it would be saved as quoted text.

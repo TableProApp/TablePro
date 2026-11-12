@@ -22,6 +22,7 @@ internal struct ObjectCopyObjectOutcome: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     internal let rowsCopied: Int
     internal let error: String?
+    internal var warning: String?
 
     internal var id: String { selection.id }
     internal var succeeded: Bool { error == nil }
@@ -66,6 +67,8 @@ internal struct ObjectCopyRunResult: Sendable {
     }
 
     internal var firstError: String? { outcomes.compactMap(\.error).first }
+
+    internal var warnings: [String] { outcomes.compactMap(\.warning) }
 
     /// Every failure, each with an identity of its own.
     ///
@@ -112,9 +115,11 @@ internal struct ObjectCopyRunner {
     /// pending work. `DataWriteExecutor`, `DatabaseManager+Principals` and
     /// `StructureRebuildPlanRunner` ask the same question for the same reason.
     nonisolated private static func transactionOwner(of driver: DatabaseDriver) async -> WriteTransactionOwner {
+        // `.automatic`: a pooled lease is closed while idle, which would roll a held copy back after it reported success.
         WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: .automatic
         )
     }
 
@@ -127,6 +132,15 @@ internal struct ObjectCopyRunner {
             reason: "Copying database objects"
         )
         defer { ProcessInfo.processInfo.endActivity(activity) }
+
+        // A row filter is the user's text, read from a source that may be at Read-Only: it meets the gate as a Run would.
+        try await ReadOnlyReadGate.authorize(
+            plan.dataSteps.filter(\.hasRowFilter).map(\.sourceQuery),
+            connectionId: request.source.connectionId,
+            databaseType: request.source.databaseType,
+            gate: gate,
+            operationDescription: String(localized: "Execute Query")
+        )
 
         return try await gate.authorizing(authorizationRequest(for: plan)) {
             try await self.execute(plan, request: request, progress: progress)
@@ -269,7 +283,7 @@ internal struct ObjectCopyRunner {
             let owner = await Self.transactionOwner(of: driver)
             // The other two settings keep what ran, and PostgreSQL commits an aborted transaction as a ROLLBACK.
             let usesTransaction = hasCleanup && errorHandling == .stopAndRollback
-                && plugin.supportsTransactionalDDL && owner.opensTransaction
+                && plugin.supportsTransactionalDDL && owner.sendsBegin && owner.commitsAtEnd
             if usesTransaction { try await plugin.beginTransaction(mode: .readWrite) }
 
             var result: DDLResult
@@ -507,9 +521,14 @@ internal struct ObjectCopyRunner {
         /// would send a retry over them.
         var rowsCopied = 0
 
-        mutating func recordCopy(of step: ObjectCopyTableStep, inserted: Int) {
+        mutating func recordCopy(of step: ObjectCopyTableStep, inserted: Int, rowCut: Int? = nil) {
             rowsCopied += inserted
-            outcomes.append(ObjectCopyObjectOutcome(selection: step.selection, rowsCopied: inserted, error: nil))
+            outcomes.append(ObjectCopyObjectOutcome(
+                selection: step.selection,
+                rowsCopied: inserted,
+                error: nil,
+                warning: rowCut.map { StreamRowCutWarning.text(table: step.selection.qualifiedName, limit: $0) }
+            ))
         }
 
         /// Stop reaching the driver mid-stream is the user stopping, not the copy failing, and the
@@ -579,6 +598,7 @@ internal struct ObjectCopyRunner {
         let sourceType = request.source.databaseType
         let targetType = request.target.databaseType
         let sourceScope = request.source.scope
+        let sourceIsReadOnly = ExecutionGateProvider.runsAtReadOnly(request.source.connectionId)
         let errorHandling = request.errorHandling
         let relaxesRows = plan.keysInside.rows
 
@@ -592,7 +612,7 @@ internal struct ObjectCopyRunner {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
             let owner = await Self.transactionOwner(of: targetDriver)
-            let usesTransaction = owner.opensTransaction
+            let usesTransaction = owner.sendsBegin && owner.commitsAtEnd
             if usesTransaction { try await targetPlugin.beginTransaction(mode: .readWrite) }
 
             var result = DataResult()
@@ -620,6 +640,7 @@ internal struct ObjectCopyRunner {
                         manager: manager,
                         sourceType: sourceType,
                         targetType: targetType,
+                        sourceIsReadOnly: sourceIsReadOnly,
                         errorHandling: errorHandling,
                         progress: progress
                     )
@@ -672,6 +693,7 @@ internal struct ObjectCopyRunner {
         manager: any ScopedMetadataProviding,
         sourceType: DatabaseType,
         targetType: DatabaseType,
+        sourceIsReadOnly: Bool,
         errorHandling: ImportErrorHandling,
         progress: ObjectCopyProgress
     ) async -> DataResult {
@@ -694,15 +716,18 @@ internal struct ObjectCopyRunner {
                     guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
                         throw ObjectCopyError.refused(noSourceDriver)
                     }
-                    return try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
-                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                    let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
+                    return try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                        try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
+                            progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                        }
                     }
                 }
                 guard !outcome.cancelled else {
                     result.recordStop(of: step, inserted: outcome.inserted, progress: progress)
                     break
                 }
-                result.recordCopy(of: step, inserted: outcome.inserted)
+                result.recordCopy(of: step, inserted: outcome.inserted, rowCut: outcome.rowCut)
             } catch is CancellationError {
                 result.recordStop(of: step, inserted: 0, progress: progress)
                 break
@@ -748,7 +773,7 @@ internal struct ObjectCopyRunner {
                     result.recordStop(of: step, inserted: outcome.inserted, progress: progress)
                     break
                 }
-                result.recordCopy(of: step, inserted: outcome.inserted)
+                result.recordCopy(of: step, inserted: outcome.inserted, rowCut: outcome.rowCut)
             } catch is CancellationError {
                 result.recordStop(of: step, inserted: 0, progress: progress)
                 break
@@ -776,6 +801,7 @@ internal struct ObjectCopyRunner {
     ) async throws -> CopiedRows {
         let sourceScope = request.source.scope
         let targetScope = request.target.scope
+        let sourceIsReadOnly = ExecutionGateProvider.runsAtReadOnly(request.source.connectionId)
         let copier = ObjectCopyRowCopier(
             step: step, sourceDatabaseType: request.source.databaseType, targetDatabaseType: targetType
         )
@@ -796,8 +822,11 @@ internal struct ObjectCopyRunner {
                 guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
                     throw ObjectCopyError.refused(Self.noSourceDriver)
                 }
-                let outcome = try await copier.copy(from: sourcePlugin, to: targetPlugin) { rows in
-                    progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
+                let outcome = try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                    try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
+                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                    }
                 }
                 return CopiedRows(outcome: outcome, joinedSessionTransaction: owner == .session)
             }

@@ -82,8 +82,9 @@ struct AttachedDatabaseListEditor: View {
     private let buttonBarHeight: CGFloat = 32
 
     private var listHeight: CGFloat {
+        // No cap: a List in a grouped Form never scrolls, so it shows every row and the Form scrolls.
         let rows = CGFloat(max(model.rows.count, 2))
-        return min(rows * rowHeight + buttonBarHeight + 8, 200)
+        return rows * rowHeight + buttonBarHeight + 8
     }
 
     private func nameBinding(for id: UUID) -> Binding<String> {

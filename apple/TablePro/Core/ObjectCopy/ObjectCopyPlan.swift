@@ -39,6 +39,8 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
     /// The columns written, source order, with generated columns already removed. Empty when this
     /// step copies structure only.
     internal let columns: [String]
+    // The target's type of each written column, which decides how the INSERT binds a MySQL BIT.
+    internal let targetColumnTypeNames: [String: String]
     internal let primaryKeyColumns: [String]
     internal let sourceQuery: String
     internal let targetTable: String
@@ -79,6 +81,7 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
         createStatements: [SyncStatement],
         truncateStatements: [SyncStatement],
         columns: [String],
+        targetColumnTypeNames: [String: String] = [:],
         primaryKeyColumns: [String],
         sourceQuery: String,
         targetTable: String,
@@ -102,6 +105,7 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
         self.createStatements = createStatements
         self.truncateStatements = truncateStatements
         self.columns = columns
+        self.targetColumnTypeNames = targetColumnTypeNames
         self.primaryKeyColumns = primaryKeyColumns
         self.sourceQuery = sourceQuery
         self.targetTable = targetTable

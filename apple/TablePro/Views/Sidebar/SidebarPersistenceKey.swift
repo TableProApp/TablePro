@@ -16,6 +16,15 @@ enum SidebarPersistenceKey {
         "sidebar.\(connectionId.uuidString).recents.expanded"
     }
 
+    static func favoritesExpanded(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).favorites.expanded"
+    }
+
+    /// The connection's own row in a tree that lists the saved connections above its databases.
+    static func ownConnectionExpanded(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).connection.expanded"
+    }
+
     static func foldersExpanded(connectionId: UUID) -> String {
         "sidebar.\(connectionId.uuidString).folders.expanded"
     }
@@ -42,24 +51,32 @@ enum SidebarPersistenceKey {
         "sidebar.layout.\(connectionId.uuidString)"
     }
 
+    // Built-in kinds only; a declared kind's state lives under `serverKindsExpanded`.
     static func expanded(connectionId: UUID, kind: SidebarObjectKind) -> String {
-        "sidebar.\(connectionId.uuidString).\(kind.rawValue).expanded"
+        "sidebar.\(connectionId.uuidString).\(kind.persistenceName).expanded"
     }
 
-    /// Every per-connection key this type can produce. A key added above and forgotten here outlives
-    /// the connection it belongs to for the life of the install.
+    // One key for every declared kind, since their ids are open-ended and `all` has to name each key.
+    static func serverKindsExpanded(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).serverKinds.expanded"
+    }
+
+    // A key missing here outlives its connection for the life of the install.
     static func all(connectionId: UUID) -> [String] {
         [
             tablesExpanded(connectionId: connectionId),
             redisKeysExpanded(connectionId: connectionId),
             recentsExpanded(connectionId: connectionId),
+            favoritesExpanded(connectionId: connectionId),
+            ownConnectionExpanded(connectionId: connectionId),
             foldersExpanded(connectionId: connectionId),
             temporaryExpanded(connectionId: connectionId),
             selectedTab(connectionId: connectionId),
             selectedFavorite(connectionId: connectionId),
             favoriteDatabaseEnvironmentFilter(connectionId: connectionId),
-            layout(connectionId: connectionId)
-        ] + SidebarObjectKind.allCases.map { expanded(connectionId: connectionId, kind: $0) }
+            layout(connectionId: connectionId),
+            serverKindsExpanded(connectionId: connectionId)
+        ] + SidebarObjectKind.builtIn.map { expanded(connectionId: connectionId, kind: $0) }
     }
 
     static func removeAll(

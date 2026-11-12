@@ -575,10 +575,20 @@ struct PersistedTabRoundTripTests {
 
         #expect(persisted.query.isEmpty)
         #expect(restored.tabType == .tableListing)
-        #expect(restored.title == "Tables: sales")
+        #expect(restored.title == QueryTabManager.tableListingTitle(schemaName: "sales"))
         #expect(restored.tableContext.databaseName == "shop")
         #expect(restored.tableContext.schemaName == "sales")
         #expect(restored.tableContext.isEditable == false)
+    }
+
+    /// Titles are drawn for background tabs that never activate, so a listing an older build titled
+    /// after its kind reads Objects from the moment it is restored.
+    @Test("A listing saved under its kind's title restores titled Objects")
+    func olderListingTitleRestoresAsObjects() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","title":"Views: sales","query":"","tabType":{"tableListing":{}},"schemaName":"sales"}"#
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
+
+        #expect(QueryTab(from: decoded, defaultPageSize: 1_000).title == QueryTabManager.tableListingTitle(schemaName: "sales"))
     }
 
     @Test("A tab written before history tabs existed decodes with no subject")
@@ -586,5 +596,32 @@ struct PersistedTabRoundTripTests {
         let json = #"{"id":"\#(UUID().uuidString)","title":"Query 1","query":"SELECT 1","tabType":{"query":{}}}"#
         let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
         #expect(decoded.versionHistorySubject == nil)
+    }
+
+    @Test("A listing's kind round-trips, and Tables saves no kind")
+    func listingKindRoundTrips() throws {
+        var tab = QueryTab(title: "Views: sales", tabType: .tableListing)
+        tab.tableContext.databaseName = "shop"
+        tab.tableContext.schemaName = "sales"
+        tab.display.listingKind = .view
+
+        let encoded = try JSONEncoder().encode(tab.toPersistedTab())
+        let restored = QueryTab(from: try JSONDecoder().decode(PersistedTab.self, from: encoded), defaultPageSize: 1_000)
+
+        #expect(restored.display.listingKind == .view)
+        #expect(QueryTab(title: "Tables", tabType: .tableListing).toPersistedTab().listingKindRawValue == nil)
+    }
+
+    /// An older build wrote no kind, and a newer one may write a kind this build does not know.
+    @Test("A listing saved without a kind this build knows restores as Tables")
+    func listingWithoutAKnownKindRestoresAsTables() throws {
+        let id = UUID().uuidString
+        let older = #"{"id":"\#(id)","title":"Tables","query":"","tabType":{"tableListing":{}}}"#
+        let newer = #"{"id":"\#(id)","title":"Indexes","query":"","tabType":{"tableListing":{}},"listingKindRawValue":"index"}"#
+
+        for json in [older, newer] {
+            let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
+            #expect(QueryTab(from: decoded, defaultPageSize: 1_000).display.listingKind == nil)
+        }
     }
 }

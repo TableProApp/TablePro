@@ -9,18 +9,34 @@ import Testing
 
 @testable import TablePro
 
-/// Serves one table's rows as a source, and records what reaches it as a destination.
 private final class TransferStubDriver: PluginDriverStub, @unchecked Sendable {
     let header: [String]
     let rows: [PluginRow]
     let columns: [String]
+    let types: [String: String]
+    // What the stream header names a column, where the driver's header and its catalog disagree.
+    let headerTypes: [String: String]
     private(set) var executedQueries: [String] = []
     private(set) var executedParameters: [[PluginCellValue]] = []
+    private let eventLock = NSLock()
+    private var recordedEvents: [String] = []
+    var onFetchColumns: (@Sendable () async -> Void)?
 
-    init(header: [String] = [], rows: [PluginRow] = [], columns: [String] = []) {
+    // `stream` when a row stream opens, `columns` when the catalog is read: a real source serves one at a time.
+    var events: [String] { eventLock.withLock { recordedEvents } }
+
+    init(
+        header: [String] = [],
+        rows: [PluginRow] = [],
+        columns: [String] = [],
+        types: [String: String] = [:],
+        headerTypes: [String: String] = [:]
+    ) {
         self.header = header
         self.rows = rows
         self.columns = columns
+        self.types = types
+        self.headerTypes = headerTypes
     }
 
     var insertStatements: [String] {
@@ -37,8 +53,9 @@ private final class TransferStubDriver: PluginDriverStub, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        eventLock.withLock { recordedEvents.append("stream") }
         let header = PluginStreamHeader(
-            columns: header, columnTypeNames: header.map { _ in "TEXT" })
+            columns: header, columnTypeNames: header.map { headerTypes[$0] ?? types[$0] ?? "TEXT" })
         let rows = rows
         return AsyncThrowingStream { continuation in
             continuation.yield(.header(header))
@@ -59,7 +76,9 @@ private final class TransferStubDriver: PluginDriverStub, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        columns.map { PluginColumnInfo(name: $0, dataType: "TEXT") }
+        eventLock.withLock { recordedEvents.append("columns") }
+        await onFetchColumns?()
+        return columns.map { PluginColumnInfo(name: $0, dataType: types[$0] ?? "TEXT") }
     }
 }
 
@@ -84,8 +103,7 @@ struct TableTransferServiceTests {
         #expect(values["email"] == .text("ada@example.com"))
     }
 
-    /// A driver that stops sending values once the rest of a row is null would otherwise lose the
-    /// whole row: the sink writes by column name, and a missing key is not a null.
+    // A driver can stop sending values once the rest of a row is null, and the sink writes by column name: a missing key is not a null.
     @Test("A row shorter than its header is padded with nulls")
     func shortRowIsPadded() {
         let values = TableTransferService.dictionary(
@@ -123,8 +141,7 @@ struct TableTransferServiceTests {
         #expect(values["missing"] == .null)
     }
 
-    /// The transfer moves rows, so a request naming only definition objects has nothing to do and
-    /// must say so rather than reporting a successful transfer of nothing.
+    // Refused rather than reported as a successful transfer of nothing.
     @MainActor @Test("A request with no row-carrying object is refused")
     func requestWithoutTablesIsRefused() {
         let service = TableTransferService()
@@ -175,8 +192,7 @@ struct TableTransferServiceTests {
         }
     }
 
-    /// The server refused the INSERT only after "Delete existing rows first" had run, and with no
-    /// transaction around the table the deletion stood: the destination was left empty.
+    // The server refused the INSERT after "Delete existing rows first" ran outside a transaction, which left the destination empty.
     @MainActor @Test("A contested mapping deletes nothing on the destination")
     func contestedMappingDeletesNothing() async {
         let source = TransferStubDriver(header: ["first_name", "last_name"], rows: [[.text("Ada"), .text("Lovelace")]])
@@ -206,8 +222,7 @@ struct TableTransferServiceTests {
         #expect(destination.executedQueries.isEmpty)
     }
 
-    /// `Name` and `name` both matched a lone `name`, and even with only one of them mapped the
-    /// sink folded the other onto it, so the INSERT named the column twice.
+    // `Name` and `name` both matched a lone `name`, and the sink folded the unmapped one onto it, so the INSERT named the column twice.
     @MainActor @Test("A source column that differs only by case from a mapped one is not written twice")
     func caseTwinIsNotWrittenTwice() async throws {
         let source = TransferStubDriver(
@@ -236,6 +251,127 @@ struct TableTransferServiceTests {
         #expect(destination.executedParameters.last?.contains(.text("Display")) == false)
         #expect(service.state.transferredRows == 1)
         #expect(service.state.warnings.contains { $0.contains("Name") })
+    }
+
+    // PostgreSQL reads a bit string as its digits; bound to a MySQL BIT as a number, 00000101 would store 101. A fresh
+    // session's stream header names the bit column `unknown`, so only the catalog says what it is.
+    @MainActor @Test("A PostgreSQL bit string transferred to a MySQL BIT arrives as its number")
+    func postgresBitReachesMySQLAsItsNumber() async throws {
+        let source = TransferStubDriver(
+            header: ["id", "flags"],
+            rows: [[.text("1"), .text("00000101")]],
+            columns: ["id", "flags"],
+            types: ["id": "integer", "flags": "bit(8)"],
+            headerTypes: ["id": "integer", "flags": "unknown"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "flags"], types: ["id": "int", "flags": "bit(8)"])
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "devices", kind: .table, isSelected: true)],
+            sourceType: .postgresql,
+            destinationType: .mysql,
+            sourceColumns: ["devices": ["id", "flags"]],
+            wrapInTransaction: false
+        )
+
+        try await TableTransferService().transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .postgresql),
+            destinationDriver: adapter(destination, type: .mysql)
+        )
+
+        let insert = try #require(destination.insertStatements.first)
+        #expect(insert.hasSuffix("VALUES (CAST(? AS UNSIGNED), ?)"))
+        #expect(destination.executedParameters.last == [.text("5"), .text("1")])
+        // Behind its own open stream, a real source answers the catalog only after the whole table, or never.
+        #expect(source.events == ["columns", "stream"])
+    }
+
+    @MainActor @Test("A Stop during the catalog reads leaves the destination's rows alone")
+    func stopDuringCatalogReadsDeletesNothing() async {
+        let source = TransferStubDriver(
+            header: ["id", "flags"],
+            rows: [[.text("1"), .text("00000101")]],
+            columns: ["id", "flags"],
+            types: ["id": "integer", "flags": "bit(8)"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "flags"], types: ["id": "int", "flags": "bit(8)"])
+        let service = TableTransferService()
+        source.onFetchColumns = { await MainActor.run { service.cancel() } }
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "devices", kind: .table, isSelected: true)],
+            sourceType: .postgresql,
+            destinationType: .mysql,
+            sourceColumns: ["devices": ["id", "flags"]],
+            deleteExistingRows: true,
+            wrapInTransaction: false
+        )
+
+        _ = try? await service.transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .postgresql),
+            destinationDriver: adapter(destination, type: .mysql)
+        )
+
+        #expect(source.events == ["columns"])
+        #expect(destination.executedQueries.allSatisfy { query in
+            !query.uppercased().hasPrefix("DELETE") && !query.uppercased().hasPrefix("TRUNCATE")
+        })
+        #expect(destination.insertStatements.isEmpty)
+    }
+
+    @MainActor @Test("A transfer whose engines cannot both hold a bit string never reads the source catalog")
+    func noBitStringsNoSourceCatalogRead() async throws {
+        let source = TransferStubDriver(
+            header: ["id", "flags"],
+            rows: [[.text("1"), .text("5")]],
+            columns: ["id", "flags"],
+            types: ["id": "INTEGER", "flags": "BIT"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "flags"], types: ["id": "int", "flags": "bit(8)"])
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "devices", kind: .table, isSelected: true)],
+            sourceType: .sqlite,
+            destinationType: .mysql,
+            sourceColumns: ["devices": ["id", "flags"]],
+            wrapInTransaction: false
+        )
+
+        try await TableTransferService().transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .sqlite),
+            destinationDriver: adapter(destination, type: .mysql)
+        )
+
+        #expect(source.events == ["stream"])
+        #expect(destination.executedParameters.last == [.text("5"), .text("1")])
+    }
+
+    @MainActor @Test("A MySQL BIT transferred to a PostgreSQL bit varying arrives as its digits, at the source's width")
+    func mysqlBitReachesPostgresAsItsDigits() async throws {
+        let source = TransferStubDriver(
+            header: ["id", "flags"],
+            rows: [[.text("1"), .text("5")]],
+            columns: ["id", "flags"],
+            types: ["id": "int", "flags": "bit(8)"],
+            headerTypes: ["id": "INT", "flags": "BIT(8)"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "flags"], types: ["id": "integer", "flags": "varbit"])
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "devices", kind: .table, isSelected: true)],
+            sourceType: .mysql,
+            destinationType: .postgresql,
+            sourceColumns: ["devices": ["id", "flags"]],
+            wrapInTransaction: false
+        )
+
+        try await TableTransferService().transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .mysql),
+            destinationDriver: adapter(destination, type: .postgresql)
+        )
+
+        #expect(destination.executedParameters.last == [.text("00000101"), .text("1")])
+        #expect(source.events == ["columns", "stream"])
     }
 
     @MainActor @Test("Twins mapped by the user to their own columns each reach their own column")

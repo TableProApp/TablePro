@@ -12,7 +12,7 @@ extension RowEditingCoordinator {
     // MARK: - Sidebar Transaction
 
     // Scope is read before the authorization prompt (sheet and Touch ID), which gives the selection time to move.
-    func executeSidebarChanges(steps: [DataWriteStep]) async throws {
+    func executeSidebarChanges(steps: [DataWriteStep], viewTarget: PluginViewWriteTarget?) async throws {
         guard let scope = parent.selectedTabScope else {
             throw DatabaseError.notConnected
         }
@@ -35,13 +35,16 @@ extension RowEditingCoordinator {
         }
 
         let mode: PluginTransactionAccessMode = kind.declaresWrite ? .readWrite : .serverDefault
-        let plan = DataWritePlan(scope: scope, databaseType: parent.connection.type, steps: steps)
+        var built = DataWritePlan(scope: scope, databaseType: parent.connection.type, steps: steps)
+        built.viewTarget = viewTarget
+        let plan = built
+        let commitMode = DatabaseManager.shared.commitMode(for: parent.connectionId)
         _ = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
             route: DatabaseManager.shared.executionRoute(for: scope),
             cancellation: .protectedWrite
         ) { driver in
-            _ = try await DataWriteExecutor.run(plan, mode: mode, on: driver)
+            _ = try await DataWriteExecutor.run(plan, mode: mode, commitMode: commitMode, on: driver)
         }
     }
 

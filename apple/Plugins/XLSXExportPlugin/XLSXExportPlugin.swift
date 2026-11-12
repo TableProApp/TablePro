@@ -43,7 +43,9 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         destination: URL,
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
-        let writer = XLSXWriter()
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-export.
+        let options = settings
+        let writer = XLSXWriter(databaseTypeId: dataSource.databaseTypeId)
         var didSplitSheets = false
 
         for (index, table) in tables.enumerated() {
@@ -53,9 +55,31 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
 
             var isFirstBatch = true
             var rowBatch: [[PluginCellValue]] = []
-            var currentSheetRowCount = 0
             var columns: [String] = []
-            let headerRowCount = settings.includeHeaderRow ? 1 : 0
+            var columnTypeNames: [String] = []
+            var sheetRows = XLSXSheetRows(limit: Self.maxRowsPerSheet, headerRowCount: options.includeHeaderRow ? 1 : 0)
+
+            func writeBatch() throws {
+                for chunk in sheetRows.chunks(of: rowBatch.count) {
+                    if chunk.startsNewSheet {
+                        try writer.continueSheet(
+                            baseName: table.name,
+                            columns: columns,
+                            columnTypeNames: columnTypeNames,
+                            includeHeader: options.includeHeaderRow,
+                            convertNullToEmpty: options.convertNullToEmpty
+                        )
+                        didSplitSheets = true
+                    }
+                    try autoreleasepool {
+                        try writer.addRows(Array(rowBatch[chunk.rows]), convertNullToEmpty: options.convertNullToEmpty)
+                    }
+                }
+                for _ in 0..<rowBatch.count {
+                    progress.incrementRow()
+                }
+                rowBatch.removeAll(keepingCapacity: true)
+            }
 
             let stream = dataSource.streamRows(for: table)
             for try await element in stream {
@@ -64,103 +88,38 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                 switch element {
                 case .header(let header):
                     columns = header.columns
-                    writer.beginSheet(
+                    columnTypeNames = header.columnTypeNames
+                    try writer.beginSheet(
                         name: table.name,
                         columns: columns,
-                        includeHeader: settings.includeHeaderRow,
-                        convertNullToEmpty: settings.convertNullToEmpty
+                        columnTypeNames: columnTypeNames,
+                        includeHeader: options.includeHeaderRow,
+                        convertNullToEmpty: options.convertNullToEmpty
                     )
-                    currentSheetRowCount = headerRowCount
+                    sheetRows = XLSXSheetRows(limit: Self.maxRowsPerSheet, headerRowCount: options.includeHeaderRow ? 1 : 0)
                     isFirstBatch = false
                 case .rows(let rows):
-                    for row in rows {
-                        rowBatch.append(row)
-                    }
+                    rowBatch.append(contentsOf: rows)
                     if rowBatch.count >= 5_000 {
-                        let remaining = Self.maxRowsPerSheet - currentSheetRowCount
-                        if rowBatch.count <= remaining {
-                            autoreleasepool {
-                                writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
-                            }
-                            currentSheetRowCount += rowBatch.count
-                        } else {
-                            let fitting = Array(rowBatch.prefix(remaining))
-                            let overflow = Array(rowBatch.dropFirst(remaining))
-                            if !fitting.isEmpty {
-                                autoreleasepool {
-                                    writer.addRows(fitting, convertNullToEmpty: settings.convertNullToEmpty)
-                                }
-                                currentSheetRowCount += fitting.count
-                            }
-                            writer.continueSheet(
-                                baseName: table.name,
-                                columns: columns,
-                                includeHeader: settings.includeHeaderRow,
-                                convertNullToEmpty: settings.convertNullToEmpty
-                            )
-                            didSplitSheets = true
-                            currentSheetRowCount = headerRowCount
-                            if !overflow.isEmpty {
-                                autoreleasepool {
-                                    writer.addRows(overflow, convertNullToEmpty: settings.convertNullToEmpty)
-                                }
-                                currentSheetRowCount += overflow.count
-                            }
-                        }
-                        let batchCount = rowBatch.count
-                        rowBatch.removeAll(keepingCapacity: true)
-                        for _ in 0..<batchCount {
-                            progress.incrementRow()
-                        }
+                        try writeBatch()
                     }
                 }
             }
 
             if !rowBatch.isEmpty {
-                let remaining = Self.maxRowsPerSheet - currentSheetRowCount
-                if rowBatch.count <= remaining {
-                    autoreleasepool {
-                        writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
-                    }
-                    currentSheetRowCount += rowBatch.count
-                } else {
-                    let fitting = Array(rowBatch.prefix(remaining))
-                    let overflow = Array(rowBatch.dropFirst(remaining))
-                    if !fitting.isEmpty {
-                        autoreleasepool {
-                            writer.addRows(fitting, convertNullToEmpty: settings.convertNullToEmpty)
-                        }
-                    }
-                    writer.continueSheet(
-                        baseName: table.name,
-                        columns: columns,
-                        includeHeader: settings.includeHeaderRow,
-                        convertNullToEmpty: settings.convertNullToEmpty
-                    )
-                    didSplitSheets = true
-                    currentSheetRowCount = headerRowCount
-                    if !overflow.isEmpty {
-                        autoreleasepool {
-                            writer.addRows(overflow, convertNullToEmpty: settings.convertNullToEmpty)
-                        }
-                        currentSheetRowCount += overflow.count
-                    }
-                }
-                for _ in 0..<rowBatch.count {
-                    progress.incrementRow()
-                }
+                try writeBatch()
             }
 
             if !isFirstBatch {
-                writer.finishSheet()
+                try writer.finishSheet()
             } else {
-                writer.beginSheet(
+                try writer.beginSheet(
                     name: table.name,
                     columns: [],
                     includeHeader: false,
-                    convertNullToEmpty: settings.convertNullToEmpty
+                    convertNullToEmpty: options.convertNullToEmpty
                 )
-                writer.finishSheet()
+                try writer.finishSheet()
             }
         }
 

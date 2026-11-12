@@ -2,56 +2,102 @@
 //  XLSXWriter.swift
 //  TablePro
 //
-//  Lightweight XLSX writer that creates Excel files without external dependencies.
-//  XLSX format = ZIP archive containing XML files (Office Open XML).
-//
-//  Performance: Uses inline strings (no shared string table), Data buffers
-//  (not String concatenation), and batch row processing to handle 100K+ row
-//  exports with bounded memory usage.
-//
 
 import Foundation
 import os
 import TableProPluginKit
 import zlib
 
-/// Writes data to XLSX format using raw ZIP file construction.
-///
-/// Uses inline strings (`t="inlineStr"`) instead of a shared string table
-/// to avoid unbounded memory growth from caching every unique string value.
-/// Rows are processed in batches and appended directly to per-sheet XML Data,
-/// so raw row arrays can be released after each batch.
+// Each sheet's XML goes to its own file as rows arrive, and `write(to:)` copies those files into a
+// stored ZIP, so no sheet is ever held in memory whole. Strings are inline (`t="inlineStr"`), so
+// there is no shared string table to grow with the data either.
 final class XLSXWriter {
+    static let defaultFlushThreshold = 1 << 20
+    static let partsDirectoryPrefix = "TablePro-XLSX-"
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "XLSXWriter")
 
-    /// Per-sheet metadata and accumulated XML data
-    private var sheets: [(name: String, data: Data)] = []
+    private static let processStart: Date = {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        guard sysctl(&name, u_int(name.count), &info, &size, nil, 0) == 0 else { return Date() }
+        let start = info.kp_proc.p_un.__p_starttime
+        return Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
+    }()
+
+    private var sheets: [XLSXSheetPart] = []
+    private var sheetBytesInArchive = 0
+    private var partsDirectory: URL?
+    private var partsLock: Int32?
+    private let flushThreshold: Int
+    private let maximumArchiveSize: Int
 
     private static let maximumSheetNameLength = 31
     private var takenSheetNames: Set<String> = []
 
-    /// Pre-cached column letter lookups
     private var columnLetterCache: [String] = []
 
-    /// Tracks the current row number for the active sheet being built
     private var currentRowNumber: Int = 0
 
-    /// Whether the current sheet has a header row (used for bold styling)
-    private var currentSheetHasHeader: Bool = false
-
-    enum CellValue {
+    enum CellValue: Equatable {
         case string(String)
         case number(String)
         case empty
     }
 
+    typealias ColumnNumbers = PluginColumnNumbers
+
+    // Excel keeps 15 significant digits of a number.
+    private static let maximumExactDigits = 15
+
+    private var currentColumnNumbers: [ColumnNumbers] = []
+
+    private let bitsAreStrings: Bool
+
+    // A sheet holds at most `flushThreshold` bytes plus one row in memory before they go to its file.
+    // `maximumArchiveSize` is the ZIP's 4 GB offset limit, checked as the sheets grow.
+    init(
+        databaseTypeId: String = "",
+        partsDirectory: URL? = nil,
+        flushThreshold: Int = XLSXWriter.defaultFlushThreshold,
+        maximumArchiveSize: Int = Int(UInt32.max)
+    ) {
+        bitsAreStrings = ColumnNumbers.bitsAreStrings(databaseTypeId: databaseTypeId)
+        self.partsDirectory = partsDirectory
+        self.flushThreshold = max(0, flushThreshold)
+        self.maximumArchiveSize = min(maximumArchiveSize, Int(UInt32.max))
+    }
+
+    deinit {
+        sheets.forEach { $0.closeWithoutWriting() }
+        defer {
+            if let partsLock { close(partsLock) }
+        }
+        guard let partsDirectory else { return }
+        do {
+            try FileManager.default.removeItem(at: partsDirectory)
+        } catch {
+            guard (error as? CocoaError)?.code != .fileNoSuchFile else { return }
+            Self.logger.warning("Could not remove the workbook's sheet files: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
     // MARK: - Sheet Building API
 
-    /// Begin a new worksheet. Must be followed by `addRows` calls and then `finishSheet`.
-    func beginSheet(name: String, columns: [String], includeHeader: Bool, convertNullToEmpty: Bool) {
+    func beginSheet(
+        name: String,
+        columns: [String],
+        columnTypeNames: [String] = [],
+        includeHeader: Bool,
+        convertNullToEmpty: Bool
+    ) throws {
+        if let previous = sheets.last, previous.isOpen {
+            try closeSheet(previous)
+        }
         let sheetName = unusedSheetName(for: name)
+        currentColumnNumbers = columnTypeNames.map { ColumnNumbers(typeName: $0, bitsAreStrings: bitsAreStrings) }
         currentRowNumber = 0
-        currentSheetHasHeader = includeHeader
 
         let maxCols = max(columns.count, columnLetterCache.count)
         if maxCols > columnLetterCache.count {
@@ -60,92 +106,117 @@ final class XLSXWriter {
             }
         }
 
-        var d = Data()
-        d.appendUTF8("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")
-        d.appendUTF8("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>")
+        let part = try XLSXSheetPart(name: sheetName, fileURL: try partURL(forSheet: sheets.count + 1))
+        sheets.append(part)
+        sheetBytesInArchive += ZipBuilder.localHeaderSize(path: Self.sheetPath(sheets.count))
+        part.pending.appendUTF8("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")
+        part.pending.appendUTF8("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>")
 
         if includeHeader {
             let headerCells: [CellValue] = columns.map { .string($0) }
-            appendRow(headerCells, isHeader: true, to: &d)
+            appendRow(headerCells, isHeader: true, to: &part.pending)
         }
-
-        sheets.append((name: sheetName, data: d))
+        try flush(part)
     }
 
-    /// Add a batch of raw rows to the current (last) sheet.
-    /// Converts `[PluginCellValue]` to `CellValue` and writes XML immediately,
-    /// so the caller can release the raw row data after this call returns.
-    func addRows(_ rows: [[PluginCellValue]], convertNullToEmpty: Bool) {
-        guard !sheets.isEmpty else { return }
-
-        var sheetData = sheets[sheets.count - 1].data
+    // Writes each row's XML as it converts it, so the caller can release the rows once this returns.
+    func addRows(_ rows: [[PluginCellValue]], convertNullToEmpty: Bool) throws {
+        guard let part = sheets.last, part.isOpen else { return }
 
         for row in rows {
             autoreleasepool {
-                let cellRow: [CellValue] = row.map { value -> CellValue in
+                let cellRow: [CellValue] = row.enumerated().map { index, value -> CellValue in
                     switch value {
                     case .null:
                         return convertNullToEmpty ? .empty : .string("NULL")
                     case .bytes(let data):
-                        if data.isEmpty { return .empty }
+                        // Zero bytes are `0x`, as in CSV: an empty cell reads back as NULL.
                         let hex = data.map { String(format: "%02X", $0) }.joined()
                         return .string("0x" + hex)
                     case .text(let val):
-                        if val.isEmpty {
-                            return .empty
-                        }
-                        if Double(val) != nil, !val.hasPrefix("0") || val == "0" || val.contains(".") {
-                            return .number(val)
-                        }
-                        return .string(val)
+                        let numbers = index < currentColumnNumbers.count ? currentColumnNumbers[index] : .untyped
+                        return Self.cell(forText: val, numbers: numbers)
                     }
                 }
-                appendRow(cellRow, isHeader: false, to: &sheetData)
+                appendRow(cellRow, isHeader: false, to: &part.pending)
             }
+            try flush(part)
         }
-
-        sheets[sheets.count - 1].data = sheetData
     }
 
-    /// Finish the current sheet by closing the XML tags.
-    func finishSheet() {
-        guard !sheets.isEmpty else { return }
-        sheets[sheets.count - 1].data.appendUTF8("</sheetData></worksheet>")
+    // A text column writes text whatever its values look like. A numeric column writes a number
+    // unless Excel cannot hold it exactly. A column with no usable type name writes a number only
+    // for a plain decimal of at most 15 digits, so ids, codes and padded values stay text.
+    static func cell(forText text: String, numbers: ColumnNumbers) -> CellValue {
+        guard !text.isEmpty else { return .empty }
+        guard numbers != .text,
+              !hasPaddingZero(text),
+              let literal = JsonNumberNormalizer.numberLiteral(from: text),
+              let value = Double(literal), value.isFinite else {
+            return .string(text)
+        }
+        switch numbers {
+        case .text:
+            return .string(text)
+        case .approximate:
+            return .number(literal)
+        case .exact:
+            return significantDigitCount(of: literal) <= maximumExactDigits ? .number(literal) : .string(text)
+        case .untyped:
+            let isPlain = literal == text && !literal.contains("e")
+            let digitCount = literal.filter { $0.isNumber }.count
+            return isPlain && digitCount <= maximumExactDigits ? .number(literal) : .string(text)
+        @unknown default:
+            return .string(text)
+        }
     }
 
-    /// Finish the current sheet and start a continuation sheet with the same columns.
-    /// The new sheet is named "BaseName (N)" where N increments.
+    // ZEROFILL pads an integer for display, and a number cell would drop the padding.
+    private static func hasPaddingZero(_ text: String) -> Bool {
+        let digits = text.drop { $0 == "-" || $0 == "+" }
+        guard digits.first == "0", let second = digits.dropFirst().first else { return false }
+        return second.isNumber
+    }
+
+    private static func significantDigitCount(of literal: String) -> Int {
+        let mantissa = literal.prefix { $0 != "e" && $0 != "E" }
+        let digits = mantissa.filter(\.isNumber).drop { $0 == "0" }
+        guard let last = digits.lastIndex(where: { $0 != "0" }) else { return 0 }
+        return digits[...last].count
+    }
+
+    func finishSheet() throws {
+        guard let part = sheets.last, part.isOpen else { return }
+        part.pending.appendUTF8("</sheetData></worksheet>")
+        try closeSheet(part)
+    }
+
+    // Finishes the current sheet and starts "BaseName (N)" with the same columns.
     func continueSheet(
         baseName: String,
         columns: [String],
+        columnTypeNames: [String] = [],
         includeHeader: Bool,
         convertNullToEmpty: Bool
-    ) {
-        finishSheet()
-        beginSheet(
+    ) throws {
+        try finishSheet()
+        try beginSheet(
             name: baseName,
             columns: columns,
+            columnTypeNames: columnTypeNames,
             includeHeader: includeHeader,
             convertNullToEmpty: convertNullToEmpty
         )
     }
 
-    // MARK: - Legacy Convenience API
-
-    /// Add a complete worksheet with all rows at once (legacy compatibility).
-    /// For better memory usage, prefer `beginSheet` / `addRows` / `finishSheet`.
-    func addSheet(name: String, columns: [String], rows: [[PluginCellValue]], includeHeader: Bool, convertNullToEmpty: Bool) {
-        beginSheet(name: name, columns: columns, includeHeader: includeHeader, convertNullToEmpty: convertNullToEmpty)
-        addRows(rows, convertNullToEmpty: convertNullToEmpty)
-        finishSheet()
-    }
-
-    /// Write the XLSX file to the given URL
     func write(to url: URL) async throws {
+        if let part = sheets.last, part.isOpen {
+            try closeSheet(part)
+        }
         let entries = archiveEntries()
+        let maximumSize = maximumArchiveSize
         try await Task.detached(priority: .userInitiated) {
-            let zipData = try ZipBuilder.build(entries: entries)
-            try zipData.write(to: url, options: .atomic)
+            try ZipBuilder.write(entries, to: url, maximumSize: maximumSize)
         }.value
     }
 
@@ -160,19 +231,89 @@ final class XLSXWriter {
 
         for (index, sheet) in sheets.enumerated() {
             entries.append(ZipFileEntry(
-                path: "xl/worksheets/sheet\(index + 1).xml",
-                data: sheet.data
+                path: Self.sheetPath(index + 1),
+                file: sheet.fileURL,
+                size: sheet.byteCount,
+                crc: sheet.crc
             ))
         }
 
         return entries
     }
 
+    private static func sheetPath(_ number: Int) -> String {
+        "xl/worksheets/sheet\(number).xml"
+    }
+
+    // MARK: - Sheet Files
+
+    private func partURL(forSheet number: Int) throws -> URL {
+        try openPartsDirectory().appendingPathComponent("sheet\(number).xml")
+    }
+
+    // The folder stays locked while this writer lives, which tells a later export's sweep that it is in use.
+    private func openPartsDirectory() throws -> URL {
+        if let partsDirectory, partsLock != nil { return partsDirectory }
+        let directory: URL
+        if let partsDirectory {
+            directory = partsDirectory
+        } else {
+            let parent = FileManager.default.temporaryDirectory
+            Self.removeAbandonedPartsDirectories(in: parent, modifiedBefore: Self.processStart)
+            directory = parent.appendingPathComponent(Self.partsDirectoryPrefix + UUID().uuidString, isDirectory: true)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        partsDirectory = directory
+        partsLock = try Self.lock(directory)
+        return directory
+    }
+
+    // A crash or a force quit skips the deinit that removes a writer's folder. A folder older than
+    // this process that no writer holds, in this process or another, was left that way.
+    static func removeAbandonedPartsDirectories(in parent: URL, modifiedBefore cutoff: Date) {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .contentModificationDateKey]
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: parent, includingPropertiesForKeys: Array(keys)
+        ) else { return }
+        for entry in entries where entry.lastPathComponent.hasPrefix(partsDirectoryPrefix) {
+            guard let values = try? entry.resourceValues(forKeys: keys), values.isDirectory == true,
+                  let modified = values.contentModificationDate, modified < cutoff,
+                  let descriptor = try? lock(entry) else { continue }
+            try? FileManager.default.removeItem(at: entry)
+            close(descriptor)
+        }
+    }
+
+    // `flock` is released when the descriptor closes, also when the process dies.
+    private static func lock(_ directory: URL) throws -> Int32 {
+        let descriptor = open(directory.path(percentEncoded: false), O_RDONLY | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            let code = POSIXErrorCode(rawValue: errno) ?? .EIO
+            close(descriptor)
+            throw POSIXError(code)
+        }
+        return descriptor
+    }
+
+    private func flush(_ part: XLSXSheetPart) throws {
+        guard part.pending.count >= flushThreshold else { return }
+        try account(writtenBytes: part.writePending())
+    }
+
+    private func closeSheet(_ part: XLSXSheetPart) throws {
+        try account(writtenBytes: part.close())
+    }
+
+    // The sheets alone already past the limit means `write(to:)` would refuse the archive, so the
+    // export stops now instead of after reading every remaining row.
+    private func account(writtenBytes: Int) throws {
+        sheetBytesInArchive += writtenBytes
+        guard sheetBytesInArchive <= maximumArchiveSize else { throw ZipBuilder.ZipError.fileTooLarge }
+    }
+
     // MARK: - Row XML Generation
 
-    /// Append a single row of cells to the given Data buffer using inline strings.
-    /// Inline strings use `t="inlineStr"` with `<is><t>text</t></is>` to avoid
-    /// the shared string table entirely (MEM-15 fix).
     private func appendRow(_ cells: [CellValue], isHeader: Bool, to data: inout Data) {
         currentRowNumber += 1
         let rowNum = currentRowNumber
@@ -188,7 +329,6 @@ final class XLSXWriter {
             switch cell {
             case .string(let value):
                 if isHeader {
-                    // Header cells get bold style (s="1") + inline string
                     data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\" s=\"1\"><is><t>")
                 } else {
                     data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\"><is><t>")
@@ -207,7 +347,7 @@ final class XLSXWriter {
         data.appendUTF8("</row>")
     }
 
-    // MARK: - XML Generation (Data-based to avoid O(n^2) String concatenation)
+    // MARK: - XML Generation
 
     private func contentTypesXML() -> Data {
         var d = Data()
@@ -324,7 +464,6 @@ final class XLSXWriter {
 // MARK: - Data XML Helpers
 
 private extension Data {
-    /// Append a UTF-8 string directly to Data (O(1) amortized, no intermediate String copies)
     mutating func appendUTF8(_ string: String) {
         string.utf8.withContiguousStorageIfAvailable { buffer in
             if let baseAddress = buffer.baseAddress {
@@ -333,9 +472,6 @@ private extension Data {
         } ?? self.append(contentsOf: string.utf8)
     }
 
-    /// Append XML-escaped text directly to Data without creating intermediate Strings.
-    /// Strips XML 1.0 illegal control characters (0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F)
-    /// that can appear in binary/hex database columns and would produce malformed XML.
     mutating func appendXMLEscaped(_ text: String) {
         for byte in text.utf8 {
             switch byte {
@@ -362,105 +498,211 @@ private extension Data {
     }
 }
 
+// MARK: - Sheet Part
+
+private final class XLSXSheetPart {
+    let name: String
+    let fileURL: URL
+    var pending = Data()
+    private var handle: FileHandle?
+    private(set) var byteCount = 0
+    private(set) var crc: UInt32 = 0
+
+    var isOpen: Bool { handle != nil }
+
+    init(name: String, fileURL: URL) throws {
+        self.name = name
+        self.fileURL = fileURL
+        guard FileManager.default.createFile(atPath: fileURL.path(percentEncoded: false), contents: nil) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSURLErrorKey: fileURL])
+        }
+        handle = try FileHandle(forWritingTo: fileURL)
+    }
+
+    func writePending() throws -> Int {
+        guard let handle, !pending.isEmpty else { return 0 }
+        try handle.write(contentsOf: pending)
+        crc = ZipBuilder.crc32(of: pending, continuing: crc)
+        let written = pending.count
+        byteCount += written
+        pending.removeAll(keepingCapacity: true)
+        return written
+    }
+
+    func close() throws -> Int {
+        guard let handle else { return 0 }
+        let written = try writePending()
+        self.handle = nil
+        try handle.close()
+        return written
+    }
+
+    func closeWithoutWriting() {
+        try? handle?.close()
+        handle = nil
+    }
+}
+
 // MARK: - ZIP File Builder
 
-/// Minimal ZIP file builder (store-only, no compression)
+// A stored (uncompressed) ZIP, written entry by entry. A sheet's bytes are copied from its file.
 private struct ZipFileEntry {
+    enum Contents {
+        case data(Data)
+        case file(URL)
+    }
+
     let path: String
-    let data: Data
+    let contents: Contents
+    let size: Int
+    let crc: UInt32
+
+    init(path: String, data: Data) {
+        self.path = path
+        contents = .data(data)
+        size = data.count
+        crc = ZipBuilder.crc32(of: data)
+    }
+
+    init(path: String, file: URL, size: Int, crc: UInt32) {
+        self.path = path
+        contents = .file(file)
+        self.size = size
+        self.crc = crc
+    }
 }
 
 private enum ZipBuilder {
     enum ZipError: LocalizedError {
         case fileTooLarge
+        case tooManySheets
 
         var errorDescription: String? {
             switch self {
             case .fileTooLarge:
-                return "XLSX file exceeds 4 GB ZIP limit"
+                return String(localized: "XLSX file exceeds 4 GB ZIP limit")
+            case .tooManySheets:
+                return String(localized: "The workbook has more sheets than an XLSX file can hold.")
             }
         }
     }
 
-    static func build(entries: [ZipFileEntry]) throws -> Data {
-        var totalSize = 22
-        for entry in entries {
-            let pathLen = entry.path.utf8.count
-            totalSize += 30 + pathLen + entry.data.count
-            totalSize += 46 + pathLen
-        }
+    private static let copyChunkSize = 1 << 20
 
-        var output = Data(capacity: totalSize)
-        var centralDirectory = Data()
+    static func localHeaderSize(path: String) -> Int {
+        30 + path.utf8.count
+    }
+
+    static func write(_ entries: [ZipFileEntry], to destination: URL, maximumSize: Int) throws {
         var offsets: [Int] = []
-
+        offsets.reserveCapacity(entries.count)
+        var offset = 0
         for entry in entries {
-            let currentOffset = output.count
-            guard currentOffset <= UInt32.max, entry.data.count <= UInt32.max else {
+            guard offset <= maximumSize, entry.size <= maximumSize else {
                 throw ZipError.fileTooLarge
             }
-            offsets.append(currentOffset)
-
-            let pathData = Data(entry.path.utf8)
-            let crc = zlibCRC32(entry.data)
-
-            output.append(contentsOf: [0x50, 0x4B, 0x03, 0x04])
-            output.appendUInt16(10)
-            output.appendUInt16(0)
-            output.appendUInt16(0)
-            output.appendUInt16(0)
-            output.appendUInt16(0)
-            output.appendUInt32(crc)
-            output.appendUInt32(UInt32(entry.data.count))
-            output.appendUInt32(UInt32(entry.data.count))
-            output.appendUInt16(UInt16(pathData.count))
-            output.appendUInt16(0)
-            output.append(pathData)
-            output.append(entry.data)
-
-            centralDirectory.append(contentsOf: [0x50, 0x4B, 0x01, 0x02])
-            centralDirectory.appendUInt16(20)
-            centralDirectory.appendUInt16(10)
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt32(crc)
-            centralDirectory.appendUInt32(UInt32(entry.data.count))
-            centralDirectory.appendUInt32(UInt32(entry.data.count))
-            centralDirectory.appendUInt16(UInt16(pathData.count))
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt32(0)
-            centralDirectory.appendUInt32(UInt32(currentOffset))
-            centralDirectory.append(pathData)
+            offsets.append(offset)
+            offset += localHeaderSize(path: entry.path) + entry.size
         }
-
-        let centralDirOffset = output.count
-        guard centralDirOffset <= UInt32.max else {
+        guard offset <= maximumSize else {
             throw ZipError.fileTooLarge
         }
-        output.append(centralDirectory)
+        guard entries.count <= Int(UInt16.max) else {
+            throw ZipError.tooManySheets
+        }
 
-        output.append(contentsOf: [0x50, 0x4B, 0x05, 0x06])
-        output.appendUInt16(0)
-        output.appendUInt16(0)
-        output.appendUInt16(UInt16(entries.count))
-        output.appendUInt16(UInt16(entries.count))
-        output.appendUInt32(UInt32(centralDirectory.count))
-        output.appendUInt32(UInt32(centralDirOffset))
-        output.appendUInt16(0)
+        let (handle, temporaryURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
+        var isOpen = true
+        do {
+            var centralDirectory = Data()
+            for (entry, entryOffset) in zip(entries, offsets) {
+                let pathData = Data(entry.path.utf8)
 
-        return output
+                var header = Data()
+                header.append(contentsOf: [0x50, 0x4B, 0x03, 0x04])
+                header.appendUInt16(10)
+                header.appendUInt16(0)
+                header.appendUInt16(0)
+                header.appendUInt16(0)
+                header.appendUInt16(0)
+                header.appendUInt32(entry.crc)
+                header.appendUInt32(UInt32(entry.size))
+                header.appendUInt32(UInt32(entry.size))
+                header.appendUInt16(UInt16(pathData.count))
+                header.appendUInt16(0)
+                header.append(pathData)
+                try handle.write(contentsOf: header)
+                try writeContents(of: entry, to: handle)
+
+                centralDirectory.append(contentsOf: [0x50, 0x4B, 0x01, 0x02])
+                centralDirectory.appendUInt16(20)
+                centralDirectory.appendUInt16(10)
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt32(entry.crc)
+                centralDirectory.appendUInt32(UInt32(entry.size))
+                centralDirectory.appendUInt32(UInt32(entry.size))
+                centralDirectory.appendUInt16(UInt16(pathData.count))
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt32(0)
+                centralDirectory.appendUInt32(UInt32(entryOffset))
+                centralDirectory.append(pathData)
+            }
+
+            var end = Data()
+            end.append(contentsOf: [0x50, 0x4B, 0x05, 0x06])
+            end.appendUInt16(0)
+            end.appendUInt16(0)
+            end.appendUInt16(UInt16(entries.count))
+            end.appendUInt16(UInt16(entries.count))
+            end.appendUInt32(UInt32(centralDirectory.count))
+            end.appendUInt32(UInt32(offset))
+            end.appendUInt16(0)
+
+            try handle.write(contentsOf: centralDirectory)
+            try handle.write(contentsOf: end)
+            isOpen = false
+            try handle.close()
+            try PluginExportUtilities.commitAtomicWrite(from: temporaryURL, to: destination)
+        } catch {
+            if isOpen {
+                try? handle.close()
+            }
+            PluginExportUtilities.rollbackAtomicWrite(at: temporaryURL)
+            throw error
+        }
     }
 
-    /// CRC-32 using system zlib (hardware-accelerated)
-    private static func zlibCRC32(_ data: Data) -> UInt32 {
+    private static func writeContents(of entry: ZipFileEntry, to handle: FileHandle) throws {
+        switch entry.contents {
+        case .data(let data):
+            try handle.write(contentsOf: data)
+        case .file(let url):
+            let reader = try FileHandle(forReadingFrom: url)
+            defer { try? reader.close() }
+            var copied = 0
+            while true {
+                let chunk = try autoreleasepool { try reader.read(upToCount: copyChunkSize) } ?? Data()
+                guard !chunk.isEmpty else { break }
+                try handle.write(contentsOf: chunk)
+                copied += chunk.count
+            }
+            // The header already promised this size and CRC.
+            guard copied == entry.size else {
+                throw CocoaError(.fileReadCorruptFile, userInfo: [NSURLErrorKey: url])
+            }
+        }
+    }
+
+    static func crc32(of data: Data, continuing crc: UInt32 = 0) -> UInt32 {
         data.withUnsafeBytes { buffer in
-            guard let ptr = buffer.baseAddress else { return 0 }
-            return UInt32(zlib.crc32(0, ptr.assumingMemoryBound(to: UInt8.self), uInt(buffer.count)))
+            guard let ptr = buffer.baseAddress, !buffer.isEmpty else { return crc }
+            return UInt32(zlib.crc32(uLong(crc), ptr.assumingMemoryBound(to: UInt8.self), uInt(buffer.count)))
         }
     }
 }

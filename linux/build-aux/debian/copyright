@@ -4761,6 +4761,7 @@ License: Apache-2.0
 
 Files: vendor/clap-4.6.7/*
  vendor/clap_builder-4.6.7/*
+ vendor/clap_complete-4.6.11/*
  vendor/clap_derive-4.6.7/*
  vendor/clap_lex-1.1.1/*
 Copyright: Individual contributors
@@ -17337,7 +17338,7 @@ License: Apache-2.0 and ISC
  OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
  CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-Files: vendor/rmcp-3.6.0/*
+Files: vendor/rmcp-3.9.0/*
 Copyright: 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
 License: Apache-2.0 and Expat
  The MCP project is undergoing a licensing transition from the MIT License to the Apache License, Version 2.0 ("Apache-2.0"). All new code and specification contributions to the project are licensed under Apache-2.0. Documentation contributions (excluding specifications) are licensed under CC-BY-4.0.
@@ -17639,7 +17640,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/rustix-1.1.4/*
+Files: vendor/rustix-1.1.6/*
 Copyright: Dan Gohman <dev@sunfishcode.online>
  Jakub Konka <kubkon@jakubkonka.com>
 License: Apache-2.0 or Apache-2.0 with LLVM exception or Expat

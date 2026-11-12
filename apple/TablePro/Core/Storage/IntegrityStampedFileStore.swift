@@ -56,12 +56,18 @@ final class IntegrityStampedFileStore<Element: Codable> {
         self.integrity = integrity
     }
 
-    /// Nil when the file exists and could not be decoded. An absent file is an empty list, which is
-    /// a fresh install rather than a failure.
+    // Only an absent file is an empty list, a fresh install; one that cannot be read or decoded is nil, never saved over.
     func load() -> [Element]? {
-        guard let data = try? Data(contentsOf: fileURL) else {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             isTrusted = true
             return []
+        } catch {
+            logger.error("Failed to read \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            isTrusted = false
+            return nil
         }
 
         switch integrity.verify(data, fileURL: fileURL) {
@@ -73,8 +79,9 @@ final class IntegrityStampedFileStore<Element: Codable> {
                 isTrusted = false
                 break
             }
-            /// An install that predates the tag. Adopt the file as it stands, which is the only
-            /// option without a prior baseline, and stamp it so later edits are detectable.
+            /// An install that predates the tag: this device never tagged the store. Adopt the file as it
+            /// stands, which is the only option without a prior baseline, and stamp it so later edits are
+            /// detectable. A tag that went missing afterwards reads as modified instead.
             integrity.stamp(data, fileURL: fileURL)
             isTrusted = true
         case .modified:

@@ -3,11 +3,10 @@ use std::path::Path;
 use tablepro_core::{DriverError, TransportError};
 use tablepro_session::connect::ssh_config;
 use tablepro_ssh::{ForgetHostKeyError, InProcessSsh};
-use uuid::Uuid;
 
 use crate::core_handle::Core;
 use crate::error::CoreError;
-use crate::library::{ConnectionRecord, apply, blank};
+use crate::library::{ConnectionRecord, saved_ssh};
 use crate::runtime::on_runtime;
 
 #[uniffi::export]
@@ -32,11 +31,10 @@ async fn forget(
     host: &str,
     known_hosts: &Path,
 ) -> Result<(), CoreError> {
-    let mut saved = blank(Uuid::new_v4());
-    apply(record, record.name.trim().to_owned(), None, &mut saved);
-    let settings = saved
-        .ssh
-        .ok_or_else(|| CoreError::failed("ssh.host_key_not_this_connection", "the connection has no SSH settings"))?;
+    let settings =
+        record.ssh.as_ref().map(saved_ssh).ok_or_else(|| {
+            CoreError::failed("ssh.host_key_not_this_connection", "the connection has no SSH settings")
+        })?;
     let config = ssh_config(&settings).map_err(|error| DriverError::from(TransportError::Ssh(error.into())))?;
     ssh.forget_changed_host_key(&config, host, known_hosts)
         .await
@@ -50,8 +48,10 @@ async fn forget(
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
-    use crate::library::{SshAuthTag, SshSettings};
+    use crate::library::{SshAuthTag, SshSettings, blank};
 
     #[tokio::test]
     async fn a_host_or_file_outside_this_connection_cannot_be_forgotten() {

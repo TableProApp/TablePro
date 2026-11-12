@@ -47,7 +47,10 @@ final class GeminiProvider: ChatTransport {
             buildRequest: { [self] in try buildStreamRequest(turns: turns, options: options) },
             decodeLine: { Self.decodeStreamLine($0) },
             makeState: { GeminiStreamState() },
-            parse: { Self.parseChunk($0, state: &$1, idGenerator: { UUID().uuidString }) },
+            parse: { json, state in
+                if let error = AIProviderError.streamError(in: json) { throw error }
+                return Self.parseChunk(json, state: &state, idGenerator: { UUID().uuidString })
+            },
             finalEvents: { state in state.finalUsageEvent().map { [$0] } ?? [] }
         )
     }
@@ -275,9 +278,8 @@ final class GeminiProvider: ChatTransport {
 
     /// Decodes one Gemini SSE line. Returns nil for non-data lines.
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
-        guard line.hasPrefix("data: ") else { return nil }
-        let jsonString = String(line.dropFirst(6))
-        guard let data = jsonString.data(using: .utf8),
+        guard let jsonString = SSEEventStream.dataPayload(line),
+              let data = jsonString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         return json
@@ -318,6 +320,10 @@ final class GeminiProvider: ChatTransport {
                     events.append(.toolUseEnd(id: id))
                 }
             }
+        }
+        if let candidates = json["candidates"] as? [[String: Any]],
+           candidates.first?["finishReason"] as? String == "MAX_TOKENS" {
+            events.append(.outputLimitReached(.outputTokens))
         }
         if let usageMetadata = json["usageMetadata"] as? [String: Any] {
             if let prompt = usageMetadata["promptTokenCount"] as? Int {

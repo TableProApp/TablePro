@@ -10,6 +10,7 @@ public enum ThemeLoadError: LocalizedError, Equatable, Sendable {
     case invalidAuthor
     case invalidColor(String)
     case unknownKeys([String])
+    case keysNeedNewerFormat([String], format: Int)
     case duplicateKey(String)
     case reservedIdentifier(String)
     case invalidIdentifier(String)
@@ -42,13 +43,13 @@ public enum ThemeLoadError: LocalizedError, Equatable, Sendable {
             return String(localized: "The file does not declare a theme format version.")
         case let .schemaTooOld(found, supported):
             return String(
-                format: String(localized: "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d."),
+                format: String(localized: "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d and later."),
                 found,
                 supported
             )
         case let .schemaTooNew(found, supported):
             return String(
-                format: String(localized: "Theme format %1$d was made for a newer TablePro. This version reads format %2$d."),
+                format: String(localized: "Theme format %1$d was made for a newer TablePro. This version reads format %2$d and earlier."),
                 found,
                 supported
             )
@@ -69,6 +70,9 @@ public enum ThemeLoadError: LocalizedError, Equatable, Sendable {
         case let .unknownKeys(names):
             let shown = ListFormatter.localizedString(byJoining: names.prefix(3).map { "\"\($0)\"" })
             return String(format: String(localized: "TablePro does not use these theme keys: %@."), shown)
+        case let .keysNeedNewerFormat(names, format):
+            let shown = ListFormatter.localizedString(byJoining: names.prefix(3).map { "\"\($0)\"" })
+            return String(format: String(localized: "These theme keys need theme format %1$d: %2$@."), format, shown)
         case let .duplicateKey(path):
             return String(format: String(localized: "The theme sets \"%@\" more than once."), path)
         case let .reservedIdentifier(identifier):

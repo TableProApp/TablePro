@@ -33,6 +33,7 @@ final class SyncCoordinator: ObservableObject {
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     /// Why the license keeps sync off, or nil while it allows sync.
     private let licenseGate: @MainActor () -> DisableReason?
+    let recordCreationDate: (CKRecord) -> Date?
     private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
     private var debounceTask: Task<Void, Never>?
@@ -61,6 +62,13 @@ final class SyncCoordinator: ObservableObject {
     /// suspended across the network can tell whether its outcome is still the current answer.
     private var statusGeneration = 0
 
+    // An activation asks only for what other Macs sent, so one download per interval answers every activation in it.
+    nonisolated static let activationInterval: Duration = .seconds(60)
+    private let activationClock: any Clock<Duration>
+    private var activationCooldown: Task<Void, Never>?
+    private var activationHeldForCooldown = false
+    private var downloadIsAheadInRun = false
+
     init(
         services: AppServices = .live,
         recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache(),
@@ -68,11 +76,15 @@ final class SyncCoordinator: ObservableObject {
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
         themeCatalog: ThemeCatalog = .shared,
-        licenseGate: (@MainActor () -> DisableReason?)? = nil
+        licenseGate: (@MainActor () -> DisableReason?)? = nil,
+        recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
+        activationClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.services = services
+        self.activationClock = activationClock
         self.makeTransport = transport
         self.makeNetworkMonitor = makeNetworkMonitor
+        self.recordCreationDate = recordCreationDate
         self.changeTracker = services.syncTracker
         self.metadataStorage = services.syncMetadataStorage
         self.recordCache = recordCache
@@ -96,6 +108,7 @@ final class SyncCoordinator: ObservableObject {
     deinit {
         debounceTask?.cancel()
         retryTask?.cancel()
+        activationCooldown?.cancel()
     }
 
     // MARK: - Lifecycle
@@ -131,6 +144,9 @@ final class SyncCoordinator: ObservableObject {
     func sync(_ trigger: SyncTrigger) async {
         guard canSync() else {
             Self.logger.info("Sync skipped: not allowed for \(String(describing: trigger), privacy: .public)")
+            return
+        }
+        if trigger == .activation, holdsActivationBack() {
             return
         }
         guard !isRunning else {
@@ -170,6 +186,40 @@ final class SyncCoordinator: ObservableObject {
         await runPendingTrigger()
     }
 
+    // A run whose download has not started brings what the activation asks for. After a download, activations
+    // wait for the interval to end and then run once, so a change made on another Mac still arrives.
+    private func holdsActivationBack() -> Bool {
+        if isRunning {
+            return downloadIsAheadInRun
+        }
+        guard activationCooldown != nil else { return false }
+        activationHeldForCooldown = true
+        return true
+    }
+
+    var isHoldingActivations: Bool {
+        activationCooldown != nil
+    }
+
+    private func startActivationCooldown() {
+        activationCooldown?.cancel()
+        activationHeldForCooldown = false
+        let clock = activationClock
+        activationCooldown = Task { [weak self] in
+            do {
+                try await clock.sleep(for: Self.activationInterval)
+            } catch {
+                return
+            }
+            // A newer download may have replaced this hold after the sleep ended.
+            guard !Task.isCancelled, let self else { return }
+            activationCooldown = nil
+            guard activationHeldForCooldown else { return }
+            activationHeldForCooldown = false
+            await sync(.activation)
+        }
+    }
+
     internal func runSyncCycle(_ admission: SyncAdmission = .full) async -> SyncError? {
         await accountThenPushThenPull(admission).failure?.error
     }
@@ -181,6 +231,8 @@ final class SyncCoordinator: ObservableObject {
 
     private func accountThenPushThenPull(_ requested: SyncAdmission) async -> CycleResult {
         var admission = requested
+        downloadIsAheadInRun = true
+        defer { downloadIsAheadInRun = false }
         switch await confirmAccount() {
         case .unavailable(let failure):
             return CycleResult(admission: admission, failure: failure)
@@ -205,6 +257,9 @@ final class SyncCoordinator: ObservableObject {
 
         let push = admission == .full ? await performPush() : PushReport()
         let pullFailure = await performPull(echoGuard: push.echoGuard)
+        if pullFailure == nil {
+            startActivationCooldown()
+        }
 
         let zone = metadataStorage.zoneState
         let download = zone.reconciled(downloadFailure: pullFailure)
@@ -217,6 +272,7 @@ final class SyncCoordinator: ObservableObject {
         /// save into a zone another device recreated fail as an unknown record.
         if nextZone == .removed, zone != .removed {
             recordCache.removeAll()
+            metadataStorage.deferredDeletions = []
             metadataStorage.saveToken(nil)
         }
         metadataStorage.zoneState = nextZone
@@ -353,8 +409,13 @@ final class SyncCoordinator: ObservableObject {
         guard !pendingTriggers.isEmpty else { return }
         let error = syncStatus.error
         /// The network coming back mid-run matters only if the run ended unable to reach iCloud.
-        let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
+        var triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
         pendingTriggers = []
+        // Taken out before the pick, so a held activation never stands in for an edit queued behind it.
+        if activationCooldown != nil, triggers.contains(.activation) {
+            triggers.removeAll { $0 == .activation }
+            activationHeldForCooldown = true
+        }
         let attempt = nextAttempt
         let throttle = throttledUntil
         let reach: (SyncTrigger) -> Int = { trigger in
@@ -374,6 +435,7 @@ final class SyncCoordinator: ObservableObject {
 
         // Clear token to force a full fetch on first sync after enabling
         metadataStorage.saveToken(nil)
+        metadataStorage.deferredDeletions = []
         /// Turning sync on is the person's choice to upload, a removed zone included.
         metadataStorage.zoneState = .unknown
 
@@ -400,6 +462,7 @@ final class SyncCoordinator: ObservableObject {
         }
         metadataStorage.zoneState = .unknown
         metadataStorage.saveToken(nil)
+        metadataStorage.deferredDeletions = []
         recordCache.removeAll()
         markAllLocalDataDirty()
         await markSQLFavoritesDirty()
@@ -525,6 +588,9 @@ final class SyncCoordinator: ObservableObject {
         pendingTriggers = []
         debounceTask?.cancel()
         debounceTask = nil
+        activationCooldown?.cancel()
+        activationCooldown = nil
+        activationHeldForCooldown = false
     }
 
     // Exhaustive, so a paying customer the app could not reach the server about is never told to buy.
@@ -680,9 +746,11 @@ final class SyncCoordinator: ObservableObject {
         // Applied with the categories recorded here, so one turned off during the download is still read once.
         let settings = services.appSettingsStorage.loadSync()
         adoptReadableContent(for: settings)
+        await clearTokenForSavedQueriesRefill(settings: settings)
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
+        downloadIsAheadInRun = false
 
         do {
             let result = try await transport.pull(since: token)
@@ -711,9 +779,12 @@ final class SyncCoordinator: ObservableObject {
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
     ) async -> Bool {
-        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard) else { return false }
+        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard, isFullFetch: isFullFetch) else {
+            return false
+        }
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
+            await finishSavedQueriesRefill(after: result, settings: settings)
         }
         return true
     }
@@ -722,10 +793,18 @@ final class SyncCoordinator: ObservableObject {
     internal func applyPullResult(
         _ result: PullResult,
         settings: SyncSettings? = nil,
-        echoGuard: SyncEchoGuard? = nil
+        echoGuard: SyncEchoGuard? = nil,
+        isFullFetch: Bool = false
     ) async -> Bool {
         let settings = settings ?? services.appSettingsStorage.loadSync()
-        let deletedRecordIDs = result.deletedRecordIDs.filter { recordID in
+        let zoneID = await transport.currentZoneID
+        let deferred = deferredDeletions(dueIn: result, settings: settings, zoneID: zoneID)
+        // Read before anything is applied, while the local stores still hold every record the fetch is checked against.
+        let pushed = echoGuard?.pushedRecordIDs ?? []
+        let missing = isFullFetch
+            ? await deletionsProvenByFullFetch(result, settings: settings, zoneID: zoneID, pushed: pushed)
+            : []
+        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due + missing).filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
         let pendingEdits = await recordNamesWithPendingEdits()
@@ -764,7 +843,8 @@ final class SyncCoordinator: ObservableObject {
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
                 && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
         })
-        recordCache.remove(result.deletedRecordIDs)
+        recordCache.remove(result.deletedRecordIDs + deferred.due + missing)
+        settleDeferredDeletions(deferred, after: result, settings: settings)
 
         Self.logger.info(
             "Pull completed: \(result.changedRecords.count) changed, \(result.deletedRecordIDs.count) deleted"
@@ -844,6 +924,17 @@ final class SyncCoordinator: ObservableObject {
         var tableFavorites: [FavoriteTablesStorage.FavoriteEntry] = []
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         var tableFolderRecords: [CKRecord] = []
+        var connectionBatch: RemoteConnectionBatch?
+
+        func persistConnectionBatch() {
+            guard let batch = connectionBatch else { return }
+            connectionBatch = nil
+            switch persistRemoteConnections(batch) {
+            case .applied: actualConnectionChanges = true
+            case .failed: persistenceFailed = true
+            case .skipped: break
+            }
+        }
 
         for record in changedRecords {
             if let echoGuard, echoGuard.withholds(record.recordID, tracker: changeTracker) {
@@ -851,13 +942,13 @@ final class SyncCoordinator: ObservableObject {
                 continue
             }
             guard let type = SyncRecordType(rawValue: record.recordType), settings.syncs(type) else { continue }
+            // A record whose apply can read or write the library sees every connection record before it.
+            if !Self.leavesConnectionLibraryAlone(type) {
+                persistConnectionBatch()
+            }
             switch type {
             case .connection:
-                switch applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
-                case .applied: actualConnectionChanges = true
-                case .failed: persistenceFailed = true
-                case .skipped: break
-                }
+                stageRemoteConnection(record, tombstoneIds: connectionTombstoneIds, into: &connectionBatch)
             case .group:
                 switch applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
                 case .applied: groupsOrTagsChanged = true
@@ -894,6 +985,7 @@ final class SyncCoordinator: ObservableObject {
                 break
             }
         }
+        persistConnectionBatch()
         applyRemoteTableFolderRecords(tableFolderRecords)
 
         var effects = applyRemoteDeletions(
@@ -965,51 +1057,81 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
+    // Groups and tags write only their own store, and the rest are collected and applied after the loop.
+    private static func leavesConnectionLibraryAlone(_ type: SyncRecordType) -> Bool {
+        switch type {
+        case .connection, .group, .tag, .tableFavorite, .tableFolder, .tableFolderItem, .favorite, .favoriteFolder:
+            return true
+        case .settings, .sshProfile, .credentialProfile, .favoriteDatabase:
+            return false
+        }
+    }
+
+    // Applied to one list and written once, where each record used to read, verify, decode, encode and write the
+    // whole library.
+    private func stageRemoteConnection(
+        _ record: CKRecord,
+        tombstoneIds: Set<String>,
+        into pending: inout RemoteConnectionBatch?
+    ) {
         let remoteConnection: DatabaseConnection
         do {
             remoteConnection = try SyncRecordMapper.toConnection(record)
         } catch {
             Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return .skipped
+            return
         }
 
         if tombstoneIds.contains(remoteConnection.id.uuidString) {
-            return .skipped
+            return
         }
 
-        var connections = services.connectionStorage.loadConnections()
+        let batch: RemoteConnectionBatch
+        if let existing = pending {
+            batch = existing
+        } else {
+            batch = RemoteConnectionBatch(connections: services.connectionStorage.loadConnections())
+            pending = batch
+        }
+
         var incoming = remoteConnection
-        let index = connections.firstIndex(where: { $0.id == remoteConnection.id })
+        let index = batch.index(of: remoteConnection.id)
         if let index {
-            guard !connections[index].localOnly else { return .skipped }
+            guard !batch.connections[index].localOnly else { return }
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
                 guard let reconciled = mergeLocalEdits(
                     into: record,
-                    localConnection: connections[index]
+                    localConnection: batch.connections[index]
                 ) else {
-                    return .skipped
+                    return
                 }
                 incoming = reconciled
             }
         }
         // A record an older build pushed can still carry a connection string's secret in plain text.
         let kept = services.connectionStorage.keepingMongoURISecretsInKeychain(incoming)
-        let movedSecrets = kept.additionalFields != incoming.additionalFields
+        if kept.additionalFields != incoming.additionalFields {
+            batch.cleanedIds.insert(remoteConnection.id.uuidString)
+        }
         if let index {
-            connections[index] = kept.adoptingDeviceLocalState(from: connections[index])
+            batch.replace(at: index, with: kept.adoptingDeviceLocalState(from: batch.connections[index]))
         } else {
             var inserted = kept
             inserted.origin = .synced
-            connections.append(inserted)
+            batch.append(inserted)
         }
-        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
-            Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
+        batch.stagedCount += 1
+    }
+
+    private func persistRemoteConnections(_ batch: RemoteConnectionBatch) -> RemoteApplyOutcome {
+        guard batch.stagedCount > 0 else { return .skipped }
+        guard services.connectionStorage.saveConnections(batch.connections, byUser: false) else {
+            Self.logger.error(
+                "Failed to apply \(batch.stagedCount, privacy: .public) remote connection update(s): persistence error"
+            )
             return .failed
         }
-        if movedSecrets {
-            connectionsCleanedOnPull.insert(remoteConnection.id.uuidString)
-        }
+        connectionsCleanedOnPull.formUnion(batch.cleanedIds)
         return .applied
     }
 
@@ -1246,6 +1368,35 @@ final class SyncCoordinator: ObservableObject {
             }
         }
         return monitor
+    }
+}
+
+// A reference, so staging a record changes the list in place instead of copying it.
+private final class RemoteConnectionBatch {
+    private(set) var connections: [DatabaseConnection]
+    var cleanedIds: Set<String> = []
+    var stagedCount = 0
+    private var indexById: [UUID: Int]
+
+    init(connections: [DatabaseConnection]) {
+        self.connections = connections
+        indexById = Dictionary(
+            connections.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    func index(of id: UUID) -> Int? {
+        indexById[id]
+    }
+
+    func replace(at index: Int, with connection: DatabaseConnection) {
+        connections[index] = connection
+    }
+
+    func append(_ connection: DatabaseConnection) {
+        indexById[connection.id] = connections.count
+        connections.append(connection)
     }
 }
 

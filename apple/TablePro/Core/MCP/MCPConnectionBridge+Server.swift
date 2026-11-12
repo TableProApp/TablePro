@@ -93,6 +93,8 @@ extension MCPConnectionBridge {
         guard let scope else {
             throw DatabaseAccessError.notConnected(connectionId)
         }
+        // A session's statement, idle or slow, is what a client sent, literals and all.
+        let withholdsQueries = await !maskingPolicy(for: connectionId).isEmpty
 
         return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             guard let provider = ServerDashboardQueryProviderFactory.provider(
@@ -111,7 +113,9 @@ extension MCPConnectionBridge {
             if panels.contains("sessions") {
                 do {
                     let sessions = try await provider.fetchSessions(execute: execute)
-                    result["sessions"] = .array(sessions.map { Self.sessionPayload($0, provider: provider) })
+                    result["sessions"] = .array(sessions.map {
+                        Self.sessionPayload($0, provider: provider, withholdingQuery: withholdsQueries)
+                    })
                 } catch {
                     failures["sessions"] = Self.dashboardPanelFailure(panel: "sessions", error: error)
                 }
@@ -134,14 +138,7 @@ extension MCPConnectionBridge {
             if panels.contains("slow_queries") {
                 do {
                     let slow = try await provider.fetchSlowQueries(execute: execute)
-                    result["slow_queries"] = .array(slow.map { entry in
-                        .object([
-                            "duration": .string(entry.duration),
-                            "query": .string(entry.query),
-                            "user": .string(entry.user),
-                            "database": .string(entry.database)
-                        ])
-                    })
+                    result["slow_queries"] = .array(slow.map { Self.slowQueryPayload($0, withholdingQuery: withholdsQueries) })
                 } catch {
                     failures["slow_queries"] = Self.dashboardPanelFailure(panel: "slow_queries", error: error)
                 }
@@ -150,16 +147,29 @@ extension MCPConnectionBridge {
         }
     }
 
-    static func sessionPayload(_ session: DashboardSession, provider: ServerDashboardQueryProvider) -> JsonValue {
+    static func sessionPayload(
+        _ session: DashboardSession,
+        provider: ServerDashboardQueryProvider,
+        withholdingQuery: Bool = false
+    ) -> JsonValue {
         .object([
             "id": .string(session.id),
             "user": .string(session.user),
             "database": .string(session.database),
             "state": .string(session.state),
             "duration_seconds": .int(session.durationSeconds),
-            "query": .string(session.query),
+            "query": .string(withholdingQuery ? ServerErrorText.withheldStatementText : session.query),
             "can_kill": .bool(provider.canKill(session)),
             "can_cancel": .bool(provider.canCancel(session))
+        ])
+    }
+
+    static func slowQueryPayload(_ entry: DashboardSlowQuery, withholdingQuery: Bool = false) -> JsonValue {
+        .object([
+            "duration": .string(entry.duration),
+            "query": .string(withholdingQuery ? ServerErrorText.withheldStatementText : entry.query),
+            "user": .string(entry.user),
+            "database": .string(entry.database)
         ])
     }
 
@@ -458,9 +468,11 @@ extension MCPConnectionBridge {
         default: since = nil
         }
 
+        let masksValues = await !maskingPolicy(for: connectionId).isEmpty
         let page = await QueryHistoryManager.shared.fetch(
             QueryHistoryFilter(
                 scope: .connection(connectionId),
+                sources: Self.searchableSources(by: search, masksValues: masksValues),
                 searchText: search,
                 since: since,
                 allowedConnectionIds: [connectionId]
@@ -468,7 +480,36 @@ extension MCPConnectionBridge {
             limit: limit
         )
 
-        return .object(["history": .array(page.entries.map(Self.encode(historyEntry:)))])
+        let entries = page.entries.filter { Self.isSearchable($0, by: search, masksValues: masksValues) }
+        let answer = Self.withinAnswerBudget(entries.map { Self.encode(historyEntry: $0, masksValues: masksValues) })
+        return .object([
+            "history": .array(answer.entries),
+            "is_truncated": .bool(answer.isTruncated)
+        ])
+    }
+
+    // Entries keep their order; the first one that would pass the budget ends the answer.
+    static func withinAnswerBudget(_ entries: [JsonValue]) -> (entries: [JsonValue], isTruncated: Bool) {
+        var kept: [JsonValue] = []
+        var usedBytes = 0
+        for entry in entries {
+            usedBytes += entry.jsonString().utf8.count
+            guard usedBytes <= ExternalAnswerBudget.answerBytes else {
+                return (kept, true)
+            }
+            kept.append(entry)
+        }
+        return (kept, false)
+    }
+
+    // The chat reaches only its own connection, so it lists only that one.
+    func listConnection(id connectionId: UUID) async -> JsonValue {
+        let listings = await MainActor.run { ExternalConnectionDirectory.listings() }
+        return Self.connectionListing(listings, id: connectionId)
+    }
+
+    static func connectionListing(_ listings: [ExternalConnectionListing], id connectionId: UUID) -> JsonValue {
+        MCPConnectionListEncoder.encode(listings, access: .limited([connectionId]), purpose: .agent)
     }
 
     static func scopePath(_ scope: PluginPrivilegeScope) -> String {
@@ -488,10 +529,11 @@ extension MCPConnectionBridge {
         }
     }
 
-    static func encode(historyEntry entry: QueryHistoryEntry) -> JsonValue {
+    // `masksValues` is whether the entry's connection has masking rules.
+    static func encode(historyEntry entry: QueryHistoryEntry, masksValues: Bool = false) -> JsonValue {
         var fields: [String: JsonValue] = [
             "id": .string(entry.id.uuidString),
-            "query": .string(entry.query),
+            "query": .string(externalQueryText(of: entry, masksValues: masksValues)),
             "connection_id": .string(entry.connectionId.uuidString),
             "database_name": .string(entry.databaseName),
             "database_type": .string(entry.databaseType.rawValue),
@@ -506,9 +548,39 @@ extension MCPConnectionBridge {
             fields["schema_name"] = .string(schemaName)
         }
         if let error = entry.errorMessage {
-            fields["error_message"] = .string(MCPErrorRedactor.redact(error))
+            fields["error_message"] = .string(externalErrorText(error, masksValues: masksValues))
         }
         return .object(fields)
+    }
+
+    // A statement the app wrote from the data itself carries stored values: a document edit's `replaceOne` holds every
+    // field of the original and the edit, an import the file's values. What a person or a client typed is theirs.
+    static func externalQueryText(of entry: QueryHistoryEntry, masksValues: Bool) -> String {
+        withholdsQuery(of: entry, masksValues: masksValues)
+            ? ServerErrorText.withheldStatementText
+            : ExternalAnswerBudget.cut(entry.query)
+    }
+
+    // The search matches the stored statement, so an entry whose statement is withheld would answer for its text.
+    static func isSearchable(_ entry: QueryHistoryEntry, by search: String?, masksValues: Bool) -> Bool {
+        guard let search, !search.isEmpty else { return true }
+        return !withholdsQuery(of: entry, masksValues: masksValues)
+    }
+
+    // Left out of the storage query itself, so a withheld match never takes a slot in the page and its size answers nothing.
+    static func searchableSources(by search: String?, masksValues: Bool) -> Set<QueryHistorySource> {
+        let all = Set(QueryHistorySource.allCases)
+        guard masksValues, let search, !search.isEmpty else { return all }
+        return all.subtracting([.rowEdit, .dataImport])
+    }
+
+    private static func withholdsQuery(of entry: QueryHistoryEntry, masksValues: Bool) -> Bool {
+        masksValues && (entry.source == .rowEdit || entry.source == .dataImport)
+    }
+
+    // A failure the editor or a grid save recorded keeps the server's words, which can repeat a value it read.
+    static func externalErrorText(_ error: String, masksValues: Bool) -> String {
+        masksValues ? ServerErrorText.withheldMessage : ExternalAnswerBudget.cut(MCPErrorRedactor.redact(error))
     }
 }
 

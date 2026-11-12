@@ -17,6 +17,7 @@ core/crates/
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── account/                       the TablePro account: sign-in, device, entitlement and the feature gate
 ├── mcp/                           the MCP server: transport, token and tools
+├── cli/                           the tablepro command line: parsing, the MCP client and the output formats
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
 ├── bindgen/                       uniffi-bindgen-swift, which writes the Swift bindings from a built ffi
 ├── test-fixtures/                 dev-only container fixtures with a generated PKI
@@ -45,6 +46,7 @@ core/crates/
 | `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
+| `cli` | no workspace crate |
 | `ai` | `core`, `net` |
 | `account` | `core`, `storage` |
 | `ffi` | `core`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
@@ -58,6 +60,7 @@ Rules, enforced by review:
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`, and SSH through the `SshTunnels` the app passes in. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
+- `cli` depends on no workspace crate: it speaks to the app's MCP server over HTTP and reaches the port, the token and the app's state through the `Host` trait the app implements ([0018](docs/decisions/0018-command-line.md)).
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
 - `account` depends on `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
@@ -82,6 +85,7 @@ A value or a trait the app passes in:
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature ([ADR 0009](docs/decisions/0009-in-process-ssh-on-windows.md)) |
 | `ProcessHold` | `gio::Application::hold` | none |
 | `RefreshTokenVault`, `BrowserLauncher`, `MachineId` and `AppClient` (`tablepro-account`) | the keyring through `SecretStore`, `gtk::UriLauncher`, `MachineId::derive` of what `tablepro_linux_platform::read_machine_id` reads, `AppClient::LINUX` | none yet |
+| `Host` (`tablepro-cli`) | `LinuxHost` in the app crate: the port and switch from GSettings, the token read from the keyring, `NameHasOwner` for a running app, each connection's peer checked by `Host::verify_peer` through `tablepro_net::loopback_peer_is_ours` | none yet |
 | `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
 A `cfg` split inside a crate:
@@ -94,7 +98,7 @@ A `cfg` split inside a crate:
 | SQLite | the distribution's | bundled | bundled |
 | DuckDB's file lock while a file is replaced | fcntl | fcntl | LockFileEx |
 | SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the system's GSS framework, behind the `kerberos` feature | SSPI, NTLM only (winauth) |
-| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>` |
+| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>`; a secret over a credential's 2,560 bytes goes on in `<name>/1`, `<name>/2`, each part carrying a `TablePro_Parts` attribute with its write, part count and length (`credential_parts`) |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | The in-process SSH transport's agent | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK`, else `\\.\pipe\openssh-ssh-agent`, then Pageant |
 | A server's own Unix-domain socket (`tablepro_net::LocalSocketTransport`, `NetworkOption::LocalSocket`) | yes | yes | not built: no engine offers one |
@@ -107,11 +111,12 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 
 `ffi` is the library an app outside Rust loads: the Windows app as a DLL, the Apple apps as a static library in an XCFramework, built without the `engines` feature by `apple/scripts/build-core.sh`. Core ADRs 0002, on the bindings, 0003, on result windows, and 0009, on the macOS slices, hold the reasons.
 
-- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL with `tablepro_core::connection_url`, refusing one that needs a setting its record has no field for. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
+- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL with `tablepro_core::connection_url`, refusing one that needs a setting its record has no field for. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), picks the statement at a caret with the session's grammar (`statement_at`), says what Safe Mode lets an editor run do at the session's level and takes a level saved while it is open (`gate_run`, over `SafeModeLevel::gate`, and `set_safe_mode`), reports and waits on the session's health, opens a `QueryEditor`, and opens a `TableEditor`, which plans a table tab's typed edits into a `RowSave` and runs it (`docs/decisions/0019-row-edits-through-the-ffi.md`). `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
 - A `CoreError` carries the `code()` of each error from the outermost in; the innermost decides.
+- A secret crosses as the `SecretString` custom type, a `String` to the app, so Rust holds it in `secrecy` from the lift and wipes it on drop. Still plain: the serialized buffer UniFFI frees for a record, enum, option or callback answer that carries one; for a secret going to the app (`HostSecrets::store` and `store_item`, `ParsedConnectionUrl.password`), the `String` lowered and its buffer; every string the app holds, which the generated C# records also print in full. The blob Credential Manager hands back is wiped before `CredFree`.
 
 How the bindings are generated, and where they live: `windows/AGENTS.md`, Bindings, for C#, and `apple/AGENTS.md`, Repository map, for Swift.
 
@@ -121,7 +126,7 @@ How an app reaches a database: the contract in `tablepro-core`, a transport that
 
 ### The contract
 
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](../linux/docs/adding-drivers.md) is the full contract, [ADR 0016](../linux/docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](../linux/docs/drivers/postgresql.md), [MySQL and MariaDB](../linux/docs/drivers/mysql.md), [SQLite](../linux/docs/drivers/sqlite.md), [DuckDB](../linux/docs/drivers/duckdb.md), [SQL Server](../linux/docs/drivers/sql-server.md), [ClickHouse](../linux/docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](../linux/docs/drivers/cassandra.md), [Redis](../linux/docs/drivers/redis.md), [MongoDB](../linux/docs/drivers/mongodb.md). An engine without SQL says so through `DriverCapabilities::data_model`: the workspace lists a key-value engine's keys and opens them in key tabs ([ADR 0021](../linux/docs/decisions/0021-engines-without-sql.md)), and opens a document engine's collections in table tabs whose statements are the engine's shell calls ([ADR 0026](../linux/docs/decisions/0026-documents-in-the-table-tab.md)).
+`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`, and the `Session` that opens it puts a `ByteLimitSink` in front of that sink, so a run stops keeping rows once they pass `RunOptions::byte_limit` bytes across its results, the row that crosses it kept whole ([ADR 0020](docs/decisions/0020-a-run-keeps-a-byte-limit-of-rows.md)). [docs/adding-drivers.md](../linux/docs/adding-drivers.md) is the full contract, [ADR 0016](../linux/docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](../linux/docs/drivers/postgresql.md), [MySQL and MariaDB](../linux/docs/drivers/mysql.md), [SQLite](../linux/docs/drivers/sqlite.md), [DuckDB](../linux/docs/drivers/duckdb.md), [SQL Server](../linux/docs/drivers/sql-server.md), [ClickHouse](../linux/docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](../linux/docs/drivers/cassandra.md), [Redis](../linux/docs/drivers/redis.md), [MongoDB](../linux/docs/drivers/mongodb.md). An engine without SQL says so through `DriverCapabilities::data_model`: the workspace lists a key-value engine's keys and opens them in key tabs ([ADR 0021](../linux/docs/decisions/0021-engines-without-sql.md)), and opens a document engine's collections in table tabs whose statements are the engine's shell calls ([ADR 0026](../linux/docs/decisions/0026-documents-in-the-table-tab.md)).
 
 ### SQL scripts
 
@@ -174,7 +179,7 @@ The cancel token is checked between stages, and a stage that finishes after a ca
 
 | | `DirectTcpTransport` (`tablepro-net`) | `SshForwardTransport` (`tablepro-ssh`) | `InProcessForward` (`tablepro-ssh`, `in-process`) |
 |---|---|---|---|
-| `open` | Resolves the name, then tries each address in turn under the connect timeout | Connects to the forward's Unix socket under the connect timeout | Opens a `direct-tcpip` channel under the channel open timeout |
+| `open` | Resolves the name and races its addresses as Happy Eyeballs does (RFC 8305): families alternate, each attempt starts 250 ms after the last or as soon as one fails, and the lookup and every attempt share one connect timeout | Connects to the forward's Unix socket under the connect timeout | Opens a `direct-tcpip` channel under the channel open timeout |
 | Socket options | `TCP_NODELAY`; keepalive after 30 s idle, every 10 s, 3 probes; `TCP_USER_TIMEOUT` 45 s | OpenSSH's own: `ServerAliveInterval=15`, `ServerAliveCountMax=3` | The first hop's dial is a `DirectTcpTransport`'s; SSH keepalives every 15 s, 3 unanswered end the session |
 | `reroute` | A new direct transport | A new forward on the same master | A forward on the same session |
 | `explain_closed_stream` | Nothing to add | The master's exit, or the "open failed" line ssh printed | Why the session ended |
@@ -224,7 +229,7 @@ Where each platform's system store comes from: `linux/ARCHITECTURE.md`, Trust.
 
 | Bound | Value |
 |---|---|
-| TCP connect, per address | 10 s |
+| TCP connect, the name lookup and every address together | 10 s |
 | Login, including TLS | 15 s |
 | TCP keepalive | after 30 s idle, every 10 s, 3 probes |
 | `TCP_USER_TIMEOUT` | 45 s |

@@ -47,7 +47,7 @@ public enum RedisArgumentCodec {
     }
 
     public static func quote(_ bytes: Data) -> String {
-        if let text = String(data: bytes, encoding: .utf8) {
+        if let text = RedisWireText.decode(bytes) {
             return isBare(text) ? text : quotedText(text)
         }
         return quotedBytes(bytes)

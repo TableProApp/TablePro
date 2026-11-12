@@ -5,8 +5,8 @@ import TableProModels
 @Observable
 final class StreamingResultBuffer {
     private(set) var columns: [ColumnInfo] = []
+    // The one copy of the rows: a list derives each row's display text when it draws it.
     private(set) var window: RowWindow
-    private(set) var legacyRows: [[String?]] = []
     private(set) var rowsAffected: Int?
     private(set) var statusMessage: String?
     private(set) var truncation: TruncationReason?
@@ -21,8 +21,8 @@ final class StreamingResultBuffer {
         self.window = RowWindow(capacity: capacity)
     }
 
-    var count: Int { legacyRows.count }
-    var isEmpty: Bool { legacyRows.isEmpty }
+    var count: Int { window.count }
+    var isEmpty: Bool { window.isEmpty }
 
     func apply(_ element: StreamElement) {
         switch element {
@@ -51,12 +51,7 @@ final class StreamingResultBuffer {
         flushTask?.cancel()
         flushTask = nil
         guard !pendingRows.isEmpty else { return }
-        let legacyBatch = pendingRows.map(\.legacyValues)
         window.append(contentsOf: pendingRows)
-        legacyRows.append(contentsOf: legacyBatch)
-        if legacyRows.count > window.count {
-            legacyRows.removeFirst(legacyRows.count - window.count)
-        }
         pendingRows.removeAll(keepingCapacity: true)
     }
 
@@ -67,8 +62,6 @@ final class StreamingResultBuffer {
 
     func shrink(to maxCount: Int) {
         window.shrink(to: maxCount)
-        guard legacyRows.count > maxCount else { return }
-        legacyRows.removeFirst(legacyRows.count - maxCount)
     }
 
     func reset() {
@@ -76,7 +69,6 @@ final class StreamingResultBuffer {
         flushTask = nil
         columns = []
         window.clear()
-        legacyRows.removeAll(keepingCapacity: true)
         rowsAffected = nil
         statusMessage = nil
         truncation = nil

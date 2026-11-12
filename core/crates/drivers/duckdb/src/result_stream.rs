@@ -6,16 +6,18 @@
 //! instead of DuckDB producing the whole result first.
 
 use std::ffi::{OsStr, OsString};
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use duckdb::arrow::array::{Array, StructArray};
 use tablepro_core::column::{ColumnOrigin, ResultColumn};
 use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::sql_syntax::script::unicode_spaces::blanked_spaces;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptDiagnostic, ScriptPlan, ScriptToken, ScriptTokenKind};
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, RowLimit, Truncation, UnsupportedFeature};
+use tablepro_core::{DriverError, QueryResult, ResultEvent, RowBatch, RowLimit, Truncation, UnsupportedFeature};
 use tokio::sync::mpsc;
 
 use crate::decode::value_at;
@@ -24,11 +26,6 @@ use crate::encode::bind_all;
 use crate::errors::map_error;
 use crate::instance::{Link, attach_unless_open};
 use crate::result_origin::{TracedTable, traced_table};
-
-/// How many rows travel in one `Rows` event: enough that a large read
-/// is not one await per row, few enough that the first rows show at
-/// once.
-const ROWS_PER_EVENT: usize = 256;
 
 /// What a run of statements did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -74,15 +71,15 @@ impl Shape {
     }
 
     fn rows(&self, chunk: &StructArray, from: usize, to: usize) -> Vec<Vec<Value>> {
-        (from..to)
-            .map(|row| {
-                chunk
-                    .columns()
-                    .iter()
-                    .zip(&self.types)
-                    .map(|(column, duck)| value_at(column.as_ref(), duck, row))
-                    .collect()
-            })
+        (from..to).map(|row| self.row(chunk, row)).collect()
+    }
+
+    fn row(&self, chunk: &StructArray, row: usize) -> Vec<Value> {
+        chunk
+            .columns()
+            .iter()
+            .zip(&self.types)
+            .map(|(column, duck)| value_at(column.as_ref(), duck, row))
             .collect()
     }
 }
@@ -200,8 +197,8 @@ pub(crate) fn run_script(
         if traced.is_some() && controls_transaction(statement) {
             traced = None;
         }
-        match attach_literal(statement) {
-            Some(literal) => {
+        match attach_path(statement) {
+            Some(path) => {
                 // DuckDB leaves a HIDDEN database out of what it lists, so
                 // no check could tell another window it is open.
                 if attach_hides(statement) {
@@ -209,7 +206,7 @@ pub(crate) fn run_script(
                         feature: UnsupportedFeature::HiddenAttach,
                     });
                 }
-                let targets = attach_targets(link, literal)?;
+                let targets = attach_targets(link, statement, path)?;
                 let ran = attach_unless_open(link, &targets, || {
                     // A stop that came while the ATTACH waited its turn:
                     // DuckDB clears an interrupt as a statement starts.
@@ -344,26 +341,30 @@ fn stream_rows(
     let keep = limit.map_or(u64::MAX, RowLimit::get);
     let mut retained = 0u64;
     let mut truncation = Truncation::Complete;
+    let mut batch = RowBatch::new();
     'chunks: while let Some(chunk) = next_chunk(running)? {
-        let mut from = 0;
-        while from < chunk.len() {
+        for row in 0..chunk.len() {
             if retained >= keep {
                 truncation = Truncation::ReadPastLimit;
                 break 'chunks;
             }
-            let room = usize::try_from(keep - retained).unwrap_or(usize::MAX);
-            let to = chunk.len().min(from + ROWS_PER_EVENT).min(from.saturating_add(room));
-            let rows = shape.rows(&chunk, from, to);
-            retained += rows.len() as u64;
-            outcome.rows += rows.len() as u64;
-            if !events.send(ResultEvent::Rows(rows)) {
+            retained += 1;
+            outcome.rows += 1;
+            if batch.push(shape.row(&chunk, row)) && !events.send(ResultEvent::Rows(batch.take())) {
                 outcome.consumer_gone = true;
                 return Ok(());
             }
-            from = to;
+        }
+        // A chunk's rows show without waiting for the next chunk.
+        if !batch.is_empty() && !events.send(ResultEvent::Rows(batch.take())) {
+            outcome.consumer_gone = true;
+            return Ok(());
         }
     }
     let mut closing = Vec::new();
+    if !batch.is_empty() {
+        closing.push(ResultEvent::Rows(batch.take()));
+    }
     if truncation == Truncation::ReadPastLimit {
         closing.push(ResultEvent::RowLimitReached { retained });
     }
@@ -469,11 +470,11 @@ pub(crate) fn controls_transaction(sql: &str) -> bool {
 /// The words an ATTACH may carry before its path.
 const ATTACH_WORDS: [&str; 6] = ["DATABASE", "IF", "NOT", "EXISTS", "OR", "REPLACE"];
 
-/// The source text of the path an ATTACH statement names, which only an
-/// alias or the options may follow. DuckDB 2.0 takes an expression there:
-/// a parenthesis right after a word is a call's or a type's, and the
-/// options are a last group of their own.
-fn attach_literal(statement: &str) -> Option<&str> {
+/// Where the path an ATTACH statement names stands, which only an alias or
+/// the options may follow. DuckDB 2.0 takes an expression there: a
+/// parenthesis right after a word is a call's or a type's, and the options
+/// are a last group of their own.
+fn attach_path(statement: &str) -> Option<Range<usize>> {
     let grammar = SqlGrammar::DuckDb;
     let plan = ScriptPlan::build(statement, grammar, LexicalSettings::default_for(grammar));
     let tokens: Vec<ScriptToken> = plan
@@ -514,7 +515,8 @@ fn attach_literal(statement: &str) -> Option<&str> {
             _ => {}
         }
     }
-    statement.get(start..end).map(str::trim_end)
+    let path = statement.get(start..end)?.trim_end();
+    Some(start..start + path.len())
 }
 
 /// Whether the group the parenthesis at `open` starts is the last thing
@@ -544,14 +546,38 @@ fn closes_last(tokens: &[ScriptToken], open: usize) -> bool {
 ///
 /// A path that does not evaluate refuses the ATTACH: a misread boundary
 /// would otherwise let DuckDB open a file nothing checked.
-fn attach_targets(link: &Link, literal: &str) -> Result<Vec<PathBuf>, DriverError> {
+fn attach_targets(link: &Link, statement: &str, path: Range<usize>) -> Result<Vec<PathBuf>, DriverError> {
+    // DuckDB turns some non-ASCII spaces into spaces before it reads the
+    // ATTACH, as far as its own reading of quotes goes, and starts again
+    // in the query below. So the path goes in as DuckDB reads it there.
+    let mut literal = String::new();
+    let mut at = path.start;
+    for space in blanked_spaces(statement)
+        .into_iter()
+        .filter(|space| path.start <= space.start && space.end <= path.end)
+    {
+        literal.push_str(statement.get(at..space.start).unwrap_or_default());
+        literal.push(' ');
+        at = space.end;
+    }
+    literal.push_str(statement.get(at..path.end).unwrap_or_default());
     // The path stands on lines of its own, so a comment after it hides
     // nothing.
-    let read = link.connection.query_row(
-        &format!("SELECT current_setting('home_directory'), CAST(path AS VARCHAR) FROM (SELECT\n{literal}\n) AS attach_path(path)"),
-        [],
-        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
-    );
+    let head = "SELECT current_setting('home_directory'), CAST(path AS VARCHAR) FROM (SELECT\n";
+    let query = format!("{head}{literal}\n) AS attach_path(path)");
+    // `query_row` runs every statement of its text, and the pass must
+    // leave the path as it is.
+    let in_path = head.len()..head.len() + literal.len();
+    let reads_alike = one_statement(&query)
+        && blanked_spaces(&query)
+            .iter()
+            .all(|space| space.end <= in_path.start || space.start >= in_path.end);
+    if !reads_alike {
+        return Err(DriverError::server("the ATTACH path does not read as one value"));
+    }
+    let read = link.connection.query_row(&query, [], |row| {
+        Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?))
+    });
     let (home, path) = match read.map_err(map_error)? {
         (home, Some(path)) => (home, path),
         // DuckDB refuses a NULL path itself.
@@ -674,6 +700,17 @@ fn expand_path(path: &str, home: Option<&OsStr>) -> PathBuf {
     PathBuf::from(path.get(url_offset..).unwrap_or(path))
 }
 
+/// Whether DuckDB reads `sql`, sent whole, as one statement with nothing
+/// left open. With no `;` the lexer reads it as DuckDB does in one call.
+fn one_statement(sql: &str) -> bool {
+    let grammar = SqlGrammar::DuckDb;
+    let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
+    plan.diagnostics().is_empty()
+        && !plan
+            .tokens(0..sql.len())
+            .any(|token| token.kind == ScriptTokenKind::Semicolon)
+}
+
 /// The words of `sql`, upper case, past comments and outside strings
 /// and quoted names.
 fn words(sql: &str) -> Vec<String> {
@@ -750,6 +787,42 @@ mod tests {
         assert!(split_statements("  -- only a comment\n").is_empty());
     }
 
+    // DuckDB turns U+200B and U+00A0 into spaces before it lexes, so the E'' string ends at its second quote.
+    #[test]
+    fn a_space_duckdb_blanks_ends_the_name_before_a_string() {
+        assert_eq!(
+            split_statements("SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'"),
+            ["SELECT varchar\u{200b}E'\\''", "DROP TABLE t"]
+        );
+        assert_eq!(
+            split_statements("/* ' */ SELECT 1; SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'"),
+            ["SELECT 1", "SELECT varchar\u{200b}E'\\''", "DROP TABLE t"]
+        );
+        assert!(controls_transaction(
+            "SELECT varchar\u{a0}E'\\''; COMMIT; DROP TABLE t; --'"
+        ));
+        assert_eq!(main_verb("SELECT\u{a0}1").as_deref(), Some("SELECT"));
+        // DuckDB gets each statement without the comment before it, so the quote in it does not count.
+        assert_eq!(
+            split_statements("/* ' */ SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'"),
+            ["SELECT varchar\u{200b}E'\\''", "DROP TABLE t"]
+        );
+        assert!(controls_transaction(
+            "SELECT 1; /* ' */ SELECT varchar\u{200b}E'\\''; COMMIT; --'"
+        ));
+    }
+
+    #[test]
+    fn a_text_is_one_statement_only_without_a_semicolon_or_an_open_construct() {
+        assert!(one_statement("SELECT\n'p' || varchar\u{200b}E'x'\n) AS a"));
+        assert!(one_statement("SELECT 'a;b' -- c;\n, 1"));
+        assert!(!one_statement(
+            "SELECT\n'p' || varchar\u{200b}E'\\'') x(path); DROP TABLE t; --'\n) AS a"
+        ));
+        assert!(!one_statement("SELECT 1;"));
+        assert!(!one_statement("SELECT 'open"));
+    }
+
     #[test]
     fn a_cte_named_like_a_verb_is_not_the_statement() {
         assert_eq!(
@@ -785,6 +858,10 @@ mod tests {
             Some("SELECT")
         );
         assert_eq!(main_verb("(SELECT 1)").as_deref(), Some("SELECT"));
+    }
+
+    fn attach_literal(statement: &str) -> Option<&str> {
+        statement.get(attach_path(statement)?)
     }
 
     #[test]

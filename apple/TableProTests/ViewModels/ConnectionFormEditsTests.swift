@@ -19,7 +19,8 @@ struct ConnectionFormEditsTests {
         completionIdentifierCase: SQLIdentifierCase = .default,
         additionalFields: [String: String] = [:],
         ownedAdditionalFieldIDs: Set<String> = [],
-        maskingRules: [MaskingRule] = []
+        maskingRules: [MaskingRule] = [],
+        revokedAIAlwaysAllowedTools: Set<String> = []
     ) -> ConnectionFormEdits {
         ConnectionFormEdits(
             name: "Edited",
@@ -53,7 +54,8 @@ struct ConnectionFormEditsTests {
             localOnly: false,
             additionalFields: additionalFields,
             ownedAdditionalFieldIDs: ownedAdditionalFieldIDs,
-            maskingRules: maskingRules
+            maskingRules: maskingRules,
+            revokedAIAlwaysAllowedTools: revokedAIAlwaysAllowedTools
         )
     }
 
@@ -109,6 +111,29 @@ struct ConnectionFormEditsTests {
         #expect(result.isSample)
         #expect(result.aiAlwaysAllowedTools == ["run_query", "list_tables"])
         #expect(result.passwordSource == .env(variable: "PGPASSWORD"))
+    }
+
+    @Test("Forgetting an always-allowed tool removes it and keeps a grant recorded after the form opened")
+    func forgettingRemovesOnlyTheRevokedTool() {
+        var stored = populatedConnection()
+        stored.aiAlwaysAllowedTools = ["execute_query", "list_tables"]
+
+        let result = edits(revokedAIAlwaysAllowedTools: ["execute_query"]).applied(to: stored)
+
+        #expect(result.aiAlwaysAllowedTools == ["list_tables"])
+    }
+
+    @Test("The form's edits carry what Forget took off the list")
+    @MainActor
+    func coordinatorCarriesForgottenTools() {
+        let coordinator = ConnectionFormCoordinator(connectionId: nil)
+        coordinator.advanced.load(from: populatedConnection())
+
+        coordinator.advanced.forgetAlwaysAllowed("run_query")
+        let saved = coordinator.buildEdits().applied(to: populatedConnection())
+
+        #expect(coordinator.buildEdits().revokedAIAlwaysAllowedTools == ["run_query"])
+        #expect(saved.aiAlwaysAllowedTools == ["list_tables"])
     }
 
     @Test("Applying edits overwrites every property the form owns")

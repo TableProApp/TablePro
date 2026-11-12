@@ -6,6 +6,8 @@ namespace TablePro.App.Services;
 internal sealed class Workbench : IDisposable
 {
     private readonly SettingsStore _settings;
+    private bool _settingsUnsaved;
+    private Task<QueryHistory?>? _history;
 
     public Workbench(TableProCore core, string folder)
     {
@@ -52,11 +54,48 @@ internal sealed class Workbench : IDisposable
         }
 
         Settings = next;
-        _settings.Save(next);
+        SaveSettings();
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SaveUnsavedSettings()
+    {
+        if (_settingsUnsaved)
+        {
+            SaveSettings();
+        }
+    }
+
+    // A file another program holds, as a virus scan can, keeps the change for this run until a later save lands.
+    private void SaveSettings()
+    {
+        try
+        {
+            _settings.Save(Settings);
+            _settingsUnsaved = false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _settingsUnsaved = true;
+        }
+    }
+
     public void NotifyLibraryChanged() => LibraryChanged?.Invoke(this, EventArgs.Empty);
+
+    // Opened once and shared by every window. Null when the store cannot open: queries still run, unrecorded.
+    public Task<QueryHistory?> GetHistoryAsync() => _history ??= OpenHistoryAsync();
+
+    private async Task<QueryHistory?> OpenHistoryAsync()
+    {
+        try
+        {
+            return await Core.OpenHistoryAsync().ConfigureAwait(true);
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
+    }
 
     // The Chinook sample is copied out of the app once, so edits to it stay.
     public async Task<SavedConnection> InstallSampleAsync()
@@ -84,5 +123,13 @@ internal sealed class Workbench : IDisposable
         return saved;
     }
 
-    public void Dispose() => Core.Dispose();
+    public void Dispose()
+    {
+        if (_history is { IsCompletedSuccessfully: true, Result: { } history })
+        {
+            history.Dispose();
+        }
+
+        Core.Dispose();
+    }
 }

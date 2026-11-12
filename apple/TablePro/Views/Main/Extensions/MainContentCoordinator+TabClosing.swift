@@ -64,6 +64,14 @@ extension MainContentCoordinator {
         }
     }
 
+    // A preview the next sidebar selection replaces. Not a user close, so nothing goes to Reopen Closed Tab.
+    func releasePreviewForReplacement(_ tab: QueryTab) {
+        flushColumnLayoutPersistence()
+        saveLastFilters(of: tab)
+        releaseResources(of: tab)
+        releaseExecution(of: tab)
+    }
+
     // All keyed by tab id, so a stale entry would hand another tab's state to the next tab given that id.
     func cleanupTabCaches(openTabIds: Set<UUID>) {
         prune(&displayFormatsCache, keeping: openTabIds)
@@ -74,7 +82,10 @@ extension MainContentCoordinator {
         prune(&createTableDrafts, keeping: openTabIds)
         prune(&userTypeEditors, keeping: openTabIds)
         prune(&erDiagramModels, keeping: openTabIds)
+        discardTableHealthModels(tableHealthModels.keys.filter { !openTabIds.contains($0) })
         prune(&navigationHistories, keeping: openTabIds)
+        // The editor stores the outgoing tab's history on its next update, after the close forgot it.
+        editorUndoHistories.forgetAll(except: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
             session.releaseViewWiring()
@@ -95,6 +106,7 @@ extension MainContentCoordinator {
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tabId)
         erDiagramModels.removeValue(forKey: tabId)
+        discardTableHealthModels([tabId])
         tabsWithStagedPrincipals.remove(tabId)
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
@@ -108,7 +120,9 @@ extension MainContentCoordinator {
         createTableDrafts.removeValue(forKey: tab.id)
         userTypeEditors.removeValue(forKey: tab.id)
         erDiagramModels.removeValue(forKey: tab.id)
+        discardTableHealthModels([tab.id])
         navigationHistories.removeValue(forKey: tab.id)
+        editorUndoHistories.forget(tab.id)
         releaseGridModel(forTab: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }

@@ -57,12 +57,22 @@ final class ConnectionFormCoordinator: ObservableObject {
     @Published var pluginInstallConnection: DatabaseConnection?
     @Published var pluginDiagnostic: PluginDiagnosticItem?
 
+    // A connection that syncs today and is saved Local only has its secrets taken off iCloud Keychain.
+    var removesSyncedSecretsOnSave: Bool {
+        advanced.localOnly && originalConnection?.participatesInSync == true
+    }
+
     @Published var saveError: String?
 
     @Published var isChoosingType: Bool = false
 
 
     @Published private var temporaryTestIds: Set<UUID> = []
+
+    // Filled by the reads that prefill the form: a field left empty because its secret could not be read is not a cleared one.
+    private var unreadableSecretKeys: Set<String> = []
+    // What those reads found. A save leaves a secret the user did not change as it is in the Keychain.
+    private var loadedSecrets: [String: String] = [:]
 
     private var childChangeForwarding: AnyCancellable?
 
@@ -222,18 +232,22 @@ final class ConnectionFormCoordinator: ObservableObject {
                 "[trace] load found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .private(mask: .hash))' promptForPassword=\(existing.promptForPassword)"
             )
             originalConnection = existing
-            network.load(from: existing)
-            auth.load(from: existing, storage: storage)
-            ssh.load(from: existing, storage: storage)
-            cloudflareTunnel.load(from: existing, storage: storage)
-            cloudSQLProxy.load(from: existing, storage: storage)
-            socksProxy.load(from: existing, storage: storage)
-            tunnelCommand.load(from: existing)
-            ssl.load(from: existing)
-            customization.load(from: existing)
-            advanced.load(from: existing)
-            aiRules.load(from: existing)
-            maskingRules.load(from: existing)
+            let reads = storage.recordingSecretReads {
+                network.load(from: existing)
+                auth.load(from: existing, storage: storage)
+                ssh.load(from: existing, storage: storage)
+                cloudflareTunnel.load(from: existing, storage: storage)
+                cloudSQLProxy.load(from: existing, storage: storage)
+                socksProxy.load(from: existing, storage: storage)
+                tunnelCommand.load(from: existing)
+                ssl.load(from: existing)
+                customization.load(from: existing)
+                advanced.load(from: existing)
+                aiRules.load(from: existing)
+                maskingRules.load(from: existing)
+            }
+            unreadableSecretKeys = reads.unreadable
+            loadedSecrets = reads.loaded
             normalizeTransport()
         }
         hasLoadedData = true
@@ -362,6 +376,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             queryTimeoutSeconds: customization.queryTimeoutSeconds,
             binaryInlineLimitKilobytes: customization.binaryInlineLimitKilobytes,
             completionIdentifierCase: customization.completionIdentifierCase,
+            commitMode: customization.commitMode,
             redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
                 RedisDatabaseIndex.parse($0) ?? 0
             },
@@ -370,7 +385,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             localOnly: advanced.localOnly,
             additionalFields: fields,
             ownedAdditionalFieldIDs: ownedAdditionalFieldIDs(),
-            maskingRules: maskingRules.savedRules
+            maskingRules: maskingRules.savedRules,
+            revokedAIAlwaysAllowedTools: advanced.revokedAIAlwaysAllowedTools
         )
     }
 
@@ -435,19 +451,13 @@ final class ConnectionFormCoordinator: ObservableObject {
         var edits = buildEdits()
         edits.additionalFields["promptForPassword"] = auth.effectivePromptForPassword ? "true" : nil
 
+        var secureFieldValues: [(fieldId: String, value: String)] = []
         for field in secureFieldsOwnedByForm() {
-            if let value = edits.additionalFields[field.id], !value.isEmpty {
-                storage.savePluginSecureField(value, fieldId: field.id, for: finalId)
-            } else {
-                storage.deletePluginSecureField(fieldId: field.id, for: finalId)
-            }
-            edits.additionalFields.removeValue(forKey: field.id)
+            secureFieldValues.append((field.id, edits.additionalFields.removeValue(forKey: field.id) ?? ""))
         }
         // An installed plugin older than the field still must not leave the token in the record.
         let sessionTokenId = ConnectionSecretOptions.mongoSessionTokenFieldId
-        if let token = edits.additionalFields.removeValue(forKey: sessionTokenId), !token.isEmpty {
-            storage.savePluginSecureField(token, fieldId: sessionTokenId, for: finalId)
-        }
+        let sessionToken = edits.additionalFields.removeValue(forKey: sessionTokenId) ?? ""
 
         var connectionToSave = edits.applied(to: baseConnection(id: finalId))
 
@@ -456,57 +466,82 @@ final class ConnectionFormCoordinator: ObservableObject {
         /// connection in place with nothing left to authenticate it.
         var clearedSecrets: [() -> Void] = []
 
-        /// A linked connection holds no secret of its own. That is the whole point: the password
-        /// exists once, under the profile, so rotating it is one edit rather than one per
-        /// connection. Any secret the connection had before the link goes with it, or an encrypted
-        /// export still carries it and a duplicate still copies it.
-        if auth.usesCredentialProfile {
-            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
-            /// The secure-field loop above wrote the form's values back under the connection id.
-            /// Anything the profile owns has to go with the password, or the connection keeps a
-            /// second stale copy that a duplicate carries and the driver can fall back to.
-            for fieldId in auth.selectedCredentialProfile?.secureFieldIds ?? [] {
-                clearedSecrets.append { self.storage.deletePluginSecureField(fieldId: fieldId, for: finalId) }
+        let stagedSecrets = storage.stagingSecretEdits(
+            for: finalId,
+            deviceOnly: !connectionToSave.participatesInSync,
+            keeping: unreadableSecretKeys,
+            unchanged: loadedSecrets
+        ) {
+            for field in secureFieldValues {
+                if field.value.isEmpty {
+                    storage.deletePluginSecureField(fieldId: field.fieldId, for: finalId)
+                } else {
+                    storage.savePluginSecureField(field.value, fieldId: field.fieldId, for: finalId)
+                }
             }
-        } else if auth.effectivePromptForPassword || auth.clearsStoredPassword {
-            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
-        } else if !auth.password.isEmpty {
-            storage.savePassword(auth.password, for: connectionToSave.id)
-        }
+            if !sessionToken.isEmpty {
+                storage.savePluginSecureField(sessionToken, fieldId: sessionTokenId, for: finalId)
+            }
 
-        if ssh.state.enabled && ssh.state.profileId == nil {
-            if (ssh.state.authMethod == .password || ssh.state.authMethod == .keyboardInteractive)
-                && !ssh.state.password.isEmpty
-            {
-                storage.saveSSHPassword(ssh.state.password, for: connectionToSave.id)
-            } else if ssh.state.clearsStoredPassword {
-                clearedSecrets.append { self.storage.deleteSSHPassword(for: finalId) }
+            /// A linked connection holds no secret of its own. That is the whole point: the password
+            /// exists once, under the profile, so rotating it is one edit rather than one per
+            /// connection. Any secret the connection had before the link goes with it, or an encrypted
+            /// export still carries it and a duplicate still copies it.
+            if auth.usesCredentialProfile {
+                clearedSecrets.append { self.storage.deletePassword(for: finalId) }
+                /// The secure-field loop above wrote the form's values back under the connection id.
+                /// Anything the profile owns has to go with the password, or the connection keeps a
+                /// second stale copy that a duplicate carries and the driver can fall back to.
+                for fieldId in auth.selectedCredentialProfile?.secureFieldIds ?? [] {
+                    clearedSecrets.append { self.storage.deletePluginSecureField(fieldId: fieldId, for: finalId) }
+                }
+            } else if auth.effectivePromptForPassword || auth.clearsStoredPassword {
+                clearedSecrets.append { self.storage.deletePassword(for: finalId) }
+            } else if !auth.password.isEmpty {
+                storage.savePassword(auth.password, for: finalId)
             }
-            if ssh.state.authMethod == .privateKey && !ssh.state.keyPassphrase.isEmpty {
-                storage.saveKeyPassphrase(ssh.state.keyPassphrase, for: connectionToSave.id)
-            } else if ssh.state.clearsStoredKeyPassphrase {
-                clearedSecrets.append { self.storage.deleteKeyPassphrase(for: finalId) }
-            }
-            if ssh.state.totpMode == .autoGenerate && !ssh.state.totpSecret.isEmpty {
-                storage.saveTOTPSecret(ssh.state.totpSecret, for: connectionToSave.id)
+
+            if ssh.state.enabled && ssh.state.profileId == nil {
+                if (ssh.state.authMethod == .password || ssh.state.authMethod == .keyboardInteractive)
+                    && !ssh.state.password.isEmpty
+                {
+                    storage.saveSSHPassword(ssh.state.password, for: finalId)
+                } else if ssh.state.clearsStoredPassword {
+                    clearedSecrets.append { self.storage.deleteSSHPassword(for: finalId) }
+                }
+                if ssh.state.authMethod == .privateKey && !ssh.state.keyPassphrase.isEmpty {
+                    storage.saveKeyPassphrase(ssh.state.keyPassphrase, for: finalId)
+                } else if ssh.state.clearsStoredKeyPassphrase {
+                    clearedSecrets.append { self.storage.deleteKeyPassphrase(for: finalId) }
+                }
+                if ssh.state.totpMode == .autoGenerate && !ssh.state.totpSecret.isEmpty {
+                    storage.saveTOTPSecret(ssh.state.totpSecret, for: finalId)
+                } else {
+                    storage.deleteTOTPSecret(for: finalId)
+                }
             } else {
-                storage.deleteTOTPSecret(for: connectionToSave.id)
+                storage.deleteSSHPassword(for: finalId)
+                storage.deleteKeyPassphrase(for: finalId)
+                storage.deleteTOTPSecret(for: finalId)
             }
-        } else {
-            storage.deleteSSHPassword(for: connectionToSave.id)
-            storage.deleteKeyPassphrase(for: connectionToSave.id)
-            storage.deleteTOTPSecret(for: connectionToSave.id)
-        }
 
-        if !ssl.clientKeyPassphrase.isEmpty && !ssl.clientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty {
-            storage.saveSSLClientKeyPassphrase(ssl.clientKeyPassphrase, for: connectionToSave.id)
-        } else {
-            storage.deleteSSLClientKeyPassphrase(for: connectionToSave.id)
-        }
+            if !ssl.clientKeyPassphrase.isEmpty && !ssl.clientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty {
+                storage.saveSSLClientKeyPassphrase(ssl.clientKeyPassphrase, for: finalId)
+            } else {
+                storage.deleteSSLClientKeyPassphrase(for: finalId)
+            }
 
-        cloudflareTunnel.save(to: connectionToSave.id, storage: storage)
-        cloudSQLProxy.save(to: connectionToSave.id, storage: storage)
-        socksProxy.save(to: connectionToSave.id, storage: storage)
+            cloudflareTunnel.save(to: finalId, storage: storage)
+            cloudSQLProxy.save(to: finalId, storage: storage)
+            socksProxy.save(to: finalId, storage: storage)
+        }
+        // The Keychain may hold this save's values now, whether or not the record saves.
+        loadedSecrets = [:]
+        guard !stagedSecrets.writeFailed else {
+            saveError = String(localized: "Could not save this connection's passwords to the Keychain. Your changes were not saved.")
+            return
+        }
+        clearedSecrets.append { self.storage.applyStagedDeletions(stagedSecrets) }
 
         var savedConnections = storage.loadConnections()
         if isNew {
@@ -804,50 +839,53 @@ final class ConnectionFormCoordinator: ObservableObject {
         let cloudSQLProxyState = tunnelStates.cloudSQLProxy
         let socksProxyState = tunnelStates.socksProxy
 
-        if !password.isEmpty && !promptForPassword {
-            services.connectionStorage.savePassword(password, for: testId)
-        }
-        if sshState.enabled && sshState.profileId == nil {
-            if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
-                && !sshState.password.isEmpty
+        // A test's copies never leave this Mac, whatever the password sync setting says.
+        _ = services.connectionStorage.stagingSecretEdits(for: testId, deviceOnly: true) {
+            if !password.isEmpty && !promptForPassword {
+                services.connectionStorage.savePassword(password, for: testId)
+            }
+            if sshState.enabled && sshState.profileId == nil {
+                if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
+                    && !sshState.password.isEmpty
+                {
+                    services.connectionStorage.saveSSHPassword(sshState.password, for: testId)
+                }
+                if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
+                    services.connectionStorage.saveKeyPassphrase(sshState.keyPassphrase, for: testId)
+                }
+                if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
+                    services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testId)
+                }
+            }
+
+            if !sslClientKeyPassphrase.isEmpty
+                && !sslClientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty
             {
-                services.connectionStorage.saveSSHPassword(sshState.password, for: testId)
+                services.connectionStorage.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: testId)
             }
-            if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
-                services.connectionStorage.saveKeyPassphrase(sshState.keyPassphrase, for: testId)
+
+            if cloudflareState.enabled && cloudflareState.authMethod == .serviceToken {
+                services.connectionStorage.saveCloudflareTokenId(cloudflareState.serviceTokenId, for: testId)
+                services.connectionStorage.saveCloudflareTokenSecret(cloudflareState.serviceTokenSecret, for: testId)
             }
-            if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
-                services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testId)
+
+            if cloudSQLProxyState.enabled && cloudSQLProxyState.authMode == .serviceAccountKey
+                && !cloudSQLProxyState.serviceAccountKeyJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                services.connectionStorage.saveCloudSQLProxyServiceAccountKey(
+                    cloudSQLProxyState.serviceAccountKeyJSON, for: testId
+                )
             }
-        }
 
-        if !sslClientKeyPassphrase.isEmpty
-            && !sslClientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty
-        {
-            services.connectionStorage.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: testId)
-        }
+            if socksProxyState.enabled && !socksProxyState.password.isEmpty {
+                services.connectionStorage.saveSOCKSProxyPassword(socksProxyState.password, for: testId)
+            }
 
-        if cloudflareState.enabled && cloudflareState.authMethod == .serviceToken {
-            services.connectionStorage.saveCloudflareTokenId(cloudflareState.serviceTokenId, for: testId)
-            services.connectionStorage.saveCloudflareTokenSecret(cloudflareState.serviceTokenSecret, for: testId)
-        }
-
-        if cloudSQLProxyState.enabled && cloudSQLProxyState.authMode == .serviceAccountKey
-            && !cloudSQLProxyState.serviceAccountKeyJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            services.connectionStorage.saveCloudSQLProxyServiceAccountKey(
-                cloudSQLProxyState.serviceAccountKeyJSON, for: testId
-            )
-        }
-
-        if socksProxyState.enabled && !socksProxyState.password.isEmpty {
-            services.connectionStorage.saveSOCKSProxyPassword(socksProxyState.password, for: testId)
-        }
-
-        for field in services.pluginManager.additionalConnectionFields(for: connectionType)
-            where field.isSecure
-        {
-            if let value = additionalFieldValues[field.id], !value.isEmpty {
-                services.connectionStorage.savePluginSecureField(value, fieldId: field.id, for: testId)
+            for field in services.pluginManager.additionalConnectionFields(for: connectionType)
+                where field.isSecure
+            {
+                if let value = additionalFieldValues[field.id], !value.isEmpty {
+                    services.connectionStorage.savePluginSecureField(value, fieldId: field.id, for: testId)
+                }
             }
         }
     }

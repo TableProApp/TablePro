@@ -633,10 +633,13 @@ platform_step() {
             code=0
             failed=""
             unbuilt=""
-            for target in mac ios; do
-                echo "== localization.py plugins --target $target" >> "$log"
-                (cd "$APPLE_ROOT" && python3 scripts/localization.py plugins --target "$target") >> "$log" 2>&1 \
-                    || { code=1; failed="$failed plugins:$target"; }
+            # The iOS widget extension has its own catalog and links no package.
+            for target in mac ios widget; do
+                if [ "$target" != widget ]; then
+                    echo "== localization.py plugins --target $target" >> "$log"
+                    (cd "$APPLE_ROOT" && python3 scripts/localization.py plugins --target "$target") >> "$log" 2>&1 \
+                        || { code=1; failed="$failed plugins:$target"; }
+                fi
                 echo "== localization.py extracted --target $target" >> "$log"
                 (cd "$APPLE_ROOT" && python3 scripts/localization.py extracted --target "$target") >> "$log" 2>&1
                 case $? in

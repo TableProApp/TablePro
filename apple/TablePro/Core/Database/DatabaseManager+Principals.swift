@@ -14,7 +14,8 @@ extension DatabaseManager {
     func executePrincipalChanges(
         changes: [PrincipalChange],
         databaseType: DatabaseType,
-        connectionId: UUID
+        connectionId: UUID,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
@@ -39,7 +40,7 @@ extension DatabaseManager {
                 ? .destructiveQuery
                 : .schemaMutation
 
-            let authorization = await ExecutionGateProvider.shared.authorize(
+            let authorization = await gate.authorize(
                 OperationRequest(
                     connectionId: connectionId,
                     databaseType: databaseType,
@@ -50,12 +51,7 @@ extension DatabaseManager {
                     operationDescription: String(localized: "Apply User and Role Changes")
                 )
             )
-            guard case .authorized = authorization else {
-                throw DatabaseError.queryFailed(
-                    authorization.deniedReason
-                        ?? String(localized: "User and role changes were not authorized")
-                )
-            }
+            if let denial = authorization.denialError { throw denial }
 
             /// Reported whether or not every statement ran: an engine that cannot roll principal
             /// statements back keeps the ones before a failure, and `DROP OWNED` among them drops objects.
@@ -83,15 +79,14 @@ extension DatabaseManager {
         rollsBack: Bool,
         connectionId: UUID
     ) async throws {
-        /// No transaction is opened over one the session already holds: on this shared session an
-        /// app-owned `COMMIT` commits the user's pending work, and MySQL's `START TRANSACTION`
-        /// commits it implicitly. Joining it instead leaves the statements pending, which is what
-        /// the failure then reports.
+        // Joins a transaction the session holds: an app COMMIT, or MySQL's START TRANSACTION, would commit the user's work.
+        // `.automatic`: this runs outside a session turn, so a hold it opened would never reach the bar.
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: .automatic
         )
-        let useTransaction = owner.opensTransaction && rollsBack
+        let useTransaction = owner.sendsBegin && owner.commitsAtEnd && rollsBack
         if useTransaction {
             try await driver.beginTransaction(mode: .readWrite)
         }

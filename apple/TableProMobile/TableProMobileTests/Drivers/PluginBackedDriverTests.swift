@@ -231,6 +231,34 @@ struct PluginBackedDriverTests {
         ])
     }
 
+    @Test("A plugin that reads the default mark gets every left-out column marked")
+    func insertMarksOmittedColumnsForAMarkingPlugin() throws {
+        let plugin = StubPluginDriver()
+        plugin.declaredCapabilities = .columnDefaultMarks
+        let driver = makeWriter(plugin)
+
+        _ = try driver.insertWrites(
+            table: "events", schema: nil, columns: ["id", "name", "note"], values: [(column: "name", value: "x")]
+        )
+
+        #expect(plugin.generatedChanges.first?.defaultColumns == [0, 2])
+    }
+
+    @Test("A plugin that reads the default mark stores the marker's text as a value")
+    func markingPluginStoresTheMarkerText() throws {
+        let plugin = StubPluginDriver()
+        plugin.declaredCapabilities = .columnDefaultMarks
+        let driver = makeWriter(plugin)
+
+        _ = try driver.insertWrites(
+            table: "events", schema: nil, columns: ["id", "note"],
+            values: [(column: "id", value: "1"), (column: "note", value: PluginRowWritingDriver.defaultSentinel)]
+        )
+
+        #expect(plugin.generatedInserts[0] == ["1", .text(PluginRowWritingDriver.defaultSentinel)])
+        #expect(plugin.generatedChanges.first?.defaultColumns == nil)
+    }
+
     @Test("A value spelled as the default marker is refused, never stored as the default")
     func insertRefusesTheDefaultMarker() {
         let plugin = StubPluginDriver()

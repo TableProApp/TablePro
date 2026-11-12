@@ -283,7 +283,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -292,9 +292,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
             }
 
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -382,6 +380,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
     }
+
+    var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let query = """

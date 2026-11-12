@@ -36,10 +36,13 @@ let package = Package(
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
+        .library(name: "TableProWeaviateClient", targets: ["TableProWeaviateClient"]),
         .library(name: "TableProQdrantCore", targets: ["TableProQdrantCore"]),
+        .library(name: "TableProQdrantClient", targets: ["TableProQdrantClient"]),
         .library(name: "TableProInfluxDBCore", targets: ["TableProInfluxDBCore"]),
         .library(name: "TableProNeo4jCore", targets: ["TableProNeo4jCore"]),
         .library(name: "TableProFirebaseCore", targets: ["TableProFirebaseCore"]),
+        .library(name: "TableProFirebaseClient", targets: ["TableProFirebaseClient"]),
         .library(name: "TableProBigtableCore", targets: ["TableProBigtableCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
@@ -205,10 +208,23 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProWeaviateCore"
         ),
+        // Only the plugin links this; the app tiers statements with TableProWeaviateCore alone.
+        .target(
+            name: "TableProWeaviateClient",
+            dependencies: ["TableProWeaviateCore"],
+            path: "Sources/TableProWeaviateClient"
+        ),
         .target(
             name: "TableProQdrantCore",
             dependencies: [],
             path: "Sources/TableProQdrantCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        // Only the plugin links this; the app tiers statements with TableProQdrantCore alone.
+        .target(
+            name: "TableProQdrantClient",
+            dependencies: ["TableProQdrantCore"],
+            path: "Sources/TableProQdrantClient",
             swiftSettings: pluginCoreSettings
         ),
         .target(
@@ -228,8 +244,14 @@ let package = Package(
         ),
         .target(
             name: "TableProFirebaseCore",
-            dependencies: ["TableProGoogleCloud"],
+            dependencies: [],
             path: "Sources/TableProFirebaseCore"
+        ),
+        // Only the plugin links this; the app tiers statements with TableProFirebaseCore alone.
+        .target(
+            name: "TableProFirebaseClient",
+            dependencies: ["TableProFirebaseCore", "TableProGoogleCloud"],
+            path: "Sources/TableProFirebaseClient"
         ),
         .target(
             name: "TableProR2SQLCore",
@@ -252,7 +274,8 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProSQLQuoting"
         ),
-        // Starts every child process outside PluginKit. Foundation only, so it builds on Linux too.
+        // Starts every child process outside PluginKit and reads and writes its descriptors. Foundation only, with the
+        // descriptor code behind canImport(Darwin), so it builds on Linux too.
         .target(
             name: "TableProProcess",
             dependencies: [],
@@ -388,13 +411,13 @@ let package = Package(
             path: "Tests/TableProNeo4jCoreTests"
         ),
         .testTarget(
-            name: "TableProWeaviateCoreTests",
-            dependencies: ["TableProWeaviateCore", "TableProTLSTestFixtures"],
-            path: "Tests/TableProWeaviateCoreTests"
+            name: "TableProWeaviateClientTests",
+            dependencies: ["TableProWeaviateClient", "TableProTLSTestFixtures"],
+            path: "Tests/TableProWeaviateClientTests"
         ),
         .testTarget(
             name: "TableProFirebaseCoreTests",
-            dependencies: ["TableProFirebaseCore", "TableProGoogleCloud"],
+            dependencies: ["TableProFirebaseCore", "TableProFirebaseClient", "TableProGoogleCloud"],
             path: "Tests/TableProFirebaseCoreTests"
         ),
         .testTarget(
@@ -409,7 +432,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProQdrantCoreTests",
-            dependencies: ["TableProQdrantCore"],
+            dependencies: ["TableProQdrantCore", "TableProQdrantClient"],
             path: "Tests/TableProQdrantCoreTests",
             swiftSettings: pluginCoreSettings
         ),
@@ -514,7 +537,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProProcessTests",
-            dependencies: ["TableProProcess"],
+            dependencies: ["TableProProcess", "TableProTestSupport"],
             path: "Tests/TableProProcessTests"
         ),
         .testTarget(
@@ -541,7 +564,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTLSClientIdentityTests",
-            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures"],
+            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures", "TableProTestSupport"],
             path: "Tests/TableProTLSClientIdentityTests"
         ),
         .testTarget(
@@ -576,6 +599,11 @@ let package = Package(
             dependencies: ["TableProMemcachedCore"],
             path: "Tests/TableProMemcachedCoreTests",
             swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProDocumentPathTests",
+            dependencies: ["TableProDocumentPath"],
+            path: "Tests/TableProDocumentPathTests"
         ),
         .testTarget(
             name: "TableProRedisCoreTests",

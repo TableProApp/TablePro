@@ -15,8 +15,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::slow_route::{CANCEL_REQUEST, Hold, SlowRoute};
 use crate::support::{
-    CALL, connect, connect_with, direct, options_over, password, run, run_with, scalar, session, start, statement,
-    within,
+    CALL, connect, connect_with, direct, options_over, password, run, run_ok, run_with, scalar, session, start,
+    statement, within,
 };
 
 /// How long a cancel request takes to reach the server on a slow route.
@@ -170,4 +170,33 @@ async fn a_late_cancel_after_stop_never_stops_the_next_editor_run() {
         "the run after the stop ended {:?}",
         next.end
     );
+}
+
+/// A stop that comes while the cursor's DECLARE is on its way, inside the
+/// user's transaction, rolls the cursor back with its savepoint, so the
+/// next row source in that transaction can declare it again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_stop_before_the_fetch_in_a_transaction_leaves_no_cursor_behind() {
+    let fixture = start().await;
+    let connection = connect_over(
+        &fixture,
+        vec![Hold::new(b"DECLARE tablepro_cursor", Duration::from_millis(600))],
+    )
+    .await;
+    let editor = session(connection.as_ref()).await;
+    run_ok(editor.as_ref(), "BEGIN").await;
+    let cancel = CancellationToken::new();
+    let stopper = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        stopper.cancel();
+    });
+
+    let (stopped, _) = run_with(editor.as_ref(), "SELECT 1", RunOptions::new(cancel)).await;
+    let (next, _) = run(editor.as_ref(), "SELECT 2").await;
+
+    assert_eq!(stopped.end, RunEnd::Cancelled);
+    assert_eq!(next.end, RunEnd::Completed, "the next select ended {:?}", next.end);
+    run_ok(editor.as_ref(), "ROLLBACK").await;
 }

@@ -6,6 +6,7 @@
 import CDuckDB
 import Foundation
 import os
+import TableProDuckDBCore
 import TableProPluginKit
 
 /// Everything a reopen needs to put the connection back where it was. Held from the first open,
@@ -39,6 +40,9 @@ actor DuckDBConnectionActor {
 
     private var database: duckdb_database?
     private var connection: duckdb_connection?
+    // Renders the rows of a result the session's own connection is still producing.
+    private var renderConnection: duckdb_connection?
+    private var renderSettings: [String: String] = [:]
     private var resultReader: DuckDBResultReader?
 
     private var openSpec: DuckDBOpenSpec?
@@ -174,19 +178,20 @@ actor DuckDBConnectionActor {
     }
 
     func executeQuery(_ query: String) throws -> DuckDBRawResult {
-        try ensureOpen()
-        guard let conn = connection else {
-            throw DuckDBPluginError.notConnected
-        }
-
-        let startTime = Date()
-        noteActivity(query)
-        var resolved = try resolvedResult(query: query, parameters: [], connection: conn)
-        defer { duckdb_destroy_result(&resolved.result) }
-        return try Self.extractResult(from: &resolved.result, schema: resolved.schema, rowsChanged: resolved.rowsChanged, startTime: startTime)
+        try executePrepared(query, parameters: [])
     }
 
     func executePrepared(_ query: String, parameters: [PluginCellValue]) throws -> DuckDBRawResult {
+        try run(query, parameters: parameters, limit: PluginRowLimits.emergencyMax, unread: .drain)
+    }
+
+    func executeBounded(_ query: String, parameters: [PluginCellValue], rowCap: Int) throws -> DuckDBRawResult {
+        try run(query, parameters: parameters, limit: rowCap, unread: .abandonWhenIdle)
+    }
+
+    private func run(
+        _ query: String, parameters: [PluginCellValue], limit: Int, unread: DuckDBUnreadRows
+    ) throws -> DuckDBRawResult {
         try ensureOpen()
         guard let conn = connection else {
             throw DuckDBPluginError.notConnected
@@ -194,9 +199,9 @@ actor DuckDBConnectionActor {
 
         let startTime = Date()
         noteActivity(query)
-        var resolved = try resolvedResult(query: query, parameters: parameters, connection: conn)
-        defer { duckdb_destroy_result(&resolved.result) }
-        return try Self.extractResult(from: &resolved.result, schema: resolved.schema, rowsChanged: resolved.rowsChanged, startTime: startTime)
+        var opened = try openResult(query: query, parameters: parameters, connection: conn, unread: unread)
+        defer { duckdb_destroy_result(&opened.result) }
+        return try extractResult(from: opened, limit: limit, startTime: startTime)
     }
 
     func streamQuery(
@@ -209,32 +214,42 @@ actor DuckDBConnectionActor {
         }
 
         noteActivity(query)
-        var resolved = try resolvedResult(query: query, parameters: [], connection: conn)
-        defer { duckdb_destroy_result(&resolved.result) }
-        try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
+        var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandonWhenIdle)
+        defer { duckdb_destroy_result(&opened.result) }
+        try streamResultRows(opened, continuation: continuation)
     }
 
     // The state check, the BEGIN, the statement and the ROLLBACK share one actor turn, so nothing lands in between.
     // The statement text is not tracked: the ROLLBACK leaves the session as idle as it was found.
-    func executeReadOnly(_ query: String, parameters: [PluginCellValue]) throws -> DuckDBRawResult {
+    // A stop at `byteLimit` ends only the read's own read-only transaction.
+    func executeReadOnly(
+        _ query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int? = nil,
+        byteLimit: Int? = nil,
+        reason: DuckDBReadOnlyStatement.Reason
+    ) throws -> DuckDBRawResult {
         let conn = try readOnlyConnection()
         let startTime = Date()
-        return try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
-            var resolved = try resolvedResult(query: query, parameters: parameters, connection: conn)
-            defer { duckdb_destroy_result(&resolved.result) }
-            return try Self.extractResult(from: &resolved.result, schema: resolved.schema, rowsChanged: resolved.rowsChanged, startTime: startTime)
+        return try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState(), reason: reason) {
+            var opened = try openResult(query: query, parameters: parameters, connection: conn, unread: .abandon)
+            defer { duckdb_destroy_result(&opened.result) }
+            return try extractResult(
+                from: opened, limit: rowCap ?? PluginRowLimits.emergencyMax, byteLimit: byteLimit, startTime: startTime
+            )
         }
     }
 
     func streamReadOnly(
         _ query: String,
+        reason: DuckDBReadOnlyStatement.Reason,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
         let conn = try readOnlyConnection()
-        try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
-            var resolved = try resolvedResult(query: query, parameters: [], connection: conn)
-            defer { duckdb_destroy_result(&resolved.result) }
-            try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
+        try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState(), reason: reason) {
+            var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandon)
+            defer { duckdb_destroy_result(&opened.result) }
+            try streamResultRows(opened, continuation: continuation)
         }
     }
 
@@ -324,9 +339,14 @@ actor DuckDBConnectionActor {
             duckdb_close(&db)
             throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
         }
+        var renderConn: duckdb_connection?
         do {
-            resultReader = try DuckDBResultReader(connection: conn)
+            guard duckdb_connect(openedDB, &renderConn) != DuckDBError, let renderConn else {
+                throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
+            }
+            resultReader = try DuckDBResultReader(renderConnection: renderConn)
         } catch {
+            if renderConn != nil { duckdb_disconnect(&renderConn) }
             var failedConnection: duckdb_connection? = conn
             duckdb_disconnect(&failedConnection)
             duckdb_close(&db)
@@ -334,12 +354,18 @@ actor DuckDBConnectionActor {
         }
         database = db
         connection = conn
+        renderConnection = renderConn
+        renderSettings = [:]
         liveConnection.set(conn)
     }
 
     private func closeHandle() {
         liveConnection.set(nil)
         resultReader = nil
+        if renderConnection != nil {
+            duckdb_disconnect(&renderConnection)
+            renderConnection = nil
+        }
         if connection != nil {
             duckdb_disconnect(&connection)
             connection = nil
@@ -430,7 +456,9 @@ actor DuckDBConnectionActor {
             throw DuckDBPluginError.queryFailed(Self.errorMessage(from: &raw))
         }
         let schema = Self.schema(of: &raw)
-        let result = try Self.extractResult(from: &raw, schema: schema, rowsChanged: 0, startTime: Date())
+        let rowCount = duckdb_row_count(&raw)
+        let opened = OpenedResult(result: raw, schema: schema, rowsChanged: 0, rowCount: rowCount, abandonsUnreadRows: true)
+        let result = try extractResult(from: opened, limit: PluginRowLimits.emergencyMax, startTime: Date())
         guard let row = result.rows.first, row.count >= 2 else {
             throw DuckDBPluginError.queryFailed("DuckDB reported no session state")
         }
@@ -469,9 +497,9 @@ actor DuckDBConnectionActor {
     private func runInternalQuery(_ query: String) throws -> DuckDBRawResult {
         guard let conn = connection else { throw DuckDBPluginError.notConnected }
         let startTime = Date()
-        var resolved = try resolvedResult(query: query, parameters: [], connection: conn)
-        defer { duckdb_destroy_result(&resolved.result) }
-        return try Self.extractResult(from: &resolved.result, schema: resolved.schema, rowsChanged: resolved.rowsChanged, startTime: startTime)
+        var opened = try openResult(query: query, parameters: [], connection: conn, unread: .drain)
+        defer { duckdb_destroy_result(&opened.result) }
+        return try extractResult(from: opened, limit: PluginRowLimits.emergencyMax, startTime: startTime)
     }
 
     @discardableResult
@@ -479,42 +507,24 @@ actor DuckDBConnectionActor {
         try runInternalQuery(statement)
     }
 
-    // MARK: - Result rendering
-
-    private func resolvedResult(
-        query: String, parameters: [PluginCellValue], connection: duckdb_connection
-    ) throws -> (result: duckdb_result, schema: ColumnSchema, rowsChanged: idx_t) {
-        let executed = try Self.runPrepared(query, parameters: parameters, on: connection)
-        var result = executed.result
-        let schema = Self.schema(of: &result)
-        var rowsChanged = duckdb_rows_changed(&result)
-        if rowsChanged == 0, duckdb_result_return_type(result) == DUCKDB_RESULT_TYPE_QUERY_RESULT {
-            switch executed.statementType {
-            case DUCKDB_STATEMENT_TYPE_INSERT, DUCKDB_STATEMENT_TYPE_UPDATE, DUCKDB_STATEMENT_TYPE_DELETE:
-                // RETURNING carries the changed rows themselves instead of a separate count.
-                rowsChanged = duckdb_row_count(&result)
-            default:
-                break
-            }
-        }
-        guard DuckDBLogicalType.requiresTextProjection(anyOf: schema.logicalTypes),
-              duckdb_row_count(&result) > 0 else {
-            return (result, schema, rowsChanged)
-        }
-        defer { duckdb_destroy_result(&result) }
-        try Task.checkCancellation()
-        guard let resultReader else { throw DuckDBPluginError.notConnected }
-        let projected = try resultReader.render(result, columns: schema.projectionColumns, on: connection)
-        return (projected, schema, rowsChanged)
-    }
-
     // MARK: - Execution
 
-    private static func runPrepared(
-        _ sql: String, parameters: [PluginCellValue], on connection: duckdb_connection
-    ) throws -> (result: duckdb_result, statementType: duckdb_statement_type) {
+    private struct OpenedResult {
+        var result: duckdb_result
+        let schema: ColumnSchema
+        let rowsChanged: idx_t
+        // Nil for a streaming result, whose length is unknown until it ends.
+        let rowCount: idx_t?
+        let abandonsUnreadRows: Bool
+
+        var isStreaming: Bool { rowCount == nil }
+    }
+
+    private func openResult(
+        query: String, parameters: [PluginCellValue], connection: duckdb_connection, unread: DuckDBUnreadRows
+    ) throws -> OpenedResult {
         var stmtOpt: duckdb_prepared_statement?
-        let prepareState = duckdb_prepare(connection, sql, &stmtOpt)
+        let prepareState = duckdb_prepare(connection, query, &stmtOpt)
         defer { duckdb_destroy_prepare(&stmtOpt) }
 
         guard prepareState != DuckDBError, let stmt = stmtOpt else {
@@ -525,17 +535,74 @@ actor DuckDBConnectionActor {
             throw DuckDBPluginError.queryFailed(message)
         }
 
-        try bind(parameters, to: stmt)
+        try Self.bind(parameters, to: stmt)
         // Result metadata reports EXECUTE, so affected counts need the prepared statement's original kind.
         let statementType = duckdb_prepared_statement_type(stmt)
+        // Only a SELECT streams. A statement that changes rows takes effect when its result ends, so it runs whole.
+        let streams = statementType == DUCKDB_STATEMENT_TYPE_SELECT
+
+        // Both read the session, which a streaming result keeps busy from here until it ends.
+        alignRenderSession(for: stmt, on: connection)
+        let abandonsUnreadRows = streams && unread.abandons { sessionTransactionState() == .idle }
 
         var result = duckdb_result()
-        guard duckdb_execute_prepared(stmt, &result) != DuckDBError else {
-            let message = errorMessage(from: &result)
+        let state = streams ? duckdb_execute_prepared_streaming(stmt, &result) : duckdb_execute_prepared(stmt, &result)
+        guard state != DuckDBError else {
+            let message = Self.errorMessage(from: &result)
             duckdb_destroy_result(&result)
             throw DuckDBPluginError.queryFailed(message)
         }
-        return (result, statementType)
+
+        let schema = Self.schema(of: &result)
+        guard !duckdb_result_is_streaming(result) else {
+            return OpenedResult(
+                result: result, schema: schema, rowsChanged: 0, rowCount: nil, abandonsUnreadRows: abandonsUnreadRows
+            )
+        }
+        let rowCount = duckdb_row_count(&result)
+        var rowsChanged = duckdb_rows_changed(&result)
+        if rowsChanged == 0, duckdb_result_return_type(result) == DUCKDB_RESULT_TYPE_QUERY_RESULT {
+            switch statementType {
+            case DUCKDB_STATEMENT_TYPE_INSERT, DUCKDB_STATEMENT_TYPE_UPDATE, DUCKDB_STATEMENT_TYPE_DELETE:
+                // RETURNING carries the changed rows themselves instead of a separate count.
+                rowsChanged = rowCount
+            default:
+                break
+            }
+        }
+        return OpenedResult(
+            result: result, schema: schema, rowsChanged: rowsChanged, rowCount: rowCount, abandonsUnreadRows: true
+        )
+    }
+
+    private static let typesSpelledBySession: Set<DuckDBLogicalType> = [.timestampTz, .list, .array, .structure, .map, .union]
+
+    // TIMESTAMPTZ text follows the session's time zone and calendar, which each connection holds for itself.
+    private func alignRenderSession(for statement: duckdb_prepared_statement, on connection: duckdb_connection) {
+        guard let resultReader else { return }
+        let followsSession = (0..<duckdb_prepared_statement_column_count(statement)).contains { column in
+            guard let type = Self.logicalType(for: duckdb_prepared_statement_column_type(statement, column)) else {
+                return true
+            }
+            return Self.typesSpelledBySession.contains(type)
+        }
+        guard followsSession else { return }
+
+        var result = duckdb_result()
+        defer { duckdb_destroy_result(&result) }
+        guard duckdb_query(connection, DuckDBRenderSettings.readQuery, &result) == DuckDBSuccess else { return }
+        var wanted: [String: String] = [:]
+        for row in 0..<duckdb_row_count(&result) {
+            guard let name = duckdb_value_varchar(&result, 0, row) else { continue }
+            defer { duckdb_free(name) }
+            guard let value = duckdb_value_varchar(&result, 1, row) else { continue }
+            defer { duckdb_free(value) }
+            wanted[String(cString: name)] = String(cString: value)
+        }
+        for assignment in DuckDBRenderSettings.assignments(from: renderSettings, to: wanted) {
+            guard resultReader.send(assignment) else { return }
+        }
+        renderSettings.merge(wanted) { _, new in new }
     }
 
     private static func bind(_ parameters: [PluginCellValue], to stmt: duckdb_prepared_statement) throws {
@@ -598,58 +665,87 @@ actor DuckDBConnectionActor {
         return ColumnSchema(names: names, logicalTypes: logicalTypes)
     }
 
-    private static func extractResult(
-        from result: inout duckdb_result,
-        schema: ColumnSchema,
-        rowsChanged: idx_t,
+    // With `byteLimit` the read stops at the row that takes the decoded rows past it and keeps that row. A chunk is
+    // decoded whole before it is measured.
+    private func extractResult(
+        from opened: OpenedResult,
+        limit: Int,
+        byteLimit: Int? = nil,
         startTime: Date
     ) throws -> DuckDBRawResult {
-        let rowCount = duckdb_row_count(&result)
-        let resultTypes = storageTypes(of: &result)
-
-        let maxRows = min(rowCount, UInt64(PluginRowLimits.emergencyMax))
         var rows: [[PluginCellValue]] = []
-        rows.reserveCapacity(Int(maxRows))
+        if let rowCount = opened.rowCount {
+            rows.reserveCapacity(Int(min(rowCount, UInt64(max(0, limit)))))
+        }
 
-        try readChunks(of: result, types: resultTypes, limit: maxRows) { batch in
-            rows.append(contentsOf: batch)
-            return true
+        var budget = DuckDBFetchBudget(limit: limit)
+        var bytes = 0
+        var stoppedAtByteLimit = false
+        let reachedEnd = try readRows(of: opened) { batch in
+            let kept = budget.take(batch.count)
+            var slice = kept == batch.count ? batch[...] : batch.prefix(kept)
+            if let byteLimit {
+                for (offset, row) in slice.enumerated() {
+                    bytes += Self.decodedByteCount(of: row)
+                    guard bytes > byteLimit else { continue }
+                    slice = slice.prefix(offset + 1)
+                    stoppedAtByteLimit = true
+                    break
+                }
+            }
+            rows.append(contentsOf: slice)
+            return !budget.isExceeded && !stoppedAtByteLimit
+        }
+        if !reachedEnd {
+            try finishUnreadRows(of: opened)
         }
 
         return DuckDBRawResult(
-            columns: schema.names,
-            columnTypeNames: schema.typeNames,
+            columns: opened.schema.names,
+            columnTypeNames: opened.schema.typeNames,
             rows: rows,
-            rowsAffected: Int(rowsChanged),
+            rowsAffected: Int(opened.rowsChanged),
             executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: rowCount > UInt64(PluginRowLimits.emergencyMax)
+            isTruncated: budget.isExceeded || stoppedAtByteLimit
         )
     }
 
-    private static func streamResultRows(
-        _ result: inout duckdb_result,
-        schema: ColumnSchema,
+    // Text as UTF-8, bytes as they are, null as nothing: never more than the host counts for the same row, so a read
+    // never stops before the host's own budget is full.
+    static func decodedByteCount(of row: [PluginCellValue]) -> Int {
+        row.reduce(0) { total, cell in
+            switch cell {
+            case .null: total
+            case .text(let text): total + text.utf8.count
+            case .bytes(let data): total + data.count
+            }
+        }
+    }
+
+    private func streamResultRows(
+        _ opened: OpenedResult,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
-        let rowCount = duckdb_row_count(&result)
-        let resultTypes = storageTypes(of: &result)
-
         continuation.yield(.header(PluginStreamHeader(
-            columns: schema.names,
-            columnTypeNames: schema.typeNames,
-            estimatedRowCount: Int(rowCount)
+            columns: opened.schema.names,
+            columnTypeNames: opened.schema.typeNames,
+            estimatedRowCount: opened.rowCount.map { Int($0) }
         )))
 
-        let maxRows = min(rowCount, UInt64(PluginRowLimits.emergencyMax))
-        if rowCount > UInt64(PluginRowLimits.emergencyMax) {
-            logger.warning("streamQuery truncating result from \(rowCount) to \(maxRows) rows")
-        }
-
         var cancelled = false
-        try readChunks(of: result, types: resultTypes, limit: maxRows) { batch in
-            cancelled = Task.isCancelled
-            if !cancelled { continuation.yield(.rows(batch)) }
-            return !cancelled
+        let reachedEnd: Bool
+        do {
+            reachedEnd = try readRows(of: opened) { batch in
+                cancelled = Task.isCancelled
+                    || !DuckDBBoundedStream.deliver(PluginStreamElement.rows(batch), to: continuation)
+                return !cancelled
+            }
+        } catch is CancellationError {
+            try finishUnreadRows(of: opened)
+            throw CancellationError()
+        }
+        if !reachedEnd {
+            try finishUnreadRows(of: opened)
         }
         if cancelled {
             continuation.finish(throwing: CancellationError())
@@ -658,19 +754,56 @@ actor DuckDBConnectionActor {
         }
     }
 
-    private static func storageTypes(of result: inout duckdb_result) -> [duckdb_type] {
-        (0..<duckdb_column_count(&result)).map { duckdb_column_type(&result, $0) }
+    // Returns false when `body` stopped the read before the result ended.
+    @discardableResult
+    private func readRows(of opened: OpenedResult, body: ([[PluginCellValue]]) -> Bool) throws -> Bool {
+        var source = opened.result
+        let types = Self.storageTypes(of: &source)
+        let needsText = DuckDBLogicalType.requiresTextProjection(anyOf: opened.schema.logicalTypes)
+        var projection: duckdb_prepared_statement?
+        defer { duckdb_destroy_prepare(&projection) }
+
+        while true {
+            // A statement that ran whole has already taken effect, so its rows are still handed back.
+            if opened.isStreaming { try Task.checkCancellation() }
+            var chunk = duckdb_fetch_chunk(source)
+            guard let fetched = chunk else {
+                if let message = duckdb_result_error(&source) {
+                    throw DuckDBPluginError.queryFailed(String(cString: message))
+                }
+                return true
+            }
+            defer { duckdb_destroy_data_chunk(&chunk) }
+            guard duckdb_data_chunk_get_size(fetched) > 0 else { continue }
+
+            let batch: [[PluginCellValue]]
+            if needsText {
+                guard let resultReader else { throw DuckDBPluginError.notConnected }
+                if projection == nil {
+                    projection = try resultReader.prepareProjection(of: source, columns: opened.schema.projectionColumns)
+                }
+                guard let projection else { throw DuckDBPluginError.notConnected }
+                var rendered = try resultReader.render(fetched, of: source, with: projection)
+                defer { duckdb_destroy_result(&rendered) }
+                batch = try Self.renderedRows(of: &rendered)
+            } else {
+                batch = Self.rows(of: fetched, types: types)
+            }
+            guard body(batch) else { return false }
+        }
     }
 
-    private static func readChunks(
-        of result: duckdb_result,
-        types: [duckdb_type],
-        limit: UInt64,
-        body: ([[PluginCellValue]]) -> Bool
-    ) throws {
+    // A consumer that stops reading inside a transaction must not abort it: a SELECT calling nextval left unfinished
+    // fails the transaction (scripts/probes/check-duckdb-streaming-results.sh).
+    private func finishUnreadRows(of opened: OpenedResult) throws {
+        guard opened.isStreaming, !opened.abandonsUnreadRows else { return }
+        try Self.drain(opened.result)
+    }
+
+    // Completes a statement whose rows are no longer wanted, so that what it changed is kept.
+    private static func drain(_ result: duckdb_result) throws {
         var source = result
-        var remaining = limit
-        while remaining > 0 {
+        while true {
             var chunk = duckdb_fetch_chunk(source)
             guard chunk != nil else {
                 if let message = duckdb_result_error(&source) {
@@ -678,17 +811,39 @@ actor DuckDBConnectionActor {
                 }
                 return
             }
-            defer { duckdb_destroy_data_chunk(&chunk) }
-            let size = min(duckdb_data_chunk_get_size(chunk), remaining)
-            let vectors = types.indices.map { duckdb_data_chunk_get_vector(chunk, idx_t($0)) }
-            var batch: [[PluginCellValue]] = []
-            batch.reserveCapacity(Int(size))
-            for row in 0..<size {
-                batch.append(zip(vectors, types).map { chunkCell($0, type: $1, row: row) })
-            }
-            remaining -= size
-            guard body(batch) else { return }
+            duckdb_destroy_data_chunk(&chunk)
         }
+    }
+
+    private static func renderedRows(of rendered: inout duckdb_result) throws -> [[PluginCellValue]] {
+        let types = storageTypes(of: &rendered)
+        var batch: [[PluginCellValue]] = []
+        while true {
+            var chunk = duckdb_fetch_chunk(rendered)
+            guard let fetched = chunk else {
+                if let message = duckdb_result_error(&rendered) {
+                    throw DuckDBPluginError.queryFailed(String(cString: message))
+                }
+                return batch
+            }
+            defer { duckdb_destroy_data_chunk(&chunk) }
+            batch.append(contentsOf: rows(of: fetched, types: types))
+        }
+    }
+
+    private static func storageTypes(of result: inout duckdb_result) -> [duckdb_type] {
+        (0..<duckdb_column_count(&result)).map { duckdb_column_type(&result, $0) }
+    }
+
+    private static func rows(of chunk: duckdb_data_chunk, types: [duckdb_type]) -> [[PluginCellValue]] {
+        let size = duckdb_data_chunk_get_size(chunk)
+        let vectors = types.indices.map { duckdb_data_chunk_get_vector(chunk, idx_t($0)) }
+        var batch: [[PluginCellValue]] = []
+        batch.reserveCapacity(Int(size))
+        for row in 0..<size {
+            batch.append(zip(vectors, types).map { chunkCell($0, type: $1, row: row) })
+        }
+        return batch
     }
 
     private static func chunkCell(_ vector: duckdb_vector?, type: duckdb_type, row: idx_t) -> PluginCellValue {

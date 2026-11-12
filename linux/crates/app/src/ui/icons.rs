@@ -7,6 +7,25 @@ pub const APPLICATIONS_ENGINEERING: &str = "applications-engineering-symbolic";
 pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
 /// Bundled: a speech bubble, for the AI assistant.
 pub const ASSISTANT: &str = "assistant-symbolic";
+pub const CHANGES_ALLOW: &str = "changes-allow-symbolic";
+// MCP client marks, bundled. Simple Icons draws them in one colour, so
+// they follow the theme; a brand kit's own colours keep the plain name.
+pub const CLIENT_CLAUDE: &str = "claude-symbolic";
+pub const CLIENT_CLAUDE_CODE: &str = "claudecode-symbolic";
+pub const CLIENT_CLINE: &str = "cline-symbolic";
+pub const CLIENT_CURSOR: &str = "cursor-symbolic";
+pub const CLIENT_GITHUB_COPILOT: &str = "githubcopilot-symbolic";
+pub const CLIENT_GOOGLE_GEMINI: &str = "googlegemini-symbolic";
+pub const CLIENT_GOOSE: &str = "goose";
+pub const CLIENT_JETBRAINS: &str = "jetbrains-symbolic";
+pub const CLIENT_KIRO: &str = "kiro";
+pub const CLIENT_LM_STUDIO: &str = "lmstudio-symbolic";
+pub const CLIENT_OPENAI: &str = "openai-symbolic";
+pub const CLIENT_OPENCODE: &str = "opencode-symbolic";
+pub const CLIENT_VSCODE: &str = "vscode";
+pub const CLIENT_WARP: &str = "warp-symbolic";
+pub const CLIENT_WINDSURF: &str = "windsurf-symbolic";
+pub const CLIENT_ZED: &str = "zed-symbolic";
 pub const CHANGES_PREVENT: &str = "changes-prevent-symbolic";
 pub const COMPUTER: &str = "computer-symbolic";
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
@@ -90,7 +109,24 @@ pub const ALL: &[&str] = &[
     APPLICATIONS_ENGINEERING,
     APPLICATIONS_SCIENCE,
     ASSISTANT,
+    CHANGES_ALLOW,
     CHANGES_PREVENT,
+    CLIENT_CLAUDE,
+    CLIENT_CLAUDE_CODE,
+    CLIENT_CLINE,
+    CLIENT_CURSOR,
+    CLIENT_GITHUB_COPILOT,
+    CLIENT_GOOGLE_GEMINI,
+    CLIENT_GOOSE,
+    CLIENT_JETBRAINS,
+    CLIENT_KIRO,
+    CLIENT_LM_STUDIO,
+    CLIENT_OPENAI,
+    CLIENT_OPENCODE,
+    CLIENT_VSCODE,
+    CLIENT_WARP,
+    CLIENT_WINDSURF,
+    CLIENT_ZED,
     COMPUTER,
     DIALOG_ERROR,
     DIALOG_WARNING,
@@ -179,9 +215,45 @@ pub fn connection_icon(icon: tablepro_storage::ConnectionIcon) -> &'static str {
     }
 }
 
+// The icon for a catalog client's `icon` slug. A slug with no bundled
+// mark falls back to a generic one rather than a missing image.
+pub fn client_icon(slug: &str) -> &'static str {
+    match slug {
+        "claude" => CLIENT_CLAUDE,
+        "claudecode" => CLIENT_CLAUDE_CODE,
+        "cline" => CLIENT_CLINE,
+        "cursor" => CLIENT_CURSOR,
+        "githubcopilot" => CLIENT_GITHUB_COPILOT,
+        "googlegemini" => CLIENT_GOOGLE_GEMINI,
+        "goose" => CLIENT_GOOSE,
+        "jetbrains" => CLIENT_JETBRAINS,
+        "kiro" => CLIENT_KIRO,
+        "lmstudio" => CLIENT_LM_STUDIO,
+        "openai" => CLIENT_OPENAI,
+        "opencode" => CLIENT_OPENCODE,
+        "vscode" => CLIENT_VSCODE,
+        "warp" => CLIENT_WARP,
+        "windsurf" => CLIENT_WINDSURF,
+        "zed" => CLIENT_ZED,
+        _ => APPLICATIONS_ENGINEERING,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_linux_client_has_its_own_bundled_mark() {
+        for client in crate::services::mcp_clients::linux_clients() {
+            let icon = client_icon(&client.icon);
+            assert_ne!(icon, APPLICATIONS_ENGINEERING, "{} has no mark", client.id);
+            assert!(
+                ALL.contains(&icon),
+                "{icon} is not in ALL, so nothing checks it resolves"
+            );
+        }
+    }
 
     /// A name the icon theme cannot resolve renders as a blank square at
     /// runtime with no warning, so the whole set is checked here.

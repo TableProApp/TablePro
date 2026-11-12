@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProDocumentPath
 import TableProPluginKit
 
 extension ElasticsearchPluginDriver {
@@ -192,6 +193,7 @@ extension ElasticsearchPluginDriver {
         """)
 
         let hits = try await fetchHits(index: parsed.index, parsed: parsed, fields: fields, conn: conn)
+        rememberArrayText(in: hits, index: parsed.index, mappingColumns: mappingColumns)
 
         return renderHits(hits, mappingColumns: mappingColumns, fields: fields, length: length, startTime: startTime)
     }
@@ -276,12 +278,16 @@ extension ElasticsearchPluginDriver {
         conn: ElasticsearchConnection,
         startTime: Date
     ) async throws -> PluginQueryResult {
-        guard let request = ElasticsearchStatementGenerator.decode(statement) else {
+        guard let decoded = ElasticsearchStatementGenerator.decode(statement) else {
             throw ElasticsearchError.invalidResponse("Invalid write request")
         }
+        let request = try await alignedToStoredDocument(decoded, conn: conn)
 
         let response = try await conn.request(method: request.method, path: request.path, body: request.body)
         guard (200..<300).contains(response.statusCode) else {
+            if response.statusCode == 409, let reason = Self.conflictReason(for: decoded) {
+                throw ElasticsearchError.serverError(reason)
+            }
             throw mapWriteError(response)
         }
 
@@ -293,6 +299,41 @@ extension ElasticsearchPluginDriver {
             rowsAffected: 1,
             executionTime: Date().timeIntervalSince(startTime)
         )
+    }
+
+    // A partial update merges by literal key, so a field the document spells `a.b` and one it
+    // spells `{"a": {"b": ...}}` need different requests. Only the stored document says which.
+    private func alignedToStoredDocument(
+        _ request: ElasticsearchWriteRequest,
+        conn: ElasticsearchConnection
+    ) async throws -> ElasticsearchWriteRequest {
+        guard let path = ElasticsearchStatementGenerator.storedDocumentPath(for: request) else { return request }
+        let response = try await conn.request(method: "GET", path: path)
+        guard response.statusCode == 200,
+              let json = response.json as? [String: Any],
+              let stored = json["_source"] as? [String: Any]
+        else { return request }
+        do {
+            return try ElasticsearchStatementGenerator.aligned(
+                request,
+                toStored: stored,
+                seqNo: (json["_seq_no"] as? NSNumber)?.intValue,
+                primaryTerm: (json["_primary_term"] as? NSNumber)?.intValue
+            )
+        } catch let failure as DocumentPathPlacement.InsideArray {
+            throw ElasticsearchError.serverError(String(
+                format: String(localized: "'%@' is a field of an array of objects in this document. Change it with a query."),
+                failure.path
+            ))
+        }
+    }
+
+    private static func conflictReason(for request: ElasticsearchWriteRequest) -> String? {
+        if ElasticsearchStatementGenerator.isCreateOnly(request) {
+            return String(localized: "A document with this _id already exists.")
+        }
+        guard !request.leafPaths.isEmpty else { return nil }
+        return String(localized: "The document changed on the server after it was read. Refresh and try again.")
     }
 
     // MARK: - Console
@@ -356,7 +397,7 @@ extension ElasticsearchPluginDriver {
                 return fields[column]?.type ?? ""
             }
         }
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: columns,
             columnTypeNames: typeNames,
             rows: rows,
@@ -364,6 +405,8 @@ extension ElasticsearchPluginDriver {
             executionTime: Date().timeIntervalSince(startTime),
             columnMeta: ElasticsearchTypeClassification.columnMeta(columns: columns, typeNames: typeNames)
         )
+        result.rowLocators = hits.map { ElasticsearchDocumentLocator(hit: $0)?.locator }
+        return result
     }
 
     private func renderObjects(

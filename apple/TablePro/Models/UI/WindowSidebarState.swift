@@ -18,6 +18,24 @@ struct DatabaseTableKey: Hashable, Sendable, Codable {
     let table: String
 }
 
+extension DatabaseTableKey {
+    init(_ ref: DatabaseTreeTableRef) {
+        self.init(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
+    }
+}
+
+/// One detail group under one table, as a window records it open.
+struct DatabaseTableDetailGroupKey: Hashable, Sendable {
+    let table: DatabaseTableKey
+    let group: TableDetailGroupKind
+}
+
+struct PendingTableOperation: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    let operation: TableOperationType
+    let tables: [DatabaseTreeTableRef]
+}
+
 @MainActor
 internal final class WindowSidebarState: ObservableObject {
     private let connectionId: UUID?
@@ -55,10 +73,24 @@ internal final class WindowSidebarState: ObservableObject {
     var acceptsObjectMarkRefresh: Bool {
         selectedTables.isEmpty && selectedRowCount == 0
     }
+
+    // The connection's queues are shared by every window hosting it, but a Truncate or Drop prompt belongs to the window that asked.
+    @Published private(set) var pendingTableOperation: PendingTableOperation?
+
+    func requestTableOperation(_ operation: TableOperationType, on tables: [DatabaseTreeTableRef]) {
+        pendingTableOperation = PendingTableOperation(operation: operation, tables: tables)
+    }
+
+    func resolveTableOperation(_ request: PendingTableOperation) {
+        guard pendingTableOperation?.id == request.id else { return }
+        pendingTableOperation = nil
+    }
+
     @Published var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeTables: Set<DatabaseTableKey> = [] { didSet { persistExpansion() } }
+    @Published var expandedTreeTableDetailGroups: Set<DatabaseTableDetailGroupKey> = [] { didSet { persistExpansion() } }
     /// Folders are open until the user closes one, so this records the closed ones: a table the
     /// open tab shows is only highlighted when its row is on screen.
     @Published var collapsedTableFolders: Set<UUID> = [] { didSet { persistExpansion() } }
@@ -111,13 +143,20 @@ internal final class WindowSidebarState: ObservableObject {
         isLoaded = true
     }
 
-    /// The kind rides as its raw string. Decoding it as `SidebarObjectKind` throws on a value this
-    /// build does not know, and one throw inside this blob discards every other expansion set.
+    // The kind rides as its persistence name, so a value this build does not know drops only that entry.
     private struct PersistedObjectGroup: Codable {
         let database: String
         let schema: String?
         let kind: String
         let expanded: Bool
+    }
+
+    /// The group rides as its raw string for the reason `PersistedObjectGroup` gives.
+    private struct PersistedTableDetailGroup: Codable {
+        let database: String
+        let schema: String?
+        let table: String
+        let group: String
     }
 
     private struct PersistedExpansion: Codable {
@@ -128,6 +167,7 @@ internal final class WindowSidebarState: ObservableObject {
         var objectGroups: [PersistedObjectGroup]?
         var seeded: Bool?
         var collapsedFolders: [UUID]?
+        var tableDetailGroups: [PersistedTableDetailGroup]?
     }
 
     private var storageKey: String? {
@@ -144,6 +184,7 @@ internal final class WindowSidebarState: ObservableObject {
         expandedTreeTables = Set(decoded.tables ?? [])
         treeObjectGroupExpansion = Self.objectGroupExpansion(from: decoded.objectGroups ?? [])
         collapsedTableFolders = Set(decoded.collapsedFolders ?? [])
+        expandedTreeTableDetailGroups = Self.tableDetailGroups(from: decoded.tableDetailGroups ?? [])
         didSeedExpansion = decoded.seeded ?? true
     }
 
@@ -152,8 +193,8 @@ internal final class WindowSidebarState: ObservableObject {
 
         if expandedTreeSchemas.isEmpty, expandedTreeDatabases.isEmpty,
            expandedTreeDatabaseSchemas.isEmpty, expandedTreeTables.isEmpty,
-           treeObjectGroupExpansion.isEmpty, collapsedTableFolders.isEmpty,
-           !didSeedExpansion {
+           expandedTreeTableDetailGroups.isEmpty, treeObjectGroupExpansion.isEmpty,
+           collapsedTableFolders.isEmpty, !didSeedExpansion {
             defaults.removeObject(forKey: storageKey)
             return
         }
@@ -165,7 +206,8 @@ internal final class WindowSidebarState: ObservableObject {
             tables: Array(expandedTreeTables),
             objectGroups: Self.persistedObjectGroups(from: treeObjectGroupExpansion),
             seeded: didSeedExpansion,
-            collapsedFolders: Array(collapsedTableFolders)
+            collapsedFolders: Array(collapsedTableFolders),
+            tableDetailGroups: Self.persistedTableDetailGroups(from: expandedTreeTableDetailGroups)
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: storageKey)
@@ -176,7 +218,7 @@ internal final class WindowSidebarState: ObservableObject {
         from persisted: [PersistedObjectGroup]
     ) -> [DatabaseTreeObjectGroup: Bool] {
         persisted.reduce(into: [:]) { result, entry in
-            guard let kind = SidebarObjectKind(rawValue: entry.kind) else { return }
+            guard let kind = SidebarObjectKind(persistenceName: entry.kind) else { return }
             let group = DatabaseTreeObjectGroup(database: entry.database, schema: entry.schema, kind: kind)
             result[group] = entry.expanded
         }
@@ -189,8 +231,33 @@ internal final class WindowSidebarState: ObservableObject {
             PersistedObjectGroup(
                 database: group.database,
                 schema: group.schema,
-                kind: group.kind.rawValue,
+                kind: group.kind.persistenceName,
                 expanded: expanded
+            )
+        }
+    }
+
+    private static func tableDetailGroups(
+        from persisted: [PersistedTableDetailGroup]
+    ) -> Set<DatabaseTableDetailGroupKey> {
+        Set(persisted.compactMap { entry in
+            guard let group = TableDetailGroupKind(rawValue: entry.group) else { return nil }
+            return DatabaseTableDetailGroupKey(
+                table: DatabaseTableKey(database: entry.database, schema: entry.schema, table: entry.table),
+                group: group
+            )
+        })
+    }
+
+    private static func persistedTableDetailGroups(
+        from keys: Set<DatabaseTableDetailGroupKey>
+    ) -> [PersistedTableDetailGroup] {
+        keys.map { key in
+            PersistedTableDetailGroup(
+                database: key.table.database,
+                schema: key.table.schema,
+                table: key.table.table,
+                group: key.group.rawValue
             )
         }
     }

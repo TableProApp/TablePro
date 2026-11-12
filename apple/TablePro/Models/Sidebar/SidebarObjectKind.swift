@@ -6,16 +6,16 @@ struct DatabaseTreeObjectGroup: Hashable, Sendable {
     let kind: SidebarObjectKind
 }
 
-/// Which model a kind's rows are drawn from. Every helper that used to ask `isRoutine` and pick
-/// one of two buckets asks this instead, so a kind added later cannot silently read the wrong one.
+// Which model a kind's rows are drawn from, so a kind added later cannot read the wrong bucket.
 enum SidebarObjectCategory: Sendable, Hashable {
     case table
     case routine
     case trigger
     case type
+    case server
 }
 
-enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
+enum SidebarObjectKind: Sendable, Hashable {
     case table
     case view
     case materializedView
@@ -25,6 +25,50 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
     case function
     case trigger
     case type
+    case server(SidebarServerObjectKind)
+
+    static let builtIn: [SidebarObjectKind] = [
+        .table, .view, .materializedView, .foreignTable, .sequence, .procedure, .function, .trigger, .type,
+    ]
+
+    static func ordered(declared: [SidebarServerObjectKind]) -> [SidebarObjectKind] {
+        builtIn + declared.map { SidebarObjectKind.server($0) }
+    }
+
+    private static let serverPersistencePrefix = "server."
+
+    // Built-in spellings are shipped in UserDefaults keys, the tree expansion JSON and node ids.
+    var persistenceName: String {
+        switch self {
+        case .table:                return "table"
+        case .view:                 return "view"
+        case .materializedView:     return "materializedView"
+        case .foreignTable:         return "foreignTable"
+        case .sequence:             return "sequence"
+        case .procedure:            return "procedure"
+        case .function:             return "function"
+        case .trigger:              return "trigger"
+        case .type:                 return "type"
+        case .server(let kind):     return Self.serverPersistencePrefix + kind.id
+        }
+    }
+
+    // A declared kind decodes before any driver exists, so it carries only its id.
+    init?(persistenceName: String) {
+        if let builtIn = Self.builtIn.first(where: { $0.persistenceName == persistenceName }) {
+            self = builtIn
+            return
+        }
+        guard persistenceName.hasPrefix(Self.serverPersistencePrefix) else { return nil }
+        let id = String(persistenceName.dropFirst(Self.serverPersistencePrefix.count))
+        guard !id.isEmpty else { return nil }
+        self = .server(SidebarServerObjectKind(id: id))
+    }
+
+    var serverKind: SidebarServerObjectKind? {
+        if case .server(let kind) = self { return kind }
+        return nil
+    }
 
     var displayName: String {
         switch self {
@@ -37,6 +81,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .trigger:          return String(localized: "Trigger")
         case .type:             return String(localized: "Type")
         case .sequence:         return String(localized: "Sequence")
+        case .server(let kind): return kind.displayName
         }
     }
 
@@ -51,6 +96,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .trigger:          return String(localized: "Triggers")
         case .type:             return String(localized: "Types")
         case .sequence:         return String(localized: "Sequences")
+        case .server(let kind): return kind.pluralDisplayName
         }
     }
 
@@ -65,6 +111,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .trigger:          return String(localized: "No triggers")
         case .type:             return String(localized: "No types")
         case .sequence:         return String(localized: "No sequences")
+        case .server:           return String(localized: "No items")
         }
     }
 
@@ -87,6 +134,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .trigger:          return "bolt"
         case .type:             return "cube"
         case .sequence:         return "number"
+        case .server(let kind): return kind.iconName
         }
     }
 
@@ -96,6 +144,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .procedure, .function:                           return .routine
         case .trigger:                                        return .trigger
         case .type:                                           return .type
+        case .server:                                         return .server
         }
     }
 
@@ -113,22 +162,13 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         self == .table
     }
 
-    /// Which kinds a container lists, in declaration order: the kinds holding objects, and the kinds in
-    /// `keeping`. Both sidebar layouts ask the same question, so toggling the layout never changes which
-    /// kinds are on screen.
-    ///
-    /// A kind is listed for what its driver returned, never for what the plugin declares. Gating on a
-    /// capability flag hid objects that came back, and listing every declared kind filled the sidebar
-    /// with Procedures, Triggers and Types sections that held nothing.
-    ///
-    /// `keeping` is for a section with something to say and no rows to say it with: a table kind whose
-    /// objects all sit in folders, which is where a drag takes one back out, and a kind whose fetch
-    /// failed, which shows the error where its rows would be.
+    // Listed for its rows or for `keeping` (filed into folders, or a failed fetch), never for being declared.
     static func visible(
         itemCounts: [SidebarObjectKind: Int],
-        keeping: Set<SidebarObjectKind> = []
+        keeping: Set<SidebarObjectKind> = [],
+        declared: [SidebarServerObjectKind] = []
     ) -> [SidebarObjectKind] {
-        allCases.filter { kind in
+        ordered(declared: declared).filter { kind in
             itemCounts[kind, default: 0] > 0 || keeping.contains(kind)
         }
     }

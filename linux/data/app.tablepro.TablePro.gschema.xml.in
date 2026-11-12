@@ -52,6 +52,13 @@
       <description>Whether the main window was maximized when it last closed.</description>
     </key>
 
+    <key name="sidebar-width" type="d">
+      <default>280.0</default>
+      <range min="220.0" max="1200.0"/>
+      <summary>Sidebar width</summary>
+      <description>The most the sidebar takes, in scale-independent pixels; the content always keeps half the window.</description>
+    </key>
+
     <key name="default-page-size" type="u">
       <default>1000</default>
       <range min="100" max="100000"/>
@@ -87,6 +94,67 @@
       <default>"normal"</default>
       <summary>Data grid row height</summary>
       <description>How much room a data grid row takes around its text.</description>
+    </key>
+
+    <key name="row-copy-format" type="s">
+      <choices>
+        <choice value="rows"/>
+        <choice value="rows-headers"/>
+        <choice value="json"/>
+        <choice value="csv"/>
+        <choice value="csv-headers"/>
+        <choice value="markdown"/>
+      </choices>
+      <default>"rows"</default>
+      <summary>Format of copied rows</summary>
+      <description>The format Copy writes when several rows are selected.</description>
+    </key>
+
+    <key name="auto-show-inspector" type="b">
+      <default>false</default>
+      <summary>Open row details when a row is selected</summary>
+      <description>Whether selecting a row in a data grid opens its row details pane.</description>
+    </key>
+
+    <key name="default-sort" type="s">
+      <choices>
+        <choice value="none"/>
+        <choice value="primary-key"/>
+        <choice value="first-column"/>
+      </choices>
+      <default>"none"</default>
+      <summary>Default sort of a table</summary>
+      <description>The column a table tab sorts by when it opens, until the user picks another.</description>
+    </key>
+
+    <key name="default-sort-direction" type="s">
+      <choices>
+        <choice value="ascending"/>
+        <choice value="descending"/>
+      </choices>
+      <default>"ascending"</default>
+      <summary>Direction of the default sort</summary>
+      <description>Which way a table tab sorts by its default column.</description>
+    </key>
+
+    <key name="show-invisible-characters" type="b">
+      <default>true</default>
+      <summary>Show invisible characters</summary>
+      <description>Whether cells and value fields mark zero-width, control and special space characters.</description>
+    </key>
+
+    <key name="date-format" type="s">
+      <choices>
+        <choice value="iso"/>
+        <choice value="iso-date"/>
+        <choice value="us-long"/>
+        <choice value="us-short"/>
+        <choice value="eu-long"/>
+        <choice value="eu-short"/>
+      </choices>
+      <default>"iso"</default>
+      <summary>Date format of cells</summary>
+      <description>How the data grid spells dates and timestamps. A copy and an export keep the database's own spelling.</description>
     </key>
 
     <key name="null-display" type="s">
@@ -125,6 +193,18 @@
       <default>'Monospace 12'</default>
       <summary>Custom editor font</summary>
       <description>Pango font description the SQL editor uses when the system font is turned off.</description>
+    </key>
+
+    <key name="grid-use-system-font" type="b">
+      <default>true</default>
+      <summary>Use the system monospace font in the data grid</summary>
+      <description>Whether the data grid follows the desktop monospace font instead of a custom one.</description>
+    </key>
+
+    <key name="grid-font" type="s">
+      <default>'Monospace 10'</default>
+      <summary>Custom data grid font</summary>
+      <description>Pango font description the data grid uses when the system font is turned off.</description>
     </key>
 
     <key name="style-scheme" type="s">
@@ -251,7 +331,7 @@
     </key>
 
     <key name="csv-sanitize-formulas" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Neutralise spreadsheet formulas</summary>
       <description>Whether a CSV export prefixes values starting with =, +, - or @ so a spreadsheet does not run them.</description>
     </key>

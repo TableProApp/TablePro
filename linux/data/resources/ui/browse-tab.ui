@@ -2,9 +2,39 @@
 <interface>
   <requires lib="gtk" version="4.22" />
   <requires lib="libadwaita" version="1.9" />
+  <menu id="structure_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Discard Changes…</attribute>
+        <attribute name="action">structure.discard</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Stop Saving</attribute>
+        <attribute name="action">structure.stop</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Drop _Table…</attribute>
+        <attribute name="action">structure.drop</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
+  </menu>
   <template class="TableProBrowseTab" parent="AdwBreakpointBin">
     <property name="width-request">300</property>
     <property name="height-request">160</property>
+    <!-- Below the width the full Data bar needs, its least used controls move to a menu. -->
+    <child>
+      <object class="AdwBreakpoint" id="medium_breakpoint">
+        <condition>max-width: 1120sp</condition>
+        <setter object="columns_button" property="visible">false</setter>
+        <setter object="export_button" property="visible">false</setter>
+        <setter object="page_size_box" property="visible">false</setter>
+        <setter object="overflow_button" property="visible">true</setter>
+      </object>
+    </child>
     <child>
       <object class="AdwBreakpoint" id="narrow_breakpoint">
         <condition>max-width: 860sp</condition>
@@ -12,10 +42,15 @@
         <setter object="details_toggle" property="visible">false</setter>
         <setter object="export_button" property="visible">false</setter>
         <setter object="filter_button" property="visible">false</setter>
+        <setter object="highlight_button" property="visible">false</setter>
         <setter object="columns_button" property="visible">false</setter>
         <setter object="page_size_box" property="visible">false</setter>
         <setter object="more_button" property="visible">true</setter>
         <setter object="pager_bar" property="compact">true</setter>
+        <setter object="view_toggle" property="display-mode">icons</setter>
+        <setter object="structure_details" property="visible">false</setter>
+        <setter object="structure_secondary" property="visible">false</setter>
+        <setter object="structure_more" property="visible">true</setter>
       </object>
     </child>
     <property name="child">
@@ -25,6 +60,7 @@
             <child>
               <object class="AdwViewStackPage">
                 <property name="name">data</property>
+                <property name="icon-name">view-grid-symbolic</property>
                 <property name="child">
                   <object class="AdwToolbarView" id="toolbar">
                     <property name="top-bar-style">flat</property>
@@ -109,10 +145,22 @@
             <child>
               <object class="AdwViewStackPage">
                 <property name="name">structure</property>
+                <property name="visible">false</property>
+                <property name="icon-name">view-list-symbolic</property>
                 <property name="child">
                   <object class="AdwBin" id="structure_host" />
                 </property>
                 <property name="title" translatable="yes">Structure</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwViewStackPage">
+                <property name="name">json</property>
+                <property name="icon-name">text-x-generic-symbolic</property>
+                <property name="title" translatable="yes">JSON</property>
+                <property name="child">
+                  <object class="AdwBin" id="json_host"/>
+                </property>
               </object>
             </child>
           </object>
@@ -121,9 +169,20 @@
           <object class="GtkActionBar" id="action_bar">
             <child type="start">
               <object class="AdwInlineViewSwitcher" id="view_toggle">
-                <property name="visible">false</property>
                 <property name="stack">view_stack</property>
                 <property name="display-mode">labels</property>
+                <!-- The bar gives up its other controls before the view names. -->
+                <property name="can-shrink">false</property>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkBox" id="structure_start">
+                <property name="visible">false</property>
+                <child>
+                  <object class="GtkBox" id="structure_details">
+                    <property name="spacing">6</property>
+                  </object>
+                </child>
               </object>
             </child>
             <child type="start">
@@ -153,9 +212,6 @@
                   </object>
                 </child>
                 <child>
-                  <object class="TableProPagerBar" id="pager_bar" />
-                </child>
-                <child>
                   <object class="GtkLabel" id="selection_label">
                     <property name="visible">false</property>
                     <property name="ellipsize">end</property>
@@ -165,6 +221,68 @@
                       <class name="accent" />
                       <class name="caption-heading" />
                     </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkBox" id="rows_start">
+                <child>
+                  <object class="TableProPagerBar" id="pager_bar" />
+                </child>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkBox" id="json_end">
+                <property name="visible">false</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkButton">
+                    <property name="icon-name">edit-copy-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Copy JSON Preview</property>
+                    <property name="action-name">json.copy</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Copy JSON Preview</property>
+                    </accessibility>
+                    <style><class name="flat"/></style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton" id="json_more">
+                    <property name="icon-name">view-more-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">More JSON Actions</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">More JSON Actions</property>
+                    </accessibility>
+                    <style><class name="flat"/></style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkBox" id="structure_end">
+                <property name="visible">false</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkBox" id="structure_secondary">
+                    <property name="spacing">6</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton" id="structure_more">
+                    <property name="visible">false</property>
+                    <property name="icon-name">view-more-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">More Structure Actions</property>
+                    <property name="menu-model">structure_menu</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">More Structure Actions</property>
+                    </accessibility>
+                    <style><class name="flat"/></style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox" id="structure_primary">
+                    <property name="spacing">6</property>
                   </object>
                 </child>
               </object>
@@ -200,6 +318,19 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkButton" id="highlight_button">
+                    <property name="action-name">grid.highlight-rules</property>
+                    <property name="icon-name">document-edit-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Highlight Rules</property>
+                    <style>
+                      <class name="flat" />
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">Highlight Rules</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkButton" id="filter_button">
                     <property name="tooltip-text" translatable="yes">Filter Rows</property>
                     <property name="action-name">browse.toggle-filter</property>
@@ -231,6 +362,19 @@
                 <child>
                   <object class="GtkButton" id="export_button">
                     <property name="icon-name">document-save-symbolic</property>
+                    <style>
+                      <class name="flat" />
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton" id="overflow_button">
+                    <property name="icon-name">view-more-symbolic</property>
+                    <property name="visible">false</property>
+                    <property name="tooltip-text" translatable="yes">More Actions</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">More Actions</property>
+                    </accessibility>
                     <style>
                       <class name="flat" />
                     </style>

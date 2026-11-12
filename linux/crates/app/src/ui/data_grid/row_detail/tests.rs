@@ -18,6 +18,7 @@ use super::clock::{ClockField, time_of, with_time};
 use super::fields::{field_label, field_order};
 use super::value_editor::value_content;
 use crate::services::change_tracker::RowKey;
+use crate::services::grid::display_text::DISPLAY_MAX_CHARS;
 use crate::services::grid::{CellLock, GridColumn, GridRowId, grid_columns};
 use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{
@@ -415,7 +416,7 @@ fn a_locked_cell_is_read_only_with_its_sentence() {
         message(&pane),
         Some(CellLock::KeyColumn.explanation(edit_parse_message))
     );
-    pane.imp().value_menu_button.popup();
+    field_menu(&pane, 0).popup();
     assert!(!grid.is_enabled("set-null"), "the menu offered to change a locked cell");
     assert!(grid.is_enabled("copy"));
 }
@@ -440,7 +441,7 @@ fn set_to_null_writes_null_into_the_field() {
     take_keyboard(&grid);
     grid.focus(0, 1);
     pane.focus_value();
-    pane.imp().value_menu_button.popup();
+    field_menu(&pane, 1).popup();
     assert!(grid.is_enabled("set-null"), "the menu does not act on the field");
     assert!(!grid.is_enabled("set-default"), "a saved row offered DEFAULT");
 
@@ -488,7 +489,7 @@ fn copy_value_copies_the_field() {
         }
     });
 
-    pane.imp().value_menu_button.popup();
+    field_menu(&pane, 1).popup();
     grid.activate("copy");
     wait_until(WAIT, || !heard.borrow().is_empty()).expect("the copy lands");
 
@@ -509,6 +510,194 @@ fn the_fields_follow_the_grid_column_order() {
     drain_main_context();
 
     assert_eq!(fields(&pane), [1, 2, 0], "a hidden column's field did not go last");
+}
+
+fn copy_button(pane: &RowDetailPane, column: usize) -> gtk::Button {
+    let row = drawn_field(pane, column).child().expect("the field's row");
+    descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
+        .expect("the field's copy button")
+}
+
+#[gtk4::test]
+fn a_fields_copy_button_copies_its_whole_value_and_leaves_the_editor() {
+    let long = "x".repeat(DISPLAY_MAX_CHARS + 500);
+    let (grid, pane) = opened(
+        three_text_columns(),
+        vec![vec![Value::Int(1), Value::Text("A".into()), Value::Text(long.clone())]],
+    );
+    grid.focus(0, 1);
+    drain_main_context();
+    let heard: Rc<RefCell<Vec<String>>> = Rc::default();
+    let log = heard.clone();
+    grid.grid.connect_request(move |_, request| {
+        if let GridRequest::Toast(text) = request {
+            log.borrow_mut().push(text);
+        }
+    });
+
+    copy_button(&pane, 2).emit_clicked();
+    wait_until(WAIT, || !heard.borrow().is_empty()).expect("the copy lands");
+
+    let clipboard = grid.grid.clipboard();
+    let copied = finish_on_main(WAIT, async move { clipboard.read_text_future().await })
+        .expect("the clipboard to answer")
+        .expect("text on the clipboard");
+    assert_eq!(
+        copied.as_deref().map(str::len),
+        Some(long.len()),
+        "the copy took the text the field draws"
+    );
+    assert_eq!(selected_field(&pane), Some(1), "the copy moved the editor");
+    assert_eq!(pane.typed_text(), "A");
+}
+
+/// The arrows go from field to field, so Tab leaves the list once past
+/// the focused field's own buttons rather than through every field.
+#[gtk4::test]
+fn tab_leaves_the_field_list_after_the_focused_field() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    crate::test_support::KeyInjector::focus_only(&grid.window);
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    let list = pane.imp().field_list.get();
+    wait_until(WAIT, || {
+        pane.imp().field_search.is_mapped() && list.width() > 0 && list.height() > 0
+    })
+    .expect("the fields are laid out");
+    crate::test_support::after_next_frame(&grid.window);
+    assert!(pane.imp().field_search.grab_focus());
+    let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+    let on_copy = || {
+        gtk::prelude::GtkWindowExt::focus(&grid.window)
+            .and_downcast::<gtk::Button>()
+            .is_some_and(|button| button.icon_name().as_deref() == Some(crate::ui::icons::EDIT_COPY))
+    };
+    let on_menu = || {
+        gtk::prelude::GtkWindowExt::focus(&grid.window)
+            .and_then(|focus| focus.ancestor(gtk::MenuButton::static_type()))
+            .and_downcast::<gtk::MenuButton>()
+            .is_some_and(|button| button.icon_name().as_deref() == Some(crate::ui::icons::VIEW_MORE))
+    };
+
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || crate::ui::a11y::holds_focus(&list)).expect("Tab to the list");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, on_copy).expect("Tab to the field's copy button");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, on_menu).expect("Tab to the field's menu");
+    keys.press(gdk::Key::Tab, gdk::ModifierType::empty()).expect("Tab");
+    wait_until(WAIT, || !crate::ui::a11y::holds_focus(&list)).expect("Tab out of the list");
+}
+
+fn field_row_of(pane: &RowDetailPane, column: usize) -> gtk::Widget {
+    drawn_field(pane, column).child().expect("the field's row")
+}
+
+fn shows_value(pane: &RowDetailPane, column: usize) -> bool {
+    descendants(&field_row_of(pane, column))
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .any(|value| value.is_visible())
+}
+
+#[gtk4::test]
+fn the_value_editor_sits_in_the_picked_fields_row() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    let imp = pane.imp();
+    grid.focus(0, 1);
+    drain_main_context();
+
+    assert!(
+        imp.editor_box.is_ancestor(&field_row_of(&pane, 1)),
+        "the editor is not in its field's row"
+    );
+    assert!(imp.editor_tools.is_ancestor(&field_row_of(&pane, 1)));
+    assert!(
+        !shows_value(&pane, 1),
+        "the picked field drew its value beside the editor"
+    );
+    assert!(shows_value(&pane, 2));
+
+    grid.focus(0, 2);
+    drain_main_context();
+
+    assert!(
+        imp.editor_box.is_ancestor(&field_row_of(&pane, 2)),
+        "the editor did not follow the field"
+    );
+    assert!(!imp.editor_box.is_ancestor(&field_row_of(&pane, 1)));
+    assert!(shows_value(&pane, 1), "the field left behind lost its value");
+    assert_eq!(pane.typed_text(), "x");
+}
+
+#[gtk4::test]
+fn a_field_the_search_drops_while_editing_hands_the_keyboard_to_the_search() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    edit_field(&grid, &pane, 0, 2);
+    search_fields(&pane, "x");
+    assert_eq!(listed_columns(&pane), vec![2]);
+    assert!(crate::ui::a11y::holds_focus(&pane.imp().value_view.get()));
+
+    type_value(&pane, "z");
+    assert!(press_in_value(&pane, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK));
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 2), Some(text("z")));
+    assert!(listed_columns(&pane).is_empty());
+    assert!(
+        crate::ui::a11y::holds_focus(&pane.imp().field_search.get()),
+        "the keyboard left the pane with the field's row"
+    );
+}
+
+/// The menu button of data column `column`'s row, once the list has drawn
+/// it.
+fn field_menu(pane: &RowDetailPane, column: usize) -> gtk::MenuButton {
+    drain_main_context();
+    let row = drawn_field(pane, column).child().expect("the field's row");
+    descendants(&row)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| button.icon_name().as_deref() == Some(crate::ui::icons::VIEW_MORE))
+        .expect("the field's menu")
+}
+
+#[gtk4::test]
+fn a_fields_menu_acts_on_that_field_and_leaves_the_editor() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    grid.focus(0, 1);
+    let menu = field_menu(&pane, 2);
+
+    menu.popup();
+    assert!(grid.is_enabled("set-null"), "the menu does not act on its field");
+    grid.activate("set-null");
+    menu.popdown();
+    drain_main_context();
+
+    assert_eq!(pending(&grid, 1, 2), Some(CellInput::Value(Value::Null)));
+    assert_eq!(pending(&grid, 1, 1), None);
+    assert_eq!(selected_field(&pane), Some(1), "the menu moved the editor");
+    assert_eq!(pane.typed_text(), "A");
+}
+
+#[gtk4::test]
+fn a_field_the_search_hides_lists_again_when_the_grid_shows_it() {
+    let (grid, pane) = opened(three_text_columns(), three_text_values());
+    let imp = pane.imp();
+    grid.focus(0, 1);
+    search_fields(&pane, "note");
+    assert_eq!(listed_columns(&pane), vec![2]);
+
+    grid.grid.show_details_for(1);
+    wait_until(WAIT, || imp.editor_box.is_ancestor(&imp.field_list.get())).expect("the editor takes a row");
+
+    assert!(imp.field_search.text().is_empty(), "the search still hides the field");
+    assert_eq!(listed_columns(&pane), vec![0, 1, 2]);
+    assert!(imp.editor_box.is_ancestor(&field_row_of(&pane, 1)));
+    assert_eq!(pane.typed_text(), "A");
 }
 
 #[gtk4::test]
@@ -1542,6 +1731,45 @@ fn a_page_that_takes_the_row_closes_its_clock_and_writes_nothing() {
     assert!(!pane.imp().clock_popover.is_visible());
 }
 
+fn tagged(pane: &RowDetailPane) -> Vec<(i32, i32)> {
+    crate::ui::data_grid::special_marks::tagged_ranges(pane.imp().value_buffer.upcast_ref())
+}
+
+fn field_texts(pane: &RowDetailPane) -> Vec<String> {
+    descendants(&pane.imp().field_list.get())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+        .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+        .collect()
+}
+
+#[gtk4::test]
+fn the_value_editor_marks_invisible_characters_while_preferences_ask() {
+    let value = "a\u{200b}b c\td\u{a0}e\u{1}";
+    let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Text(value.into())]]);
+    grid.focus(0, 1);
+    drain_main_context();
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    assert_eq!(pane.typed_text(), value);
+    assert_eq!(
+        tagged(&pane),
+        [(1, 2), (7, 8), (9, 10)],
+        "a space and a tab are not marked"
+    );
+    assert!(field_texts(&pane).contains(&"aZWSPb c\td\u{a0}eSOH".to_owned()));
+
+    settings.set_show_invisible_characters(false).expect("store the flag");
+    drain_main_context();
+    assert!(tagged(&pane).is_empty());
+    assert!(field_texts(&pane).contains(&value.to_owned()));
+    assert_eq!(pane.typed_text(), value);
+
+    settings.set_show_invisible_characters(true).expect("store the flag");
+    drain_main_context();
+    assert_eq!(tagged(&pane), [(1, 2), (7, 8), (9, 10)]);
+}
+
 #[gtk4::test]
 fn null_preferences_update_details_without_replacing_a_draft() {
     let (grid, pane) = opened(two_text_columns(), vec![vec![Value::Int(1), Value::Null]]);
@@ -1642,7 +1870,139 @@ fn a_field_names_its_type_and_its_key_to_a_screen_reader() {
         catalog: None,
         ..column_of(named("id", "integer", true))
     };
-    assert_eq!(field_label(&result_column), "id, integer");
+    assert_eq!(field_label(&result_column, false), "id, integer");
+}
+
+fn composite_foreign_keys() -> crate::ui::data_grid::TableKeys {
+    use tablepro_core::ForeignKeyInfo;
+    use tablepro_core::ddl::OutboundForeignKey;
+    use tablepro_core::meta::TableRef;
+
+    crate::ui::data_grid::TableKeys {
+        table: TableRef::unqualified("orders"),
+        outbound: vec![OutboundForeignKey {
+            key: ForeignKeyInfo {
+                name: "customer_fkey".to_owned(),
+                columns: vec!["id".to_owned(), "tenant_id".to_owned(), "customer_id".to_owned()],
+                ref_schema: None,
+                ref_table: "customers".to_owned(),
+                ref_columns: vec!["id".to_owned(), "tenant_id".to_owned(), "customer_id".to_owned()],
+                on_delete: None,
+                on_update: None,
+            },
+            parent_compares_alike: true,
+        }],
+        inbound: Vec::new(),
+    }
+}
+
+fn foreign_key_grid(keys: crate::ui::data_grid::TableKeys) -> (Grid, RowDetailPane, crate::ui::data_grid::KeysHandle) {
+    let handle = crate::ui::data_grid::KeysHandle::new(keys.table.clone());
+    handle.set(keys);
+    let grid = Grid::build(
+        GridSpec {
+            references: Some(handle.clone()),
+            ..GridSpec::table(vec![
+                named("id", "integer", true),
+                named("tenant_id", "integer", false),
+                named("customer_id", "integer", false),
+                named("note", "text", false),
+            ])
+        },
+        persisted(&[vec![
+            Value::Int(1),
+            Value::Int(7),
+            Value::Int(42),
+            Value::Text("x".into()),
+        ]]),
+    );
+    grid.activate("show-details");
+    let pane = pane_of(&grid);
+    grid.focus(0, 1);
+    drain_main_context();
+    (grid, pane, handle)
+}
+
+#[gtk4::test]
+fn foreign_key_fields_announce_each_role_and_keep_the_primary_key_icon() {
+    let (_grid, pane, _handle) = foreign_key_grid(composite_foreign_keys());
+    let primary = crate::ui::icons::PRIMARY_KEY;
+    let foreign = crate::ui::icons::GO_UP;
+    assert!(marks(&pane, 0, primary));
+    assert!(!marks(&pane, 0, foreign));
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key, foreign key"
+    );
+    for (column, label) in [
+        (1, "tenant_id, integer, foreign key"),
+        (2, "customer_id, integer, foreign key"),
+    ] {
+        assert!(marks(&pane, column, foreign));
+        assert!(!marks(&pane, column, primary));
+        assert_eq!(drawn_field(&pane, column).accessible_label().as_str(), label);
+    }
+    assert!(!marks(&pane, 3, primary));
+    assert!(!marks(&pane, 3, foreign));
+    assert_eq!(drawn_field(&pane, 3).accessible_label().as_str(), "note, text");
+    for column in 0..4 {
+        assert!(marks(&pane, column, crate::ui::icons::TEXT_X_GENERIC));
+    }
+}
+
+#[gtk4::test]
+fn foreign_key_markers_follow_metadata_changes_without_disturbing_an_edit() {
+    let keys = composite_foreign_keys();
+    let empty = crate::ui::data_grid::TableKeys::none(keys.table.clone());
+    let (grid, pane, handle) = foreign_key_grid(empty.clone());
+    let primary = crate::ui::icons::PRIMARY_KEY;
+    let foreign = crate::ui::icons::GO_UP;
+    assert!(!marks(&pane, 1, foreign));
+    assert!(!marks(&pane, 2, foreign));
+    edit_field(&grid, &pane, 0, 3);
+    type_value(&pane, "still typing");
+    let focused = gtk::prelude::GtkWindowExt::focus(&grid.window);
+    let pending_before = grid.tracker.pending_count();
+
+    handle.set(keys);
+    grid.grid.keys_changed();
+    drain_main_context();
+
+    assert!(marks(&pane, 1, foreign));
+    assert!(marks(&pane, 2, foreign));
+    assert!(marks(&pane, 0, primary));
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key, foreign key"
+    );
+    assert_eq!(
+        drawn_field(&pane, 2).accessible_label().as_str(),
+        "customer_id, integer, foreign key"
+    );
+    assert_eq!(selected_field(&pane), Some(3));
+    assert_eq!(pane.typed_text(), "still typing");
+    assert_eq!(gtk::prelude::GtkWindowExt::focus(&grid.window), focused);
+    assert_eq!(grid.tracker.pending_count(), pending_before);
+
+    handle.set(empty);
+    grid.grid.keys_changed();
+    drain_main_context();
+
+    assert!(!marks(&pane, 1, foreign));
+    assert!(!marks(&pane, 2, foreign));
+    assert!(marks(&pane, 0, primary));
+    assert_eq!(
+        drawn_field(&pane, 0).accessible_label().as_str(),
+        "id, integer, primary key"
+    );
+    assert_eq!(
+        drawn_field(&pane, 2).accessible_label().as_str(),
+        "customer_id, integer"
+    );
+    assert_eq!(selected_field(&pane), Some(3));
+    assert_eq!(pane.typed_text(), "still typing");
+    assert_eq!(gtk::prelude::GtkWindowExt::focus(&grid.window), focused);
+    assert_eq!(grid.tracker.pending_count(), pending_before);
 }
 
 #[gtk4::test]
@@ -1835,4 +2195,117 @@ fn search_keys_and_tab_order_reach_the_filter_list_and_value() {
     keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
         .expect("Escape");
     wait_until(WAIT, || !grid.grid.imp().split_view.shows_sidebar()).expect("Escape closes the empty overlay search");
+}
+
+#[gtk4::test]
+fn changing_automatic_details_opening_keeps_an_active_value_draft() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "unfinished");
+    let settings = grid.grid.config().expect("a configured grid").settings.clone();
+
+    settings
+        .set_auto_show_inspector(true)
+        .expect("enable automatic opening");
+    settings
+        .set_auto_show_inspector(false)
+        .expect("disable automatic opening");
+    drain_main_context();
+
+    assert!(pane.is_open());
+    assert!(pane.is_editing_value());
+    assert_eq!(pane.typed_text(), "unfinished");
+    assert_eq!(pending(&grid, 1, 1), None);
+}
+
+#[gtk4::test]
+fn a_closed_pane_marks_its_value_once_it_opens() {
+    let settings = crate::test_support::MemorySettings::new();
+    settings
+        .get()
+        .set_show_invisible_characters(false)
+        .expect("start without marks");
+    let grid = Grid::build(
+        GridSpec {
+            settings: Some(settings.get().clone()),
+            ..GridSpec::table(two_text_columns())
+        },
+        persisted(&[vec![Value::Int(1), Value::Text("a\u{200b}b".into())]]),
+    );
+    let pane = pane_of(&grid);
+    settings.get().set_show_invisible_characters(true).expect("show marks");
+    drain_main_context();
+    assert!(!pane.is_open());
+
+    grid.activate("show-details");
+    grid.focus(0, 1);
+    drain_main_context();
+
+    assert_eq!(pane.typed_text(), "a\u{200b}b");
+    assert_eq!(tagged(&pane), [(1, 2)]);
+    assert!(field_texts(&pane).contains(&"aZWSPb".to_owned()));
+}
+
+#[gtk4::test]
+fn marks_leave_the_value_draft_and_its_selection_alone() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    edit_field(&grid, &pane, 0, 1);
+    let typed = "one\u{200b}two\u{a0}three";
+    type_value(&pane, typed);
+    let buffer = pane.imp().value_buffer.get();
+    buffer.select_range(&buffer.iter_at_offset(2), &buffer.iter_at_offset(9));
+    let selection = || {
+        buffer
+            .selection_bounds()
+            .map(|(start, end)| (start.offset(), end.offset()))
+    };
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    assert_eq!(tagged(&pane), [(3, 4), (7, 8)]);
+
+    for show in [false, true] {
+        settings.set_show_invisible_characters(show).expect("change the marks");
+        drain_main_context();
+        assert_eq!(tagged(&pane).is_empty(), !show);
+        assert_eq!(pane.typed_text(), typed);
+        assert_eq!(selection(), Some((2, 9)));
+        assert!(pane.is_editing_value());
+        assert!(grid.grid.is_editing());
+        assert_eq!(pending(&grid, 1, 1), None);
+    }
+}
+
+#[gtk4::test]
+fn date_format_updates_detail_fields_without_reformatting_the_value_draft() {
+    let (grid, pane) = date_grid(a_date(2026, 11, 8));
+    let settings = grid.grid.config().expect("configured grid").settings.clone();
+    assert_eq!(pane.typed_text(), "2026-11-08");
+    let field_texts = || {
+        descendants(&pane.imp().field_list.get())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Inscription>().ok())
+            .filter_map(|inscription| inscription.text().map(|text| text.to_string()))
+            .collect::<Vec<_>>()
+    };
+
+    settings.set_date_format("eu-short").expect("European date display");
+    drain_main_context();
+    assert!(field_texts().contains(&"08/11/2026".to_owned()));
+    assert_eq!(pane.typed_text(), "2026-11-08", "the editor keeps its parseable form");
+    edit_field(&grid, &pane, 0, 1);
+    type_value(&pane, "2026-11-09");
+    let buffer = pane.imp().value_buffer.get();
+    buffer.select_range(&buffer.iter_at_offset(5), &buffer.iter_at_offset(7));
+
+    settings.set_date_format("us-short").expect("US date display");
+    drain_main_context();
+    assert!(field_texts().contains(&"11/08/2026".to_owned()));
+    assert_eq!(pane.typed_text(), "2026-11-09");
+    assert_eq!(
+        buffer
+            .selection_bounds()
+            .map(|(start, end)| (start.offset(), end.offset())),
+        Some((5, 7))
+    );
+    assert!(pane.is_editing_value());
+    assert_eq!(pending(&grid, 1, 1), None);
 }

@@ -98,6 +98,27 @@ struct BigtableBytesTests {
         #expect(throws: BigtableError.self) { try BigtableBytes.parse("b64:***") }
     }
 
+    @Test("Text that starts with a byte order mark shows with it, and reads back to the same bytes")
+    func byteOrderMarkKept() throws {
+        let marked = Data([0xEF, 0xBB, 0xBF] + Array("abc".utf8))
+        let text = try #require(BigtableBytes.printableText(marked))
+        #expect(Data(text.utf8) == marked)
+        #expect(try BigtableBytes.parse(BigtableBytes.display(marked)) == marked)
+        #expect(BigtableBytes.display(marked) != BigtableBytes.display(Data("abc".utf8)))
+        #expect(BigtableBytes.printableText(Data([0x61, 0xFF])) == nil)
+    }
+
+    @Test("A key and a qualifier that start with a byte order mark read back from a request's own text")
+    func byteOrderMarkRequestRoundTrip() throws {
+        let marked = Data([0xEF, 0xBB, 0xBF] + Array("abc".utf8))
+        let column = BigtableColumn(family: "cf", qualifier: marked)
+        let request = BigtableRequest(verb: .delete, table: "events", key: marked, column: column.name)
+        let parsed = try BigtableRequest.parse(request.text)
+        #expect(parsed.key == marked)
+        let columnName = try #require(parsed.column)
+        #expect(try BigtableColumn(name: columnName).qualifier == marked)
+    }
+
     @Test("Prefix end increments the last byte that can grow")
     func prefixEnd() {
         #expect(BigtableBytes.prefixEnd(Data("ab".utf8)) == Data("ac".utf8))

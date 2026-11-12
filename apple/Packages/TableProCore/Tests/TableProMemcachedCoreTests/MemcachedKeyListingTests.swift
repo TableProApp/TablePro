@@ -12,6 +12,14 @@ struct MemcachedKeyListingTests {
         #expect(entry?.secondsLeft(at: 1_793_499_867) == 300)
     }
 
+    @Test("A listed key a text command line cannot carry is left out", arguments: [
+        "key=x%0D%0Aflush_all exp=-1 la=1 cas=1 fetch=no cls=1 size=1",
+        "key=two%20words exp=-1 la=1 cas=1 fetch=no cls=1 size=1",
+    ])
+    func unsendableKeyIsLeftOut(line: String) {
+        #expect(MemcachedKeyListing.metadumpEntry(line) == nil)
+    }
+
     @Test("exp=-1 means the item never expires")
     func metadumpNeverExpires() {
         let entry = MemcachedKeyListing.metadumpEntry("key=%22sp%22 exp=-1 la=1 cas=4 fetch=no cls=1 size=64 flags=0")

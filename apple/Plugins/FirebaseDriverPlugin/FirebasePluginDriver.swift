@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProFirebaseClient
 import TableProFirebaseCore
 import TableProGoogleCloud
 import TableProLogRedaction
@@ -34,7 +35,7 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
         variant == .firestore ? "Cloud Firestore" : "Firebase Realtime Database"
     }
 
-    var capabilities: PluginCapabilities { [.cancelQuery] }
+    var capabilities: PluginCapabilities { [.cancelQuery, .columnDefaultMarks] }
     var supportsTransactions: Bool { false }
     var parameterStyle: ParameterStyle { .questionMark }
 

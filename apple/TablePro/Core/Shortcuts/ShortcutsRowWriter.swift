@@ -157,10 +157,11 @@ internal enum ShortcutsRowWriter {
             let rowID = RowID.inserted(UUID())
             let byColumn = Dictionary(values.map { ($0.column, $0.value) }, uniquingKeysWith: { first, _ in first })
             insertedRowData[rowID] = names.map { name in
-                guard let value = byColumn[name] else { return .text(PluginCellValue.defaultMarkerText) }
+                guard let value = byColumn[name] else { return .columnDefault }
                 return value.map(PluginCellValue.text) ?? .null
             }
-            changes.append(RowChange(rowID: rowID, type: .insert, sequence: index))
+            let defaulted = Set(names.indices.filter { byColumn[names[$0]] == nil })
+            changes.append(RowChange(rowID: rowID, type: .insert, expressionColumns: defaulted, sequence: index))
         }
 
         let factory = RowChangeStatementFactory(
@@ -195,7 +196,8 @@ internal enum ShortcutsRowWriter {
     private static func refuseHeldTransaction(on driver: DatabaseDriver, ownsConnection: Bool) async throws {
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: .automatic
         )
         guard owner == .session else { return }
         guard ownsConnection else {

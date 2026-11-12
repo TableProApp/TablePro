@@ -250,8 +250,8 @@ fn entire_table_export_streams_every_row() {
     let text = std::fs::read_to_string(&path).expect("the export");
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 25_001);
-    assert_eq!(lines[0], "\"id\",\"name\"");
-    assert_eq!(lines[25_000], "\"24999\",\"user 24999\"");
+    assert_eq!(lines[0], "id,name");
+    assert_eq!(lines[25_000], "24999,user 24999");
     assert_eq!(
         fake.connection.observed_deadlines("stream_read"),
         [None],
@@ -298,7 +298,7 @@ fn entire_table_export_has_no_identity_columns() {
         "{sql}"
     );
     let text = std::fs::read_to_string(&path).expect("the export");
-    assert_eq!(text.lines().next(), Some("\"id\",\"name\""));
+    assert_eq!(text.lines().next(), Some("id,name"));
 }
 
 #[gtk4::test]
@@ -510,11 +510,7 @@ fn snapshot_export_of_10k_rows_keeps_main_loop_responsive() {
     assert!(ticks.get() > 0, "the main loop never ran while the export did");
     let text = std::fs::read_to_string(&path).expect("the export");
     assert_eq!(text.lines().count(), 10_001);
-    assert!(
-        text.starts_with("\"id\",\"name\",\"note\"\n\"0\",\"name 0\""),
-        "{}",
-        &text[..40]
-    );
+    assert!(text.starts_with("id,name,note\n0,name 0"), "{}", &text[..40]);
     assert_eq!(harness.ledger.in_flight(), 0);
     assert_eq!(harness.hold.live(), 0, "the export kept the process held");
 }

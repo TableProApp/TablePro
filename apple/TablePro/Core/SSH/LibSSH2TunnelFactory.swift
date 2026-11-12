@@ -20,13 +20,17 @@ internal struct SSHTunnelCredentials: Sendable {
     let keyboardInteractivePromptProvider: (any KeyboardInteractivePromptProvider)?
 }
 
+internal struct LocalTunnelListener: Sendable {
+    let port: Int
+    let descriptor: Int32
+}
+
 /// Creates fully-connected and authenticated SSH tunnels using libssh2.
 internal enum LibSSH2TunnelFactory {
     internal static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2TunnelFactory")
 
-    /// A single session opens more than one connection through the tunnel: the query
-    /// connection plus the metadata pool. A backlog that cannot hold them resets the
-    /// overflow before the accept loop reaches it.
+    // One session opens more than one connection through the tunnel: the query connection plus the
+    // metadata pool. A backlog that cannot hold them resets the overflow before the acceptor reaches it.
     private static let listenBacklogSize: Int32 = 16
 
     // MARK: - Global Init
@@ -40,12 +44,36 @@ internal enum LibSSH2TunnelFactory {
 
     // MARK: - Public
 
+    // Takes ownership of the listener: a failure closes it, success hands it to the tunnel.
     static func createTunnel(
         connectionId: UUID,
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
         destination: SSHForwardDestination,
-        localPort: Int,
+        listener: LocalTunnelListener,
+        deadline: ConnectionDeadline
+    ) async throws -> LibSSH2Tunnel {
+        do {
+            return try await makeTunnel(
+                connectionId: connectionId,
+                config: config,
+                credentials: credentials,
+                destination: destination,
+                listener: listener,
+                deadline: deadline
+            )
+        } catch {
+            Darwin.close(listener.descriptor)
+            throw error
+        }
+    }
+
+    private static func makeTunnel(
+        connectionId: UUID,
+        config: SSHConfiguration,
+        credentials: SSHTunnelCredentials,
+        destination: SSHForwardDestination,
+        listener: LocalTunnelListener,
         deadline: ConnectionDeadline
     ) async throws -> LibSSH2Tunnel {
         _ = initialized
@@ -74,21 +102,14 @@ internal enum LibSSH2TunnelFactory {
                     deadline: deadline,
                     attempt: attempt
                 )
-
-                let listenFD = try bindListenSocket(port: localPort)
-                do {
-                    try attempt.check(for: endpoint)
-                } catch {
-                    Darwin.close(listenFD)
-                    throw error
-                }
+                try attempt.check(for: endpoint)
 
                 let tunnel = LibSSH2Tunnel(
                     connectionId: connectionId,
-                    localPort: localPort,
+                    localPort: listener.port,
                     session: chain.session,
                     socketFD: chain.socketFD,
-                    listenFD: listenFD,
+                    listenFD: listener.descriptor,
                     connectionDeadline: deadline,
                     timeoutEndpoint: chain.timeoutEndpoint,
                     jumpChain: chain.jumpHops.map { hop in
@@ -103,7 +124,7 @@ internal enum LibSSH2TunnelFactory {
                 )
 
                 logger.info(
-                    "Tunnel created: \(config.host) -> 127.0.0.1:\(localPort) -> \(destination.logDescription)"
+                    "Tunnel created: \(config.host) -> 127.0.0.1:\(listener.port) -> \(destination.logDescription)"
                 )
 
                 attempt.finish()
@@ -1159,7 +1180,18 @@ internal enum LibSSH2TunnelFactory {
 
     // MARK: - Local Socket
 
-    private static func bindListenSocket(port: Int) throws -> Int32 {
+    // Bound before the SSH login, so a port collision never repeats the host key, passphrase or TOTP step.
+    static func bindLocalListener(candidates: [Int]) throws -> LocalTunnelListener {
+        for port in candidates {
+            if let descriptor = try bindListenSocket(port: port) {
+                return LocalTunnelListener(port: port, descriptor: descriptor)
+            }
+        }
+        throw SSHTunnelError.noAvailablePort
+    }
+
+    // nil when the port is taken; any other failure throws, since the next port would fail the same way.
+    private static func bindListenSocket(port: Int) throws -> Int32? {
         let listenFD = socket(AF_INET, SOCK_STREAM, 0)
         guard listenFD >= 0 else {
             throw SSHTunnelError.tunnelCreationFailed("Failed to create listening socket")
@@ -1180,12 +1212,18 @@ internal enum LibSSH2TunnelFactory {
         }
 
         guard bindResult == 0 else {
+            let bindError = errno
             Darwin.close(listenFD)
-            throw SSHTunnelError.tunnelCreationFailed("Port \(port) already in use")
+            if bindError == EADDRINUSE { return nil }
+            throw SSHTunnelError.tunnelCreationFailed(
+                "Could not bind local port \(port): \(String(cString: strerror(bindError)))"
+            )
         }
 
         guard listen(listenFD, Self.listenBacklogSize) == 0 else {
+            let listenError = errno
             Darwin.close(listenFD)
+            if listenError == EADDRINUSE { return nil }
             throw SSHTunnelError.tunnelCreationFailed("Failed to listen on port \(port)")
         }
         return listenFD

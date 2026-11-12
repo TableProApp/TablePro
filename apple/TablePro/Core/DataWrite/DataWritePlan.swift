@@ -66,6 +66,10 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
     // What the driver found the row by when it was read, for an update or a delete. A rewind writes to that row and
     // no other. Nil in a record saved before it was kept, and on an engine that keeps none.
     var rowLocator: String?
+    // Where the row's first write ran in the save. Nil in a record saved before it was kept, which runs by list order.
+    var order: Int?
+    // Only for an update written in two or more steps. An older build ignores it and rewinds the net images.
+    var steps: [RowWriteStep]?
 
     var isReversible: Bool { refusal == nil }
 
@@ -85,6 +89,82 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
         guard let image else { return [] }
         return Set(image.indices.filter { image[$0].isNull })
     }
+
+    // The row as each step left it, applying the steps to the pre-image in turn.
+    func stepImages() -> [RowWriteStepImage]? {
+        guard let steps, var row = preImage else { return nil }
+        var absent = absentColumnsBeforeWrite
+        return steps.map { step in
+            for (offset, column) in step.columns.enumerated() {
+                if row.indices.contains(column), step.after.indices.contains(offset) {
+                    row[column] = step.after[offset]
+                }
+                if step.afterAbsent.contains(column) {
+                    absent.insert(column)
+                } else {
+                    absent.remove(column)
+                }
+            }
+            return RowWriteStepImage(step: step, after: row, absentAfter: absent)
+        }
+    }
+}
+
+// `before` and `after` line up with `columns`, which are indices into the operation's columns.
+struct RowWriteStep: Codable, Sendable, Equatable {
+    let order: Int
+    let columns: [Int]
+    let before: [PluginCellValue]
+    let after: [PluginCellValue]
+    let beforeAbsent: Set<Int>
+    let afterAbsent: Set<Int>
+
+    init(
+        order: Int,
+        columns: [Int],
+        before: [PluginCellValue],
+        after: [PluginCellValue],
+        beforeAbsent: Set<Int> = [],
+        afterAbsent: Set<Int> = []
+    ) {
+        self.order = order
+        self.columns = columns
+        self.before = before
+        self.after = after
+        self.beforeAbsent = beforeAbsent
+        self.afterAbsent = afterAbsent
+    }
+
+    init(_ step: RowChange) {
+        self.init(
+            order: step.sequence,
+            columns: step.cellChanges.map(\.columnIndex),
+            before: step.cellChanges.map(\.oldValue),
+            after: step.cellChanges.map(\.newValue),
+            beforeAbsent: Set(step.cellChanges.filter(\.oldIsAbsent).map(\.columnIndex)),
+            afterAbsent: Set(step.cellChanges.filter(\.newIsAbsent).map(\.columnIndex))
+        )
+    }
+
+    var inverted: RowWriteStep {
+        RowWriteStep(
+            order: order, columns: columns, before: after, after: before,
+            beforeAbsent: afterAbsent, afterAbsent: beforeAbsent
+        )
+    }
+
+    func reordered(_ order: Int) -> RowWriteStep {
+        RowWriteStep(
+            order: order, columns: columns, before: before, after: after,
+            beforeAbsent: beforeAbsent, afterAbsent: afterAbsent
+        )
+    }
+}
+
+struct RowWriteStepImage {
+    let step: RowWriteStep
+    let after: [PluginCellValue]
+    let absentAfter: Set<Int>
 }
 
 // A driver's `PluginRowLookup`, bound for the executor.
@@ -93,12 +173,21 @@ struct RowLookup: Sendable {
     let rowCount: Int
     let pinsRows: Bool
     let check: ParameterizedStatement?
+    // By position in the query's columns: what the one row found must still hold, or another writer changed it.
+    let heldValues: [Int: PluginCellValue]
 
-    init(query: ParameterizedStatement, rowCount: Int, pinsRows: Bool, check: ParameterizedStatement? = nil) {
+    init(
+        query: ParameterizedStatement,
+        rowCount: Int,
+        pinsRows: Bool,
+        check: ParameterizedStatement? = nil,
+        heldValues: [Int: PluginCellValue] = [:]
+    ) {
         self.query = query
         self.rowCount = rowCount
         self.pinsRows = pinsRows
         self.check = check
+        self.heldValues = heldValues
     }
 
     init(_ lookup: PluginRowLookup) {
@@ -125,7 +214,7 @@ struct DataWriteStep: Sendable {
     let statement: ParameterizedStatement
     /// The most rows this statement may legitimately touch, or nil when the engine's count for it
     /// carries no meaning: DDL, a session setting, or a statement a plugin wrote itself for a table
-    /// with a primary key, where nothing tells the host which rows went into it.
+    /// with a primary key without saying how many rows it matches.
     let expectedRowCount: Int?
     let tableName: String?
     /// Whether this statement finds its rows by matching every column, because the table declares no
@@ -137,6 +226,8 @@ struct DataWriteStep: Sendable {
     let rowKind: RowWriteKind?
     // Finds the statement's rows right before it runs, for a driver whose engine has no key that names one row.
     let lookup: RowLookup?
+    // The driver vouched for `expectedRowCount` as the rows the statement matches, whatever engine it runs on.
+    let countsMatchedRows: Bool
 
     init(
         kind: Kind,
@@ -146,7 +237,8 @@ struct DataWriteStep: Sendable {
         matchesRowsWithoutKey: Bool = false,
         refusesSharedKey: Bool = false,
         rowKind: RowWriteKind? = nil,
-        lookup: RowLookup? = nil
+        lookup: RowLookup? = nil,
+        countsMatchedRows: Bool = false
     ) {
         self.kind = kind
         self.statement = statement
@@ -156,6 +248,7 @@ struct DataWriteStep: Sendable {
         self.refusesSharedKey = refusesSharedKey
         self.rowKind = rowKind
         self.lookup = lookup
+        self.countsMatchedRows = countsMatchedRows
     }
 }
 
@@ -174,7 +267,8 @@ extension DataWriteStep {
                     expectedRowCount: $0.rowCount,
                     tableName: tableName,
                     matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert,
-                    refusesSharedKey: $0.refusesSharedKey
+                    refusesSharedKey: $0.refusesSharedKey,
+                    rowKind: $0.kind
                 )
             }
         case .driverWritten(let statements):
@@ -182,11 +276,13 @@ extension DataWriteStep {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
-                    expectedRowCount: $0.keylessRowCount ?? $0.keyedRowCount,
+                    // The lowest: a driver's count never loosens the one row the host holds a statement to.
+                    expectedRowCount: [$0.matchedRowCount, $0.keylessRowCount, $0.keyedRowCount].compactMap { $0 }.min(),
                     tableName: tableName,
                     matchesRowsWithoutKey: $0.keylessRowCount != nil,
                     rowKind: $0.kind,
-                    lookup: $0.lookup
+                    lookup: $0.lookup,
+                    countsMatchedRows: $0.matchedRowCount != nil
                 )
             }
         }

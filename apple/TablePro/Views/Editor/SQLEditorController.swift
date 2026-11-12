@@ -21,6 +21,7 @@ struct SQLEditorInput {
     var databaseScope: DatabaseScope?
     var connectionId: UUID?
     var tabID: UUID?
+    var undoHistories: EditorUndoHistories?
     var sourceFileURL: URL?
     var claimFocusOnAppear = false
     /// Called once the editor has latched a focus claim, so the owner's one-shot intent is cleared.
@@ -87,6 +88,7 @@ final class SQLEditorController {
         view.setAccessibilityRole(.group)
         view.setAccessibilityLabel(String(localized: "SQL query editor"))
         view.setAccessibilityIdentifier("sql-editor-textview")
+        restoreTabHistory(of: input)
 
         observeEditorSettings()
         observeVimMode()
@@ -100,9 +102,17 @@ final class SQLEditorController {
     func apply(_ newInput: SQLEditorInput) {
         guard !isTornDown else { return }
         let old = input
+        let switchesTab = newInput.tabID != old.tabID
+        if switchesTab {
+            handOverPendingText(to: old.text)
+            saveTabHistory(of: old)
+        }
         input = newInput
         applyInput(newInput)
         pushEditor()
+        if switchesTab {
+            restoreTabHistory(of: newInput)
+        }
 
         if newInput.pendingStatementJump != old.pendingStatementJump, let jump = newInput.pendingStatementJump {
             coordinator.jumpToStatement(jump)
@@ -132,12 +142,43 @@ final class SQLEditorController {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        handOverPendingText(to: input.text)
+        saveTabHistory(of: input)
         profileTask?.cancel()
         profileTask = nil
         revisionSubscription = nil
         favoritesCancellables.removeAll()
         cancellables.removeAll()
         host?.dismantle()
+    }
+
+    // A large document's last keys are still on their way to the binding when the editor moves to another tab or
+    // goes away. Both run inside a SwiftUI update, where writing the tab would publish mid-update, so it lands next turn.
+    private func handOverPendingText(to binding: Binding<String>) {
+        guard let text = host?.takePendingTextWriteback() else { return }
+        Task { @MainActor in binding.wrappedValue = text }
+    }
+
+    // One editor serves every query tab, and handing it another tab's text clears its history and Vim marks.
+    private func saveTabHistory(of input: SQLEditorInput) {
+        guard let tabID = input.tabID, let histories = input.undoHistories else { return }
+        let undo = textViewController.takeUndoHistory()
+        let vimMarks = coordinator.vimDocumentMarks
+        guard undo != nil || vimMarks != nil else {
+            histories.store(nil, for: tabID)
+            return
+        }
+        let text = undo?.text ?? textViewController.textView.string
+        histories.store(EditorTabHistory(text: text, undo: undo, vimMarks: vimMarks), for: tabID)
+    }
+
+    // A tab whose text changed while it was away gets neither back.
+    private func restoreTabHistory(of input: SQLEditorInput) {
+        guard let tabID = input.tabID, let saved = input.undoHistories?.take(for: tabID) else { return }
+        let matches = saved.undo.map { textViewController.restoreUndoHistory($0) }
+            ?? (saved.text as NSString).isEqual(to: textViewController.textView.string)
+        guard matches, let vimMarks = saved.vimMarks else { return }
+        coordinator.restoreVimDocumentMarks(vimMarks)
     }
 
     private func applyInput(_ input: SQLEditorInput) {
@@ -153,6 +194,7 @@ final class SQLEditorController {
         coordinator.onAIAction = input.onAIAction
         coordinator.onSaveAsFavorite = input.onSaveAsFavorite
         coordinator.schemaProvider = input.schemaProvider
+        coordinator.databaseScope = input.databaseScope
         coordinator.databaseType = input.databaseType
         coordinator.tabID = input.tabID
         coordinator.connectionId = input.connectionId
@@ -215,7 +257,8 @@ final class SQLEditorController {
             state: state,
             foldProvider: foldProvider,
             coordinators: [coordinator],
-            completionDelegate: completionAdapter
+            completionDelegate: completionAdapter,
+            documentID: input.tabID.map { AnyHashable($0) }
         )
     }
 

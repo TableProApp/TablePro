@@ -21,14 +21,19 @@ internal struct GroupEditorSheet: View {
     /// past the cap. A sheet that dismissed on the attempt left the caller holding the id of a
     /// group that was never saved.
     private let onSave: (ConnectionGroupFields) throws -> Void
+    /// Set by an AppKit presenter. `dismiss` reaches only a SwiftUI presentation, so a sheet a view
+    /// controller presents closes through this instead. The Welcome window leaves it nil.
+    private let onDismiss: (() -> Void)?
 
     internal init(
         mode: GroupEditorMode,
         groups: [ConnectionGroup],
+        onDismiss: (() -> Void)? = nil,
         onSave: @escaping (ConnectionGroupFields) throws -> Void
     ) {
         self.mode = mode
         self.groups = groups
+        self.onDismiss = onDismiss
         self.onSave = onSave
         switch mode {
         case .create(let parentId):
@@ -83,7 +88,7 @@ internal struct GroupEditorSheet: View {
 
             HStack {
                 Button(String(localized: "Cancel")) {
-                    dismiss()
+                    close()
                 }
                 .keyboardShortcut(.cancelAction)
 
@@ -97,7 +102,7 @@ internal struct GroupEditorSheet: View {
         .frame(width: 300)
         .onChange(of: draft) { _ in errorMessage = nil }
         .onExitCommand {
-            dismiss()
+            close()
         }
     }
 
@@ -143,9 +148,17 @@ internal struct GroupEditorSheet: View {
         saved.name = trimmedName
         do {
             try onSave(saved)
-            dismiss()
+            close()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func close() {
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
         }
     }
 }

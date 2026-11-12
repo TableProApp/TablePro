@@ -290,9 +290,7 @@ extension PluginManager {
         }
         let config = DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: "")
         let driver = plugin.createDriver(config: config)
-        let result: (any PluginDatabaseDriver)? =
-            driver.buildBrowseQuery(table: "_probe", sortColumns: [], columns: [], limit: 1, offset: 0) != nil
-            ? driver : nil
+        let result: (any PluginDatabaseDriver)? = PluginDriverAdapter.buildsBrowseQueries(driver) ? driver : nil
         if hasFinishedInitialLoad {
             queryBuildingDriverCache[typeId] = .some(result)
         }

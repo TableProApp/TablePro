@@ -5,7 +5,41 @@
 
 import Foundation
 
+// What Vim remembers about one document, by offset into its text.
+struct VimDocumentMarks {
+    var marks: [Character: Int] = [:]
+    var lastVisualStart: Int?
+    var lastVisualEnd: Int?
+    var lastVisualLinewise = false
+    var lastJumpOrigin: Int?
+    var lastInsertOffset: Int?
+
+    var isEmpty: Bool {
+        marks.isEmpty && lastVisualStart == nil && lastVisualEnd == nil && lastJumpOrigin == nil && lastInsertOffset == nil
+    }
+}
+
 extension VimEngine {
+    var documentMarks: VimDocumentMarks {
+        VimDocumentMarks(
+            marks: marks,
+            lastVisualStart: lastVisualStart,
+            lastVisualEnd: lastVisualEnd,
+            lastVisualLinewise: lastVisualLinewise,
+            lastJumpOrigin: lastJumpOrigin,
+            lastInsertOffset: lastInsertOffset
+        )
+    }
+
+    func restoreDocumentMarks(_ saved: VimDocumentMarks) {
+        marks = saved.marks
+        lastVisualStart = saved.lastVisualStart
+        lastVisualEnd = saved.lastVisualEnd
+        lastVisualLinewise = saved.lastVisualLinewise
+        lastJumpOrigin = saved.lastJumpOrigin
+        lastInsertOffset = saved.lastInsertOffset
+    }
+
     func writeToActiveRegister(text: String, linewise: Bool, asDelete: Bool) {
         if selectedRegister == "_" {
             selectedRegister = nil
@@ -86,7 +120,7 @@ extension VimEngine {
         let sel = buffer.selectedRange()
         guard sel.length > 0 else { return }
         lastVisualStart = sel.location
-        lastVisualEnd = sel.location + sel.length - 1
+        lastVisualEnd = characterStart(at: NSMaxRange(sel) - 1, in: buffer)
         lastVisualLinewise = linewise
     }
 
@@ -104,8 +138,8 @@ extension VimEngine {
             buffer.setSelectedRange(NSRange(location: lineStart, length: lineEnd - lineStart))
             setMode(.visual(linewise: true))
         } else {
-            let length = clampedEnd - clampedStart + (clampedEnd < buffer.length ? 1 : 0)
-            buffer.setSelectedRange(NSRange(location: clampedStart, length: length))
+            let selectionEnd = clampedEnd < buffer.length ? characterEnd(at: clampedEnd, in: buffer) : clampedEnd
+            buffer.setSelectedRange(NSRange(location: clampedStart, length: selectionEnd - clampedStart))
             setMode(.visual(linewise: false))
         }
     }

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using TablePro.DataGrid.Model;
 using Windows.ApplicationModel.DataTransfer;
@@ -71,6 +72,37 @@ public sealed class InteractionTests
         Assert.Equal(new CellRange(6, 0, 9, 199), grid.SelectionRange);
     });
 
+    // The host builds its menu on ContextRequested, so the selection must be the cells under the pointer by then.
+    [Fact]
+    public Task ARightClickOutsideTheSelectionSelectsTheCellAndOneInsideKeepsIt() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData(), frozen: 1);
+        var rh = grid.RowHeight;
+        grid.SelectCell(2, 2, extend: false);
+        grid.SelectCell(4, 4, extend: true);
+        var range = new CellRange(2, 2, 4, 4);
+
+        grid.HandleContextRequest(frozen: false, new Point(grid.Columns.PaneX(3) + 5, (3 * rh) + 5));
+        Assert.Equal(range, grid.SelectionRange);
+        Assert.Equal((4, 4), (grid.FocusedRow, grid.FocusedColumn));
+        grid.HandleContextRequest(frozen: false, null);
+        Assert.Equal(range, grid.SelectionRange);
+
+        grid.HandleContextRequest(frozen: false, new Point(grid.Columns.PaneX(6) + 5, (8 * rh) + 5));
+        Assert.Equal(new CellRange(8, 6, 8, 6), grid.SelectionRange);
+        Assert.Equal((8, 6), (grid.FocusedRow, grid.FocusedColumn));
+        grid.HandleContextRequest(frozen: true, new Point(grid.Columns.PaneX(0) + 5, (1 * rh) + 5));
+        Assert.Equal(new CellRange(1, 0, 1, 0), grid.SelectionRange);
+
+        grid.HandleContextRequest(frozen: true, new Point(4, (5 * rh) + 5));
+        Assert.Equal(SelectionKind.Rows, grid.SelectionKind);
+        Assert.Equal(new CellRange(5, 0, 5, 199), grid.SelectionRange);
+        grid.HandleContextRequest(frozen: false, new Point(grid.Columns.PaneX(6) + 5, (5 * rh) + 5));
+        grid.HandleContextRequest(frozen: true, new Point(4, (5 * rh) + 5));
+        Assert.Equal(SelectionKind.Rows, grid.SelectionKind);
+        Assert.Equal(new CellRange(5, 0, 5, 199), grid.SelectionRange);
+    });
+
     [Fact]
     public Task CopyPutsExcelStyleTsvWithWholeValuesOnTheClipboard() => WinUiHost.RunAsync(async () =>
     {
@@ -93,6 +125,40 @@ public sealed class InteractionTests
         var copied = await ClipboardTextAsync();
         Assert.Equal(2_001, copied.Split("\r\n").Length);
         Assert.Equal(Expected(new CellRange(100, 0, 2_099, 11)), copied);
+    });
+
+    [Fact]
+    public Task ACopyWhileAnotherProgramHoldsTheClipboardFailsAndTheNextOneCopies() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        grid.SelectCell(3, 2, extend: false);
+        using (var held = HeldClipboard.Hold())
+        {
+            Assert.True(held.IsHeld);
+            Assert.False(await grid.CopySelectionAsync());
+        }
+
+        Assert.True(await grid.CopySelectionAsync());
+        Assert.Equal(Expected(new CellRange(3, 2, 3, 2)), await ClipboardTextAsync());
+    });
+
+    [Fact]
+    public Task ACopyOfDataTheGridNoLongerShowsIsDropped() => WinUiHost.RunAsync(async () =>
+    {
+        var old = new SyntheticData(columns: 4);
+        var grid = await WinUiHost.ShowAsync(old);
+        var before = new DataPackage();
+        before.SetText("before the copy");
+        Clipboard.SetContent(before);
+        grid.SelectAll();
+
+        // As a refresh or a closing tab gives the grid new data and then lets the old set go.
+        var copy = grid.CopySelectionAsync();
+        grid.SetData(new SyntheticData(rows: 10, columns: 2));
+        old.Release();
+
+        Assert.False(await copy);
+        Assert.Equal("before the copy", await ClipboardTextAsync());
     });
 
     [Fact]
@@ -184,4 +250,55 @@ public sealed class InteractionTests
         var content = Clipboard.GetContent();
         return content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : "";
     }
+}
+
+// Another program with the clipboard open, as a clipboard manager or a remote desktop session has it for a moment.
+internal sealed partial class HeldClipboard : IDisposable
+{
+    private readonly ManualResetEventSlim _release = new();
+    private readonly Thread _thread;
+
+    private HeldClipboard(ManualResetEventSlim opened)
+    {
+        _thread = new Thread(() =>
+        {
+            IsHeld = OpenClipboard(IntPtr.Zero);
+            opened.Set();
+            _release.Wait();
+            if (IsHeld)
+            {
+                _ = CloseClipboard();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Clipboard holder",
+        };
+        _thread.Start();
+    }
+
+    public bool IsHeld { get; private set; }
+
+    public static HeldClipboard Hold()
+    {
+        using var opened = new ManualResetEventSlim();
+        var held = new HeldClipboard(opened);
+        opened.Wait();
+        return held;
+    }
+
+    public void Dispose()
+    {
+        _release.Set();
+        _thread.Join();
+        _release.Dispose();
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool OpenClipboard(IntPtr owner);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseClipboard();
 }

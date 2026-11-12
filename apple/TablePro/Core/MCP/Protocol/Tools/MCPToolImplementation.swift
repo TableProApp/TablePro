@@ -50,6 +50,16 @@ public extension MCPToolImplementation {
         } catch let error as MCPToolExecutionError {
             return error.asToolResult
         } catch let error as DatabaseAccessError {
+            // A cancelled request keeps its documented -33002, and says the write it sent may have been applied.
+            if case .stoppedWhileRunning = error, Task.isCancelled {
+                let cancelled = MCPProtocolError.requestCancelled()
+                throw MCPProtocolError(
+                    code: cancelled.code,
+                    message: cancelled.message,
+                    httpStatus: cancelled.httpStatus,
+                    data: .object(["outcome": .string("unknown")])
+                )
+            }
             return MCPToolExecutionError.from(error).asToolResult
         } catch is CancellationError {
             throw MCPProtocolError.requestCancelled()

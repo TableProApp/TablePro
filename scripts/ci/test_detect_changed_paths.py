@@ -50,14 +50,12 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.git("commit", "-q", "-m", "change")
         return self.git("rev-parse", "HEAD")
 
-    def detect(self, suite, base=None, head=None, ref=None):
+    def detect(self, suite, base=None, head=None):
         args = ["bash", "scripts/ci/detect-changed-paths.sh"]
         if base is not None:
             args += ["--base", base]
         if head is not None:
             args += ["--head", head]
-        if ref is not None:
-            args += ["--ref", ref]
         result = subprocess.run(args + [suite], cwd=self.repo, env=self.env, capture_output=True, text=True)
         return result.returncode, result.stdout.strip()
 
@@ -420,6 +418,14 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.assertEqual(self.verdict_after("ios", "core/crates/core/tests/fixtures/other.json"), "false")
         self.assertEqual(self.verdict_after("macos", shared), "false")
 
+    def test_the_mac_app_runs_on_the_client_catalog_it_bundles(self):
+        catalog = "core/crates/mcp/clients.json"
+        for suite in ["macos", "release", "shipped", "linux", "core"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, catalog), "true")
+        self.assertEqual(self.verdict_after("macos", "core/crates/mcp/src/lib.rs"), "false")
+        self.assertEqual(self.verdict_after("plugins", catalog), "false")
+
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
 
@@ -499,28 +505,20 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("shipped", path), "false")
 
-    def test_a_release_branch_runs_every_suite(self):
+    def test_a_release_pull_request_runs_no_suite(self):
         # The ios suite reads its shared paths out of the iOS project spec.
         spec = self.repo / "apple/TableProMobile/project.yml"
         spec.parent.mkdir(parents=True)
         spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
-        base = self.commit([])
-        self.git("update-ref", "refs/remotes/origin/main", base)
+        base = self.commit(["apple/changelog.d/3500.fixed.md"])
+        self.git("rm", "-q", "apple/changelog.d/3500.fixed.md")
         self.commit(["apple/CHANGELOG.md"])
         for suite in [
-            "macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs", "linux-deps",
-            "packages", "core", "windows",
+            "macos", "plugins", "ios", "oracle", "hana", "release", "shipped", "swiftlint", "linux", "linux-docs",
+            "linux-deps", "packages", "core", "windows",
         ]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.detect(suite, base), (0, "false"))
-                self.assertEqual(self.detect(suite, base, ref="refs/heads/release/0.83"), (0, "true"))
-                self.assertEqual(self.detect(suite, ZERO, ref="refs/heads/release/0.83"), (0, "true"))
-
-    def test_main_and_pull_request_refs_keep_the_path_filter(self):
-        self.commit(["apple/CHANGELOG.md"])
-        for ref in ["refs/heads/main", "refs/pull/12/merge", "refs/heads/backport/12-0.83"]:
-            with self.subTest(ref=ref):
-                self.assertEqual(self.detect("macos", self.seed, ref=ref), (0, "false"))
 
     def test_head_ends_the_diff(self):
         change = self.commit(["apple/TablePro/App.swift"])

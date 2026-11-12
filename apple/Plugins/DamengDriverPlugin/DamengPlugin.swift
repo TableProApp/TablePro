@@ -160,7 +160,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var capabilities: PluginCapabilities {
         [
             .parameterizedQueries, .transactions, .alterTableDDL, .multiSchema, .schemaCompare, .dataCompare,
-            .rowWrites, .cellExpressions,
+            .rowWrites, .cellExpressions, .columnDefaultMarks,
         ]
     }
 
@@ -323,10 +323,9 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let task = Task {
                 do {
                     let result = try await self.execute(query: query, context: context)
-                    continuation.yield(.header(PluginStreamHeader(
-                        columns: result.columns,
-                        columnTypeNames: result.columnTypeNames
-                    )))
+                    var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
+                    if result.isTruncated { header.rowLimit = result.rows.count }
+                    continuation.yield(.header(header))
                     if !result.rows.isEmpty {
                         continuation.yield(.rows(result.rows))
                     }

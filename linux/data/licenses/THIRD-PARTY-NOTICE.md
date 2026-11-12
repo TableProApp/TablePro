@@ -4,6 +4,8 @@ TablePro is licensed under the GNU Affero General Public License, version 3 or l
 
 `build-aux/update-third-party-licenses.sh` writes this file from `Cargo.lock`. Do not edit it by hand.
 
+The MCP client marks under `data/resources/icons/scalable/actions` name each client and stay their owners' trademarks. Claude, Claude Code, Cline, Cursor, Google Gemini, JetBrains, LM Studio, OpenCode, Warp, Windsurf and Zed are Simple Icons 16.37.0 files, under CC0-1.0. GitHub Copilot is the Simple Icons copy of Primer Octicons' copilot-24, under MIT, Copyright (c) 2026 GitHub Inc. goose is `documentation/static/img/goose.svg` from github.com/aaif-goose/goose, under Apache-2.0, Copyright 2024 Block, Inc. OpenAI is `client/assets/openai-logomark.svg` from github.com/openai/openai-realtime-console, under MIT, Copyright (c) 2024 OpenAI. Kiro is the icon kiro.dev publishes, and Visual Studio Code the icon in its brand kit at code.visualstudio.com/brand. Each file is used as published. The MIT and Apache 2.0 texts are under License texts.
+
 ## Overview
 
 - MIT License (MIT)
@@ -1287,7 +1289,7 @@ Used by:
 
 Used by:
 
-- rmcp 3.6.0
+- rmcp 3.9.0
 
 ~~~~text
                                  Apache License
@@ -8112,7 +8114,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- rmcp 3.6.0
+- rmcp 3.9.0
 
 ~~~~text
 Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
@@ -8210,11 +8212,18 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
+- anstyle 1.0.14
+- clap 4.6.7
+- clap_builder 4.6.7
+- clap_complete 4.6.11
+- clap_derive 4.6.7
+- clap_lex 1.1.1
 - env_filter 2.0.0
 - env_logger 0.11.11
 - toml_datetime 1.1.1+spec-1.1.0
 - toml_edit 0.25.15+spec-1.1.0
 - toml_parser 1.1.3+spec-1.1.0
+- toml_writer 1.1.2+spec-1.1.0
 
 ~~~~text
 Copyright (c) Individual contributors
@@ -10189,7 +10198,7 @@ Used by:
 - quote 1.0.47
 - ref-cast-impl 1.0.27
 - ref-cast 1.0.27
-- rustix 1.1.4
+- rustix 1.1.6
 - rustversion 1.0.23
 - semver 1.0.28
 - serde 1.0.229

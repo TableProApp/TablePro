@@ -11,7 +11,7 @@ The macOS app, its registry plugins, the static libraries and the manual iOS flo
 
 ## Storage check
 
-Sparkle never downgrades, so a release never writes storage the previous stable cannot read. Before beta.1, before every stable, and on a pick that touches the `.claude/rules/data-sync-storage.md` paths, list the commits on those paths and read each for a changed storage or sync format:
+Sparkle never downgrades, so a release never writes storage the previous stable cannot read, apart from the one exception in `.claude/rules/data-sync-storage.md`. Before beta.1, before every stable, and on a pick that touches the `.claude/rules/data-sync-storage.md` paths, list the commits on those paths and read each for a changed storage or sync format:
 
 ```bash
 awk -F'"' '/^  - "/ {print ":(glob)" $2}' .claude/rules/data-sync-storage.md \
@@ -31,6 +31,9 @@ Such a change stops the release until a fix lands on `main`.
 - `release/X.Y` is cut from `main` at beta.1 and closes when X.(Y+1).0 ships. A later security or data-loss fix for its users ships as a critical patch on the current line.
 - Every fix lands on `main` first. A pick is one fix per PR, never a `feat` or a PluginKit bump. A patch takes only a regression from the previous stable, a crash, a plugin that fails to load, a security fix or data loss.
 - `release/0.82` predates the move into `apple/` and follows the `RELEASING.md` on that branch: paths at the root, no `ci.yml`, and a `verify` that waits up to 240 min for green macOS Tests, iOS and Package Tests and Release Build push runs covering the tag. A pick from `main` relies on rename detection.
+- A line push runs the suites whose paths changed since the line's last green CI push run; the first push of a line runs them all. A release PR's merge changes only the changelog, so it runs Lint only.
+- `version.py check` accepts a test job the tag's run left out when the job passed at an ancestor on the line and its suite has not changed since.
+- `release/0.86` and older lines run every suite on every push, so a tag had its own test runs (#3584). That re-ran 77 to 114 min of tests after each release PR, so later lines filter like `main`.
 
 ```bash
 git fetch origin && git switch -c backport/<PR>-X.Y origin/release/X.Y
@@ -110,7 +113,7 @@ Once the release PR of a stable or patch merges and its tag's App and Plugins jo
 git fetch origin && git switch -c forward/vX.Y.Z origin/main
 git cherry-pick -x <release commit> && git push -u origin HEAD
 gh pr create --base main --title "chore(release): vX.Y.Z" --body "Forward-port of #<PR>."
-gh pr merge --auto
+gh pr merge --auto --squash
 ```
 
 - A newer open line gets the same PR from `origin/release/<line>`, with `--base release/<line>`.

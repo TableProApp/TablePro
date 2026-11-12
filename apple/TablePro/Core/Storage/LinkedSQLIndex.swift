@@ -6,7 +6,6 @@
 import Foundation
 import os
 import SQLite3
-import TableProUtilities
 
 internal actor LinkedSQLIndex {
     static let shared = LinkedSQLIndex()
@@ -62,10 +61,14 @@ internal actor LinkedSQLIndex {
         let dir = databaseURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        let dbPath = databaseURL.path(percentEncoded: false)
-        if sqlite3_open(dbPath, &dbHandle.pointer) != SQLITE_OK {
+        guard case .opened(let pointer, let setAside) = LocalSQLiteStoreOpener.open(at: databaseURL) else {
             Self.logger.error("Error opening linked SQL index database")
             return
+        }
+        dbHandle.pointer = pointer
+        // Only a cache of the linked files, which the next folder scan rebuilds, so no damaged copy is kept.
+        if setAside != nil {
+            LocalSQLiteStoreOpener.removeSetAsideCopies(of: databaseURL)
         }
 
         execute("PRAGMA journal_mode=WAL;")
@@ -128,55 +131,120 @@ internal actor LinkedSQLIndex {
 
     // MARK: - Mutations
 
-    func replaceAll(folderId: UUID, files: [IndexedFile], folderURL: URL) {
-        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return }
+    // Writes only what differs from the stored rows, in one transaction, and returns whether any row changed.
+    @discardableResult
+    func synchronize(folderId: UUID, files: [IndexedFile]) -> Bool {
+        let stored = storedFiles(folderId: folderId)
+        let listed = Dictionary(files.map { ($0.relativePath, $0) }, uniquingKeysWith: { _, last in last })
+        let removed = stored.keys.filter { listed[$0] == nil }.sorted()
+        let changed = listed.values.filter { stored[$0.relativePath] != $0 }.sorted { $0.relativePath < $1.relativePath }
+        guard !removed.isEmpty || !changed.isEmpty else { return false }
 
-        let deleteSQL = "DELETE FROM linked_sql_files WHERE folder_id = ?;"
-        var deleteStatement: OpaquePointer?
-        let folderIdString = folderId.uuidString
-        if sqlite3_prepare_v2(db, deleteSQL, -1, &deleteStatement, nil) == SQLITE_OK {
-            sqlite3_bind_text(deleteStatement, 1, folderIdString, -1, Self.transient)
-            sqlite3_step(deleteStatement)
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
+            Self.logger.error("Could not begin a linked SQL index write: \(String(cString: sqlite3_errmsg(self.db)))")
+            return false
         }
-        sqlite3_finalize(deleteStatement)
+        guard deleteRows(folderId: folderId, relativePaths: removed), upsertRows(folderId: folderId, files: changed) else {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return false
+        }
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
+            Self.logger.error("Could not commit a linked SQL index write: \(String(cString: sqlite3_errmsg(self.db)))")
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return false
+        }
+        return true
+    }
 
-        let insertSQL = """
+    private func deleteRows(folderId: UUID, relativePaths: [String]) -> Bool {
+        guard !relativePaths.isEmpty else { return true }
+        let sql = "DELETE FROM linked_sql_files WHERE folder_id = ? AND relative_path = ?;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return false }
+        for relativePath in relativePaths {
+            sqlite3_reset(statement)
+            sqlite3_bind_text(statement, 1, folderId.uuidString, -1, Self.transient)
+            sqlite3_bind_text(statement, 2, relativePath, -1, Self.transient)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                Self.logger.error("Failed to delete a linked file: \(String(cString: sqlite3_errmsg(self.db)))")
+                return false
+            }
+        }
+        return true
+    }
+
+    private func upsertRows(folderId: UUID, files: [IndexedFile]) -> Bool {
+        guard !files.isEmpty else { return true }
+        let sql = """
             INSERT INTO linked_sql_files
             (folder_id, relative_path, name, keyword, description, mtime, file_size, encoding)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(folder_id, relative_path) DO UPDATE SET
+                name = excluded.name,
+                keyword = excluded.keyword,
+                description = excluded.description,
+                mtime = excluded.mtime,
+                file_size = excluded.file_size,
+                encoding = excluded.encoding;
         """
-        var insertStatement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, insertSQL, -1, &insertStatement, nil) == SQLITE_OK else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return
-        }
-        defer { sqlite3_finalize(insertStatement) }
-
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return false }
         for file in files {
-            sqlite3_reset(insertStatement)
-            sqlite3_bind_text(insertStatement, 1, folderIdString, -1, Self.transient)
-            sqlite3_bind_text(insertStatement, 2, file.relativePath, -1, Self.transient)
-            sqlite3_bind_text(insertStatement, 3, file.name, -1, Self.transient)
-            if let keyword = file.keyword {
-                sqlite3_bind_text(insertStatement, 4, keyword, -1, Self.transient)
-            } else {
-                sqlite3_bind_null(insertStatement, 4)
-            }
-            if let description = file.description {
-                sqlite3_bind_text(insertStatement, 5, description, -1, Self.transient)
-            } else {
-                sqlite3_bind_null(insertStatement, 5)
-            }
-            sqlite3_bind_double(insertStatement, 6, file.mtime.timeIntervalSince1970)
-            sqlite3_bind_int64(insertStatement, 7, file.fileSize)
-            sqlite3_bind_text(insertStatement, 8, file.encoding.ianaName, -1, Self.transient)
-
-            if sqlite3_step(insertStatement) != SQLITE_DONE {
-                Self.logger.error("Failed to insert linked file: \(String(cString: sqlite3_errmsg(self.db)))")
+            sqlite3_reset(statement)
+            sqlite3_bind_text(statement, 1, folderId.uuidString, -1, Self.transient)
+            sqlite3_bind_text(statement, 2, file.relativePath, -1, Self.transient)
+            sqlite3_bind_text(statement, 3, file.name, -1, Self.transient)
+            bindOptionalText(statement, 4, file.keyword)
+            bindOptionalText(statement, 5, file.description)
+            sqlite3_bind_double(statement, 6, file.mtime)
+            sqlite3_bind_int64(statement, 7, file.fileSize)
+            sqlite3_bind_text(statement, 8, file.encodingName, -1, Self.transient)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                Self.logger.error("Failed to write a linked file: \(String(cString: sqlite3_errmsg(self.db)))")
+                return false
             }
         }
+        return true
+    }
 
-        sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+    private func bindOptionalText(_ statement: OpaquePointer?, _ index: Int32, _ value: String?) {
+        if let value {
+            sqlite3_bind_text(statement, index, value, -1, Self.transient)
+        } else {
+            sqlite3_bind_null(statement, index)
+        }
+    }
+
+    func storedFiles(folderId: UUID) -> [String: IndexedFile] {
+        let sql = """
+            SELECT relative_path, name, keyword, description, mtime, file_size, encoding
+            FROM linked_sql_files
+            WHERE folder_id = ?;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [:] }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_text(statement, 1, folderId.uuidString, -1, Self.transient)
+
+        var files: [String: IndexedFile] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let relativePath = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                  let name = sqlite3_column_text(statement, 1).map({ String(cString: $0) }) else {
+                continue
+            }
+            files[relativePath] = IndexedFile(
+                relativePath: relativePath,
+                name: name,
+                keyword: sqlite3_column_text(statement, 2).map { String(cString: $0) },
+                description: sqlite3_column_text(statement, 3).map { String(cString: $0) },
+                mtime: sqlite3_column_double(statement, 4),
+                fileSize: sqlite3_column_int64(statement, 5),
+                encodingName: sqlite3_column_text(statement, 6).map { String(cString: $0) } ?? "utf-8"
+            )
+        }
+        return files
     }
 
     func allFolderIds() -> Set<UUID> {
@@ -195,14 +263,16 @@ internal actor LinkedSQLIndex {
         return ids
     }
 
-    func removeFolder(folderId: UUID) {
+    // Returns whether the folder had any rows.
+    @discardableResult
+    func removeFolder(folderId: UUID) -> Bool {
         let sql = "DELETE FROM linked_sql_files WHERE folder_id = ?;"
         var statement: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_text(statement, 1, folderId.uuidString, -1, Self.transient)
-            sqlite3_step(statement)
-        }
-        sqlite3_finalize(statement)
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return false }
+        sqlite3_bind_text(statement, 1, folderId.uuidString, -1, Self.transient)
+        guard sqlite3_step(statement) == SQLITE_DONE else { return false }
+        return sqlite3_changes(db) > 0
     }
 
     // MARK: - Queries
@@ -282,13 +352,14 @@ internal actor LinkedSQLIndex {
 }
 
 internal extension LinkedSQLIndex {
-    struct IndexedFile {
+    struct IndexedFile: Equatable, Sendable {
         let relativePath: String
         let name: String
         let keyword: String?
         let description: String?
-        let mtime: Date
+        // Seconds since 1970 as the column stores them, so a row read back compares exactly.
+        let mtime: TimeInterval
         let fileSize: Int64
-        let encoding: String.Encoding
+        let encodingName: String
     }
 }

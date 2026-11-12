@@ -208,12 +208,27 @@ internal struct CompareRowDiffPane: View {
         )
     }
 
+    // Named by side, because the two tables usually share a name and only one database cut its stream.
+    private func rowCutNotices(for summary: DataDiffSummary, plan: DataComparePlan) -> [String] {
+        let sides: [(endpoint: DatabaseEndpoint?, cut: Int?)] = [
+            (session.source, summary.sourceRowCut), (session.target, summary.targetRowCut)
+        ]
+        return sides.compactMap { side in
+            guard let cut = side.cut else { return nil }
+            let table = ([side.endpoint?.qualifiedDescription].compactMap { $0 } + [plan.table]).joined(separator: " / ")
+            return StreamRowCutWarning.text(table: table, limit: cut)
+        }
+    }
+
     @ViewBuilder
     private func notices(for plan: DataComparePlan) -> some View {
         if let failure = plan.comparisonFailure {
             notice(failure, systemImage: "exclamationmark.octagon.fill")
         }
         if let summary = plan.summary {
+            ForEach(rowCutNotices(for: summary, plan: plan), id: \.self) { text in
+                notice(text, systemImage: "exclamationmark.triangle.fill")
+            }
             if summary.stoppedAtRowLimit {
                 notice(rowLimitNotice(for: summary), systemImage: "info.circle.fill")
             }

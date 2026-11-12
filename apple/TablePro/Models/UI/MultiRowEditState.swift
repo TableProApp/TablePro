@@ -7,8 +7,19 @@ import Combine
 import Foundation
 import TableProPluginKit
 
+// A column, whatever row is selected.
+struct FieldEditID: Hashable {
+    let columnIndex: Int
+    let columnName: String
+}
+
 struct FieldEditState: Identifiable {
-    var id = UUID()
+    // Per column, so a new selection updates each field of the inspector's list in place.
+    var id: FieldEditID { FieldEditID(columnIndex: columnIndex, columnName: columnName) }
+
+    // Reissued with each selection and each value read, so an editor seeded from the old value starts over.
+    var editorID = UUID()
+
     let columnIndex: Int
     let columnName: String
     let columnTypeEnum: ColumnType
@@ -70,7 +81,7 @@ struct FieldEditState: Identifiable {
 
     var effectiveValue: String? {
         if isPendingDefault {
-            return "__DEFAULT__"
+            return PluginCellValue.columnDefaultKeyword
         } else if isPendingNull {
             return nil
         } else {
@@ -127,7 +138,7 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var expressionCells: [Set<Int>] = []
     @Published private(set) var columns: [String] = []
     @Published private(set) var columnTypes: [ColumnType] = []
-    // By column, not field id: every selection change reissues the ids. Cleared when the columns change.
+    // By column, not editor id: every selection change reissues those. Cleared when the columns change.
     @Published private(set) var expandedColumn: Int?
     private var nonNullableColumns: Set<String> = []
 
@@ -214,7 +225,7 @@ final class MultiRowEditState: ObservableObject {
                 originalValue = values.first.flatMap { $0 }
             }
 
-            var preservedId: UUID?
+            var preservedEditorID: UUID?
             var pendingValue: String?
             var isPendingNull = false
             var isPendingDefault = false
@@ -226,7 +237,7 @@ final class MultiRowEditState: ObservableObject {
                 let oldField = fields[colIndex]
                 if oldField.originalValue == originalValue && oldField.hasMultipleValues == hasMultipleValues
                     && oldField.isAbsent == isAbsent && oldField.isUnloaded == isUnloaded {
-                    preservedId = oldField.id
+                    preservedEditorID = oldField.editorID
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
                     isPendingDefault = oldField.isPendingDefault
@@ -244,6 +255,8 @@ final class MultiRowEditState: ObservableObject {
                     hasCommittedEdit = true
                 } else if originalValue == nil {
                     isPendingNull = true
+                } else if expression.first == true, originalValue == PluginCellValue.columnDefaultKeyword {
+                    isPendingDefault = true
                 } else {
                     pendingValue = originalValue
                     isPendingExpression = expression.first == true
@@ -279,8 +292,8 @@ final class MultiRowEditState: ObservableObject {
                 isPendingRemoval: isPendingRemoval
             )
             newField.isUnloaded = isUnloaded
-            if let preservedId {
-                newField.id = preservedId
+            if let preservedEditorID {
+                newField.editorID = preservedEditorID
             }
             // Same display format as the grid, or a column set to JSON or PHP-serialized opened a plain text field here.
             newField.resolvedEditor = FieldEditorResolver.resolve(
@@ -462,11 +475,10 @@ final class MultiRowEditState: ObservableObject {
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
         if isJson, let value, !value.isEmpty {
-            let normalized = JsonReindenter.normalize(value)
-            if let original, JsonReindenter.normalize(original) == normalized {
+            if let original, JsonReindenter.normalize(original) == JsonReindenter.normalize(value) {
                 return nil
             }
-            return normalized
+            return JsonReindenter.staged(value, keepingLayoutOf: original)
         }
         if value == original || (original == nil && value == "") {
             return nil
@@ -508,7 +520,7 @@ final class MultiRowEditState: ObservableObject {
         guard index < fields.count else { return }
         resetPending(at: index)
         fields[index].isPendingDefault = true
-        onFieldChanged?(index, .text("__DEFAULT__"), .discrete)
+        onFieldExpressionChanged?(index, PluginCellValue.columnDefaultKeyword, .discrete)
     }
 
     func setFieldToExpression(at index: Int, expression: CellExpression) {
@@ -619,7 +631,7 @@ final class MultiRowEditState: ObservableObject {
                 columnName: field.columnName,
                 newValue: field.effectiveValue,
                 removesField: field.isPendingRemoval,
-                isExpression: field.isPendingExpression
+                isExpression: field.isPendingExpression || field.isPendingDefault
             )
         }
     }

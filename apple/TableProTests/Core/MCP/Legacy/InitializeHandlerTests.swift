@@ -105,7 +105,7 @@ struct LegacyInitializeHandlerTests {
 
     @Test("The legacy initialize result keeps its legacy wire shape")
     func theLegacyResultKeepsItsLegacyShape() {
-        let result = InitializeHandler.result(protocolVersion: .v20251125)
+        let result = InitializeHandler.result(protocolVersion: .v20251125, scopes: MCPScope.readOnlySet)
 
         let encoded = result.asJsonValue(era: .legacy, serverInfo: MCPMethodRegistry.serverInfo)
 
@@ -120,7 +120,7 @@ struct LegacyInitializeHandlerTests {
 
     @Test("The legacy capabilities object carries no extensions field")
     func legacyCapabilitiesCarryNoExtensions() {
-        let encoded = InitializeHandler.result(protocolVersion: .v20251125)
+        let encoded = InitializeHandler.result(protocolVersion: .v20251125, scopes: MCPScope.readOnlySet)
             .asJsonValue(era: .legacy, serverInfo: MCPMethodRegistry.serverInfo)
 
         #expect(encoded["capabilities"]?["extensions"] == nil)
@@ -155,14 +155,49 @@ struct LegacyInitializeHandlerTests {
         #expect(modern["resources"]?["subscribe"]?.boolValue == true)
     }
 
+    @Test("A token without resources:read is not offered resources, prompts or completions")
+    func toolsOnlyTokenIsOfferedToolsOnly() {
+        let narrow = InitializeHandler.capabilities(for: [.toolsRead]).asJsonValue(era: .legacy)
+        let full = InitializeHandler.capabilities(for: MCPScope.readOnlySet).asJsonValue(era: .legacy)
+
+        #expect(narrow["tools"] != nil)
+        #expect(narrow["resources"] == nil)
+        #expect(narrow["prompts"] == nil)
+        #expect(narrow["completions"] == nil)
+        #expect(full == MCPMethodRegistry.capabilities().asJsonValue(era: .legacy))
+    }
+
+    @Test("The initialize a client receives follows the scopes of the token that sent it")
+    func initializeFollowsThePrincipalScopes() async throws {
+        let adapter = MCPLegacyTestSupport.makeAdapter()
+        let params = MCPLegacyTestSupport.initializeParams()
+
+        let (narrowResult, _) = try await adapter.handleInitialize(
+            params: params,
+            principal: MCPLegacyTestSupport.principal(scopes: [.toolsRead])
+        )
+        let (fullResult, _) = try await adapter.handleInitialize(
+            params: params,
+            principal: MCPLegacyTestSupport.principal(scopes: MCPScope.readOnlySet)
+        )
+        let narrow = narrowResult.asJsonValue(era: .legacy, serverInfo: MCPMethodRegistry.serverInfo)["capabilities"]
+        let full = fullResult.asJsonValue(era: .legacy, serverInfo: MCPMethodRegistry.serverInfo)["capabilities"]
+
+        #expect(narrow?["tools"] != nil)
+        #expect(narrow?["resources"] == nil)
+        #expect(narrow?["prompts"] == nil)
+        #expect(full?["resources"] != nil)
+        #expect(full?["prompts"] != nil)
+    }
+
     @Test("The initialize result carries no cache hint")
     func theResultIsNotCacheable() {
-        #expect(InitializeHandler.result(protocolVersion: .v20251125).cacheHint == nil)
+        #expect(InitializeHandler.result(protocolVersion: .v20251125, scopes: MCPScope.readOnlySet).cacheHint == nil)
     }
 
     @Test("The modern envelope fields the legacy shape omits are added only for the modern era")
     func modernEnvelopeIsAddedOnlyForModernClients() {
-        let encoded = InitializeHandler.result(protocolVersion: .v20251125)
+        let encoded = InitializeHandler.result(protocolVersion: .v20251125, scopes: MCPScope.readOnlySet)
             .asJsonValue(era: .modern, serverInfo: MCPMethodRegistry.serverInfo)
 
         #expect(encoded["resultType"]?.stringValue == "complete")

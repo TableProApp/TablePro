@@ -35,6 +35,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private let statementRunController = StatementRunController()
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     var schemaProvider: SQLSchemaProvider?
+    var databaseScope: DatabaseScope?
     private let inlineAccessGate: AIConnectionAccessGate = .live
     private var contextMenu: AIEditorContextMenu?
     private var inlineSuggestionManager: InlineSuggestionManager?
@@ -111,9 +112,25 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         controller.restoreCollapsedFolds(ranges)
     }
 
+    var vimDocumentMarks: VimDocumentMarks? {
+        guard let vimEngine else { return pendingVimDocumentMarks }
+        let marks = vimEngine.documentMarks
+        return marks.isEmpty ? nil : marks
+    }
+
+    func restoreVimDocumentMarks(_ marks: VimDocumentMarks) {
+        guard let vimEngine else {
+            pendingVimDocumentMarks = marks
+            return
+        }
+        vimEngine.restoreDocumentMarks(marks)
+    }
+
     /// Vim mode for UI observation
     @Published private(set) var vimMode: VimMode = .normal
     private var vimEngine: VimEngine?
+    // Vim is installed once the editor is in a window, so marks restored before that wait here.
+    private var pendingVimDocumentMarks: VimDocumentMarks?
     private var vimKeyInterceptor: VimKeyInterceptor?
     private var emacsKeyInterceptor: EmacsKeyInterceptor?
     private var commandHandler = VimCommandLineHandler()
@@ -245,12 +262,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             self?.vimCursorManager?.updatePosition()
         }
 
-        if !isLargeDocument, !didDestroy, let tabID, let sync = copilotDocumentSync,
-           resolvedInlineSourceKind == .copilot {
-            let text = textView.string
-            Task { await sync.didChangeText(tabID: tabID, newText: text) }
-        }
-
         frameChangeTask?.cancel()
         frameChangeTask = Task { [weak controller] in
             try? await Task.sleep(for: .milliseconds(50))
@@ -265,8 +276,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
 
     func textViewDidReplaceDocument(controller: TextViewController) {
         vimEngine?.invalidateLineCache()
+        vimEngine?.documentDidReplace()
+        pendingVimDocumentMarks = nil
         foldPreview.dismiss()
         inlineSuggestionManager?.dismissSuggestion()
+        copilotDocumentSync?.textViewDidReplaceDocument()
         statementRunController.refreshControls(in: controller)
         statementRunController.refreshHighlight(in: controller)
         diagnosticsController.clear(in: controller)
@@ -320,10 +334,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         removeVimKeyInterceptor()
         removeEmacsKeyInterceptor()
 
-        if let tabID, let sync = copilotDocumentSync {
-            let id = tabID
-            Task { await sync.didCloseTab(tabID: id) }
-        }
+        copilotDocumentSync?.detach()
 
         foldPreview.destroy()
         inlineSuggestionManager?.uninstall()
@@ -509,6 +520,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         formatSQL(selectedRange: textView.selectedRange())
     }
 
+    func insertSavedQuery(_ sql: String) {
+        guard let controller else { return }
+        QuerySnippetInsertion.insert(sql, into: controller)
+    }
+
     private func formatSQL(selectedRange: NSRange) {
         guard let textView = controller?.textView else { return }
         let formatter: QueryFormatting
@@ -620,44 +636,61 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func installCopilotInlineSource() {
-        let sync = CopilotDocumentSync()
+        let sync = CopilotDocumentSync(server: LiveCopilotDocumentServer(), lengthLimit: Self.languageServiceLengthLimit)
         copilotDocumentSync = sync
         copilotInlineSource = CopilotInlineSource(documentSync: sync)
 
-        let capturedTabID = tabID
-        let capturedText = controller?.textView?.string ?? ""
-        let capturedSchemaProvider = schemaProvider
-        let capturedDBType = databaseType
-        let dbName = connectionId.flatMap {
-            DatabaseManager.shared.session(for: $0)?.resolvedBrowseDatabase
-        } ?? "database"
+        let referenceText: String?
+        if let textView = controller?.textView, textView.textStorage.length <= Self.languageServiceLengthLimit {
+            referenceText = textView.string
+        } else {
+            referenceText = nil
+        }
+        let source = copilotSchemaSource()
 
         Task { [weak self] in
-            if let provider = capturedSchemaProvider, let dbType = capturedDBType {
+            if let source {
                 await sync.preambleBuilder.buildPreamble(
-                    schemaProvider: provider,
-                    databaseName: dbName,
-                    databaseType: dbType
+                    schemaProvider: source.schemaProvider,
+                    databaseName: source.databaseName,
+                    databaseType: source.databaseType,
+                    referencing: referenceText,
+                    grammar: source.grammar,
+                    maxTables: source.budget
                 )
             }
             guard let self, self.copilotDocumentSync === sync, self.resolvedInlineSourceKind == .copilot else {
                 return
             }
             await CopilotService.shared.start()
-            guard self.copilotDocumentSync === sync else { return }
-            if let tabID = capturedTabID {
-                sync.ensureDocumentOpen(tabID: tabID, text: capturedText)
-                await sync.didActivateTab(tabID: tabID, text: capturedText)
-            }
+            guard self.copilotDocumentSync === sync, let textView = self.controller?.textView else { return }
+            sync.attach(
+                to: textView,
+                tabID: { [weak self] in self?.tabID },
+                isAllowed: { [weak self] in self?.resolvedInlineSourceKind == .copilot },
+                schemaSource: { [weak self] in self?.copilotSchemaSource() }
+            )
         }
+    }
+
+    private func copilotSchemaSource() -> CopilotPreambleBuilder.Source? {
+        guard let schemaProvider, let databaseType else { return nil }
+        let scopeDatabase = databaseScope.flatMap { $0.isServerScoped ? nil : $0.database }
+        let databaseName = scopeDatabase ?? connectionId.flatMap {
+            DatabaseManager.shared.session(for: $0)?.resolvedBrowseDatabase
+        } ?? "database"
+        return CopilotPreambleBuilder.Source(
+            schemaProvider: schemaProvider,
+            databaseName: databaseName,
+            databaseType: databaseType,
+            grammar: lexicalGrammar,
+            budget: max(AppSettingsManager.shared.ai.maxSchemaTables, 0)
+        )
     }
 
     private func teardownInlineSources(except kind: InlineSuggestionSourceKind) {
         if kind != .copilot {
-            if let tabID, let sync = copilotDocumentSync {
-                let id = tabID
-                Task { await sync.didCloseTab(tabID: id) }
-            }
+            copilotDocumentSync?.detach()
             copilotDocumentSync = nil
             copilotInlineSource = nil
         }
@@ -729,6 +762,10 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         let interceptor = VimKeyInterceptor(engine: engine, inlineSuggestionManager: inlineSuggestionManager)
         interceptor.install(controller: controller)
 
+        if let marks = pendingVimDocumentMarks {
+            engine.restoreDocumentMarks(marks)
+            pendingVimDocumentMarks = nil
+        }
         self.vimEngine = engine
         self.vimKeyInterceptor = interceptor
         self.vimMode = .normal
@@ -759,6 +796,14 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimCursorManager = nil
         vimKeyInterceptor = nil
         vimEngine = nil
+    }
+
+    // MARK: - Completion
+
+    /// Ends this editor's completion session, whether its popup is showing or its items are still loading, so
+    /// nothing opens over the results of a run that started meanwhile.
+    func dismissCompletions() {
+        controller?.dismissCompletions()
     }
 
     // MARK: - Menu Escape Routing
@@ -853,13 +898,15 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         guard !isUppercasing,
               keywordCase.rewritesTypedText,
               KeywordUppercaseHelper.isWordBoundary(string),
+              PluginManager.shared.editorLanguage(for: databaseType ?? .mysql) == .sql,
               (textView.textStorage.string as NSString).length < 500_000 else { return }
 
         let nsText = textView.textStorage.string as NSString
         guard let match = KeywordUppercaseHelper.keywordBeforePosition(
             nsText,
             at: range.location,
-            uppercase: keywordCase.prefersUppercase
+            uppercase: keywordCase.prefersUppercase,
+            grammar: lexicalGrammar
         ) else { return }
 
         let word = match.word

@@ -32,6 +32,17 @@ public enum RedisCommandSplitter {
         return nil
     }
 
+    // Every command with the last caret offset `command(at:in:)` gives it, for a caller that keeps them between
+    // caret moves.
+    public static func commandsWithCaretReach(in text: String) -> [(command: Command, reach: Int)] {
+        var lexer = RedisCommandLexer(text, endsCommands: true, decodesArguments: false)
+        var commands: [(command: Command, reach: Int)] = []
+        while let found = lexer.next() {
+            commands.append((command: command(found, in: text), reach: found.reach))
+        }
+        return commands
+    }
+
     private static func command(_ found: RedisCommandLexer.Command, in text: String) -> Command {
         let range = NSRange(location: found.start, length: found.end - found.start)
         return Command(text: (text as NSString).substring(with: range), range: range)

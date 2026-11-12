@@ -57,9 +57,7 @@ public actor MCPApprovalLedger {
         return await store.denial(subject: principal.grantSubject.storageKey, connectionId: connectionId, now: now)
     }
 
-    /// Drops the approvals a revoked token was carrying. Rotating the bridge credential is not a
-    /// revocation: the bridge re-mints itself roughly every 45 minutes and deletes the token it
-    /// replaces, so treating that as the user withdrawing consent re-asks them all day.
+    // A bridge credential rotation never reaches here: it drops the old token without a revocation.
     func clear(subject: MCPGrantSubject) async {
         await store.revokeAll(subject: subject.storageKey)
     }

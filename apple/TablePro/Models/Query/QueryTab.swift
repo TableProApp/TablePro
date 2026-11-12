@@ -66,6 +66,9 @@ struct QueryTab: Identifiable, Equatable {
     var sessionHighlightRules: [HighlightRule] = []
     // Set only by Reveal, after the user authenticated; never saved, so a reopened tab masks again.
     var revealsMaskedValues = false
+    // Never saved: a relaunch must not start polling a server with nobody watching.
+    var autoRefreshInterval: TableAutoRefreshInterval = .off
+    var autoRefreshPause: TableAutoRefreshPause?
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
     var mapConfiguration: ResultMapConfiguration
@@ -166,7 +169,10 @@ struct QueryTab: Identifiable, Equatable {
 
     init(from persisted: PersistedTab, defaultPageSize: Int) {
         self.id = persisted.id
-        self.title = persisted.title
+        // A listing saved by an older build is titled after its kind ("Tables: sales"); every listing now reads Objects.
+        self.title = persisted.tabType == .tableListing
+            ? QueryTabManager.tableListingTitle(schemaName: persisted.schemaName)
+            : persisted.title
         self.tabType = persisted.tabType
         self.isPreview = false
         self.isPinned = persisted.isPinned
@@ -189,7 +195,8 @@ struct QueryTab: Identifiable, Equatable {
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
             objectRef: persisted.objectRef,
-            versionHistorySubject: persisted.versionHistorySubject
+            versionHistorySubject: persisted.versionHistorySubject,
+            listingKind: persisted.listingKindRawValue.flatMap(SidebarObjectKind.init(persistenceName:))
         )
         self.pendingChanges = TabChangeSnapshot()
         self.selectionSnapshot = .empty
@@ -346,6 +353,7 @@ struct QueryTab: Identifiable, Equatable {
             erDiagramSchemaKey: display.erDiagramSchemaKey,
             objectRef: display.objectRef,
             versionHistorySubject: display.versionHistorySubject,
+            listingKindRawValue: display.listingKind?.persistenceName,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
             sortSource: persistedSortSource,
@@ -375,6 +383,8 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.sortState == rhs.sortState
             && lhs.valueFilter == rhs.valueFilter
             && lhs.sessionHighlightRules == rhs.sessionHighlightRules
+            && lhs.autoRefreshInterval == rhs.autoRefreshInterval
+            && lhs.autoRefreshPause == rhs.autoRefreshPause
             && lhs.chartConfiguration == rhs.chartConfiguration
             && lhs.mapConfiguration == rhs.mapConfiguration
             && lhs.display == rhs.display

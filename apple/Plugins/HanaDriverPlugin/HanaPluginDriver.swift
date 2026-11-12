@@ -100,6 +100,22 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await run(query, parameters: parameters, rowCap: nil)
     }
 
+    // Collected here rather than through boundedQueryFromStream, which would drop the column hints and the
+    // large object warning that execute returns.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        let report = HanaStreamReport()
+        let collected = try await PluginBoundedStream.collect(
+            stream(query, report: report, refusesCutValues: false),
+            rowCap: rowCap,
+            startedAt: Date()
+        )
+        return report.completing(collected)
+    }
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(query, report: HanaStreamReport(), refusesCutValues: true)
+    }
+
     func switchSchema(to schema: String) async throws {
         guard !schema.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw HanaError(kind: .configuration, message: String(localized: "The SAP HANA schema name cannot be empty."))
@@ -156,6 +172,88 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } catch let failure as HanaBridgeFailure {
             let requested = Task.isCancelled || cancellationGate.isCancelled(query.generation)
             throw HanaFailureMapping.error(for: failure, cancellationRequested: requested)
+        }
+    }
+
+    // A copy, export or compare reads the stream, and would write a value cut at 64 MiB as if it were whole.
+    private func stream(
+        _ sql: String,
+        report: HanaStreamReport,
+        refusesCutValues: Bool
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginRowStream.makeBounded { continuation, abort in
+            let driver = self
+            let producer = Task {
+                do {
+                    try await driver.produce(
+                        sql, into: continuation, report: report, refusesCutValues: refusesCutValues
+                    )
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+                report.logTruncatedLargeObjects()
+            }
+            // The cancel takes the Stop path: the helper ends a fetch in flight, or the cursor loop closes the cursor.
+            abort.onAbort { producer.cancel() }
+        }
+    }
+
+    private func produce(
+        _ sql: String,
+        into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        report: HanaStreamReport,
+        refusesCutValues: Bool
+    ) async throws {
+        if HanaExplainStatement.explainedStatement(in: sql) != nil {
+            let result = try await run(sql, parameters: nil, rowCap: nil)
+            _ = await PluginRowStream.deliver(.header(PluginStreamHeader(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames
+            )), to: continuation)
+            if !result.rows.isEmpty {
+                _ = await PluginRowStream.deliver(.rows(result.rows), to: continuation)
+            }
+            return
+        }
+        let query = beginQuery()
+        defer { endQuery(query) }
+        do {
+            try await session.stream(
+                sql: sql,
+                cancellation: query.cancellation,
+                onHeader: { header in
+                    report.record(header)
+                    _ = PluginRowStream.deliverBlocking(.header(PluginStreamHeader(
+                        columns: header.columns,
+                        columnTypeNames: header.columnTypeNames
+                    )), to: continuation, stops: { query.cancellation.isCancelled })
+                },
+                onBatch: { batch in
+                    report.record(truncatedLargeObjects: batch.truncatedLobCount)
+                    // The cursor loop sees the slot cancelled after this batch and closes the cursor.
+                    if refusesCutValues, batch.truncatedLobCount > 0 {
+                        _ = query.cancellation.cancel()
+                        return
+                    }
+                    // Runs on the session's own queue, which waits here while the reader is behind.
+                    let delivered = PluginRowStream.deliverBlocking(
+                        .rows(HanaResultMapping.pluginRows(batch.rows)),
+                        to: continuation,
+                        stops: { query.cancellation.isCancelled }
+                    )
+                    if !delivered { _ = query.cancellation.cancel() }
+                }
+            )
+        } catch let failure as HanaBridgeFailure {
+            if refusesCutValues, report.hasCutLargeObjects {
+                throw HanaResultMapping.cutLargeObjectError
+            }
+            let requested = Task.isCancelled || cancellationGate.isCancelled(query.generation)
+            throw HanaFailureMapping.error(for: failure, cancellationRequested: requested)
+        }
+        if refusesCutValues, report.hasCutLargeObjects {
+            throw HanaResultMapping.cutLargeObjectError
         }
     }
 

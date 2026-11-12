@@ -13,6 +13,7 @@ pub enum ForeignApp {
     DataGrip,
     BeekeeperStudio,
     Navicat,
+    Dbx,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,13 +37,14 @@ pub enum SavedQuerySupport {
 }
 
 impl ForeignApp {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::TablePlus,
         Self::SequelAce,
         Self::DBeaver,
         Self::DataGrip,
         Self::BeekeeperStudio,
         Self::Navicat,
+        Self::Dbx,
     ];
 
     pub fn id(self) -> &'static str {
@@ -53,6 +55,7 @@ impl ForeignApp {
             Self::DataGrip => "datagrip",
             Self::BeekeeperStudio => "beekeeperstudio",
             Self::Navicat => "navicat",
+            Self::Dbx => "dbx",
         }
     }
 
@@ -68,6 +71,7 @@ impl ForeignApp {
             Self::DataGrip => "DataGrip",
             Self::BeekeeperStudio => "Beekeeper Studio",
             Self::Navicat => "Navicat",
+            Self::Dbx => "DBX",
         }
     }
 
@@ -82,7 +86,7 @@ impl ForeignApp {
 
     pub fn password_source(self) -> PasswordSource {
         match self {
-            Self::TablePlus | Self::SequelAce | Self::DataGrip => PasswordSource::Keychain,
+            Self::TablePlus | Self::SequelAce | Self::DataGrip | Self::Dbx => PasswordSource::Keychain,
             Self::DBeaver | Self::BeekeeperStudio | Self::Navicat => PasswordSource::AppFiles,
         }
     }
@@ -90,7 +94,7 @@ impl ForeignApp {
     pub fn saved_query_support(self) -> SavedQuerySupport {
         match self {
             Self::TablePlus | Self::SequelAce | Self::BeekeeperStudio => SavedQuerySupport::GlobalFolder,
-            Self::DBeaver => SavedQuerySupport::Scripts,
+            Self::DBeaver | Self::Dbx => SavedQuerySupport::Scripts,
             Self::DataGrip => SavedQuerySupport::Consoles,
             Self::Navicat => SavedQuerySupport::NotInExport,
         }
@@ -202,6 +206,7 @@ impl ForeignImporter {
             ForeignApp::DataGrip => Box::new(apps::datagrip::DataGrip::locate(&self.dirs, keychain)),
             ForeignApp::BeekeeperStudio => Box::new(apps::beekeeper::Beekeeper::locate(&self.dirs)),
             ForeignApp::Navicat => Box::new(apps::navicat::Navicat::new(self.picked_file.clone())),
+            ForeignApp::Dbx => Box::new(apps::dbx::Dbx::locate(&self.dirs)),
         }
     }
 }

@@ -13,7 +13,7 @@ import Foundation
 @MainActor
 internal final class ConnectionWorkspace {
     internal let connectionId: UUID
-    internal let payload: EditorTabPayload?
+    internal private(set) var payload: EditorTabPayload?
     internal let autoConnect: Bool
 
     internal var payloadConnection: DatabaseConnection?
@@ -304,6 +304,12 @@ internal final class ConnectionWorkspace {
         )
     }
 
+    // The session's tabs were saved as it went down, so a reconnect restores them rather than opening the founding content again.
+    internal func retireFoundingPayload() {
+        guard let payload, payload.intent != .restoreOrDefault else { return }
+        self.payload = EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
+    }
+
     /// Opens what the payload names. Held until the session exists if the connection is still
     /// being established.
     internal func open(_ payload: EditorTabPayload) {
@@ -404,6 +410,7 @@ internal final class ConnectionWorkspace {
         sessionState?.coordinator.teardown()
         sessionState = nil
         session = nil
+        MainContentCoordinator.endTabSessionIfUnhosted(for: connectionId, closing: self)
         undoManager.removeAllActions()
         agentUndoManager.removeAllActions()
         /// Once nothing hosts this connection any more, its agent sessions stop: a stream, a tool

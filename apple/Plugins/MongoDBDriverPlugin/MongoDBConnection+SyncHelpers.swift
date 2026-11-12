@@ -518,7 +518,10 @@ nonisolated extension MongoDBConnection {
         let documents = try MongoExportDocument.read(
             MongoReadDocuments(dictionaries: sample, texts: texts), representation: uuidRepresentation
         )
-        continuation.yield(.header(projection.header))
+        var header = projection.header
+        // iterateCursorStreaming stops there, so a stream that reaches it was cut.
+        header.rowLimit = PluginRowLimits.emergencyMax
+        continuation.yield(.header(header))
         if !sample.isEmpty {
             let rows = BsonDocumentFlattener.flatten(
                 documents: sample, columns: projection.columns, kinds: projection.kinds,

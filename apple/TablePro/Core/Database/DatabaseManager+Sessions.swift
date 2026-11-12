@@ -20,7 +20,8 @@ extension DatabaseManager {
         _ requestedConnection: DatabaseConnection,
         passwordOverride incomingPasswordOverride: String? = nil,
         sshPasswordOverride: String? = nil,
-        trigger: ConnectTrigger = .request
+        trigger: ConnectTrigger = .request,
+        adoptsSSHProfileEdits: Bool = false
     ) async throws {
         let connection = resolvedConnectionDefinition(for: requestedConnection)
 
@@ -49,24 +50,17 @@ extension DatabaseManager {
         let effectiveQueryTimeoutSeconds = prepareConnectingSession(for: connection)
         lastActiveSessionId = connection.id
 
-        let resolvedConnection: DatabaseConnection
-        do {
-            // Before anything signs in: the host resolves some credentials below, and a plugin the rest in `connect()`.
-            try await localCredentialConsent.check(connection, trigger: trigger)
-            resolvedConnection = try await envVarReferenceConsent.resolve(connection, trigger: trigger)
-            try await preConnectScriptConsent.authorize(connection, trigger: trigger)
-            // The answer can take a minute, long enough for the person to cancel the attempt.
-            guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
-            try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolvedConnection, attempt: attempt)
-        } catch {
-            finalizeConnectionFailure(
-                for: connection.id,
-                cancelled: isAttemptCancelled(attempt, for: connection.id),
-                error: error,
-                attempt: attempt
-            )
-            throw error
-        }
+        let (routedConnection, pinnedSSHRoute) = try pinSSHRoute(
+            for: connection,
+            adoptsSSHProfileEdits: adoptsSSHProfileEdits,
+            attempt: attempt
+        )
+
+        let (resolvedConnection, dialledConnection) = try await authorizeConnect(
+            connection,
+            trigger: trigger,
+            attempt: attempt
+        )
 
         let (passwordOverride, promptsForPassword, promptCacheKey) = try await resolvePasswordOverride(
             for: connection,
@@ -87,8 +81,9 @@ extension DatabaseManager {
                 reportStage(.resolvingTunnel, attempt: attempt, for: connection.id)
             }
             effectiveConnection = try await buildEffectiveConnectionReportingStages(
-                for: resolvedConnection,
+                for: dialledConnection,
                 sshPasswordOverride: sshPasswordOverride,
+                pinnedSSHRoute: pinnedSSHRoute,
                 deadline: deadline,
                 attempt: (attempt, connection.id)
             )
@@ -136,7 +131,7 @@ extension DatabaseManager {
                 attempt: attempt,
                 for: connection.id
             )
-            await applyTimeoutAndStartupCommands(
+            let startupFailures = await applyTimeoutAndStartupCommands(
                 on: driver,
                 queryTimeoutSeconds: effectiveQueryTimeoutSeconds,
                 startupCommands: resolvedConnection.startupCommands,
@@ -161,13 +156,15 @@ extension DatabaseManager {
             // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
                 session.connection = successfulConnectionRecord(
-                    from: connection,
+                    from: routedConnection,
                     preservingSessionFieldsFrom: session.connection
                 )
+                dialedConnections[connection.id] = routedConnection
+                session.commitMode = session.connection.commitMode
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
-                session.connectionWarning = driver.connectionWarning
+                session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)
                 // A connect answers whatever went wrong before it, including a reconnect that gave up on this entry.
                 session.liveness = .live
                 session.recovery = nil
@@ -175,10 +172,7 @@ extension DatabaseManager {
                 markSessionVerified(connection.id)
                 if let passwordOverride, !connection.usesIAMToken {
                     session.cachedPassword = passwordOverride
-                    /// Only a password that actually authenticated is shared with the other
-                    /// connections on this profile. Caching the prompt's answer before the connect
-                    /// meant one mistyped password locked every one of them out until a relaunch,
-                    /// because the prompt never came back.
+                    // Only once it authenticated: a mistyped answer shared with the profile locked every connection out.
                     if promptsForPassword {
                         promptedPasswords[promptCacheKey] = passwordOverride
                     }
@@ -186,7 +180,7 @@ extension DatabaseManager {
                 setSession(session, for: connection.id)
             }
 
-            /// Before `finish`, so the clear is still the current attempt's to make.
+            // Before `finish`, so the clear is still the current attempt's to make.
             clearConnectionStage(for: connection.id)
             connectionAttempts.finish(attempt, for: connection.id)
 
@@ -229,7 +223,7 @@ extension DatabaseManager {
         }
         // A session's answer is reused only while the connection still dials where it was typed for.
         let session = activeSessions[connection.id]
-        let sessionPassword = session?.connection.destination.digest == connection.destination.digest
+        let sessionPassword = session?.connection.destination.digest == connection.dialedDestination.digest
             ? session?.cachedPassword
             : nil
         if let cached = promptedPasswords[promptCacheKey] ?? sessionPassword {
@@ -258,8 +252,8 @@ extension DatabaseManager {
     static func promptCacheKey(for connection: DatabaseConnection) -> PromptedPasswordKey {
         let sharedByProfile = connection.credentialMode.profileId != nil
         return PromptedPasswordKey(
-            owner: ConnectionCredentialResolver.promptCacheKey(for: connection),
-            destination: sharedByProfile ? "" : connection.destination.digest
+            owner: ConnectionCredentialResolver.credentialOwner(for: connection),
+            destination: sharedByProfile ? "" : connection.dialedDestination.digest
         )
     }
 
@@ -358,6 +352,7 @@ extension DatabaseManager {
         guard let stored = connectionStorage.loadConnection(id: connection.id) else { return connection }
         var resolved = connection
         resolved.preferredSafeModeLevel = stored.preferredSafeModeLevel
+        resolved.commitMode = stored.commitMode
         return resolved
     }
 
@@ -528,8 +523,8 @@ extension DatabaseManager {
         let sessionStartedAt = session.connectedAt
         let generation = sessionLanes.beginSwitch(for: connectionId)
 
-        let target: DatabaseDriver
-        let freshlyOpened: Bool
+        var target: DatabaseDriver
+        var freshlyOpened: Bool
         if let parkedDriver = await answeringParkedDriver(database: database, for: connectionId) {
             target = parkedDriver
             freshlyOpened = false
@@ -546,6 +541,13 @@ extension DatabaseManager {
         else {
             if freshlyOpened { target.disconnect() }
             throw CancellationError()
+        }
+        // A statement on this database opened its connection while this open was in flight, and may hold
+        // a transaction there. That connection is the one to browse on; the one opened here is closed.
+        if freshlyOpened, let parkedMeanwhile = sessionLanes.parkedDriver(for: connectionId, database: database) {
+            target.disconnect()
+            target = parkedMeanwhile
+            freshlyOpened = false
         }
 
         _ = sessionLanes.unpark(database: database, for: connectionId)
@@ -580,21 +582,21 @@ extension DatabaseManager {
         )
     }
 
-    /// The connection parked for `database`, if it still answers. One that died is closed, and if it
-    /// was holding a transaction, the next work on that database is told the server rolled it back.
-    /// A turn running on it right now is answer enough, and asking would wait for that turn.
+    // The connection parked for `database`, if it still answers. One that died is closed, and if it held a transaction
+    // or session state, the next work on that database is told what the server dropped. A turn running on it right now
+    // is answer enough, and asking would wait for that turn.
     private func answeringParkedDriver(database: String, for connectionId: UUID) async -> DatabaseDriver? {
         let key = SessionDriverGate.Key(connectionId: connectionId, database: database)
         guard var parked = sessionLanes.parkedDriver(for: connectionId, database: database) else { return nil }
-        /// A check already running decides for this switch too: once it ends it has either confirmed
-        /// the driver or parked a replacement, and that is what gets promoted.
+        // A check already running decides for this switch too: once it ends it has either confirmed the driver or
+        // parked a replacement, and that is what gets promoted.
         if sessionLanes.isVerifying(parked) {
             await sessionLanes.waitForVerification(of: parked)
             guard let settled = sessionLanes.parkedDriver(for: connectionId, database: database) else { return nil }
             parked = settled
         }
         if sessionLanes.isFresh(parked) || sessionDriverGate.isHeld(key) { return parked }
-        /// Read before the ping, which on a closed socket leaves libpq reporting no state at all.
+        // Read before the ping, which on a closed socket leaves libpq reporting no state at all.
         let held = await parked.heldSessionTransactionState()
         do {
             try await sessionDriverGate.withExclusiveAccess(key) {
@@ -604,10 +606,13 @@ extension DatabaseManager {
             return parked
         } catch {
             guard sessionLanes.parkedDriver(for: connectionId, database: database) === parked else { return nil }
+            sessionLanes.markLost(
+                database: database,
+                transaction: !held.permitsAppTransaction,
+                state: sessionStateLedger.state(heldBy: parked, for: connectionId),
+                for: connectionId
+            )
             sessionLanes.close(database: database, for: connectionId, supersedingOpens: false)
-            if !held.permitsAppTransaction {
-                sessionLanes.markTransactionLost(database: database, for: connectionId)
-            }
             return nil
         }
     }
@@ -651,11 +656,21 @@ extension DatabaseManager {
         guard let previous = session(for: connectionId) else {
             throw DatabaseError.notConnected
         }
+        // Refused before anything is torn down, so the session stays on the server it dialed.
+        _ = try routedThroughLinkedProfile(previous.connection, pinnedSSHRoute: previous.connection.destinationTunnel)
+        // The reconnect would end a live transaction; one on a connection that already stopped answering is gone anyway.
+        if previous.liveness == .live, await browsedDriverHoldsTransaction(previous.driver, for: connectionId) {
+            throw DatabaseError.connectionFailed(
+                Self.switchEndsTransactionMessage(database: previous.resolvedBrowseDatabase)
+            )
+        }
         let previousDatabase = previous.connection.database
         let previousBrowseDatabase = previous.browseDatabase
         let previousBrowseSchema = previous.browseSchema
         let previousSavedSchema = appSettingsStorage.loadLastSchema(for: connectionId)
 
+        // Noted under the database being left, before the session names the target.
+        noteSessionLost(with: previous.driver, for: connectionId, includingState: false)
         updateSession(connectionId) { session in
             session.connection.database = database
             session.browseDatabase = database
@@ -677,6 +692,27 @@ extension DatabaseManager {
             appSettingsStorage.saveLastSchema(previousSavedSchema, for: connectionId)
             throw error
         }
+    }
+
+    // The tracker's last answer, or the driver's own: a refusal over a transaction that is there is never wrong.
+    private func browsedDriverHoldsTransaction(_ driver: DatabaseDriver?, for connectionId: UUID) async -> Bool {
+        guard let driver, driver.supportsTransactions else { return false }
+        let tracked = sessionTransactions.holds(for: connectionId).contains { sessionTransactions.driver(for: $0) === driver }
+        if tracked { return true }
+        let state = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
+        return state == .inTransaction || state == .abortedTransaction
+    }
+
+    static func switchEndsTransactionMessage(database: String) -> String {
+        String(
+            format: String(
+                localized: """
+                    A transaction is open on %@. Switching databases reconnects, and the server would \
+                    roll it back. Commit or roll back the transaction, then switch again.
+                    """
+            ),
+            database
+        )
     }
 
     /// In the same turn as the session's browse cursor, so nothing reads one database's catalog under
@@ -749,6 +785,8 @@ extension DatabaseManager {
     /// first: `MainContentCoordinator.teardown()` clears them from memory and only the window-close
     /// path saves on its way out, which is how a disconnect used to take a window's tabs with it.
     func disconnectSession(_ sessionId: UUID, origin: SessionDisconnectOrigin = .appManaged) async {
+        // Before the lookup: closing the window of a connect that failed has no session to end, only the route.
+        dialedConnections[sessionId] = nil
         let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
         guard let session = activeSessions[sessionId] else {
             lifecycleLogger.info(
@@ -807,6 +845,7 @@ extension DatabaseManager {
             "[close] disconnectSession driver.disconnect done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(driverStart) * 1_000))"
         )
         removeSessionEntry(for: sessionId)
+        VaultDatabaseCredentials.shared.endUse(connection: sessionId, live: Set(activeSessions.keys))
 
         await SchemaService.shared.invalidate(connectionId: sessionId)
         await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)
@@ -890,6 +929,7 @@ extension DatabaseManager {
                   let stored = connectionStorage.loadConnection(id: id) else { continue }
             adoptDisplayFields(from: stored, into: session, for: id)
             setSafeModeLevel(stored.preferredSafeModeLevel, for: id)
+            setCommitMode(stored.commitMode, for: id)
         }
     }
 
@@ -923,6 +963,7 @@ extension DatabaseManager {
     ) -> DatabaseConnection {
         var adopted = connection(attempted, adoptingDisplayFieldsFrom: current)
         adopted.preferredSafeModeLevel = current.preferredSafeModeLevel
+        adopted.commitMode = current.commitMode
         return adopted
     }
 
@@ -978,6 +1019,22 @@ extension DatabaseManager {
         _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }
 
+    // Written to the connection, as the Safe Mode level is, so the form and the Database menu are one setting.
+    func setCommitMode(_ mode: ConnectionCommitMode, for connectionId: UUID) {
+        guard var session = activeSessions[connectionId] else { return }
+        guard session.connection.commitMode != mode || session.commitMode != mode else { return }
+        session.connection.commitMode = mode
+        session.commitMode = mode
+        setSession(session, for: connectionId)
+        connectionStorage.mutateConnections(ids: [connectionId]) { $0.commitMode = mode }
+    }
+
+    // What writes run under: a stored Manual Commit on an engine that can't hold runs as automatic.
+    func commitMode(for connectionId: UUID) -> ConnectionCommitMode {
+        guard let session = activeSessions[connectionId] else { return .automatic }
+        return ManualCommit.effectiveMode(session.commitMode, databaseType: session.connection.type)
+    }
+
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {
         /// A session created while a window is already in Agent mode takes the level stored on the
         /// connection, which is the user's own and may be Silent. Applying the floor only when the
@@ -991,6 +1048,7 @@ extension DatabaseManager {
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
         sessionTransactions.prune(connectionId)
+        sessionStateLedger.prune(connectionId)
         AppEvents.shared.connectionStatusChanged.send(
             ConnectionStatusChange(connectionId: connectionId, status: session.reportedStatus)
         )
@@ -1047,10 +1105,79 @@ extension DatabaseManager {
         connectionStages.removeValue(forKey: connectionId)
     }
 
+    // What a connect settles before it dials, in order: approvals for this Mac's credentials, `${VAR}` references
+    // and the pre-connect script, the script itself, then the RDS endpoint a CNAME stands for, which can ask again.
+    // All of it runs before the connect's deadline starts, since each step can wait on a person.
+    private func authorizeConnect(
+        _ connection: DatabaseConnection,
+        trigger: ConnectTrigger,
+        attempt: Int
+    ) async throws -> (resolved: DatabaseConnection, dialled: DatabaseConnection) {
+        do {
+            // Before anything signs in: the host resolves some credentials below, and a plugin the rest in `connect()`.
+            try await localCredentialConsent.check(connection, trigger: trigger)
+            let resolved = try await envVarReferenceConsent.resolve(connection, trigger: trigger)
+            try await preConnectScriptConsent.authorize(connection, trigger: trigger)
+            // The answer can take a minute, long enough for the person to cancel the attempt.
+            guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
+            try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolved, attempt: attempt)
+            // After the script, which can be what makes the name resolve, such as a VPN it brings up.
+            let dialled = try await resolvingRDSEndpointAlias(of: resolved, trigger: trigger)
+            guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
+            return (resolved, dialled)
+        } catch {
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: isAttemptCancelled(attempt, for: connection.id),
+                error: error,
+                attempt: attempt
+            )
+            throw error
+        }
+    }
+
+    // Read once, before any approval is asked for, so the approvals and the dial name one route. A session that
+    // already dialed keeps its route under its window; only that window's Connect takes up a profile edit.
+    private func pinSSHRoute(
+        for connection: DatabaseConnection,
+        adoptsSSHProfileEdits: Bool,
+        attempt: Int
+    ) throws -> (routed: DatabaseConnection, pinned: ConnectionDestination.Tunnel) {
+        let routed = SSHProfileStorage.shared.refreshingLinkedProfile(connection)
+        let kept = adoptsSSHProfileEdits
+            ? nil
+            : activeSessions[connection.id].flatMap { $0.effectiveConnection == nil ? nil : $0.connection }
+                ?? dialedConnections[connection.id]
+        let pinned = kept?.destinationTunnel ?? routed.destinationTunnel
+        // A deleted profile leaves its last server inline, so a session dialed through one is checked as well.
+        guard Self.followsSSHProfile(routed) || kept.map(Self.followsSSHProfile) == true,
+              routed.destinationTunnel != pinned
+        else { return (routed, pinned) }
+        let error = ConnectionTunnelError.sshProfileMoved
+        if connectionAttempts.isCurrent(attempt, for: connection.id) {
+            clearConnectionStage(for: connection.id)
+        }
+        // A session that dialed stays, unreachable, under its window; an entry this attempt made goes.
+        if let driver = activeSessions[connection.id]?.driver {
+            let info = ConnectionFailureClassifier.info(for: error)
+            updateSession(connection.id) { $0.status = .error(info.message) }
+            markSessionUnreachable(connection.id, startedWith: driver, info: info)
+        } else {
+            finalizeConnectionFailure(for: connection.id, cancelled: false, error: error, attempt: attempt)
+        }
+        throw error
+    }
+
+    private static func followsSSHProfile(_ connection: DatabaseConnection) -> Bool {
+        if case .profile = connection.sshTunnelMode { return true }
+        return false
+    }
+
     // The proxy reports its download as a stage of this attempt.
     private func buildEffectiveConnectionReportingStages(
         for resolvedConnection: DatabaseConnection,
         sshPasswordOverride: String?,
+        pinnedSSHRoute: ConnectionDestination.Tunnel,
         deadline: ConnectionDeadline,
         attempt: (number: Int, connectionId: UUID)
     ) async throws -> DatabaseConnection {
@@ -1060,6 +1187,7 @@ extension DatabaseManager {
             try await buildEffectiveConnection(
                 for: resolvedConnection,
                 sshPasswordOverride: sshPasswordOverride,
+                pinnedSSHRoute: pinnedSSHRoute,
                 deadline: deadline,
                 ownsAttempt: { !self.isAttemptCancelled(attempt.number, for: attempt.connectionId) }
             )
@@ -1136,6 +1264,7 @@ extension DatabaseManager {
         monitorPingedDrivers.removeValue(forKey: connectionId)
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
+        reportedStartupFailures.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)
         aiAccessApprovals.revoke(connectionId)
         AppEvents.shared.connectionStatusChanged.send(

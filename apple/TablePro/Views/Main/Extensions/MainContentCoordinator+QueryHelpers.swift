@@ -20,6 +20,13 @@ extension MainContentCoordinator {
         )
     }
 
+    // Stop ends the run before the driver answers, so a rollback the server did for it arrives on a settled claim. It is
+    // shown on the tab unless the tab already runs something new.
+    func reportStopRollback(_ error: Error, tabId: UUID) {
+        guard error is PluginStopRolledBackTransaction, !tabExecution.isExecuting(tabId) else { return }
+        tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = error.localizedDescription }
+    }
+
     /// A table tab's SELECT is the app's own, so it may follow a database switch it waited through
     /// onto a pooled connection. The choice belongs to the tab and never to the statement: an editor
     /// SELECT can read a temp table or sit inside the user's open transaction, and moving it to
@@ -54,9 +61,15 @@ extension MainContentCoordinator {
         isAutoLoad: Bool,
         trigger: TableLoadTrigger,
         traceToken: TableLoadTraceToken?,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        recordsRun: Bool = false
     ) {
         guard tabExecution.settle(claim) else {
+            // Stop ends the claim before the statement unwinds, so a stopped run reports itself here.
+            if recordsRun {
+                queryExecutionCoordinator.recordStatementCancelled(sql, tabId: tabId, startedAt: claim.startedAt)
+            }
+            reportStopRollback(error, tabId: tabId)
             traceStaleResultDropped(traceToken)
             return
         }
@@ -73,13 +86,20 @@ extension MainContentCoordinator {
             reportEndedExecutions([
                 EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
             ])
+            if recordsRun {
+                queryExecutionCoordinator.recordStatementCancelled(sql, tabId: tabId, startedAt: claim.startedAt)
+            }
+            reportStopRollback(error, tabId: tabId)
             return
         }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
             parkedTableLoad = ParkedTableLoad(tabId: tabId, trigger: trigger)
             return
         }
-        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput)
+        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger)
+        if recordsRun {
+            queryExecutionCoordinator.recordStatementFailure(sql, error: error, tabId: tabId, startedAt: claim.startedAt)
+        }
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )
@@ -135,7 +155,10 @@ extension MainContentCoordinator {
         rowLocators: [String?]? = nil,
         exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        columnOrigins: [PluginColumnOrigin?]? = nil,
+        prepared: TableRows.PreparedRows? = nil,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -162,7 +185,44 @@ extension MainContentCoordinator {
             rowLocators: rowLocators,
             exportDocuments: exportDocuments,
             absentCells: absentCells,
-            unloadedCells: unloadedCells
+            unloadedCells: unloadedCells,
+            columnOrigins: columnOrigins,
+            prepared: prepared,
+            trigger: trigger
+        )
+    }
+
+    func phase1RowShape(tabId: UUID, tableName: String?, columns: [String], columnTypes: [ColumnType]) -> TableRows.RowShape {
+        queryExecutionCoordinator.phase1RowShape(tabId: tabId, tableName: tableName, columns: columns, columnTypes: columnTypes)
+    }
+
+    func preparedPhase1Rows(
+        _ fetchResult: QueryFetchResult,
+        tabId: UUID,
+        tableName: String?,
+        isTableTab: Bool
+    ) async -> TableRows.PreparedRows {
+        await TableRows.preparing(
+            fetchResult.rows,
+            rowLocators: isTableTab ? fetchResult.rowLocators : nil,
+            exportDocuments: fetchResult.exportDocuments,
+            absentCells: fetchResult.absentCells,
+            unloadedCells: fetchResult.unloadedCells,
+            shape: phase1RowShape(
+                tabId: tabId, tableName: tableName, columns: fetchResult.columns, columnTypes: fetchResult.columnTypes
+            )
+        )
+    }
+
+    func extractTableName(from sql: String) -> String? {
+        tableNameReading.tableName(in: sql)
+    }
+
+    var tableNameReading: TableNameReading {
+        TableNameReading(
+            dialect: sqlDialect,
+            readings: connection.type.lexicalReadings,
+            browseSchema: services.databaseManager.session(for: connectionId)?.browseSchema
         )
     }
 
@@ -193,13 +253,15 @@ extension MainContentCoordinator {
         tableName: String,
         tabId: UUID,
         connectionType: DatabaseType,
-        schemaTask: Task<FetchedTableSchema, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?,
+        countsRows: Bool = true
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
-            schemaTask: schemaTask
+            schemaTask: schemaTask,
+            countsRows: countsRows
         )
     }
 
@@ -220,14 +282,16 @@ extension MainContentCoordinator {
         sql: String,
         tabId: UUID,
         connection conn: DatabaseConnection,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
             sql: sql,
             tabId: tabId,
             connection: conn,
-            serverOutput: serverOutput
+            serverOutput: serverOutput,
+            trigger: trigger
         )
     }
 }

@@ -22,7 +22,10 @@ final class CopilotInlineSource: InlineSuggestionSource {
     }
 
     func requestSuggestion(context: SuggestionContext) async throws -> InlineSuggestion? {
-        guard let client = CopilotService.shared.client else { return nil }
+        guard CopilotService.shared.client != nil else { return nil }
+        documentSync.refreshPreamble(forStatementAt: context.cursorOffset, in: context.fullText)
+        await documentSync.flush()
+        guard !Task.isCancelled, let client = CopilotService.shared.client else { return nil }
         guard let docInfo = documentSync.currentDocumentInfo() else { return nil }
 
         let editorSettings = AppSettingsManager.shared.editor

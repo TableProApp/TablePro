@@ -59,10 +59,7 @@ extension DatabaseManager {
         }
     }
 
-    /// Runs a container operation the driver performs itself, with no statement to show.
-    ///
-    /// `kind` is the caller's to state because there is no text to classify: a drop is
-    /// `.destructiveQuery` and everything else is `.schemaMutation`.
+    // No statement to classify, so the caller states `kind`: a drop is destructive, anything else a schema mutation.
     func runContainerOperation(
         description: String,
         kind: OperationKind,
@@ -70,6 +67,7 @@ extension DatabaseManager {
         databaseType: DatabaseType,
         event: CatalogEvent?,
         isConfirmationPreCleared: Bool = false,
+        gate: any ExecutionGate = ExecutionGateProvider.shared,
         perform: @Sendable @escaping (any DatabaseDriver) async throws -> Void
     ) async throws {
         try await authorizeContainerOperation(
@@ -78,7 +76,8 @@ extension DatabaseManager {
             connectionId: scope.connectionId,
             databaseType: databaseType,
             description: description,
-            isConfirmationPreCleared: isConfirmationPreCleared
+            isConfirmationPreCleared: isConfirmationPreCleared,
+            gate: gate
         )
         try await withScopedDriver(
             scope: scope,
@@ -90,16 +89,14 @@ extension DatabaseManager {
         if let event { CatalogChangeService.post(event) }
     }
 
-    /// Runs a container operation the driver expressed as statements.
-    ///
-    /// The kind comes from the statements rather than from the action's name, so an edit that
-    /// revokes a privilege is authorized at the destructive tier the same way a drop is.
+    // The kind comes from the statements, so an edit that revokes a privilege is authorized like a drop.
     func runContainerStatements(
         _ plan: ContainerDDLPlan,
         description: String,
         scope: DatabaseScope,
         databaseType: DatabaseType,
-        event: CatalogEvent?
+        event: CatalogEvent?,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let statements = plan.statements
         guard !statements.isEmpty else { return }
@@ -113,7 +110,8 @@ extension DatabaseManager {
             connectionId: scope.connectionId,
             databaseType: databaseType,
             description: description,
-            isConfirmationPreCleared: false
+            isConfirmationPreCleared: false,
+            gate: gate
         )
 
         let route = schemaChangeRoute(for: scope)
@@ -139,21 +137,19 @@ extension DatabaseManager {
         if let event { CatalogChangeService.post(event) }
     }
 
-    /// `isConfirmationPreCleared` is for a caller that has already shown the user a destructive
-    /// confirmation of its own. Without it the sidebar's Drop dialog is followed by the gate's,
-    /// asking twice for one gesture and once per target for a batch. It clears the confirmation
-    /// only: Touch ID, the read-only refusal and the audit record all still apply.
+    // Pre-cleared skips only a confirmation the caller already showed; Touch ID, Read-Only and the audit still apply.
     private func authorizeContainerOperation(
         sql: String?,
         kind: OperationKind,
         connectionId: UUID,
         databaseType: DatabaseType,
         description: String,
-        isConfirmationPreCleared: Bool
+        isConfirmationPreCleared: Bool,
+        gate: any ExecutionGate
     ) async throws {
         var capabilities = CallerCapabilities.interactiveUser
         if isConfirmationPreCleared { capabilities.insert(.confirmationPreCleared) }
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await gate.authorize(
             OperationRequest(
                 connectionId: connectionId,
                 databaseType: databaseType,
@@ -164,11 +160,7 @@ extension DatabaseManager {
                 operationDescription: description
             )
         )
-        guard case .authorized = decision else {
-            throw DatabaseError.queryFailed(
-                decision.deniedReason ?? String(localized: "This change was not authorized")
-            )
-        }
+        if let denial = decision.denialError { throw denial }
     }
 
     private static func execute(

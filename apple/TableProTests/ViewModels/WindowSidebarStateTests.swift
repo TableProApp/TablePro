@@ -214,11 +214,163 @@ struct WindowSidebarStateTests {
         )
     }
 
+    @Test("A declared kind's group expansion persists by id and restores before any driver exists")
+    func declaredKindGroupExpansionRoundTrips() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let events = SidebarServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+        )
+        let group = DatabaseTreeObjectGroup(database: "shop", schema: nil, kind: .server(events))
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(!state.isTreeObjectGroupExpanded(group))
+        state.setTreeObjectGroup(group, expanded: true)
+
+        let stored = try #require(defaults.data(forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)"))
+        #expect(String(decoding: stored, as: UTF8.self).contains("\"server.event\""))
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.isTreeObjectGroupExpanded(group))
+        let decodedOnly = DatabaseTreeObjectGroup(
+            database: "shop", schema: nil, kind: .server(SidebarServerObjectKind(id: "event"))
+        )
+        #expect(restored.isTreeObjectGroupExpanded(decodedOnly))
+    }
+
+    @Test("A built-in group still persists under the kind name it shipped with")
+    func builtInGroupKeepsShippedName() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.setTreeObjectGroup(DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .materializedView), expanded: true)
+
+        let stored = try #require(defaults.data(forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)"))
+        #expect(String(decoding: stored, as: UTF8.self).contains("\"materializedView\""))
+    }
+
     @Test("A window without a connection does not persist")
     func nilConnectionDoesNotPersist() throws {
         let defaults = try makeDefaults()
         let state = WindowSidebarState(connectionId: nil, defaults: defaults)
         state.expandedTreeDatabases.insert("x")
         #expect(state.expandedTreeDatabases == ["x"])
+    }
+
+    @Test("Open detail groups persist and restore with the rest of the tree")
+    func persistsOpenDetailGroups() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let orders = DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        let columns = DatabaseTableDetailGroupKey(table: orders, group: .columns)
+        let partitions = DatabaseTableDetailGroupKey(table: orders, group: .partitions)
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.expandedTreeTables.insert(orders)
+        state.expandedTreeTableDetailGroups = [columns, partitions]
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.expandedTreeTables == [orders])
+        #expect(restored.expandedTreeTableDetailGroups == [columns, partitions])
+    }
+
+    @Test("Expansion saved before table details shipped still decodes, with no group open")
+    func decodesExpansionWrittenBeforeTableDetails() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let stored = """
+        {"schemas":[],"databases":["shop"],"databaseSchemas":[],\
+        "tables":[{"database":"shop","schema":"public","table":"orders"}],"seeded":true}
+        """
+        defaults.set(Data(stored.utf8), forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)")
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+
+        #expect(restored.expandedTreeDatabases == ["shop"])
+        #expect(restored.expandedTreeTables == [DatabaseTableKey(database: "shop", schema: "public", table: "orders")])
+        #expect(restored.expandedTreeTableDetailGroups.isEmpty)
+    }
+
+    /// A later build may add a group this one has never heard of. Reading it must not throw away the
+    /// rest of the blob, the rule `unknownObjectKindKeepsOtherExpansion` pins for object kinds.
+    /// `PersistedExpansion` as the build before Table Details declares it, copied from that build.
+    private struct PreviousPersistedExpansion: Decodable {
+        struct ObjectGroup: Decodable {
+            let database: String
+            let schema: String?
+            let kind: String
+            let expanded: Bool
+        }
+
+        var schemas: [String]
+        var databases: [String]
+        var databaseSchemas: [DatabaseSchemaKey]
+        var tables: [DatabaseTableKey]?
+        var objectGroups: [ObjectGroup]?
+        var seeded: Bool?
+        var collapsedFolders: [UUID]?
+    }
+
+    /// Sparkle never downgrades, but a beta user can turn betas off, so the previous stable reads
+    /// what this build writes.
+    @Test("The build before table details still reads expansion that holds open groups")
+    func previousBuildReadsExpansionWithDetailGroups() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let orders = DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.expandedTreeDatabases.insert("shop")
+        state.expandedTreeTables.insert(orders)
+        state.expandedTreeTableDetailGroups = [DatabaseTableDetailGroupKey(table: orders, group: .columns)]
+
+        let data = try #require(defaults.data(forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)"))
+        let written = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let previous = try JSONDecoder().decode(PreviousPersistedExpansion.self, from: data)
+
+        #expect(written["tableDetailGroups"] != nil)
+        #expect(previous.databases == ["shop"])
+        #expect(previous.tables == [orders])
+    }
+
+    @Test("An unrecognized detail group does not discard the rest of the expansion")
+    func unknownDetailGroupKeepsOtherExpansion() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let stored = """
+        {"schemas":[],"databases":["shop"],"databaseSchemas":[],"tables":[],"seeded":true,\
+        "tableDetailGroups":[{"database":"shop","schema":"public","table":"orders","group":"policies"},\
+        {"database":"shop","schema":"public","table":"orders","group":"indexes"}]}
+        """
+        defaults.set(Data(stored.utf8), forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)")
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+
+        let orders = DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        #expect(restored.expandedTreeDatabases == ["shop"])
+        #expect(restored.expandedTreeTableDetailGroups == [DatabaseTableDetailGroupKey(table: orders, group: .indexes)])
+    }
+
+    @Test("Closing the last open group clears storage along with the rest")
+    func closingTheLastGroupRemovesStorage() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let key = DatabaseTableDetailGroupKey(
+            table: DatabaseTableKey(database: "shop", schema: "public", table: "orders"), group: .columns
+        )
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.expandedTreeTableDetailGroups.insert(key)
+        state.expandedTreeTableDetailGroups.remove(key)
+
+        #expect(defaults.data(forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)") == nil)
+    }
+
+    @Test("A table row's key is the one its expansion is recorded under")
+    func tableKeyFromATreeRow() {
+        let ref = DatabaseTreeTableRef(
+            database: nil, schema: "public", table: TableInfo(name: "orders", type: .table, rowCount: nil)
+        )
+
+        #expect(DatabaseTableKey(ref) == DatabaseTableKey(database: "", schema: "public", table: "orders"))
     }
 }
