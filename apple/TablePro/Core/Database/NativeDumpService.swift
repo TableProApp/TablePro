@@ -238,7 +238,8 @@ final class NativeDumpService: ObservableObject {
     private var cancelRequested = false
     private var preparation: Task<NativeDumpDescriptor.Request, any Error>?
     // The Vault lease the tool signs in with, held until the tool exits.
-    private var credentialLease: VaultLease?
+    private var credentialLease: VaultLeaseHold?
+    private var endsCredentialLease = false
     // The roots file the tool checks the server with, removed when the tool exits.
     private var systemTrustAnchors: SystemTrustAnchorFile?
     private let runningWork: RunningWorkRegistry
@@ -397,11 +398,15 @@ final class NativeDumpService: ObservableObject {
 
         var effective = session?.effectiveConnection ?? connection
         let resolvedFields = DatabaseDriverFactory.resolvedAdditionalFields(for: effective) ?? effective.additionalFields
+        // A password on the tool's command line is readable while it runs, so that Vault user is the tool's alone and
+        // is revoked when it exits.
+        let exposesPassword = descriptor.exposesPasswordInArguments
         // The connect's own resolution, errors included: a Keychain read misses every other source.
         let signIn = try await ConnectionCredentialResolver.resolveSignIn(
             for: effective,
             fields: resolvedFields,
-            override: session?.cachedPassword
+            override: session?.cachedPassword,
+            leaseOwner: exposesPassword ? UUID() : nil
         )
         // A tool signs in with the Keychain secrets the driver gets beside the password.
         if let token = resolvedFields[ConnectionSecretOptions.mongoSessionTokenFieldId], !token.isEmpty {
@@ -416,6 +421,7 @@ final class NativeDumpService: ObservableObject {
         let password = signIn.password
         releaseRunResources()
         credentialLease = signIn.lease
+        endsCredentialLease = exposesPassword
         signIn.lease?.start { _ in }
         var jobStarted = false
         defer {
@@ -479,7 +485,11 @@ final class NativeDumpService: ObservableObject {
     }
 
     private func releaseRunResources() {
-        credentialLease?.release()
+        if endsCredentialLease {
+            credentialLease?.end()
+        } else {
+            credentialLease?.release()
+        }
         credentialLease = nil
         systemTrustAnchors?.remove()
         systemTrustAnchors = nil

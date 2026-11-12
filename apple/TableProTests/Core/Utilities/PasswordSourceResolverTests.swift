@@ -259,8 +259,8 @@ struct PasswordSourceResolverTests {
         )
 
         #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
-        #expect(try await PasswordSourceResolver.test(source, for: context) == "2")
-        #expect(try await PasswordSourceResolver.test(source, for: context) == "3")
+        #expect(try await PasswordSourceResolver.test(source, for: context, leaseOwner: context.connectionId) == "2")
+        #expect(try await PasswordSourceResolver.test(source, for: context, leaseOwner: context.connectionId) == "3")
         #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
     }
 
@@ -270,7 +270,11 @@ struct PasswordSourceResolverTests {
             connectionId: UUID(), connectionName: "c", host: "db.example.com", port: 5432, user: "u", database: "d"
         )
 
-        let output = try await PasswordSourceResolver.test(.command(shell: "echo {host}:$TABLEPRO_PORT"), for: context)
+        let output = try await PasswordSourceResolver.test(
+            .command(shell: "echo {host}:$TABLEPRO_PORT"),
+            for: context,
+            leaseOwner: context.connectionId
+        )
 
         #expect(output == "db.example.com:5432")
     }

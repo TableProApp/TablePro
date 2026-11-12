@@ -42,6 +42,7 @@ struct CredentialProfilePicker: View {
                 PasswordSourceTestView(
                     source: source,
                     context: { coordinator.passwordSourceContext() },
+                    leaseOwner: { profile.id },
                     refusal: {
                         CredentialProfileStorage.shared.storeIsTrusted
                             ? nil : PasswordSourceResolver.ResolutionError.profileStoreNotTrusted

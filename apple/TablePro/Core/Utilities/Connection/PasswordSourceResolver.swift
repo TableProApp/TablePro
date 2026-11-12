@@ -81,12 +81,23 @@ enum PasswordSourceResolver {
         }
     }
 
-    // A test reports what the source returns right now, so it neither reads nor fills the reuse cache.
-    // A Vault role test may open the browser to sign in, and revokes the lease it was given at once.
-    static func test(_ source: PasswordSource, for context: ConnectionScriptContext) async throws -> String {
+    // A command test reports what the command prints right now, so it neither reads nor fills the reuse cache.
+    // A Vault role test may open the browser to sign in. It shows the user `leaseOwner` signs in as, and leaves the
+    // lease for that owner's next connect, so a database slow to accept a new user has it ready by then. With no
+    // owner, as for an unsaved connection, nothing would reuse it, so it is revoked at once.
+    static func test(_ source: PasswordSource, for context: ConnectionScriptContext, leaseOwner: UUID?) async throws -> String {
         if case .vaultDatabaseRole(let role) = source {
-            let signIn = try await VaultDatabaseCredentials.shared.signIn(role, interactive: true)
-            signIn.lease?.release()
+            let signIn = try await VaultDatabaseCredentials.shared.signIn(
+                role,
+                owner: leaseOwner ?? UUID(),
+                for: nil,
+                interactive: true
+            )
+            if leaseOwner == nil {
+                signIn.lease?.end()
+            } else {
+                signIn.lease?.release()
+            }
             return signIn.username.map { "\($0) / \(signIn.password)" } ?? signIn.password
         }
         return try await resolve(source.withoutReuse, for: context)

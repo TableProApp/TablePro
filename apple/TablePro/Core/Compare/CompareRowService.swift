@@ -157,6 +157,18 @@ internal struct CompareRowService {
         )
     }
 
+    // The sides are built inside the lift: a stream starts its statement when it is built, and a bounded one parks
+    // its connection once its buffer is full, so a lift sent after it would wait behind that statement for good.
+    internal static func readingBothSides<Sides, T>(
+        liftingTimeoutOn drivers: [DatabaseDriver],
+        sides makeSides: () -> Sides,
+        _ body: (Sides) async throws -> T
+    ) async throws -> T {
+        try await BulkReadTimeout.lifted(on: drivers) {
+            try await body(makeSides())
+        }
+    }
+
     private func withBothSides<T: Sendable>(
         source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
@@ -219,16 +231,17 @@ internal struct CompareRowService {
                     )
                 }
                 let targetSide = targetRead.carrying(targetDriver.readOnlyRunContext(safeModeIsReadOnly: targetIsReadOnly))
-                let sides = RowSides(
-                    source: sourceSide.provider(driver: sourcePlugin),
-                    target: targetSide.provider(driver: targetPlugin),
-                    resolver: KeyLookupResolver(
-                        source: (sourceSide, sourcePlugin),
-                        target: (targetSide, targetPlugin)
-                    ),
-                    targetDriver: targetPlugin
-                )
-                return try await BulkReadTimeout.lifted(on: [sourceDriver, targetDriver]) {
+                return try await Self.readingBothSides(liftingTimeoutOn: [sourceDriver, targetDriver]) {
+                    RowSides(
+                        source: sourceSide.provider(driver: sourcePlugin),
+                        target: targetSide.provider(driver: targetPlugin),
+                        resolver: KeyLookupResolver(
+                            source: (sourceSide, sourcePlugin),
+                            target: (targetSide, targetPlugin)
+                        ),
+                        targetDriver: targetPlugin
+                    )
+                } _: { sides in
                     try await body(engine, sides)
                 }
             }
