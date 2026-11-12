@@ -35,6 +35,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private let statementRunController = StatementRunController()
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     var schemaProvider: SQLSchemaProvider?
+    var databaseScope: DatabaseScope?
     private let inlineAccessGate: AIConnectionAccessGate = .live
     private var contextMenu: AIEditorContextMenu?
     private var inlineSuggestionManager: InlineSuggestionManager?
@@ -261,12 +262,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             self?.vimCursorManager?.updatePosition()
         }
 
-        if !isLargeDocument, !didDestroy, let tabID, let sync = copilotDocumentSync,
-           resolvedInlineSourceKind == .copilot {
-            let text = textView.string
-            Task { await sync.didChangeText(tabID: tabID, newText: text) }
-        }
-
         frameChangeTask?.cancel()
         frameChangeTask = Task { [weak controller] in
             try? await Task.sleep(for: .milliseconds(50))
@@ -285,6 +280,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         pendingVimDocumentMarks = nil
         foldPreview.dismiss()
         inlineSuggestionManager?.dismissSuggestion()
+        copilotDocumentSync?.textViewDidReplaceDocument()
         statementRunController.refreshControls(in: controller)
         statementRunController.refreshHighlight(in: controller)
         diagnosticsController.clear(in: controller)
@@ -338,10 +334,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         removeVimKeyInterceptor()
         removeEmacsKeyInterceptor()
 
-        if let tabID, let sync = copilotDocumentSync {
-            let id = tabID
-            Task { await sync.didCloseTab(tabID: id) }
-        }
+        copilotDocumentSync?.detach()
 
         foldPreview.destroy()
         inlineSuggestionManager?.uninstall()
@@ -638,44 +631,61 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func installCopilotInlineSource() {
-        let sync = CopilotDocumentSync()
+        let sync = CopilotDocumentSync(server: LiveCopilotDocumentServer(), lengthLimit: Self.languageServiceLengthLimit)
         copilotDocumentSync = sync
         copilotInlineSource = CopilotInlineSource(documentSync: sync)
 
-        let capturedTabID = tabID
-        let capturedText = controller?.textView?.string ?? ""
-        let capturedSchemaProvider = schemaProvider
-        let capturedDBType = databaseType
-        let dbName = connectionId.flatMap {
-            DatabaseManager.shared.session(for: $0)?.resolvedBrowseDatabase
-        } ?? "database"
+        let referenceText: String?
+        if let textView = controller?.textView, textView.textStorage.length <= Self.languageServiceLengthLimit {
+            referenceText = textView.string
+        } else {
+            referenceText = nil
+        }
+        let source = copilotSchemaSource()
 
         Task { [weak self] in
-            if let provider = capturedSchemaProvider, let dbType = capturedDBType {
+            if let source {
                 await sync.preambleBuilder.buildPreamble(
-                    schemaProvider: provider,
-                    databaseName: dbName,
-                    databaseType: dbType
+                    schemaProvider: source.schemaProvider,
+                    databaseName: source.databaseName,
+                    databaseType: source.databaseType,
+                    referencing: referenceText,
+                    grammar: source.grammar,
+                    maxTables: source.budget
                 )
             }
             guard let self, self.copilotDocumentSync === sync, self.resolvedInlineSourceKind == .copilot else {
                 return
             }
             await CopilotService.shared.start()
-            guard self.copilotDocumentSync === sync else { return }
-            if let tabID = capturedTabID {
-                sync.ensureDocumentOpen(tabID: tabID, text: capturedText)
-                await sync.didActivateTab(tabID: tabID, text: capturedText)
-            }
+            guard self.copilotDocumentSync === sync, let textView = self.controller?.textView else { return }
+            sync.attach(
+                to: textView,
+                tabID: { [weak self] in self?.tabID },
+                isAllowed: { [weak self] in self?.resolvedInlineSourceKind == .copilot },
+                schemaSource: { [weak self] in self?.copilotSchemaSource() }
+            )
         }
+    }
+
+    private func copilotSchemaSource() -> CopilotPreambleBuilder.Source? {
+        guard let schemaProvider, let databaseType else { return nil }
+        let scopeDatabase = databaseScope.flatMap { $0.isServerScoped ? nil : $0.database }
+        let databaseName = scopeDatabase ?? connectionId.flatMap {
+            DatabaseManager.shared.session(for: $0)?.resolvedBrowseDatabase
+        } ?? "database"
+        return CopilotPreambleBuilder.Source(
+            schemaProvider: schemaProvider,
+            databaseName: databaseName,
+            databaseType: databaseType,
+            grammar: lexicalGrammar,
+            budget: max(AppSettingsManager.shared.ai.maxSchemaTables, 0)
+        )
     }
 
     private func teardownInlineSources(except kind: InlineSuggestionSourceKind) {
         if kind != .copilot {
-            if let tabID, let sync = copilotDocumentSync {
-                let id = tabID
-                Task { await sync.didCloseTab(tabID: id) }
-            }
+            copilotDocumentSync?.detach()
             copilotDocumentSync = nil
             copilotInlineSource = nil
         }
