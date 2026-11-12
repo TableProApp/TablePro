@@ -277,6 +277,10 @@ final class ConnectionSessionModel {
     // The record changed how it dials, so the next window opens it again.
     func reset() {
         let attempt = state.attempt
+        // What failed was the old record's dial.
+        if !redialsToSwitchDatabase {
+            rememberedDialFailure = nil
+        }
         enter(.cancel)
         if attempt?.purpose == .open { attempt?.task?.cancel() }
         leaveDial()
@@ -326,7 +330,7 @@ final class ConnectionSessionModel {
         do {
             let saved = record
             // A remembered database that never answered may hang again, so the next open starts from the saved one and
-            // switches after, as opens did before.
+            // switches after, as opens did before. A USE engine does so after any failure it could not fall back from.
             let failedBefore = rememberedDialFailure
             rememberedDialFailure = nil
             let target = failedBefore == nil ? openTarget(restoring: wanted) : record
@@ -344,7 +348,8 @@ final class ConnectionSessionModel {
             } catch let thrown {
                 let listRefused = thrown as? TableListRefused
                 let error = listRefused?.error ?? thrown
-                if target.database != saved.database, startsNextOpenFromSaved(after: error, listRefused: listRefused != nil) {
+                if target.database != saved.database,
+                   startsNextOpenFromSaved(after: error, listRefused: listRefused != nil, by: attempt) {
                     rememberedDialFailure = error
                 }
                 // A sign-in is the connection's, not the database's: the saved database would fail the same way.
@@ -462,12 +467,12 @@ final class ConnectionSessionModel {
     }
 
     // A USE engine's other failure may still be the database's on a server that numbers it its own way.
-    private func startsNextOpenFromSaved(after error: any Error, listRefused: Bool) -> Bool {
+    private func startsNextOpenFromSaved(after error: any Error, listRefused: Bool, by attempt: ConnectionAttempt) -> Bool {
         if redialsToSwitchDatabase {
             if case PostgreSQLError.unreachable = error { return true }
             return false
         }
-        return !listRefused && !blamesDatabase(error) && !(error is CancellationError)
+        return isCurrent(attempt) && !listRefused && !blamesDatabase(error) && !(error is CancellationError)
     }
 
     private nonisolated static let notAboutTheDatabase = [
