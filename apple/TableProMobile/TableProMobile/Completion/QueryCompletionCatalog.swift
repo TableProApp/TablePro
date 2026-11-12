@@ -7,6 +7,7 @@ import TableProPluginKit
 // Nil when there is no session to read from: nothing is read and nothing is kept.
 typealias QueryColumnReader = @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]?
 typealias QuerySchemaTableReader = @Sendable (_ schema: String) async throws -> [TableInfo]?
+typealias QueryForeignKeyReader = @Sendable (_ table: String, _ schema: String?) async throws -> [ForeignKeyInfo]?
 
 actor QueryCompletionCatalog: SQLCompletionCatalog {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryCompletionCatalog")
@@ -19,6 +20,11 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     nonisolated private struct CachedColumns: Sendable {
         let generation: Int
         let columns: [ColumnInfo]
+    }
+
+    nonisolated private struct CachedForeignKeys: Sendable {
+        let generation: Int
+        let keys: [SQLCompletionForeignKey]
     }
 
     private var tables: [TableInfo] {
@@ -56,9 +62,12 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     }
     private var schemaTables: [String: (generation: Int, tables: [TableInfo])] = [:]
     private var schemaTableReads: [String: Task<[TableInfo]?, any Error>] = [:]
+    private let readCatalogForeignKeys: QueryForeignKeyReader?
+    private var cachedForeignKeys: [ColumnKey: CachedForeignKeys] = [:]
+    private var foreignKeyReads: [ColumnKey: Task<[SQLCompletionForeignKey]?, any Error>] = [:]
 
     // `readCatalogColumns` reads on a connection beside the session and answers nil when there is none,
-    // so only `readColumns`, the session's own, waits for runs.
+    // so only `readColumns`, the session's own, waits for runs. Foreign keys are read on that connection only.
     init(
         tables: [TableInfo],
         databaseType: DatabaseType,
@@ -67,6 +76,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         readCatalogColumns: QueryColumnReader? = nil,
         readSchemaTables: QuerySchemaTableReader? = nil,
         readCatalogSchemaTables: QuerySchemaTableReader? = nil,
+        readCatalogForeignKeys: QueryForeignKeyReader? = nil,
         schemas: [String] = [],
         databases: [String] = []
     ) {
@@ -77,6 +87,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         self.readCatalogColumns = readCatalogColumns
         self.readSchemaTables = readSchemaTables
         self.readCatalogSchemaTables = readCatalogSchemaTables
+        self.readCatalogForeignKeys = readCatalogForeignKeys
         self.schemas = schemas
         self.databases = databases
     }
@@ -368,6 +379,76 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
                 return item
             }
         }
+    }
+
+    // Kept and marked stale with the columns. A failed read keeps the last answer for this generation, so a catalog
+    // that refuses it is not asked on every key.
+    func foreignKeys(of tableName: String, schema: String?) async -> [SQLCompletionForeignKey] {
+        guard let readCatalogForeignKeys else { return [] }
+        let key = columnKey(tableName, schema: schema)
+        let known = cachedForeignKeys[key]
+        if let known, known.generation == columnGeneration { return known.keys }
+        if let pending = foreignKeyReads[key] {
+            return (try? await pending.value).flatMap { $0 } ?? known?.keys ?? []
+        }
+
+        let generation = columnGeneration
+        let namespace = schema ?? self.schema
+        let read = Task<[SQLCompletionForeignKey]?, any Error> {
+            try await readCatalogForeignKeys(key.table, key.schema).map { Self.completionForeignKeys($0, within: namespace) }
+        }
+        foreignKeyReads[key] = read
+        defer {
+            if foreignKeyReads[key] == read { foreignKeyReads[key] = nil }
+        }
+        do {
+            guard let keys = try await read.value else { return known?.keys ?? [] }
+            if generation == columnGeneration {
+                cachedForeignKeys[key] = CachedForeignKeys(generation: generation, keys: keys)
+            }
+            return keys
+        } catch {
+            Self.logger.warning("Reading foreign keys for completion failed: \(error.localizedDescription, privacy: .private)")
+            if generation == columnGeneration {
+                cachedForeignKeys[key] = CachedForeignKeys(generation: generation, keys: known?.keys ?? [])
+            }
+            return known?.keys ?? []
+        }
+    }
+
+    // A key into another schema or database would pair with a same-named table of this one.
+    nonisolated private static func completionForeignKeys(
+        _ rows: [ForeignKeyInfo],
+        within namespace: String?
+    ) -> [SQLCompletionForeignKey] {
+        let local = rows.filter { row in
+            guard let namespace, let target = row.referencedSchema, !target.isEmpty else { return true }
+            return target.caseInsensitiveCompare(namespace) == .orderedSame
+        }
+        return SQLCompletionForeignKey.grouping(local.map {
+            SQLCompletionForeignKey.Row(
+                name: $0.name,
+                column: $0.column,
+                referencedTable: $0.referencedTable,
+                referencedSchema: $0.referencedSchema,
+                referencedColumn: $0.referencedColumn
+            )
+        })
+    }
+
+    // Nothing spells the items after ranking here, so a condition's names are quoted as the other items are.
+    nonisolated func writtenText(of identifier: SQLCompletionIdentifier) -> String? {
+        let type = databaseType
+        return identifier.parts.map { part -> String in
+            switch part {
+            case .catalog(let name):
+                return CompletionIdentifierQuoting.quoted(name, for: type)
+            case .statement(let text, let isQuoted):
+                return isQuoted
+                    ? SQLBuilder.quoteIdentifier(text, for: type)
+                    : CompletionIdentifierQuoting.quotedAsWritten(text, for: type)
+            }
+        }.joined(separator: ".")
     }
 
     private func columns(of tableName: String, schema: String?) async -> [ColumnInfo] {

@@ -3,13 +3,47 @@ import Foundation
 import TableProSQLGrammar
 import Testing
 
-private struct StubCatalog: SQLCompletionCatalog {
+struct StubCatalog: SQLCompletionCatalog {
     let tables: [String]
     let columns: [String: [String]]
     var values: [String] = []
     var databases: [String] = []
     var schemas: [String] = []
     var schemaTables: [String: [String]] = [:]
+    var keys: [String: [SQLCompletionForeignKey]] = [:]
+    // Like the apps' catalogs: two tables in scope qualify every column.
+    var qualifiesInScope = false
+    // Like the iOS catalog, which quotes a mixed-case name itself because nothing spells it later.
+    var writesNames = false
+    let keyReads = KeyReads()
+
+    final class KeyReads: @unchecked Sendable {
+        private let lock = NSLock()
+        private var tables: [String] = []
+
+        func record(_ table: String) {
+            lock.withLock { tables.append(table) }
+        }
+
+        var all: [String] {
+            lock.withLock { tables }
+        }
+    }
+
+    func foreignKeys(of tableName: String, schema: String?) -> [SQLCompletionForeignKey] {
+        keyReads.record(tableName)
+        return keys[tableName.lowercased()] ?? []
+    }
+
+    func writtenText(of identifier: SQLCompletionIdentifier) -> String? {
+        guard writesNames else { return nil }
+        return identifier.parts.map { part in
+            switch part {
+            case .catalog(let name): return name == name.lowercased() ? name : "\"\(name)\""
+            case .statement(let text, let isQuoted): return isQuoted ? "\"\(text)\"" : text
+            }
+        }.joined(separator: ".")
+    }
 
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
         let name = aliasOrName.lowercased()
@@ -41,9 +75,23 @@ private struct StubCatalog: SQLCompletionCatalog {
     func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] { values }
 
     func allColumnsInScope(for references: [TableReference]) -> [SQLCompletionItem] {
-        references.flatMap { reference in
+        references.flatMap { reference -> [SQLCompletionItem] in
             guard let derived = reference.derivedColumns else {
-                return columnCompletionItems(for: reference.tableName, schema: reference.schema)
+                let items = columnCompletionItems(for: reference.tableName, schema: reference.schema)
+                guard qualifiesInScope, references.count > 1 else { return items }
+                return items.map { column in
+                    let parts: [SQLCompletionIdentifier.Part] = [
+                        .statement(reference.identifier, quoted: reference.isIdentifierQuoted), .catalog(column.label),
+                    ]
+                    var item = SQLCompletionItem(
+                        label: "\(reference.identifier).\(column.label)",
+                        kind: .column,
+                        insertText: writtenText(of: SQLCompletionIdentifier(parts)),
+                        identifier: SQLCompletionIdentifier(parts)
+                    )
+                    item.isQualifiedReference = true
+                    return item
+                }
             }
             return derived.map { SQLCompletionItem.column($0, dataType: nil, tableName: reference.identifier) }
         }

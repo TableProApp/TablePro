@@ -103463,6 +103463,9 @@
         }
       }
     },
+    "Line %lld runs COPY FROM STDIN, whose rows TablePro cannot send. Run the file with psql, or dump it again with --inserts." : {
+
+    },
     "Line break" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,

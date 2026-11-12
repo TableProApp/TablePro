@@ -39,15 +39,12 @@ extension QueryExecutionCoordinator {
     // The rest of a run, cut again once a statement changed how the session reads literals, in tab coordinates.
     nonisolated static func remainingStatements(
         in text: String,
-        after ran: NSRange,
+        after ran: SQLStatementScanner.ExecutableStatement,
         through end: Int,
         grammar: SQLLexicalGrammar
     ) -> [SQLStatementScanner.ExecutableStatement] {
-        let source = text as NSString
-        let start = NSMaxRange(ran)
-        guard start < end, end <= source.length else { return [] }
-        let rest = source.substring(with: NSRange(location: start, length: end - start))
-        return SQLStatementScanner.executableStatements(in: rest, grammar: grammar).map { $0.offset(by: start) }
+        guard end <= (text as NSString).length else { return [] }
+        return SQLStatementScanner.executableStatements(in: text, after: ran, through: end, grammar: grammar)
     }
 
     // False once the editor's text no longer holds each statement where the run found it.

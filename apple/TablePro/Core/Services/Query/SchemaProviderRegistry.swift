@@ -1,11 +1,3 @@
-//
-//  SchemaProviderRegistry.swift
-//  TablePro
-//
-//  Manages shared SQLSchemaProvider instances, one per DatabaseScope.
-//  Ref-counted per connection with grace period removal to avoid redundant schema loads.
-//
-
 import Foundation
 import os
 import TableProSQLGrammar
@@ -105,6 +97,32 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
             sampleFieldPaths: { table, limit in
                 try await metadataProvider.withMetadataDriver(scope: scope) { driver in
                     try await driver.sampleFieldPaths(table: table, limit: limit)
+                }
+            },
+            fetchForeignKeys: { table, schema in
+                try await metadataProvider.withMetadataDriver(scope: scope) { driver -> [ForeignKeyInfo] in
+                    let type = driver.connection.type
+                    guard type.supportsForeignKeys else { return [] }
+                    let keys = try await driver.fetchForeignKeys(table: table, schema: schema)
+                    // A key into another schema would pair with a same-named table of this one. On an engine with no
+                    // schema layer a qualifier names a database. With no schema named, the keys come from the
+                    // driver's current one, and a scope with no schema would keep keys into every schema.
+                    let slot = await MainActor.run { EngineNamespaceSlot(databaseType: type) }
+                    let origin = slot == .database
+                        ? DatabaseScope(connectionId: scope.connectionId, database: schema ?? scope.database, schema: nil)
+                        : DatabaseScope(
+                            connectionId: scope.connectionId,
+                            database: scope.database,
+                            schema: schema ?? scope.schema ?? (driver as? SchemaSwitchable)?.currentSchema
+                        )
+                    return keys.filter { key in
+                        ForeignKeyTargetScope.pointsWithin(
+                            origin,
+                            referencedDatabase: key.referencedDatabase,
+                            referencedSchema: key.referencedSchema,
+                            slot: slot
+                        )
+                    }
                 }
             }
         )
