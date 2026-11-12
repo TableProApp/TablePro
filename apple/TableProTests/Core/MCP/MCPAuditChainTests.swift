@@ -63,6 +63,72 @@ struct MCPAuditChainTests {
         )
     }
 
+    @Test("A row without a client keeps the digest builds before the client column wrote")
+    func rowWithoutAClientKeepsItsDigest() throws {
+        let row = AuditEntry(
+            id: try #require(UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")),
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            category: .tool,
+            tokenId: UUID(uuidString: "00000000-0000-0000-0000-000000000001"),
+            tokenName: "client",
+            connectionId: nil,
+            action: "tool.run",
+            outcome: AuditOutcome.success,
+            details: "sqlDigest=abc"
+        )
+
+        #expect(
+            MCPAuditChainLink.digest(entry: row, sequence: 0, previousHash: MCPAuditChainLink.genesisHash)
+                == "7ad26117f02b46c632d1367b24359f6a8ff1fc84152c20a2ca825881623c8e99"
+        )
+    }
+
+    @Test("The digest covers the client a row names")
+    func digestCoversTheClient() {
+        let base = entry(action: "tool.run")
+        let named = AuditEntry(
+            id: base.id,
+            timestamp: base.timestamp,
+            category: base.category,
+            tokenId: base.tokenId,
+            tokenName: base.tokenName,
+            connectionId: base.connectionId,
+            action: base.action,
+            outcome: base.outcome,
+            details: base.details,
+            clientName: "Cursor"
+        )
+        let renamed = AuditEntry(
+            id: base.id,
+            timestamp: base.timestamp,
+            category: base.category,
+            tokenId: base.tokenId,
+            tokenName: base.tokenName,
+            connectionId: base.connectionId,
+            action: base.action,
+            outcome: base.outcome,
+            details: base.details,
+            clientName: "Zed"
+        )
+
+        let previous = MCPAuditChainLink.genesisHash
+        let digests = Set([base, named, renamed].map {
+            MCPAuditChainLink.digest(entry: $0, sequence: 0, previousHash: previous)
+        })
+        #expect(digests.count == 3)
+    }
+
+    @Test("A client renamed behind the app's back is detected")
+    func editedClientIsDetected() async {
+        let (storage, path) = Self.makeStorage()
+        await storage.addEntry(AuditEntry(category: .tool, action: "tool.first", outcome: AuditOutcome.success, clientName: "Cursor"))
+        await storage.addEntry(AuditEntry(category: .tool, action: "tool.second", outcome: AuditOutcome.success, clientName: "Zed"))
+
+        #expect(Self.execute("UPDATE audit_entries SET client_name = 'Cursor' WHERE sequence = 1;", at: path))
+
+        #expect(await storage.verify() == .broken(atSequence: 1))
+    }
+
     @Test("Reordering two entries breaks the chain")
     func reorderingBreaksTheChain() {
         let first = entry(action: "tool.first")

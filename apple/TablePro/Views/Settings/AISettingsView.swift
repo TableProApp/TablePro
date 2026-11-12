@@ -2,9 +2,6 @@
 //  AISettingsView.swift
 //  TablePro
 //
-//  Single settings tab for AI: providers, active provider, inline suggestions,
-//  context, and privacy. Modeled after Xcode 26 Intelligence settings.
-//
 
 import Combine
 import SwiftUI
@@ -102,7 +99,13 @@ struct AISettingsView: View {
             Picker("Active Provider", selection: $settings.activeProviderID) {
                 Text("None").tag(UUID?.none)
                 ForEach(settings.providers) { provider in
-                    Text(provider.displayName).tag(UUID?.some(provider.id))
+                    Label {
+                        Text(provider.displayName)
+                    } icon: {
+                        provider.icon.menuImage()
+                    }
+                    .labelStyle(.titleAndIcon)
+                    .tag(UUID?.some(provider.id))
                 }
             }
             .pickerStyle(.menu)
@@ -169,8 +172,9 @@ struct AISettingsView: View {
             }
             .frame(width: 14)
 
-            Image(systemName: provider.symbolName)
+            BrandIconView(icon: provider.icon)
                 .foregroundStyle(.secondary)
+                .frame(width: 16, height: 16)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -201,21 +205,32 @@ struct AISettingsView: View {
                 Button {
                     addingProvider = makeNewProvider(type: type)
                 } label: {
-                    Label(type.displayName, systemImage: type.symbolName)
+                    Label {
+                        Text(type.displayName)
+                    } icon: {
+                        type.icon.menuImage()
+                    }
+                    .labelStyle(.titleAndIcon)
                 }
             }
             ForEach(AIProviderPreset.all) { preset in
                 Button {
                     addingProvider = AIProviderConfig(preset: preset)
                 } label: {
-                    Label(preset.displayName, systemImage: preset.symbolName)
+                    Label {
+                        Text(preset.displayName)
+                    } icon: {
+                        preset.icon.menuImage()
+                    }
+                    .labelStyle(.titleAndIcon)
                 }
             }
             Divider()
             Button {
                 addingProvider = makeNewProvider(type: .custom)
             } label: {
-                Label(String(localized: "Add Custom Provider…"), systemImage: AIProviderType.custom.symbolName)
+                Label(String(localized: "Add Custom Provider…"), systemImage: AIProviderType.custom.icon.fallbackSystemImage)
+                    .labelStyle(.titleAndIcon)
             }
         } label: {
             Label(String(localized: "Add Provider…"), systemImage: "plus")

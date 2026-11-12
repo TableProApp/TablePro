@@ -46,10 +46,20 @@ internal struct CsvRowConverter {
 
     // An unquoted field holds no quote, so wrapping it for its edge spaces needs no escaping.
     static func encode(_ value: String) -> String {
-        let field = PluginRowWriters.csvField(value, options: fieldOptions)
+        encode(value, options: fieldOptions)
+    }
+
+    // For a file the user opens in a spreadsheet, where a field another program wrote must not run as a formula.
+    static func encodeForSpreadsheet(_ value: String) -> String {
+        encode(value, options: spreadsheetFieldOptions)
+    }
+
+    private static func encode(_ value: String, options: PluginCsvWriteOptions) -> String {
+        let field = PluginRowWriters.csvField(value, options: options)
         guard field.unicodeScalars.first != "\"", value.hasPrefix(" ") || value.hasSuffix(" ") else { return field }
         return "\"\(field)\""
     }
 
     private static let fieldOptions = PluginCsvWriteOptions(sanitizesFormulas: false)
+    private static let spreadsheetFieldOptions = PluginCsvWriteOptions(sanitizesFormulas: true)
 }

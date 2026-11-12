@@ -7186,6 +7186,272 @@ msgstr ""
 msgid "The stored access token is not readable text."
 msgstr "Access Token đã lưu không phải văn bản đọc được."
 
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Checking…"
+msgstr "Đang kiểm tra…"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Install"
+msgstr "Cài đặt"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Update"
+msgstr "Cập nhật"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Install in {client}"
+msgstr "Cài đặt vào {client}"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Update {client}"
+msgstr "Cập nhật {client}"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Copy the Setup for {client}"
+msgstr "Sao chép thiết lập cho {client}"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{client} is set up."
+msgstr "Đã thiết lập {client}."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "TablePro was removed from {client}."
+msgstr "Đã gỡ TablePro khỏi {client}."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "The change to the client stopped unexpectedly."
+msgstr "Thay đổi cho client đã dừng đột ngột."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Reason"
+msgstr "Lý do"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Configuration File"
+msgstr "Tệp cấu hình"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Manual Setup"
+msgstr "Thiết lập thủ công"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Copy the Setup"
+msgstr "Sao chép thiết lập"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "The access token is hidden here. Copy includes it."
+msgstr "Access Token được ẩn ở đây. Bản sao chép có đầy đủ token."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Remove…"
+msgstr "Gỡ bỏ…"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{client} just connected"
+msgstr "{client} vừa kết nối"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "TablePro runs “{command}” to remove its entry."
+msgstr "TablePro chạy “{command}” để gỡ mục của mình."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid ""
+"TablePro removes its entry from {file}. The file as it was is kept as"
+" {backup}."
+msgstr ""
+"TablePro gỡ mục của mình khỏi {file}. Bản trước đó của tệp được giữ ở"
+" {backup}."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Remove TablePro From {client}?"
+msgstr "Gỡ TablePro khỏi {client}?"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Cannot connect to an address"
+msgstr "Không thể kết nối tới một địa chỉ"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Connects only to servers on the internet"
+msgstr "Chỉ kết nối tới máy chủ trên internet"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Not set up"
+msgstr "Chưa thiết lập"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up"
+msgstr "Đã thiết lập"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up for another address"
+msgstr "Đã thiết lập cho địa chỉ khác"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up with an old access token"
+msgstr "Đã thiết lập với Access Token cũ"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up for another server"
+msgstr "Đã thiết lập cho máy chủ khác"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up for one project only"
+msgstr "Chỉ thiết lập cho một dự án"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Its configuration file cannot be read"
+msgstr "Không đọc được tệp cấu hình"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up by hand in the client"
+msgstr "Thiết lập thủ công trong client"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up but turned off in the client"
+msgstr "Đã thiết lập nhưng đang tắt trong client"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Set up, but a project uses an old setup"
+msgstr "Đã thiết lập, nhưng một dự án dùng thiết lập cũ"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "TablePro is turned off in {client}. Turn it on there to use it."
+msgstr "TablePro đang tắt trong {client}. Hãy bật lại ở đó để sử dụng."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid ""
+"A project in {client} has its own TablePro setup with an old address or"
+" access token, and uses it in place of this one."
+msgstr ""
+"Một dự án trong {client} có thiết lập TablePro riêng với địa chỉ hoặc Access"
+" Token cũ, và dùng thiết lập đó thay cho thiết lập này."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid ""
+"{client} runs only servers it starts itself, and TablePro on Linux serves MCP"
+" at an address."
+msgstr ""
+"{client} chỉ chạy các máy chủ do chính nó khởi chạy, còn TablePro trên Linux"
+" phục vụ MCP qua một địa chỉ."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid ""
+"{client} connects to MCP servers from the internet, so it cannot reach"
+" TablePro on this computer."
+msgstr ""
+"{client} kết nối tới máy chủ MCP từ internet nên không thể truy cập TablePro"
+" trên máy tính này."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{client} picks up the change on its own."
+msgstr "{client} tự nhận thay đổi."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Start a new session in {client} to use it."
+msgstr "Mở phiên mới trong {client} để sử dụng."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Quit and reopen {client} to use it."
+msgstr "Thoát rồi mở lại {client} để sử dụng."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Reload the MCP servers in {client} to use it."
+msgstr "Tải lại các máy chủ MCP trong {client} để sử dụng."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid ""
+"Run this command in a terminal. TablePro runs in a sandbox and cannot start"
+" {client} itself."
+msgstr ""
+"Chạy lệnh này trong terminal. TablePro chạy trong sandbox nên không thể tự"
+" khởi chạy {client}."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "Run this command in a terminal."
+msgstr "Chạy lệnh này trong terminal."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Add this to {file}."
+msgstr "Thêm nội dung này vào {file}."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "Add this in the MCP settings of {client}."
+msgstr "Thêm nội dung này vào cài đặt MCP của {client}."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "TablePro cannot set up this client. Copy the setup instead."
+msgstr "TablePro không thể thiết lập client này. Hãy sao chép thiết lập."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "The setup for this client could not be made."
+msgstr "Không tạo được thiết lập cho client này."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{file} is not valid, so TablePro left it as it is."
+msgstr "{file} không hợp lệ nên TablePro giữ nguyên."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{file} names a setting twice, so TablePro left it as it is."
+msgstr "{file} khai báo một thiết lập hai lần nên TablePro giữ nguyên."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid ""
+"{file} is written in a way TablePro does not edit. Copy the setup instead."
+msgstr ""
+"{file} được viết theo cách TablePro không chỉnh sửa. Hãy sao chép thiết lập."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{file} could not be written: {detail}"
+msgstr "Không ghi được {file}: {detail}"
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{file} is not a text file, so TablePro left it as it is."
+msgstr "{file} không phải tệp văn bản nên TablePro giữ nguyên."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{file} kept changing while TablePro wrote it. Try again."
+msgstr "{file} liên tục thay đổi khi TablePro đang ghi. Hãy thử lại."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+#, rust-format
+msgid "{file} did not keep the change. Check whether the client rewrote it."
+msgstr ""
+"{file} không giữ được thay đổi. Hãy kiểm tra xem client có ghi đè lên không."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "The client’s command failed."
+msgstr "Lệnh của client đã thất bại."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "The client’s command did not finish."
+msgstr "Lệnh của client không hoàn tất."
+
 #: crates/app/src/ui/result_pane/result_limit_banner.rs
 msgid "Export All…"
 msgstr "Xuất tất cả…"
@@ -11549,11 +11815,11 @@ msgstr "Thiết lập client"
 
 #: data/resources/ui/preferences-mcp-page.ui
 msgid ""
-"Give a client the address, and the access token to send as a Bearer token in"
-" the Authorization header. The token is kept in the keyring."
+"Give a client the address, and the Authorization header that carries the"
+" access token. The token is kept in the keyring."
 msgstr ""
-"Cung cấp cho client địa chỉ và Access Token để gửi dưới dạng Bearer token "
-"trong header Authorization. Token được lưu trong kho khóa."
+"Cung cấp cho client địa chỉ và header Authorization chứa Access Token. Token"
+" được lưu trong kho khóa."
 
 #: data/resources/ui/preferences-mcp-page.ui
 msgid "Address"
@@ -11564,16 +11830,30 @@ msgid "Copy Address"
 msgstr "Sao chép địa chỉ"
 
 #: data/resources/ui/preferences-mcp-page.ui
-msgid "Access Token"
-msgstr "Access Token"
+msgid "Authorization Header"
+msgstr "Header Authorization"
 
 #: data/resources/ui/preferences-mcp-page.ui
-msgid "Copy Access Token"
-msgstr "Sao chép Access Token"
+msgid "Copy Authorization Header"
+msgstr "Sao chép header Authorization"
 
 #: data/resources/ui/preferences-mcp-page.ui
 msgid "Regenerate Access Token…"
 msgstr "Tạo lại Access Token…"
+
+#: data/resources/ui/preferences-mcp-page.ui
+msgid "Clients"
+msgstr "Các client"
+
+#: data/resources/ui/preferences-mcp-page.ui
+msgid ""
+"TablePro can set up these clients to reach the server. A client that only"
+" starts programs on this computer cannot use it, since the server is reached"
+" at an address."
+msgstr ""
+"TablePro có thể thiết lập các client này để kết nối tới máy chủ. Client chỉ"
+" khởi chạy chương trình trên máy tính này thì không dùng được, vì máy chủ"
+" được truy cập qua một địa chỉ."
 
 #: data/resources/ui/results-pane.ui
 msgid "Show Results List"

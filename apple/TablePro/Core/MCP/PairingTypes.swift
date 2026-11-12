@@ -43,8 +43,7 @@ struct PairingRequest: Sendable, Equatable {
     }
 }
 
-/// `scopes` names one permission level plus optional grants, separated by commas or spaces.
-/// Unknown entries are skipped (RFC 6749 §3.3), and when several levels are named the lowest wins.
+// One permission level plus optional grants; unknown entries are skipped (RFC 6749 3.3) and the lowest level wins.
 struct PairingScopeRequest: Sendable, Equatable {
     let permissions: TokenPermissions
     let optionalGrants: Set<MCPScope>
@@ -59,8 +58,7 @@ struct PairingScopeRequest: Sendable, Equatable {
         )
     }
 
-    /// A grant needs all three: the client asked for it, the user ticked it on the sheet, and the
-    /// setting allows it.
+    // Granted only when the client asked, the user ticked it on the sheet, and the setting allows it.
     func grantedOptionalScopes(approved: Set<MCPScope>, allowsHiddenConnectionListing: Bool) -> Set<MCPScope> {
         guard allowsHiddenConnectionListing else { return [] }
         return optionalGrants.intersection(approved)
@@ -80,8 +78,7 @@ struct PairingScopeRequest: Sendable, Equatable {
     }
 }
 
-/// `legacy` is a link without `response_mode`: deprecated, and kept byte for byte for the clients
-/// that shipped before the parameter existed.
+// legacy is a link without response_mode, kept byte for byte for clients that shipped before it.
 enum PairingResponseMode: Sendable, Equatable {
     case legacy
     case query
@@ -155,10 +152,8 @@ enum PairingValidationError: Error, Sendable, Equatable {
     }
 }
 
-/// A pairing code is a bearer credential for the whole grant, so the address it is delivered to
-/// decides who ends up holding it. Only two shapes can reach the machine the user is sitting at: a
-/// loopback HTTP listener (RFC 8252's native-app redirect) and a private-use scheme registered by an
-/// installed app. Any other origin is a web page, and handing it the code hands it the token.
+// Whoever receives the code holds the grant, so only a loopback listener (RFC 8252) or an installed
+// app's private-use scheme may: any other origin is a web page.
 enum PairingRedirectValidator {
     static let loopbackHosts: Set<String> = [
         "127.0.0.1",
@@ -167,8 +162,7 @@ enum PairingRedirectValidator {
         "0:0:0:0:0:0:0:1"
     ]
 
-    /// `tablepro` would hand the code back to this app and open another pairing sheet. The rest run
-    /// or read something locally, or make their handler fetch from the host the URL names.
+    // tablepro would reopen a pairing sheet; the rest run something locally or fetch from the named host.
     static let deniedSchemes: Set<String> = [
         "about", "afp", "blob", "cifs", "data", "dav", "davs", "feed", "feeds", "file", "ftp", "ftps",
         "git", "gopher", "irc", "ircs", "itpc", "javascript", "ldap", "ldaps", "news", "nfs", "nntp",
@@ -177,8 +171,7 @@ enum PairingRedirectValidator {
         "wss", "xmpp"
     ]
 
-    /// Every scheme this app handles, database URLs included: opening one of them with the code
-    /// appended would start a connection to whatever host the redirect names.
+    // Opening one of these with the code appended would connect to whatever host the redirect names.
     static let appRegisteredSchemes: Set<String> = {
         let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] ?? []
         let schemes = types.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
@@ -211,7 +204,7 @@ enum PairingRedirectValidator {
               isWellFormedScheme(scheme) else {
             throw PairingValidationError.redirectSchemeNotAllowed(scheme)
         }
-        /// An opaque URL such as `myapp:https://example.com/` keeps its whole address in the path.
+        // An opaque URL such as myapp:https://example.com/ keeps its whole address in the path.
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let authority = components?.host.map { "//\($0)" } ?? ""
         let port = components?.port.map { ":\($0)" } ?? ""
@@ -222,8 +215,7 @@ enum PairingRedirectValidator {
         )
     }
 
-    /// A browser that owns a custom scheme can unwrap it into a web page: Chrome opens
-    /// `google-chrome:https://…` and Safari opens `x-safari-https://…`.
+    // A browser that owns a custom scheme unwraps it into a web page (google-chrome:https://, x-safari-https://).
     static func validateHandler(
         of target: PairingRedirectTarget,
         handlerBundleIdentifier: String?,
@@ -247,7 +239,7 @@ enum PairingRedirectValidator {
 }
 
 enum PairingRedirectBuilder {
-    /// Form decoders split on `&` and `=`, read `+` as a space, and some still split on `;`.
+    // Form decoders split on & and =, read + as a space, and some still split on ;.
     private static let valueCharacters = CharacterSet.urlQueryAllowed
         .subtracting(CharacterSet(charactersIn: "&=+;"))
 
@@ -260,6 +252,16 @@ enum PairingRedirectBuilder {
         return redirect(
             base: base,
             parameters: [("error", error), ("error_description", "user_denied")],
+            state: state,
+            mode: mode
+        )
+    }
+
+    // The user approved, then TablePro could not issue the token (RFC 6749 4.1.2.1 server_error).
+    static func failed(base: URL, state: String?, mode: PairingResponseMode) -> URL? {
+        redirect(
+            base: base,
+            parameters: [("error", "server_error"), ("error_description", "token_not_issued")],
             state: state,
             mode: mode
         )
@@ -303,7 +305,7 @@ enum PairingRedirectBuilder {
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             return nil
         }
-        /// Decoding and re-encoding the client's own items would turn its `%2B` into `+`.
+        // Decoding and re-encoding the client's own items would turn its %2B into +.
         var items = components.percentEncodedQueryItems ?? []
         for parameter in parameters {
             guard let value = parameter.value.addingPercentEncoding(withAllowedCharacters: valueCharacters) else {
@@ -316,9 +318,7 @@ enum PairingRedirectBuilder {
     }
 }
 
-/// RFC 7636 fixes both halves of PKCE: the verifier is 43 to 128 characters of the unreserved set,
-/// and the challenge is its base64url SHA-256, which is always 43 characters. Anything else is not a
-/// PKCE exchange and is rejected before it can reach a comparison.
+// RFC 7636: a verifier of 43 to 128 unreserved characters, a challenge of 43; anything else never reaches a comparison.
 enum PairingPkceValidator {
     static let minimumVerifierLength = 43
     static let maximumVerifierLength = 128

@@ -49,7 +49,7 @@
     <child>
       <object class="AdwPreferencesGroup" id="client_group">
         <property name="title" translatable="yes">Client Setup</property>
-        <property name="description" translatable="yes">Give a client the address, and the access token to send as a Bearer token in the Authorization header. The token is kept in the keyring.</property>
+        <property name="description" translatable="yes">Give a client the address, and the Authorization header that carries the access token. The token is kept in the keyring.</property>
         <child>
           <object class="AdwActionRow" id="address_row">
             <property name="title" translatable="yes">Address</property>
@@ -74,14 +74,18 @@
         </child>
         <child>
           <object class="AdwActionRow" id="token_row">
-            <property name="title" translatable="yes">Access Token</property>
+            <property name="title" translatable="yes">Authorization Header</property>
+            <property name="use-markup">false</property>
+            <style>
+              <class name="property"/>
+            </style>
             <child type="suffix">
               <object class="GtkButton" id="copy_token_button">
                 <property name="icon-name">edit-copy-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Copy Access Token</property>
+                <property name="tooltip-text" translatable="yes">Copy Authorization Header</property>
                 <property name="valign">center</property>
                 <accessibility>
-                  <property name="label" translatable="yes">Copy Access Token</property>
+                  <property name="label" translatable="yes">Copy Authorization Header</property>
                 </accessibility>
                 <style>
                   <class name="flat"/>
@@ -95,6 +99,12 @@
             <property name="title" translatable="yes">Regenerate Access Token…</property>
           </object>
         </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="clients_group">
+        <property name="title" translatable="yes">Clients</property>
+        <property name="description" translatable="yes">TablePro can set up these clients to reach the server. A client that only starts programs on this computer cannot use it, since the server is reached at an address.</property>
       </object>
     </child>
   </template>

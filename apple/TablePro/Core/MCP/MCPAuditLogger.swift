@@ -34,6 +34,7 @@ enum MCPAuditLogger {
     private static let serverResource = Logger(subsystem: "com.TablePro", category: "MCPResource")
 
     private static let messageExcerptLimit = 256
+    private static let clientNameLimit = 128
 
     static func flush() async {
         await MCPAuditWriteQueue.shared.flush()
@@ -166,6 +167,7 @@ enum MCPAuditLogger {
 
     static func logQueryExecuted(
         principal: MCPPrincipal,
+        client: String? = nil,
         connectionId: UUID,
         sql: String,
         durationMs: Int,
@@ -201,12 +203,14 @@ enum MCPAuditLogger {
             connectionId: connectionId,
             action: "query.executed",
             outcome: outcome,
-            details: detailParts.joined(separator: " ")
+            details: detailParts.joined(separator: " "),
+            client: client
         )
     }
 
     static func logToolCalled(
         principal: MCPPrincipal,
+        client: String? = nil,
         toolName: String,
         connectionId: UUID? = nil,
         outcome: AuditOutcome,
@@ -233,22 +237,13 @@ enum MCPAuditLogger {
             connectionId: connectionId,
             action: "tool.\(toolName)",
             outcome: outcome,
-            details: detailParts.joined(separator: " ")
+            details: detailParts.joined(separator: " "),
+            client: client
         )
     }
 
-    /// A call TablePro made to an MCP server somebody else runs.
-    ///
-    /// Every other entry in this log records something an outside client asked of TablePro. This one
-    /// records the opposite direction, which is the direction that can take the user's schema and
-    /// their query results off the machine, so it is the one worth keeping. It is written before the
-    /// request leaves rather than when it returns: a server that never answers has still been sent
-    /// the arguments.
-    ///
-    /// The payload is recorded as its size and its SHA-256, not its text. The arguments of a tool
-    /// call carry table names, filter values and anything the model copied out of a result, and an
-    /// audit log that stored them would be a second copy of the data the log exists to watch. The
-    /// digest still answers "was this the same call as that one".
+    // A call TablePro made to someone else's MCP server, written before it leaves: a server that never
+    // answers was still sent the arguments. The payload is kept as size and digest, never as text.
     static func logOutboundToolCall(
         serverId: UUID,
         serverName: String,
@@ -258,9 +253,7 @@ enum MCPAuditLogger {
         payload: Data
     ) {
         let digest = SHA256.hash(data: payload).compactMap { String(format: "%02x", $0) }.joined()
-        /// Named for what it digests. In this surface a fingerprint means a pairing token's, which
-        /// no log line may carry, and the `mcp_log_token_material` SwiftLint rule reads that
-        /// vocabulary rather than the value.
+        // Not "fingerprint": the mcp_log_token_material SwiftLint rule reserves that word for token material.
         let payloadDigest = String(digest.prefix(16))
         serverTool.info(
             """
@@ -289,6 +282,7 @@ enum MCPAuditLogger {
 
     static func logResourceRead(
         principal: MCPPrincipal,
+        client: String? = nil,
         uri: String,
         outcome: AuditOutcome,
         errorMessage: String? = nil
@@ -312,12 +306,25 @@ enum MCPAuditLogger {
             tokenName: principal.auditLabel,
             action: "resource.read",
             outcome: outcome,
-            details: detailParts.joined(separator: " ")
+            details: detailParts.joined(separator: " "),
+            client: client
         )
     }
 
     static func statementDigest(_ sql: String) -> String {
         SHA256.hash(data: Data(sql.utf8)).hexEncoded
+    }
+
+    // The name Connected Clients lists, before any catalog lookup, so a row reads the same in every build.
+    // English like the rest of the row; nil when the client sent no clientInfo.
+    static func clientName(for meta: MCPRequestMeta) -> String? {
+        guard let info = meta.clientInfo else { return nil }
+        if info.name == CLIClientIdentity.name {
+            return CLIClientIdentity.pairingName
+        }
+        return [info.title, info.name]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     private static func composeDetails(ip: String, extra: String?) -> String {
@@ -332,7 +339,8 @@ enum MCPAuditLogger {
         connectionId: UUID? = nil,
         action: String,
         outcome: AuditOutcome,
-        details: String? = nil
+        details: String? = nil,
+        client: String? = nil
     ) {
         let entry = AuditEntry(
             category: category,
@@ -341,7 +349,8 @@ enum MCPAuditLogger {
             connectionId: connectionId,
             action: action,
             outcome: outcome,
-            details: details
+            details: details,
+            clientName: client.map { truncate($0, to: clientNameLimit) }
         )
         MCPAuditWriteQueue.shared.enqueue(entry, into: MCPAuditLogStorage.shared)
     }

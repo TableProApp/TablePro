@@ -118,19 +118,22 @@ extension MCPProtocolDispatcher {
             return
         }
 
-        await activityLedger.record(
-            meta: meta,
-            principal: principal,
-            address: exchange.context.clientAddress,
-            at: exchange.context.receivedAt
-        )
+        let client = MCPClientIdentity(meta: meta, principal: principal, address: exchange.context.clientAddress)
+        if !Self.activityExemptMethods.contains(request.method) {
+            await activityLedger.record(identity: client, at: exchange.context.receivedAt)
+        }
 
-        let key = MCPInflightKey(principal: principal, requestId: request.id)
+        let key = MCPInflightKey(
+            client: client,
+            bridgeInstance: MCPRequestMeta.bridgeInstance(in: request.params),
+            requestId: request.id
+        )
         let cancellation = MCPCancellationToken()
         let registered = await inflight.register(
             key: key,
             token: cancellation,
             tokenId: principal.tokenId,
+            clientId: client.id,
             method: request.method,
             startedAt: exchange.context.receivedAt
         )

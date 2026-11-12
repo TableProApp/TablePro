@@ -485,6 +485,8 @@ custom_rules:
       - '.*/[^/]*Tests/'
       - '.*Tests\.swift$'
       - '.*/(WebPageOpener|DataLinkPolicy|MCPPairingService|NotificationsSettingsView|SyncSettingsView|ConnectionRecoveryPerformer|OpenConnectionIntent)\.swift$'
+      # An MCP client's install link, built from the bundled catalog, opened only when its scheme has a handler app.
+      - '.*/MCPClientWorkspace\.swift$'
       # Open TablePro's own links, and the user's files and URLs, in the TablePro bundle the command ships in.
       - '.*/(Handshake|CLILiveEnvironment)\.swift$'
       - '.*/(AppDelegate\+MainMenuActions|WhatsNewWindowController|SupportAskCoordinator|MainContentCoordinator\+Rewind|GoogleSignInService|ChatGPTCodexService)\.swift$'

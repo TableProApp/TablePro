@@ -1,36 +1,32 @@
-//
-//  IntegrationsConnectedClientsPane.swift
-//  TablePro
-//
-
 import SwiftUI
+import TableProMCPClients
 
 struct IntegrationsConnectedClientsPane: View {
     @ObservedObject private var manager = MCPServerManager.shared
     @State private var selection: MCPServerManager.SessionSnapshot.ID?
     @State private var disconnectCandidate: MCPServerManager.SessionSnapshot?
     @State private var revocationNotSaved = false
-    @State private var sortOrder: [KeyPathComparator<MCPServerManager.SessionSnapshot>] = [
-        KeyPathComparator(\MCPServerManager.SessionSnapshot.connectedSince, order: .reverse)
+    @State private var showSetupSheet = false
+    @State private var detectedClientIDs: Set<String> = []
+    @State private var sortOrder: [KeyPathComparator<ConnectedClientRow>] = [
+        KeyPathComparator(\ConnectedClientRow.connectedSince, order: .reverse)
     ]
 
     var body: some View {
         Group {
             if manager.connectedClients.isEmpty {
-                UnavailableStateView(
-                    String(localized: "No clients connected"),
-                    systemImage: "person.2.slash",
-                    description: Text(String(localized: "Clients will appear here while they have an active MCP session."))
-                )
+                emptyState
             } else {
                 ConnectedClientsTable(
-                    clients: sortedClients,
+                    rows: sortedRows,
                     selection: $selection,
                     sortOrder: $sortOrder,
                     onDisconnect: { client in disconnectCandidate = client }
                 )
+                .onDeleteCommand(perform: disconnectSelection)
             }
         }
+        .task(id: ambiguousClientIDs) { await detectAmbiguousClients() }
         .navigationTitle(IntegrationsActivitySection.connectedClients.title)
         .navigationSubtitle(subtitle)
         .task { await manager.refreshClientsWhileShown() }
@@ -47,20 +43,101 @@ struct IntegrationsConnectedClientsPane: View {
         } message: {
             Text(String(localized: "TablePro could not save the change to the Keychain. The token works again after TablePro restarts."))
         }
+        .sheet(isPresented: $showSetupSheet) {
+            MCPClientSetupSheet()
+        }
     }
 
-    private var sortedClients: [MCPServerManager.SessionSnapshot] {
-        manager.connectedClients.sorted(using: sortOrder)
+    private var emptyState: some View {
+        UnavailableStateView {
+            Label(emptyStateTitle, systemImage: emptyStateSymbol)
+        } description: {
+            Text(emptyStateDescription)
+        } actions: {
+            Button(String(localized: "Connect a Client…")) {
+                showSetupSheet = true
+            }
+            .accessibilityIdentifier("connected-clients-connect")
+        }
+    }
+
+    private var emptyStateTitle: String {
+        switch manager.state {
+        case .running: String(localized: "No clients connected")
+        case .starting: String(localized: "MCP Server Starting")
+        case .stopped: String(localized: "MCP Server Off")
+        case .failed: String(localized: "MCP Server Couldn't Start")
+        }
+    }
+
+    private var emptyStateSymbol: String {
+        switch manager.state {
+        case .running: "person.2.slash"
+        case .starting: "hourglass"
+        case .stopped: "power"
+        case .failed: "exclamationmark.triangle"
+        }
+    }
+
+    private var emptyStateDescription: String {
+        switch manager.state {
+        case .running:
+            String(localized: "Clients will appear here while they have an active MCP session.")
+        case .starting:
+            String(localized: "Clients can connect once the MCP server is running.")
+        case .stopped:
+            String(localized: "Clients can connect while the MCP server is on. Turn it on in Settings > MCP.")
+        case .failed:
+            String(localized: "Clients cannot connect until it runs. Open Settings > MCP to see why and try again.")
+        }
+    }
+
+    private func disconnectSelection() {
+        guard let id = selection, let client = manager.connectedClients.first(where: { $0.id == id }) else { return }
+        disconnectCandidate = client
+    }
+
+    private var sortedRows: [ConnectedClientRow] {
+        manager.connectedClients.map { session in
+            ConnectedClientRow(
+                session: session,
+                name: session.clientDisplayName(detected: detectedClientIDs),
+                iconSlug: session.catalogIconSlug(detected: detectedClientIDs)
+            )
+        }
+        .sorted(using: sortOrder)
+    }
+
+    private var ambiguousClientIDs: Set<String> {
+        let sessions = manager.connectedClients.map { (clientInfoName: $0.sessionInfoName, tokenName: $0.tokenName) }
+        return MCPClientCatalogBundle.shared?.ambiguousClientIDs(forSessionsNamed: sessions) ?? []
+    }
+
+    private func detectAmbiguousClients() async {
+        let ids = ambiguousClientIDs
+        guard !ids.isEmpty, let catalog = MCPClientCatalogBundle.shared else { return }
+        detectedClientIDs = await Self.detect(ids, scanner: MCPClientScanner(catalog: catalog, context: .live()))
+    }
+
+    @concurrent
+    nonisolated private static func detect(_ ids: Set<String>, scanner: MCPClientScanner) async -> Set<String> {
+        scanner.detectedIDs(among: ids)
     }
 
     @ToolbarContentBuilder
     private func toolbar() -> some ToolbarContent {
         ToolbarItem {
+            Button {
+                showSetupSheet = true
+            } label: {
+                Label(String(localized: "Connect a Client…"), systemImage: "plus")
+            }
+            .help(String(localized: "Set up an app to use TablePro's MCP server"))
+            .accessibilityIdentifier("connected-clients-toolbar-connect")
+        }
+        ToolbarItem {
             Button(role: .destructive) {
-                if let id = selection,
-                   let client = manager.connectedClients.first(where: { $0.id == id }) {
-                    disconnectCandidate = client
-                }
+                disconnectSelection()
             } label: {
                 Label(String(localized: "Disconnect"), systemImage: ToolbarSymbols.disconnect())
             }
@@ -85,7 +162,19 @@ struct IntegrationsConnectedClientsPane: View {
     }
 
     private func alertMessage(client: MCPServerManager.SessionSnapshot) -> some View {
-        Text(String(format: String(localized: "“%@” will be disconnected and any in-flight requests will be cancelled."), client.clientName))
+        switch client.transport {
+        case .http:
+            Text(String(
+                format: String(localized: "“%@” will be disconnected and its token revoked. Any in-flight requests will be cancelled."),
+                client.clientDisplayName(detected: detectedClientIDs)
+            ))
+        case .stdioBridge:
+            Text(String(
+                // swiftlint:disable:next line_length
+                format: String(localized: "“%@”'s running requests will be cancelled, but it can send new ones right away. To stop it, remove TablePro from it in Connect a Client, or turn off the MCP server."),
+                client.clientDisplayName(detected: detectedClientIDs)
+            ))
+        }
     }
 
     private var subtitle: String {
@@ -105,60 +194,70 @@ struct IntegrationsConnectedClientsPane: View {
     }
 }
 
+private struct ConnectedClientRow: Identifiable {
+    let session: MCPServerManager.SessionSnapshot
+    let name: String
+    let iconSlug: String?
+
+    var id: MCPServerManager.SessionSnapshot.ID { session.id }
+    var connectedSince: Date { session.connectedSince }
+    var lastActivityAt: Date { session.lastActivityAt }
+}
+
 private struct ConnectedClientsTable: View {
-    let clients: [MCPServerManager.SessionSnapshot]
+    let rows: [ConnectedClientRow]
     @Binding var selection: MCPServerManager.SessionSnapshot.ID?
-    @Binding var sortOrder: [KeyPathComparator<MCPServerManager.SessionSnapshot>]
+    @Binding var sortOrder: [KeyPathComparator<ConnectedClientRow>]
     let onDisconnect: (MCPServerManager.SessionSnapshot) -> Void
 
     var body: some View {
-        Table(of: MCPServerManager.SessionSnapshot.self,
+        Table(of: ConnectedClientRow.self,
               selection: $selection,
               sortOrder: $sortOrder) {
-            TableColumn(String(localized: "Client"), value: \.clientName) { client in
-                clientCell(for: client)
+            TableColumn(String(localized: "Client"), value: \.name) { row in
+                clientCell(for: row)
             }
             .width(min: 160, ideal: 200)
 
-            TableColumn(String(localized: "Version")) { client in
-                versionCell(for: client)
+            TableColumn(String(localized: "Version")) { row in
+                versionCell(for: row.session)
             }
             .width(min: 70, ideal: 90)
 
-            TableColumn(String(localized: "Token")) { client in
-                tokenCell(for: client)
+            TableColumn(String(localized: "Token")) { row in
+                tokenCell(for: row.session)
             }
             .width(min: 110, ideal: 140)
 
-            TableColumn(String(localized: "Address")) { client in
-                addressCell(for: client)
+            TableColumn(String(localized: "Address")) { row in
+                addressCell(for: row.session)
             }
             .width(min: 120, ideal: 160)
 
-            TableColumn(String(localized: "Connected"), value: \.connectedSince) { client in
-                connectedCell(for: client)
+            TableColumn(String(localized: "Connected"), value: \.connectedSince) { row in
+                connectedCell(for: row.session)
             }
             .width(min: 110, ideal: 130)
 
-            TableColumn(String(localized: "Last Activity"), value: \.lastActivityAt) { client in
-                lastActivityCell(for: client)
+            TableColumn(String(localized: "Last Activity"), value: \.lastActivityAt) { row in
+                lastActivityCell(for: row.session)
             }
             .width(min: 110, ideal: 130)
         } rows: {
-            ForEach(clients) { client in
-                SwiftUI.TableRow(client)
-                    .contextMenu { contextMenu(for: client) }
+            ForEach(rows) { row in
+                SwiftUI.TableRow(row)
+                    .contextMenu { contextMenu(for: row.session) }
             }
         }
     }
 
     @ViewBuilder
-    private func clientCell(for client: MCPServerManager.SessionSnapshot) -> some View {
+    private func clientCell(for row: ConnectedClientRow) -> some View {
         Label {
-            Text(client.clientName)
+            Text(verbatim: row.name)
         } icon: {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            BrandIconView(icon: BrandIcon(slug: row.iconSlug, fallbackSystemImage: "app"))
+                .frame(width: 16, height: 16)
         }
     }
 
@@ -214,5 +313,21 @@ private struct ConnectedClientsTable: View {
         } label: {
             Label(String(localized: "Disconnect"), systemImage: "xmark.circle")
         }
+    }
+}
+
+extension MCPServerManager.SessionSnapshot {
+    fileprivate var sessionInfoName: String {
+        clientInfoName ?? clientName
+    }
+
+    // A session two catalog rows share keeps its own clientInfo title unless one of them alone is on this Mac.
+    func clientDisplayName(detected: Set<String>) -> String {
+        MCPClientCatalogBundle.shared?.client(forSessionNamed: sessionInfoName, tokenName: tokenName, detected: detected)?.name
+            ?? IntegrationsFormatting.displayClientName(self)
+    }
+
+    func catalogIconSlug(detected: Set<String>) -> String? {
+        MCPClientCatalogBundle.shared?.iconSlug(forSessionNamed: sessionInfoName, tokenName: tokenName, detected: detected)
     }
 }

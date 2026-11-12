@@ -32,13 +32,23 @@ internal enum MCPServerStartError: Error, LocalizedError, Equatable {
 @MainActor
 internal final class MCPServerManager: ObservableObject {
     internal struct SessionSnapshot: Sendable, Identifiable, Equatable {
+        internal enum Transport: Sendable, Equatable {
+            // Shares the bridge credential with every other stdio client, so Disconnect cannot lock it out.
+            case stdioBridge
+            // Holds a token of its own, which Disconnect revokes.
+            case http
+        }
+
         internal let id: String
         internal let clientName: String
+        // What the client sent as clientInfo.name; clientName prefers its title.
+        internal let clientInfoName: String?
         internal let clientVersion: String?
         internal let connectedSince: Date
         internal let lastActivityAt: Date
         internal let tokenName: String?
         internal let remoteAddress: String?
+        internal let transport: Transport
     }
 
     private struct BridgeCredential {
@@ -62,10 +72,8 @@ internal final class MCPServerManager: ObservableObject {
     private let handshake: MCPHandshakeFile
     private let isEnabled: @MainActor () -> Bool
 
-    @Published private var composition: MCPServerComposition?
+    @Published private(set) var composition: MCPServerComposition?
     @Published private var bridgeCredential: BridgeCredential?
-    private var supersededBridgeCredentials: [BridgeCredential] = []
-    private var bridgeDisconnects = 0
     @Published private var instanceId = ""
     @Published private var generation = 0
     @Published private var revocationObserverId: UUID?
@@ -151,59 +159,40 @@ internal final class MCPServerManager: ObservableObject {
         composition?.authPolicy ?? MCPAuthPolicy()
     }
 
-    // False when the Keychain write failed: the token works again after a restart.
+    // False when nothing was revoked: no server is running, or the Keychain write failed and the token
+    // works again after a restart.
     @discardableResult
     internal func revokeToken(id: UUID) async -> Bool {
-        guard let tokenStore else { return true }
+        guard let tokenStore else { return false }
         return await tokenStore.revoke(tokenId: id)
     }
 
+    // False when the token revocation did not reach the Keychain. A stdio row revokes nothing: every
+    // stdio client shares the bridge credential, and a revoked one would lock all of them out.
     @discardableResult
     internal func disconnectClient(_ clientId: String) async -> Bool {
         guard let composition else { return true }
         let entries = await composition.activityLedger.snapshot(now: Date())
-
-        guard let tokenId = entries.first(where: { $0.id == clientId })?.tokenId else {
+        guard let entry = entries.first(where: { $0.id == clientId }) else {
             await composition.activityLedger.forget(id: clientId)
             await refreshClients()
             return true
         }
 
-        let stored = await tokenStore?.token(id: tokenId)
-        // Read after the await: a rotation that ran meanwhile may have moved this token to the superseded list.
-        let endsTheBridge = stored?.isBridgeCredential == true
-            || bridgeCredential?.tokenId == tokenId
-            || supersededBridgeCredentials.contains { $0.tokenId == tokenId }
-
-        let persisted: Bool
-        if endsTheBridge {
-            // Every bridge credential is the same client, so the live one is revoked and all their requests end now.
-            bridgeDisconnects += 1
-            var revoked = [tokenId]
-            if let live = bridgeCredential?.tokenId, live != tokenId {
-                revoked.append(live)
-            }
-            let ended = Set(revoked + supersededBridgeCredentials.map { $0.tokenId })
-            var allPersisted = true
-            for id in revoked {
-                let saved = await revokeToken(id: id)
-                allPersisted = allPersisted && saved
-            }
-            for id in ended {
-                await composition.dispatcher.cancelInflight(matchingTokenId: id)
-                await composition.activityLedger.forget(tokenId: id)
-            }
-            persisted = allPersisted
-        } else {
-            var withdrawn: MCPGrantSubject? = .token(tokenId)
-            if let stored {
-                withdrawn = stored.subjectWithdrawnWhenEnded
-            }
-            persisted = await revokeToken(id: tokenId)
-            if let withdrawn {
-                await composition.authPolicy.clearApprovals(subject: withdrawn)
-            }
+        var stored: MCPAuthToken?
+        if let tokenId = entry.tokenId {
+            stored = await tokenStore?.token(id: tokenId)
         }
+        guard entry.transport == .http, stored?.isBridgeCredential != true, let tokenId = entry.tokenId else {
+            await composition.dispatcher.cancelInflight(matchingClientId: clientId)
+            await composition.activityLedger.forget(id: clientId)
+            await refreshClients()
+            return true
+        }
+
+        let withdrawn = stored?.subjectWithdrawnWhenEnded ?? .token(tokenId)
+        let persisted = await revokeToken(id: tokenId)
+        await composition.authPolicy.clearApprovals(subject: withdrawn)
         await composition.activityLedger.forget(tokenId: tokenId)
         await refreshClients()
         return persisted
@@ -214,9 +203,7 @@ internal final class MCPServerManager: ObservableObject {
     private func performStart(port: UInt16) async -> MCPServerStartError? {
         guard isEnabled() else {
             await performStop()
-            handshake.writeRefusal(
-                MCPStartRefusal(pid: ProcessInfo.processInfo.processIdentifier, refusedAt: Date())
-            )
+            writeRefusal(.turnedOff)
             Self.logger.info("Refused to start the MCP server: it is turned off")
             return .turnedOff
         }
@@ -240,8 +227,7 @@ internal final class MCPServerManager: ObservableObject {
             socketPath = try handshake.prepareSocketPath()
         } catch {
             Self.logger.error("MCP socket folder is not usable: \(error.publicLogShape, privacy: .public)")
-            state = .failed(.socketFolderUnusable)
-            tokenStore = nil
+            failStart(.socketFolderUnusable)
             return nil
         }
 
@@ -265,23 +251,33 @@ internal final class MCPServerManager: ObservableObject {
         }
 
         Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .private)")
-        state = .failed(.listenerUnavailable(detail: lastFailure))
-        tokenStore = nil
+        failStart(.listenerUnavailable(detail: lastFailure))
         return nil
+    }
+
+    // The bridge that launched TablePro reads the refusal and names the failure instead of timing out.
+    private func failStart(_ failure: MCPServerFailure) {
+        state = .failed(failure)
+        tokenStore = nil
+        writeRefusal(.failedToStart)
+    }
+
+    private func writeRefusal(_ reason: MCPStartRefusal.Reason) {
+        handshake.writeRefusal(
+            MCPStartRefusal(pid: ProcessInfo.processInfo.processIdentifier, refusedAt: Date(), reason: reason)
+        )
     }
 
     private func activate(_ built: MCPServerComposition, generation: Int, store: MCPTokenStore) async {
         guard let boundPort = await built.transport.listeningPort else {
             await built.transport.stop()
-            state = .failed(.noBoundPort)
-            tokenStore = nil
+            failStart(.noBoundPort)
             return
         }
 
         guard let credential = await mintBridgeCredential(store: store) else {
             await built.transport.stop()
-            state = .failed(.credentialUnavailable)
-            tokenStore = nil
+            failStart(.credentialUnavailable)
             return
         }
 
@@ -321,7 +317,6 @@ internal final class MCPServerManager: ObservableObject {
         stateTask = nil
         tokenRenewalTask?.cancel()
         tokenRenewalTask = nil
-        supersededBridgeCredentials = []
 
         handshake.removeIfWrittenByThisProcess(instanceId: instanceId)
         MCPServerInstanceIdentity.shared.end()
@@ -388,11 +383,9 @@ internal final class MCPServerManager: ObservableObject {
               case .running = state else { return }
 
         let previous = bridgeCredential
-        let disconnects = bridgeDisconnects
         guard let credential = await mintBridgeCredential(store: store) else { return }
 
-        // A bridge disconnect during the mint keeps the bridge off until the next rotation.
-        guard self.generation == generation, bridgeDisconnects == disconnects else {
+        guard self.generation == generation else {
             await store.delete(tokenId: credential.tokenId)
             return
         }
@@ -401,9 +394,6 @@ internal final class MCPServerManager: ObservableObject {
         writeHandshake(socketPath: composition.socketPath, credential: credential)
 
         if let previous {
-            // Listed before the await, so a disconnect from here on ends its requests too.
-            let now = Date()
-            supersededBridgeCredentials = supersededBridgeCredentials.filter { $0.expiresAt > now } + [previous]
             // Not a revocation: the old credential opens nothing new, but what it started may finish until it expires.
             await store.dropSupersededBridgeCredential(tokenId: previous.tokenId)
             guard self.generation == generation else { return }
@@ -519,15 +509,18 @@ internal final class MCPServerManager: ObservableObject {
             SessionSnapshot(
                 id: entry.id,
                 clientName: entry.clientName,
+                clientInfoName: entry.clientInfoName,
                 clientVersion: entry.clientVersion,
                 connectedSince: entry.firstSeenAt,
                 lastActivityAt: entry.lastSeenAt,
                 tokenName: entry.tokenName,
-                remoteAddress: entry.address
+                remoteAddress: entry.address,
+                transport: entry.transport == .stdioBridge ? .stdioBridge : .http
             )
         })
     }
 
+    // Every observer of the manager re-renders on an assignment, equal or not.
     private func publishClients(_ clients: [SessionSnapshot]) {
         guard clients != connectedClients else { return }
         connectedClients = clients

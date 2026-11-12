@@ -120,6 +120,7 @@ public struct ToolsCallHandler: MCPMethodHandler {
     ) {
         MCPAuditLogger.logToolCalled(
             principal: context.principal,
+            client: MCPAuditLogger.clientName(for: context.meta),
             toolName: tool,
             connectionId: connectionId,
             outcome: outcome,

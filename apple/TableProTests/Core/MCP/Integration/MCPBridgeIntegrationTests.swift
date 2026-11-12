@@ -156,7 +156,7 @@ final class MCPBridgeIntegrationTests: XCTestCase {
         )
     }
 
-    func testAModernHostRequestIsForwardedByteForByte() async throws {
+    func testAModernHostRequestGainsOnlyTheBridgeInstance() async throws {
         let bridge = try await startBridge()
         defer { bridge.shutdown() }
         await upstream.respondWithJson(try Self.successBody(id: .number(6)))
@@ -172,7 +172,11 @@ final class MCPBridgeIntegrationTests: XCTestCase {
         let recordedForwarded = await upstream.requests.first
 
         let forwarded = try XCTUnwrap(recordedForwarded)
-        XCTAssertEqual(forwarded.body, Data(line.utf8), "A modern host already carries its own metadata")
+        XCTAssertEqual(
+            forwarded.body,
+            try Self.stampedWithInstance(line, forwarded: forwarded.body),
+            "A modern host's message gains only the bridge instance"
+        )
     }
 
     func testStampingNeverRewritesTheNumbersInAMessage() async throws {
@@ -198,7 +202,7 @@ final class MCPBridgeIntegrationTests: XCTestCase {
         XCTAssertTrue(text.contains(MCPMetaKeys.protocolVersion))
     }
 
-    func testAModernMessageWithBigNumbersIsForwardedUntouched() async throws {
+    func testAModernMessageWithBigNumbersGainsOnlyTheBridgeInstance() async throws {
         let bridge = try await startBridge()
         defer { bridge.shutdown() }
         await upstream.respondWithJson(try Self.successBody(id: .number(8)))
@@ -214,7 +218,33 @@ final class MCPBridgeIntegrationTests: XCTestCase {
         let recordedForwarded = await upstream.requests.first
 
         let forwarded = try XCTUnwrap(recordedForwarded)
-        XCTAssertEqual(forwarded.body, Data(line.utf8))
+        XCTAssertEqual(forwarded.body, try Self.stampedWithInstance(line, forwarded: forwarded.body))
+    }
+
+    func testEveryForwardedRequestCarriesItsOwnBridgesInstance() async throws {
+        let first = try await startBridge()
+        defer { first.shutdown() }
+        let second = try await startBridge()
+        defer { second.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(17)))
+
+        try first.write(#"{"jsonrpc":"2.0","id":17,"method":"tools/list","params":{}}"#)
+        _ = try await first.nextMessage()
+        try first.write(#"{"jsonrpc":"2.0","id":17,"method":"resources/list"}"#)
+        _ = try await first.nextMessage()
+        try second.write(#"{"jsonrpc":"2.0","id":17,"method":"tools/list","params":{}}"#)
+        _ = try await second.nextMessage()
+
+        let forwarded = await upstream.requests
+        let instances = try forwarded.map { request in
+            let body = try JSONDecoder().decode(JsonValue.self, from: request.body)
+            return try XCTUnwrap(body["params"]?["_meta"]?[MCPMetaKeys.bridgeInstance]?.stringValue)
+        }
+        XCTAssertEqual(instances.count, 3)
+        guard instances.count == 3 else { return }
+        XCTAssertFalse(instances[0].isEmpty)
+        XCTAssertEqual(instances[0], instances[1], "One bridge process is one session")
+        XCTAssertNotEqual(instances[0], instances[2], "Two bridge processes are two sessions")
     }
 
     func testAToolCallCarriesItsNameInTheHeader() async throws {
@@ -346,6 +376,17 @@ final class MCPBridgeIntegrationTests: XCTestCase {
             errorLogger: nil
         )
         return BridgeHarness(upstream: transport, discovery: BridgeIntegrationFixtures.discovery)
+    }
+
+    // A modern message is forwarded as sent, plus the one reserved key that names the bridge process.
+    private static func stampedWithInstance(_ line: String, forwarded: Data) throws -> Data {
+        let body = try JSONDecoder().decode(JsonValue.self, from: forwarded)
+        let instance = try XCTUnwrap(body["params"]?["_meta"]?[MCPMetaKeys.bridgeInstance]?.stringValue)
+        let stamped = line.replacingOccurrences(
+            of: #""_meta":{"#,
+            with: #""_meta":{"\#(MCPMetaKeys.bridgeInstance)":"\#(instance)","#
+        )
+        return Data(stamped.utf8)
     }
 
     private static func successBody(id: JsonRpcId) throws -> Data {

@@ -18,6 +18,7 @@ enum ToolQueryExecutor {
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             principal: context.principal,
+            client: MCPAuditLogger.clientName(for: context.meta),
             cancellation: context.cancellation,
             secrets: secrets,
             source: historySource(for: context),
@@ -36,6 +37,7 @@ enum ToolQueryExecutor {
         maxRows: Int,
         timeoutSeconds: Int,
         principal: MCPPrincipal,
+        client: String? = nil,
         cancellation: MCPCancellationToken? = nil,
         secrets: [String] = [],
         source: QueryHistorySource = .mcp,
@@ -45,6 +47,7 @@ enum ToolQueryExecutor {
             services: services,
             approved: operation,
             principal: principal,
+            client: client,
             secrets: secrets,
             source: source
         ) {
@@ -73,6 +76,7 @@ enum ToolQueryExecutor {
             services: services,
             approved: operation,
             principal: context.principal,
+            client: MCPAuditLogger.clientName(for: context.meta),
             secrets: secrets,
             source: historySource(for: context)
         ) {
@@ -91,6 +95,7 @@ enum ToolQueryExecutor {
         services: MCPToolServices,
         approved: ApprovedOperation,
         principal: MCPPrincipal,
+        client: String?,
         secrets: [String],
         source: QueryHistorySource,
         operation: () async throws -> (Output, Int)
@@ -122,6 +127,7 @@ enum ToolQueryExecutor {
             )
             MCPAuditLogger.logQueryExecuted(
                 principal: principal,
+                client: client,
                 connectionId: connectionId,
                 sql: query,
                 durationMs: Int(elapsed * 1_000),
@@ -146,6 +152,7 @@ enum ToolQueryExecutor {
             )
             MCPAuditLogger.logQueryExecuted(
                 principal: principal,
+                client: client,
                 connectionId: connectionId,
                 sql: query,
                 durationMs: Int(elapsed * 1_000),
@@ -208,9 +215,7 @@ enum ToolQueryExecutor {
         return MCPToolExecutionError.queryFailed(MCPErrorRedactor.message(for: error, secrets: secrets))
     }
 
-    /// An MCP query has no tab and no window of its own, so its completion is owned by the
-    /// connection. Clicking the notification brings the connection's most recent window forward
-    /// rather than focusing a tab that never existed.
+    // An MCP query has no tab, so its notification brings the connection's most recent window forward.
     @MainActor
     private static func reportMcpQueryFinished(
         _ outcome: OperationOutcome,

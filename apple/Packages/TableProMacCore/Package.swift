@@ -20,6 +20,7 @@ let package = Package(
         .library(name: "TableProUtilities", targets: ["TableProUtilities"]),
         .library(name: "TableProSSHConfig", targets: ["TableProSSHConfig"]),
         .library(name: "TableProMCP", targets: ["TableProMCP"]),
+        .library(name: "TableProMCPClients", targets: ["TableProMCPClients"]),
         // Only the tablepro-cli tool links this; the app never does, so ArgumentParser stays out of it.
         .library(name: "TableProCommandLine", targets: ["TableProCommandLine"]),
         .library(name: "TableProMCPTestSupport", targets: ["TableProMCPTestSupport"]),
@@ -64,6 +65,11 @@ let package = Package(
                 .product(name: "TableProWireIO", package: "TableProCore")
             ],
             path: "Sources/TableProMCP",
+            swiftSettings: appModuleSettings
+        ),
+        .target(
+            name: "TableProMCPClients",
+            path: "Sources/TableProMCPClients",
             swiftSettings: appModuleSettings
         ),
         .target(
@@ -124,6 +130,12 @@ let package = Package(
                 .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             path: "Tests/TableProMCPTests",
+            swiftSettings: appModuleSettings
+        ),
+        .testTarget(
+            name: "TableProMCPClientsTests",
+            dependencies: ["TableProMCPClients"],
+            path: "Tests/TableProMCPClientsTests",
             swiftSettings: appModuleSettings
         ),
         .testTarget(
