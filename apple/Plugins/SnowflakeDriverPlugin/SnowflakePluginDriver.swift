@@ -90,9 +90,15 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         lock.withLock { _connection = conn }
 
+        if let known = conn.serverVersion {
+            lock.withLock { _serverVersion = known }
+            return
+        }
         if let result = try? await conn.query("SELECT CURRENT_VERSION()", owner: queryOwner),
            let first = result.rows.first?.first, case .text(let version) = first {
-            lock.withLock { _serverVersion = "Snowflake \(version)" }
+            let serverVersion = "Snowflake \(version)"
+            conn.serverVersion = serverVersion
+            lock.withLock { _serverVersion = serverVersion }
         } else {
             lock.withLock { _serverVersion = "Snowflake" }
         }

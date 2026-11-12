@@ -505,6 +505,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
 
+    // A cheap value that changes whenever the catalog does, so a write to a database file that left the schema
+    // alone needs no catalog reload. Nil where the engine keeps none; the host then reloads on every change.
+    func schemaChangeToken() async throws -> String?
+
     var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
     var unsupportedIndexTypes: Set<String> { get }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String?
@@ -1329,6 +1333,8 @@ public extension PluginDatabaseDriver {
     ) async throws -> PluginColumnReorderPlan? { nil }
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
+
+    func schemaChangeToken() async throws -> String? { nil }
 
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }

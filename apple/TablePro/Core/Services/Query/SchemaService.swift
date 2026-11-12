@@ -739,16 +739,19 @@ final class SchemaService: ObservableObject {
             && isCatalogCurrent(for: connectionId):
             return
         case .idle, .loading, .failed, .loaded:
-            await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
+            _ = await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
         }
     }
 
+    // Returns whether a fresh tables list was committed, so a caller can tell a reload from a failed one.
+    // A hierarchical engine loads its tables per schema later, so its reload always returns true.
+    @discardableResult
     func reload(
         connectionId: UUID,
         driver: DatabaseDriver,
         connection: DatabaseConnection,
         scope: DatabaseScope? = nil
-    ) async {
+    ) async -> Bool {
         await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
     }
 
@@ -858,7 +861,7 @@ final class SchemaService: ObservableObject {
         await prepareForReload(connectionId: connectionId)
         let connection = session.connection
         do {
-            try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { [self] driver in
+            _ = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { [self] driver in
                 await reload(
                     connectionId: connectionId,
                     driver: driver,
@@ -914,7 +917,7 @@ final class SchemaService: ObservableObject {
         driver: DatabaseDriver,
         connection: DatabaseConnection,
         scope: DatabaseScope?
-    ) async {
+    ) async -> Bool {
         let type = connection.type
         let key = scope.map { catalogKey(for: $0, type: type) } ?? shownKey(connectionId)
         let generation = beginLoadGeneration(for: key)
@@ -948,7 +951,7 @@ final class SchemaService: ObservableObject {
                 generation: generation,
                 type: type
             )
-            return
+            return true
         }
 
         async let tablesTask: [TableInfo] = loadDedup.execute(key: loadKey) {
@@ -990,24 +993,26 @@ final class SchemaService: ObservableObject {
         /// Tables are committed the moment they arrive and the other kinds settle behind them, so a
         /// failed tables fetch still settles routines, triggers and types instead of leaving each
         /// section on a spinner no load is coming to replace.
+        var committed = false
         do {
             let tables = try await tablesTask
             guard isCurrentLoadGeneration(generation, for: key, phase: "tables-loaded") else {
-                return
+                return false
             }
             adoptShown(key, scope: scope, generation: generation, type: type)
             states[key] = .loaded(tables)
             unrefreshedCatalogs.remove(key)
             bumpGeneration(connectionId)
+            committed = true
         } catch is CancellationError {
             abandonLoad(key, generation: generation)
-            return
+            return false
         } catch {
             guard isCurrentLoadGeneration(generation, for: key, phase: "tables-failed") else {
                 if loadGenerations[key] == nil, case .loading = states[key] {
                     states[key] = .idle
                 }
-                return
+                return false
             }
             Self.logger.warning(
                 "[schema] load failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
@@ -1022,13 +1027,13 @@ final class SchemaService: ObservableObject {
         let triggersOutcome = await triggersTask
         let typesOutcome = await typesTask
         guard isCurrentLoadGeneration(generation, for: key, phase: "side-objects-loaded") else {
-            return
+            return committed
         }
         commitSideObjects(key, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
 
         if let loadedSchemas = await schemasTask {
             guard isCurrentLoadGeneration(generation, for: key, phase: "schemas-loaded") else {
-                return
+                return committed
             }
             if listsAttached {
                 attachedSchemasInOrder[key] = loadedSchemas
@@ -1037,6 +1042,7 @@ final class SchemaService: ObservableObject {
             }
         }
         bumpGeneration(connectionId)
+        return committed
     }
 
     private func runHierarchicalLoad(

@@ -139,7 +139,7 @@ struct SchemaServiceRefreshTests {
         }
 
         driver.resumeFetchTables()
-        await reload.value
+        _ = await reload.value
 
         #expect(service.tables(for: connectionId).map(\.name) == ["orders", "invoices"])
         #expect(!service.isRefreshing(connectionId: connectionId))
@@ -182,8 +182,8 @@ struct SchemaServiceRefreshTests {
         }
         try await waitUntil { driver.tablesCallCount == 2 }
         driver.resumeFetchTables()
-        await first.value
-        await second.value
+        _ = await first.value
+        _ = await second.value
 
         #expect(driver.tablesCallCount == 2, "Each browse scope must run its own fetch")
         #expect(service.loadedScope(for: connectionId) == analytics)
@@ -241,7 +241,7 @@ struct SchemaServiceRefreshTests {
 
         driver.resumeFetchTables()
         await waiter.value
-        await reload.value
+        _ = await reload.value
 
         #expect(service.loadedScope(for: connectionId) == secondScope)
         #expect(service.tables(for: connectionId).map(\.name) == ["events"])

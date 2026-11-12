@@ -363,6 +363,7 @@ final class MainContentCoordinator: ObservableObject {
         let diskContent: String
     }
     internal private(set) var fileWatcher: DatabaseFileWatcher?
+    var schemaTokenGate = SchemaChangeTokenGate()
 
     // Set during handleTabChange to suppress redundant column-change reconfiguration.
     internal var isHandlingTabSwitch = false
@@ -754,8 +755,7 @@ final class MainContentCoordinator: ObservableObject {
         watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
             guard let self else { return }
             if case .loading = services.schemaService.state(for: self.connectionId) { return }
-            DatabaseTreeMetadataService.shared.markListsStale(connectionId: self.connectionId)
-            Task { await self.refreshTables() }
+            Task { await self.refreshTablesIfSchemaChanged() }
         }
         fileWatcher = watcher
     }

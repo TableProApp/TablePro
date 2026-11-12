@@ -19,6 +19,7 @@ struct ServerDashboardView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { WindowVisibilityReader { viewModel.windowVisibilityChanged($0) } }
         .onAppear { viewModel.startAutoRefresh() }
         .onDisappear { viewModel.stopAutoRefresh() }
         .alert(

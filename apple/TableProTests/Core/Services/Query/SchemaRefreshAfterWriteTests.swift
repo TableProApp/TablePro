@@ -93,7 +93,7 @@ struct SchemaRefreshAfterWriteTests {
         // The main queue runs jobs in order, so the second refresh has joined before the fetch resumes.
         await Task { @MainActor in }.value
         driver.resumeFetchTables()
-        await postWrite.value
+        _ = await postWrite.value
         await joined.value
 
         #expect(driver.fetchTablesCallCount == 1)
@@ -112,5 +112,21 @@ struct SchemaRefreshAfterWriteTests {
         await service.refresh(connection: connection)
 
         #expect(driver.fetchTablesCallCount == 2)
+    }
+
+    @Test("a refresh after a write says whether it committed a fresh table list")
+    func refreshAfterWriteReportsWhetherItCommitted() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [orders]
+        let schemaService = SchemaService()
+        let service = makeService(schemaService: schemaService, driver: driver)
+        let connection = TestFixtures.makeConnection()
+
+        #expect(await service.refreshAfterWrite(connection: connection))
+
+        driver.tablesToReturn = [orders, probe]
+        driver.fetchTablesError = DatabaseError.queryFailed("database is locked")
+        #expect(await service.refreshAfterWrite(connection: connection) == false)
+        #expect(schemaService.state(for: connection.id) == .loaded([orders]))
     }
 }
