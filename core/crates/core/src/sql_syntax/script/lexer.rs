@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Range;
 
@@ -5,6 +6,7 @@ use crate::sql_syntax::script::script_rules::{
     BackslashPolicy, BracketIdentifier, DollarQuote, HashComment, QuoteKind, QuoteRule, ScriptSyntax,
 };
 use crate::sql_syntax::script::server_reading::{CommentRead, NameQuotes, ServerReading, dollar_tag_end, read_at};
+use crate::sql_syntax::script::unicode_spaces::{self, UnicodeSpaces};
 use crate::sql_syntax::script::{LexicalSettings, OpenConstruct, ScriptTokenKind};
 
 /// MariaDB's MSSQL mode ends a `[name]` at a `]` that is not doubled.
@@ -30,6 +32,11 @@ pub(crate) struct Lexer<'a> {
     missing_heredoc_closers: HashSet<&'a str>,
     /// Where the executable comment the lexer is inside opened.
     executable: Option<usize>,
+    /// DuckDB's pass over the statement being read, when the text holds a
+    /// space it may blank.
+    unicode_spaces: Option<RefCell<UnicodeSpaces>>,
+    /// The statement being read has had its first code token.
+    in_statement: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -48,6 +55,11 @@ impl<'a> Lexer<'a> {
             pos: 0,
             missing_heredoc_closers: HashSet::new(),
             executable: None,
+            unicode_spaces: (syntax.blanks_unicode_spaces
+                && reading.blanks_unicode_spaces()
+                && unicode_spaces::any(text.as_bytes()))
+            .then(|| RefCell::new(UnicodeSpaces::new(0))),
+            in_statement: false,
         }
     }
 
@@ -70,6 +82,13 @@ impl<'a> Lexer<'a> {
     pub fn next_token(&mut self, delimiter: Option<&str>) -> Option<LexedToken> {
         let start = self.pos;
         let first = *self.bytes.get(start)?;
+        // Each statement goes to DuckDB from its first code token on, and
+        // DuckDB starts its pass there.
+        if !self.in_statement
+            && let Some(spaces) = &self.unicode_spaces
+        {
+            *spaces.borrow_mut() = UnicodeSpaces::new(start);
+        }
         let token = match delimiter {
             // The server ends an executable comment at the first `*/`
             // that stands where a token could start.
@@ -83,6 +102,11 @@ impl<'a> Lexer<'a> {
             _ => self.lex_at(start, first, delimiter),
         };
         self.pos = token.range.end;
+        if token.kind == ScriptTokenKind::Semicolon {
+            self.in_statement = false;
+        } else if !token.kind.is_trivia() {
+            self.in_statement = true;
+        }
         Some(token)
     }
 
@@ -95,6 +119,7 @@ impl<'a> Lexer<'a> {
         }
         match first {
             b if is_space(b) => self.plain(ScriptTokenKind::Whitespace, self.whitespace_end(start)),
+            _ if self.blank_at(start).is_some() => self.plain(ScriptTokenKind::Whitespace, self.whitespace_end(start)),
             0xEF if self.syntax.byte_order_mark_is_space && self.bytes[start..].starts_with(BYTE_ORDER_MARK) => {
                 self.plain(ScriptTokenKind::Whitespace, start + BYTE_ORDER_MARK.len())
             }
@@ -141,6 +166,10 @@ impl<'a> Lexer<'a> {
     fn whitespace_end(&self, start: usize) -> usize {
         let mut end = start;
         while let Some(&b) = self.bytes.get(end) {
+            if let Some(len) = self.blank_at(end) {
+                end += len;
+                continue;
+            }
             if !is_space(b) {
                 break;
             }
@@ -359,8 +388,8 @@ impl<'a> Lexer<'a> {
             DollarQuote::Tagged => {
                 if let Some(opener_end) = self.tagged_opener_end(start) {
                     let opener = &self.text[start..opener_end];
-                    return match self.text[opener_end..].find(opener) {
-                        Some(offset) => self.plain(ScriptTokenKind::DollarQuoted, opener_end + offset + opener.len()),
+                    return match self.closer(opener_end, opener) {
+                        Some(closer) => self.plain(ScriptTokenKind::DollarQuoted, closer + opener.len()),
                         None => self.unterminated(start, OpenConstruct::DollarQuoted),
                     };
                 }
@@ -452,13 +481,13 @@ impl<'a> Lexer<'a> {
         let mut index = start + 1;
         let first = *self.bytes.get(index)?;
         if first != b'$' {
-            if !(first.is_ascii_alphabetic() || first == b'_' || first >= 0x80) {
+            if !(first.is_ascii_alphabetic() || first == b'_' || self.non_ascii_name_byte(index)) {
                 return None;
             }
             while self
                 .bytes
                 .get(index)
-                .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b >= 0x80)
+                .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_' || self.non_ascii_name_byte(index))
             {
                 index += 1;
             }
@@ -467,6 +496,21 @@ impl<'a> Lexer<'a> {
             }
         }
         Some(index + 1)
+    }
+
+    /// Where the first `opener` after `from` starts. One that holds a space
+    /// DuckDB's pass blanks is no longer the opener's text.
+    fn closer(&self, from: usize, opener: &str) -> Option<usize> {
+        let holds_space = (0..opener.len()).any(|at| unicode_spaces::space_len(opener.as_bytes(), at).is_some());
+        let mut search = from;
+        loop {
+            let at = search + self.text.get(search..)?.find(opener)?;
+            if !holds_space || (at..at + opener.len()).all(|byte| self.blank_at(byte).is_none()) {
+                return Some(at);
+            }
+            // The opener starts with `$`, so the next byte starts a character.
+            search = at + 1;
+        }
     }
 
     fn heredoc_end(&mut self, start: usize) -> Option<usize> {
@@ -500,7 +544,10 @@ impl<'a> Lexer<'a> {
         let delimiter = delimiter.filter(|d| d.bytes().next().is_some_and(|b| self.is_word_part(b)));
         let mut end = from;
         while let Some(&b) = self.bytes.get(end) {
-            if !self.is_word_part(b) || delimiter.is_some_and(|d| self.bytes[end..].starts_with(d.as_bytes())) {
+            if !self.is_word_part(b)
+                || (b >= 0x80 && self.blank_at(end).is_some())
+                || delimiter.is_some_and(|d| self.bytes[end..].starts_with(d.as_bytes()))
+            {
                 break;
             }
             end += 1;
@@ -554,6 +601,18 @@ impl<'a> Lexer<'a> {
 
     fn is_word_part(&self, b: u8) -> bool {
         b.is_ascii_alphanumeric() || b == b'_' || b >= 0x80 || self.syntax.word_part_extra.contains(&b)
+    }
+
+    fn non_ascii_name_byte(&self, at: usize) -> bool {
+        self.bytes.get(at).is_some_and(|&b| b >= 0x80) && self.blank_at(at).is_none()
+    }
+
+    /// How long the non-ASCII space at `at` is, when DuckDB's pass turns it
+    /// into a space.
+    fn blank_at(&self, at: usize) -> Option<usize> {
+        let spaces = self.unicode_spaces.as_ref()?;
+        let len = unicode_spaces::space_len(self.bytes, at)?;
+        spaces.borrow_mut().blanks(self.bytes, at).then_some(len)
     }
 }
 

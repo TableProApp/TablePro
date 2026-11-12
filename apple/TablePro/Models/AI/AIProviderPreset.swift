@@ -10,7 +10,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
     let id: String
     let displayName: String
     let endpoint: String
-    let symbolName: String
+    let icon: BrandIcon
     let authStyle: AIProviderType.AuthStyle
     // A 403 for a wrong key would otherwise read as a server error, which the chat offers to retry.
     let rejectsBadKeyWithForbidden: Bool
@@ -24,7 +24,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         id: String,
         displayName: String,
         endpoint: String,
-        symbolName: String,
+        icon: BrandIcon,
         authStyle: AIProviderType.AuthStyle,
         rejectsBadKeyWithForbidden: Bool,
         curatedModels: [CuratedModel] = [],
@@ -34,7 +34,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         self.id = id
         self.displayName = displayName
         self.endpoint = endpoint
-        self.symbolName = symbolName
+        self.icon = icon
         self.authStyle = authStyle
         self.rejectsBadKeyWithForbidden = rejectsBadKeyWithForbidden
         self.curatedModels = curatedModels
@@ -46,7 +46,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         id: "requesty",
         displayName: "Requesty",
         endpoint: "https://router.requesty.ai",
-        symbolName: "arrow.triangle.branch",
+        icon: BrandIcon(slug: "requesty", fallbackSystemImage: "arrow.triangle.branch"),
         authStyle: .apiKey,
         rejectsBadKeyWithForbidden: true
     )
@@ -63,7 +63,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         id: "meta",
         displayName: "Meta",
         endpoint: "https://api.meta.ai",
-        symbolName: "infinity.circle",
+        icon: BrandIcon(slug: "meta", fallbackSystemImage: "infinity.circle"),
         authStyle: .apiKey,
         rejectsBadKeyWithForbidden: false,
         curatedModels: [

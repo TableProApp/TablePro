@@ -213,10 +213,19 @@ extension DatabaseManager {
         }
         // A refusal that needs a person gets the same answer on every retry.
         if error is EnvVarReferenceConsentError || error is PreConnectScriptConsentError
-            || error is LocalCredentialConsentError {
+            || error is LocalCredentialConsentError || error is ConnectionTunnelError {
             return .stop(ConnectionFailureClassifier.info(for: error))
         }
-        guard isAuthenticationFailure(error) else { return .retry(nil) }
+        // The lease renewal stops on the same Vault errors; an unreachable or failing Vault is worth another try.
+        if error is VaultError || error is VaultRequestError {
+            let info = ConnectionFailureClassifier.info(for: error)
+            return VaultLease.isDefinitive(error) ? .stop(info) : .retry(info)
+        }
+        // The new user is kept, and the next attempt may find it loaded.
+        if error is VaultUserNotLoaded {
+            return .retry(ConnectionFailureClassifier.info(for: error))
+        }
+        guard ConnectionFailureClassifier.isAuthenticationFailure(error) else { return .retry(nil) }
         let message = String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
         return .stop(ConnectionFailureInfo(message: message))
     }
@@ -284,6 +293,7 @@ extension DatabaseManager {
         }
         let connectionForDriver = try await buildEffectiveConnection(
             for: connection,
+            pinnedSSHRoute: session.connection.destinationTunnel,
             deadline: deadline,
             ownsAttempt: { self.isCurrentAttempt(generation, for: connectionId) }
         )
@@ -467,6 +477,7 @@ extension DatabaseManager {
             let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
             let effectiveConnection = try await buildEffectiveConnection(
                 for: connection,
+                pinnedSSHRoute: session.connection.destinationTunnel,
                 deadline: deadline,
                 ownsAttempt: { self.isCurrentAttempt(generation, for: sessionId) }
             )
@@ -631,7 +642,7 @@ extension DatabaseManager {
         guard allowsCredentialPrompt else { return .fail }
         guard ConnectionCredentialResolver.promptsForPassword(session.connection),
               !pluginManager.hidesPassword(for: session.connection),
-              isAuthenticationFailure(error)
+              ConnectionFailureClassifier.isAuthenticationFailure(error)
         else {
             return .fail
         }
@@ -650,29 +661,6 @@ extension DatabaseManager {
         }
 
         return .retry(prompted)
-    }
-
-    private static let invalidAuthorizationSQLState = "28000"
-    private static let mysqlAccessDeniedErrorCode = 1_045
-
-    internal func isAuthenticationFailure(_ error: Error) -> Bool {
-        if let pluginError = error as? any PluginDriverError {
-            if pluginError.pluginSqlState == Self.invalidAuthorizationSQLState {
-                return true
-            }
-            if pluginError.pluginErrorCode == Self.mysqlAccessDeniedErrorCode {
-                return true
-            }
-            return messageIndicatesAuthenticationFailure(pluginError.pluginErrorMessage)
-        }
-        return messageIndicatesAuthenticationFailure(error.localizedDescription)
-    }
-
-    private func messageIndicatesAuthenticationFailure(_ message: String) -> Bool {
-        let lowered = message.lowercased()
-        return lowered.contains("access denied")
-            || lowered.contains("authentication failed")
-            || lowered.contains("invalid credentials")
     }
 
     // A superseded attempt leaves the slot alone: the tunnel under this connection's id is the newer attempt's.

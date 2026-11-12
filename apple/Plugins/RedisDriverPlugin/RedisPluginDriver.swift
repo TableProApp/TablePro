@@ -521,7 +521,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -529,9 +529,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -610,7 +608,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let batchKeys = Array(page.keys[batchStart ..< batchEnd])
                 let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn, stringByteLimit: nil)
                 if !rowBatch.isEmpty {
-                    continuation.yield(.rows(rowBatch))
+                    _ = await PluginRowStream.deliver(.rows(rowBatch), to: continuation)
                 }
                 batchStart = batchEnd
             }
@@ -636,7 +634,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let batch = Array(keys[start ..< min(start + Self.keySummaryBatchSize, keys.count)])
             let rows = try await buildKeySummaryRows(keys: batch, connection: conn, stringByteLimit: nil)
             if !rows.isEmpty {
-                continuation.yield(.rows(rows))
+                _ = await PluginRowStream.deliver(.rows(rows), to: continuation)
             }
         }
         continuation.finish()

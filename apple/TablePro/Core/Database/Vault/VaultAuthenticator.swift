@@ -149,7 +149,7 @@ actor VaultAuthenticator {
         do {
             grant = try await VaultClient(endpoint: endpoint, transport: transport).lookupSelf(token: value)
         } catch let error as VaultRequestError {
-            throw VaultError.tokenRejected(source, error.message)
+            throw VaultError.signInFailure(error, at: endpoint, otherwise: .tokenRejected(source, error.message))
         }
         // The user owns this token, so it is never renewed here.
         return VaultToken(
@@ -176,7 +176,7 @@ actor VaultAuthenticator {
             grant = try await VaultClient(endpoint: endpoint, transport: transport)
                 .appRoleLogin(mount: mount, roleId: roleId, secretId: secretId)
         } catch let error as VaultRequestError {
-            throw VaultError.tokenRejected(.appRole, error.message)
+            throw VaultError.signInFailure(error, at: endpoint, otherwise: .tokenRejected(.appRole, error.message))
         }
         return token(from: grant, source: .appRole)
     }

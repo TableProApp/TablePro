@@ -1,5 +1,7 @@
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, PoisonError, RwLock};
 use std::time::Duration;
 
@@ -16,11 +18,14 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use tablepro_session::runtime::Tasks;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::access_token::AccessToken;
+#[cfg(target_os = "linux")]
+use crate::peer_owner::{self, PeerOwner};
+use crate::seen_clients::{SeenClient, SeenClients};
 use crate::tool_context::ToolContext;
 use crate::tool_server::ToolServer;
 
@@ -56,6 +61,7 @@ pub enum StartError {
 pub struct McpServer {
     address: SocketAddr,
     token: Arc<RwLock<AccessToken>>,
+    seen: SeenClients,
     cancel: CancellationToken,
     accept: Option<AbortOnDropHandle<()>>,
 }
@@ -79,7 +85,8 @@ impl McpServer {
             .local_addr()
             .map_err(|source| StartError::Listen { port, source })?;
         let cancel = CancellationToken::new();
-        let tools = ToolServer::new(context, version);
+        let seen = SeenClients::new();
+        let tools = ToolServer::new(context, version, seen.clone());
         // Stateless: a client keeps nothing on the server between calls,
         // and the answers are plain JSON with no stream to hold open.
         let config = StreamableHttpServerConfig::default()
@@ -96,6 +103,7 @@ impl McpServer {
         Ok(Self {
             address,
             token,
+            seen,
             cancel,
             accept: Some(accept),
         })
@@ -103,6 +111,11 @@ impl McpServer {
 
     pub fn address(&self) -> SocketAddr {
         self.address
+    }
+
+    // Each client that has started a session since the server started.
+    pub fn seen_clients(&self) -> watch::Receiver<Vec<SeenClient>> {
+        self.seen.subscribe()
     }
 
     /// Stop, and return once the port is free again, so a restart on the
@@ -155,18 +168,33 @@ async fn accept(
                 }
             },
         };
-        let (service, token, cancel) = (service.clone(), token.clone(), cancel.clone());
+        let (service, token, cancel, checks) = (service.clone(), token.clone(), cancel.clone(), tasks.clone());
         drop(tasks.spawn_task(async move {
-            serve(stream, service, token, cancel).await;
+            serve(stream, service, token, cancel, &checks).await;
             drop(permit);
         }));
     }
 }
 
-async fn serve(stream: TcpStream, service: Service, token: Arc<RwLock<AccessToken>>, cancel: CancellationToken) {
+async fn serve(
+    stream: TcpStream,
+    service: Service,
+    token: Arc<RwLock<AccessToken>>,
+    cancel: CancellationToken,
+    tasks: &Tasks,
+) {
+    let allowed = same_account(&stream, tasks).await;
     let handler = service_fn(move |request: Request<Incoming>| {
         let (service, token) = (service.clone(), token.clone());
-        async move { Ok::<_, Infallible>(respond(&service, &token, request).await) }
+        async move {
+            Ok::<_, Infallible>(match allowed {
+                true => respond(&service, &token, request).await,
+                false => plain(
+                    StatusCode::FORBIDDEN,
+                    "TablePro serves only programs of the user it runs as",
+                ),
+            })
+        }
     });
     let mut builder = http1::Builder::new();
     builder.timer(TokioTimer::new()).header_read_timeout(HEADER_TIMEOUT);
@@ -183,6 +211,38 @@ async fn serve(stream: TcpStream, service: Service, token: Arc<RwLock<AccessToke
             let _ = connection.await;
         }
     }
+}
+
+// The token can leak to another account, as through a client's command
+// line in /proc, so only the user's own programs are served; fail closed.
+#[cfg(target_os = "linux")]
+async fn same_account(stream: &TcpStream, tasks: &Tasks) -> bool {
+    static UNKNOWN_LOGGED: AtomicBool = AtomicBool::new(false);
+    let owner = match (stream.local_addr(), stream.peer_addr()) {
+        (Ok(SocketAddr::V4(server)), Ok(SocketAddr::V4(peer))) => tasks
+            .spawn_blocking_task(move || peer_owner::owner_of(server, peer))
+            .await
+            .unwrap_or(PeerOwner::Unknown),
+        _ => PeerOwner::Unknown,
+    };
+    match owner {
+        PeerOwner::Same => true,
+        PeerOwner::Other => {
+            tracing::debug!("refused an MCP connection from another user");
+            false
+        }
+        PeerOwner::Unknown => {
+            if !UNKNOWN_LOGGED.swap(true, Ordering::Relaxed) {
+                tracing::warn!("refused an MCP connection whose user could not be read from /proc/net/tcp");
+            }
+            false
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+async fn same_account(_stream: &TcpStream, _tasks: &Tasks) -> bool {
+    true
 }
 
 /// Every request presents the token before anything reads its body.

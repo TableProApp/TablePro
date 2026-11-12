@@ -1371,6 +1371,9 @@
   <data name="StatusPageOf" xml:space="preserve">
     <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
   </data>
+  <data name="StatusPageOfAbout" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of about {2:N0} rows · {3:N0} ms</value>
+  </data>
   <data name="MenuMoveTab.Text" xml:space="preserve">
     <value>Move tab to new window</value>
   </data>
@@ -1424,6 +1427,15 @@
   </data>
   <data name="PageNumber" xml:space="preserve">
     <value>Page {0:N0}</value>
+  </data>
+  <data name="CountRows" xml:space="preserve">
+    <value>Count rows</value>
+  </data>
+  <data name="CountingRows" xml:space="preserve">
+    <value>Counting rows...</value>
+  </data>
+  <data name="CountRowsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Count every row, for Last page and Go to page</value>
   </data>
   <data name="GoToPageCaption" xml:space="preserve">
     <value>Go to page</value>

@@ -31,7 +31,6 @@ struct AppSettingsValueColorsTests {
             let catalog = ThemeCatalog(
                 userDirectory: environment.directory.appendingPathComponent("Themes", isDirectory: true),
                 bundleDirectory: nil,
-                notificationCenter: NotificationCenter(),
                 fileTrash: .folder(environment.directory.appendingPathComponent("Trash", isDirectory: true)),
                 syncTracker: environment.tracker
             )

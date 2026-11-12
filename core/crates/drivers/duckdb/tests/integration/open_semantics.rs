@@ -207,9 +207,15 @@ async fn an_exported_query_cannot_write() {
     let read = export("SELECT 'COMMIT' AS word").await;
     // DuckDB quotes an identifier in backticks, and a string that
     // continues an E-string on the next line keeps no backslash escape.
+    // It turns U+200B into a space before it lexes, except where its
+    // pass takes `$$` for a quote.
     let hidden = [
         export("SELECT 1 AS `'`; COMMIT; INSERT INTO t VALUES (3); --'").await,
         export("SELECT E'x'\n'\\'; COMMIT; INSERT INTO t VALUES (3); --'").await,
+        export("SELECT varchar\u{200b}E'\\''; COMMIT; INSERT INTO t VALUES (3); --'").await,
+        export("SELECT 1 AS a$$, 2 AS b\u{200b}$$, varchar\u{200b}E'\\''; COMMIT; INSERT INTO t VALUES (3); --'x$$")
+            .await,
+        export("/* ' */ SELECT varchar\u{200b}E'\\''; COMMIT; INSERT INTO t VALUES (3); --'").await,
     ];
 
     assert_eq!(
@@ -229,6 +235,53 @@ async fn an_exported_query_cannot_write() {
     assert_eq!(read.unwrap().rows, 1);
     let rows = query(connection.as_ref(), "SELECT count(*) FROM t").await;
     assert_eq!(rows.rows, vec![vec![Value::Int(0)]]);
+    connection.close().await.unwrap();
+}
+
+/// The path of an ATTACH is read again in a query of its own, where
+/// DuckDB's pass over non-ASCII spaces starts afresh: a U+200B the ATTACH
+/// kept, behind the quote in its comment, ends a name there, and the rest
+/// of the path would run as statements of their own.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_attach_path_read_again_runs_nothing_else() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(connection.as_ref(), &["CREATE TABLE t (a INTEGER)"])
+        .await
+        .unwrap();
+    let editor = session(connection.as_ref()).await;
+
+    let sql =
+        "ATTACH /* ' */ 'p' || varchar\u{200b}E'\\'') x(path); DROP TABLE t; SELECT * FROM (SELECT 1 AS path --' AS a";
+    let (summary, _) = run(editor.as_ref(), sql).await;
+
+    assert!(matches!(summary.end, RunEnd::Failed(_)), "{:?}", summary.end);
+    let rows = query(connection.as_ref(), "SELECT count(*) FROM t").await;
+    assert_eq!(rows.rows, vec![vec![Value::Int(0)]]);
+    editor.close().await;
+    connection.close().await.unwrap();
+}
+
+/// The quote in the comment puts DuckDB's pass outside the string, so it
+/// turns the U+00A0 into a space and opens the file another window has.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_attach_path_names_the_file_duckdb_opens_after_its_spaces() {
+    let file = TestFile::new();
+    let other = TestFile::new();
+    let spaced = other.path.with_file_name("a b.duckdb");
+    std::fs::rename(&other.path, &spaced).unwrap();
+    let connection = file.open().await;
+    let opened = connect(FileEndpoint::open_existing(spaced.clone()).unwrap(), writable())
+        .await
+        .unwrap();
+    let editor = session(connection.as_ref()).await;
+
+    let path = spaced.display().to_string().replace(' ', "\u{a0}");
+    let (summary, _) = run(editor.as_ref(), &format!("ATTACH /* ' */ '{path}' AS o")).await;
+
+    assert_eq!(summary.end, RunEnd::Failed(DriverError::Busy(BusyReason::FileLocked)));
+    editor.close().await;
+    opened.close().await.unwrap();
     connection.close().await.unwrap();
 }
 

@@ -29,6 +29,10 @@ public final class TeradataConnection: @unchecked Sendable {
     private var _operationActive = false
     // The request a stop is waiting on the server for, so the stop's deadline closes nothing that came after it.
     private var _stoppingRequest: UInt32?
+    // Under socketLock: the semantics the session runs with, and what its requests have left open.
+    private var _sessionMode: TeradataTransactionMode
+    private var _sessionModeSource: TeradataSessionModeSource
+    private var _transaction: TeradataTransactionTracker
 
     // 3110: "The transaction was aborted by the user."
     public static let userAbortCode = 3_110
@@ -63,6 +67,10 @@ public final class TeradataConnection: @unchecked Sendable {
     public init(config: TeradataConnectionConfig) {
         self.config = config
         stopGrace = Self.defaultStopGrace
+        let configured = Self.configuredMode(config.transactionMode)
+        _sessionMode = configured.mode
+        _sessionModeSource = configured.source
+        _transaction = TeradataTransactionTracker(mode: configured.mode)
     }
 
     init(
@@ -74,9 +82,26 @@ public final class TeradataConnection: @unchecked Sendable {
         self._socket = transport
         self.stopGrace = stopGrace
         confidentialityBypassed = true
+        let configured = Self.configuredMode(config.transactionMode)
+        _sessionMode = configured.mode
+        _sessionModeSource = configured.source
+        _transaction = TeradataTransactionTracker(mode: configured.mode)
+    }
+
+    private static func configuredMode(
+        _ mode: TeradataTransactionMode
+    ) -> (mode: TeradataTransactionMode, source: TeradataSessionModeSource) {
+        mode == .default ? (.default, .unresolved) : (mode, .configured)
     }
 
     public var isConnected: Bool { socket != nil }
+
+    // `.default` when the session could not say which semantics it runs with; it then gets Teradata's.
+    public var sessionTransactionMode: TeradataTransactionMode { socketLock.withLock { _sessionMode } }
+
+    public var sessionModeSource: TeradataSessionModeSource { socketLock.withLock { _sessionModeSource } }
+
+    public var transactionState: TeradataTransactionState { socketLock.withLock { _transaction.state } }
 
     // Set when a request failed partway, so the session it ran on was given up rather than ended.
     public var hasLostConnection: Bool { socketLock.withLock { _hasLostConnection } }
@@ -114,10 +139,7 @@ public final class TeradataConnection: @unchecked Sendable {
         let params = try Td2Token.parseServerParams(serverToken)
         try runKeyExchange(params)
         try runConnect()
-
-        if let database = config.database, !database.isEmpty {
-            _ = try execute(TeradataSchemaQueries.setDatabase(database))
-        }
+        try prepareSession()
         _ = try deadline.remainingMilliseconds()
         established = true
     }
@@ -130,6 +152,84 @@ public final class TeradataConnection: @unchecked Sendable {
         _ = try connectDeadline.remainingMilliseconds()
         socket.finishConnecting()
         self.connectDeadline = nil
+    }
+
+    // DEFAULT is the site's default, so the session is asked which one it got. An ANSI session opens a transaction
+    // with its first request and counts DATABASE as DDL, after which only COMMIT is legal, so the setup is committed.
+    func prepareSession() throws {
+        let (mode, source) = try resolveSessionMode()
+        var ranRequest = config.transactionMode == .default
+        if let database = config.database, !database.isEmpty {
+            _ = try execute(TeradataSchemaQueries.setDatabase(database))
+            ranRequest = true
+        }
+        if mode == .ansi, ranRequest {
+            _ = try execute(TeradataTransactionSQL.commit(.ansi))
+        }
+        socketLock.withLock {
+            _sessionMode = mode
+            _sessionModeSource = source
+            _transaction = TeradataTransactionTracker(mode: mode)
+        }
+    }
+
+    private func resolveSessionMode() throws -> (TeradataTransactionMode, TeradataSessionModeSource) {
+        guard config.transactionMode == .default else { return (config.transactionMode, .configured) }
+        if let mode = try probeSessionMode(
+            TeradataSessionModeProbe.helpSession, read: TeradataSessionModeProbe.mode(fromHelpSession:)
+        ) {
+            return (mode, .helpSession)
+        }
+        if let mode = try probeSessionMode(
+            TeradataSessionModeProbe.sessionInfo, read: TeradataSessionModeProbe.mode(fromSessionInfo:)
+        ) {
+            return (mode, .sessionInfoView)
+        }
+        return (.default, .unresolved)
+    }
+
+    // A refusal, or a reply this decoder cannot read, leaves the session usable for the next way of asking.
+    private func probeSessionMode(
+        _ sql: String,
+        read: (TeradataResultSet) -> TeradataTransactionMode?
+    ) throws -> TeradataTransactionMode? {
+        do {
+            return read(try execute(sql))
+        } catch TeradataWireError.cancelled {
+            throw TeradataWireError.cancelled
+        } catch {
+            guard isConnected else { throw error }
+            return nil
+        }
+    }
+
+    public func beginTransaction() throws {
+        guard let statement = TeradataTransactionSQL.begin(sessionTransactionMode) else { return }
+        _ = try execute(statement)
+    }
+
+    public func commitTransaction() throws {
+        _ = try execute(TeradataTransactionSQL.commit(sessionTransactionMode))
+    }
+
+    public func rollbackTransaction() throws {
+        do {
+            _ = try execute(TeradataTransactionSQL.rollback(sessionTransactionMode))
+        } catch TeradataWireError.server(let code, _) where TeradataTransactionSQL.rollbackAnswerCodes.contains(code) {
+            // The failure parcel a rollback answers with is its success.
+        }
+        socketLock.withLock { _transaction.rolledBack() }
+    }
+
+    // After DATABASE inside a transaction only the closing statement is legal (ANSI counts it as DDL; Teradata mode
+    // is not documented either way), so a switch never joins an open one, and in ANSI it is committed at once.
+    public func switchDatabase(to database: String) throws {
+        let (mode, state) = socketLock.withLock { (_sessionMode, _transaction.state) }
+        guard state != .open else { throw TeradataWireError.openTransactionBlocksDatabaseSwitch }
+        _ = try execute(TeradataSchemaQueries.setDatabase(database))
+        if mode == .ansi {
+            _ = try execute(TeradataTransactionSQL.commit(.ansi))
+        }
     }
 
     public func execute(_ sql: String) throws -> TeradataResultSet {
@@ -179,6 +279,7 @@ public final class TeradataConnection: @unchecked Sendable {
         onRows: ([[TeradataValue]]) throws -> Bool
     ) throws -> Int {
         guard socket != nil else { throw TeradataWireError.connectionFailed("not connected") }
+        let kinds = TeradataStatementKind.kinds(in: sql)
         let requestNumber = nextRequest()
         let body = TeradataMessages.optionsParcel(returnStatementInfo: false).encoded()
             + TeradataMessages.requestParcel(sql: sql).encoded()
@@ -200,14 +301,25 @@ public final class TeradataConnection: @unchecked Sendable {
         case .notSent:
             throw TeradataWireError.cancelled
         case .refused(let error):
-            if stopped, case .server(let code, _)? = error as? TeradataWireError, code == Self.userAbortCode {
-                // In Teradata mode a request outside BT is its own transaction, so the abort undid that request alone.
-                throw config.transactionMode == .ansi ? TeradataWireError.rolledBackByStop : TeradataWireError.cancelled
+            guard case .server(let code, _)? = error as? TeradataWireError else {
+                // Refused by its reader rather than the server, so the request ran.
+                socketLock.withLock { _transaction.ran(kinds) }
+                throw error
+            }
+            let abortRolledBack = socketLock.withLock { () -> Bool in
+                let heldTransaction = _transaction.abortRollsBackTransaction
+                _transaction.failed(kinds, code: code)
+                return heldTransaction
+            }
+            if stopped, code == Self.userAbortCode {
+                throw abortRolledBack ? TeradataWireError.rolledBackByStop : TeradataWireError.cancelled
             }
             throw error
         case .outputEnded where stopped:
+            socketLock.withLock { _transaction.ran(kinds) }
             throw TeradataWireError.cancelled
         case .answered, .outputEnded:
+            socketLock.withLock { _transaction.ran(kinds) }
             try reader.finish(onColumns: onColumns)
             return reader.activityCount
         }

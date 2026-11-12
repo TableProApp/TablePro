@@ -31,6 +31,32 @@ struct SQLStatementSplittingTests {
         ).count == 1)
     }
 
+    // Measured on DuckDB 1.5.4 and 2.0.0, the engine whose plugin reads E'...' through the kit.
+    @Test("A prefix glued to a name is part of it, and the non-ASCII spaces DuckDB blanks end the name")
+    func prefixAfterAName() {
+        let duckDB: SQLLexicalFeatures = [.taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .backtickQuotes]
+        for glue in ["$", "\u{E9}", "\u{2019}", "\u{FF0C}"] {
+            #expect(SQLStatementSplitting.statements(
+                in: "SELECT x\(glue)e'\\'; DROP TABLE t; SELECT 'x'",
+                lexicalFeatures: duckDB
+            ).count == 3, "\(glue)")
+        }
+        for space in ["\u{00A0}", "\u{200B}", "\u{2060}", "\u{3000}", "\u{FEFF}"] {
+            #expect(SQLStatementSplitting.statements(
+                in: "SELECT varchar\(space)E'\\''; DROP TABLE t; SELECT 'x'",
+                lexicalFeatures: duckDB
+            ).count == 3, "\(space.unicodeScalars.first.map { String($0.value, radix: 16) } ?? "")")
+        }
+        #expect(SQLStatementSplitting.statements(
+            in: "SELECT 1 AS a,\u{200B}$$'$$; DROP TABLE t; SELECT 'x'",
+            lexicalFeatures: duckDB
+        ).count == 3)
+        let oracle: SQLLexicalFeatures = [.alternativeQuoting, .dollarAndHashInIdentifiers]
+        #expect(SQLStatementSplitting.statements(in: "SELECT x#q'['; SELECT 2 --]'", lexicalFeatures: oracle).count == 2)
+        #expect(SQLStatementSplitting.statements(in: "SELECT x#q'['; SELECT 2 --]'", lexicalFeatures: .alternativeQuoting)
+            .count == 1)
+    }
+
     @Test("SQLite's $name(...) parameter keeps a semicolon, and a $ inside a name starts none")
     func featuresReadParenthesizedParameters() {
         #expect(SQLStatementSplitting.statements(in: "SELECT $a(;)", lexicalFeatures: .parenthesizedParameterNames)

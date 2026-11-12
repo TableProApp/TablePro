@@ -23,6 +23,29 @@ struct AppSettingsStorageResetTests {
         #expect(defaults.string(forKey: SidebarPersistenceKey.defaultLayout) == nil)
     }
 
+    @Test("Reset keeps the AI providers, the active one and the AI switch, and resets every other AI setting")
+    func resetKeepsAIProviders() throws {
+        let defaults = try pool.make().defaults
+        let storage = AppSettingsStorage(userDefaults: defaults)
+        let provider = AIProviderConfig(name: "Work", type: .claude)
+        var ai = AISettings.default
+        ai.providers = [provider]
+        ai.activeProviderID = provider.id
+        ai.enabled = false
+        ai.chatMode = .agent
+        ai.inlineSuggestionsEnabled = true
+        storage.saveAI(ai)
+
+        storage.resetToDefaults()
+
+        let reset = storage.loadAI()
+        #expect(reset.providers.map(\.id) == [provider.id])
+        #expect(reset.activeProviderID == provider.id)
+        #expect(!reset.enabled)
+        #expect(reset.chatMode == AISettings.default.chatMode)
+        #expect(reset.inlineSuggestionsEnabled == AISettings.default.inlineSuggestionsEnabled)
+    }
+
     @Test("Reset clears every remembered inspector field height and the geometry field's mode")
     func resetClearsInspectorFieldPreferences() throws {
         let defaults = try pool.make().defaults

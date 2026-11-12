@@ -119,13 +119,34 @@ public enum SQLNonCodeSpan {
         return span.end
     }
 
-    /// Whether `unit` continues a word, so a prefix like `E` or `q` glued to it is part of an identifier rather than
-    /// the start of a literal.
     public static func isWordUnit(_ unit: UInt16) -> Bool {
         if unit < 0x80 {
             return SqlDollarQuote.isIdentifierPart(unit)
         }
         return !SQLSeparatingCharacter.isSeparating(unit)
+    }
+
+    /// Whether a literal prefix right after `unit` is part of the name `unit` belongs to, so `x$e'\'` is the name
+    /// `x$e` and a plain string. PostgreSQL 17.11 continues a name with `$` and every unit from 0x80 up, and DuckDB
+    /// 1.5.4 and 2.0.0 do too, less the spaces they blank (measured). CockroachDB's scanner reads bytes the same way, and
+    /// KingbaseES, a PostgreSQL fork, is taken to. Oracle and Dameng document `$` and `#` as name characters, and run
+    /// one statement per call.
+    public static func continuesName(beforePrefix unit: UInt16, grammar: SQLLexicalGrammar) -> Bool {
+        if unit >= 0x80 {
+            return !endsNameAsBlank(unit, grammar: grammar)
+        }
+        return SqlDollarQuote.isIdentifierPart(unit) || unit == SqlDollarQuote.dollar
+            || (unit == SqlLexer.hash && grammar.contains(.dollarAndHashInIdentifiers))
+    }
+
+    /// Whether a `$` right after `unit` is part of the name `unit` belongs to, as in `a$$b`, rather than a dollar
+    /// quote's opener. On DuckDB `SELECT` + U+200B + `$$...$$` opens one, measured on 2.0.0.
+    public static func continuesName(beforeDollar unit: UInt16, grammar: SQLLexicalGrammar) -> Bool {
+        SqlDollarQuote.isIdentifierContinuation(unit) && !endsNameAsBlank(unit, grammar: grammar)
+    }
+
+    private static func endsNameAsBlank(_ unit: UInt16, grammar: SQLLexicalGrammar) -> Bool {
+        grammar.contains(.nonASCIISpacesEndNames) && spacesBeforeLexing.contains(unit)
     }
 
     // MARK: - Comments
@@ -272,8 +293,8 @@ public enum SQLNonCodeSpan {
         return closedSpan(.quoted, at: index, span, closerLength: 1)
     }
 
-    /// `E'...'`, `b'...'` and `q'[...]'`, which only start where a word could: `xE'` is an identifier followed by a
-    /// string.
+    /// `E'...'`, `b'...'` and `q'[...]'`, which only start where a name does not go on: `xE'` and `x$E'` are a name
+    /// followed by a string.
     private static func prefixedLiteralSpan(
         at index: Int,
         character: UInt16,
@@ -281,7 +302,9 @@ public enum SQLNonCodeSpan {
         length: Int,
         grammar: SQLLexicalGrammar
     ) -> Span? {
-        guard index == 0 || !isWordUnit(text.character(at: index - 1)) else { return nil }
+        guard index == 0 || !continuesName(beforePrefix: text.character(at: index - 1), grammar: grammar) else {
+            return nil
+        }
         let startsEscapeString = grammar.contains(.escapeStringPrefix) && (character == capitalE || character == smallE)
         let startsEscapeBytes = grammar.contains(.escapeBytesPrefix) && character == smallB
         if startsEscapeString || startsEscapeBytes,
@@ -327,9 +350,10 @@ public enum SQLNonCodeSpan {
 
     private static let verticalTab: UInt16 = 0x0B
 
-    // DuckDB 1.5 turns these into spaces before it lexes (measured on 1.5.4). PostgreSQL and CockroachDB do not, and
-    // the text a join there leaves them does not parse, so they run none of it.
-    private static let spacesBeforeLexing: Set<UInt16> = Set([0x00A0, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF])
+    // DuckDB turns these into spaces before it lexes, outside what its pre-lexing pass reads as a quote, and no other
+    // non-ASCII unit (measured on 1.5.4 and 2.0.0).
+    // PostgreSQL and CockroachDB do not, and the text a join there leaves them does not parse, so they run none of it.
+    static let spacesBeforeLexing: Set<UInt16> = Set([0x00A0, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF])
         .union(0x2000...0x200B)
 
     /// The quote that carries on the string closed just before `index`, as PostgreSQL's `quotecontinue` finds it: only
@@ -376,7 +400,8 @@ public enum SQLNonCodeSpan {
                   at: index,
                   in: text,
                   bufLen: length,
-                  style: style
+                  style: style,
+                  continuesName: { SQLNonCodeSpan.continuesName(beforeDollar: $0, grammar: grammar) }
               )
         else {
             return nil

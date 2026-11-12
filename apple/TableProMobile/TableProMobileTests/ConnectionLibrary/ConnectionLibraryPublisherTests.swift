@@ -7,20 +7,33 @@ import Testing
 @MainActor
 @Suite("Connection library publisher")
 struct ConnectionLibraryPublisherTests {
+    // Outlives a publisher, as the app group file and the defaults outlive a launch.
     private final class Recorder {
         var shortcutRefreshes = 0
+        var widgetFile: [WidgetConnectionItem] = []
         var widgetWrites: [[WidgetConnectionItem]] = []
     }
 
     private let index = RecordingSearchIndex()
     private let recorder = Recorder()
+    private let defaults: UserDefaults
 
-    private func makePublisher() -> ConnectionLibraryPublisher {
+    init() throws {
+        defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.LibraryPublisher.\(UUID().uuidString)"))
+    }
+
+    private func makePublisher(build: String = "1") -> ConnectionLibraryPublisher {
         let recorder = recorder
         return ConnectionLibraryPublisher(
             searchIndex: index,
-            writeWidgetItems: { recorder.widgetWrites.append($0) },
-            refreshShortcutParameters: { recorder.shortcutRefreshes += 1 }
+            readWidgetItems: { recorder.widgetFile },
+            writeWidgetItems: { items in
+                recorder.widgetFile = items
+                recorder.widgetWrites.append(items)
+            },
+            refreshShortcutParameters: { recorder.shortcutRefreshes += 1 },
+            defaults: defaults,
+            build: build
         )
     }
 
@@ -143,6 +156,101 @@ struct ConnectionLibraryPublisherTests {
         publisher.publish([first])
         #expect(recorder.shortcutRefreshes == 5)
         await publisher.settle()
+    }
+
+    @Test("A launch over an unchanged library touches neither Spotlight, the widget nor Shortcuts")
+    func unchangedLibraryOnRelaunchPublishesNothing() async {
+        let library = [connection("A"), connection("B", sortOrder: 1)]
+        let first = makePublisher()
+        first.publish(library)
+        await first.settle()
+        #expect(index.replacements.count == 1)
+        #expect(recorder.widgetWrites.count == 1)
+        #expect(recorder.shortcutRefreshes == 1)
+
+        let relaunched = makePublisher()
+        relaunched.publish(library)
+        await relaunched.settle()
+
+        #expect(index.replacements.count == 1)
+        #expect(recorder.widgetWrites.count == 1)
+        #expect(recorder.shortcutRefreshes == 1)
+        #expect(index.stateReads == 2)
+        #expect(index.indexedIds == Set(library.map(\.id)))
+    }
+
+    @Test("A library changed between launches is published again on the next one")
+    func changedLibraryOnRelaunchPublishes() async {
+        let kept = connection("A")
+        let first = makePublisher()
+        first.publish([kept])
+        await first.settle()
+
+        var renamed = kept
+        renamed.name = "Renamed"
+        let added = connection("B", sortOrder: 1)
+        let relaunched = makePublisher()
+        relaunched.publish([renamed, added])
+        await relaunched.settle()
+
+        #expect(index.replacements.count == 2)
+        #expect(index.indexedIds == [kept.id, added.id])
+        #expect(index.contents.first { $0.id == kept.id }?.title == "Renamed")
+        #expect(recorder.widgetWrites.count == 2)
+        #expect(recorder.widgetFile.map(\.name) == ["Renamed", "B"])
+        #expect(recorder.shortcutRefreshes == 2)
+    }
+
+    @Test("A launch that cannot read the index's state writes the index rather than trust it")
+    func unreadableStateReindexes() async {
+        let library = [connection("A")]
+        let first = makePublisher()
+        first.publish(library)
+        await first.settle()
+
+        index.failNextStateRead()
+        let relaunched = makePublisher()
+        relaunched.publish(library)
+        await relaunched.settle()
+
+        #expect(index.replacements.count == 2)
+        #expect(index.indexedIds == [library[0].id])
+    }
+
+    @Test("A new build indexes and refreshes Shortcuts once, and leaves an unchanged widget file alone")
+    func newBuildPublishesOnce() async {
+        let library = [connection("A")]
+        let first = makePublisher(build: "1")
+        first.publish(library)
+        await first.settle()
+
+        let updated = makePublisher(build: "2")
+        updated.publish(library)
+        await updated.settle()
+        let relaunched = makePublisher(build: "2")
+        relaunched.publish(library)
+        await relaunched.settle()
+
+        #expect(index.replacements.count == 2)
+        #expect(recorder.shortcutRefreshes == 2)
+        #expect(recorder.widgetWrites.count == 1)
+    }
+
+    @Test("A widget file written by an older build is rewritten once")
+    func olderWidgetFileIsRewritten() async {
+        let current = connection("A")
+        recorder.widgetFile = [
+            WidgetConnectionItem(id: current.id, name: "A", type: current.type.rawValue, sortOrder: 0, glyph: nil)
+        ]
+
+        for _ in 0..<2 {
+            let publisher = makePublisher()
+            publisher.publish([current])
+            await publisher.settle()
+        }
+
+        #expect(recorder.widgetWrites.count == 1)
+        #expect(recorder.widgetFile.first?.glyph != nil)
     }
 
     @Test("Widget items sort by order, then name, and a blank name shows the host")

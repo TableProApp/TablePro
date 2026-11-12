@@ -21,6 +21,7 @@ private final class TokenRecorder: @unchecked Sendable {
 
 struct VaultDatabaseCredentialsTests {
     private let role = VaultDatabaseRole(address: "https://vault.test:8200", mount: "database", role: "readonly")
+    private let owner = UUID()
 
     private func credentials(_ transport: VaultFakeTransport, files: [String: String] = [:]) -> VaultDatabaseCredentials {
         VaultDatabaseCredentials(
@@ -36,7 +37,7 @@ struct VaultDatabaseCredentialsTests {
         transport.reply("GET", "auth/token/lookup-self", VaultFixtures.lookupReply(ttl: 0))
         transport.reply("GET", "database/creds/readonly", VaultFixtures.credsReply)
 
-        let signIn = try await credentials(transport).signIn(role, interactive: false)
+        let signIn = try await credentials(transport).signIn(role, owner: owner, for: nil, interactive: false)
 
         #expect(signIn.username == "v-token-readonly-1")
         #expect(signIn.password == "s3cret")
@@ -45,15 +46,33 @@ struct VaultDatabaseCredentialsTests {
         lease.release()
     }
 
-    @Test("Each sign-in reads a new lease")
-    func newLeasePerSignIn() async throws {
+    @Test("Sign-ins for one owner and role share one lease")
+    func signInsShareTheLease() async throws {
         let transport = VaultFakeTransport()
         transport.reply("GET", "auth/token/lookup-self", VaultFixtures.lookupReply(ttl: 0))
         transport.reply("GET", "database/creds/readonly", VaultFixtures.credsReply)
         let credentials = credentials(transport)
 
-        let first = try await credentials.signIn(role, interactive: false)
-        let second = try await credentials.signIn(role, interactive: false)
+        let first = try await credentials.signIn(role, owner: owner, for: nil, interactive: false)
+        first.lease?.release()
+        let second = try await credentials.signIn(role, owner: owner, for: nil, interactive: false)
+
+        #expect(transport.requests(to: "database/creds/readonly").count == 1)
+        #expect(second.username == first.username)
+        #expect(second.lease?.leaseId == first.lease?.leaseId)
+        second.lease?.release()
+    }
+
+    @Test("Another owner signs in as a user of its own")
+    func otherOwnerReadsItsOwnLease() async throws {
+        let transport = VaultFakeTransport()
+        transport.reply("GET", "auth/token/lookup-self", VaultFixtures.lookupReply(ttl: 0))
+        transport.reply("GET", "database/creds/readonly", VaultFixtures.credsReply)
+        transport.reply("GET", "database/creds/readonly", VaultFixtures.credsReply)
+        let credentials = credentials(transport)
+
+        let first = try await credentials.signIn(role, owner: owner, for: nil, interactive: false)
+        let second = try await credentials.signIn(role, owner: UUID(), for: nil, interactive: false)
 
         #expect(transport.requests(to: "database/creds/readonly").count == 2)
         #expect(first.lease != second.lease)
@@ -68,7 +87,29 @@ struct VaultDatabaseCredentialsTests {
         transport.reply("GET", "database/creds/readonly", status: 403, #"{"errors":["1 error occurred:\n\t* permission denied\n\n"]}"#)
 
         await #expect(throws: VaultError.credentialsFailed(path: "database/creds/readonly", message: "permission denied")) {
-            try await credentials(transport).signIn(role, interactive: false)
+            try await credentials(transport).signIn(role, owner: owner, for: nil, interactive: false)
+        }
+    }
+
+    @Test("A sealed Vault reads as unreachable, so an unattended reconnect tries again", arguments: [503, 429])
+    func sealedVaultIsUnreachable(status: Int) async {
+        let transport = VaultFakeTransport()
+        transport.reply("GET", "auth/token/lookup-self", VaultFixtures.lookupReply(ttl: 0))
+        transport.reply("GET", "database/creds/readonly", status: status, #"{"errors":["Vault is sealed"]}"#)
+
+        await #expect(throws: VaultError.unreachable("https://vault.test:8200", "Vault is sealed")) {
+            try await credentials(transport).signIn(role, owner: owner, for: nil, interactive: false)
+        }
+    }
+
+    @Test("Vault's own failure names its reason and is worth another try")
+    func vaultFailureNamesItsReason() async {
+        let transport = VaultFakeTransport()
+        transport.reply("GET", "auth/token/lookup-self", VaultFixtures.lookupReply(ttl: 0))
+        transport.reply("GET", "database/creds/readonly", status: 500, #"{"errors":["local node not active"]}"#)
+
+        await #expect(throws: VaultError.serverFailed("local node not active")) {
+            try await credentials(transport).signIn(role, owner: owner, for: nil, interactive: false)
         }
     }
 
@@ -82,22 +123,26 @@ struct VaultDatabaseCredentialsTests {
         var appRole = role
         appRole.auth = .appRole(mount: "approle", roleId: "r", secretIdPath: "/keys/secret-id")
 
-        let signIn = try await credentials(transport, files: ["secret-id": "s"]).signIn(appRole, interactive: false)
+        let signIn = try await credentials(transport, files: ["secret-id": "s"])
+            .signIn(appRole, owner: owner, for: nil, interactive: false)
 
         #expect(transport.requests(to: "database/creds/readonly").map(\.token) == ["old", "new"])
         #expect(signIn.username == "v-token-readonly-1")
         signIn.lease?.release()
     }
 
-    @Test("Releasing the sign-in's lease revokes it with the same token")
-    func releaseRevokes() async throws {
+    @Test("Ending the last connection that used a lease revokes it, with the token that issued it")
+    func endUseRevokes() async throws {
         let transport = VaultFakeTransport()
         transport.reply("GET", "auth/token/lookup-self", VaultFixtures.lookupReply(ttl: 0))
         transport.reply("GET", "database/creds/readonly", VaultFixtures.credsReply)
         transport.reply("PUT", "sys/leases/revoke", status: 204, "")
+        let credentials = credentials(transport)
+        let connection = UUID()
 
-        let signIn = try await credentials(transport).signIn(role, interactive: false)
+        let signIn = try await credentials.signIn(role, owner: owner, for: connection, interactive: false)
         signIn.lease?.release()
+        credentials.endUse(connection: connection, live: [])
 
         try await waitUntil { !transport.requests(to: "sys/leases/revoke").isEmpty }
         let revoke = try #require(transport.requests(to: "sys/leases/revoke").first)

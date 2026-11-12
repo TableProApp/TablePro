@@ -107,6 +107,34 @@ struct CSVImportRowShapeTests {
         #expect(sink.rows.map { $0["id"] } == [.text("1"), .text("3")])
     }
 
+    @Test("A record of empty fields, how export writes an all-NULL row, imports as one; an empty line does not")
+    func emptyFieldsAreARow() async throws {
+        let (outcome, sink) = try await runImport(
+            "id,name,city\n1,Ada,Paris\n,,\n\n3,Lin,Hanoi\n", errorHandling: .stopAndRollback)
+        let result = try outcome.get()
+        #expect(result.executedStatements == 3)
+        #expect(sink.rows.map { $0["id"] } == [.text("1"), .null, .text("3")])
+        #expect(sink.rows[1] == ["id": .null, "name": .null, "city": .null])
+    }
+
+    @Test("The empty rows a spreadsheet saves under its data, and a trailing empty line, are not rows")
+    func trailingEmptyRecordsAreNotRows() async throws {
+        let (outcome, sink) = try await runImport("id,name\n1,Ada\n,\n,\n", errorHandling: .stopAndRollback)
+        #expect(try outcome.get().executedStatements == 1)
+        #expect(sink.rows.map { $0["id"] } == [.text("1")])
+
+        let (oneColumn, oneColumnSink) = try await runImport("email\na@x.io\nb@x.io\n\n", errorHandling: .stopAndRollback)
+        _ = try oneColumn.get()
+        #expect(oneColumnSink.rows.map { $0["email"] } == [.text("a@x.io"), .text("b@x.io")])
+    }
+
+    @Test("In a one-column file an empty line is a NULL, as export writes one")
+    func emptyLineInOneColumnIsARow() async throws {
+        let (outcome, sink) = try await runImport("name\nAda\n\nLin\n", errorHandling: .stopAndRollback)
+        _ = try outcome.get()
+        #expect(sink.rows.map { $0["name"] } == [.text("Ada"), .null, .text("Lin")])
+    }
+
     @Test("A row that lacks trailing fields imports with them NULL")
     func shortRowIsPadded() async throws {
         let (outcome, sink) = try await runImport(

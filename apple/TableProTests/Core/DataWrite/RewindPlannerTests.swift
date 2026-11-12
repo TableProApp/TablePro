@@ -134,6 +134,30 @@ struct RewindPlannerTests {
         #expect(plan.statements.count == 1)
     }
 
+    @Test("An edit's restore reads its row again inside the write and holds it to what the save left")
+    func restoredEditHoldsTheRowAsReviewed() throws {
+        let plan = try planner(operations: [
+            operation(kind: .update, preImage: ["7", "Ada"], postImage: ["7", "Grace"], writtenColumns: ["name"]),
+        ]).plan(currentRows: [RewindCurrentRow(values: ["7", "Grace"])])
+
+        let lookup = try #require(plan.lookups.first ?? nil)
+        #expect(lookup.rowCount == 1)
+        #expect(lookup.heldValues == [1: "Grace"])
+        #expect(lookup.query.sql.contains("\"id\""))
+        #expect(lookup.query.sql.contains("'7'"))
+    }
+
+    @Test("Removing an inserted row holds it to what the save wrote; restoring a deleted one does not read")
+    func insertAndDeleteRestoreLookups() throws {
+        let insert = operation(kind: .insert, preImage: nil, postImage: ["9", "Lin"], writtenColumns: columns)
+        let delete = operation(kind: .delete, preImage: ["7", "Ada"], postImage: nil, writtenColumns: columns)
+        let plan = try planner(operations: [insert, delete]).plan(currentRows: [RewindCurrentRow(values: ["9", "Lin"])])
+
+        #expect(plan.statements.count == 2)
+        let held = plan.lookups.compactMap { $0?.heldValues }
+        #expect(held == [[0: "9", 1: "Lin"]])
+    }
+
     @Test("A row someone else changed is left alone, and no statement is generated for it")
     func changedRowIsSkipped() throws {
         let plan = try planner(operations: [

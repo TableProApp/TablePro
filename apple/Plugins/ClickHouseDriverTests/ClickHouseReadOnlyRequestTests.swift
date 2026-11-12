@@ -145,8 +145,140 @@ struct ClickHouseReadOnlyRequestTests {
         }
     }
 
-    @Test("The driver says it runs a read-only statement in ClickHouse's own read-only mode")
+    @Test("The driver says it runs a read-only statement in ClickHouse's own read-only mode, from outside and at Read-Only")
     func declaresReadOnlyStatements() {
-        #expect(ClickHouseStubServer().connectedDriver().capabilities.contains(.readOnlyStatements))
+        let capabilities = ClickHouseStubServer().connectedDriver().capabilities
+        #expect(capabilities.contains(.readOnlyStatements))
+        #expect(capabilities.contains(.enforcesReadOnlyMode))
+    }
+
+    private static let safeMode = PluginStatementContext(enforcesReadOnly: true)
+
+    @Test("An external read names external clients, Read-Only from any origin names Safe Mode, an app read alone neither")
+    func reasonFollowsTheContext() {
+        var appRead = PluginStatementContext()
+        appRead.readOnly = true
+        var externalWrite = PluginStatementContext()
+        externalWrite.origin = .external
+        externalWrite.enforcesReadOnly = true
+        var externalSafeModeRead = Self.externalRead
+        externalSafeModeRead.enforcesReadOnly = true
+
+        #expect(ClickHouseReadOnlyReason(Self.externalRead) == .externalClients)
+        #expect(ClickHouseReadOnlyReason(externalSafeModeRead) == .externalClients)
+        #expect(ClickHouseReadOnlyReason(Self.safeMode) == .safeMode)
+        #expect(ClickHouseReadOnlyReason(externalWrite) == .safeMode)
+        #expect(ClickHouseReadOnlyReason(appRead) == nil)
+        #expect(ClickHouseReadOnlyReason(PluginStatementContext()) == nil)
+    }
+
+    @Test("At Read-Only every entry point carries readonly=1, and an app read marked readOnly alone carries none")
+    func safeModeEntryPointsCarryIt() async throws {
+        let server = ClickHouseStubServer()
+        let driver = server.connectedDriver()
+        var appRead = PluginStatementContext()
+        appRead.readOnly = true
+
+        _ = try await driver.execute(query: "SELECT 1", context: Self.safeMode)
+        _ = try await driver.executeUserQuery(query: "SELECT 2", rowCap: 10, parameters: nil, context: Self.safeMode)
+        _ = try await driver.executeUserQuery(query: "SELECT ?", rowCap: nil, parameters: [.text("3")], context: Self.safeMode)
+        _ = try await driver.executeParameterized(query: "SELECT ?", parameters: [.text("4")], context: Self.safeMode)
+        for try await _ in driver.streamRows(query: "SELECT 5", context: Self.safeMode) {}
+        _ = try await driver.executeBoundedQuery(query: "SELECT 6", rowCap: 10, context: Self.safeMode)
+        _ = try await driver.executeBoundedQuery(query: "SELECT 7", rowCap: 10, context: Self.externalRead)
+
+        _ = try await driver.execute(query: "SELECT 8", context: appRead)
+        _ = try await driver.executeUserQuery(query: "SELECT 9", rowCap: 10, parameters: nil, context: appRead)
+
+        let statements = server.requests.filter { !$0.body.hasPrefix("KILL QUERY") }
+        let guarded = statements.filter { $0.item("readonly") == "1" }.map(\.body)
+        let unguarded = statements.filter { $0.item("readonly") == nil }.map(\.body)
+        #expect(guarded == ["SELECT 1", "SELECT 2", "SELECT {p1:String}", "SELECT {p1:String}", "SELECT 5", "SELECT 6", "SELECT 7"])
+        #expect(unguarded == ["SELECT 8", "SELECT 9"])
+    }
+
+    @Test("A bounded read the read-only mode does not cover goes back to the host")
+    func boundedReadGoesBackWhenNotCovered() async throws {
+        let driver = ClickHouseStubServer().connectedDriver()
+        var appRead = PluginStatementContext()
+        appRead.readOnly = true
+        var catalogRead = appRead
+        catalogRead.readsCatalog = true
+
+        #expect(try await driver.executeBoundedQuery(query: "SELECT 1", rowCap: 10, context: appRead) == nil)
+        #expect(try await driver.executeBoundedQuery(query: "SELECT 1", rowCap: 10, context: catalogRead) == nil)
+        let plain = try await driver.executeBoundedQuery(query: "SELECT 1", rowCap: 10, context: PluginStatementContext())
+        #expect(plain?.rows.count == 1)
+    }
+
+    @Test("At Read-Only a statement the server refuses names Safe Mode, and the server's text stays")
+    func safeModeRefusalNamesSafeMode() async throws {
+        let serverText = "Code: 164. DB::Exception: default: Cannot execute query in readonly mode. (READONLY) (version 26.8.36.3 (official build))"
+        let server = ClickHouseStubServer { _ in
+            ClickHouseStubReply(statusCode: 500, body: serverText, headers: ["X-ClickHouse-Exception-Code": "164"])
+        }
+        let driver = server.connectedDriver()
+
+        do {
+            _ = try await driver.execute(query: "SELECT purge_orders()", context: Self.safeMode)
+            Issue.record("expected a refusal")
+        } catch let error as ClickHouseError {
+            #expect(error.message == ClickHouseReadOnlyReason.safeMode.refusalMessage)
+            #expect(error.message != ClickHouseReadOnlyReason.externalClients.refusalMessage)
+            #expect(error.exceptionCode == 164)
+            #expect(error.pluginErrorDetail == serverText)
+        }
+
+        do {
+            _ = try await driver.executeBoundedQuery(query: "SELECT purge_orders()", rowCap: 10, context: Self.safeMode)
+            Issue.record("expected a refusal")
+        } catch let error as ClickHouseError {
+            #expect(error.message == ClickHouseReadOnlyReason.safeMode.refusalMessage)
+            #expect(error.exceptionCode == 164)
+        }
+    }
+
+    @Test("An external capped read is the bounded stream: the server stops one row past the cap, and readonly stays")
+    func externalCappedReadEndsOnTheServer() async throws {
+        let server = ClickHouseStubServer()
+        let driver = server.connectedDriver()
+        driver.serverProfile = Self.server258
+
+        _ = try await driver.executeUserQuery(query: "SELECT 2", rowCap: 10, parameters: nil, context: Self.externalRead)
+        _ = try await driver.executeUserQuery(query: "SELECT ?", rowCap: 10, parameters: [.text("3")], context: Self.externalRead)
+
+        let capped = server.requests.first { $0.body == "SELECT 2" }
+        #expect(capped?.item("max_result_rows") == "11")
+        #expect(capped?.item("result_overflow_mode") == "break")
+        #expect(capped?.item("readonly") == "1")
+        let bound = server.requests.first { $0.body == "SELECT {p1:String}" }
+        #expect(bound?.item("max_result_rows") == nil)
+        #expect(bound?.item("readonly") == "1")
+    }
+
+    @Test("A read-only read stops at the first row past the byte limit and keeps that row")
+    func readOnlyReadStopsAtTheByteLimit() async throws {
+        let server = ClickHouseStubServer { _ in
+            ClickHouseStubReply(statusCode: 200, body: "s\nString\naaaaaa\nbbbbbb\ncccccc\n")
+        }
+        let driver = server.connectedDriver()
+        var limited = Self.externalRead
+        limited.resultByteLimit = 10
+        var safeModeLimited = Self.safeMode
+        safeModeLimited.resultByteLimit = 10
+
+        let external = try await driver.executeUserQuery(query: "SELECT s", rowCap: 100, parameters: nil, context: limited)
+        #expect(external.rows.compactMap { $0.first?.asText } == ["aaaaaa", "bbbbbb"])
+        #expect(external.isTruncated)
+
+        let bounded = try await driver.executeBoundedQuery(query: "SELECT s", rowCap: 100, context: safeModeLimited)
+        #expect(bounded?.rows.count == 2)
+        #expect(bounded?.isTruncated == true)
+
+        var roomy = Self.externalRead
+        roomy.resultByteLimit = 1_000
+        let whole = try await driver.executeUserQuery(query: "SELECT s", rowCap: 100, parameters: nil, context: roomy)
+        #expect(whole.rows.count == 3)
+        #expect(!whole.isTruncated)
     }
 }

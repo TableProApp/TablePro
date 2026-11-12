@@ -158,14 +158,19 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
             let buffer = UnsafeBufferPointer(start: base, count: raw.count)
             let ranges = parser.indexRows(buffer)
             guard !ranges.isEmpty else { return ([], []) }
+            let names: [String]
+            let records: [Range<Int>]
             if hasHeader {
                 let header = parser.parseRow(buffer, range: ranges[0])
-                let names = CSVImportParsing.columnNames(header: header, columnCount: header.count)
-                return (Array(ranges.dropFirst()), names)
+                names = CSVImportParsing.columnNames(header: header, columnCount: header.count)
+                records = Array(ranges.dropFirst())
+            } else {
+                let firstCount = parser.parseRow(buffer, range: ranges[0]).count
+                names = CSVImportParsing.columnNames(header: nil, columnCount: firstCount)
+                records = ranges
             }
-            let firstCount = parser.parseRow(buffer, range: ranges[0]).count
-            let names = CSVImportParsing.columnNames(header: nil, columnCount: firstCount)
-            return (ranges, names)
+            let end = CSVImportParsing.dataEnd(recordCount: records.count) { parser.parseRow(buffer, range: records[$0]) }
+            return (Array(records[..<end]), names)
         }
     }
 
@@ -186,7 +191,7 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
             out.reserveCapacity(ranges.count)
             for (offset, range) in ranges.enumerated() {
                 let fields = parser.parseRow(buffer, range: range)
-                if CSVImportParsing.isBlank(fields) { continue }
+                if CSVImportParsing.isBlank(fields, columnCount: columnNames.count) { continue }
                 let line = startIndex + offset + lineOffset
                 if let error = CSVImportParsing.shapeError(
                     fields: fields, columnCount: columnNames.count, options: options

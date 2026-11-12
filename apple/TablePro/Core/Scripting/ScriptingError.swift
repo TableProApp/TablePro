@@ -86,7 +86,7 @@ internal enum ScriptingError: LocalizedError {
             return .refused(String(localized: "The operation was cancelled."))
         case .invalidArgument(let detail):
             return .badRequest(detail)
-        case .timeout(let detail, _), .expired(let detail), .dataSourceError(let detail):
+        case .timeout(let detail, _), .expired(let detail), .dataSourceError(let detail), .stoppedWhileRunning(let detail):
             return .failed(detail)
         }
     }

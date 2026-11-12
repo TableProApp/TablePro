@@ -217,7 +217,7 @@ struct GeneralSettingsView: View {
             Button(String(localized: "Reset"), role: .destructive) { onResetAll() }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text("This will reset all settings across every section to their default values.")
+            Text("This will reset all settings across every section to their default values. AI providers, their API keys and Enable AI Features are kept.")
         }
         .onAppear {
             if initialLanguage == nil { initialLanguage = settings.language }

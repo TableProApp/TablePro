@@ -119,12 +119,27 @@ struct MCPIdentityLedgerTests {
         #expect(await ledger.isApproved(principal: second, connectionId: connectionId) == false)
     }
 
-    private func meta(clientName: String, version: String) -> MCPRequestMeta {
+    private func meta(clientName: String, version: String, title: String? = nil) -> MCPRequestMeta {
         MCPRequestMeta(
             protocolVersion: .latest,
-            clientInfo: MCPImplementation(name: clientName, version: version),
+            clientInfo: MCPImplementation(name: clientName, title: title, version: version),
             clientCapabilities: .none,
             progressToken: nil
+        )
+    }
+
+    private func bridgePrincipal(tokenId: UUID, fingerprint: String) -> MCPPrincipal {
+        MCPPrincipal(
+            tokenFingerprint: fingerprint,
+            tokenId: tokenId,
+            scopes: MCPScope.readWriteSet,
+            connectionAccess: .all,
+            metadata: MCPPrincipalMetadata(
+                label: MCPTokenStore.stdioBridgeTokenName,
+                issuedAt: .distantPast,
+                expiresAt: nil,
+                isBridgeCredential: true
+            )
         )
     }
 
@@ -169,7 +184,7 @@ struct MCPIdentityLedgerTests {
         #expect(await ledger.count(now: start.addingTimeInterval(61)) == 0)
     }
 
-    @Test("Two tokens on one machine are two clients")
+    @Test("Two HTTP tokens on one machine are two clients")
     func distinctTokensAreDistinctEntries() async {
         let ledger = MCPClientActivityLedger()
         let start = Date(timeIntervalSince1970: 1_700_000_000)
@@ -189,6 +204,77 @@ struct MCPIdentityLedgerTests {
         )
 
         #expect(await ledger.snapshot(now: start).count == 2)
+    }
+
+    @Test("A stdio client keeps one row, and its connected time, across a bridge credential rotation")
+    func bridgeClientSurvivesRotation() async {
+        let ledger = MCPClientActivityLedger()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let requestMeta = meta(clientName: "cursor-vscode", version: "1.4")
+        let rotated = bridgePrincipal(tokenId: UUID(), fingerprint: "b")
+
+        await ledger.record(
+            meta: requestMeta,
+            principal: bridgePrincipal(tokenId: UUID(), fingerprint: "a"),
+            address: .localSocket,
+            at: start
+        )
+        await ledger.record(meta: requestMeta, principal: rotated, address: .localSocket, at: start.addingTimeInterval(60))
+
+        let entries = await ledger.snapshot(now: start.addingTimeInterval(60))
+        #expect(entries.count == 1)
+        #expect(entries.first?.transport == .stdioBridge)
+        #expect(entries.first?.firstSeenAt == start)
+        #expect(entries.first?.tokenId == rotated.tokenId)
+    }
+
+    @Test("Two stdio clients sharing the bridge credential are two clients")
+    func bridgeClientsAreToldApartByClientInfo() async {
+        let ledger = MCPClientActivityLedger()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let shared = bridgePrincipal(tokenId: UUID(), fingerprint: "a")
+
+        await ledger.record(meta: meta(clientName: "claude-ai", version: "1"), principal: shared, address: .localSocket, at: start)
+        await ledger.record(meta: meta(clientName: "Zed", version: "1"), principal: shared, address: .localSocket, at: start)
+
+        let entries = await ledger.snapshot(now: start)
+        #expect(Set(entries.map(\.clientName)) == ["claude-ai", "Zed"])
+        #expect(Set(entries.map(\.id)).count == 2)
+    }
+
+    @Test("A client's own name is kept beside the title it shows under")
+    func clientInfoNameIsKept() async {
+        let ledger = MCPClientActivityLedger()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+        await ledger.record(
+            meta: meta(clientName: "tablepro-cli", version: "1", title: "Command Line"),
+            principal: principal(tokenId: UUID()),
+            address: .localSocket,
+            at: start
+        )
+
+        let entry = await ledger.snapshot(now: start).first
+        #expect(entry?.clientName == "Command Line")
+        #expect(entry?.clientInfoName == "tablepro-cli")
+        #expect(entry?.transport == .http)
+    }
+
+    @Test("The app's socket is listed under a readable address, while the audit log keeps its fixed value")
+    func localSocketAddressIsReadable() async {
+        let ledger = MCPClientActivityLedger()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+        await ledger.record(
+            meta: meta(clientName: "Claude", version: "1"),
+            principal: principal(tokenId: UUID()),
+            address: .localSocket,
+            at: start
+        )
+
+        #expect(await ledger.snapshot(now: start).first?.address == "Local socket")
+        #expect(MCPClientAddress.localSocket.displayValue == "local socket")
+        #expect(MCPClientAddress.loopback.localizedDisplayValue == "127.0.0.1")
     }
 
     @Test("A revoked token's activity is forgotten with it")

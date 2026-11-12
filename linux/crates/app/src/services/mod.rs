@@ -23,6 +23,7 @@ pub mod history_service;
 pub mod import_file;
 pub(crate) mod library_outline;
 pub(crate) mod license_ask;
+pub mod mcp_clients;
 pub mod mcp_service;
 pub mod mcp_status;
 pub mod pending_structure;

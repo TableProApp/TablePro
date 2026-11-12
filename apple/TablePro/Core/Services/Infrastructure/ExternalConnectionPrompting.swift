@@ -104,15 +104,15 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
             details.append(String(format: String(localized: "Database: %@"), connection.database))
         }
         details.append(contentsOf: sshDetails(for: connection))
+        details.append(contentsOf: transportDetails(for: connection))
         return details
     }
 
-    /// The database host of a tunnelled connection is the far end of the tunnel, usually
-    /// `localhost`, so listing it alone describes none of the machines the session actually
-    /// crosses. The alert asks the user to decide whether they trust the link; it has to name the
-    /// SSH server and every hop for that to mean anything.
+    // Behind a tunnel the database host is its far end, usually localhost, so the alert names every server the
+    // session crosses. A linked profile is read as it stands now, which is where the connect goes.
     private static func sshDetails(for connection: DatabaseConnection) -> [String] {
-        let ssh = connection.sshConfig
+        let linked = SSHProfileStorage.shared.refreshingLinkedProfile(connection).resolvedSSHConfig
+        let ssh = linked.enabled ? linked : connection.sshConfig
         guard ssh.enabled, !ssh.host.isEmpty else { return [] }
 
         let port = ssh.port ?? 22
@@ -128,6 +128,29 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
         }
         details.append(String(format: String(localized: "Jump Hosts: %@"), described.joined(separator: ", ")))
         return details
+    }
+
+    private static func transportDetails(for connection: DatabaseConnection) -> [String] {
+        connection.enabledTunnelKinds.compactMap { kind -> String? in
+            let target: String
+            switch kind {
+            case .ssh, .remoteFile, .remoteDatabaseSession:
+                return nil
+            case .socksProxy:
+                guard let proxy = connection.resolvedSOCKSProxyConfig else { return nil }
+                target = "\(proxy.host):\(proxy.port)"
+            case .tunnelCommand:
+                guard let command = connection.resolvedTunnelCommandConfig else { return nil }
+                target = command.method.displayName
+            case .cloudflare:
+                guard let tunnel = connection.resolvedCloudflareConfig else { return nil }
+                target = tunnel.accessHostname
+            case .cloudSQLProxy:
+                guard let proxy = connection.resolvedCloudSQLProxyConfig else { return nil }
+                target = proxy.instanceConnectionName
+            }
+            return String(format: String(localized: "%1$@: %2$@"), kind.displayName, target)
+        }
     }
 
     private func present(_ alert: NSAlert) async -> NSApplication.ModalResponse {

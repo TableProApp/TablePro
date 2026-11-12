@@ -1,8 +1,3 @@
-//
-//  PairingRedirectBuilderTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -124,6 +119,19 @@ struct PairingRedirectBuilderTests {
         }
         let launch = "\(Self.raycast)?launchType=background"
         #expect(try success(launch, mode: .legacy) == "\(launch)&context=%7B%22code%22:%22\(Self.code)%22%7D")
+    }
+
+    @Test("A pairing that failed after approval answers with server_error in every mode, state kept")
+    func failureAnswersWithServerError() throws {
+        for base in [Self.raycast, Self.loopback] {
+            for mode in Self.modes {
+                let redirect = try #require(PairingRedirectBuilder.failed(base: try url(base), state: "s1", mode: mode))
+                let fields = try parameters(of: redirect.absoluteString)
+                #expect(fields["error"] == "server_error")
+                #expect(fields["state"] == "s1")
+                #expect(fields["code"] == nil)
+            }
+        }
     }
 
     @Test("No state on the link means no state on the redirect")

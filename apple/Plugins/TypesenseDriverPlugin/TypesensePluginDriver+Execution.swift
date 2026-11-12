@@ -109,11 +109,10 @@ extension TypesensePluginDriver {
 
     // MARK: - Streaming Export
 
-    /// Export reads the collection's JSONL endpoint a line at a time, so a collection larger than
-    /// memory still exports and the 250-hit search ceiling never applies. Anything that is not an
-    /// export tag runs as an ordinary query and is handed over in one batch.
+    // Export reads the collection's JSONL endpoint a line at a time, so a collection larger than memory still exports
+    // and the 250-hit search ceiling never applies. Anything else runs as an ordinary query, handed over in one batch.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -121,7 +120,7 @@ extension TypesensePluginDriver {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 
@@ -154,12 +153,12 @@ extension TypesensePluginDriver {
         try await connection.streamExport(collection: collection) { document in
             batch.append(document)
             guard batch.count >= Self.exportBatchSize else { return true }
-            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)))
+            _ = await PluginRowStream.deliver(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)), to: continuation)
             batch.removeAll(keepingCapacity: true)
             return true
         }
         if !batch.isEmpty {
-            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)))
+            _ = await PluginRowStream.deliver(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)), to: continuation)
         }
         continuation.finish()
     }

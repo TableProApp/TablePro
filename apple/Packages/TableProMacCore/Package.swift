@@ -20,6 +20,7 @@ let package = Package(
         .library(name: "TableProUtilities", targets: ["TableProUtilities"]),
         .library(name: "TableProSSHConfig", targets: ["TableProSSHConfig"]),
         .library(name: "TableProMCP", targets: ["TableProMCP"]),
+        .library(name: "TableProMCPClients", targets: ["TableProMCPClients"]),
         // Only the tablepro-cli tool links this; the app never does, so ArgumentParser stays out of it.
         .library(name: "TableProCommandLine", targets: ["TableProCommandLine"]),
         .library(name: "TableProMCPTestSupport", targets: ["TableProMCPTestSupport"]),
@@ -58,7 +59,6 @@ let package = Package(
         .target(
             name: "TableProMCP",
             dependencies: [
-                "TableProUtilities",
                 .product(name: "TableProCoreTypes", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),
@@ -68,10 +68,14 @@ let package = Package(
             swiftSettings: appModuleSettings
         ),
         .target(
+            name: "TableProMCPClients",
+            path: "Sources/TableProMCPClients",
+            swiftSettings: appModuleSettings
+        ),
+        .target(
             name: "TableProCommandLine",
             dependencies: [
                 "TableProMCP",
-                "TableProUtilities",
                 .product(name: "TableProCoreTypes", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
@@ -122,10 +126,16 @@ let package = Package(
             dependencies: [
                 "TableProMCP",
                 "TableProMCPTestSupport",
-                "TableProUtilities",
+                .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             path: "Tests/TableProMCPTests",
+            swiftSettings: appModuleSettings
+        ),
+        .testTarget(
+            name: "TableProMCPClientsTests",
+            dependencies: ["TableProMCPClients"],
+            path: "Tests/TableProMCPClientsTests",
             swiftSettings: appModuleSettings
         ),
         .testTarget(

@@ -29,6 +29,15 @@ public struct MCPRequestMeta: Sendable, Equatable {
         params?["_meta"]
     }
 
+    // The tablepro-mcp process that forwarded the message. Any local client can write it, so only the
+    // in-flight key reads it, and only for the bridge credential.
+    public static func bridgeInstance(in params: JsonValue?) -> String? {
+        guard let value = metaObject(in: params)?[MCPMetaKeys.bridgeInstance]?.stringValue, !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
     public static func declaresModernProtocol(params: JsonValue?) -> Bool {
         metaObject(in: params)?[MCPMetaKeys.protocolVersion]?.stringValue != nil
     }

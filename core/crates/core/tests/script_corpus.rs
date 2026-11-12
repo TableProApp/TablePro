@@ -133,6 +133,116 @@ fn duckdb_ends_an_escape_string_at_its_quote_whatever_follows() {
     assert_eq!(statements(SqlGrammar::PostgreSql, text), [text]);
 }
 
+// Measured on DuckDB 2.0.0: each of these spaces ended `varchar` and the DROP ran; each other unit kept the name.
+#[test]
+fn duckdb_ends_a_name_at_the_spaces_it_blanks_before_lexing() {
+    for space in [
+        "\u{a0}", "\u{2000}", "\u{2005}", "\u{2009}", "\u{200a}", "\u{200b}", "\u{202f}", "\u{205f}", "\u{2060}",
+        "\u{3000}", "\u{feff}",
+    ] {
+        let text = format!("SELECT varchar{space}E'\\''; DROP TABLE t; --'");
+        let first = format!("SELECT varchar{space}E'\\''");
+        assert_eq!(
+            statements(SqlGrammar::DuckDb, &text),
+            [first.as_str(), "DROP TABLE t"],
+            "{space:?}"
+        );
+        assert_eq!(statements(SqlGrammar::PostgreSql, &text), [text.as_str()], "{space:?}");
+    }
+    for kept in [
+        "\u{85}", "\u{1680}", "\u{200c}", "\u{200d}", "\u{2019}", "\u{2028}", "\u{2029}",
+    ] {
+        let text = format!("SELECT varchar{kept}E'\\''; DROP TABLE t; --'");
+        assert_eq!(statements(SqlGrammar::DuckDb, &text), [text.as_str()], "{kept:?}");
+    }
+    assert_eq!(
+        statements(
+            SqlGrammar::DuckDb,
+            "SELECT 1 AS a,\u{200b}$$'$$; DROP TABLE t; SELECT 'x'"
+        ),
+        ["SELECT 1 AS a,\u{200b}$$'$$", "DROP TABLE t", "SELECT 'x'"]
+    );
+    let words: Vec<&str> = {
+        let text = "SELECT\u{a0}*\u{a0}FROM\u{3000}t";
+        plan(SqlGrammar::DuckDb, text)
+            .tokens(0..text.len())
+            .filter(|token| token.kind == ScriptTokenKind::Word)
+            .map(|token| &text[token.range.clone()])
+            .collect()
+    };
+    assert_eq!(words, ["SELECT", "FROM", "t"]);
+}
+
+// Measured on DuckDB 2.0.0. Its pass reads `'`, `"`, `$tag$` and `--` its own way, not block comments or
+// backslashes, and keeps a space inside what it takes for a quote: there the space is a name character.
+#[test]
+fn duckdb_keeps_a_space_where_its_pass_sees_a_quote() {
+    for (text, expected) in [
+        (
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$, varchar\u{200b}E'\\''; DROP TABLE t; --'x$$",
+            vec![
+                "SELECT 1 AS a$$, 2 AS b\u{200b}$$, varchar\u{200b}E'\\''",
+                "DROP TABLE t",
+            ],
+        ),
+        (
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$; DROP TABLE t; --$$",
+            vec!["SELECT 1 AS a$$, 2 AS b\u{200b}$$", "DROP TABLE t"],
+        ),
+        (
+            "SELECT $a\u{200b}$x$a\u{200b}$, varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            vec!["SELECT $a\u{200b}$x$a\u{200b}$, varchar\u{200b}E'\\''", "DROP TABLE t"],
+        ),
+        (
+            "-- it's\nSELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            vec!["SELECT varchar\u{200b}E'\\''", "DROP TABLE t"],
+        ),
+    ] {
+        assert_eq!(statements(SqlGrammar::DuckDb, text), expected, "{text:?}");
+    }
+}
+
+// Measured on DuckDB 2.0.0: whole, the pass is inside the comment's quote at the space and keeps it; the second
+// statement sent alone, as the driver sends it, has the space blanked and runs the DROP.
+#[test]
+fn duckdb_reads_each_statement_as_it_is_sent_alone() {
+    assert_eq!(
+        statements(
+            SqlGrammar::DuckDb,
+            "/* ' */ SELECT 1; SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'"
+        ),
+        ["SELECT 1", "SELECT varchar\u{200b}E'\\''", "DROP TABLE t"]
+    );
+    // It gets each one without the comments before it.
+    assert_eq!(
+        statements(
+            SqlGrammar::DuckDb,
+            "/* ' */ SELECT varchar\u{200b}E'\\''; /* $$ */ SELECT 1 AS a,\u{200b}$$'$$; DROP TABLE t; --'"
+        ),
+        [
+            "SELECT varchar\u{200b}E'\\''",
+            "SELECT 1 AS a,\u{200b}$$'$$",
+            "DROP TABLE t"
+        ]
+    );
+}
+
+// Measured on PostgreSQL 17.11: with a domain of each name, the server ran the DROP.
+#[test]
+fn postgresql_continues_a_name_with_a_dollar_and_every_non_ascii_unit() {
+    for glue in [
+        "$", "\u{e9}", "\u{a0}", "\u{200b}", "\u{2060}", "\u{3000}", "\u{feff}", "\u{2019}", "\u{ff0c}",
+    ] {
+        let text = format!("SELECT x{glue}e'\\'; DROP TABLE t; --'");
+        let first = format!("SELECT x{glue}e'\\'");
+        assert_eq!(
+            statements(SqlGrammar::PostgreSql, &text),
+            [first.as_str(), "DROP TABLE t"],
+            "{glue:?}"
+        );
+    }
+}
+
 #[test]
 fn a_sqlite_parameter_runs_to_its_closing_parenthesis() {
     for parameter in [
@@ -702,7 +812,7 @@ fn char_byte_roundtrip_multibyte() {
 proptest! {
     #[test]
     fn ranges_on_char_boundaries_and_batches_disjoint(
-        text in "[ -~\n\té😀]{0,160}",
+        text in "[ -~\n\té😀\u{a0}\u{200b}\u{3000}]{0,160}",
         backslash_escapes in any::<bool>(),
     ) {
         for grammar in SqlGrammar::SQL.into_iter().chain([SqlGrammar::Redis, SqlGrammar::Mongo]) {

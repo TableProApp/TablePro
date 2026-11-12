@@ -34,7 +34,10 @@ public struct ToolsListHandler: MCPMethodHandler {
 
     private static func visibleTools(for principal: MCPPrincipal) -> [any MCPToolImplementation] {
         MCPToolRegistry.allTools
-            .filter { type(of: $0).requiredScopes.isSubset(of: principal.scopes) }
+            .filter { tool in
+                let toolType = type(of: tool)
+                return toolType.requiredScopes.isSubset(of: principal.scopes) && principal.allowsTool(toolType.name)
+            }
             .sorted { type(of: $0).name < type(of: $1).name }
     }
 

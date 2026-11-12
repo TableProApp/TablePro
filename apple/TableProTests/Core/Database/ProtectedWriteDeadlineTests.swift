@@ -149,15 +149,17 @@ struct ProtectedWriteDeadlineTests {
         #expect(await !ran.isSet)
     }
 
-    @Test("A write already in the driver when the caller cancels runs to the end")
+    @Test("A write already in the driver when the caller cancels runs to the end, and the caller hears it may have been applied")
     func inDriverAtCancelFinishes() async throws {
         let gate = AsyncGate()
         let finished = Flag()
+        let lateCompletion = Flag()
 
         let caller = Task {
             try await DatabaseAccessBridge.awaitProtectedWrite(
                 timeout: .seconds(60),
                 timeoutSeconds: 60,
+                onLateCompletion: { Task { await lateCompletion.set() } },
                 { enterDriver -> Int in
                     try enterDriver()
                     await gate.wait()
@@ -168,9 +170,19 @@ struct ProtectedWriteDeadlineTests {
         }
         await gate.arrived(1)
         caller.cancel()
-        await #expect(throws: CancellationError.self) { _ = try await caller.value }
+        let error = await #expect(throws: DatabaseAccessError.self) { _ = try await caller.value }
+
+        guard case .stoppedWhileRunning(let detail) = error else {
+            Issue.record("expected the outcome to be unknown, got \(String(describing: error))")
+            return
+        }
+        #expect(detail == DatabaseAccessBridge.stoppedWhileRunning.message)
+        #expect(!detail.contains("timed out"))
+        #expect(await !finished.isSet)
+        #expect(await !lateCompletion.isSet)
 
         await gate.open()
         try await waitUntil { await finished.isSet }
+        try await waitUntil { await lateCompletion.isSet }
     }
 }

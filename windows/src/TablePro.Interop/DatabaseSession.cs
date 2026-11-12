@@ -126,6 +126,17 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         return Mapping.Count(count);
     }
 
+    // The whole table's, from the engine's statistics, so it costs no count; null where the engine keeps none.
+    public async Task<RowEstimate?> EstimateRowsAsync(TableName table, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var estimate = await CoreCall.RunAsync(
+                token => _session.TableRowEstimate(Mapping.Table(table), token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Estimate(estimate);
+    }
+
     // Kind decides whether a CREATE script belongs: a view gets none.
     public async Task<TableStructure> GetStructureAsync(
         TableName table,

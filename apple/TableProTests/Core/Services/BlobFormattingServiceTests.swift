@@ -57,6 +57,32 @@ struct BlobFormattingServiceCompactHexTests {
     }
 }
 
+struct BlobFormattingServiceCopyTests {
+    @Test("A copy holds every byte, where the grid shows 64")
+    func copyIsTheWholeValue() {
+        let value = String(data: Data(repeating: 0xAB, count: 100), encoding: .isoLatin1) ?? ""
+        let copied = BlobFormattingService.shared.format(value, for: .copy)
+        #expect(copied == "0x" + String(repeating: "AB", count: 100))
+        #expect(BlobFormattingService.shared.format(value, for: .grid)?.hasSuffix("…") == true)
+    }
+
+    @Test("The copied form reads back as the bytes it spells")
+    func copiedHexReadsBack() {
+        let service = BlobFormattingService.shared
+        #expect(service.bytes(fromPrefixedHex: "0x4142") == Data([0x41, 0x42]))
+        #expect(service.bytes(fromPrefixedHex: "0X00ff") == Data([0x00, 0xFF]))
+        #expect(service.bytes(fromPrefixedHex: "0x") == Data())
+        let bytes = Data(0...255)
+        let copied = service.format(bytes, for: .copy) ?? ""
+        #expect(service.bytes(fromPrefixedHex: copied) == bytes)
+    }
+
+    @Test("Text that only starts like hex is not bytes", arguments: ["4142", "0x414", "0x41…", "0xZZ", "0x41 42", ""])
+    func notCopiedHex(_ text: String) {
+        #expect(BlobFormattingService.shared.bytes(fromPrefixedHex: text) == nil)
+    }
+}
+
 @MainActor
 struct BlobFormattingServiceByteCountTests {
     @Test("Issue #1188 exact value reports 48 bytes (not 98)")

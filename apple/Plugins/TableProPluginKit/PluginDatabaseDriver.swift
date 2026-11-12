@@ -127,6 +127,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult?
 
+    // The same bounded read with what the host decided about it, under the same contract. The default runs the
+    // requirement above for a context that asks nothing that call cannot honor, and returns nil otherwise, so the host
+    // falls back to a call that takes the context.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult?
+
     /// Sends `query` to the server as one batch and reads it to the end, returning every result set it produced and
     /// every error it raised. `rowCap` bounds each result set on its own. A driver that implements this declares
     /// ``PluginCapabilities/resultSetBatches``; the default returns nil, and the host runs the text statement by
@@ -513,6 +522,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// after is what turns that into a refusal instead of silent loss. Nil where the driver cannot
     /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
+
+    // A cheap value that changes whenever the catalog does, so a write to a database file that left the schema
+    // alone needs no catalog reload. Nil where the engine keeps none; the host then reloads on every change.
+    func schemaChangeToken() async throws -> String?
 
     var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
     var unsupportedIndexTypes: Set<String> { get }
@@ -1353,6 +1366,8 @@ public extension PluginDatabaseDriver {
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
 
+    func schemaChangeToken() async throws -> String? { nil }
+
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
@@ -1477,6 +1492,19 @@ public extension PluginDatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? { nil }
+
+    // A driver built before the context overload ignores every field, so a read-only mode, a statement policy or a
+    // catalog pin it was asked for would silently not happen.
+    func executeBoundedQuery(
+        query: String,
+        rowCap: Int,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult? {
+        guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
+              context.allowsDestructive, context.allowsServerCode
+        else { return nil }
+        return try await executeBoundedQuery(query: query, rowCap: rowCap)
+    }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
         nil

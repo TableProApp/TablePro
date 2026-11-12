@@ -174,6 +174,8 @@ final class MainContentCoordinator: ObservableObject {
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor
     internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
+    // The raw filter text each tab had approved at Read-Only.
+    var approvedReadOnlyRawFilters: [UUID: String] = [:]
     let windowSidebarState: WindowSidebarState
 
     // MARK: - Services
@@ -384,6 +386,7 @@ final class MainContentCoordinator: ObservableObject {
         let diskContent: String
     }
     internal private(set) var fileWatcher: DatabaseFileWatcher?
+    var schemaTokenGate = SchemaChangeTokenGate()
 
     // Set during handleTabChange to suppress redundant column-change reconfiguration.
     internal var isHandlingTabSwitch = false
@@ -736,8 +739,7 @@ final class MainContentCoordinator: ObservableObject {
         watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
             guard let self else { return }
             if case .loading = services.schemaService.state(for: self.connectionId) { return }
-            DatabaseTreeMetadataService.shared.markListsStale(connectionId: self.connectionId)
-            Task { await self.refreshTables() }
+            Task { await self.refreshTablesIfSchemaChanged() }
         }
         fileWatcher = watcher
     }
@@ -1105,9 +1107,10 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         let level = safeModeLevel
-        if level.appliesToAllQueries && level.requiresConfirmation,
-           tab.execution.lastExecutedAt == nil
-        {
+        let asksBeforeFirstLoad = level.appliesToAllQueries && level.requiresConfirmation
+            && tab.execution.lastExecutedAt == nil
+        let asksAboutRawFilter = rawFilterNeedsReadOnlyGate(Self.browseFilters(tab.filterState), tabId: tab.id)
+        if asksBeforeFirstLoad || asksAboutRawFilter {
             guard !isShowingSafeModePrompt else {
                 turnAwayTableLoad(tabId: tab.id, trigger: trigger)
                 return nil
@@ -1144,6 +1147,7 @@ final class MainContentCoordinator: ObservableObject {
                 }
                 switch decision {
                 case .authorized:
+                    if asksAboutRawFilter { approveReadOnlyRawFilter(Self.browseFilters(tab.filterState), tabId: tabId) }
                     executeQueryInternal(
                         sql, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource, onTab: tabId
                     )
@@ -1211,6 +1215,7 @@ final class MainContentCoordinator: ObservableObject {
         let recordsRun = source == .newSource && tab.tabType == .query && !isAutoLoad
         let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
+        let safeModeIsReadOnly = runsAtReadOnly
         let held = manualCommitRun(skipped: isTableTab || isAutoLoad)
 
         let failureOutput = ServerOutputBox()
@@ -1232,10 +1237,8 @@ final class MainContentCoordinator: ObservableObject {
                         // Before it runs, so a statement that fails or a connection lost under it is still noted.
                         if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
                         return try await queryExecutor.executeQuery(
-                            driver: driver,
-                            sql: statement.sql,
-                            parameters: nil,
-                            rowCap: rowCap,
+                            driver: driver, sql: statement.sql, parameters: nil, rowCap: rowCap,
+                            safeModeIsReadOnly: safeModeIsReadOnly,
                             capturingOutputInto: isTableTab ? nil : failureOutput
                         )
                     }

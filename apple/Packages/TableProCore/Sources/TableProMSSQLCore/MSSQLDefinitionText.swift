@@ -19,6 +19,12 @@ public enum MSSQLDefinitionText {
         ["NATIONAL", "TEXT"], ["BINARY", "VARYING"],
     ]
     private static let longestMultiWordType = 3
+    // ALTER COLUMN takes COLLATE on these and their ISO synonyms only, never on text, ntext or an alias type.
+    private static let characterTypes: Set<[String]> = [
+        ["char"], ["varchar"], ["nchar"], ["nvarchar"], ["character"], ["char", "varying"], ["character", "varying"],
+        ["national", "char"], ["national", "character"], ["national", "char", "varying"],
+        ["national", "character", "varying"],
+    ]
 
     public static func isParenthesizedExpression(_ text: String) -> Bool {
         SQLExpressionFragment.isSingleExpression(text, databaseTypeId: databaseTypeId)
@@ -52,6 +58,11 @@ public enum MSSQLDefinitionText {
         guard index < length else { return true }
         guard source.character(at: index) == openParenthesis else { return false }
         return SQLExpressionFragment.isSingleType(source.substring(from: index), databaseTypeId: databaseTypeId)
+    }
+
+    public static func isCharacterType(_ text: String) -> Bool {
+        let name = text.prefix { $0 != "(" }.lowercased().filter { $0 != "[" && $0 != "]" }
+        return characterTypes.contains(name.split(whereSeparator: \.isWhitespace).map(String.init))
     }
 
     public static func isCollationName(_ text: String) -> Bool {
@@ -202,6 +213,14 @@ public struct MSSQLDefinitionRefusal: Error, LocalizedError, Sendable, Equatable
         MSSQLDefinitionRefusal(reason: String(
             format: String(localized: "A check constraint of %@ is not one SQL expression, so it cannot be written."),
             object
+        ))
+    }
+
+    public static func foreignKeyAction(_ constraint: String, _ action: String) -> MSSQLDefinitionRefusal {
+        MSSQLDefinitionRefusal(reason: String(
+            format: String(localized: "The referential action of foreign key %@ is not one SQL Server has: %@"),
+            constraint,
+            action
         ))
     }
 

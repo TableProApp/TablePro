@@ -36,6 +36,10 @@ struct SQLiteReadOnlyStatementTests {
         return context
     }
 
+    private static var safeMode: PluginStatementContext {
+        PluginStatementContext(enforcesReadOnly: true)
+    }
+
     private func connect(_ database: String) async throws -> SQLitePluginDriver {
         let driver = SQLitePluginDriver(config: DriverConnectionConfig(
             host: "", port: 0, username: "", password: "", database: database
@@ -54,12 +58,181 @@ struct SQLiteReadOnlyStatementTests {
         try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
     }
 
-    @Test("The driver says it runs a read-only statement in SQLite's own read-only mode")
+    @Test("The driver says it runs a read-only statement in SQLite's own read-only mode, from outside and at Read-Only")
     func declaresReadOnlyStatements() {
         let driver = SQLitePluginDriver(config: DriverConnectionConfig(
             host: "", port: 0, username: "", password: "", database: path("app.db")
         ))
         #expect(driver.capabilities.contains(.readOnlyStatements))
+        #expect(driver.capabilities.contains(.enforcesReadOnlyMode))
+    }
+
+    @Test("Read-Only reads read-only under the session's own scope, an external read under the read-only scope")
+    func rulesFollowTheContext() {
+        var externalSafeModeWrite = Self.external
+        externalSafeModeWrite.enforcesReadOnly = true
+        var catalogRead = PluginStatementContext()
+        catalogRead.readOnly = true
+        catalogRead.readsCatalog = true
+
+        #expect(SQLiteStatementRules(PluginStatementContext()) == .unrestricted)
+        #expect(SQLiteStatementRules(catalogRead) == .unrestricted)
+        #expect(SQLiteStatementRules(Self.safeMode) == SQLiteStatementRules(scope: .unrestricted, readsOnly: true))
+        #expect(SQLiteStatementRules(Self.externalRead) == SQLiteStatementRules(scope: .readOnly, readsOnly: true))
+        #expect(SQLiteStatementRules(Self.external) == SQLiteStatementRules(scope: .noServerCode, readsOnly: false))
+        #expect(SQLiteStatementRules(externalSafeModeWrite) == SQLiteStatementRules(scope: .noServerCode, readsOnly: true))
+        #expect(SQLiteAgentBackend.agentScope(SQLiteStatementRules(Self.safeMode)) == .readOnly)
+        #expect(SQLiteAgentBackend.agentScope(.unrestricted) == nil)
+        #expect(SQLiteAgentBackend.agentScope(SQLiteStatementRules(Self.external)) == .noServerCode)
+    }
+
+    // An application function that deletes through its own connection: the shape of a SQL function that writes.
+    private static let purgeKept: @convention(c) (OpaquePointer?, Int32, UnsafeMutablePointer<OpaquePointer?>?) -> Void = { context, _, _ in
+        let db = sqlite3_context_db_handle(context)
+        guard sqlite3_exec(db, "DELETE FROM kept", nil, nil, nil) == SQLITE_OK else {
+            sqlite3_result_error(context, sqlite3_errmsg(db), -1)
+            return
+        }
+        sqlite3_result_int(context, 1)
+    }
+
+    private typealias ExtensionEntryPoint = @convention(c) (
+        OpaquePointer?, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?, UnsafeRawPointer?
+    ) -> Int32
+
+    private static let registerPurgeKept: ExtensionEntryPoint = { db, _, _ in
+        sqlite3_create_function(db, "purge_kept", 0, SQLITE_UTF8, nil, SQLiteReadOnlyStatementTests.purgeKept, nil, nil)
+    }
+
+    // The driver opens its own handle, so the function goes onto every handle opened while the driver connects.
+    private func connectWithPurgeKept() async throws -> SQLitePluginDriver {
+        let entry = unsafeBitCast(Self.registerPurgeKept, to: (@convention(c) () -> Void).self)
+        #expect(sqlite3_auto_extension(entry) == SQLITE_OK)
+        defer { sqlite3_cancel_auto_extension(entry) }
+        return try await connect(path("app.db"))
+    }
+
+    @Test("At Read-Only a function that writes is refused on every entry point, and the default context lets it write")
+    func safeModeRefusesAWritingFunction() async throws {
+        let driver = try await connectWithPurgeKept()
+        defer { driver.disconnect() }
+        let call = "SELECT purge_kept()"
+
+        await #expect(throws: (any Error).self) {
+            _ = try await driver.execute(query: call, context: Self.safeMode)
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await driver.executeUserQuery(query: call, rowCap: 100, parameters: nil, context: Self.safeMode)
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await driver.executeParameterized(
+                query: "SELECT purge_kept(), ?", parameters: [.null], context: Self.safeMode
+            )
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await driver.executeBoundedQuery(query: call, rowCap: 100, context: Self.safeMode)
+        }
+        await #expect(throws: (any Error).self) {
+            for try await _ in driver.streamRows(query: call, context: Self.safeMode) {}
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await driver.execute(query: call, context: Self.externalRead)
+        }
+        #expect(try await count(driver) == "1")
+        #expect(try await driver.execute(query: "PRAGMA query_only").rows.first?.first?.asText == "0")
+
+        _ = try await driver.execute(query: call, context: PluginStatementContext())
+        #expect(try await count(driver) == "0")
+    }
+
+    @Test("At Read-Only a write is refused, a read runs, and the default context still writes")
+    func safeModeRefusesWrites() async throws {
+        let driver = try await connect(path("app.db"))
+        defer { driver.disconnect() }
+
+        for sql in ["INSERT INTO kept VALUES (2)", "UPDATE kept SET a = 5", "CREATE TABLE added (a INTEGER)"] {
+            await #expect(throws: (any Error).self, "\(sql)") {
+                _ = try await driver.execute(query: sql, context: Self.safeMode)
+            }
+        }
+        let safeModeRefusal = await #expect(throws: SQLitePluginError.self) {
+            _ = try await driver.executeUserQuery(
+                query: "DELETE FROM kept", rowCap: 10, parameters: nil, context: Self.safeMode
+            )
+        }
+        #expect(safeModeRefusal?.pluginErrorMessage == SQLitePluginError.safeModeReadOnlyStatement.pluginErrorMessage)
+        let externalRefusal = await #expect(throws: SQLitePluginError.self) {
+            _ = try await driver.execute(query: "DELETE FROM kept", context: Self.externalRead)
+        }
+        #expect(externalRefusal?.pluginErrorMessage == SQLitePluginError.readOnlyStatement.pluginErrorMessage)
+        let read = try await driver.executeBoundedQuery(query: "SELECT a FROM kept", rowCap: 10, context: Self.safeMode)
+        #expect(read?.rows.compactMap { $0.first?.asText } == ["1"])
+        #expect(read?.isTruncated == false)
+        #expect(try await count(driver) == "1")
+
+        _ = try await driver.execute(query: "INSERT INTO kept VALUES (2)", context: PluginStatementContext())
+        #expect(try await count(driver) == "2")
+    }
+
+    @Test("A bounded read the read-only mode does not cover goes back to the host")
+    func boundedReadGoesBackWhenNotCovered() async throws {
+        let driver = try await connect(path("app.db"))
+        defer { driver.disconnect() }
+        var catalogRead = PluginStatementContext()
+        catalogRead.readOnly = true
+        catalogRead.readsCatalog = true
+
+        #expect(try await driver.executeBoundedQuery(query: "SELECT a FROM kept", rowCap: 10, context: catalogRead) == nil)
+        #expect(try await driver.executeBoundedQuery(query: "SELECT a FROM kept", rowCap: 10, context: Self.external) == nil)
+        let plain = try await driver.executeBoundedQuery(
+            query: "SELECT a FROM kept", rowCap: 10, context: PluginStatementContext()
+        )
+        #expect(plain?.rows.count == 1)
+    }
+
+    @Test("A read-only read stops at the first row past the byte limit and keeps that row")
+    func readOnlyReadStopsAtTheByteLimit() async throws {
+        let driver = try await connect(path("app.db"))
+        defer { driver.disconnect() }
+        _ = try await driver.execute(query: "DELETE FROM kept")
+        // Each value reads as six bytes of text.
+        _ = try await driver.execute(query: "INSERT INTO kept VALUES (100000), (200000), (300000), (400000)")
+        let sql = "SELECT a FROM kept ORDER BY a"
+        var limited = Self.externalRead
+        limited.resultByteLimit = 10
+        var safeModeLimited = Self.safeMode
+        safeModeLimited.resultByteLimit = 10
+
+        let capped = try await driver.executeUserQuery(query: sql, rowCap: 100, parameters: nil, context: limited)
+        #expect(capped.rows.compactMap { $0.first?.asText } == ["100000", "200000"])
+        #expect(capped.isTruncated)
+
+        let whole = try await driver.execute(query: sql, context: limited)
+        #expect(whole.rows.count == 2)
+        #expect(whole.isTruncated)
+
+        let bounded = try await driver.executeBoundedQuery(query: sql, rowCap: 100, context: safeModeLimited)
+        #expect(bounded?.rows.count == 2)
+        #expect(bounded?.isTruncated == true)
+
+        let capFirst = try await driver.executeUserQuery(query: sql, rowCap: 1, parameters: nil, context: limited)
+        #expect(capFirst.rows.compactMap { $0.first?.asText } == ["100000"])
+        #expect(capFirst.isTruncated)
+
+        var roomy = Self.externalRead
+        roomy.resultByteLimit = 1_000
+        let all = try await driver.executeUserQuery(query: sql, rowCap: 100, parameters: nil, context: roomy)
+        #expect(all.rows.count == 4)
+        #expect(!all.isTruncated)
+    }
+
+    @Test("A read bound exists only when a cap or a byte limit is set, and a row's size is its decoded bytes")
+    func readBoundShape() {
+        #expect(SQLiteReadBound.ifSet(rowCap: nil, byteLimit: nil) == nil)
+        #expect(SQLiteReadBound.ifSet(rowCap: 0, byteLimit: nil) == nil)
+        #expect(SQLiteReadBound.ifSet(rowCap: nil, byteLimit: 5)?.rowCap == PluginRowLimits.emergencyMax)
+        #expect(SQLiteReadBound.ifSet(rowCap: 7, byteLimit: nil) == SQLiteReadBound(rowCap: 7, byteLimit: nil))
+        #expect(SQLiteReadBound.byteCount(of: [.null, .text("héllo"), .bytes(Data(count: 4))]) == 10)
     }
 
     @Test("A read-only statement that writes, attaches or copies the database is refused and changes nothing", arguments: [

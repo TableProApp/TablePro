@@ -1,12 +1,4 @@
-//
-//  MCPPairingServiceTests.swift
-//  TableProTests
-//
-//  A pairing code is a bearer credential for the whole grant, so each code allows exactly one
-//  attempt: a verifier that does not match burns the code instead of leaving it alive for the rest
-//  of the five-minute window, which is what turned PKCE into an offline guessing game. The record
-//  carries the token id so a caller that fails the exchange can delete the token it was holding.
-//
+// A pairing code is a bearer credential for the whole grant, so each code allows exactly one attempt.
 
 import CryptoKit
 import Foundation
@@ -16,6 +8,14 @@ import TableProPluginKit
 import Testing
 
 @testable import TablePro
+
+private struct RefusingCredentialStore: MCPTokenCredentialStoring {
+    func read() -> MCPTokenBlob { .found(Data("[]".utf8)) }
+
+    func write(_ data: Data) -> Bool { false }
+
+    func delete() {}
+}
 
 struct MCPPairingServiceTests {
     private func challenge(for verifier: String) -> String {
@@ -198,6 +198,42 @@ struct MCPPairingServiceTests {
 
         #expect(await store.count() == PairingExchangeStore.maxPendingCodes)
         #expect(await store.contains(code: "code-overflow") == false)
+    }
+
+    @Test("An approved pairing whose token the Keychain refused fails in words and leaves no code behind")
+    @MainActor
+    func unsavedTokenFailsThePairing() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcp-pairing-\(UUID().uuidString)", isDirectory: true)
+        let store = PairingExchangeStore()
+        let service = MCPPairingService(
+            store: store,
+            serverManager: MCPServerManager(handshake: MCPHandshakeFile(directory: directory), isEnabled: { false })
+        )
+        let redirect = try #require(URL(string: "http://127.0.0.1:7391/callback"))
+        let request = PairingRequest(
+            clientName: "Launcher",
+            challenge: challenge(for: makeVerifier()),
+            redirectURL: redirect,
+            requestedScopes: nil,
+            requestedConnectionIds: nil,
+            state: "s1",
+            responseMode: .query
+        )
+        let target = try PairingRedirectValidator.validate(redirect)
+        let tokens = MCPTokenStore(credentialStore: RefusingCredentialStore())
+
+        await #expect(throws: MCPPairingError.tokenNotSaved) {
+            _ = try await service.issueCode(
+                for: request,
+                target: target,
+                approval: PairingApproval(grantedPermissions: .readOnly, allowedConnectionIds: nil, expiresAt: nil, extraScopes: []),
+                tokenStore: tokens
+            )
+        }
+        #expect(await store.count() == 0)
+        #expect(await tokens.list().isEmpty)
+        #expect(MCPPairingError.tokenNotSaved.localizedDescription.contains("Keychain"))
     }
 
     @Test("The exchange window is the five minutes the client is told about")

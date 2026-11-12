@@ -180,7 +180,7 @@ final class MetadataConnectionPool {
     /// Ten minutes rather than something tighter, because re-taking one is a whole connect,
     /// measured at 1.7-5.8ms on loopback but 800-1900ms across the internet, and someone still
     /// working must never pay that. Ten minutes of silence is nobody still working.
-    static let idleTimeout: TimeInterval = 600
+    nonisolated static let idleTimeout: TimeInterval = 600
 
     /// The sweeper wakes more often than the timeout so a connection that goes idle just after a
     /// tick does not wait a whole second timeout, and never so often that an idle app spends the

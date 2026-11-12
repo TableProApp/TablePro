@@ -385,7 +385,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             localOnly: advanced.localOnly,
             additionalFields: fields,
             ownedAdditionalFieldIDs: ownedAdditionalFieldIDs(),
-            maskingRules: maskingRules.savedRules
+            maskingRules: maskingRules.savedRules,
+            revokedAIAlwaysAllowedTools: advanced.revokedAIAlwaysAllowedTools
         )
     }
 

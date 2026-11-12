@@ -10907,6 +10907,9 @@
         }
       }
     },
+    "Go to First Page" : {
+
+    },
     "Go to Page" : {
       "localizations" : {
         "ko" : {
@@ -15429,6 +15432,9 @@
           }
         }
       }
+    },
+    "No Rows on This Page" : {
+
     },
     "No Tables" : {
       "localizations" : {
@@ -19989,6 +19995,9 @@
           }
         }
       }
+    },
+    "Safe Mode is set to Read-Only for this connection, and the database refused the statement." : {
+
     },
     "Same Key as SSH Server" : {
 
@@ -25819,6 +25828,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The referential action of foreign key %@ is not one SQL Server has: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The report contains:" : {
       "localizations" : {
         "ko" : {
@@ -27629,6 +27642,9 @@
     "This Oracle server requires Native Network Encryption but did not offer it on this connection. Ask the DBA to enable it, or use TLS instead by setting an SSL mode." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This page is past the last row." : {
+
     },
     "This query will modify data. Are you sure you want to continue?" : {
       "localizations" : {

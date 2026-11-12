@@ -21,6 +21,7 @@ enum TeradataType {
     static let integer: UInt16 = 496
     static let smallint: UInt16 = 500
     static let bigint: UInt16 = 600
+    static let number: UInt16 = 604
     static let byteint: UInt16 = 756
     static let float: UInt16 = 480
     static let decimal: UInt16 = 484

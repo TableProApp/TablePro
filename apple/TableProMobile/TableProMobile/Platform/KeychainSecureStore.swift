@@ -14,6 +14,8 @@ nonisolated protocol KeychainItemStore: Sendable {
     func update(_ query: [String: Any], attributes: [String: Any]) -> OSStatus
     // The first item the query matches, with its data and modification date.
     func copyItem(_ query: [String: Any]) -> KeychainCopiedItem
+    // Every item's account the query matches; none when the read fails.
+    func accounts(_ query: [String: Any]) -> [String]
     func delete(_ query: [String: Any]) -> OSStatus
 }
 
@@ -39,6 +41,16 @@ nonisolated struct SystemKeychainItemStore: KeychainItemStore {
             data: item?[kSecValueData as String] as? Data,
             modified: item?[kSecAttrModificationDate as String] as? Date
         )
+    }
+
+    func accounts(_ query: [String: Any]) -> [String] {
+        var query = query
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
     }
 
     func delete(_ query: [String: Any]) -> OSStatus {
@@ -184,38 +196,38 @@ nonisolated final class KeychainSecureStore: SecureStore {
     }
 
     // Device-local items only: deleting a synced one here would remove it from the Mac that wrote it.
-    static func cleanOrphanedCredentials(validConnectionIds: Set<UUID>) {
-        guard !validConnectionIds.isEmpty else { return }
-
+    // The Keychain calls block, so they run off the main actor. The library is read once the listing
+    // returns, and a save adds its connection before its secrets, so a connection saved meanwhile keeps them.
+    @concurrent
+    static func cleanOrphanedCredentials(
+        items: any KeychainItemStore = SystemKeychainItemStore(),
+        keeping connectionIds: @MainActor @Sendable () -> Set<UUID>?
+    ) async {
         let accessGroup = resolveAccessGroup()
-        let query: [String: Any] = [
+        let accounts = items.accounts(applying(accessGroup: accessGroup, to: [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecReturnAttributes as String: true,
-            kSecMatchLimit as String: kSecMatchLimitAll,
             kSecAttrSynchronizable as String: false,
             kSecUseDataProtectionKeychain as String: true,
-        ]
-        var result: AnyObject?
-        guard SecItemCopyMatching(applying(accessGroup: accessGroup, to: query) as CFDictionary, &result) == errSecSuccess,
-              let items = result as? [[String: Any]] else { return }
-
-        let accounts = items.compactMap { $0[kSecAttrAccount as String] as? String }
-        for account in ConnectionSecretKind.orphanedAccounts(accounts, keeping: validConnectionIds) {
-            deleteDeviceLocal(forKey: account, accessGroup: accessGroup)
+        ]))
+        guard !accounts.isEmpty, let kept = await connectionIds() else { return }
+        for account in ConnectionSecretKind.orphanedAccounts(accounts, keeping: kept) {
+            let status = items.delete(deviceLocalQuery(forKey: account, accessGroup: accessGroup))
+            if status != errSecSuccess, status != errSecItemNotFound {
+                logger.error("Removing a deleted connection's secret failed: \(status)")
+            }
         }
     }
 
     // Unlike delete(forKey:), never matches a synced item of the same name.
-    private static func deleteDeviceLocal(forKey key: String, accessGroup: String?) {
-        let query: [String: Any] = [
+    private static func deviceLocalQuery(forKey key: String, accessGroup: String?) -> [String: Any] {
+        applying(accessGroup: accessGroup, to: [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key,
             kSecAttrSynchronizable as String: false,
             kSecUseDataProtectionKeychain as String: true,
-        ]
-        SecItemDelete(applying(accessGroup: accessGroup, to: query) as CFDictionary)
+        ])
     }
 }
 

@@ -172,6 +172,10 @@ final class PaginationCoordinator: ObservableObject {
             tableName: tableName, schemaName: schemaName, filters: filters, logicMode: logicMode,
             columns: queryColumns.columns, columnTypes: queryColumns.columnTypes
         )
+        let safeModeIsReadOnly = parent.runsAtReadOnly
+        let gate = browseFilters == nil && parent.rawFilterNeedsReadOnlyGate(filters, tabId: tabId)
+            ? countSQL.map { parent.rawFilterRequest(sql: $0, canPrompt: true) }
+            : nil
 
         // Claims the superseded automatic count's flag too: its task finds the token changed and won't clear a successor's state.
         parent.tabManager.mutate(at: index) { tab in
@@ -183,14 +187,27 @@ final class PaginationCoordinator: ObservableObject {
         let token = UUID()
         parent.claimExactCount(for: tabId, token: token)
         let task = Task(priority: .userInitiated) { [parent] in
-            let outcome = await Self.exactRowCount(
-                scope: scope,
-                tableName: tableName,
-                filters: filters,
-                logicMode: logicMode,
-                browseFilters: browseFilters,
-                countSQL: countSQL
-            )
+            var refusal: ExecutionGateError?
+            if let gate {
+                refusal = await parent.executionGate.authorize(gate).denialError
+                if refusal == nil { parent.approveReadOnlyRawFilter(filters, tabId: tabId) }
+            }
+            let outcome: Result<Int?, Error>
+            if case .cancelledByUser? = refusal {
+                outcome = .success(nil)
+            } else if let refusal {
+                outcome = .failure(refusal)
+            } else {
+                outcome = await Self.exactRowCount(
+                    scope: scope,
+                    tableName: tableName,
+                    filters: filters,
+                    logicMode: logicMode,
+                    browseFilters: browseFilters,
+                    countSQL: countSQL,
+                    safeModeIsReadOnly: safeModeIsReadOnly
+                )
+            }
 
             // Clears on every exit: returning early on cancel left a page turn during COUNT(*) with an endless spinner and no Count Exactly.
             let isCurrent = !Task.isCancelled && parent.tabExecution.isSameContent(contentEpoch, for: tabId)
@@ -233,7 +250,8 @@ final class PaginationCoordinator: ObservableObject {
         filters: [TableFilter],
         logicMode: FilterLogicMode,
         browseFilters: [PluginQueryFilter]?,
-        countSQL: String?
+        countSQL: String?,
+        safeModeIsReadOnly: Bool
     ) async -> Result<Int?, Error> {
         do {
             let count = try await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: !filters.isEmpty) { driver in
@@ -241,7 +259,12 @@ final class PaginationCoordinator: ObservableObject {
                     return try await driver.fetchExactRowCount(table: tableName, browseFilters: browseFilters)
                 }
                 return try await ExactRowCounter.count(
-                    on: driver, table: tableName, filters: filters, logicMode: logicMode, countSQL: countSQL
+                    on: driver,
+                    table: tableName,
+                    filters: filters,
+                    logicMode: logicMode,
+                    countSQL: countSQL,
+                    safeModeIsReadOnly: safeModeIsReadOnly
                 )
             }
             return .success(count)
@@ -310,6 +333,7 @@ final class PaginationCoordinator: ObservableObject {
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
         let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx]) : []
         let failureOutput = ServerOutputBox()
+        let safeModeIsReadOnly = parent.runsAtReadOnly
 
         let startedAt = ContinuousClock.Instant.now
         // Both releases cover the whole task: a cancelled bare return left a finished fetch installed, which `installQueryTask` then ended.
@@ -328,12 +352,15 @@ final class PaginationCoordinator: ObservableObject {
                     isTableTab: isTableTab,
                     lease: lease
                 ) { driver in
-                    let rerun = {
-                        try await driver.executeUserQuery(
-                            query: baseQuery,
-                            rowCap: nil,
-                            parameters: storedParamValues.map { $0.map { $0 as Any? } }
-                        )
+                    let parameters = storedParamValues.map { $0.map { $0 as Any? } }
+                    let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly)
+                    let rerun: () async throws -> QueryResult = {
+                        if let context {
+                            return try await driver.executeUserQuery(
+                                query: baseQuery, rowCap: nil, parameters: parameters, context: context
+                            )
+                        }
+                        return try await driver.executeUserQuery(query: baseQuery, rowCap: nil, parameters: parameters)
                     }
                     let result: QueryResult
                     if isTableTab {

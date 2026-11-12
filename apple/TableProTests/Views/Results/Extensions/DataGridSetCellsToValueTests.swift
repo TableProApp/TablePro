@@ -290,6 +290,44 @@ extension GlobalStateSuites {
             #expect(grid.commands.pasteAnchor(.current(grid.model.selection), block: single) == GridCoord(row: 0, displayColumn: Fixture.note))
         }
 
+        @Test("A binary value copies whole and pastes back as the same bytes")
+        func binaryValueRoundTrips() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let grid = Fixture.grid()
+            let bytes = Data((0..<100).map { UInt8($0) })
+            _ = grid.owner.tableRows.edit(row: 0, column: Fixture.payload, value: .bytes(bytes))
+            grid.model.reloadRows()
+            grid.selectCell(0, Fixture.payload)
+            grid.controller.copy(nil)
+            #expect(clipboard.text == "0x" + bytes.map { String(format: "%02X", $0) }.joined())
+
+            grid.selectCell(1, Fixture.payload)
+            grid.controller.paste(nil)
+
+            #expect(grid.owner.staged(1, Fixture.payload)?.value == .bytes(bytes))
+        }
+
+        @Test("Hex from another app pastes into a binary column as bytes, and a cut-short copy is refused")
+        func foreignHexIntoBinaryColumn() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let grid = Fixture.grid()
+
+            clipboard.text = "0x4142"
+            grid.selectCell(1, Fixture.payload)
+            grid.controller.paste(nil)
+            #expect(grid.owner.staged(1, Fixture.payload)?.value == .bytes(Data([0x41, 0x42])))
+
+            clipboard.text = "0x41…"
+            grid.selectCell(2, Fixture.payload)
+            grid.controller.paste(nil)
+            #expect(grid.owner.staged(2, Fixture.payload) == nil)
+
+            clipboard.text = "0x41"
+            grid.selectCell(2, Fixture.note)
+            grid.controller.paste(nil)
+            #expect(grid.owner.staged(2, Fixture.note)?.value == .text("0x41"))
+        }
+
         @Test("Paste is enabled over a cell selection with no cursor when one value is on the clipboard")
         func pasteIsEnabledWithoutACursor() throws {
             try #require(RecordingClipboard.current).text = "archived"

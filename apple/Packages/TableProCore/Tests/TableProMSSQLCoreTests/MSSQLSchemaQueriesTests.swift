@@ -145,9 +145,122 @@ struct MSSQLSchemaQueriesTests {
 
     @Test func testAllColumnsQueryCarriesTheTableNameAfterTheParsedColumns() {
         let sql = MSSQLSchemaQueries.allColumns(schema: "dbo")
-        #expect(sql.contains("AS IS_SERVER_GENERATED,\n    c.TABLE_NAME"))
+        #expect(sql.contains("AS IDENTITY_INCREMENT,\n    c.TABLE_NAME"))
         #expect(sql.contains("c.TABLE_SCHEMA = N'dbo'"))
-        #expect(MSSQLSchemaQueries.allColumnsTableNameIndex == 11)
+        #expect(MSSQLSchemaQueries.allColumnsTableNameIndex == 16)
+    }
+
+    // Without COLLATION_NAME the Structure editor never knew a column's collation, and ALTER COLUMN reset it.
+    @Test func testColumnReadsSelectWhatACreateTableRestates() {
+        let reads = [
+            MSSQLSchemaQueries.columns(schema: "dbo", table: "orders"),
+            MSSQLSchemaQueries.allColumns(schema: "dbo"),
+            MSSQLSchemaQueries.temporaryColumns(table: "#orders"),
+        ]
+        for sql in reads {
+            #expect(sql.contains("AS IS_SERVER_GENERATED,\n"))
+            #expect(sql.contains("c.COLLATION_NAME,"))
+            #expect(sql.contains("cc.definition AS COMPUTED_DEFINITION,"))
+            #expect(sql.contains("cc.is_persisted AS IS_PERSISTED,"))
+            #expect(sql.contains("CONVERT(varchar(40), idc.seed_value) AS IDENTITY_SEED,"))
+            #expect(sql.contains("CONVERT(varchar(40), idc.increment_value) AS IDENTITY_INCREMENT"))
+            #expect(sql.contains("computed_columns cc ON cc.object_id = sc.object_id AND cc.column_id = sc.column_id"))
+            #expect(sql.contains("identity_columns idc ON idc.object_id = sc.object_id AND idc.column_id = sc.column_id"))
+        }
+        let temporary = MSSQLSchemaQueries.temporaryColumns(table: "#orders")
+        #expect(temporary.contains("LEFT JOIN tempdb.sys.computed_columns cc"))
+        #expect(temporary.contains("LEFT JOIN tempdb.sys.identity_columns idc"))
+    }
+
+    @Test func testParseColumnRowReadsCollationComputedAndIdentity() throws {
+        let identity = try #require(MSSQLSchemaQueries.parseColumnRow(
+            ["id", "int", nil, "10", "0", "NO", nil, "1", "1", "0", "0", nil, nil, "0", "1000", "5"]
+        ))
+        #expect(identity.identitySeed == "1000")
+        #expect(identity.identityIncrement == "5")
+        #expect(identity.collation == nil)
+
+        let text = try #require(MSSQLSchemaQueries.parseColumnRow(
+            ["code", "varchar", "20", nil, nil, "YES", nil, "0", "0", "0", "0", "Latin1_General_CS_AS", nil, nil, nil, nil]
+        ))
+        #expect(text.collation == "Latin1_General_CS_AS")
+
+        let computed = try #require(MSSQLSchemaQueries.parseColumnRow(
+            ["total", "numeric", nil, "21", "2", "YES", nil, "0", "0", "1", "0", nil, "([qty]*[price])", "1", nil, nil]
+        ))
+        #expect(computed.computedDefinition == "([qty]*[price])")
+        #expect(computed.isPersisted)
+    }
+
+    @Test func testParseColumnRowOfTheShorterShapeHasNoDefinitionParts() throws {
+        let row = try #require(MSSQLSchemaQueries.parseColumnRow(["code", "varchar", "20", nil, nil, "YES", nil, "0", "0"]))
+        #expect(row.collation == nil)
+        #expect(row.computedDefinition == nil)
+        #expect(!row.isPersisted)
+        #expect(row.identitySeed == nil)
+    }
+
+    @Test func testKeyConstraintsQueryReadsPrimaryAndUniqueKeysInKeyOrder() {
+        let sql = MSSQLSchemaQueries.keyConstraints(schema: "sales", table: "o'rders")
+        #expect(sql.contains("FROM sys.key_constraints kc"))
+        #expect(sql.contains("ON i.object_id = kc.parent_object_id AND i.index_id = kc.unique_index_id"))
+        #expect(sql.contains("WHERE kc.parent_object_id = OBJECT_ID(N'[sales].[o''rders]')"))
+        #expect(sql.contains("ORDER BY CASE kc.type WHEN 'PK' THEN 0 ELSE 1 END, kc.name, ic.key_ordinal"))
+        #expect(!sql.contains("tempdb"))
+    }
+
+    @Test func testConstraintReadsOfATemporaryTableUseTempdb() {
+        let keys = MSSQLSchemaQueries.keyConstraints(schema: "dbo", table: "#t")
+        #expect(keys.contains("FROM tempdb.sys.key_constraints kc"))
+        #expect(keys.contains("JOIN tempdb.sys.index_columns ic"))
+        #expect(keys.contains("WHERE kc.parent_object_id = OBJECT_ID(N'tempdb..' + QUOTENAME(N'#t'))"))
+
+        let checks = MSSQLSchemaQueries.checkConstraints(schema: "dbo", table: "#t")
+        #expect(checks.contains("FROM tempdb.sys.check_constraints cc"))
+        #expect(checks.contains("WHERE cc.parent_object_id = OBJECT_ID(N'tempdb..' + QUOTENAME(N'#t'))"))
+    }
+
+    @Test func testCheckConstraintsQueryReadsTheStoredDefinition() {
+        let sql = MSSQLSchemaQueries.checkConstraints(schema: "dbo", table: "orders")
+        #expect(sql.contains("SELECT cc.name, cc.definition, cc.is_disabled, cc.is_not_trusted\n"))
+        #expect(sql.contains("FROM sys.check_constraints cc"))
+        #expect(sql.contains("WHERE cc.parent_object_id = OBJECT_ID(N'[dbo].[orders]')"))
+    }
+
+    @Test func testDatabaseCollationIsTempdbsForATemporaryTable() {
+        #expect(MSSQLSchemaQueries.databaseCollation(forTable: "orders")
+            == "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'))")
+        #expect(MSSQLSchemaQueries.databaseCollation(forTable: "#orders")
+            == "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(N'tempdb', 'Collation'))")
+    }
+
+    // The CREATE TABLE declares both constraints, so their indexes written again would fail on restore.
+    @Test func testIndexDefinitionsLeaveOutConstraintIndexes() {
+        let sql = MSSQLSchemaQueries.indexDefinitions(schema: "dbo", table: "orders")
+        #expect(sql.contains("AND i.is_primary_key = 0"))
+        #expect(sql.contains("AND i.is_unique_constraint = 0"))
+        #expect(sql.contains("WHERE i.object_id = OBJECT_ID(N'[dbo].[orders]')"))
+        #expect(sql.contains("ORDER BY i.index_id, ic.is_included_column, ic.key_ordinal"))
+    }
+
+    @Test func testParseKeyConstraintRow() throws {
+        let primary = try #require(MSSQLSchemaQueries.parseKeyConstraintRow(["PK_orders", "PK", "CLUSTERED", "id", "0"]))
+        #expect(primary == MSSQLKeyConstraintRow(name: "PK_orders", isPrimaryKey: true, indexKind: "CLUSTERED", columnName: "id"))
+
+        let unique = try #require(MSSQLSchemaQueries.parseKeyConstraintRow(["UQ_code", "UQ", "NONCLUSTERED", "code", "1"]))
+        #expect(!unique.isPrimaryKey)
+        #expect(unique.isDescending)
+
+        #expect(MSSQLSchemaQueries.parseKeyConstraintRow(["PK_orders", "PK", "CLUSTERED", nil, "0"]) == nil)
+    }
+
+    @Test func testParseCheckConstraintRow() {
+        #expect(MSSQLSchemaQueries.parseCheckConstraintRow(["CK_qty", "([qty]>(0))"])
+            == MSSQLCheckConstraintRow(name: "CK_qty", definition: "([qty]>(0))"))
+        #expect(MSSQLSchemaQueries.parseCheckConstraintRow(["CK_qty", nil])?.definition == nil)
+        #expect(MSSQLSchemaQueries.parseCheckConstraintRow(["CK_qty", "([qty]>(0))", "1", "0"])?.isDisabled == true)
+        #expect(MSSQLSchemaQueries.parseCheckConstraintRow(["CK_qty", "([qty]>(0))", "0", "1"])?.isNotTrusted == true)
+        #expect(MSSQLSchemaQueries.parseCheckConstraintRow([nil, "(1)"]) == nil)
     }
 
     @Test func testParseColumnRowReadsServerGeneratedColumns() {

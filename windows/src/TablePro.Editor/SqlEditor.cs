@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -12,7 +13,6 @@ using TablePro.Editor.Model;
 using TablePro.Editor.Rendering;
 using TablePro.Graphics;
 using Windows.UI.ViewManagement;
-using static TerraFX.Interop.Windows.Windows;
 
 namespace TablePro.Editor;
 
@@ -45,12 +45,11 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     private TextLayouts? _layouts;
     private Brushes? _brushes;
     private TsfInput? _tsf;
-    private DispatcherQueueTimer? _blinkTimer;
     private FindBar? _findBar;
     private SqlEditorAutomationPeer? _peer;
     private bool _renderQueued;
-    private bool _caretOn = true;
-    private bool _focused;
+    private bool _loaded;
+    private float _fontSize = DefaultFontSize;
     private float _zoom = 1;
     private string _composition = string.Empty;
     private int _compositionCaret;
@@ -82,8 +81,6 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _verticalBar.ValueChanged += (_, e) => ScrollFromBar(vertical: true, e.NewValue);
         _horizontalBar.ValueChanged += (_, e) => ScrollFromBar(vertical: false, e.NewValue);
         ActualThemeChanged += (_, _) => RebuildBrushes();
-        // AccessibilitySettings.HighContrastChanged needs a CoreWindow, and this one fires for contrast themes too.
-        _uiSettings.ColorValuesChanged += (_, _) => DispatcherQueue.TryEnqueue(RebuildBrushes);
         GotFocus += (_, _) => OnFocusChanged(true);
         LostFocus += (_, _) => OnFocusChanged(false);
         CharacterReceived += OnCharacterReceived;
@@ -113,7 +110,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             _lexer = value;
             _highlighter?.Dispose();
             _highlighter = value is null ? null : new SyntaxHighlighter(Document, value);
-            _layouts?.Clear();
+            ForgetLayouts();
             Invalidate();
         }
     }
@@ -125,11 +122,23 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     public string AdapterName => _device?.AdapterName ?? string.Empty;
 
+    internal bool HoldsSwapChain => _device?.HasSwapChain == true;
+
     public bool HasTextServices => _tsf is not null;
 
     public bool IsComposing => _tsf?.HasActiveComposition == true || _composition.Length > 0;
 
-    public float EditorFontSize { get; set; } = DefaultFontSize;
+    public float EditorFontSize
+    {
+        get => _fontSize;
+        set
+        {
+            _fontSize = value;
+            ConfigureLayouts();
+            UpdateScrollBars();
+            Invalidate();
+        }
+    }
 
     public float Zoom
     {
@@ -137,7 +146,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         set
         {
             _zoom = Math.Clamp(value, 0.5f, 3f);
-            _layouts?.Configure(EditorFontSize * _zoom, _model.Options.TabSize);
+            ConfigureLayouts();
             UpdateScrollBars();
             Invalidate();
         }
@@ -172,11 +181,11 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             return;
         }
         _disposed = true;
+        Unhook();
         _highlighter?.Dispose();
         ReleaseDevice();
         _tsf?.Dispose();
         _tsf = null;
-        _blinkTimer?.Stop();
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => _peer = new SqlEditorAutomationPeer(this);
@@ -201,7 +210,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _scrollX = 0;
         _scrollY = 0;
         _widest = 0;
-        _layouts?.Clear();
+        ForgetLayouts();
         UpdateScrollBars();
         Invalidate();
         TextChanged?.Invoke(this, EventArgs.Empty);
@@ -217,55 +226,93 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (_disposed)
+        {
+            return;
+        }
         // A flyout keeps the window it first opened in (microsoft/microsoft-ui-xaml#10207); a tab can move the editor.
         if (ContextFlyout?.XamlRoot is { } shown && !ReferenceEquals(shown, XamlRoot))
         {
             ContextFlyout = BuildContextMenu();
         }
 
-        CreateDevice();
+        _loaded = true;
+        // A tab moved to another window can load there before its old window unloads it, still bound to the old one.
+        Unhook();
+        Hook();
+        PrepareDevice();
+        AttachSwapChain();
         _tsf ??= TsfInput.Create(new TsfHost(this));
-        var blink = GetCaretBlinkTime();
-        if (_blinkTimer is null && blink is > 0 and < uint.MaxValue)
-        {
-            _blinkTimer = DispatcherQueue.CreateTimer();
-            _blinkTimer.Interval = TimeSpan.FromMilliseconds(blink);
-            _blinkTimer.Tick += (_, _) =>
-            {
-                _caretOn = !_caretOn;
-                Invalidate();
-            };
-        }
-        if (_focused)
-        {
-            _blinkTimer?.Start();
-        }
     }
 
+    // TabView unloads a tab's content on every switch; a hidden tab keeps its layouts and brushes.
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        _blinkTimer?.Stop();
-        ReleaseDevice();
-    }
-
-    private unsafe void CreateDevice()
-    {
-        if (_device is not null || _panel.ActualWidth < 1 || _panel.ActualHeight < 1)
+        // A tab moved to another window can hear its old window's Unloaded after the new one's Loaded.
+        if (IsLoaded)
         {
             return;
         }
-        _device = new GraphicsDevice(PreferSoftwareRendering);
-        _layouts = new TextLayouts(_device.DWrite, EditorFontSize * _zoom, _model.Options.TabSize);
-        _device.Attach(_panel, PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
-        RebuildBrushes();
+        _loaded = false;
+        Unhook();
+        _device?.Detach();
+    }
+
+    private unsafe void PrepareDevice()
+    {
+        if (_device is null)
+        {
+            _device = new GraphicsDevice(PreferSoftwareRendering);
+            _layouts = new TextLayouts(_device.DWrite, EditorFontSize * _zoom, _model.Options.TabSize);
+            RebuildBrushes();
+            UpdateScrollBars();
+        }
+        // ColorValuesChanged is watched only while loaded, so the colors may have changed while the tab was hidden.
+        else if (_device.IsCurrent && (_brushes is null || !_brushes.Palette.SameAs(Palette.Resolve(ActualTheme))))
+        {
+            RebuildBrushes();
+        }
+    }
+
+    private void AttachSwapChain()
+    {
+        if (!_loaded || _device is null || _device.HasSwapChain || _panel.ActualWidth < 1 || _panel.ActualHeight < 1)
+        {
+            return;
+        }
+        if (_device.NeedsRecovery)
+        {
+            _device.Recover(lost: false);
+            RebuildBrushes();
+        }
+        try
+        {
+            _device.Attach(_panel, PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        }
+        catch (COMException exception) when (GraphicsDevice.IsDeviceLoss(exception.HResult))
+        {
+            // Lost between the check and the call; a new device takes it.
+            _device.Recover(lost: true);
+            RebuildBrushes();
+            _device.Attach(_panel, PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        }
         UpdateScrollBars();
         Invalidate();
+    }
+
+    // Brushes are made on the device, and the cached layouts hold them as drawing effects.
+    private void RecoverDevice(bool lost)
+    {
+        _device!.Recover(lost);
+        RebuildBrushes();
+        AttachSwapChain();
     }
 
     private void ReleaseDevice()
     {
         _brushes?.Dispose();
         _brushes = null;
+        ForgetLayouts();
         _layouts?.Dispose();
         _layouts = null;
         _device?.Dispose();
@@ -274,12 +321,26 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     private void OnViewResized()
     {
-        if (_device is null)
+        if (_device is null || !_device.HasSwapChain)
         {
-            CreateDevice();
+            AttachSwapChain();
             return;
         }
-        _device.Resize(PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        // A swap chain on a removed device fails ResizeBuffers; the new one is made at the new size.
+        if (_device.NeedsRecovery)
+        {
+            RecoverDevice(lost: false);
+            return;
+        }
+        try
+        {
+            _device.Resize(PixelWidth(), PixelHeight(), _panel.CompositionScaleX, _panel.CompositionScaleY);
+        }
+        catch (COMException exception) when (GraphicsDevice.IsDeviceLoss(exception.HResult))
+        {
+            RecoverDevice(lost: true);
+            return;
+        }
         UpdateScrollBars();
         RenderNow();
     }
@@ -292,35 +353,24 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         }
         _brushes?.Dispose();
         _brushes = new Brushes(_device.Context, Palette.Resolve(ActualTheme));
-        _layouts?.Clear();
+        ForgetLayouts();
         Invalidate();
     }
 
     private void OnFocusChanged(bool focused)
     {
-        _focused = focused;
+        _blink.SetFocused(focused);
+        SyncBlinkTimer();
         if (focused)
         {
             _tsf?.Focus();
-            RestartBlink();
         }
         else
         {
             _tsf?.Unfocus();
-            _blinkTimer?.Stop();
             _model.Document.Undo.BreakJoin();
         }
         Invalidate();
-    }
-
-    private void RestartBlink()
-    {
-        _caretOn = true;
-        if (_blinkTimer is not null && _focused)
-        {
-            _blinkTimer.Stop();
-            _blinkTimer.Start();
-        }
     }
 
     private int PixelWidth() => (int)Math.Ceiling(_panel.ActualWidth * _panel.CompositionScaleX);

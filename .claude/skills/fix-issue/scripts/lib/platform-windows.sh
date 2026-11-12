@@ -368,7 +368,7 @@ platform_step() {
             else
                 report_dotnet_tests "$log" "$filtered" "$code"
                 if [ -z "$project" ] && ! on_windows; then
-                    note "TablePro.DataGrid.Tests compiled but did not run: it runs on Windows"
+                    note "TablePro.DataGrid.Tests and TablePro.Editor.Tests compiled but did not run: they run on Windows"
                 fi
             fi
             diagnose_environment "$log" && STATUS=INCONCLUSIVE

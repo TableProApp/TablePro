@@ -88,11 +88,11 @@ nonisolated struct RowGridViewport: Equatable, Sendable {
     let leadingInset: CGFloat
 }
 
-struct RowGrid<Row: View>: View {
+struct RowGrid<Line: View>: View {
     let columns: [ColumnInfo]
-    let rows: [[String?]]
+    let window: RowWindow
     let keyColumn: Int?
-    @ViewBuilder let row: (_ index: Int, _ line: RowGridLine) -> Row
+    @ViewBuilder let row: (_ index: Int, _ line: RowGridLine) -> Line
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
@@ -103,9 +103,12 @@ struct RowGrid<Row: View>: View {
     @State private var computedLayout: (key: LayoutKey, layout: RowGridLayout)?
     @State private var viewport = RowGridViewport(width: 0, leadingInset: 0)
 
+    private var rows: [Row] { window.rows }
+
     private var layoutKey: LayoutKey {
         LayoutKey(
             columnNames: columns.map(\.name),
+            sampleIdentity: window.headIdentity(count: RowGridLayout.sampledRowCount),
             sample: rows.prefix(RowGridLayout.sampledRowCount),
             keyColumn: keyColumn,
             dynamicTypeSize: dynamicTypeSize,
@@ -125,7 +128,8 @@ struct RowGrid<Row: View>: View {
     }
 
     var body: some View {
-        let layout = currentLayout.limitingKeyColumn(toViewportWidth: viewport.width)
+        let key = layoutKey
+        let layout = currentLayout(for: key).limitingKeyColumn(toViewportWidth: viewport.width)
         ScrollView([.horizontal, .vertical]) {
             grid(layout, width: max(layout.totalWidth, viewport.width))
         }
@@ -140,14 +144,13 @@ struct RowGrid<Row: View>: View {
             viewport = newViewport
         }
         // Reads only the key: the closure's other captures belong to the previous body.
-        .onChange(of: layoutKey, initial: true) { _, key in
+        .onChange(of: key, initial: true) { _, key in
             computedLayout = (key, Self.makeLayout(key))
         }
     }
 
     // Until onChange stores the layout for these inputs, it is measured here, so no pass draws an empty grid.
-    private var currentLayout: RowGridLayout {
-        let key = layoutKey
+    private func currentLayout(for key: LayoutKey) -> RowGridLayout {
         if let computedLayout, computedLayout.key == key { return computedLayout.layout }
         return Self.makeLayout(key)
     }
@@ -156,7 +159,7 @@ struct RowGrid<Row: View>: View {
         let measure = RowGridTextMeasure(dynamicTypeSize: key.dynamicTypeSize)
         return RowGridLayout.make(
             columnNames: key.columnNames,
-            rows: key.sample,
+            rows: key.sample.map { $0.displayValues() },
             keyColumn: key.keyColumn,
             metrics: key.metrics,
             measure: measure.width(of:isHeader:)
@@ -167,9 +170,10 @@ struct RowGrid<Row: View>: View {
         let style = style
         return LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
             Section {
-                ForEach(IndexedRow.wrap(rows)) { item in
-                    row(item.id, RowGridLine(
-                        columns: columns, values: item.values, layout: layout, width: width, style: style
+                // Indices of the same array the closure reads, so a result that shrank cannot put one out of range.
+                ForEach(rows.indices, id: \.self) { index in
+                    row(index, RowGridLine(
+                        columns: columns, values: rows[index].displayValues(), layout: layout, width: width, style: style
                     ))
                 }
             } header: {
@@ -202,12 +206,20 @@ struct RowGrid<Row: View>: View {
         .accessibilityAddTraits(.isHeader)
     }
 
+    // The sample rows are compared by where they sit in the window, so a body pass reads none of their text.
     private struct LayoutKey: Equatable {
         let columnNames: [String]
-        let sample: ArraySlice<[String?]>
+        let sampleIdentity: RowWindow.HeadIdentity
+        let sample: ArraySlice<Row>
         let keyColumn: Int?
         let dynamicTypeSize: DynamicTypeSize
         let metrics: RowGridMetrics
+
+        static func == (lhs: LayoutKey, rhs: LayoutKey) -> Bool {
+            lhs.columnNames == rhs.columnNames && lhs.sampleIdentity == rhs.sampleIdentity
+                && lhs.keyColumn == rhs.keyColumn && lhs.dynamicTypeSize == rhs.dynamicTypeSize
+                && lhs.metrics == rhs.metrics
+        }
     }
 }
 

@@ -117,7 +117,7 @@ extension AIChatViewModel {
             activeConversationID = conversation.id
             conversationToRestore = nil
         }
-        conversation.messages = messages.map { $0.wireSnapshot }
+        conversation.messages = ChatToolCallRepair.settlingPendingApprovals(messages.map { $0.wireSnapshot })
         conversation.updateTitle()
 
         var summary = conversation

@@ -57,6 +57,7 @@ public sealed partial class SqlEditor
             return;
         }
         Focus(FocusState.Pointer);
+        RestartBlink();
         var position = point.Position;
         CountClick(point.Timestamp, position);
         var offset = OffsetAt(position);

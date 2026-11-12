@@ -13,7 +13,7 @@ struct ReconnectCredentialRecoveryTests {
             pluginSqlState: "28000"
         )
 
-        #expect(DatabaseManager.shared.isAuthenticationFailure(error))
+        #expect(ConnectionFailureClassifier.isAuthenticationFailure(error))
     }
 
     @Test("An authentication failure stops an unattended reconnect with the server's message")
@@ -28,6 +28,32 @@ struct ReconnectCredentialRecoveryTests {
             DatabaseManager.shared.reconnectVerdict(for: error)
                 == .stop(ConnectionFailureInfo(message: "Reconnect failed: Access denied (SQLSTATE: 28000)"))
         )
+    }
+
+    @Test("A Vault refusal stops an unattended reconnect with Vault's reason")
+    func vaultRefusalStopsTheReconnect() {
+        let error = VaultError.credentialsFailed(path: "database/creds/ro", message: "permission denied")
+
+        #expect(DatabaseManager.shared.reconnectVerdict(for: error) == .stop(ConnectionFailureClassifier.info(for: error)))
+    }
+
+    @Test("A new Vault user the database is still loading keeps the reconnect going")
+    func userNotLoadedKeepsRetrying() {
+        let error = VaultUserNotLoaded(refusal: FakePluginAuthError(
+            pluginErrorMessage: "Access denied for user 'v-token-ro-1'",
+            pluginErrorCode: 1_045,
+            pluginSqlState: "28000"
+        ))
+
+        #expect(DatabaseManager.shared.reconnectVerdict(for: error) == .retry(ConnectionFailureClassifier.info(for: error)))
+    }
+
+    @Test("An unreachable or failing Vault keeps the reconnect going and says why", arguments: [
+        VaultError.unreachable("https://vault.test:8200", "The request timed out."),
+        VaultError.serverFailed("local node not active but active cluster node not found"),
+    ])
+    func unreachableVaultKeepsRetrying(error: VaultError) {
+        #expect(DatabaseManager.shared.reconnectVerdict(for: error) == .retry(ConnectionFailureClassifier.info(for: error)))
     }
 
     @Test("A connection that is merely gone keeps the reconnect going with no reason of its own")

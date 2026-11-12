@@ -24,6 +24,9 @@ public interface ITabSession
 
     Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken);
 
+    // The whole table's, from the engine's statistics; null where the engine keeps none.
+    Task<RowEstimate?> EstimateRowsAsync(TableName table, CancellationToken cancellationToken);
+
     Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken);
 
     Task<TableStructure> GetStructureAsync(TableName table, ObjectKind kind, CancellationToken cancellationToken);
@@ -132,6 +135,9 @@ public sealed class CoreTabSession : ITabSession
 
     public Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken) =>
         _share.Session.CountRowsAsync(table, filter, cancellationToken);
+
+    public Task<RowEstimate?> EstimateRowsAsync(TableName table, CancellationToken cancellationToken) =>
+        _share.Session.EstimateRowsAsync(table, cancellationToken);
 
     public Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken) =>
         _share.Session.GetFilterChoicesAsync(table, cancellationToken);

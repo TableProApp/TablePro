@@ -28,7 +28,7 @@ struct RowDetailView: View {
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
-        foreignKeys: [ForeignKeyInfo] = [],
+        foreignKeys: @escaping @autoclosure () -> [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
         loadFullValue: ((CellRef) async throws -> String?)? = nil,
         coordinator: ConnectionCoordinator? = nil
@@ -44,7 +44,7 @@ struct RowDetailView: View {
             databaseType: databaseType,
             schema: schema,
             safeModeLevel: safeModeLevel,
-            foreignKeys: foreignKeys,
+            foreignKeys: foreignKeys(),
             onSaved: onSaved,
             loadFullValue: loadFullValue,
             liveSession: coordinator.map { coordinator in { coordinator.writableSession } }
@@ -58,9 +58,9 @@ struct RowDetailView: View {
                 rowContent(at: viewModel.currentIndex)
             } else {
                 TabView(selection: $viewModel.currentIndex) {
-                    ForEach(IndexedRow.wrap(viewModel.rows)) { item in
-                        rowContent(at: item.id)
-                            .tag(item.id)
+                    ForEach(viewModel.rows.indices, id: \.self) { index in
+                        rowContent(at: index)
+                            .tag(index)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))

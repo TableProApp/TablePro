@@ -19,10 +19,11 @@
     <InternalsVisibleTo Include="TablePro.Editor" />
     <InternalsVisibleTo Include="TablePro.DataGrid" />
     <InternalsVisibleTo Include="TablePro.DataGrid.Tests" />
+    <InternalsVisibleTo Include="TablePro.Editor.Tests" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
     <PackageReference Include="TerraFX.Interop.Windows" />
   </ItemGroup>

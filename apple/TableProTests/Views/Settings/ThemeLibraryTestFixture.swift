@@ -38,7 +38,6 @@ final class ThemeLibraryTestFixture {
         catalog = ThemeCatalog(
             userDirectory: folders[0],
             bundleDirectory: nil,
-            notificationCenter: center,
             fileTrash: .folder(folders[1]),
             syncTracker: tracker
         )

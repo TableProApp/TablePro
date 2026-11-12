@@ -476,6 +476,116 @@ async fn initialize_names_the_server_and_lists_every_tool() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_client_that_initializes_is_seen_once_by_its_own_name() {
+    let harness = harness().await;
+    let port = harness.server.address().port();
+    let mut seen = harness.server.seen_clients();
+    let initialize = |name: &str, version: &str| {
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": name, "title": "Claude Code", "version": version },
+            },
+        })
+        .to_string()
+    };
+
+    let anonymous = send(port, "/mcp", &MCP_HEADERS[1..], &initialize("intruder", "1")).await;
+    assert_eq!(anonymous.status, 401);
+    assert!(
+        seen.borrow_and_update().is_empty(),
+        "a client without the token was recorded"
+    );
+
+    for version in ["2.1.321", "2.1.322"] {
+        let reply = send(port, "/mcp", &MCP_HEADERS, &initialize("claude-code", version)).await;
+        assert_eq!(reply.status, 200, "{}", reply.body);
+    }
+
+    tokio::time::timeout(Duration::from_secs(10), seen.changed())
+        .await
+        .expect("a sighting in time")
+        .expect("the server still running");
+    let clients = seen.borrow().clone();
+    assert_eq!(clients.len(), 1, "{clients:?}");
+    assert_eq!(clients[0].name, "claude-code");
+    assert_eq!(clients[0].title.as_deref(), Some("Claude Code"));
+    assert_eq!(clients[0].version, "2.1.322");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_client_that_never_initializes_is_seen_once_from_its_requests() {
+    let harness = harness().await;
+    let port = harness.server.address().port();
+    let mut seen = harness.server.seen_clients();
+    let request = |method: &str, mut params: Json| {
+        params["_meta"] = json!({
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": { "name": "claude-code", "title": "Claude Code", "version": "3.0.0" },
+        });
+        json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string()
+    };
+    let headers = |method: &'static str, name: Option<&'static str>| {
+        let mut headers = vec![
+            MCP_HEADERS[0],
+            MCP_HEADERS[1],
+            MCP_HEADERS[2],
+            ("MCP-Protocol-Version", "2026-07-28"),
+            ("Mcp-Method", method),
+        ];
+        headers.extend(name.map(|name| ("Mcp-Name", name)));
+        headers
+    };
+    let answered = |reply: Reply| {
+        assert_eq!(reply.status, 200, "{}", reply.body);
+        assert!(reply.body.contains("\"result\""), "{}", reply.body);
+    };
+
+    answered(
+        send(
+            port,
+            "/mcp",
+            &headers("server/discover", None),
+            &request("server/discover", json!({})),
+        )
+        .await,
+    );
+
+    assert!(seen.has_changed().expect("the server running"), "discover was not seen");
+    let clients = seen.borrow_and_update().clone();
+    assert_eq!(clients.len(), 1, "{clients:?}");
+    assert_eq!(clients[0].name, "claude-code");
+    assert_eq!(clients[0].title.as_deref(), Some("Claude Code"));
+    answered(
+        send(
+            port,
+            "/mcp",
+            &headers("tools/list", None),
+            &request("tools/list", json!({})),
+        )
+        .await,
+    );
+    answered(
+        send(
+            port,
+            "/mcp",
+            &headers("tools/call", Some("list_connections")),
+            &request("tools/call", json!({ "name": "list_connections", "arguments": {} })),
+        )
+        .await,
+    );
+    assert!(
+        !seen.has_changed().expect("the server running"),
+        "every call announced the client again"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_blocked_connection_is_not_listed_and_does_not_exist() {
     let harness = harness().await;
 
@@ -595,6 +705,28 @@ async fn a_write_where_clients_only_read_is_denied_without_asking() {
     assert!(text.starts_with("denied:"), "{text}");
     assert!(harness.host.asked.lock().expect("asked").is_empty());
     assert_eq!(order_count(&harness).await, 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_statement_that_reaches_a_file_is_refused_at_every_level_without_asking() {
+    let harness = harness().await;
+    harness.host.approves.store(true, Ordering::SeqCst);
+
+    for connection in [harness.ids.readable, harness.ids.writable] {
+        let (failed, text) = call(
+            &harness,
+            "execute_query",
+            json!({
+                "connection_id": connection.to_string(),
+                "query": "SELECT readfile('/etc/passwd')",
+            }),
+        )
+        .await;
+
+        assert!(failed);
+        assert!(text.starts_with("denied:"), "{text}");
+    }
+    assert!(harness.host.asked.lock().expect("asked").is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

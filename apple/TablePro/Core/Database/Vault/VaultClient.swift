@@ -74,6 +74,9 @@ struct VaultRequestError: Error, Equatable {
 
     var isPermissionDenied: Bool { status == 403 }
 
+    // Rate limited, sealed, or a proxy in front of it that cannot reach it: the same request can work in a moment.
+    var isTransient: Bool { [429, 502, 503, 504].contains(status) }
+
     // Vault wraps several causes as "2 errors occurred:\n\t* permission denied\n\t* invalid token".
     var message: String {
         let lines = messages.flatMap { $0.components(separatedBy: .newlines) }

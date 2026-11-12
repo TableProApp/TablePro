@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProWeaviateClient
 import TableProWeaviateCore
 
 extension WeaviatePluginDriver {
@@ -41,14 +42,13 @@ extension WeaviatePluginDriver {
 
     static let exportPageSize = 500
 
-    /// Exports one collection by walking it a page at a time, yielding each page instead of
-    /// holding the whole collection. The protocol default runs `execute` once and buffers
-    /// everything, which is fine for a grid page and not for an export.
+    // An export walks the collection a page at a time instead of holding it whole. The protocol default runs
+    // `execute` once and buffers everything, fine for a grid page and not for an export.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let collectionName = WeaviateOperations.decodeExport(query) else {
             return defaultStreamRows(query: query)
         }
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     try await self.streamCollection(collectionName, continuation: continuation)
@@ -57,7 +57,7 @@ extension WeaviatePluginDriver {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 
@@ -75,11 +75,12 @@ extension WeaviatePluginDriver {
         )))
 
         for try await objects in client.objectPages(collection: name, pageSize: Self.exportPageSize) {
-            continuation.yield(.rows(objects.map { object in
+            let rows: [PluginRow] = objects.map { object in
                 WeaviateObjectCodec.row(for: object, columns: columns).map { value in
                     value.map(PluginCellValue.text) ?? .null
                 }
-            }))
+            }
+            _ = await PluginRowStream.deliver(.rows(rows), to: continuation)
         }
     }
 

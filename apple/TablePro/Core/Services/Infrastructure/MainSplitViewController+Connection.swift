@@ -52,7 +52,7 @@ internal extension MainSplitViewController {
             transition(to: .unavailable(.notConnected))
             return
         }
-        connect(connection, cancellingPrevious: false)
+        connect(connection, cancellingPrevious: false, adoptsSSHProfileEdits: false)
     }
 
     // The menu bar's second connection command does what the state offers: Connect, Reconnect or Stop.
@@ -97,23 +97,21 @@ internal extension MainSplitViewController {
         DatabaseManager.shared.cancelRecovery(for: connectionId)
     }
 
-    /// Reconnects the connection named, not whichever one the window happens to be showing.
-    /// Clicking a disconnected connection used to redial the selected one instead, tearing down
-    /// the session the user was working in.
-    internal func reconnectWorkspace(_ connectionId: UUID) {
+    // The connection named, not the one on screen: redialing the selected one tore down the session in use. A person's
+    // Connect or Reconnect is the one connect that moves an open session to an edited SSH profile; a link passes false.
+    internal func reconnectWorkspace(_ connectionId: UUID, adoptsSSHProfileEdits: Bool = true) {
         guard let workspace = workspaces.workspace(for: connectionId),
               let connection = workspace.connection else { return }
         workspaces.select(connectionId)
-        connect(connection, cancellingPrevious: true)
+        connect(connection, cancellingPrevious: true, adoptsSSHProfileEdits: adoptsSSHProfileEdits)
     }
 
-    /// Shows the connection and dials only when its phase allows a manual connect. Redialing one
-    /// that is already connecting cancels that attempt and restarts it, prompts included.
-    internal func reconnectWorkspaceIfIdle(_ connectionId: UUID) {
+    // Dials only when the phase allows a manual connect; one already connecting restarts, prompts included.
+    internal func reconnectWorkspaceIfIdle(_ connectionId: UUID, adoptsSSHProfileEdits: Bool = true) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         workspaces.select(connectionId)
         guard ConnectionWindowPhaseMachine.allowsManualConnect(phase: workspace.phase) else { return }
-        reconnectWorkspace(connectionId)
+        reconnectWorkspace(connectionId, adoptsSSHProfileEdits: adoptsSSHProfileEdits)
     }
 
     internal func isShowingInKeyWindow(_ connectionId: UUID) -> Bool {
@@ -188,7 +186,7 @@ internal extension MainSplitViewController {
         ConnectionRecoveryPerformer.perform(action, for: connection)
     }
 
-    private func connect(_ connection: DatabaseConnection, cancellingPrevious: Bool) {
+    private func connect(_ connection: DatabaseConnection, cancellingPrevious: Bool, adoptsSSHProfileEdits: Bool) {
         guard let workspace = workspaces.workspace(for: connection.id) else { return }
         let token = UUID()
         workspace.attemptToken = token
@@ -206,7 +204,7 @@ internal extension MainSplitViewController {
                 await DatabaseManager.shared.cancelEnsureConnected(connection.id)
             }
             do {
-                try await DatabaseManager.shared.ensureConnected(connection)
+                try await DatabaseManager.shared.ensureConnected(connection, adoptsSSHProfileEdits: adoptsSSHProfileEdits)
                 self?.finishAttempt(token, for: connection.id, outcome: nil)
             } catch {
                 Self.connectionLogger.error(

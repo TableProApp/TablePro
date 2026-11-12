@@ -85,9 +85,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         KeyRepeatFilter.shared.install()
         TableClickFocus.shared.install()
         RecentTabSwitcherController.installEditorKeyClaim()
-        let syncSettings = AppSettingsStorage.shared.loadSync()
-        let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
-        AppStorageEnvironment.shared.defaults.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.set(
+            AppSettingsStorage.shared.loadSync().syncsPasswords,
+            forKey: KeychainHelper.passwordSyncEnabledKey
+        )
         DatabaseManager.shared.startObservingSystemEvents()
         DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
@@ -186,6 +187,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await AppModuleTermination.stopModuleWork()
             await MCPServerManager.shared.stop()
             await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
+            // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
+            await VaultDatabaseCredentials.shared.revokeAllLeases()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

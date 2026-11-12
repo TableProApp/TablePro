@@ -196,14 +196,14 @@ public struct FirebaseRequest: Sendable, Equatable {
 
 // Paths and request lines are written per Unicode scalar, so they are read back per scalar too. A Character
 // joins a combining mark to the separator before it: `/` + U+0301 no longer splits, and " " + U+FE0F drops the mark.
-enum FirebaseScalars {
-    static func split(_ text: String, separator: Unicode.Scalar, maxSplits: Int = .max, omittingEmpty: Bool = true) -> [String] {
+package enum FirebaseScalars {
+    package static func split(_ text: String, separator: Unicode.Scalar, maxSplits: Int = .max, omittingEmpty: Bool = true) -> [String] {
         text.unicodeScalars
             .split(separator: separator, maxSplits: maxSplits, omittingEmptySubsequences: omittingEmpty)
             .map(String.init)
     }
 
-    static func removingPrefix(_ prefix: String, from text: String) -> String? {
+    package static func removingPrefix(_ prefix: String, from text: String) -> String? {
         guard text.unicodeScalars.starts(with: prefix.unicodeScalars) else { return nil }
         return String(text.unicodeScalars.dropFirst(prefix.unicodeScalars.count))
     }

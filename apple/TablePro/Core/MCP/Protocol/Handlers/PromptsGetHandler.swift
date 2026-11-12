@@ -42,6 +42,7 @@ public struct PromptsGetHandler: MCPMethodHandler {
             )
             MCPAuditLogger.logResourceRead(
                 principal: context.principal,
+                client: MCPAuditLogger.clientName(for: context.meta),
                 uri: Self.auditUri(name: name),
                 outcome: .success
             )
@@ -50,6 +51,7 @@ public struct PromptsGetHandler: MCPMethodHandler {
             let protocolError = error as? MCPProtocolError
             MCPAuditLogger.logResourceRead(
                 principal: context.principal,
+                client: MCPAuditLogger.clientName(for: context.meta),
                 uri: Self.auditUri(name: name),
                 outcome: protocolError?.code == JsonRpcErrorCode.forbidden ? .denied : .error,
                 errorMessage: protocolError?.message ?? error.localizedDescription
