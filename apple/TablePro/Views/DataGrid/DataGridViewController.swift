@@ -39,6 +39,9 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     var isFittingHeightScheduled = false
     var pendingPageReveal: NSRect?
     var isRevealingInGrid = false
+    var isLiveScrolling = false
+    var isTrackingSelectionDrag = false
+    var isShowingContextMenu = false
     private var observers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
     private var themeCancellable: AnyCancellable?
@@ -170,6 +173,16 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
 
     var isEditing: Bool { isEditingCell }
 
+    // An open context menu acts on the row ids it was built from, which a reload hands to other rows.
+    var holdsTransientUI: Bool {
+        let state = editingState
+        return isShowingContextMenu || state.textPopover != nil || state.typedPopover != nil
+            || state.poppedOutEditor != nil || state.foreignKeyPreview?.isShown == true
+            || menuState.valueFilterPopover != nil
+    }
+
+    var isTrackingInteraction: Bool { isLiveScrolling || isTrackingSelectionDrag }
+
     @discardableResult
     func beginEditing(row: Int, displayColumn: Int) -> Bool {
         beginEditingCell(row: row, displayColumn: displayColumn)
@@ -225,10 +238,16 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         })
         let scrollView = main.scrollView
         observers.append(center.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: scrollView, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pausePrewarm() }
+            MainActor.assumeIsolated {
+                self?.isLiveScrolling = true
+                self?.pausePrewarm()
+            }
         })
         observers.append(center.addObserver(forName: NSScrollView.didEndLiveScrollNotification, object: scrollView, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.schedulePrewarmResume() }
+            MainActor.assumeIsolated {
+                self?.isLiveScrolling = false
+                self?.schedulePrewarmResume()
+            }
         })
     }
 

@@ -214,6 +214,41 @@ struct WindowSidebarStateTests {
         )
     }
 
+    @Test("A declared kind's group expansion persists by id and restores before any driver exists")
+    func declaredKindGroupExpansionRoundTrips() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let events = SidebarServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+        )
+        let group = DatabaseTreeObjectGroup(database: "shop", schema: nil, kind: .server(events))
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(!state.isTreeObjectGroupExpanded(group))
+        state.setTreeObjectGroup(group, expanded: true)
+
+        let stored = try #require(defaults.data(forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)"))
+        #expect(String(decoding: stored, as: UTF8.self).contains("\"server.event\""))
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.isTreeObjectGroupExpanded(group))
+        let decodedOnly = DatabaseTreeObjectGroup(
+            database: "shop", schema: nil, kind: .server(SidebarServerObjectKind(id: "event"))
+        )
+        #expect(restored.isTreeObjectGroupExpanded(decodedOnly))
+    }
+
+    @Test("A built-in group still persists under the kind name it shipped with")
+    func builtInGroupKeepsShippedName() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        state.setTreeObjectGroup(DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .materializedView), expanded: true)
+
+        let stored = try #require(defaults.data(forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)"))
+        #expect(String(decoding: stored, as: UTF8.self).contains("\"materializedView\""))
+    }
+
     @Test("A window without a connection does not persist")
     func nilConnectionDoesNotPersist() throws {
         let defaults = try makeDefaults()

@@ -15,7 +15,7 @@ internal enum ObjectListingKinds {
         declared: Set<SidebarObjectKind>,
         current: SidebarObjectKind
     ) -> [SidebarObjectKind] {
-        SidebarObjectKind.allCases.filter { kind in
+        SidebarObjectKind.builtIn.filter { kind in
             if kind == .table || kind == current { return true }
             if kind.category != .table, !declared.contains(kind) { return false }
             return itemCounts[kind, default: 0] > 0
@@ -59,6 +59,7 @@ extension SidebarObjectKind {
         case .function: return String(localized: "Can't List Functions")
         case .trigger: return String(localized: "Can't List Triggers")
         case .type: return String(localized: "Can't List Types")
+        case .server(let kind): return String(format: String(localized: "Can't List %@"), kind.pluralDisplayName)
         }
     }
 
@@ -73,6 +74,7 @@ extension SidebarObjectKind {
         case .function: return String(localized: "No Functions")
         case .trigger: return String(localized: "No Triggers")
         case .type: return String(localized: "No Types")
+        case .server(let kind): return String(format: String(localized: "No %@"), kind.pluralDisplayName)
         }
     }
 }

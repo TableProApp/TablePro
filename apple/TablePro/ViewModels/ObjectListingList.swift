@@ -31,7 +31,7 @@ internal final class ObjectListingColumnVisibilityStore {
     }
 
     private static func key(_ kind: SidebarObjectKind) -> String {
-        keyPrefix + kind.rawValue
+        keyPrefix + kind.persistenceName
     }
 }
 

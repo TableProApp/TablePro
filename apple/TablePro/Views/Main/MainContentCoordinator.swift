@@ -348,8 +348,11 @@ final class MainContentCoordinator: ObservableObject {
     // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
     internal var redisDatabaseSwitchTask: Task<Void, Never>?
-    private var periodicSaveTask: Task<Void, Never>?
-    private var draftSaveTask: Task<Void, Never>?
+    var periodicSaveTask: Task<Void, Never>?
+    var draftSaveTask: Task<Void, Never>?
+    var draftSaveTabIds: Set<UUID> = []
+    var draftSaveClock: any Clock<Duration> = ContinuousClock()
+    var tabVersions = QueryTabVersionRecorder.live
     private var terminationObserver: NSObjectProtocol?
     internal var postConnectCancellable: AnyCancellable?
     // Owned here, not by the view: a connection switch cancels the view's `task`, and a cancelled first load never reran.
@@ -411,6 +414,7 @@ final class MainContentCoordinator: ObservableObject {
 
     var refreshCoalesceTask: Task<Void, Never>?
     var refreshPendingTrailing = false
+    let autoRefresh = TableAutoRefreshSchedule()
 
     // SwiftUI creates and discards coordinators during body re-evaluation; those never activate and need no teardown warning.
     private let _didActivate = OSAllocatedUnfairLock(initialState: false)
@@ -584,44 +588,6 @@ final class MainContentCoordinator: ObservableObject {
         }
     }
 
-    private static let periodicSaveInterval: Duration = .seconds(30)
-    private static let draftSaveDebounce: Duration = .seconds(1)
-
-    // Typing changes no tab identity, so without this a scratch query lives only in memory until the 30s timer or quit flush.
-    func scheduleDraftSave() {
-        guard !Self.isAppTerminating, !isTearingDown else { return }
-        draftSaveTask?.cancel()
-        draftSaveTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.draftSaveDebounce)
-            guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
-            guard self.isFirstCoordinatorForConnection() else { return }
-            self.persistence.saveAggregated()
-        }
-    }
-
-    private func startPeriodicSave() {
-        guard periodicSaveTask == nil else { return }
-        periodicSaveTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.periodicSaveInterval)
-                guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
-                guard self.isFirstCoordinatorForConnection() else { continue }
-                self.persistence.saveAggregated()
-            }
-        }
-    }
-
-    static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
-        activeCoordinators.values
-            .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
-            .tabManager.selectedTabId
-    }
-
-    private func isFirstCoordinatorForConnection() -> Bool {
-        Self.activeCoordinators.values
-            .first { $0.connectionId == self.connectionId } === self
-    }
-
     private static let registerTerminationObserver: Void = {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -724,6 +690,7 @@ final class MainContentCoordinator: ObservableObject {
         clearedEditsCancellable = resumeWhenEditsClear()
         gridRepaintCancellable = observeChangeManagerForGridRepaint()
         maskingRulesCancellable = observeMaskingRuleChanges()
+        observeSelectionForAutoRefresh()
 
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
@@ -869,7 +836,7 @@ final class MainContentCoordinator: ObservableObject {
             connectionId: connectionId,
             tabType: .query,
             databaseName: resolved.database,
-            schemaName: resolved.schema,
+            schemaName: resolved.isDatabaseScoped ? nil : resolved.schema,
             initialQuery: source,
             skipAutoExecute: true,
             tabTitle: resolved.displayIdentity
@@ -913,6 +880,7 @@ final class MainContentCoordinator: ObservableObject {
         reportEndedExecutions(tabExecution.invalidateAll(reason: .sessionEnded))
         refreshCoalesceTask?.cancel()
         refreshCoalesceTask = nil
+        stopAutoRefresh()
         for entry in tableLoadTasks.values { entry.task.cancel() }
         tableLoadTasks.removeAll()
         cancelAllRowCountTasks()
@@ -1086,6 +1054,7 @@ final class MainContentCoordinator: ObservableObject {
         let batches = queryExecutionCoordinator.executionBatches(in: sql, sourceOffset: sourceOffset ?? 0)
         let statements = batches.flatMap(\.statements)
         guard !statements.isEmpty else { return false }
+        tabVersions.record(tabManager.tabs[index], connectionId: connectionId, reason: .run)
 
         if services.appSettings.editor.queryParametersEnabled, bindsNamedParameters {
             let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
@@ -1188,65 +1157,6 @@ final class MainContentCoordinator: ObservableObject {
         return nil
     }
 
-    // MARK: - Editor Query Loading
-
-    @discardableResult
-    func loadQueryIntoEditor(
-        _ query: String,
-        databaseName: String? = nil,
-        forceNewTab: Bool = false
-    ) -> WindowTabOpenDisposition {
-        let targetDatabaseName = databaseName ?? newTabDatabaseName
-        if !forceNewTab,
-           let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-           tab.tabType == .query,
-           databaseName == nil
-           || tab.tableContext.resolvedDatabaseName(browsing: browseDatabaseName) == targetDatabaseName {
-            tabManager.mutate(at: tabIndex) {
-                $0.content.query = query
-                $0.hasUserInteraction = true
-            }
-            return .currentCoordinator
-        }
-
-        if !forceNewTab, tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: targetDatabaseName)
-            return .currentCoordinator
-        }
-
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            databaseName: targetDatabaseName,
-            initialQuery: query
-        )
-        openTabInNewWindow(payload)
-        return .focusedElsewhere
-    }
-
-    var aiInsertReusesSelectedQueryTab: Bool {
-        guard let (tab, _) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
-        return tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    func insertQueryFromAI(_ query: String) {
-        if aiInsertReusesSelectedQueryTab, let (_, tabIndex) = tabManager.selectedTabAndIndex {
-            tabManager.mutate(at: tabIndex) { mutTab in
-                mutTab.content.query = query
-                mutTab.hasUserInteraction = true
-            }
-        } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: newTabDatabaseName)
-        } else {
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .query,
-                initialQuery: query
-            )
-            WindowManager.shared.openTab(payload: payload)
-        }
-    }
-
     internal func executeQueryInternal(
         _ sql: String,
         isAutoLoad: Bool = false,
@@ -1270,7 +1180,7 @@ final class MainContentCoordinator: ObservableObject {
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
-        let traceToken = adoptOrBeginExecutionTrace(tabId: tabId)
+        let traceToken = trigger.tracesLoad ? adoptOrBeginExecutionTrace(tabId: tabId) : nil
         traceExecutionStarted(traceToken, epoch: claim.epoch, isAutoLoad: isAutoLoad)
 
         let statement = resolveStatement(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
@@ -1301,14 +1211,13 @@ final class MainContentCoordinator: ObservableObject {
         let recordsRun = source == .newSource && tab.tabType == .query && !isAutoLoad
         let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
+        let held = manualCommitRun(skipped: isTableTab || isAutoLoad)
 
         let failureOutput = ServerOutputBox()
         let queryTask = Task { [weak self] in
             guard let self else { return }
 
-            if isAutoLoad, await !connectBeforeAutoLoad(conn, claim: claim, trigger: trigger, traceToken: traceToken) {
-                return
-            }
+            if isAutoLoad, await !connectBeforeAutoLoad(conn, claim: claim, trigger: trigger, traceToken: traceToken) { return }
 
             let schemaTask = startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope)
 
@@ -1319,15 +1228,17 @@ final class MainContentCoordinator: ObservableObject {
                     isTableTab: isTableTab,
                     lease: lease
                 ) { [queryExecutor, manager = services.databaseManager] driver in
-                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
-                    if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
-                    let fetched = try await queryExecutor.executeQuery(
-                        driver: driver,
-                        sql: statement.sql,
-                        parameters: nil,
-                        rowCap: rowCap,
-                        capturingOutputInto: isTableTab ? nil : failureOutput
-                    )
+                    let fetched = try await held.running([statement.sql], on: driver) {
+                        // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                        if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
+                        return try await queryExecutor.executeQuery(
+                            driver: driver,
+                            sql: statement.sql,
+                            parameters: nil,
+                            rowCap: rowCap,
+                            capturingOutputInto: isTableTab ? nil : failureOutput
+                        )
+                    }
                     let edits = isAutoLoad ? nil : await SucceededStatements.single(
                         statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                     )
@@ -1364,6 +1275,8 @@ final class MainContentCoordinator: ObservableObject {
                         traceStaleResultDropped(traceToken)
                         return false
                     }
+                    // A menu or value window opened during the read names rows by position, so a tick's rows wait for the next one.
+                    guard trigger != .autoRefresh || !autoRefreshHeldByTransientUI(tabId) else { return false }
                     toolbarState.recordQueryTiming(fetchResult.resolvedTiming, for: tabId)
 
                     traceApplyingResult(traceToken, tabId: tabId)
@@ -1395,7 +1308,8 @@ final class MainContentCoordinator: ObservableObject {
                         absentCells: fetchResult.absentCells,
                         unloadedCells: fetchResult.unloadedCells,
                         columnOrigins: fetchResult.columnOrigins,
-                        prepared: prepared
+                        prepared: prepared,
+                        trigger: trigger
                     )
                     // A re-read (a sort, a reload after a write) is not a run, so the log keeps describing the last one.
                     if recordsRun { queryExecutionCoordinator.recordStatementRun(sql, tabId: tabId, startedAt: claim.startedAt) }
@@ -1410,19 +1324,15 @@ final class MainContentCoordinator: ObservableObject {
                     return
                 }
 
-                if isEditable, let tableName {
-                    // Marked pending here: phase 1 clears `isLoading` first, so without it the tab looks settled and offers Count Exactly early.
-                    tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
-                    launchPhase2(
-                        tableName: tableName,
-                        tabId: tabId,
-                        connectionType: conn.type,
-                        needsMetadataFetch: needsMetadataFetch,
-                        schemaTask: schemaTask
-                    )
-                } else if !isEditable || tableName == nil {
-                    clearChangesIfCurrent(claim: claim)
-                }
+                launchPhase2AfterApply(
+                    tableName: tableName,
+                    isEditable: isEditable,
+                    tabId: tabId,
+                    trigger: trigger,
+                    needsMetadataFetch: needsMetadataFetch,
+                    schemaTask: schemaTask,
+                    claim: claim
+                )
             } catch {
                 schemaTask?.cancel()
                 if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn) }

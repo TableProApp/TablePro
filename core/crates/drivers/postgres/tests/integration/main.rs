@@ -29,4 +29,5 @@ mod slow_route;
 mod support;
 mod tls;
 mod value_corpus;
+mod wire_round_trips;
 mod write_batch;

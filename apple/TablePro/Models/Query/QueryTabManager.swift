@@ -526,7 +526,8 @@ final class QueryTabManager: ObservableObject {
         var newTab = QueryTab(title: Self.objectSourceTitle(for: objectRef), tabType: .objectSource)
         newTab.tableContext.isEditable = false
         newTab.tableContext.databaseName = objectRef.database
-        newTab.tableContext.schemaName = objectRef.schema
+        // A database-wide object's schema is where it installs its objects, not a namespace to browse.
+        newTab.tableContext.schemaName = objectRef.isDatabaseScoped ? nil : objectRef.schema
         newTab.display.objectRef = objectRef
         newTab.hasUserInteraction = true
         tabs.append(newTab)
@@ -720,6 +721,8 @@ final class QueryTabManager: ObservableObject {
         case .userType:  format = String(localized: "Type: %@")
         case .view:      format = String(localized: "View: %@")
         case .materializedView: format = String(localized: "Materialized View: %@")
+        case .serverObject:
+            return String(format: String(localized: "%1$@: %2$@"), objectRef.kindDisplayName, objectRef.displayIdentity)
         }
         return String(format: format, objectRef.displayIdentity)
     }
@@ -779,6 +782,8 @@ final class QueryTabManager: ObservableObject {
         tab.restoredSortSource = .unset
         tab.selectionSnapshot = .empty
         tab.pendingChanges = TabChangeSnapshot()
+        tab.autoRefreshInterval = .off
+        tab.autoRefreshPause = nil
         tab.hasUserInteraction = false
         tab.filterState = TabFilterState()
         tab.valueFilter = GridValueFilterState()

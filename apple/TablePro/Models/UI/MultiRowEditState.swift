@@ -7,8 +7,19 @@ import Combine
 import Foundation
 import TableProPluginKit
 
+// A column, whatever row is selected.
+struct FieldEditID: Hashable {
+    let columnIndex: Int
+    let columnName: String
+}
+
 struct FieldEditState: Identifiable {
-    var id = UUID()
+    // Per column, so a new selection updates each field of the inspector's list in place.
+    var id: FieldEditID { FieldEditID(columnIndex: columnIndex, columnName: columnName) }
+
+    // Reissued with each selection and each value read, so an editor seeded from the old value starts over.
+    var editorID = UUID()
+
     let columnIndex: Int
     let columnName: String
     let columnTypeEnum: ColumnType
@@ -127,7 +138,7 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var expressionCells: [Set<Int>] = []
     @Published private(set) var columns: [String] = []
     @Published private(set) var columnTypes: [ColumnType] = []
-    // By column, not field id: every selection change reissues the ids. Cleared when the columns change.
+    // By column, not editor id: every selection change reissues those. Cleared when the columns change.
     @Published private(set) var expandedColumn: Int?
     private var nonNullableColumns: Set<String> = []
 
@@ -214,7 +225,7 @@ final class MultiRowEditState: ObservableObject {
                 originalValue = values.first.flatMap { $0 }
             }
 
-            var preservedId: UUID?
+            var preservedEditorID: UUID?
             var pendingValue: String?
             var isPendingNull = false
             var isPendingDefault = false
@@ -226,7 +237,7 @@ final class MultiRowEditState: ObservableObject {
                 let oldField = fields[colIndex]
                 if oldField.originalValue == originalValue && oldField.hasMultipleValues == hasMultipleValues
                     && oldField.isAbsent == isAbsent && oldField.isUnloaded == isUnloaded {
-                    preservedId = oldField.id
+                    preservedEditorID = oldField.editorID
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
                     isPendingDefault = oldField.isPendingDefault
@@ -281,8 +292,8 @@ final class MultiRowEditState: ObservableObject {
                 isPendingRemoval: isPendingRemoval
             )
             newField.isUnloaded = isUnloaded
-            if let preservedId {
-                newField.id = preservedId
+            if let preservedEditorID {
+                newField.editorID = preservedEditorID
             }
             // Same display format as the grid, or a column set to JSON or PHP-serialized opened a plain text field here.
             newField.resolvedEditor = FieldEditorResolver.resolve(

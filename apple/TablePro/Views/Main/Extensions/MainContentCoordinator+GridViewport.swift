@@ -41,12 +41,16 @@ extension MainContentCoordinator {
         let sample = intent == .keepPlace ? viewportSample(of: model) : nil
         guard sample != nil || keepsSelection else { return .top }
 
+        // Mode, columns and active cell too, or a cell cursor comes back as whole rows on column 0.
+        let selection = model.map {
+            GridSelectionSnapshot($0.selection, order: $0.order, rows: tableRows, columns: $0.columns)
+        }
         let snapshot = GridViewportResolver.snapshot(
             of: tableRows,
             displayIDs: model?.displayedRowIDs,
             firstVisibleDisplayRow: sample?.row ?? 0,
             firstVisibleOffset: sample?.offset ?? 0,
-            selectedDisplayRows: keepsSelection ? Array(model?.selection.affectedRows ?? IndexSet()) : [],
+            selection: keepsSelection ? selection ?? .empty : .empty,
             keyColumns: keyColumns,
             isCellModified: { [changeManager] rowID, column in
                 changeManager.isCellModified(rowID: rowID, columnIndex: column)

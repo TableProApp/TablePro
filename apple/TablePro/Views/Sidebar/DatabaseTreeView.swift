@@ -51,6 +51,21 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
     }
 }
 
+struct DatabaseTreeServerObjectRef: Identifiable, Equatable {
+    let database: String?
+    let schema: String?
+    let kind: SidebarServerObjectKind
+    let object: ServerObjectInfo
+
+    var id: String {
+        IdentityPath.joined([database ?? "", schema ?? "", object.id], separator: "|")
+    }
+
+    var objectRef: DatabaseObjectRef {
+        DatabaseObjectRef(serverObject: object, kind: kind, database: database ?? "")
+    }
+}
+
 struct DatabaseTreeView: View {
     @ObservedObject private var databaseManager = DatabaseManager.shared
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared

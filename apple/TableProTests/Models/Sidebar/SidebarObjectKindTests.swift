@@ -69,12 +69,82 @@ struct SidebarObjectKindTests {
 
     @Test("Every kind belongs to exactly one category")
     func categoriesPartitionTheKinds() {
-        #expect(SidebarObjectKind.allCases.filter { $0.category == .routine } == [.procedure, .function])
-        #expect(SidebarObjectKind.allCases.filter { $0.category == .trigger } == [.trigger])
-        #expect(SidebarObjectKind.allCases.filter { $0.category == .type } == [.type])
+        #expect(SidebarObjectKind.builtIn.filter { $0.category == .routine } == [.procedure, .function])
+        #expect(SidebarObjectKind.builtIn.filter { $0.category == .trigger } == [.trigger])
+        #expect(SidebarObjectKind.builtIn.filter { $0.category == .type } == [.type])
         #expect(
-            SidebarObjectKind.allCases.filter { $0.category == .table }
+            SidebarObjectKind.builtIn.filter { $0.category == .table }
                 == [.table, .view, .materializedView, .foreignTable, .sequence]
         )
+        #expect(!SidebarObjectKind.builtIn.contains { $0.category == .server })
+        #expect(SidebarObjectKind.server(events).category == .server)
+    }
+
+    private let events = SidebarServerObjectKind(
+        id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+    )
+    private let extensions = SidebarServerObjectKind(
+        id: "extension", displayName: "Extension", pluralDisplayName: "Extensions", iconName: "puzzlepiece.extension",
+        scope: .database
+    )
+
+    /// UserDefaults keys, the tree expansion JSON and node ids all spell these, so they never move.
+    @Test("A built-in kind persists under the name it shipped with")
+    func builtInPersistenceNamesAreShipped() {
+        #expect(SidebarObjectKind.builtIn.map { $0.persistenceName } == [
+            "table", "view", "materializedView", "foreignTable", "sequence", "procedure", "function", "trigger", "type",
+        ])
+        for kind in SidebarObjectKind.builtIn {
+            #expect(SidebarObjectKind(persistenceName: kind.persistenceName) == kind)
+        }
+    }
+
+    @Test("A declared kind persists by its id and decodes without the driver that declared it")
+    func declaredKindRoundTripsByIdAlone() {
+        let kind = SidebarObjectKind.server(events)
+        #expect(kind.persistenceName == "server.event")
+        let decoded = SidebarObjectKind(persistenceName: "server.event")
+        #expect(decoded == kind)
+        #expect(decoded?.hashValue == kind.hashValue)
+        #expect(decoded?.serverKind?.id == "event")
+    }
+
+    @Test("An unknown or empty name decodes to nothing")
+    func unknownPersistenceNameIsSkipped() {
+        #expect(SidebarObjectKind(persistenceName: "dictionary") == nil)
+        #expect(SidebarObjectKind(persistenceName: "server.") == nil)
+        #expect(SidebarObjectKind(persistenceName: "") == nil)
+    }
+
+    @Test("Declared kinds follow the built-ins, in the order the driver declared them")
+    func declaredKindsFollowBuiltIns() {
+        let ordered = SidebarObjectKind.ordered(declared: [events, extensions])
+        #expect(Array(ordered.prefix(SidebarObjectKind.builtIn.count)) == SidebarObjectKind.builtIn)
+        #expect(Array(ordered.suffix(2)) == [.server(events), .server(extensions)])
+    }
+
+    @Test("A declared kind is listed only for its rows or a kept failure, never for being declared")
+    func declaredKindVisibility() {
+        let counted: [SidebarObjectKind: Int] = [.trigger: 1, .server(SidebarServerObjectKind(id: "event")): 2]
+        #expect(
+            SidebarObjectKind.visible(itemCounts: counted, declared: [events, extensions])
+                == [.trigger, .server(events)]
+        )
+        #expect(
+            SidebarObjectKind.visible(itemCounts: [:], keeping: [.server(extensions)], declared: [events, extensions])
+                == [.server(extensions)]
+        )
+        #expect(SidebarObjectKind.visible(itemCounts: counted).isEmpty == false)
+        #expect(SidebarObjectKind.visible(itemCounts: counted) == [.trigger])
+    }
+
+    @Test("A declared kind reads its names and symbol from the driver's descriptor")
+    func declaredKindDisplay() {
+        let kind = SidebarObjectKind.server(extensions)
+        #expect(kind.displayName == "Extension")
+        #expect(kind.pluralDisplayName == "Extensions")
+        #expect(kind.iconName == "puzzlepiece.extension")
+        #expect(kind.title(tableEntityName: "Collections") == "Extensions")
+        #expect(!kind.isExpandedByDefault)
     }
 }

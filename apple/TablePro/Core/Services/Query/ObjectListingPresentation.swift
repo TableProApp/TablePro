@@ -500,7 +500,7 @@ extension ObjectListingItem {
     var iconKind: ObjectIconKind {
         switch self {
         case .relation(_, _, let type): return .relation(type)
-        case .sourced(let ref): return ObjectIconKind(ref.kind.sidebarObjectKind)
+        case .sourced(let ref): return ref.kind.sidebarObjectKind.map(ObjectIconKind.init) ?? ObjectIconKind(ref)
         }
     }
 }

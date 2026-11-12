@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - Table Node
 
-struct ERTableNode: Identifiable, Sendable {
+struct ERTableNode: Identifiable, Equatable, Sendable {
     let id: UUID
     let tableName: String
     let columns: [ERColumnDisplay]
@@ -12,7 +12,7 @@ struct ERTableNode: Identifiable, Sendable {
     var isJunctionTable: Bool = false
 }
 
-struct ERColumnDisplay: Identifiable, Sendable {
+struct ERColumnDisplay: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let dataType: String
@@ -38,7 +38,7 @@ enum ERCardinality: Sendable {
     case manyToMany
 }
 
-struct EREdge: Identifiable, Sendable {
+struct EREdge: Identifiable, Equatable, Sendable {
     let id: UUID
     let fkName: String
     let fromTable: String

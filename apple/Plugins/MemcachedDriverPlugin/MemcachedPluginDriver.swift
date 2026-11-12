@@ -23,8 +23,9 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var keySource: MemcachedKeySource = .metadump
     private var queryTimeout = 0
     private var shownExpiries: [String: MemcachedKnownExpiry] = [:]
+    private var shownItems: [String: MemcachedLoadedItem] = [:]
     private var serverClockOffset: Int64 = 0
-    private static let shownExpiryLimit = 100_000
+    private static let shownKeyLimit = 100_000
 
     init(config: DriverConnectionConfig) {
         tunneledServerName = config.tunneledServerName
@@ -159,7 +160,11 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if case .metadump = command {
             return try await metadumpResult(command, started: started)
         }
-        switch try await connection.send(command) {
+        let reply = try await connection.send(command)
+        if case .status(let line) = reply, let refusal = MemcachedCASRefusal(replyTo: command, status: line) {
+            throw MemcachedError.compareAndSwap(refusal)
+        }
+        switch reply {
         case .values(let values):
             let withCAS: Bool
             switch command {
@@ -222,7 +227,10 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func browse(_ spec: MemcachedBrowseSpec, started: Date) async throws -> PluginQueryResult {
         let connection = try liveConnection()
         let page = try await browsePage(spec, on: connection)
-        let rows = try await rows(of: page.entries, serverTime: page.serverTime, on: connection)
+        let keys = page.entries.map(\.key)
+        let values = try await values(of: keys, on: connection)
+        rememberLoadedItems(of: keys, values: values)
+        let rows = rows(of: page.entries, values: values, serverTime: page.serverTime)
         return result(
             columns: MemcachedColumn.allCases.map(\.rawValue),
             types: MemcachedColumn.allCases.map(\.typeName),
@@ -238,37 +246,54 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             serverClockOffset = MemcachedServerClock.offset(
                 serverTime: serverTime, localTime: Int64(Date().timeIntervalSince1970)
             )
-            if shownExpiries.count + page.count > Self.shownExpiryLimit { shownExpiries.removeAll() }
+            if shownExpiries.count + page.count > Self.shownKeyLimit { shownExpiries.removeAll() }
             for entry in page { shownExpiries[entry.key] = MemcachedKnownExpiry(expiresAt: entry.expiresAt) }
         }
         return BrowsePage(entries: page, serverTime: serverTime, isCut: listing.isCut)
     }
 
-    // A key removed since the listing has no value and no row.
-    private func rows(
-        of entries: some Collection<MemcachedKeyEntry>,
-        serverTime: Int64,
-        on connection: MemcachedConnection
-    ) async throws -> [PluginRow] {
+    // `gets`, so each value comes with the unique a `cas` needs to write it back.
+    private func values(of keys: [String], on connection: MemcachedConnection) async throws -> [String: MemcachedValue] {
         var values: [String: MemcachedValue] = [:]
-        let keys = entries.map(\.key)
         var start = keys.startIndex
         while start < keys.endIndex {
             try Task.checkCancellation()
             let end = min(start + Self.valuesPerRequest, keys.endIndex)
-            if case .values(let read) = try await connection.send(.get(keys: Array(keys[start ..< end]), withCAS: false)) {
+            if case .values(let read) = try await connection.send(.get(keys: Array(keys[start ..< end]), withCAS: true)) {
                 for value in read { values[value.key] = value }
             }
             start = end
         }
-        return entries.compactMap { entry in
+        return values
+    }
+
+    // A key removed since the listing has no value and no row.
+    private func rows(
+        of entries: some Collection<MemcachedKeyEntry>,
+        values: [String: MemcachedValue],
+        serverTime: Int64
+    ) -> [PluginRow] {
+        entries.compactMap { entry in
             guard let value = values[entry.key] else { return nil }
             return [
                 .text(entry.key),
                 Self.cell(value.data),
                 PluginCellValue.fromOptional(entry.secondsLeft(at: serverTime).map(String.init)),
-                .text(String(value.flags)),
+                Self.flagsCell(value.flags),
             ]
+        }
+    }
+
+    private func rememberLoadedItems(of keys: [String], values: [String: MemcachedValue]) {
+        lock.withLock {
+            if shownItems.count + keys.count > Self.shownKeyLimit { shownItems.removeAll() }
+            for key in keys {
+                shownItems[key] = values[key].flatMap { value in
+                    value.unique.map {
+                        MemcachedLoadedItem(unique: $0, flags: Self.flagsCell(value.flags), value: Self.cell(value.data))
+                    }
+                }
+            }
         }
     }
 
@@ -346,7 +371,9 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             while start < page.entries.endIndex {
                 try Task.checkCancellation()
                 let end = min(start + Self.rowsPerStreamBatch, page.entries.endIndex)
-                let rows = try await self.rows(of: page.entries[start ..< end], serverTime: page.serverTime, on: connection)
+                let batch = page.entries[start ..< end]
+                let values = try await self.values(of: batch.map(\.key), on: connection)
+                let rows = self.rows(of: batch, values: values, serverTime: page.serverTime)
                 if !rows.isEmpty { continuation.yield(.rows(rows)) }
                 start = end
             }
@@ -507,12 +534,12 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
         if let refusal = PluginRowWriteRefusal.columnDefaultsUnsupported(in: changes) { throw refusal }
-        let offset = lock.withLock { serverClockOffset }
-        let expiries = lock.withLock { shownExpiries }
+        let (offset, expiries, items) = lock.withLock { (serverClockOffset, shownExpiries, shownItems) }
         let generator = MemcachedStatementGenerator(
             columns: columns,
             now: { MemcachedServerClock.serverTime(localTime: Int64(Date().timeIntervalSince1970), offset: offset) },
-            knownExpiry: { expiries[$0] }
+            knownExpiry: { expiries[$0] },
+            loadedItem: { items[$0] }
         )
         return try generator.generateRowWrites(
             from: changes,
@@ -524,8 +551,14 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Helpers
 
+    // String(data:encoding:) drops a leading byte order mark, and a save that carries the value forward would too.
     private static func cell(_ data: Data) -> PluginCellValue {
-        String(data: data, encoding: .utf8).map(PluginCellValue.text) ?? .bytes(data)
+        let text = String(decoding: data, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+        return text.utf8.elementsEqual(data) ? .text(text) : .bytes(data)
+    }
+
+    private static func flagsCell(_ flags: UInt32) -> PluginCellValue {
+        .text(String(flags))
     }
 
     private func result(

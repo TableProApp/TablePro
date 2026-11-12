@@ -2,9 +2,6 @@
 //  EditorEventRouter.swift
 //  TablePro
 //
-//  Registry of the live SQL editors, used to dispatch window-scoped commands
-//  to the editor in the key window.
-//
 
 @preconcurrency import AppKit
 import TableProEditorKit
@@ -81,9 +78,7 @@ internal final class EditorEventRouter {
 
     // MARK: - Public API
 
-    /// Whether the key window has a SQL editor a find can fall back to. A focused editor answers the
-    /// Find commands itself through the responder chain, so this only decides whether the window's
-    /// last-resort handler has anything to search once nothing nearer has claimed them.
+    // A focused editor answers Find itself, so this decides only whether the window's fallback has anything to search.
     internal var keyWindowHasEditor: Bool {
         editor(for: NSApp.keyWindow) != nil
     }
@@ -98,8 +93,6 @@ internal final class EditorEventRouter {
         coordinator.showFindAndReplacePanel()
     }
 
-    /// Whether the key window's editor has a selection to search for, so the menu can disable
-    /// Use Selection for Find rather than offering a command that would do nothing.
     internal var keyWindowEditorHasSelectionForFind: Bool {
         editor(for: NSApp.keyWindow)?.0.hasSelectionForFind ?? false
     }
@@ -155,10 +148,7 @@ internal final class EditorEventRouter {
         coordinator.moveCursorToStatement(direction)
     }
 
-    /// Runs the statement the caret is in and advances, entirely inside the editor this resolves to.
-    ///
-    /// Handing the SQL back for someone else to execute would let the text and the connection come from two different
-    /// editors, which a window hosting more than one connection can genuinely do.
+    // Inside the one editor, so the text and the connection cannot come from two editors in a multi-connection window.
     internal func runStatementAtCursorAndAdvanceForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.runStatementAtCursorAndAdvance()
@@ -188,16 +178,18 @@ internal final class EditorEventRouter {
         }
     }
 
-    /// Called when the Edit menu's "Clear Selection" item is chosen with the pointer.
-    ///
-    /// Only with the pointer. AppKit never dispatches an unmodified Escape as a key equivalent:
-    /// measured on macOS 26, `NSMenu.performKeyEquivalent` is not called at all for key code 53,
-    /// which instead reaches `keyDown:` and `cancelOperation(_:)` through the responder chain, as
-    /// `StandardKeyBinding.dict` maps 0x1B to. The item carries no Escape key equivalent anyway,
-    /// because `KeyboardSettings.menuKeyEquivalent(for:)` refuses a bare key. Routes the command to
-    /// the key window's editor so it can dismiss its completion popup, hand the escape to Vim, and
-    /// restore first responder. Returns whether the editor consumed it so the caller skips its
-    /// cancelOperation fallback (the data grid's Clear Selection).
+    // False when the tab has no mounted editor, or it refused the edit: the caller writes the tab instead.
+    internal func replaceText(forTab tabId: UUID, connectionId: UUID, in range: NSRange, with string: String) -> Bool {
+        for ref in editors.values {
+            guard let coordinator = ref.coordinator, let controller = coordinator.controller,
+                  coordinator.tabID == tabId, coordinator.connectionId == connectionId else { continue }
+            if controller.replaceTextAsOneEdit(in: range, with: string) { return true }
+        }
+        return false
+    }
+
+    // Clear Selection chosen with the pointer: AppKit never sends a bare Escape as a key equivalent (measured, macOS 26).
+    // True when the editor consumed it, so the caller skips the grid's fallback.
     @discardableResult
     internal func handleEscapeFromMenu() -> Bool {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return false }
@@ -206,10 +198,8 @@ internal final class EditorEventRouter {
 
     // MARK: - Lookup
 
-    /// Window-scoped on purpose: every caller is a command the window's front content owns rather than
-    /// whatever holds first responder, and the escape and find routes exist precisely because focus is
-    /// somewhere else. A tab switch can leave the outgoing editor registered for a moment, and the
-    /// dictionary has no order, so the focused editor wins before the remaining candidate is used.
+    // Window-scoped: these routes exist because focus is elsewhere. A switch can leave the outgoing editor registered,
+    // so the focused one wins.
     private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {
         guard let window else { return nil }
         var unfocused: (SQLEditorCoordinator, TextView)?

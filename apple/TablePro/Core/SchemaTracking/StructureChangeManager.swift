@@ -589,6 +589,13 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         }
 
         for fk in workingForeignKeys where isStaged(.foreignKey(fk.id)) && fk.isValid {
+            // Create Table refuses this too; otherwise the server does, after a MySQL save's earlier DDL already applied.
+            guard fk.columns.count == fk.referencedColumns.count else {
+                validationErrors[.foreignKey(fk.id)] = String(
+                    localized: "A foreign key needs as many referenced columns as it has columns."
+                )
+                continue
+            }
             for columnName in fk.columns where !namesAColumn(columnName, in: columnNames) {
                 validationErrors[.foreignKey(fk.id)] = String(
                     format: String(localized: "Foreign key references a column that does not exist: %@"), columnName

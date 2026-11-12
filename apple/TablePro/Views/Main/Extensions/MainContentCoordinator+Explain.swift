@@ -120,6 +120,7 @@ extension MainContentCoordinator {
         tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = nil }
 
         // EXPLAIN ANALYZE and an actual plan run the statement, and a CREATE TABLE AS among them changes the catalog.
+        // Under Manual Commit such a run is held, as the write itself would be.
         let ranWrite = request.operationKind(databaseType: conn.type).declaresWrite
         let failureOutput = ServerOutputBox()
         let explainTask = Task { [weak self] in
@@ -129,16 +130,18 @@ extension MainContentCoordinator {
                     scope: scope,
                     route: services.databaseManager.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
-                ) { [queryExecutor] driver in
-                    try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) { () async throws -> QueryFetchResult in
-                        if let step = request.driverStep {
-                            return try await QueryExecutor.fetchExplainPlan(
-                                driver: driver, statement: request.subjectSQL, variantId: step.variantId
+                ) { [queryExecutor, held = manualCommitRun(skipped: !ranWrite)] driver in
+                    try await held.running([request.gatedSQL(databaseType: conn.type)], on: driver) {
+                        try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) { () async throws -> QueryFetchResult in
+                            if let step = request.driverStep {
+                                return try await QueryExecutor.fetchExplainPlan(
+                                    driver: driver, statement: request.subjectSQL, variantId: step.variantId
+                                )
+                            }
+                            return try await queryExecutor.executeQuery(
+                                driver: driver, sql: request.sql, parameters: nil, rowCap: nil
                             )
                         }
-                        return try await queryExecutor.executeQuery(
-                            driver: driver, sql: request.sql, parameters: nil, rowCap: nil
-                        )
                     }
                 }
                 if ranWrite { Self.postStatementRan(request.subjectSQL, on: conn) }
@@ -204,9 +207,7 @@ extension MainContentCoordinator {
                                 serverOutput: fetchResult.serverOutput
                             )]
                         )
-                        if tab.display.isResultsCollapsed {
-                            tab.display.isResultsCollapsed = false
-                        }
+                        if tab.display.isResultsCollapsed { tab.display.isResultsCollapsed = false }
                     }
                     seedBufferFromActiveResult(tabId: tabId)
                     dropParkedEdits(ofBackgroundTab: tabId)

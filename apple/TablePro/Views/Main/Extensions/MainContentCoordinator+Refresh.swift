@@ -2,8 +2,6 @@
 //  MainContentCoordinator+Refresh.swift
 //  TablePro
 //
-//  Refresh handling operations for MainContentCoordinator
-//
 
 import AppKit
 import Combine
@@ -102,5 +100,7 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIndex) { $0.pagination.retireDerivedRowCount() }
         rebuildTableQuery(at: tabIndex)
         runQuery(viewport: .keepPlace)
+        // The next tick counts from this load settling, not from the last one.
+        restartAutoRefresh()
     }
 }

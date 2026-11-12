@@ -144,6 +144,8 @@ struct DatabaseTreeRowView: View {
             TriggerRowView(trigger: ref.trigger, listedUnderTable: ref.listedUnderTable)
         case .userType(let ref):
             UserTypeRowView(type: ref.type)
+        case .serverObject(let ref):
+            ServerObjectRowView(object: ref.object, kind: ref.kind)
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):

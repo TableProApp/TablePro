@@ -75,6 +75,35 @@ struct GridSelectionSnapshot: Equatable {
         return remapped.rowIDs.isEmpty && remapped.rectangles.isEmpty ? .empty : remapped
     }
 
+    var namedRowIDs: Set<RowID> {
+        var named = Set(rowIDs)
+        for rectangle in rectangles { named.formUnion(rectangle.rowIDs) }
+        if let activeCell { named.insert(activeCell.rowID) }
+        if let anchor { named.insert(anchor.rowID) }
+        return named
+    }
+
+    // A row the transform cannot place leaves, and a cell on it goes with it; the mode and columns stay.
+    func mappingRows(_ transform: (RowID) -> RowID?) -> GridSelectionSnapshot {
+        func cell(_ cell: Cell?) -> Cell? {
+            guard let cell, let rowID = transform(cell.rowID) else { return nil }
+            return Cell(rowID: rowID, columnID: cell.columnID)
+        }
+        var mapped = GridSelectionSnapshot(
+            rowIDs: rowIDs.compactMap(transform),
+            rectangles: rectangles.compactMap { rectangle in
+                let rows = rectangle.rowIDs.compactMap(transform)
+                return rows.isEmpty ? nil : Rectangle(rowIDs: rows, columnIDs: rectangle.columnIDs)
+            },
+            activeCell: cell(activeCell),
+            anchor: cell(anchor)
+        )
+        guard !mapped.isEmpty else { return .empty }
+        mapped.pickedColumnIDs = pickedColumnIDs
+        mapped.mode = mode
+        return mapped
+    }
+
     func resolved(order: DataGridRowOrder, rows: TableRows, columns: DataGridColumnSet) -> GridSelection {
         func coord(_ cell: Cell?) -> GridCoord? {
             guard let cell,

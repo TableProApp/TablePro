@@ -156,6 +156,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     static let postDisconnectScriptKey = "postDisconnectScript"
     static let scriptTimeoutSecondsKey = "scriptTimeoutSeconds"
     static let completionIdentifierCaseKey = "completionIdentifierCase"
+    static let commitModeKey = "commitMode"
     static let binaryInlineLimitKilobytesKey = "binaryInlineLimitKB"
     static let binaryInlineLimitKilobytesRange = 1 ... 1_048_576
 
@@ -350,6 +351,19 @@ struct DatabaseConnection: Identifiable, Hashable {
                 additionalFields.removeValue(forKey: Self.completionIdentifierCaseKey)
             } else {
                 additionalFields[Self.completionIdentifierCaseKey] = newValue.rawValue
+            }
+        }
+    }
+
+    var commitMode: ConnectionCommitMode {
+        get {
+            additionalFields[Self.commitModeKey].flatMap(ConnectionCommitMode.init(rawValue:)) ?? .automatic
+        }
+        set {
+            if newValue == .automatic {
+                additionalFields.removeValue(forKey: Self.commitModeKey)
+            } else {
+                additionalFields[Self.commitModeKey] = newValue.rawValue
             }
         }
     }

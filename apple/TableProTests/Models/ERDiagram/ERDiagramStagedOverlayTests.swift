@@ -85,6 +85,26 @@ struct ERDiagramStagedOverlayTests {
         #expect(dropped.id == saved.id)
     }
 
+    @Test("A staged composite key draws one edge per column pair, each marked added")
+    func stagedCompositeKeyDrawsEachPair() {
+        let graph = savedGraph()
+        let orders = manager(for: "orders", in: graph)
+        var foreignKey = EditableForeignKeyDefinition.placeholder()
+        foreignKey.name = "fk_orders_customer"
+        foreignKey.columns = ["customer_id", "shipper_id"]
+        foreignKey.referencedTable = "customers"
+        foreignKey.referencedColumns = ["id", "email"]
+        orders.addForeignKey(foreignKey)
+
+        let overlaid = ERDiagramStagedOverlay.apply(
+            ["orders": ERDiagramStagedOverlay.TableEdits(orders)], to: graph
+        )
+
+        let edges = overlaid.edges.filter { $0.fkName == "fk_orders_customer" }
+        #expect(edges.map { "\($0.fromColumn)->\($0.toColumn)" } == ["customer_id->id", "shipper_id->email"])
+        #expect(edges.allSatisfy { $0.stagedEdit == .added && $0.toTable == "customers" })
+    }
+
     @Test("Added, renamed and dropped columns are marked on their table")
     func stagedColumnsAreMarked() throws {
         let graph = savedGraph()

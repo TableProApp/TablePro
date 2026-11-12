@@ -101,6 +101,7 @@ extension DatabaseTreeOutlineCoordinator {
                     restoreObjectGroupExpansion(under: schemaNode)
                 }
             }
+            restoreObjectGroupExpansion(under: databaseNode)
         }
     }
 
@@ -170,7 +171,7 @@ extension DatabaseTreeOutlineCoordinator {
                 readOpenDetailRows(under: node)
             case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable,
                  .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
-                 .database, .schema, .tableDetail, .routine, .trigger, .userType, .status, .objectKindSection,
+                 .database, .schema, .tableDetail, .routine, .trigger, .userType, .serverObject, .status, .objectKindSection,
                  .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
                 continue
             }
@@ -225,9 +226,7 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
-    /// The cascade only re-asserts disclosure the store already holds, so it runs behind the flag
-    /// `applyDesiredExpansion` uses. Recording each row it opens rewrote the whole expansion
-    /// snapshot to `UserDefaults`, and re-entered this restore once per row.
+    // Behind the `applyDesiredExpansion` flag: recording each row rewrote the expansion snapshot and re-entered this.
     internal func restoreDescendantExpansion(afterExpanding node: DatabaseTreeNode) {
         let wasApplyingExpansion = isApplyingExpansion
         isApplyingExpansion = true
@@ -238,16 +237,15 @@ extension DatabaseTreeOutlineCoordinator {
             applyShapeExpansion(roots: resolvedChildren(of: ownConnection))
         case .savedConnection(let ref) where ref.ownsTree:
             applyShapeExpansion(roots: resolvedChildren(of: node))
-        case .database where !supportsSchemaLevel:
-            restoreObjectGroupExpansion(under: node)
-        case .schema, .hierarchicalSchemaSection:
+        // A schema engine's database holds its `.database` kind groups beside the schemas.
+        case .database, .schema, .hierarchicalSchemaSection:
             restoreObjectGroupExpansion(under: node)
         case .foldersSection:
             restoreFolderExpansion(under: node)
         case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition, .tableDetailGroup:
             restoreTableExpansion(under: node)
         case .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection,
-             .temporaryTable, .database, .routine, .trigger, .userType, .status, .redisKeysSection, .redisNode,
+             .temporaryTable, .routine, .trigger, .userType, .serverObject, .status, .redisKeysSection, .redisNode,
              .tableDetail:
             break
         }
@@ -320,7 +318,7 @@ extension DatabaseTreeOutlineCoordinator {
             } else {
                 windowState?.expandedTreeTableDetailGroups.remove(group.expansionKey)
             }
-        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode,
+        case .recentTable, .favoriteTable, .temporaryTable, .routine, .trigger, .userType, .serverObject, .status, .redisNode,
              .tableDetail:
             break
         }
@@ -333,6 +331,7 @@ extension DatabaseTreeOutlineCoordinator {
                 if service.schemaListNeedsFetch(connectionId: connectionId, database: metadata.name) {
                     Task { await service.loadSchemas(connectionId: connectionId, database: metadata.name) }
                 }
+                loadDatabaseServerObjects(database: metadata.name)
                 loadExternalSchemaNames(database: metadata.name)
             } else {
                 loadObjects(database: metadata.name, schema: nil)
@@ -357,10 +356,16 @@ extension DatabaseTreeOutlineCoordinator {
             loadHierarchicalSchemaObjects(schema)
         case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable,
              .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
-             .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
+             .routine, .trigger, .userType, .serverObject, .status, .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode, .tableDetail:
             break
         }
+    }
+
+    private func loadDatabaseServerObjects(database: String) {
+        guard service.serverObjectsNeedFetch(connectionId: connectionId, database: database, schema: nil) else { return }
+        let connectionId = connectionId
+        Task { await service.loadServerObjects(connectionId: connectionId, database: database, schema: nil) }
     }
 
     /// A schema the user has open keeps reading the lists a change overtook while a search runs; one

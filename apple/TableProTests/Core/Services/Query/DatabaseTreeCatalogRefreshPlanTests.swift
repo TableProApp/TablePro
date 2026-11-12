@@ -255,4 +255,74 @@ struct DatabaseTreeCatalogRefreshPlanTests {
         #expect(routinePlan.tableDetails.isEmpty)
         #expect(routinePlan.isEmpty)
     }
+
+    private typealias ServerObjectsKey = DatabaseTreeMetadataService.ServerObjectsKey
+
+    private func serverObjectPlan(_ change: CatalogChange, keys: [ServerObjectsKey]) -> CatalogTreeRefreshPlan {
+        DatabaseTreeMetadataService.catalogRefreshPlan(
+            for: change,
+            hasDatabaseList: false,
+            schemaListKeys: [],
+            tableKeys: [],
+            routineKeys: [],
+            triggerKeys: [],
+            typeKeys: [],
+            serverObjectKeys: keys
+        )
+    }
+
+    @Test("An event change marks the container's events stale and leaves another database current")
+    func eventChangeReachesItsContainer() {
+        let shopEvents = ServerObjectsKey(connectionId: connectionId, database: "shop", schema: nil, kindId: "event")
+        let warehouseEvents = ServerObjectsKey(connectionId: connectionId, database: "warehouse", schema: nil, kindId: "event")
+        let otherConnection = ServerObjectsKey(connectionId: UUID(), database: "shop", schema: nil, kindId: "event")
+
+        let result = serverObjectPlan(
+            CatalogChange(connectionId: connectionId, database: "shop", kinds: [.triggers, .serverObjects]),
+            keys: [shopEvents, warehouseEvents, otherConnection]
+        )
+
+        #expect(result.serverObjects == [shopEvents])
+        #expect(!result.isEmpty)
+    }
+
+    @Test("A database-wide list is reached by a change made in any of its schemas")
+    func databaseScopedListIsReachedFromASchema() {
+        let extensions = ServerObjectsKey(connectionId: connectionId, database: "app", schema: nil, kindId: "extension")
+        let auditEvents = ServerObjectsKey(connectionId: connectionId, database: "app", schema: "audit", kindId: "event")
+
+        let result = serverObjectPlan(
+            CatalogChange(connectionId: connectionId, database: "app", schema: "public", kinds: .objects),
+            keys: [extensions, auditEvents]
+        )
+
+        #expect(result.serverObjects == [extensions])
+    }
+
+    @Test("A container lists the declared kinds of its own level")
+    func serverKindsFollowTheContainerLevel() {
+        let events = SidebarServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+        )
+        let extensions = SidebarServerObjectKind(
+            id: "extension", displayName: "Extension", pluralDisplayName: "Extensions", iconName: "puzzlepiece.extension",
+            scope: .database
+        )
+        let declared = [events, extensions]
+
+        #expect(DatabaseTreeMetadataService.serverKinds(declared: declared, schema: "public", listsTablesPerSchema: true) == [events])
+        #expect(DatabaseTreeMetadataService.serverKinds(declared: declared, schema: nil, listsTablesPerSchema: true) == [extensions])
+        #expect(DatabaseTreeMetadataService.serverKinds(declared: declared, schema: nil, listsTablesPerSchema: false) == declared)
+        #expect(DatabaseTreeMetadataService.serverKinds(declared: declared, schema: "", listsTablesPerSchema: true) == [extensions])
+    }
+
+    @Test("A change that names no server object kind leaves those lists current")
+    func unrelatedChangeLeavesServerObjects() {
+        let shopEvents = ServerObjectsKey(connectionId: connectionId, database: "shop", schema: nil, kindId: "event")
+
+        let result = serverObjectPlan(CatalogChange(connectionId: connectionId, database: "shop", kinds: .tables), keys: [shopEvents])
+
+        #expect(result.serverObjects.isEmpty)
+        #expect(result.isEmpty)
+    }
 }

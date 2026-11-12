@@ -63,6 +63,8 @@ final class DatabaseTreeCellView: RenamableSidebarCellView<DatabaseTreeRowView> 
             return .symbol("folder")
         case .savedConnection:
             return .symbol("server.rack")
+        case .serverObject(let ref):
+            return .symbol(ref.kind.iconName)
         case .routine, .trigger, .userType, .status, .recentSection, .favoritesSection, .temporarySection,
              .foldersSection,
              .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode,

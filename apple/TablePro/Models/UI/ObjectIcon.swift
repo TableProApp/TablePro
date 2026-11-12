@@ -35,6 +35,8 @@ internal enum ObjectIconKind: Hashable, Sendable {
     case foreignKey
     case checkConstraint
     case tableDetailGroup(TableDetailGroupKind)
+    // A kind a driver declares, drawn with the symbol it names.
+    case serverObject(String)
 
     /// The kind a section, an Objects tab or a menu of one kind of object stands for.
     internal init(_ kind: SidebarObjectKind) {
@@ -48,6 +50,7 @@ internal enum ObjectIconKind: Hashable, Sendable {
         case .function: self = .routine(.function)
         case .trigger: self = .trigger
         case .type: self = .userType(.other)
+        case .server(let kind): self = .serverObject(kind.iconName)
         }
     }
 
@@ -59,6 +62,7 @@ internal enum ObjectIconKind: Hashable, Sendable {
         case .userType: self = .userType(ref.typeKind ?? .other)
         case .view: self = .relation(.view)
         case .materializedView: self = .relation(.materializedView)
+        case .serverObject: self = .serverObject(ref.serverKind?.iconName ?? ref.kind.iconName)
         }
     }
 
@@ -167,6 +171,7 @@ internal enum ObjectIconProvider {
         case .checkConstraint: return "checkmark.shield"
         case .tableDetailGroup(.columns): return "tablecells"
         case .tableDetailGroup(let group): return standardSymbolName(for: Self.detailKind(of: group))
+        case .serverObject(let symbolName): return symbolName
         }
     }
 
@@ -199,6 +204,7 @@ internal enum ObjectIconProvider {
         // A group under a table is drawn like a section: a folder in the hue of what it holds.
         case .tableDetailGroup(let group):
             return ObjectIcon(symbolName: "folder.fill", tint: colorfulIcon(for: Self.detailKind(of: group)).tint)
+        case .serverObject(let symbolName): return ObjectIcon(symbolName: symbolName, tint: .gray)
         }
     }
 

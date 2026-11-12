@@ -115,7 +115,7 @@ struct ObjectIconProviderTests {
         kinds += TableInfo.TableType.allCases.map { .relation($0) }
         kinds += RoutineInfo.Kind.allCases.map { .routine($0) }
         kinds += UserDefinedTypeInfo.Kind.allCases.map { .userType($0) }
-        kinds += SidebarObjectKind.allCases.map { .section($0) }
+        kinds += SidebarObjectKind.builtIn.map { .section($0) }
         kinds += TableDetailGroupKind.allCases.map { .tableDetailGroup($0) }
         return kinds
     }
@@ -153,7 +153,7 @@ struct ObjectIconProviderTests {
 
     @Test("A section folder wears the hue of the objects it holds")
     func sectionsTakeTheirKindsHue() {
-        for kind in SidebarObjectKind.allCases {
+        for kind in SidebarObjectKind.builtIn {
             let section = ObjectIconProvider.icon(for: .section(kind), style: .colorful)
             let object = ObjectIconProvider.icon(for: ObjectIconKind(kind), style: .colorful)
             #expect(section.symbolName == "folder.fill")

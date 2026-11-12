@@ -13,7 +13,7 @@ import TableProPluginKit
 /// its children. Either way an object sits in one row only, so a filed table is drawn inside its
 /// folder and left out of its kind section.
 extension DatabaseTreeOutlineCoordinator {
-    internal static let tableKinds = SidebarObjectKind.allCases.filter { $0.category == .table }
+    internal static let tableKinds = SidebarObjectKind.builtIn.filter { $0.category == .table }
 
     internal func folderScope(for container: TableFolderContainer) -> DatabaseScope? {
         switch container {

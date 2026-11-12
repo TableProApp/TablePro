@@ -19,7 +19,7 @@ internal enum DatabaseTreeSelection {
              .redisKeysSection:
             return false
         case .connectionGroup, .savedConnection, .database, .schema, .hierarchicalSchemaSection, .table, .partition,
-             .routine, .trigger, .userType, .recentTable, .favoriteTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode,
+             .routine, .trigger, .userType, .serverObject, .recentTable, .favoriteTable, .temporaryTable, .containerObjectKindSection, .tableFolder, .redisNode,
              .tableDetailGroup, .tableDetail:
             return true
         }
@@ -85,7 +85,7 @@ internal enum DatabaseTreeSelection {
         case .containerObjectKindSection(let group):
             return group
         case .connectionGroup, .savedConnection, .recentSection, .recentTable, .favoritesSection, .favoriteTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
-             .table, .partition, .tableDetailGroup, .tableDetail, .routine, .trigger, .userType, .status,
+             .table, .partition, .tableDetailGroup, .tableDetail, .routine, .trigger, .userType, .serverObject, .status,
              .objectKindSection, .redisKeysSection, .redisNode:
             return nil
         }

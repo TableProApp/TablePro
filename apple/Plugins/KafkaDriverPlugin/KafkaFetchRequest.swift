@@ -9,6 +9,13 @@ struct KafkaFetchResult: Sendable {
     /// return more. Distinguishing this from "the partition ended" is what keeps a page from
     /// silently stopping early.
     let truncated: Bool
+    // Where the next read starts, past control, aborted and compacted batches too. For one reply, nil when no batch
+    // came back whole; for a whole fetch, nil only when nothing can follow Int64.max.
+    let nextOffset: Int64?
+    // The replies passed `byteBudget` before the read reached its end, so it returns no records.
+    var stoppedAtByteBudget = false
+    // Record batch bytes the replies carried, aborted and control batches included.
+    var bytesRead = 0
 }
 
 enum KafkaFetchRequest {
@@ -20,39 +27,62 @@ enum KafkaFetchRequest {
     private static let defaultPartitionBudget: Int32 = 1 * 1_024 * 1_024
     private static let maximumPartitionBudget: Int32 = 64 * 1_024 * 1_024
 
-    // Kafka guarantees progress only for the first message in range (KIP-74), so the byte budget grows on an empty reply.
+    // Kafka guarantees progress only for the first message in range (KIP-74), so the byte budget grows on a reply
+    // that held no whole batch. `endOffset` stops the read there, so a tail window never reads past its anchor.
+    // With `keepingNewest` the read runs to `endOffset` and holds only that many of the newest records it passed.
+    // It gives up once the replies carried more than `byteBudget` bytes.
     static func fetch(
         topic: String,
         partition: Int32,
         startOffset: Int64,
         maximumRecords: Int,
+        endOffset: Int64? = nil,
+        keepingNewest: Int? = nil,
+        byteBudget: Int? = nil,
         cluster: KafkaCluster
     ) async throws -> KafkaFetchResult {
         var budget = defaultPartitionBudget
         var collected: [KafkaRecord] = []
         var highWatermark: Int64 = startOffset
-        var offset = startOffset
+        var offset: Int64? = startOffset
         var sawTruncation = false
         var decompression: DecompressionBudget?
+        var bytesRead = 0
 
-        while collected.count < maximumRecords {
+        while keepingNewest != nil || collected.count < maximumRecords, let from = offset {
+            if let endOffset, from >= endOffset { break }
             try Task.checkCancellation()
             let allowance = try KafkaCompression.fetchBudget(requesting: budget, after: decompression)
             let (page, spent) = try await fetchOnce(
                 topic: topic,
                 partition: partition,
-                startOffset: offset,
+                startOffset: from,
                 budget: budget,
                 decompression: allowance,
                 cluster: cluster
             )
             decompression = spent
             highWatermark = page.highWatermark
+            bytesRead += page.bytesRead
+            if let byteBudget, bytesRead > byteBudget {
+                return KafkaFetchResult(
+                    records: [], highWatermark: page.highWatermark, truncated: true, nextOffset: nil,
+                    stoppedAtByteBudget: true, bytesRead: bytesRead
+                )
+            }
 
             if page.records.isEmpty {
-                // Nothing came back but the log says there is more: the next message does not
+                // Commit and abort markers, aborted runs and batches compaction emptied hold offsets but no
+                // records, so a reply of only those is progress, not a message too big for the budget.
+                if let next = page.nextOffset, next > from {
+                    offset = next
+                    budget = defaultPartitionBudget
+                    if next >= page.highWatermark { break }
+                    continue
+                }
+                // No whole batch came back but the log says there is more: the next message does not
                 // fit the budget. Grow it and try once more before giving up on the partition.
-                let hasMore = offset < page.highWatermark
+                let hasMore = from < page.highWatermark
                 if hasMore, budget < maximumPartitionBudget {
                     budget = min(budget * 4, maximumPartitionBudget)
                     continue
@@ -61,18 +91,26 @@ enum KafkaFetchRequest {
                 break
             }
 
-            collected.append(contentsOf: page.records)
-            guard let last = page.records.last, let next = KafkaOffsetMath.offset(after: last.offset) else { break }
-            offset = next
+            let kept = endOffset.map { end in page.records.filter { $0.offset < end } } ?? page.records
+            collected.append(contentsOf: kept)
+            if let keepingNewest, collected.count > keepingNewest {
+                collected.removeFirst(collected.count - keepingNewest)
+            }
+            let afterRecords = page.records.last.flatMap { KafkaOffsetMath.offset(after: $0.offset) }
+            offset = afterRecords.map { max($0, page.nextOffset ?? $0) }
             budget = defaultPartitionBudget
-            if offset >= page.highWatermark { break }
+            if let next = offset, next >= page.highWatermark { break }
         }
 
-        if collected.count > maximumRecords {
+        if keepingNewest == nil, collected.count > maximumRecords {
             collected = Array(collected.prefix(maximumRecords))
             sawTruncation = true
+            offset = collected.last.flatMap { KafkaOffsetMath.offset(after: $0.offset) }
         }
-        return KafkaFetchResult(records: collected, highWatermark: highWatermark, truncated: sawTruncation)
+        return KafkaFetchResult(
+            records: collected, highWatermark: highWatermark, truncated: sawTruncation, nextOffset: offset,
+            bytesRead: bytesRead
+        )
     }
 
     // Returns the decompression budget as the reply left it, so the next page continues from it.
@@ -170,7 +208,7 @@ enum KafkaFetchRequest {
                     if flexible { try partitionReader.taggedFields() }
 
                     guard let blob, !blob.isEmpty else {
-                        return KafkaFetchResult(records: [], highWatermark: highWatermark, truncated: false)
+                        return KafkaFetchResult(records: [], highWatermark: highWatermark, truncated: false, nextOffset: nil)
                     }
                     let decoded = try KafkaRecordBatchDecoder.decode(
                         blob: blob,
@@ -185,7 +223,9 @@ enum KafkaFetchRequest {
                     return KafkaFetchResult(
                         records: trimmed,
                         highWatermark: highWatermark,
-                        truncated: decoded.truncated
+                        truncated: decoded.truncated,
+                        nextOffset: decoded.nextOffset,
+                        bytesRead: blob.count
                     )
                 }
                 if flexible { try reader.taggedFields() }
@@ -193,7 +233,7 @@ enum KafkaFetchRequest {
             }
             // One topic and one partition were requested, so there is one answer.
             let result = topics.flatMap { $0 }.first
-                ?? KafkaFetchResult(records: [], highWatermark: startOffset, truncated: false)
+                ?? KafkaFetchResult(records: [], highWatermark: startOffset, truncated: false, nextOffset: nil)
             return (result, spent)
         }
     }

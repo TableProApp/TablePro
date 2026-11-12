@@ -25,6 +25,14 @@ public enum MemcachedStatements {
         "set \(MemcachedCommandParser.argument(key)) \(flags) \(exptime) \(MemcachedCommandParser.quoted(bytes: bytes))"
     }
 
+    public static func cas(key: String, flags: UInt32, exptime: Int64, unique: UInt64, value: String) -> String {
+        "cas \(MemcachedCommandParser.argument(key)) \(flags) \(exptime) \(unique) \(MemcachedCommandParser.quoted(value))"
+    }
+
+    public static func cas(key: String, flags: UInt32, exptime: Int64, unique: UInt64, bytes: Data) -> String {
+        "cas \(MemcachedCommandParser.argument(key)) \(flags) \(exptime) \(unique) \(MemcachedCommandParser.quoted(bytes: bytes))"
+    }
+
     public static func touch(key: String, exptime: Int64) -> String {
         "touch \(MemcachedCommandParser.argument(key)) \(exptime)"
     }

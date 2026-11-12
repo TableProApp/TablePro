@@ -2,16 +2,20 @@
 //  TabQueryOverflowStore.swift
 //  TablePro
 //
-//  Keeps a query too large to sit inside the tab-state JSON in a sidecar file
-//  beside it, so restoring a tab returns the text instead of an empty editor.
-//  Mirrors the sidecar `RecentlyClosedTabStore` already uses for the same limit.
-//
 
+import CryptoKit
 import Foundation
 import os
 
+// A query too large for the tab-state JSON lives in a sidecar beside it, as in `RecentlyClosedTabStore`.
 internal enum TabQueryOverflowStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TabDiskActor")
+
+    // The sidecars one connection has on disk from this process, so an unchanged query is not rewritten.
+    internal struct WrittenSidecars {
+        var digests: [String: SHA256.Digest] = [:]
+        var keptByLastPrune: Set<String>?
+    }
 
     static func directory(inside tabStateDirectory: URL) -> URL {
         tabStateDirectory.appendingPathComponent("Overflow", isDirectory: true)
@@ -21,34 +25,46 @@ internal enum TabQueryOverflowStore {
         "\(connectionId.uuidString)_\(tabId.uuidString).sql"
     }
 
-    /// Moves any oversized query out to a sidecar and blanks the inline field.
-    /// Sidecars this connection no longer references are removed in the same pass,
-    /// so a closed tab does not leave its text behind forever.
+    // Sidecars the connection no longer references are removed in the same pass, so a closed tab leaves no text behind.
     static func externalize(
         _ tabs: [PersistedTab],
         connectionId: UUID,
-        tabStateDirectory: URL
+        tabStateDirectory: URL,
+        written: inout WrittenSidecars
     ) -> [PersistedTab] {
         let overflowDirectory = directory(inside: tabStateDirectory)
-        var written: Set<String> = []
+        var kept: Set<String> = []
 
         let processed = tabs.map { tab -> PersistedTab in
             guard (tab.query as NSString).length > TabQueryContent.maxPersistableQuerySize else { return tab }
             let name = fileName(connectionId: connectionId, tabId: tab.id)
-            guard write(tab.query, named: name, in: overflowDirectory) else { return tab }
-            written.insert(name)
+            let digest = digest(of: tab.query)
+            let path = overflowDirectory.appendingPathComponent(name).path
+            if written.digests[name] != digest || !FileManager.default.fileExists(atPath: path) {
+                written.digests[name] = nil
+                guard write(tab.query, named: name, in: overflowDirectory) else { return tab }
+                written.digests[name] = digest
+            }
+            kept.insert(name)
             var copy = tab
             copy.query = ""
             copy.overflowFileName = name
             return copy
         }
 
-        pruneOrphans(connectionId: connectionId, keeping: written, in: overflowDirectory)
+        written.digests = written.digests.filter { kept.contains($0.key) }
+        if written.keptByLastPrune != kept {
+            pruneOrphans(connectionId: connectionId, keeping: kept, in: overflowDirectory)
+            written.keptByLastPrune = kept
+        }
         return processed
     }
 
-    /// Reads sidecar text back into the tabs it belongs to.
-    static func inline(_ tabs: [PersistedTab], tabStateDirectory: URL) -> [PersistedTab] {
+    static func inline(
+        _ tabs: [PersistedTab],
+        tabStateDirectory: URL,
+        written: inout WrittenSidecars
+    ) -> [PersistedTab] {
         let overflowDirectory = directory(inside: tabStateDirectory)
         return tabs.map { tab -> PersistedTab in
             guard let name = tab.overflowFileName else { return tab }
@@ -57,10 +73,18 @@ internal enum TabQueryOverflowStore {
                 logger.error("Missing overflow sidecar \(name, privacy: .public)")
                 return tab
             }
+            written.digests[name] = digest(of: text)
             var copy = tab
             copy.query = text
             return copy
         }
+    }
+
+    private static func digest(of query: String) -> SHA256.Digest {
+        if let digest = query.utf8.withContiguousStorageIfAvailable({ SHA256.hash(data: UnsafeRawBufferPointer($0)) }) {
+            return digest
+        }
+        return SHA256.hash(data: Data(query.utf8))
     }
 
     static func removeAll(connectionId: UUID, tabStateDirectory: URL) {

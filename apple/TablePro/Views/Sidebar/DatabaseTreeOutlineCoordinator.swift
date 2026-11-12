@@ -625,7 +625,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
 
     private func refreshDatabase(_ database: String) {
         if supportsSchemaLevel {
-            Task { await service.refreshSchemas(connectionId: connectionId, database: database) }
+            let connectionId = connectionId
+            Task {
+                async let schemas: Void = service.refreshSchemas(connectionId: connectionId, database: database)
+                async let serverObjects: Void = service.refreshServerObjects(
+                    connectionId: connectionId, database: database, schema: nil
+                )
+                _ = await (schemas, serverObjects)
+            }
         } else {
             Task { await service.refreshObjects(connectionId: connectionId, database: database, schema: nil) }
         }
@@ -714,8 +721,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
-    /// A table kind is refreshed as a catalog change, as Cmd+R is, so the partition lists the tree
-    /// holds under the section are marked stale along with the browsed list.
+    // A table kind refreshes as a catalog change, as Cmd+R does, so the partition lists under it go stale too.
     internal func refreshObjectKind(_ kind: SidebarObjectKind) {
         guard let mainCoordinator else { return }
         switch kind {
@@ -728,6 +734,18 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 database: mainCoordinator.browseDatabaseName,
                 kinds: .tables
             )))
+        case .server(let serverKind):
+            let connectionId = connectionId
+            let manager = DatabaseManager.shared
+            let scope = manager.browseScope(for: connectionId)
+            let kindId = serverKind.id
+            Task { [schemaService] in
+                try? await manager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                    _ = await schemaService.reloadServerObjects(
+                        connectionId: connectionId, driver: driver, scope: scope, kindId: kindId
+                    )
+                }
+            }
         }
     }
 
@@ -762,6 +780,13 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                     connectionId: connectionId,
                     database: group.database,
                     schema: group.schema
+                )
+            case .server:
+                await service.refreshServerObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema,
+                    kindId: group.kind.serverKind?.id
                 )
             }
         }

@@ -193,6 +193,34 @@ struct ERDiagramSchemaEditsTests {
         #expect(diagram == structureTab)
     }
 
+    @Test("A composite foreign key from the diagram composes what the Structure tab composes")
+    func compositeForeignKeyMatchesTheStructureTab() async throws {
+        let fixture = try await Self.makeFixture()
+        defer { fixture.tearDown() }
+        let draft = ERDiagramForeignKeyDraft(
+            table: "orders",
+            pairs: [
+                .init(column: "customer_id", referencedColumn: "id"),
+                .init(column: "shipper_id", referencedColumn: "email")
+            ],
+            referencedTable: "customers",
+            name: "fk_orders_customer",
+            onDelete: .cascade
+        )
+
+        try await fixture.edits.addForeignKey(draft.foreignKey, to: "orders")
+        let tab = try await Self.structureTabSession(fixture, table: "orders")
+        tab.changeManager.addForeignKey(draft.foreignKey)
+
+        let diagram = await fixture.edits.previewStatements()
+        #expect(diagram == [
+            "ALTER TABLE \"public\".\"orders\" ADD CONSTRAINT \"fk_orders_customer\" FOREIGN KEY (\"customer_id\", \"shipper_id\") "
+                + "REFERENCES \"customers\" (\"id\", \"email\") ON DELETE CASCADE;"
+        ])
+        let structureTab = try await Self.statements(of: tab)
+        #expect(diagram == structureTab)
+    }
+
     @Test("Dropping a drawn foreign key drops the constraint the Structure tab would drop")
     func droppedForeignKeyMatchesTheStructureTab() async throws {
         let fixture = try await Self.makeFixture()

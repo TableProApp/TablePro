@@ -345,13 +345,15 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let flattened = SurrealRowFlattener.flatten(last.value, length: length)
         let affected = rowsAffected(last.value)
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: flattened.columns,
             columnTypeNames: flattened.columnTypeNames,
             rows: flattened.rows,
             rowsAffected: affected,
             executionTime: elapsed
         )
+        result.rowLocators = SurrealRowFlattener.rowLocators(last.value)
+        return result
     }
 
     private static func rowsAffected(_ value: SurrealValue) -> Int {
@@ -458,6 +460,24 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
+    }
+
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
         try SurrealStatementGenerator.rowWrites(
             table: table,
             scope: scope(forSchema: schema),
@@ -469,7 +489,8 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             changes: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            insertedRowIndices: insertedRowIndices,
+            rowLocators: context.rowLocators
         )
     }
 

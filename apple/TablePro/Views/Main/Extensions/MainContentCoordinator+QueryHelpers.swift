@@ -96,7 +96,7 @@ extension MainContentCoordinator {
             parkedTableLoad = ParkedTableLoad(tabId: tabId, trigger: trigger)
             return
         }
-        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput)
+        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger)
         if recordsRun {
             queryExecutionCoordinator.recordStatementFailure(sql, error: error, tabId: tabId, startedAt: claim.startedAt)
         }
@@ -157,7 +157,8 @@ extension MainContentCoordinator {
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:],
         columnOrigins: [PluginColumnOrigin?]? = nil,
-        prepared: TableRows.PreparedRows? = nil
+        prepared: TableRows.PreparedRows? = nil,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -186,7 +187,8 @@ extension MainContentCoordinator {
             absentCells: absentCells,
             unloadedCells: unloadedCells,
             columnOrigins: columnOrigins,
-            prepared: prepared
+            prepared: prepared,
+            trigger: trigger
         )
     }
 
@@ -251,13 +253,15 @@ extension MainContentCoordinator {
         tableName: String,
         tabId: UUID,
         connectionType: DatabaseType,
-        schemaTask: Task<FetchedTableSchema, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?,
+        countsRows: Bool = true
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
-            schemaTask: schemaTask
+            schemaTask: schemaTask,
+            countsRows: countsRows
         )
     }
 
@@ -278,14 +282,16 @@ extension MainContentCoordinator {
         sql: String,
         tabId: UUID,
         connection conn: DatabaseConnection,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
             sql: sql,
             tabId: tabId,
             connection: conn,
-            serverOutput: serverOutput
+            serverOutput: serverOutput,
+            trigger: trigger
         )
     }
 }

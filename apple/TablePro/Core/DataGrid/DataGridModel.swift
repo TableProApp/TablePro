@@ -15,11 +15,20 @@ protocol DataGridMountedView: AnyObject {
     func viewportSample() -> (row: Int, offset: CGFloat)?
     @discardableResult func beginEditing(row: Int, displayColumn: Int) -> Bool
     var isEditing: Bool { get }
+    // A viewer, the value filter or the foreign key preview: a reload closes or repoints each of them.
+    var holdsTransientUI: Bool { get }
+    // A live scroll or a selection drag, which a reload would move rows under.
+    var isTrackingInteraction: Bool { get }
     func commitEditing() -> Bool
     func discardEditing()
     @discardableResult func focus() -> Bool
     // Where a popover about a column (statistics, value filter) points.
     func anchor(forColumn displayColumn: Int) -> (view: NSView, rect: NSRect)?
+}
+
+extension DataGridMountedView {
+    var holdsTransientUI: Bool { false }
+    var isTrackingInteraction: Bool { false }
 }
 
 @MainActor
@@ -238,6 +247,12 @@ final class DataGridModel: ObservableObject {
         }
         let active = rects.first.map { GridCoord(row: $0.rows.lowerBound, displayColumn: selection.activeCell?.displayColumn ?? 0) }
         setSelection(GridSelection(rectangles: rects, activeCell: active, anchor: active, mode: rects.isEmpty ? .cells : .rows))
+    }
+
+    // Takes back a selection kept by identity, so a cell cursor stays a cursor on its own column.
+    func select(_ snapshot: GridSelectionSnapshot) {
+        let resolved = snapshot.resolved(order: order, rows: rows, columns: columns)
+        setSelection(resolved.rectangles.isEmpty && resolved.activeCell == nil ? .empty : resolved)
     }
 
     func clearSelection() {
@@ -591,6 +606,8 @@ final class DataGridModel: ObservableObject {
     }
 
     var isEditing: Bool { mountedView?.isEditing ?? false }
+    var holdsTransientUI: Bool { mountedView?.holdsTransientUI ?? false }
+    var isTrackingInteraction: Bool { mountedView?.isTrackingInteraction ?? false }
 
     // Owners that deferred work while an editor was open resume here.
     var onEditingEnded: (@MainActor () -> Void)?

@@ -387,6 +387,56 @@ struct SidebarViewModelMultiSectionTests {
         #expect(defaults.bool(forKey: key) == true)
     }
 
+    @Test("A declared kind's flat expansion persists under the one per-connection key and restores by id")
+    func declaredKindExpansionPersistsUnderOneKey() {
+        let defaults = suite.defaults
+        let connectionId = UUID()
+        let events = SidebarServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+        )
+        let vm = makeViewModel(connectionId: connectionId, databaseType: .mysql, defaults: defaults)
+        #expect(vm.expanded[.server(events)] == false)
+
+        vm.expanded[.server(events)] = true
+
+        let key = SidebarPersistenceKey.serverKindsExpanded(connectionId: connectionId)
+        #expect(defaults.dictionary(forKey: key)?["event"] as? Bool == true)
+        #expect(defaults.object(forKey: "sidebar.\(connectionId.uuidString).server.event.expanded") == nil)
+        #expect(SidebarPersistenceKey.all(connectionId: connectionId).contains(key))
+
+        let restored = makeViewModel(connectionId: connectionId, databaseType: .mysql, defaults: defaults)
+        #expect(restored.expanded[.server(SidebarServerObjectKind(id: "event"))] == true)
+
+        SidebarPersistenceKey.removeAll(connectionId: connectionId, defaults: defaults)
+        #expect(defaults.object(forKey: key) == nil)
+    }
+
+    @Test("Every built-in kind's expansion key is listed for cleanup")
+    func builtInExpansionKeysAreListed() {
+        let connectionId = UUID()
+        let all = SidebarPersistenceKey.all(connectionId: connectionId)
+        for kind in SidebarObjectKind.builtIn {
+            #expect(all.contains(SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)))
+        }
+        #expect(SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .materializedView)
+            == "sidebar.\(connectionId.uuidString).materializedView.expanded")
+    }
+
+    @Test("filteredServerObjects narrows by the search and follows each kind on its own")
+    func filteredServerObjectsBySearch() {
+        let vm = makeViewModel(databaseType: .mysql, defaults: suite.defaults)
+        let events = [
+            ServerObjectInfo(kindId: "event", name: "nightly_cleanup", schema: "shop"),
+            ServerObjectInfo(kindId: "event", name: "hourly_rollup", schema: "shop")
+        ]
+        #expect(vm.filteredServerObjects(kindId: "event", from: events).count == 2)
+
+        vm.searchText = "nightly"
+
+        #expect(vm.filteredServerObjects(kindId: "event", from: events).map { $0.name } == ["nightly_cleanup"])
+        #expect(vm.filteredServerObjects(kindId: "extension", from: []).isEmpty)
+    }
+
     @Test("recents expansion defaults to expanded and persists across init")
     func recentsExpansionPersists() {
         let defaults = suite.defaults

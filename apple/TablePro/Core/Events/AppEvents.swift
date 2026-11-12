@@ -107,6 +107,9 @@ final class AppEvents {
     // Refresh on a tab that loads its own content rather than through the coordinator, by tab id.
     let tabRefreshRequested = PassthroughSubject<UUID, Never>()
 
+    // A query tab's edit history was written. The tab's id, or nil after a purge or Clear History.
+    let queryTabVersionsDidUpdate = PassthroughSubject<UUID?, Never>()
+
     // MARK: - License & Sync
 
     let licenseStatusDidChange = PassthroughSubject<Void, Never>()

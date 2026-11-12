@@ -64,6 +64,9 @@ extension DatabaseTreeMetadataService: CatalogObjectListSource {
                 state: { self.typesLoadState(connectionId: id, database: database, schema: schema) },
                 wrap: CatalogObjectList.types
             )
+        // The Objects tab offers built-in kinds only; a driver's declared kinds are listed in the sidebar.
+        case .server:
+            return .cancelled
         }
     }
 
@@ -81,6 +84,8 @@ extension DatabaseTreeMetadataService: CatalogObjectListSource {
             return $triggersState.compactMap { $0[key]?.value }.map(CatalogObjectList.triggers).eraseToAnyPublisher()
         case .type:
             return $typesState.compactMap { $0[key]?.value }.map(CatalogObjectList.types).eraseToAnyPublisher()
+        case .server:
+            return Empty().eraseToAnyPublisher()
         }
     }
 

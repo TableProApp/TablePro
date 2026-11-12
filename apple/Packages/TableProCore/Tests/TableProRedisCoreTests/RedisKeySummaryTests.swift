@@ -12,6 +12,19 @@ struct RedisKeySummaryCommandTests {
     @Test("a string key is read with GET so the whole value arrives")
     func stringPreviewReadsWholeValue() {
         #expect(RedisKeySummary.previewCommand(for: .string, key: "session:1") == ["GET", "session:1"])
+        #expect(RedisKeySummary.previewCommand(for: .string, key: "session:1", stringByteLimit: nil) == ["GET", "session:1"])
+    }
+
+    @Test("a byte limit reads a string with GETRANGE over that many bytes")
+    func stringPreviewWithLimitReadsRange() {
+        #expect(RedisKeySummary.previewCommand(for: .string, key: "page:1", stringByteLimit: 65_536)
+            == ["GETRANGE", "page:1", "0", "65535"])
+    }
+
+    @Test("a byte limit leaves collection previews as they were")
+    func byteLimitIgnoredForCollections() {
+        #expect(RedisKeySummary.previewCommand(for: .list, key: "k", stringByteLimit: 10)
+            == RedisKeySummary.previewCommand(for: .list, key: "k"))
     }
 
     @Test("length command matches the Redis command for each kind")

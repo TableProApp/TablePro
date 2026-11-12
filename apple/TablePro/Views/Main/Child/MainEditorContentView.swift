@@ -307,7 +307,7 @@ struct MainEditorContentView: View {
         switch subject {
         case .linkedFile(let url):
             return url.lastPathComponent
-        case .savedQuery:
+        case .savedQuery, .queryTab:
             return "query.sql"
         }
     }
@@ -539,7 +539,7 @@ struct MainEditorContentView: View {
                 // By ID: mid-switch, flushTextUpdate() fires for the old tab while selectedTabIndex already points to the new one.
                 guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
 
-                coordinator.scheduleDraftSave()
+                coordinator.scheduleDraftSave(editedTab: tabId)
 
                 // Scratch tabs dirty too. Only this tab's window: a background window tab's editor stays mounted and can fire here.
                 guard tabId == tabManager.selectedTabId,
@@ -1054,7 +1054,14 @@ struct MainEditorContentView: View {
             resultSetMenu: resultSetMenuModel(for: tab, placedIn: .statusBar),
             resultSetActions: coordinator.resultSetActions(forTab: tab.id),
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() }
+            onFetchAll: { coordinator.fetchAllRows() },
+            autoRefresh: StatusBarAutoRefreshState(
+                interval: tab.autoRefreshInterval,
+                pause: tab.autoRefreshPause,
+                onChange: { [coordinator, tabId = tab.id] interval in
+                    coordinator.setAutoRefreshInterval(interval, forTab: tabId)
+                }
+            )
         )
     }
 

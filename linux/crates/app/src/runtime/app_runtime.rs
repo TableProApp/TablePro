@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tablepro_session::runtime::Tasks;
+use tablepro_session::runtime::{Tasks, worker_count};
 
 /// How long a shutdown waits for in-flight work before giving up. Long
 /// enough for a durable write to finish, short enough that quitting
@@ -37,28 +37,9 @@ impl AppRuntime {
     }
 }
 
-/// A database client is not compute-bound: its work is waiting on
-/// sockets and files. More workers than this only adds context
-/// switching, and fewer than two lets one blocking call stall the rest.
-fn worker_count() -> usize {
-    std::thread::available_parallelism()
-        .map(|count| count.get().clamp(2, 4))
-        .unwrap_or(2)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn worker_count_clamps() {
-        let clamp = |available: usize| available.clamp(2, 4);
-
-        assert_eq!(clamp(1), 2);
-        assert_eq!(clamp(3), 3);
-        assert_eq!(clamp(16), 4);
-        assert!((2..=4).contains(&worker_count()));
-    }
 
     #[test]
     #[expect(

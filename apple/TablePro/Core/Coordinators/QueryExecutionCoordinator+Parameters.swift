@@ -229,6 +229,7 @@ extension QueryExecutionCoordinator {
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
         let grammar = parent.lexicalGrammar
+        let held = parent.manualCommitRun(skipped: tab.tabType != .query)
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
@@ -242,15 +243,17 @@ extension QueryExecutionCoordinator {
                     route: DatabaseManager.shared.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
                 ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
-                    // Before it runs, so a statement that fails or a connection lost under it is still noted.
-                    await DatabaseManager.shared.noteSessionStatements([statement.sql], ranOn: driver, scope: scope)
-                    let fetched = try await queryExecutor.executeQuery(
-                        driver: driver,
-                        sql: statement.sql,
-                        parameters: boundValues.values,
-                        rowCap: rowCap,
-                        capturingOutputInto: failureOutput
-                    )
+                    let fetched = try await held.running([statement.sql], on: driver) {
+                        // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                        await DatabaseManager.shared.noteSessionStatements([statement.sql], ranOn: driver, scope: scope)
+                        return try await queryExecutor.executeQuery(
+                            driver: driver,
+                            sql: statement.sql,
+                            parameters: boundValues.values,
+                            rowCap: rowCap,
+                            capturingOutputInto: failureOutput
+                        )
+                    }
                     let edits = await SucceededStatements.single(
                         statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                     )
@@ -446,7 +449,7 @@ extension QueryExecutionCoordinator {
             )
             let outcome = run.outcome
             let sent = running.prepared
-            let sessionNotice = run.plan == .sessionTransaction ? run.sessionState.openTransactionNotice : nil
+            let sessionNotice = run.plan.readsSessionEndState ? run.sessionState.openTransactionNotice : nil
 
             let ranStatements: [String]
             switch outcome {
@@ -571,9 +574,12 @@ extension QueryExecutionCoordinator {
         claim: TabExecutionClaim,
         lease: DriverLeaseOwner
     ) async -> MultiStatementRun {
+        let commitMode = DatabaseManager.shared.commitMode(for: scope.connectionId)
         let failureOutput = ServerOutputBox()
         let commitOutput = ServerOutputBox()
         let databaseType = parent.connection.type
+        let grammar = parent.lexicalGrammar
+        let statementTexts = prepared.map(\.sentSQL)
         do {
             var run = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
@@ -581,7 +587,16 @@ extension QueryExecutionCoordinator {
                 cancellation: .cancellableRead(lease)
             ) { driver in
                 let startState = await driver.heldSessionTransactionState()
-                let sessionPlan = plan.joining(startState)
+                let manual = ManualCommit.decision(
+                    commitMode: commitMode,
+                    statements: statementTexts,
+                    databaseType: databaseType,
+                    grammar: grammar,
+                    supportsTransactions: driver.supportsTransactions,
+                    sessionState: startState
+                )
+                if let refusal = manual.refusal { throw refusal }
+                let sessionPlan = ManualCommit.runPlan(text: plan, decision: manual, sessionState: startState)
                 let outcome = await BatchStatementRun.run(
                     prepared,
                     plan: sessionPlan,
@@ -614,7 +629,7 @@ extension QueryExecutionCoordinator {
                 await DatabaseManager.shared.noteSessionStatements(
                     sent.prefix(outcome.ranCount(of: sent.count)).map(\.sentSQL), ranOn: driver, scope: scope
                 )
-                guard sessionPlan == .sessionTransaction else {
+                guard sessionPlan.readsSessionEndState else {
                     let endState: PluginSessionTransactionState = asksEndState
                         ? await driver.heldSessionTransactionState()
                         : .unknown
