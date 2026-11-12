@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // The primary's alone: it writes the session for every window.
     private readonly SessionWriter? _saves;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer;
+    private readonly SessionEnd? _sessionEnd;
     private TimeSpan _nextRetry = SaveDelay;
     private SettingsView? _settings;
     private OpenConnection? _front;
@@ -71,7 +72,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             timer.Interval = SaveDelay;
             await SaveSessionInBackgroundAsync();
         };
-        var sessionEnd = new SessionEnd(this, OnSessionEnding);
+        var sessionEnd = new SessionEnd(this, OnSessionEnding, ShutdownBlockReason, OnSessionHeld);
+        _sessionEnd = sessionEnd;
         Closed += (_, _) => sessionEnd.Dispose();
 
         // Where the window stood last time, whether or not its connections come back.
@@ -694,6 +696,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         var reconnecting = result.Connect && open is { State: ConnectionState.Connected or ConnectionState.Failed }
             ? open
             : null;
+        if (result.ChangesConnect)
+        {
+            RestartConnects(result.Saved);
+        }
+
         await ApplySafeModeAsync(result.Saved, reconnecting);
         if (!result.Connect)
         {
@@ -708,10 +715,22 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                 return;
             }
 
+            DropSpare();
             await reconnecting.DisconnectAsync(keepTabs: true);
         }
 
         Connect(result.Saved);
+    }
+
+    // The core read the saved connection as each connect under way began, in every window.
+    private void RestartConnects(SavedConnection saved)
+    {
+        List<MainWindow> windows = [this, .. _tabWindows];
+        var matching = windows.SelectMany(window => window._open).Where(item => item.Matches(saved.Id, null));
+        foreach (var each in matching.ToList())
+        {
+            _ = each.RestartConnectAsync();
+        }
     }
 
     // A saved level reaches every window's open sessions of the connection at once, as on Linux. Read only is set
@@ -1061,8 +1080,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             _primary._spare = null;
         }
+        else if (_primary._spare is { _front.Session: { } held }
+            && _open.Any(open => ReferenceEquals(open.Session, held)))
+        {
+            // The hidden spare adopted this window's session on a press on one of its tabs, and would keep it open.
+            _primary.DropSpare();
+        }
 
         _primary.SessionChanged();
+        _primary._sessionEnd?.Update();
         foreach (var open in _open)
         {
             _ = open.DisconnectAsync();
@@ -1148,6 +1174,38 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         });
     }
 
+    // A forced Restart Manager close ends the app with no WM_ENDSESSION after a FALSE, so the session is written first.
+    private void OnSessionHeld()
+    {
+        if (_closing || _saves is null)
+        {
+            return;
+        }
+
+        _ = _saves.Save(SessionSnapshot());
+        _workbench.SaveUnsavedSettings();
+    }
+
+    // A running query does not hold a sign-out: stopping it is the default the shutdown guidance asks for.
+    private string? ShutdownBlockReason()
+    {
+        if (_closing)
+        {
+            return null;
+        }
+
+        var pending = AllWindows
+            .SelectMany(window => window._open)
+            .Aggregate(PendingWork.None, (all, open) => all.Combine(open.View.Pending()));
+        return pending switch
+        {
+            { UnsavedChanges: true, HeldTransaction: true } => Strings.Get("ShutdownBlockedBoth"),
+            { UnsavedChanges: true } => Strings.Get("ShutdownBlockedUnsaved"),
+            { HeldTransaction: true } => Strings.Get("ShutdownBlockedTransaction"),
+            _ => null,
+        };
+    }
+
     private SessionState SessionSnapshot()
     {
         var connections = _open.Select(open => Persisted(open.Snapshot())).ToList();
@@ -1218,6 +1276,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuAddRow.IsEnabled = table is { CanAddRow: true };
         MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true };
         MenuDeleteRows.IsEnabled = table is { CanChangeRows: true };
+        _primary._sessionEnd?.Update();
     }
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => NewConnection();

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use tablepro_core::edit::CellInput;
 
 use super::change_tracker::{CellEdit, DeleteMark, DraftRow, RowKey};
@@ -120,23 +122,23 @@ impl UndoOp {
         }
     }
 
-    /// Drops what the step says about a draft that is gone, and returns
+    /// Drops what the step says about drafts that are gone, and returns
     /// whether anything is left of the step.
-    pub fn forget_draft(&mut self, draft_id: u64) -> bool {
-        let gone = RowKey::Draft(draft_id);
+    pub fn forget_drafts(&mut self, gone: &HashSet<u64>) -> bool {
+        let is_gone = |row_key: &RowKey| matches!(row_key, RowKey::Draft(draft_id) if gone.contains(draft_id));
         match self {
             UndoOp::Group { steps } => {
-                steps.retain_mut(|step| step.forget_draft(draft_id));
+                steps.retain_mut(|step| step.forget_drafts(gone));
                 !steps.is_empty()
             }
             UndoOp::Insert { drafts } => {
-                drafts.retain(|draft| draft.draft_id != draft_id);
+                drafts.retain(|draft| !gone.contains(&draft.draft_id));
                 !drafts.is_empty()
             }
-            UndoOp::DraftCell { draft_id: id, .. } => *id != draft_id,
-            UndoOp::CellEdit { row_key, .. } => *row_key != gone,
+            UndoOp::DraftCell { draft_id, .. } => !gone.contains(&*draft_id),
+            UndoOp::CellEdit { row_key, .. } => !is_gone(row_key),
             UndoOp::Delete { steps } => {
-                steps.retain(|step| step.row_key != gone);
+                steps.retain(|step| !is_gone(&step.row_key));
                 !steps.is_empty()
             }
         }

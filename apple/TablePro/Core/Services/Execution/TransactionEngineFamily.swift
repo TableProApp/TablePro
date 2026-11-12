@@ -64,6 +64,21 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         self == .oracle
     }
 
+    // After a failed statement the block takes nothing but a rollback, so one error costs every pending change.
+    internal var failedStatementAbortsTransaction: Bool {
+        switch self {
+        case .postgres, .redshift, .cockroach, .duckdb:
+            return true
+        case .mysql, .sqlite, .sqlServer, .oracle, .redis, .other:
+            return false
+        }
+    }
+
+    // Redshift and DuckDB have no savepoint to take a failed statement back to.
+    internal var takesBackAFailedStatement: Bool {
+        self == .postgres || self == .cockroach
+    }
+
     private static let familiesByTypeId: [String: TransactionEngineFamily] = [
         "PostgreSQL": .postgres,
         "PGlite": .postgres,

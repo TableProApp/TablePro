@@ -9,6 +9,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 // MARK: - Reply Type
 
@@ -24,7 +25,7 @@ enum RedisReply {
     var stringValue: String? {
         switch self {
         case .string(let s), .status(let s): return s
-        case .data(let d): return String(data: d, encoding: .utf8)
+        case .data(let d): return RedisWireText.decode(d)
         default: return nil
         }
     }
@@ -55,7 +56,7 @@ enum RedisReply {
         case .string(let text), .status(let text): return text
         case .error(let message): return "(error) \(message)"
         case .integer(let value): return String(value)
-        case .data(let bytes): return String(data: bytes, encoding: .utf8) ?? bytes.base64EncodedString()
+        case .data(let bytes): return RedisWireText.decode(bytes) ?? bytes.base64EncodedString()
         case .array(let items): return "[\(items.map(\.displayText).joined(separator: ", "))]"
         case .null: return "(nil)"
         }

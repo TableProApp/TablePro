@@ -166,7 +166,11 @@ extension RedisPluginDriver {
             let capped = Array(keys.prefix(PluginRowLimits.emergencyMax))
             let keysTruncated = keys.count > PluginRowLimits.emergencyMax
             return try await buildKeyBrowseResult(
-                keys: capped, connection: conn, startTime: startTime, isTruncated: keysTruncated
+                keys: capped,
+                connection: conn,
+                startTime: startTime,
+                isTruncated: keysTruncated,
+                batchSize: Self.keySummaryBatchSize
             )
 
         case .scan(let cursor, let pattern, let count, let type):

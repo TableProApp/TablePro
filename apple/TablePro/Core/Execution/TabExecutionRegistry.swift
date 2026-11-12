@@ -68,6 +68,7 @@ internal struct TabExecutionRegistry {
     private var entries: [UUID: Entry] = [:]
     private var contentEpochs: [UUID: Int] = [:]
     private var unclaimedWork: [UUID: Set<UUID>] = [:]
+    private var stoppedEpochs: [UUID: Int] = [:]
     private var lastEpoch: Int = 0
 
     internal init() {}
@@ -75,6 +76,7 @@ internal struct TabExecutionRegistry {
     internal mutating func claim(_ tabId: UUID, startedAt: ContinuousClock.Instant = .now) -> TabExecutionClaim {
         lastEpoch += 1
         entries[tabId] = Entry(epoch: lastEpoch, startedAt: startedAt)
+        stoppedEpochs.removeValue(forKey: tabId)
         contentEpochs[tabId] = lastEpoch
         return TabExecutionClaim(tabId: tabId, epoch: lastEpoch, startedAt: startedAt)
     }
@@ -113,6 +115,7 @@ internal struct TabExecutionRegistry {
             EndedExecution(tabId: tabId, startedAt: $0.startedAt, reason: reason)
         }
         unclaimedWork.removeValue(forKey: tabId)
+        stoppedEpochs.removeValue(forKey: tabId)
         lastEpoch += 1
         contentEpochs[tabId] = lastEpoch
         return ended
@@ -125,6 +128,7 @@ internal struct TabExecutionRegistry {
         }
         entries.removeAll()
         unclaimedWork.removeAll()
+        stoppedEpochs.removeAll()
         for tabId in tabIds {
             lastEpoch += 1
             contentEpochs[tabId] = lastEpoch
@@ -179,12 +183,28 @@ internal struct TabExecutionRegistry {
         guard entries[tabId]?.isUninterruptible != true else {
             return StopOutcome(ended: [], keptUninterruptibleClaim: true)
         }
-        let ended = entries.removeValue(forKey: tabId).map {
+        let removed = entries.removeValue(forKey: tabId)
+        if let removed {
+            // Statements that ran before the Stop can stay on the server, and the run still has to keep them.
+            stoppedEpochs[tabId] = removed.epoch
+        }
+        let ended = removed.map {
             [EndedExecution(tabId: tabId, startedAt: $0.startedAt, reason: .cancelledByUser)]
         } ?? []
         lastEpoch += 1
         contentEpochs[tabId] = lastEpoch
         return StopOutcome(ended: ended, keptUninterruptibleClaim: false)
+    }
+
+    // Replacing content mints a new epoch, so work started on the old result after the Stop cannot write over the kept one.
+    internal mutating func settleStopped(_ claim: TabExecutionClaim, replacingContent: Bool) -> Bool {
+        guard stoppedEpochs[claim.tabId] == claim.epoch else { return false }
+        stoppedEpochs.removeValue(forKey: claim.tabId)
+        if replacingContent {
+            lastEpoch += 1
+            contentEpochs[claim.tabId] = lastEpoch
+        }
+        return true
     }
 
     /// Work that runs against a tab without owning its result.

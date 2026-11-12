@@ -355,6 +355,8 @@ struct OptionsPaneView: View {
     private var safetySection: some View {
         Section {
             safeModeRow
+            Toggle(String(localized: "Manual Commit"), isOn: $coordinator.effectiveManualCommit)
+                .disabled(!coordinator.isManualCommitAvailable)
             if aiIsEnabled {
                 Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
                     Text(String(localized: "Use Default"))
@@ -412,6 +414,12 @@ struct OptionsPaneView: View {
         VStack(alignment: .leading, spacing: 4) {
             if let floor = coordinator.safeModeFloor {
                 Text(floor.explanation)
+            }
+            if coordinator.isManualCommitAvailable {
+                // swiftlint:disable:next line_length
+                Text(String(localized: "Your first change opens a transaction, and nothing is saved until you commit. Structure changes, Users & Roles, Copy To, Generate Rows and Shortcuts actions still save at once."))
+            } else {
+                Text(ManualCommit.unavailableExplanation)
             }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length

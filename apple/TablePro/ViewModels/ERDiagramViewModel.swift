@@ -229,9 +229,8 @@ final class ERDiagramViewModel: ObservableObject {
             let visibleGraph = makeVisibleGraph()
             graph = visibleGraph
 
-            let layout = await Task.detached {
-                ERDiagramLayout.compute(graph: visibleGraph)
-            }.value
+            // A cancelled load leaves the state loading and unrecorded, so the next appearance runs it again.
+            guard let layout = try? await ERDiagramLayout.layOut(visibleGraph) else { return }
             computedLayout = layout
             loadPersistedPositions()
             invalidateCachedRects()
@@ -483,10 +482,7 @@ final class ERDiagramViewModel: ObservableObject {
         let currentGraph = graph
         layoutTask?.cancel()
         layoutTask = Task {
-            let layout = await Task.detached {
-                ERDiagramLayout.compute(graph: currentGraph)
-            }.value
-            guard !Task.isCancelled else { return }
+            guard let layout = try? await ERDiagramLayout.layOut(currentGraph), !Task.isCancelled else { return }
             computedLayout = layout
             invalidateCachedRects()
         }
@@ -534,10 +530,7 @@ final class ERDiagramViewModel: ObservableObject {
         invalidateCachedRects()
         layoutTask?.cancel()
         layoutTask = Task {
-            let layout = await Task.detached {
-                ERDiagramLayout.compute(graph: visibleGraph)
-            }.value
-            guard !Task.isCancelled else { return }
+            guard let layout = try? await ERDiagramLayout.layOut(visibleGraph), !Task.isCancelled else { return }
             computedLayout = layout
             invalidateCachedRects()
         }

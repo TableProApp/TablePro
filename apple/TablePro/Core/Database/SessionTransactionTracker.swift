@@ -28,8 +28,7 @@ internal final class SessionTransactionTracker: ObservableObject {
     internal struct Hold: Identifiable, Equatable {
         let key: Key
         let state: State
-        /// Moves with every turn recorded on the lane, so an action confirmed after other work ran
-        /// there is refused rather than ending a transaction the user has not seen.
+        // Moves with every turn that could have changed the transaction, so a confirmation made before it is refused.
         let revision: Int
 
         var id: Key { key }
@@ -43,10 +42,17 @@ internal final class SessionTransactionTracker: ObservableObject {
         var state: State
     }
 
+    // Whether a lane's driver ever answered with a definite state; a timed-out read keeps an earlier yes.
+    private struct Reader {
+        weak var driver: AnyObject?
+        var answers: Bool
+    }
+
     @Published private(set) var holds: [Key: Hold] = [:]
 
     private var drivers: [Key: Entry] = [:]
     private var revisions: [Key: Int] = [:]
+    private var readers: [Key: Reader] = [:]
     private let isLive: @MainActor (Key, DatabaseDriver) -> Bool
 
     internal init(isLive: @escaping @MainActor (Key, DatabaseDriver) -> Bool) {
@@ -64,6 +70,10 @@ internal final class SessionTransactionTracker: ObservableObject {
         transactionState(connectionId: connectionId, container: container) != nil
     }
 
+    internal func hold(connectionId: UUID, container: String) -> Hold? {
+        holds(for: connectionId).first { $0.key.lane == nil || $0.key.lane == container }
+    }
+
     // An aborted hold wins, because it is the one that blocks every statement until a rollback.
     internal func transactionState(connectionId: UUID, container: String) -> State? {
         let states = holds.values
@@ -73,7 +83,7 @@ internal final class SessionTransactionTracker: ObservableObject {
         return states.isEmpty ? nil : .open
     }
 
-    // Moves with every turn recorded on any of the connection's lanes.
+    // Moves with every turn on any of the connection's lanes, except a read-only one that changed nothing.
     internal func turnRevision(for connectionId: UUID) -> Int {
         revisions.reduce(0) { total, entry in
             entry.key.connectionId == connectionId ? total &+ entry.value : total
@@ -89,31 +99,68 @@ internal final class SessionTransactionTracker: ObservableObject {
         holds[hold.key] == hold
     }
 
-    /// An engine that cannot say keeps what an earlier answer from the same driver said, since a
-    /// refresh never clears what it refreshes; from another driver it says nothing at all.
-    internal func record(_ state: PluginSessionTransactionState, on driver: DatabaseDriver, for key: Key) {
+    // An engine that cannot say keeps what an earlier answer from the same driver said. A read-only turn
+    // moves the revision only when the state it read differs, so a background read never voids a confirmation.
+    internal func record(
+        _ state: PluginSessionTransactionState,
+        on driver: DatabaseDriver,
+        for key: Key,
+        readsOnly: Bool = false
+    ) {
         // A turn can outlive its session's teardown; its late answer must not touch the replacement's hold.
         guard isLive(key, driver) else {
             if drivers[key]?.driver === driver { clear(key) }
             return
         }
-        revisions[key, default: 0] &+= 1
-        switch state {
-        case .inTransaction:
-            set(.open, on: driver, for: key)
-        case .abortedTransaction:
-            set(.aborted, on: driver, for: key)
-        case .idle, .holdsSessionLocks:
-            clear(key)
-        case .unknown:
-            if drivers[key]?.driver !== driver {
-                clear(key)
-            } else if let entry = drivers[key] {
-                set(entry.state, on: driver, for: key)
-            }
-        @unknown default:
+        noteReader(driver, answered: state != .unknown, for: key)
+        let next = heldState(after: state, from: driver, for: key)
+        let unchanged = next == drivers[key]?.state && (next == nil || drivers[key]?.driver === driver)
+        if !(readsOnly && unchanged) {
+            revisions[key, default: 0] &+= 1
+        }
+        if let next {
+            set(next, on: driver, for: key)
+        } else {
             clear(key)
         }
+    }
+
+    // True once the live driver of a lane the container runs on has only ever answered `.unknown`.
+    internal func cannotReportState(connectionId: UUID, container: String) -> Bool {
+        readers.contains { key, reader in
+            guard key.connectionId == connectionId, key.lane == nil || key.lane == container,
+                  let driver = reader.driver as? DatabaseDriver, isLive(key, driver)
+            else { return false }
+            return !reader.answers
+        }
+    }
+
+    private func heldState(
+        after state: PluginSessionTransactionState,
+        from driver: DatabaseDriver,
+        for key: Key
+    ) -> State? {
+        switch state {
+        case .inTransaction:
+            return .open
+        case .abortedTransaction:
+            return .aborted
+        case .idle, .holdsSessionLocks:
+            return nil
+        case .unknown:
+            guard let entry = drivers[key], entry.driver === driver else { return nil }
+            return entry.state
+        @unknown default:
+            return nil
+        }
+    }
+
+    private func noteReader(_ driver: DatabaseDriver, answered: Bool, for key: Key) {
+        if let reader = readers[key], reader.driver === driver {
+            if answered { readers[key]?.answers = true }
+            return
+        }
+        readers[key] = Reader(driver: driver, answers: answered)
     }
 
     /// Drops every hold whose connection is not the lane's live one any more: a disconnect, a
@@ -123,6 +170,10 @@ internal final class SessionTransactionTracker: ObservableObject {
         for (key, entry) in drivers where key.connectionId == connectionId {
             if let driver = entry.driver as? DatabaseDriver, isLive(key, driver) { continue }
             clear(key)
+        }
+        for (key, reader) in readers where key.connectionId == connectionId {
+            if let driver = reader.driver as? DatabaseDriver, isLive(key, driver) { continue }
+            readers.removeValue(forKey: key)
         }
     }
 

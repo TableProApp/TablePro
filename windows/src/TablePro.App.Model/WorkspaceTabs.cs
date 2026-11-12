@@ -111,6 +111,14 @@ public sealed class WorkspaceTabs<TItem>
         return _view.Items.Any(item => _view.ContentOf(item) is { } content && Asks(content, confirmed));
     }
 
+    public PendingWork Pending()
+    {
+        var tabs = _view.Items.Select(_view.ContentOf).OfType<IWorkspaceTab>().ToList();
+        return new PendingWork(
+            tabs.Any(tab => tab.HasUnsavedChanges),
+            tabs.Any(tab => WorkspaceNotices.Holds(tab.Transaction)));
+    }
+
     // Each tab shows before its question, since the question names it.
     public async Task<bool> ConfirmCloseAsync(ISet<IWorkspaceTab> confirmed, bool offerSave = true)
     {

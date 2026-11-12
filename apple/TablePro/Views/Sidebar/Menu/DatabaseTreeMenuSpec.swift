@@ -7,12 +7,7 @@ import Foundation
 import TableProPluginKit
 
 internal enum DatabaseTreeMenuSpec {
-    /// A menu is a list of groups, and every group here is one intent: reach the object, note it,
-    /// move its data, change it. The HIG asks for a small number of items in about three groups and
-    /// for commands relevant to the clicked object only, so nothing connection-wide belongs on a
-    /// row. View Options used to be appended to every menu including every object row, and View ER
-    /// Diagram sat in the middle of a table row's clipboard and export commands; both now live on
-    /// the empty-area menu, where the thing they act on is the sidebar rather than an object.
+    // One intent per group, and only commands for the clicked object; connection-wide ones live on the empty-area menu.
     internal static func sections(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuSection] {
         guard let clicked = context.clicked else { return backgroundSections(context) }
         switch clicked {
@@ -46,6 +41,8 @@ internal enum DatabaseTreeMenuSpec {
             return triggerSections(ref)
         case .userType(let ref):
             return userTypeSections(ref, context: context)
+        case .serverObject(let ref):
+            return serverObjectSections(ref)
         case .objectKindSection(let kind):
             return objectKindSections(kind, context: context)
         case .containerObjectKindSection(let group):
@@ -332,6 +329,14 @@ internal enum DatabaseTreeMenuSpec {
         }
         return [
             DatabaseTreeMenuSection(copies),
+            DatabaseTreeMenuSection([.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef))])
+        ]
+    }
+
+    // List plus DDL only: the row offers nothing that writes.
+    private static func serverObjectSections(_ ref: DatabaseTreeServerObjectRef) -> [DatabaseTreeMenuSection] {
+        [
+            DatabaseTreeMenuSection([.command(String(localized: "Copy Name"), .copyText(ref.object.name))]),
             DatabaseTreeMenuSection([.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef))])
         ]
     }

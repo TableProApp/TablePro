@@ -29,6 +29,32 @@ public sealed class ConnectionDraftTests
         Path.Combine(Path.GetPathRoot(Path.GetTempPath())!, "data", name);
 
     [Fact]
+    public void ARenameLeavesAConnectUnderWayAndAnythingItReadsStartsItOver()
+    {
+        var before = new SavedConnection(
+            Guid.NewGuid(), "shop", "postgres", "db.example.com", 5432, "shop", "app", TlsSettings.Disabled,
+            Ssh: new SshSettings("bastion", 22, "me", ["jump"], SshAuthMethod.Agent));
+        var renamed = before with
+        {
+            Name = "shop (prod)",
+            Color = "red",
+            GroupId = Guid.NewGuid(),
+            LastOpened = DateTimeOffset.UnixEpoch,
+            Tags = [Guid.NewGuid()],
+            Ssh = before.Ssh! with { JumpHosts = ["jump"] },
+        };
+
+        Assert.False(ConnectionDraft.ChangesConnect(before, renamed));
+        Assert.True(ConnectionDraft.ChangesConnect(before, before with { SafeMode = SafeMode.ReadOnly }));
+        Assert.True(ConnectionDraft.ChangesConnect(before, before with { Host = "db2.example.com" }));
+        Assert.True(ConnectionDraft.ChangesConnect(before, before with { Tls = new TlsSettings(TlsMode.Require) }));
+        Assert.True(ConnectionDraft.ChangesConnect(before, before with { QueryTimeoutSeconds = 30 }));
+        var otherJump = before with { Ssh = before.Ssh! with { JumpHosts = ["other"] } };
+        Assert.True(ConnectionDraft.ChangesConnect(before, otherJump));
+        Assert.True(ConnectionDraft.ChangesConnect(before, before with { Ssh = null }));
+    }
+
+    [Fact]
     public void EditingKeepsTheSshJumpRouteAndSavedKeyPassphrase()
     {
         var saved = new SavedConnection(

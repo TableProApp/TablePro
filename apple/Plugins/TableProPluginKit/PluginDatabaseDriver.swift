@@ -219,6 +219,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo]
     func fetchEventDDL(_ event: PluginEventInfo) async throws -> String
 
+    // Asked of the live driver, so one plugin can answer per server flavor and version.
+    var serverObjectKinds: [PluginServerObjectKind] { get }
+    // `schema` is the container for a `.container` kind and nil for a `.database` kind. A server
+    // without the catalog answers empty rather than throwing.
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo]
+    // Reads one listed object again with its definition; `identity` is the driver's own key.
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo
+
     /// The settings the server recorded for an object when it was created and applies whenever it runs, such as a
     /// MySQL routine's `sql_mode`, as statements a script writes around the object's `CREATE`. Nil when there are none.
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope?
@@ -842,6 +850,17 @@ public extension PluginDatabaseDriver {
             throw PluginObjectSourceError.unsupported(event.name)
         }
         return definition
+    }
+
+    var serverObjectKinds: [PluginServerObjectKind] { [] }
+
+    func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [PluginServerObjectInfo] { [] }
+
+    func fetchServerObject(_ object: PluginServerObjectInfo) async throws -> PluginServerObjectInfo {
+        guard let definition = object.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return object
     }
 
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope? { nil }

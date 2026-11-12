@@ -60,6 +60,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     var canDebugRoutines: Bool { true }
     var canFollowNotifications: Bool { true }
 
+    // In the class body so KingbaseES, whose catalog is not established, can answer none.
+    var serverObjectKinds: [PluginServerObjectKind] {
+        PostgreSQLExtensions.isDeclared(capabilities: catalogCapabilities) ? [PostgreSQLExtensions.kind] : []
+    }
+
     init(config: DriverConnectionConfig, singleConnectionMode: Bool = false) {
         self.core = LibPQDriverCore(config: config, singleConnectionMode: singleConnectionMode)
     }

@@ -130,6 +130,7 @@ public enum ConnectionFieldCatalog {
         "bqMaxBytesBilled": .setting,
         "cassandraConsistency": .setting,
         "cassandraSerialConsistency": .setting,
+        "commitMode": .setting,
         "completionIdentifierCase": .setting,
         "connectionOptions": .setting,
         "connectTimeoutSeconds": .setting,

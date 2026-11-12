@@ -132,9 +132,67 @@ struct DatabaseTreeFilterTests {
         #expect(SidebarObjectKind.visible(itemCounts: buckets.itemCounts) == [.table])
     }
 
-    @Test("Types is the last kind listed")
+    @Test("Types is the last built-in kind listed, and declared kinds follow it")
     func typesIsTheLastKind() {
-        #expect(SidebarObjectKind.allCases.last == .type)
+        #expect(SidebarObjectKind.builtIn.last == .type)
+        let events = SidebarServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+        )
+        #expect(SidebarObjectKind.ordered(declared: [events]).suffix(2) == [.type, .server(events)])
+    }
+
+    private var eventKind: SidebarServerObjectKind {
+        SidebarServerObjectKind(
+            id: "event", displayName: "Event", pluralDisplayName: "Events", iconName: "calendar.badge.clock", scope: .container
+        )
+    }
+
+    private func event(_ name: String, schema: String = "shop") -> ServerObjectInfo {
+        ServerObjectInfo(kindId: "event", name: name, schema: schema, detail: "Recurring")
+    }
+
+    @Test("Server objects are filtered by the search and counted under their declared kind")
+    func serverObjectsFilteredAndCounted() {
+        let buckets = DatabaseTreeFilter.objectBuckets(
+            tables: [table("users")],
+            routines: [],
+            triggers: [],
+            serverObjects: ["event": [event("nightly_cleanup"), event("hourly_rollup")]],
+            searchText: "nightly"
+        )
+        #expect(buckets.serverObjects["event"]?.map { $0.name } == ["nightly_cleanup"])
+        #expect(buckets.itemCounts[.server(eventKind)] == 1)
+        #expect(SidebarObjectKind.visible(itemCounts: buckets.itemCounts, declared: [eventKind]) == [.server(eventKind)])
+        #expect(!buckets.isEmpty)
+    }
+
+    @Test("A search matching no server object leaves its kind with no section")
+    func serverObjectsWithoutMatchHaveNoSection() {
+        let buckets = DatabaseTreeFilter.objectBuckets(
+            tables: [table("users")],
+            routines: [],
+            triggers: [],
+            serverObjects: ["event": [event("nightly_cleanup")]],
+            searchText: "users"
+        )
+        #expect(buckets.serverObjects["event"]?.isEmpty == true)
+        #expect(SidebarObjectKind.visible(itemCounts: buckets.itemCounts, declared: [eventKind]) == [.table])
+    }
+
+    @Test("Only server objects keep a container from reading as empty")
+    func serverObjectsAloneAreContent() {
+        let buckets = DatabaseTreeFilter.objectBuckets(
+            tables: [], routines: [], triggers: [], serverObjects: ["event": [event("nightly")]], searchText: ""
+        )
+        #expect(!buckets.isEmpty)
+        let none = DatabaseTreeFilter.objectBuckets(tables: [], routines: [], triggers: [], serverObjects: ["event": []], searchText: "")
+        #expect(none.isEmpty)
+    }
+
+    @Test("One server object listed twice is drawn once")
+    func serverObjectsDeduplicated() {
+        let objects = [event("nightly"), event("nightly"), event("nightly", schema: "audit")]
+        #expect(DatabaseTreeFilter.filteredServerObjects(objects, searchText: "").count == 2)
     }
 
     @Test("visibleSchemas drops system schemas and deduplicates")

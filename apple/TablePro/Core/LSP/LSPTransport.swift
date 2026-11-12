@@ -81,8 +81,8 @@ actor LSPTransport {
     private var writer: LSPMessageWriter?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
-    private var stderrReader: PipeReader?
     private var stdoutReader: PipeReader?
+    private var stderrReader: PipeReader?
     private var nextRequestID: Int = 1
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
     private var notificationHandlers: [String: @Sendable (Data) -> Void] = [:]
@@ -129,11 +129,12 @@ actor LSPTransport {
 
         try proc.run()
 
-        // Not FileHandle.bytes: its reads share one serial queue, so this idle server would hold every
-        // other AsyncBytes reader in the app, the Claude Agent chat among them.
-        let (chunks, chunkSink) = AsyncStream<Data>.makeStream()
+        // Not FileHandle.bytes: its reads share one queue, so an idle server would stall every other AsyncBytes read.
+        let (chunks, chunkSink) = AsyncStream.makeStream(of: Data.self)
         let stdoutReader = PipeReader(stdout.fileHandleForReading)
-        stdoutReader.start(delivering: { chunkSink.yield($0) }, onEnd: { chunkSink.finish() })
+        stdoutReader.start { chunkSink.yield($0) } atEnd: { _ in
+            chunkSink.finish()
+        }
         self.stdoutReader = stdoutReader
         readerTask = Task { [weak self] in
             await self?.runReadLoop(chunks)
@@ -281,17 +282,16 @@ actor LSPTransport {
     private func runReadLoop(_ chunks: AsyncStream<Data>) async {
         var buffer = Data()
         for await chunk in chunks {
+            // A stream ended by cancellation still hands over the chunks it buffered.
             if Task.isCancelled { return }
             buffer.append(chunk)
             while let (messageData, _) = Self.parseMessageFromBuffer(&buffer) {
                 dispatchMessage(messageData)
             }
         }
-        if !Task.isCancelled {
-            Self.logger.debug("LSP read loop ended at end of output")
-        }
     }
 
+    // Nil until the buffer holds a whole message; the Int is the bytes it consumed.
     private static func parseMessageFromBuffer(_ buffer: inout Data) -> (Data, Int)? {
         let separator: [UInt8] = [0x0D, 0x0A, 0x0D, 0x0A]
         guard let separatorRange = buffer.range(of: Data(separator)) else {
@@ -366,7 +366,7 @@ actor LSPTransport {
             if let handler = notificationHandlers[method] {
                 handler(data)
             }
-            // Server-initiated request (has both id and method) — reply with handler result or null
+            // Server-initiated request (has both id and method): reply with the handler's result or null
             if let id {
                 if let deferred = deferredRequestHandlers[method] {
                     deferred(data, id)

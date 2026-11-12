@@ -37,6 +37,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     // What each query tab's text read at its document's version, since the session is written every few seconds.
     private readonly Dictionary<ITabContent, (long Version, LineEnding Ending, SessionTab Tab)> _snapshots = [];
     private CancellationTokenSource? _watching;
+    private CancellationTokenSource? _loadingTree;
     private Windows.Foundation.Point _stripOrigin;
     private WindowId _tearOutWindow;
     private CancellationTokenSource? _recoveringHostKey;
@@ -266,6 +267,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     // A held transaction or unsaved changes the close has not been answered about.
     internal bool HasUnconfirmed(ISet<IWorkspaceTab> confirmed) => _tabs.HasUnconfirmed(confirmed);
 
+    internal PendingWork Pending() => _tabs.Pending();
+
     internal IReadOnlyList<IWorkspaceTab> RunningQueries() => _tabs.RunningQueries();
 
     internal void KeepClosed(IReadOnlyList<SessionTab> tabs)
@@ -289,6 +292,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         Tabs.CanTearOutTabs = false;
         _watching?.Cancel();
         _watching = null;
+        _loadingTree?.Cancel();
+        _loadingTree = null;
         HealthBar.IsOpen = false;
         ElsewhereBar.IsOpen = false;
         HideChangesOnConnect();
@@ -1120,9 +1125,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
+        // Each load clears the tree before it adds, so a refresh pressed again ends the load still running.
+        _loadingTree?.Cancel();
+        using var loading = new CancellationTokenSource();
+        _loadingTree = loading;
         try
         {
-            var schemas = await session.GetSchemasAsync().ConfigureAwait(true);
+            var schemas = await session.GetSchemasAsync(loading.Token).ConfigureAwait(true);
+            loading.Token.ThrowIfCancellationRequested();
             var shown = schemas.Where(schema => !schema.IsSystem).ToList();
             if (shown.Count == 0)
             {
@@ -1134,8 +1144,10 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             if (_singleSchema)
             {
                 var objects = refresh
-                    ? await session.RefreshObjectsAsync(ObjectScope.DefaultSchema).ConfigureAwait(true)
-                    : await session.GetObjectsAsync(ObjectScope.DefaultSchema).ConfigureAwait(true);
+                    ? await session.RefreshObjectsAsync(ObjectScope.DefaultSchema, loading.Token).ConfigureAwait(true)
+                    : await session.GetObjectsAsync(ObjectScope.DefaultSchema, loading.Token).ConfigureAwait(true);
+                // The core may answer after the cancel, and its answer then is the replaced load's.
+                loading.Token.ThrowIfCancellationRequested();
                 AddFolders(Objects, shown.FirstOrDefault()?.Name, objects);
                 foreach (var folder in Objects.Where(node => node.Folder?.Kind == FolderKind.Tables))
                 {
@@ -1163,9 +1175,21 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 });
             }
         }
+        catch (Exception exception) when (loading.IsCancellationRequested
+            && exception is OperationCanceledException or TableProException)
+        {
+            // A newer load, or the session closing, took over the tree.
+        }
         catch (TableProException exception)
         {
             ShowListMessage(Strings.Error(exception.Error));
+        }
+        finally
+        {
+            if (ReferenceEquals(_loadingTree, loading))
+            {
+                _loadingTree = null;
+            }
         }
     }
 

@@ -224,7 +224,8 @@ extension QueryExecutionCoordinator {
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:],
         columnOrigins: [PluginColumnOrigin?]? = nil,
-        prepared: TableRows.PreparedRows? = nil
+        prepared: TableRows.PreparedRows? = nil,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -383,20 +384,12 @@ extension QueryExecutionCoordinator {
         }
         parent.dropParkedEdits(ofBackgroundTab: tabId)
 
-        recordHistory(
-            QueryHistoryRecordRequest(
-                query: historySQL ?? sql,
-                connectionId: conn.id,
-                databaseName: historyDatabaseName(tabId: tabId),
-                databaseType: conn.type,
-                schemaName: historySchemaName(tabId: tabId),
-                source: historySource(tabId: tabId),
-                executionTime: executionTime,
-                rowCount: rows.count,
-                wasSuccessful: true,
-                timing: timing
+        if trigger.recordsHistory {
+            recordSuccessfulRun(
+                query: historySQL ?? sql, tabId: tabId, connection: conn,
+                executionTime: executionTime, rowCount: rows.count, timing: timing
             )
-        )
+        }
 
         if parent.tabManager.selectedTabId == tabId, isEditable, !parent.changeManager.hasChanges {
             parent.changeManager.clearChangesAndUndoHistory()
@@ -479,11 +472,36 @@ extension QueryExecutionCoordinator {
         )
     }
 
+    private func recordSuccessfulRun(
+        query: String,
+        tabId: UUID,
+        connection conn: DatabaseConnection,
+        executionTime: TimeInterval,
+        rowCount: Int,
+        timing: PluginQueryTiming?
+    ) {
+        recordHistory(
+            QueryHistoryRecordRequest(
+                query: query,
+                connectionId: conn.id,
+                databaseName: historyDatabaseName(tabId: tabId),
+                databaseType: conn.type,
+                schemaName: historySchemaName(tabId: tabId),
+                source: historySource(tabId: tabId),
+                executionTime: executionTime,
+                rowCount: rowCount,
+                wasSuccessful: true,
+                timing: timing
+            )
+        )
+    }
+
     func launchPhase2Work(
         tableName: String,
         tabId: UUID,
         connectionType: DatabaseType,
-        schemaTask: Task<FetchedTableSchema, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?,
+        countsRows: Bool = true
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
@@ -491,7 +509,7 @@ extension QueryExecutionCoordinator {
         Task(priority: .utility) { [weak self, parent] in
             // The caller marked the total pending; every exit that skips `resolveRowCount` must release it, or Count Exactly never returns.
             guard let self else {
-                parent.releaseCountPending(for: tabId)
+                if countsRows { parent.releaseCountPending(for: tabId) }
                 return
             }
             guard !parent.isTearingDown else { return }
@@ -503,14 +521,14 @@ extension QueryExecutionCoordinator {
 
             await MainActor.run { [weak self] in
                 guard let self else {
-                    parent.releaseCountPending(for: tabId)
+                    if countsRows { parent.releaseCountPending(for: tabId) }
                     return
                 }
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
                 // A retarget or newer run owns the tab now with its own pending mark; clearing here would release the successor's.
-                guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
                 resolveRowCount(
                     tableName: tableName,
                     tabId: tabId,
@@ -804,7 +822,7 @@ extension QueryExecutionCoordinator {
         case .clear:
             return .clear
         case .approximate:
-            guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, { driver in
+            guard let count = try? await DatabaseManager.shared.withMetadataRead(scope: scope, workload: .interactive, { driver in
                 try await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
             }) else { return nil }
             return .count(count, isApproximate: true)
@@ -880,7 +898,8 @@ extension QueryExecutionCoordinator {
         sql: String,
         tabId: UUID,
         connection conn: DatabaseConnection,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        trigger: TableLoadTrigger = .userInitiated
     ) {
         let diagnosis = DatabaseWriteRejectionDiagnosis.formatted(error)
         let message = ServerOutputCapture.failureMessage(diagnosis, output: serverOutput)
@@ -893,6 +912,7 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = nil
         }
 
+        guard trigger.recordsHistory else { return }
         recordHistory(
             QueryHistoryRecordRequest(
                 query: sql,

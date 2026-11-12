@@ -6,38 +6,52 @@
 import Foundation
 
 extension AIChatViewModel {
-    /// Brings in this connection's conversation history, and this session's own transcript.
-    ///
-    /// Called when a session is first looked at rather than from `init`, and scoped to the
-    /// connection. Loading every conversation and restoring whichever happened to be newest meant a
-    /// second connection's window opened holding the first connection's transcript, and then saved
-    /// over it.
+    // Scoped to the connection, so a second connection's window never opens holding the first one's transcript.
     func restoreConversationsIfNeeded() {
-        guard !hasRestoredConversation else { return }
+        trackTableMentions()
+        // With no connection the history list would hold every connection's conversations.
+        guard connection != nil, !hasRestoredConversation else { return }
         markConversationRestored()
         let storage = chatStorage
         let connectionId = connection?.id
-        let wanted = pendingConversationToRestore
-        Task.detached(priority: .utility) { [weak self] in
-            let loaded = await storage.loadAll(connectionId: connectionId)
-            await MainActor.run {
-                guard let self else { return }
-                self.conversations = loaded
-                guard self.messages.isEmpty else { return }
-                guard let wanted, let stored = loaded.first(where: { $0.id == wanted }) else { return }
-                self.activeConversationID = stored.id
-                self.messages = ChatToolCallRepair.settlingPendingApprovals(stored.messages).map { ChatTurn(wire: $0) }
+        let wanted = conversationToRestore
+        let epoch = transcriptEpoch
+        let saved = lastConversationWrite
+        transcriptLoad = Task(priority: .utility) { [weak self] in
+            await saved?.value
+            let summaries = await storage.loadSummaries(connectionId: connectionId)
+            var stored: AIConversation?
+            if let wanted {
+                stored = await storage.load(id: wanted)
             }
+            guard let self, self.transcriptEpoch == epoch else { return }
+            self.conversations = Self.merge(summaries, keepingTurnsOf: self.conversations)
+            guard let wanted, self.conversationToRestore == wanted else { return }
+            // A message sent before the restore landed started a conversation of its own, which wins.
+            guard self.messages.isEmpty, self.activeConversationID == nil else {
+                self.conversationToRestore = nil
+                return
+            }
+            let readable = stored.flatMap { AIChatStorage.isShown(conversationOf: $0.connectionId, on: connectionId) ? $0 : nil }
+            self.showTranscript(readable)
         }
+    }
+
+    // An entry still carrying turns holds what disk may have trimmed, so a re-read list keeps it.
+    private static func merge(_ summaries: [AIConversation], keepingTurnsOf current: [AIConversation]) -> [AIConversation] {
+        let kept = current.filter { !$0.messages.isEmpty }
+        guard !kept.isEmpty else { return summaries }
+        let keptByID = Dictionary(kept.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let listed = Set(summaries.map(\.id))
+        return kept.filter { !listed.contains($0.id) } + summaries.map { keptByID[$0.id] ?? $0 }
     }
 
     func clearConversation() {
         cancelStream()
         AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
-        let ids = conversations.map(\.id)
-        let storage = chatStorage
-        Task { for id in ids { await storage.delete(id) } }
+        deleteStoredConversations(conversations.map(\.id))
         conversations.removeAll()
+        conversationToRestore = nil
         messages.removeAll()
         activeConversationID = nil
         clearError()
@@ -47,58 +61,72 @@ extension AIChatViewModel {
         if activeConversationID == id {
             AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         }
-        Task { await chatStorage.delete(id) }
+        deleteStoredConversations([id])
         conversations.removeAll { $0.id == id }
+        if conversationToRestore == id {
+            conversationToRestore = nil
+        }
         if activeConversationID == id {
             activeConversationID = nil
             messages.removeAll()
         }
     }
 
-    /// Writes the transcript under the conversation this session already holds.
-    ///
-    /// The id is matched against storage rather than against the in-memory list. A session holding
-    /// an id the list had not caught up with took the new-conversation branch, orphaning the
-    /// transcript the user was reading and starting a second one beside it.
+    // By id, not by the in-memory list, so an id the list has not caught up with keeps its own file.
     func persistCurrentConversation() {
         guard let conversation = snapshotCurrentConversation() else { return }
-        Task { await chatStorage.save(conversation) }
+        let storage = chatStorage
+        let previous = lastConversationWrite
+        lastConversationWrite = Task {
+            await previous?.value
+            await storage.save(conversation)
+        }
     }
 
-    /// The same write, finished before this call returns. Termination is the only caller.
+    // Behind the saves already booked, or one landing late would bring the file back.
+    func deleteStoredConversations(_ ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        let storage = chatStorage
+        let previous = lastConversationWrite
+        lastConversationWrite = Task {
+            await previous?.value
+            for id in ids {
+                await storage.delete(id)
+            }
+        }
+    }
+
+    // Termination is the only caller.
     func persistCurrentConversationSynchronously() {
         guard let conversation = snapshotCurrentConversation() else { return }
         chatStorage.saveSynchronously(conversation)
     }
 
+    // Returns the whole conversation to write and keeps only its summary in `conversations`.
     private func snapshotCurrentConversation() -> AIConversation? {
         guard !messages.isEmpty else { return nil }
-        let wireMessages = ChatToolCallRepair.settlingPendingApprovals(messages.map { $0.wireSnapshot })
 
+        var conversation: AIConversation
         if let existingID = activeConversationID {
-            var conversation = conversations.first(where: { $0.id == existingID })
+            conversation = conversations.first(where: { $0.id == existingID })
                 ?? AIConversation(id: existingID, connectionId: connection?.id, connectionName: connection?.name)
-            conversation.messages = wireMessages
             conversation.updatedAt = Date()
-            conversation.updateTitle()
             conversation.connectionName = connection?.name
-
-            if let index = conversations.firstIndex(where: { $0.id == existingID }) {
-                conversations[index] = conversation
-            } else {
-                conversations.insert(conversation, at: 0)
-            }
-            return conversation
+        } else {
+            conversation = AIConversation(connectionId: connection?.id, connectionName: connection?.name)
+            activeConversationID = conversation.id
+            conversationToRestore = nil
         }
-
-        var conversation = AIConversation(
-            messages: wireMessages,
-            connectionId: connection?.id,
-            connectionName: connection?.name
-        )
+        conversation.messages = ChatToolCallRepair.settlingPendingApprovals(messages.map { $0.wireSnapshot })
         conversation.updateTitle()
-        activeConversationID = conversation.id
-        conversations.insert(conversation, at: 0)
+
+        var summary = conversation
+        summary.messages = []
+        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+            conversations[index] = summary
+        } else {
+            conversations.insert(summary, at: 0)
+        }
         return conversation
     }
 }

@@ -6,6 +6,7 @@ mod task_panic;
 mod task_result;
 mod tasks;
 mod watch_forwarder;
+mod worker_count;
 
 pub use catch_panic::catch_panic;
 pub use latest_wins_writer::LatestWinsWriter;
@@ -15,3 +16,4 @@ pub use task_panic::TaskPanic;
 pub use task_result::TaskResult;
 pub use tasks::Tasks;
 pub use watch_forwarder::WatchForwarder;
+pub use worker_count::worker_count;

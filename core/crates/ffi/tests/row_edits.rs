@@ -172,9 +172,15 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         .save(record, ConnectionSecrets::default())
         .await
         .unwrap();
-    core.connect_saved(saved.id, ConnectionSecrets::default(), None, None)
-        .await
-        .unwrap()
+    core.connect_saved(
+        saved.id,
+        ConnectionSecrets::default(),
+        ConnectionSecrets::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap()
 }
 
 #[tokio::test]

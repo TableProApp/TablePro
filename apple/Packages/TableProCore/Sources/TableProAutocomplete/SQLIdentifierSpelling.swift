@@ -53,6 +53,31 @@ public struct SQLCompletionIdentifier: Sendable, Hashable {
     public static func catalog(_ name: String) -> SQLCompletionIdentifier {
         SQLCompletionIdentifier([.catalog(name)])
     }
+
+    // Each part as stored or as written, with no quotes.
+    public var plainText: String {
+        parts.map { part in
+            switch part {
+            case .catalog(let name): return name
+            case .statement(let text, _): return text
+            }
+        }.joined(separator: ".")
+    }
+}
+
+public struct SQLCompletionColumnPair: Sendable, Hashable {
+    public let left: SQLCompletionIdentifier
+    public let right: SQLCompletionIdentifier
+
+    public init(left: SQLCompletionIdentifier, right: SQLCompletionIdentifier) {
+        self.left = left
+        self.right = right
+    }
+
+    // One equality per pair, in key order.
+    public static func condition(_ sides: [(left: String, right: String)]) -> String {
+        sides.map { "\($0.left) = \($0.right)" }.joined(separator: " AND ")
+    }
 }
 
 // Whether the token being completed already opened a quoted name, and whether that quote is closed.
@@ -127,6 +152,17 @@ public struct SQLIdentifierSpelling: Sendable {
         typedPrefix: String,
         quoting: SQLIdentifierTokenQuoting
     ) -> SQLCompletionItem {
+        if !item.columnPairs.isEmpty {
+            // The typed text is a qualifier, which says nothing about how the columns are cased.
+            guard quoting == .none else { return item }
+            let sides = item.columnPairs.map { pair in
+                (left: spelled(pair.left.parts, typedPrefix: ""), right: spelled(pair.right.parts, typedPrefix: ""))
+            }
+            return item.recased(
+                label: SQLCompletionColumnPair.condition(sides.map { (left: $0.left.label, right: $0.right.label) }),
+                insertText: SQLCompletionColumnPair.condition(sides.map { (left: $0.left.text, right: $0.right.text) })
+            )
+        }
         guard let identifier = item.identifier else { return item }
         if quoting != .none, identifier.parts.count == 1, case .catalog(let name) = identifier.parts[0] {
             // The user's own quote asks for the exact name: inside a closed pair it goes in without the pair.
@@ -136,9 +172,14 @@ public struct SQLIdentifierSpelling: Sendable {
         // A qualified reference replaces the user's quotes, so it is spelled as if none were typed.
         guard quoting != .enclosed || item.isQualifiedReference else { return item }
 
+        let name = spelled(identifier.parts, typedPrefix: typedPrefix)
+        return item.recased(label: name.label, insertText: name.text)
+    }
+
+    private func spelled(_ parts: [SQLCompletionIdentifier.Part], typedPrefix: String) -> (label: String, text: String) {
         var labels: [String] = []
         var texts: [String] = []
-        for part in identifier.parts {
+        for part in parts {
             switch part {
             case .catalog(let name):
                 switch form(of: name, typedPrefix: typedPrefix) {
@@ -154,7 +195,7 @@ public struct SQLIdentifierSpelling: Sendable {
                 texts.append(isQuoted ? quoted(text) : text)
             }
         }
-        return item.recased(label: labels.joined(separator: "."), insertText: texts.joined(separator: "."))
+        return (labels.joined(separator: "."), texts.joined(separator: "."))
     }
 
     private func canStayBare(_ name: String) -> Bool {

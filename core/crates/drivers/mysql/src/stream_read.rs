@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use futures_util::TryStreamExt;
 use sqlx::mysql::{MySqlConnection, MySqlDatabaseError};
-use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, SqlSafeStr as _, Statement as _};
+use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, Statement as _};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 use tablepro_core::{
@@ -15,7 +15,7 @@ use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
-use crate::workspace_call::{describe, prepared};
+use crate::workspace_call::{describe, prepare_uncached, prepared};
 
 const BATCH_ROWS: usize = 256;
 
@@ -106,10 +106,7 @@ async fn prepare_as_one(
     flavour: MySqlFlavour,
     sql: &str,
 ) -> Result<Vec<ResultColumn>, DriverError> {
-    let prepared = (&mut *connection)
-        .prepare(AssertSqlSafe(sql.to_owned()).into_sql_str())
-        .await;
-    match prepared {
+    match prepare_uncached(connection, sql).await {
         Ok(statement) => Ok(statement
             .columns()
             .iter()

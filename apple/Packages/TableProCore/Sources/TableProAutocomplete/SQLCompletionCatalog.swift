@@ -14,10 +14,18 @@ public protocol SQLCompletionCatalog: Sendable {
     func allowedValues(forColumn column: String, in references: [TableReference]) async -> [String]
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem]
     func allColumnsFromCachedTables() async -> [SQLCompletionItem]
+    // The table's own keys, none pointing outside its schema.
+    func foreignKeys(of tableName: String, schema: String?) async -> [SQLCompletionForeignKey]
+    // For a surface that spells nothing after ranking; nil leaves the name as stored and written.
+    func writtenText(of identifier: SQLCompletionIdentifier) -> String?
 }
 
 public extension SQLCompletionCatalog {
     func tableCompletionItems(inSchema schema: String, isQuoted: Bool) async -> [SQLCompletionItem] {
         await tableCompletionItems(inSchema: schema)
     }
+
+    func foreignKeys(of tableName: String, schema: String?) async -> [SQLCompletionForeignKey] { [] }
+
+    func writtenText(of identifier: SQLCompletionIdentifier) -> String? { nil }
 }
