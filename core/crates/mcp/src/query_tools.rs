@@ -465,6 +465,16 @@ mod tests {
             )
             .is_err()
         );
+        // DuckDB turns the U+200B into a space before it lexes and runs two statements.
+        assert!(single_batch("SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'", SqlGrammar::DuckDb).is_err());
+        assert!(
+            single_batch(
+                "/* ' */ SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+                SqlGrammar::DuckDb
+            )
+            .is_err()
+        );
+        assert!(single_batch("SELECT\u{a0}1", SqlGrammar::DuckDb).is_ok());
     }
 
     #[test]

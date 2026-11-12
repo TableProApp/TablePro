@@ -574,6 +574,8 @@ mod tests {
             "PRAGMA http_proxy_password = 'v'",
             "PRAGMA s3_secret_access_key='v'",
             "SET http_proxy = 'http://u:p@proxy:3128'",
+            // DuckDB turns the U+200B into a space, so the E'' string ends early and the secret is a statement.
+            "SELECT varchar\u{200b}E'\\''; CREATE SECRET s (TYPE s3, KEY_ID 'k', SECRET 'v'); --'",
         ] {
             assert_eq!(DuckDbDialect::new().history_recording(sql), withheld, "{sql}");
         }

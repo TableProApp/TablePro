@@ -1424,6 +1424,31 @@ mod tests {
     }
 
     #[test]
+    fn duckdb_is_read_with_and_without_the_spaces_it_blanks_before_lexing() {
+        // Measured on DuckDB 2.0.0: each ran the DROP. In the first it kept one U+200B, inside what its pass took
+        // for a `$$` quote, and blanked the other; the second ran it once its last statement went alone.
+        for sql in [
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$, varchar\u{200b}E'\\''; DROP TABLE t; --'x$$",
+            "/* ' */ SELECT 1; SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            "/* ' */ SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            "SELECT varchar\u{200b}E'\\''; DROP TABLE t; --'",
+            "SELECT 1 AS a,\u{200b}$$'$$; DROP TABLE t; SELECT 'x'",
+            "SELECT 1 AS a$$, 2 AS b\u{200b}$$; DROP TABLE t; --$$",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Destructive, "{sql:?}");
+        }
+        // DuckDB blanks this space and reads one statement, but without its pass the text is two.
+        assert_eq!(
+            access("SELECT 1 AS x\u{200b}$$; DROP TABLE t; --$$", SqlGrammar::DuckDb),
+            StatementAccess::Destructive
+        );
+        assert_eq!(
+            access("SELECT 'a\u{200b}b' FROM t", SqlGrammar::DuckDb),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
     fn a_unicode_blank_before_a_keyword_does_not_hide_it() {
         for (sql, expected) in [
             ("\u{feff}DROP TABLE t", StatementAccess::Destructive),
