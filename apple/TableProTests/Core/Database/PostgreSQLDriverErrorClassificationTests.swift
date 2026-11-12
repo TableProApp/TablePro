@@ -30,7 +30,7 @@ struct PostgreSQLDriverErrorClassificationTests {
             pluginSqlState: "28P01"
         )
 
-        #expect(DatabaseManager.shared.isAuthenticationFailure(error))
+        #expect(ConnectionFailureClassifier.isAuthenticationFailure(error))
     }
 
     @Test("a read-only refusal lost with the connection is still classified, with the server's words")
@@ -67,6 +67,6 @@ struct PostgreSQLDriverErrorClassificationTests {
                 """,
             pluginSqlState: nil
         )
-        #expect(DatabaseManager.shared.isAuthenticationFailure(error))
+        #expect(ConnectionFailureClassifier.isAuthenticationFailure(error))
     }
 }

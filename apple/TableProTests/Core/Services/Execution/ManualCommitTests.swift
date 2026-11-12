@@ -148,6 +148,7 @@ struct ManualCommitTests {
         #expect(AgentTransactionGuard.protection(family: .duckdb, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .redshift, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .mysql, sessionState: .inTransaction, controlsTransaction: false) == .none)
+        #expect(AgentTransactionGuard.protection(family: .teradata, sessionState: .inTransaction, controlsTransaction: false) == .none)
         #expect(AgentTransactionGuard.protection(family: .postgres, sessionState: .idle, controlsTransaction: false) == .none)
         #expect(AgentTransactionGuard.protection(family: .postgres, sessionState: .inTransaction, controlsTransaction: true) == .none)
     }
