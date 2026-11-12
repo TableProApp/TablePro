@@ -19981,6 +19981,9 @@
         }
       }
     },
+    "Safe Mode is set to Read-Only for this connection, and the database refused the statement." : {
+
+    },
     "Same Key as SSH Server" : {
 
     },
