@@ -91122,8 +91122,45 @@
         }
       }
     },
-    "Hides matching values in the grid, copies, exports, the AI assistant and MCP. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions." : {
-
+    "Hides matching values in the grid, copies, exports, shared links, the AI assistant and MCP. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masque les valeurs correspondantes dans la grille, les copies, les exportations, les liens partagés, l’assistant IA et MCP. Un motif s’écrit table.column ou column, avec * comme caractère générique, par exemple *.email. Les filtres et les tris portent toujours sur les valeurs stockées : le masquage ne remplace donc pas les autorisations de la base de données."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그리드, 복사, 내보내기, 공유 링크, AI 어시스턴트와 MCP에서 일치하는 값을 숨깁니다. 패턴은 table.column 또는 column 형식이며 *를 와일드카드로 쓸 수 있습니다(예: *.email). 필터와 정렬은 여전히 저장된 값으로 실행되므로 마스킹이 데이터베이스 권한을 대신하지는 않습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eşleşen değerleri ızgarada, kopyalarda, dışa aktarmalarda, paylaşılan bağlantılarda, AI asistanında ve MCP'de gizler. Bir desen table.column veya column biçimindedir; * joker karakterdir, örneğin *.email. Filtreler ve sıralamalar yine saklanan değerler üzerinde çalışır, bu yüzden maskeleme veritabanı izinlerinin yerini tutmaz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Che các giá trị khớp trong lưới, khi sao chép, khi xuất, trong liên kết chia sẻ, trợ lý AI và MCP. Mẫu có dạng table.column hoặc column, dùng * làm ký tự đại diện, ví dụ *.email. Bộ lọc và sắp xếp vẫn chạy trên giá trị đã lưu, nên che dữ liệu không thay thế được quyền truy cập cơ sở dữ liệu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格、复制、导出、共享链接、AI 助手和 MCP 中隐藏匹配的值。模式为 table.column 或 column，可用 * 作通配符，例如 *.email。筛选和排序仍基于存储的值运行，因此遮盖不能替代数据库权限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格、複製、匯出、共享連結、AI 助理和 MCP 中隱藏相符的值。模式為 table.column 或 column，可用 * 作萬用字元，例如 *.email。篩選和排序仍以儲存的值執行，因此遮蓋無法取代資料庫權限。"
+          }
+        }
+      }
     },
     "High" : {
       "localizations" : {
