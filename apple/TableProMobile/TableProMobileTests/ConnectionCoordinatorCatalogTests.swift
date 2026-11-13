@@ -386,53 +386,72 @@ struct ConnectionCoordinatorCatalogTests {
         editing.isHeldByEditor = false
     }
 
-    @Test("While a run with a USE is in flight, SQL Server writes in every window are refused and no window runs")
-    func useRunRefusesSQLServerWrites() async {
-        var mssql = connection
-        mssql.type = .mssql
-        factory.queue(driver(tables: ["orders"]))
-        let coordinator = ConnectionCoordinator(connection: mssql, appState: appState)
+    @Test("A run with a USE holds Run in every window, and the Tables tab keeps naming the database it shows", arguments: [
+        DatabaseType.mssql, .mysql
+    ])
+    func useRunHoldsOnlyRun(type: DatabaseType) async {
+        var record = connection
+        record.type = type
+        let session = driver(tables: ["orders"])
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: record, appState: appState)
         await coordinator.connect()
-        let otherWindow = ConnectionCoordinator(connection: mssql, appState: appState)
+        let otherWindow = ConnectionCoordinator(connection: record, appState: appState)
         await otherWindow.connect()
 
         #expect(!coordinator.beginDatabaseMove(ifRunning: "SELECT * FROM orders"))
-        #expect(otherWindow.databaseMoveRefusal == nil)
+        #expect(!otherWindow.isDatabaseMoving)
 
         #expect(coordinator.beginDatabaseMove(ifRunning: "USE archive\nDELETE FROM orders"))
+        session.scriptedCurrentDatabase = "archive"
         #expect(otherWindow.isDatabaseMoving)
-        #expect(otherWindow.databaseMoveRefusal != nil)
+        #expect(otherWindow.tableDatabase == "app_prod")
+        #expect(otherWindow.tablePlacement.database == "app_prod")
 
         coordinator.endDatabaseMove()
         #expect(!otherWindow.isDatabaseMoving)
-        #expect(otherWindow.databaseMoveRefusal == nil)
     }
 
-    @Test("MySQL writes name their database, so a run with a USE holds only the Run button")
-    func useRunLeavesMySQLWritesAlone() async {
-        let coordinator = await connected(driver(tables: ["orders"]))
-
-        #expect(coordinator.beginDatabaseMove(ifRunning: "USE app_staging"))
-
-        #expect(coordinator.isDatabaseMoving)
-        #expect(coordinator.databaseMoveRefusal == nil)
-        coordinator.endDatabaseMove()
-    }
-
-    @Test("A SQL Server session left in another database refuses writes made for the one the window shows")
-    func sqlServerSessionElsewhereRefusesWrites() async {
+    @Test("A SQL Server window names the database it shows while the session sits in another, a pinned window too")
+    func sqlServerWindowNamesTheDatabaseItShows() async {
         var mssql = connection
         mssql.type = .mssql
         let session = driver(tables: ["orders"])
         factory.queue(session)
         let coordinator = ConnectionCoordinator(connection: mssql, appState: appState)
         await coordinator.connect()
-        session.scriptedCurrentDatabase = "APP_PROD"
-        #expect(coordinator.databaseMoveRefusal == nil)
+        let editing = ConnectionCoordinator(connection: mssql, appState: appState)
+        editing.isHeldByEditor = true
+        session.scriptedSessionDatabase = "app_staging"
+        session.refusedDatabases = ["app_prod"]
 
-        session.scriptedCurrentDatabase = "archive"
+        await coordinator.followSessionPlacement(after: .init(database: true))
 
-        #expect(coordinator.databaseMoveRefusal != nil)
+        #expect(coordinator.tableDatabase == "app_staging")
+        #expect(editing.tableDatabase == "app_prod")
+        #expect(editing.tablePlacement.database == "app_prod")
+        #expect(coordinator.failureAlertMessage == String(
+            format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”."),
+            "app_staging", "app_prod", "app_prod"
+        ))
+        editing.isHeldByEditor = false
+    }
+
+    @Test("A SQL Server connection naming no database names the one it opened in, even when the database list fails")
+    func failedDatabaseListNamesTheOpenedDatabase() async {
+        var mssql = connection
+        mssql.type = .mssql
+        mssql.database = ""
+        let session = driver(tables: ["orders"])
+        session.scriptedCurrentDatabase = "app_default"
+        session.fetchDatabasesError = MockDatabaseDriver.MockError.scripted
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: mssql, appState: appState)
+        await coordinator.connect()
+
+        #expect(session.fetchDatabasesCalls > 0)
+        #expect(coordinator.activeDatabase == "app_default")
+        #expect(coordinator.tableDatabase == "app_default")
     }
 
     @Test("A COMMIT that ends a SET LOCAL search_path moves the schema picker back")

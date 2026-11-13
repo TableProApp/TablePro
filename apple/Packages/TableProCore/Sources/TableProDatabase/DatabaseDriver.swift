@@ -27,6 +27,17 @@ public protocol DatabaseDriver: AnyObject, Sendable {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo]
     func fetchDatabases() async throws -> [String]
 
+    // The table in `database`, for an engine that names the database beside the schema (SQL Server's
+    // `[db].[schema].[table]`), so the read never follows a `USE` the session ran. Any other engine reads as above.
+    func fetchColumns(table: String, schema: String?, database: String?) async throws -> [ColumnInfo]
+    func fetchIndexes(table: String, schema: String?, database: String?) async throws -> [IndexInfo]
+    func fetchForeignKeys(table: String, schema: String?, database: String?) async throws -> [ForeignKeyInfo]
+
+    // Runs a statement sent with `StreamOptions.enforcesReadOnly` in the engine's read-only mode, or refuses it.
+    var enforcesReadOnlyMode: Bool { get }
+    // Whether the mode can run now: its own transaction would end a transaction or a table lock the session holds.
+    func entersReadOnlyMode() async -> Bool
+
     func switchDatabase(to name: String) async throws
     var supportsSchemas: Bool { get }
     func switchSchema(to name: String) async throws
@@ -57,6 +68,25 @@ public extension DatabaseDriver {
     var sendsBatchesWhole: Bool { false }
 
     func sessionLexicalFacts() async -> SQLSessionLexicalFacts? { nil }
+
+    func fetchColumns(table: String, schema: String?, database: String?) async throws -> [ColumnInfo] {
+        try await fetchColumns(table: table, schema: schema)
+    }
+
+    func fetchIndexes(table: String, schema: String?, database: String?) async throws -> [IndexInfo] {
+        try await fetchIndexes(table: table, schema: schema)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?, database: String?) async throws -> [ForeignKeyInfo] {
+        try await fetchForeignKeys(table: table, schema: schema)
+    }
+
+    var enforcesReadOnlyMode: Bool { false }
+
+    func entersReadOnlyMode() async -> Bool {
+        guard enforcesReadOnlyMode else { return false }
+        return await sessionTransactionState() == .idle
+    }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
         try await beginTransaction()

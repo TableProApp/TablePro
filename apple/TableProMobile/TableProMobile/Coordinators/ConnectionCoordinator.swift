@@ -272,6 +272,11 @@ final class ConnectionCoordinator {
         return activeDatabase
     }
 
+    // SQL Server names it in front of the schema; other engines ignore it.
+    var tableDatabase: String? {
+        activeDatabase.isEmpty ? nil : activeDatabase
+    }
+
     static var editorHeldElsewhereMessage: String {
         String(localized: "Another window has unsaved changes on this connection. Save or discard them before switching database.")
     }
@@ -462,16 +467,13 @@ final class ConnectionCoordinator {
                 model.endSwitch()
                 await model.loadSchemasAfterSwitch(to: used, from: self)
                 await model.runHeldBackWork(from: self)
-                // MySQL names the database in every Tables tab write, and a plugin driver runs the app's requests in the
-                // menu's database; SQL Server saves only once the session is back.
+                // Every Tables tab write names its database, and a plugin driver runs the app's requests in the menu's.
                 presentFailure(
                     title: Self.switchDatabaseFailedTitle,
-                    message: model.qualifiesTablesWithDatabase || driver.reportsDatabaseWithoutStatement
-                        ? String(format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”."), used, back, back)
-                        : String(
-                            format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. To save the unsaved changes, run USE %@ in the Query tab of the window that holds them."),
-                            used, back, SQLBuilder.quoteIdentifier(back, for: connection.type)
-                        )
+                    message: String(
+                        format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”."),
+                        used, back, back
+                    )
                 )
                 return
             }
@@ -489,8 +491,8 @@ final class ConnectionCoordinator {
     }
 
     // From the start of a run with a `USE` until the picker follows it, another run's statements could go out around the
-    // move, so no window runs one, and on SQL Server, whose Tables tab names no database, every window's writes are
-    // refused. A driver that reports its database without a statement keeps the app's requests where the picker says.
+    // move, so no window runs one. The Tables tab names its database, so its writes go on. A driver that reports its
+    // database without a statement keeps the app's requests where the picker says.
     func beginDatabaseMove(ifRunning text: String) -> Bool {
         guard supportsDatabaseSwitching, let driver = session?.driver as? any SessionDatabaseReporting,
               !driver.reportsDatabaseWithoutStatement,
@@ -513,26 +515,6 @@ final class ConnectionCoordinator {
             recovery: nil,
             underlying: nil
         )
-    }
-
-    var databaseMoveRefusal: AppError? {
-        guard supportsDatabaseSwitching, !model.qualifiesTablesWithDatabase,
-              let driver = session?.driver as? any SessionDatabaseReporting,
-              !driver.reportsDatabaseWithoutStatement else { return nil }
-        if model.isDatabaseMoving { return Self.databaseMovingRefusal }
-        // A session that could not go back to where an unsaved edit was made. SQL Server compares names by its collation,
-        // which ignores case unless set otherwise.
-        if let current = driver.currentDatabase, !current.isEmpty, !activeDatabase.isEmpty,
-           current.caseInsensitiveCompare(activeDatabase) != .orderedSame {
-            return AppError(
-                category: .query,
-                title: String(localized: "Session in Another Database"),
-                message: String(format: String(localized: "The session is in “%@”, not “%@”, so this change cannot be saved now."), current, activeDatabase),
-                recovery: nil,
-                underlying: nil
-            )
-        }
-        return nil
     }
 
     func switchDatabase(to name: String) async {

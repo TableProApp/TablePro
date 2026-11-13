@@ -4,10 +4,8 @@ import TableProQuery
 import Testing
 @testable import TableProMobile
 
-/// SQL Server has no session-level schema to set, so every data statement has to name the schema
-/// the toolbar shows. An unqualified one resolves against the login's default schema, which is a
-/// different table of the same name.
-@Suite("SQLBuilder schema qualification")
+// SQL Server has no session schema to set and resolves `[schema].[table]` in the session's database, which a `USE`
+// moves, so every statement names the schema and the database the window shows.
 struct SQLBuilderSchemaQualificationTests {
     private func driver() -> MockDatabaseDriver { MockDatabaseDriver() }
 
@@ -68,6 +66,92 @@ struct SQLBuilderSchemaQualificationTests {
             == "SELECT COUNT(*) FROM `orders`")
         #expect(SQLBuilder.buildCount(table: "orders", schema: "", type: .mysql)
             == "SELECT COUNT(*) FROM `orders`")
+    }
+
+    @Test("SQL Server's row writes and truncate name the window's database in front of the schema")
+    func sqlServerWritesNameTheDatabase() {
+        let key = [(column: "id", value: "1")]
+        #expect(SQLBuilder.buildUpdate(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, driver: driver(),
+            changes: [(column: "note", value: "x")], primaryKeys: key, columns: []
+        ).hasPrefix("UPDATE [shop].[dbo].[orders] SET"))
+        #expect(SQLBuilder.buildDelete(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, driver: driver(),
+            primaryKeys: key, columns: []
+        ).hasPrefix("DELETE FROM [shop].[dbo].[orders] WHERE"))
+        #expect(SQLBuilder.buildInsert(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, driver: driver(),
+            columns: ["note"], values: ["x"]
+        ) == "INSERT INTO [shop].[dbo].[orders] ([note]) VALUES (N'x')")
+        #expect(SQLBuilder.buildInsert(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, driver: driver(), columns: [], values: []
+        ) == "INSERT INTO [shop].[dbo].[orders] DEFAULT VALUES")
+        #expect(SQLBuilder.truncateStatement(table: "orders", schema: "dbo", database: "shop", type: .mssql)
+            == "TRUNCATE TABLE [shop].[dbo].[orders]")
+    }
+
+    @Test("SQL Server's browse, count, filter, search and lookup reads name the window's database")
+    func sqlServerReadsNameTheDatabase() {
+        let columns = [ColumnInfo(name: "note", typeName: "nvarchar", ordinalPosition: 0)]
+        let sorted = SortState(columns: [SortColumn(name: "note", ascending: true)])
+        let table = "SELECT * FROM [shop].[dbo].[orders] "
+        #expect(SQLBuilder.buildSelect(table: "orders", schema: "dbo", database: "shop", type: .mssql, limit: 10, offset: 0)
+            .hasPrefix(table))
+        #expect(SQLBuilder.buildSelect(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, sortState: sorted, limit: 10, offset: 0
+        ).hasPrefix(table))
+        #expect(SQLBuilder.buildCount(table: "orders", schema: "dbo", database: "shop", type: .mssql)
+            == "SELECT COUNT(*) FROM [shop].[dbo].[orders]")
+        #expect(SQLBuilder.buildFilteredSelect(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql,
+            filters: [], logicMode: .and, limit: 10, offset: 0
+        ).hasPrefix(table))
+        #expect(SQLBuilder.buildFilteredCount(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, filters: [], logicMode: .and
+        ) == "SELECT COUNT(*) FROM [shop].[dbo].[orders]")
+        #expect(SQLBuilder.buildSearchSelect(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql,
+            searchText: "a", searchColumns: columns, limit: 10, offset: 0
+        ).hasPrefix(table))
+        #expect(SQLBuilder.buildSearchCount(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, searchText: "a", searchColumns: columns
+        ).hasPrefix("SELECT COUNT(*) FROM [shop].[dbo].[orders] WHERE"))
+        #expect(SQLBuilder.buildSingleRowLookup(
+            table: "orders", schema: "dbo", database: "shop", key: [(column: "id", value: "1")], columns: [],
+            type: .mssql, driver: driver()
+        ).hasPrefix("SELECT * FROM [shop].[dbo].[orders] WHERE"))
+    }
+
+    @Test("SQL Server with a database and no schema reads the database's default schema")
+    func sqlServerDatabaseWithoutSchema() {
+        #expect(SQLBuilder.qualifiedIdentifier(table: "orders", schema: nil, database: "shop", for: .mssql)
+            == "[shop]..[orders]")
+        #expect(SQLBuilder.qualifiedIdentifier(table: "orders", schema: "", database: "shop", for: .mssql)
+            == "[shop]..[orders]")
+        #expect(SQLBuilder.qualifiedIdentifier(table: "orders", schema: "dbo", database: "", for: .mssql)
+            == "[dbo].[orders]")
+        #expect(SQLBuilder.qualifiedIdentifier(table: "orders", schema: "dbo", database: nil, for: .mssql)
+            == "[dbo].[orders]")
+    }
+
+    @Test("A closing bracket in a SQL Server database name is doubled")
+    func sqlServerQuotesTheDatabase() {
+        #expect(SQLBuilder.qualifiedIdentifier(table: "orders", schema: "dbo", database: "shop]; DROP TABLE x --", for: .mssql)
+            == "[shop]]; DROP TABLE x --].[dbo].[orders]")
+    }
+
+    @Test("MySQL and PostgreSQL ignore the database: MySQL's sits in the schema slot, PostgreSQL has no third part")
+    func otherEnginesIgnoreTheDatabase() {
+        #expect(SQLBuilder.qualifiedIdentifier(table: "orders", schema: "shop", database: "shop", for: .mysql)
+            == "`shop`.`orders`")
+        #expect(SQLBuilder.qualifiedIdentifier(table: "orders", schema: "public", database: "shop", for: .postgresql)
+            == "\"public\".\"orders\"")
+        #expect(SQLBuilder.buildDelete(
+            table: "orders", schema: "shop", database: "staging", type: .mysql, driver: driver(),
+            primaryKeys: [(column: "id", value: "1")], columns: []
+        ).hasPrefix("DELETE FROM `shop`.`orders` WHERE"))
+        #expect(SQLBuilder.truncateStatement(table: "orders", schema: "public", database: "shop", type: .postgresql)
+            == "TRUNCATE TABLE \"public\".\"orders\"")
     }
 
     @Test("the qualifier follows each dialect's own quoting")

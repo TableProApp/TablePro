@@ -44,8 +44,10 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var session: ConnectionSession?
     @ObservationIgnored private var table: TableInfo?
     @ObservationIgnored private var databaseType: DatabaseType = .mysql
-    // The schema the rows on screen came from. Every statement reads it, so an edit cannot target another schema.
+    // The schema and database the rows on screen came from. Every statement reads them, so an edit cannot target
+    // another schema or database.
     private(set) var schema: String?
+    private(set) var database: String?
     @ObservationIgnored private var host: String = ""
     @ObservationIgnored private var trackRead: SessionReadTracker?
     @ObservationIgnored private var pageEndedOnItsOwn = false
@@ -123,15 +125,18 @@ final class DataBrowserViewModel {
         databaseType: DatabaseType,
         host: String,
         schema: String? = nil,
+        database: String? = nil,
         trackRead: SessionReadTracker? = nil
     ) {
-        // Another session or schema holds other rows, so neither the total nor a count still running applies.
-        let movesSource = session?.driver !== self.session?.driver || schema != self.schema || table.name != self.table?.name
+        // Another session, schema or database holds other rows, so neither the total nor a count still running applies.
+        let movesSource = session?.driver !== self.session?.driver || schema != self.schema || database != self.database
+            || table.name != self.table?.name
         self.session = session
         self.table = table
         self.databaseType = databaseType
         self.host = host
         self.schema = schema
+        self.database = database
         self.trackRead = trackRead
         if movesSource {
             resetTotal()
@@ -216,7 +221,7 @@ final class DataBrowserViewModel {
     private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool, generation: Int) async {
         do {
             if columnDetails.isEmpty || isInitial {
-                let fetched = try await session.driver.fetchColumns(table: table.name, schema: schema)
+                let fetched = try await session.driver.fetchColumns(table: table.name, schema: schema, database: database)
                 guard isCurrent(generation) else { return }
                 columnDetails = fetched
             }
@@ -247,7 +252,9 @@ final class DataBrowserViewModel {
 
             if !foreignKeysRead || isInitial {
                 do {
-                    let fetched = try await session.driver.fetchForeignKeys(table: table.name, schema: schema)
+                    let fetched = try await session.driver.fetchForeignKeys(
+                        table: table.name, schema: schema, database: database
+                    )
                     guard isCurrent(generation) else { return }
                     foreignKeys = fetched
                     foreignKeysRead = true
@@ -329,7 +336,7 @@ final class DataBrowserViewModel {
         let activeSort = effectiveSortState()
         if hasActiveSearch {
             return SQLBuilder.buildSearchSelect(
-                table: table.name, schema: schema, type: databaseType,
+                table: table.name, schema: schema, database: database, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
                 filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 session: session?.driver.settledLexicalFacts,
@@ -339,7 +346,7 @@ final class DataBrowserViewModel {
         }
         if hasActiveFilters {
             return SQLBuilder.buildFilteredSelect(
-                table: table.name, schema: schema, type: databaseType,
+                table: table.name, schema: schema, database: database, type: databaseType,
                 filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 session: session?.driver.settledLexicalFacts,
                 sortState: activeSort,
@@ -348,13 +355,13 @@ final class DataBrowserViewModel {
         }
         if activeSort.isSorting {
             return SQLBuilder.buildSelect(
-                table: table.name, schema: schema, type: databaseType,
+                table: table.name, schema: schema, database: database, type: databaseType,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
         return SQLBuilder.buildSelect(
-            table: table.name, schema: schema, type: databaseType,
+            table: table.name, schema: schema, database: database, type: databaseType,
             limit: pagination.pageSize, offset: pagination.currentOffset
         )
     }
@@ -410,19 +417,21 @@ final class DataBrowserViewModel {
             let countQuery: String
             if hasActiveSearch {
                 countQuery = SQLBuilder.buildSearchCount(
-                    table: table.name, schema: schema, type: databaseType,
+                    table: table.name, schema: schema, database: database, type: databaseType,
                     searchText: activeSearchText, searchColumns: searchableColumns(),
                     filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                     session: session.driver.settledLexicalFacts
                 )
             } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
-                    table: table.name, schema: schema, type: databaseType,
+                    table: table.name, schema: schema, database: database, type: databaseType,
                     filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                     session: session.driver.settledLexicalFacts
                 )
             } else {
-                countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)
+                countQuery = SQLBuilder.buildCount(
+                    table: table.name, schema: schema, database: database, type: databaseType
+                )
             }
             let countResult = try await session.driver.execute(query: countQuery)
             guard epoch == countEpoch else { return }
@@ -535,15 +544,16 @@ final class DataBrowserViewModel {
         )
     }
 
-    // Where the rows on screen were read. Another window's switch re-attaches the browser to another schema, where the
-    // same key names another row.
+    // Where the rows on screen were read. Another window's switch re-attaches the browser to another schema or
+    // database, where the same key names another row.
     struct RowSource: Equatable {
         let driver: ObjectIdentifier?
         let schema: String?
+        let database: String?
     }
 
     var rowSource: RowSource {
-        RowSource(driver: session.map { ObjectIdentifier($0.driver) }, schema: schema)
+        RowSource(driver: session.map { ObjectIdentifier($0.driver) }, schema: schema, database: database)
     }
 
     func refusesDelete(raisedOn source: RowSource) -> Bool {
@@ -561,6 +571,7 @@ final class DataBrowserViewModel {
     func deleteRow(_ locator: RowLocator) async -> Bool {
         guard let session, let table else { return false }
         let schema = schema
+        let database = database
         if let keys = locator.keyValues, let shared = await SharedRowKey.error(
             table: table.name, schema: schema, key: keys,
             columns: columnDetails, type: databaseType, driver: session.driver
@@ -580,6 +591,7 @@ final class DataBrowserViewModel {
             guard let batch = try RowWriteBatch.delete(
                 table: table.name,
                 schema: schema,
+                database: database,
                 type: databaseType,
                 driver: session.driver,
                 columns: locator.columnNames(of: columns),
@@ -592,8 +604,8 @@ final class DataBrowserViewModel {
             var isGone = deleted > 0
             if !isGone, let keys = locator.keyValues, !keys.isEmpty {
                 isGone = try await !rowExists(
-                    table: table.name, schema: schema, primaryKey: keys, locator: locator.documentLocator,
-                    driver: session.driver
+                    table: table.name, schema: schema, database: database, primaryKey: keys,
+                    locator: locator.documentLocator, driver: session.driver
                 )
             } else if !isGone, let writer {
                 isGone = try await writer.matchingRowCount(
@@ -644,6 +656,7 @@ final class DataBrowserViewModel {
     private func rowExists(
         table: String,
         schema: String?,
+        database: String?,
         primaryKey: [(column: String, value: String)],
         locator: String?,
         driver: any DatabaseDriver
@@ -651,21 +664,28 @@ final class DataBrowserViewModel {
         let components = primaryKey.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
         let ref = CellRef(table: table, column: components[0].column, primaryKey: components, locator: locator)
         do {
-            _ = try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: false)
+            _ = try await readValue(
+                driver: driver, ref: ref, databaseType: databaseType, schema: schema, database: database, ofOneRow: false
+            )
             return true
         } catch CellLookupError.rowNotFound {
             return false
         }
     }
 
-    // The caller passes the schema its rows came from: a schema switch while a read is in flight must not move it.
-    func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?) async throws -> String? {
-        try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: true)
+    // The caller passes the schema and database its rows came from: a switch while a read is in flight must not move it.
+    func loadFullValue(
+        driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?, database: String? = nil
+    ) async throws -> String? {
+        try await readValue(
+            driver: driver, ref: ref, databaseType: databaseType, schema: schema, database: database, ofOneRow: true
+        )
     }
 
     // A full value is read only from a key that names one row; whether a deleted row is still there is not.
     private func readValue(
-        driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?, ofOneRow: Bool
+        driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?, database: String?,
+        ofOneRow: Bool
     ) async throws -> String? {
         if let builder = driver as? any DriverQueryBuilding {
             return try await builder.storedValue(
@@ -676,7 +696,7 @@ final class DataBrowserViewModel {
                 locator: ref.locator
             )
         }
-        let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
+        let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, database: database, for: databaseType)
         let predicate = SQLBuilder.keyPredicate(
             ref.primaryKey.map { (column: $0.column, value: $0.value) },
             columns: columnDetails,
@@ -722,6 +742,7 @@ final class DataBrowserViewModel {
             throw ClipboardExporter.TooLarge()
         }
         let schema = schema
+        let database = database
         var complete: [[Cell]] = []
         complete.reserveCapacity(rows.count)
         for cells in rows {
@@ -729,7 +750,9 @@ final class DataBrowserViewModel {
             for (index, cell) in cells.enumerated() {
                 guard case .truncatedText(_, _, let ref?) = cell else { continue }
                 try Task.checkCancellation()
-                let value = try await loadFullValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema)
+                let value = try await loadFullValue(
+                    driver: driver, ref: ref, databaseType: databaseType, schema: schema, database: database
+                )
                 row[index] = value.map(Cell.text) ?? .null
             }
             complete.append(row)

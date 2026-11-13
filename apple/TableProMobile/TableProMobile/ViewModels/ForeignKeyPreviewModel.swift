@@ -81,7 +81,9 @@ final class ForeignKeyPreviewModel {
         // The key columns' types pick each literal, as they do for the filter Open Table runs.
         var keyColumns: [ColumnInfo] = []
         do {
-            keyColumns = try await driver.fetchColumns(table: reference.table, schema: reference.schema)
+            keyColumns = try await driver.fetchColumns(
+                table: reference.table, schema: reference.schema, database: reference.database
+            )
         } catch is CancellationError {
             return
         } catch {
@@ -98,6 +100,7 @@ final class ForeignKeyPreviewModel {
         let query = SQLBuilder.buildSingleRowLookup(
             table: reference.table,
             schema: reference.schema,
+            database: reference.database,
             key: key,
             columns: keyColumns,
             type: databaseType,
@@ -126,12 +129,17 @@ final class ForeignKeyPreviewModel {
 
         var foreignKeys: [ForeignKeyInfo] = []
         do {
-            foreignKeys = try await driver.fetchForeignKeys(table: reference.table, schema: reference.schema)
+            foreignKeys = try await driver.fetchForeignKeys(
+                table: reference.table, schema: reference.schema, database: reference.database
+            )
         } catch {
             Self.logger.warning("Foreign key preview could not read keys: \(error.localizedDescription, privacy: .private)")
         }
 
-        fields = Self.fields(columns: result.columns, row: row, foreignKeys: foreignKeys, schema: reference.schema)
+        fields = Self.fields(
+            columns: result.columns, row: row, foreignKeys: foreignKeys, schema: reference.schema,
+            database: reference.database
+        )
         phase = .loaded
     }
 
@@ -140,7 +148,8 @@ final class ForeignKeyPreviewModel {
         columns: [ColumnInfo],
         row: [String?],
         foreignKeys: [ForeignKeyInfo],
-        schema: String?
+        schema: String?,
+        database: String?
     ) -> [Field] {
         let options = StreamOptions(textTruncationBytes: .max)
         let cells = row.indices.map { index in
@@ -160,7 +169,8 @@ final class ForeignKeyPreviewModel {
                     foreignKeys: foreignKeys,
                     columns: columns,
                     cells: cells,
-                    sourceSchema: schema
+                    sourceSchema: schema,
+                    sourceDatabase: database
                 )
             )
         }

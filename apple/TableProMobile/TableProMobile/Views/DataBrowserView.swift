@@ -48,6 +48,12 @@ struct DataBrowserView: View {
         return activeSchema
     }
 
+    // A SQL Server foreign key never leaves its database, so a referenced table is read where the key was.
+    private var browserDatabase: String? {
+        if let reference { return reference.database }
+        return coordinator.tableDatabase
+    }
+
     private var displaySchema: String? {
         reference?.displaySchema(current: activeSchema)
     }
@@ -124,7 +130,7 @@ struct DataBrowserView: View {
             .task {
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: browserSchema, trackRead: pageReads
+                    host: connection.host, schema: browserSchema, database: browserDatabase, trackRead: pageReads
                 )
                 if let filters = reference?.filters() {
                     viewModel.seedFilters(filters)
@@ -136,15 +142,15 @@ struct DataBrowserView: View {
                 guard found, reference != nil, viewModel.takeSingleRowMatch() else { return }
                 showMatchedRow = true
             }
-            // A redial or another window's database switch hands this table a new session; a referenced table keeps its schema.
-            .onChange(of: BrowseSource(session: session, schema: browserSchema)) { _, source in
+            // A redial or another window's switch hands this table a new session; a referenced table keeps its schema and database.
+            .onChange(of: BrowseSource(session: session, schema: browserSchema, database: browserDatabase)) { _, source in
                 // The confirmation names a row of the table this browser showed before.
                 showDeleteConfirmation = false
                 deleteTarget = nil
                 guard source.driver != nil else { return }
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: source.schema, trackRead: pageReads
+                    host: connection.host, schema: source.schema, database: source.database, trackRead: pageReads
                 )
                 Task { await viewModel.load(isInitial: true) }
             }
@@ -218,7 +224,10 @@ struct DataBrowserView: View {
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
             .navigationDestination(isPresented: $showStructure) {
-                StructureView(table: table, session: session, databaseType: connection.type, schema: viewModel.schema)
+                StructureView(
+                    table: table, session: session, databaseType: connection.type, schema: viewModel.schema,
+                    database: viewModel.database
+                )
                     .transactionBar(for: coordinator)
             }
             .navigationDestination(isPresented: $showMatchedRow) {
@@ -392,15 +401,17 @@ struct DataBrowserView: View {
             columnDetails: viewModel.columnDetails,
             databaseType: connection.type,
             schema: viewModel.schema,
+            database: viewModel.database,
             safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
             foreignKeys: viewModel.foreignKeys,
             onSaved: { Task { await viewModel.load() } },
-            loadFullValue: { [schema = viewModel.schema] ref in
+            loadFullValue: { [schema = viewModel.schema, database = viewModel.database] ref in
                 guard let session else { return nil }
                 // With autocommit off, a MySQL read opens a transaction; a failed read refreshes too, and never redials.
                 do {
                     let value = try await viewModel.loadFullValue(
-                        driver: session.driver, ref: ref, databaseType: connection.type, schema: schema
+                        driver: session.driver, ref: ref, databaseType: connection.type, schema: schema,
+                        database: database
                     )
                     await coordinator.refreshTransaction()
                     return value
@@ -484,7 +495,7 @@ struct DataBrowserView: View {
         }
         let references = ForeignKeyReference.all(
             foreignKeys: viewModel.foreignKeys, columns: columns,
-            cells: cells, sourceSchema: viewModel.schema
+            cells: cells, sourceSchema: viewModel.schema, sourceDatabase: viewModel.database
         )
         if !references.isEmpty {
             Divider()
@@ -635,6 +646,7 @@ struct DataBrowserView: View {
             session: session,
             databaseType: connection.type,
             schema: viewModel.schema,
+            database: viewModel.database,
             safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
             onInserted: { Task { await viewModel.load() } }
         )
@@ -708,11 +720,6 @@ struct DataBrowserView: View {
     }
 
     private func performDelete(_ pending: PendingRowDelete) async {
-        if let refusal = coordinator.databaseMoveRefusal {
-            viewModel.operationError = refusal
-            hapticError.toggle()
-            return
-        }
         guard !viewModel.refusesDelete(raisedOn: pending.source) else {
             hapticError.toggle()
             return
@@ -735,9 +742,11 @@ private struct PendingRowDelete {
 private struct BrowseSource: Equatable {
     let driver: ObjectIdentifier?
     let schema: String?
+    let database: String?
 
-    init(session: ConnectionSession?, schema: String?) {
+    init(session: ConnectionSession?, schema: String?, database: String?) {
         driver = session.map { ObjectIdentifier($0.driver) }
         self.schema = schema
+        self.database = database
     }
 }

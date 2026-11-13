@@ -162,7 +162,8 @@ struct TableListView: View {
                         guard let driver = driver(for: action) else { return }
                         do {
                             let statement = SQLBuilder.truncateStatement(
-                                table: action.table.name, schema: action.placement.schema, type: connection.type
+                                table: action.table.name, schema: action.placement.schema,
+                                database: action.placement.database, type: connection.type
                             )
                             _ = try await coordinator.track { try await driver.executeWrite([statement]) }
                             await coordinator.refreshTables()
@@ -192,7 +193,8 @@ struct TableListView: View {
                         guard let driver = driver(for: action) else { return }
                         do {
                             let quoted = SQLBuilder.qualifiedIdentifier(
-                                table: action.table.name, schema: action.placement.schema, for: connection.type
+                                table: action.table.name, schema: action.placement.schema,
+                                database: action.placement.database, for: connection.type
                             )
                             _ = try await coordinator.track { try await driver.executeWrite(["DROP TABLE \(quoted)"]) }
                             await coordinator.refreshTables()
@@ -226,11 +228,6 @@ struct TableListView: View {
     // Another window can switch the shared session between the tap and the confirmation; the table named in the dialog
     // may then sit in another database or schema, so nothing runs.
     private func driver(for action: PendingTableAction) -> (any DatabaseDriver)? {
-        if let refusal = coordinator.databaseMoveRefusal {
-            errorMessage = refusal.message
-            showError = true
-            return nil
-        }
         guard action.placement == coordinator.tablePlacement, let driver = session?.driver else {
             errorMessage = String(localized: "The connection moved to another database or schema. Choose the table again.")
             showError = true

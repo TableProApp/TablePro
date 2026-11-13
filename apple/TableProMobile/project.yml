@@ -67,6 +67,13 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLErrorText.swift
       - ../Plugins/MySQLDriverPlugin/MySQLForeignKeyClause.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
+      # The read-only transaction statements, refusal codes and messages both apps run a Read-Only statement with.
+      - ../Plugins/MySQLDriverPlugin/MySQLReadOnlyTransaction.swift
+      - ../Plugins/PostgreSQLDriverPlugin/LibPQReadOnlyTransaction.swift
+      # What a MySQL session holds that the read-only transaction would end, its table locks among them.
+      - ../Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLTemporaryTableNames.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLLexicalFeatures.swift
       # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
