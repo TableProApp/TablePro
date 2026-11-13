@@ -1165,6 +1165,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1956,6 +1958,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_resultset_share_preview(ulong @ptr,uint @visibleColumns,uint @maxRows,RustBuffer @columns
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_resultset_share_summary(ulong @ptr,uint @visibleColumns,uint @maxRows,RustBuffer @columns
     );
 
     #if NET8_0_OR_GREATER
@@ -4001,6 +4014,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_resultset_share_summary(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_resultset_cell_text(
     );
 
@@ -5124,6 +5148,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_share_preview();
             if (checksum != 31102) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_share_preview` checksum `31102`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_share_summary();
+            if (checksum != 53471) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_share_summary` checksum `53471`, library returned `{checksum}`");
             }
         }
         {
@@ -8379,6 +8409,8 @@ internal interface IResultSet {
     /// <exception cref="CoreException"></exception>
     Task<ResultSet> SharePreview(uint @visibleColumns, uint @maxRows, ShareColumnChoice[] @columns);
     /// <exception cref="CoreException"></exception>
+    Task<ShareSummary> ShareSummary(uint @visibleColumns, uint @maxRows, ShareColumnChoice[] @columns);
+    /// <exception cref="CoreException"></exception>
     string? CellText(ulong @row, uint @column);
     ResultColumnInfo[] Columns();
     /// <summary>
@@ -8523,6 +8555,28 @@ internal class ResultSet : IResultSet, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
         // Lift
         (result) => FfiConverterTypeResultSet.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<ShareSummary> ShareSummary(uint @visibleColumns, uint @maxRows, ShareColumnChoice[] @columns) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_share_summary(thisPtr, FfiConverterUInt32.INSTANCE.Lower(@visibleColumns), FfiConverterUInt32.INSTANCE.Lower(@maxRows), FfiConverterSequenceTypeShareColumnChoice.INSTANCE.Lower(@columns));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeShareSummary.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -11482,6 +11536,44 @@ class FfiConverterTypeShareRequestArg: FfiConverterRustBuffer<ShareRequestArg> {
             FfiConverterOptionalBoolean.INSTANCE.Write(value.AllowDownload, stream);
             FfiConverterOptionalTypeSecretString.INSTANCE.Write(value.Password, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.TeamId, stream);
+    }
+}
+
+
+
+internal record ShareSummary (
+    ulong RowsSent, 
+    uint ColumnsSent, 
+    bool ColumnsTruncated, 
+    SnapshotTooLargeReason? TooLarge
+) {
+}
+
+class FfiConverterTypeShareSummary: FfiConverterRustBuffer<ShareSummary> {
+    public static FfiConverterTypeShareSummary INSTANCE = new FfiConverterTypeShareSummary();
+
+    public override ShareSummary Read(BigEndianStream stream) {
+        return new ShareSummary(
+            RowsSent: FfiConverterUInt64.INSTANCE.Read(stream),
+            ColumnsSent: FfiConverterUInt32.INSTANCE.Read(stream),
+            ColumnsTruncated: FfiConverterBoolean.INSTANCE.Read(stream),
+            TooLarge: FfiConverterOptionalTypeSnapshotTooLargeReason.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(ShareSummary value) {
+        return 0
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.RowsSent)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.ColumnsSent)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.ColumnsTruncated)
+            + FfiConverterOptionalTypeSnapshotTooLargeReason.INSTANCE.AllocationSize(value.TooLarge);
+    }
+
+    public override void Write(ShareSummary value, BigEndianStream stream) {
+            FfiConverterUInt64.INSTANCE.Write(value.RowsSent, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.ColumnsSent, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.ColumnsTruncated, stream);
+            FfiConverterOptionalTypeSnapshotTooLargeReason.INSTANCE.Write(value.TooLarge, stream);
     }
 }
 
@@ -15028,6 +15120,70 @@ class FfiConverterTypeShareKindTag: FfiConverterRustBuffer<ShareKindTag> {
 
 
 
+internal record SnapshotTooLargeReason {
+    
+    public record Cell (
+        string Column
+    ) : SnapshotTooLargeReason {}
+    
+    public record FirstRow: SnapshotTooLargeReason {}
+    
+    
+
+    
+}
+
+class FfiConverterTypeSnapshotTooLargeReason : FfiConverterRustBuffer<SnapshotTooLargeReason>{
+    public static FfiConverterRustBuffer<SnapshotTooLargeReason> INSTANCE = new FfiConverterTypeSnapshotTooLargeReason();
+
+    public override SnapshotTooLargeReason Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new SnapshotTooLargeReason.Cell(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new SnapshotTooLargeReason.FirstRow(
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSnapshotTooLargeReason.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SnapshotTooLargeReason value) {
+        switch (value) {
+            case SnapshotTooLargeReason.Cell variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Column);
+            case SnapshotTooLargeReason.FirstRow variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSnapshotTooLargeReason.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(SnapshotTooLargeReason value, BigEndianStream stream) {
+        switch (value) {
+            case SnapshotTooLargeReason.Cell variant_value:
+                stream.WriteInt(1);
+                FfiConverterString.INSTANCE.Write(variant_value.Column, stream);
+                break;
+            case SnapshotTooLargeReason.FirstRow variant_value:
+                stream.WriteInt(2);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSnapshotTooLargeReason.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal record SshAuthTag {
     
     public record Agent: SshAuthTag {}
@@ -17084,6 +17240,37 @@ class FfiConverterOptionalTypeShareExpiryTag: FfiConverterRustBuffer<ShareExpiry
         } else {
             stream.WriteByte(1);
             FfiConverterTypeShareExpiryTag.INSTANCE.Write((ShareExpiryTag)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeSnapshotTooLargeReason: FfiConverterRustBuffer<SnapshotTooLargeReason?> {
+    public static FfiConverterOptionalTypeSnapshotTooLargeReason INSTANCE = new FfiConverterOptionalTypeSnapshotTooLargeReason();
+
+    public override SnapshotTooLargeReason? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeSnapshotTooLargeReason.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(SnapshotTooLargeReason? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeSnapshotTooLargeReason.INSTANCE.AllocationSize((SnapshotTooLargeReason)value);
+        }
+    }
+
+    public override void Write(SnapshotTooLargeReason? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeSnapshotTooLargeReason.INSTANCE.Write((SnapshotTooLargeReason)value, stream);
         }
     }
 }

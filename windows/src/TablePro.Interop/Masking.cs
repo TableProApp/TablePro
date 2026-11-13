@@ -71,5 +71,25 @@ public sealed record ShareColumnMasking(string Name, MaskStyle? Rule, MaskSugges
     public bool Untraced { get; init; }
 }
 
+// What a share with the sheet's choices sends, by the plan and the body budget create uses: RowsSent can be fewer than
+// the plan's rows, and none when TooLarge says why even one row cannot go.
+public sealed record ShareSummary(long RowsSent, int ColumnsSent, bool ColumnsTruncated, ShareTooLarge? TooLarge);
+
+public abstract record ShareTooLarge
+{
+    private ShareTooLarge()
+    {
+    }
+
+    // A value of the column is over 256 KiB.
+    public sealed record Cell(string Column) : ShareTooLarge;
+
+    // The first row alone is over the 4.5 MB a link's body may weigh.
+    public sealed record FirstRow : ShareTooLarge
+    {
+        public static FirstRow Instance { get; } = new();
+    }
+}
+
 // Line counts from 1, where the literal starts.
 public sealed record PersonalDataHit(SensitiveKind Kind, int Line);

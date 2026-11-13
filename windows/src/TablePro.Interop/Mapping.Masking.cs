@@ -71,5 +71,16 @@ internal static partial class Mapping
         Untraced = column.RuleReason == Native.RuleReason.Untraced,
     };
 
+    public static ShareSummary Summary(Native.ShareSummary summary) => new(
+        Count(summary.RowsSent),
+        checked((int)summary.ColumnsSent),
+        summary.ColumnsTruncated,
+        summary.TooLarge switch
+        {
+            Native.SnapshotTooLargeReason.Cell cell => new ShareTooLarge.Cell(cell.Column),
+            Native.SnapshotTooLargeReason.FirstRow => ShareTooLarge.FirstRow.Instance,
+            _ => null,
+        });
+
     public static PersonalDataHit Hit(Native.PersonalDataHitInfo hit) => new(Kind(hit.Kind), checked((int)hit.Line));
 }

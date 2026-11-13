@@ -2892,6 +2892,12 @@ New fingerprint: {2}</value>
   <data name="ShareNoColumns" xml:space="preserve">
     <value>Keep or mask at least one column to share.</value>
   </data>
+  <data name="ShareTooLargeCell" xml:space="preserve">
+    <value>This result is too large to share: a value in {0} is over 256 KB. Mask or remove that column to share the rest.</value>
+  </data>
+  <data name="ShareTooLargeFirstRow" xml:space="preserve">
+    <value>This result is too large to share: its first row alone is over 4.5 MB. Mask or remove columns to share it.</value>
+  </data>
   <data name="ShareColumnsHeader" xml:space="preserve">
     <value>Columns</value>
   </data>

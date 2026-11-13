@@ -316,4 +316,39 @@ public sealed class SharePlanTests
             null,
             null,
             null);
+
+    [Fact]
+    public void AResultIsReadyOnlyOnceItsColumnsAndWhatTheySendAreRead()
+    {
+        var plan = SharePlan.For(Free, ShareKind.Result, totalRows: 48_210);
+        var columns = ShareColumns.From([new ShareColumnMasking("id", null, null), new ShareColumnMasking("note", null, null)]);
+        var sends = new ShareSummary(1_000, 2, false, null);
+
+        Assert.Equal(ShareReadiness.Ready, SharePlan.For(Free, ShareKind.Query).Readiness(null, null));
+        Assert.Equal(ShareReadiness.Reading, plan.Readiness(null, sends));
+        Assert.Equal(ShareReadiness.Reading, plan.Readiness(columns, null));
+        Assert.Equal(ShareReadiness.Ready, plan.Readiness(columns, sends));
+        Assert.Equal(
+            ShareReadiness.TooLarge,
+            plan.Readiness(columns, new ShareSummary(0, 2, false, new ShareTooLarge.Cell("note"))));
+        foreach (var column in columns.Columns)
+        {
+            column.Choose(ShareColumnAction.Remove);
+        }
+
+        Assert.Equal(ShareReadiness.NoColumns, plan.Readiness(columns, null));
+    }
+
+    [Fact]
+    public void TheRowNoteFollowsTheRowsTheBudgetKeeps()
+    {
+        var plan = SharePlan.For(Pro, ShareKind.Result, totalRows: 5_000);
+
+        Assert.False(plan.IsTruncated);
+        Assert.True(plan.CutsRows(new ShareSummary(22, 1, false, null)));
+        Assert.False(plan.CutsRows(new ShareSummary(5_000, 1, false, null)));
+        Assert.False(plan.CutsRows(new ShareSummary(0, 1, false, ShareTooLarge.FirstRow.Instance)));
+        Assert.Equal(3, SharePlan.PreviewRowsOf(new ShareSummary(3, 1, false, null)));
+        Assert.Equal(SharePlan.PreviewRows, SharePlan.PreviewRowsOf(new ShareSummary(22, 1, false, null)));
+    }
 }

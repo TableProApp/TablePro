@@ -50,6 +50,21 @@ public sealed class ResultSet : IDisposable
         return [.. columns.Select(Mapping.ColumnMasking)];
     }
 
+    // What a share of maxRows with the sheet's choices sends, without building it: cheap enough for each choice.
+    public async Task<ShareSummary> GetShareSummaryAsync(
+        int visibleColumns, long maxRows, IReadOnlyList<ShareColumnChoice> columns)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        ArgumentNullException.ThrowIfNull(columns);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        Native.ShareColumnChoice[] choices = [.. columns.Select(Mapping.Choice)];
+        var summary = await CoreCall.RunAsync(
+                () => _set.ShareSummary(checked((uint)visibleColumns), limit, choices))
+            .ConfigureAwait(false);
+        return Mapping.Summary(summary);
+    }
+
     // The rows a share of maxRows with the sheet's choices sends, as a finished set: removed columns left out and
     // every value masked as the link's, so the preview shows a Stable Hash the core computed.
     public async Task<ResultSet> GetSharePreviewAsync(

@@ -194,6 +194,25 @@ public sealed class MaskingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheSummarySaysWhatALinkSendsAndWhyAValueTooLargeStopsIt()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var session = await ConnectAsync(await SaveAsync());
+        await using var editor = await session.OpenEditorAsync(cancellationToken);
+        using var rows = await RunAsync(editor, "SELECT id, name, printf('%.300000c', 'x') AS blob FROM people ORDER BY id");
+        ShareColumnChoice[] keep = [ShareColumnChoice.Keep.Instance, ShareColumnChoice.Keep.Instance, ShareColumnChoice.Keep.Instance];
+        ShareColumnChoice[] removed = [ShareColumnChoice.Keep.Instance, ShareColumnChoice.Keep.Instance, ShareColumnChoice.Remove.Instance];
+
+        var tooLarge = await rows.GetShareSummaryAsync(3, 1_000, keep);
+        var sends = await rows.GetShareSummaryAsync(3, 2, removed);
+        var masked = await rows.GetShareSummaryAsync(3, 1_000, [.. removed[..2], new ShareColumnChoice.Mask(MaskStyle.Full)]);
+
+        Assert.Equal(new ShareSummary(0, 3, false, new ShareTooLarge.Cell("blob")), tooLarge);
+        Assert.Equal(new ShareSummary(2, 2, false, null), sends);
+        Assert.Equal(new ShareSummary(3, 3, false, null), masked);
+    }
+
+    [Fact]
     public async Task OnlyAStatementThatReadsCountsAsReadOnly()
     {
         await using var session = await ConnectAsync(await SaveAsync());

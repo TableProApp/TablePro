@@ -82,6 +82,7 @@ internal sealed class ShareSheet
     private readonly TextBlock _columnsSummary = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _detectionNote = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private readonly InfoBar _noColumns = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
+    private readonly InfoBar _tooLarge = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
     private readonly InfoBar _error = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
     private readonly StackPanel _atCap = new() { Spacing = 12 };
     private readonly StackPanel _done = new() { Spacing = 12 };
@@ -96,6 +97,10 @@ internal sealed class ShareSheet
     // Read once per content: the rules' styles and what the detectors saw, then the user's choices.
     private ShareColumns? _columns;
     private SharedContent? _columnsFor;
+
+    // What the link sends with the choices as they are now; null while a newer read is under way.
+    private ShareSummary? _summary;
+    private int _summaryGeneration;
     private SharedContent _content;
     private TableShareRead? _tableRead;
     private long _tableReadFor = -1;
@@ -231,6 +236,9 @@ internal sealed class ShareSheet
             _noColumns.Visibility = Visibility.Collapsed;
             AutomationProperties.SetAutomationId(_noColumns, "ShareNoColumns");
             _preview.Children.Add(_noColumns);
+            _tooLarge.Visibility = Visibility.Collapsed;
+            AutomationProperties.SetAutomationId(_tooLarge, "ShareTooLarge");
+            _preview.Children.Add(_tooLarge);
             _form.Children.Add(_preview);
 
             _columnsSection.Children.Add(new TextBlock
@@ -579,11 +587,12 @@ internal sealed class ShareSheet
             _hideSql.IsChecked = false;
         }
 
-        _columnsNote.Text = Strings.Format("ShareColumnsNote", plan.Limits.MaxColumns);
-        _capNote.Text = plan.IsTruncated
-            ? Strings.Format("ShareCapNote", plan.SharedRows, plan.TotalRows)
-            : string.Empty;
-        _capNote.Visibility = plan.IsTruncated ? Visibility.Visible : Visibility.Collapsed;
+        if (_summary is null)
+        {
+            _capNote.Visibility = Visibility.Collapsed;
+            _columnsNote.Visibility = Visibility.Collapsed;
+        }
+
         Show(_form);
         if (_subject.Kind == ShareKind.Result && !ReferenceEquals(_columnsFor, _content))
         {
@@ -741,31 +750,104 @@ internal sealed class ShareSheet
         }
 
         var columns = _columns;
-        var kept = columns?.Kept ?? _content.Columns.Count;
-        _columnsNote.Visibility = plan.CutsColumns(kept) ? Visibility.Visible : Visibility.Collapsed;
         _columnsSection.Visibility = columns is { Columns.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
         _columnsSummary.Text = columns is null ? string.Empty : Strings.Format("ShareColumnsSummary", columns.Masked, columns.Removed);
         _detectionNote.Visibility = columns is { HasDetections: true } ? Visibility.Visible : Visibility.Collapsed;
         var noColumns = columns is { RemovesEveryColumn: true };
         _noColumns.IsOpen = noColumns;
         _noColumns.Visibility = noColumns ? Visibility.Visible : Visibility.Collapsed;
-        if (_previewGrid is { } grid)
-        {
-            grid.Visibility = noColumns ? Visibility.Collapsed : Visibility.Visible;
-        }
-
         ShowSecrets();
-        UpdateShareButton();
-        _ = RefreshPreviewAsync();
+        _ = RefreshSummaryAsync();
     }
 
-    // A result is shared only once its columns are read, so a detected column never leaves unmasked by a quick click.
+    // A result is shared only once its columns and what they send are read, so a detected column never leaves
+    // unmasked by a quick click and a result too large never reaches the server.
     private void UpdateShareButton() =>
-        _dialog.IsPrimaryButtonEnabled = _plan is { Stage: ShareStage.Form } && !_creating && !_created
-            && (_subject.Kind == ShareKind.Query || _columns is { RemovesEveryColumn: false });
+        _dialog.IsPrimaryButtonEnabled = _plan is { Stage: ShareStage.Form } plan && !_creating && !_created
+            && plan.Readiness(_columns, _summary) == ShareReadiness.Ready;
+
+    // Read again for each choice, off the UI thread; an older read that lands late is dropped, so Share waits.
+    private async Task RefreshSummaryAsync()
+    {
+        if (_plan is not { } plan || _content.Rows is not { } rows || _columns is not { } columns)
+        {
+            UpdateShareButton();
+            return;
+        }
+
+        var generation = ++_summaryGeneration;
+        _summary = null;
+        UpdateShareButton();
+        if (columns.RemovesEveryColumn)
+        {
+            ShowSummary(plan, null);
+            return;
+        }
+
+        ShareSummary summary;
+        try
+        {
+            summary = await rows.GetShareSummaryAsync(_content.Columns.Count, plan.Limits.MaxRows, columns.Choices)
+                .ConfigureAwait(true);
+        }
+        catch (TableProException exception)
+        {
+            if (!_closed && generation == _summaryGeneration)
+            {
+                ShowError(Strings.Error(exception.Error));
+            }
+
+            return;
+        }
+        catch (ObjectDisposedException)
+        {
+            if (!_closed)
+            {
+                ShowError(Strings.Get("ShareRowsGone"));
+            }
+
+            return;
+        }
+
+        if (_closed || generation != _summaryGeneration || !ReferenceEquals(_plan, plan))
+        {
+            return;
+        }
+
+        _summary = summary;
+        ShowSummary(plan, summary);
+        UpdateShareButton();
+        if (summary.TooLarge is null)
+        {
+            await RefreshPreviewAsync(summary).ConfigureAwait(true);
+        }
+    }
+
+    // The notes say what the core will send: the rows the body budget keeps, the column cap, or why nothing can go.
+    private void ShowSummary(SharePlan plan, ShareSummary? summary)
+    {
+        var cut = summary is not null && plan.CutsRows(summary);
+        _capNote.Text = cut ? Strings.Format("ShareCapNote", summary!.RowsSent, plan.TotalRows) : string.Empty;
+        _capNote.Visibility = cut ? Visibility.Visible : Visibility.Collapsed;
+        _columnsNote.Text = summary is null ? string.Empty : Strings.Format("ShareColumnsNote", summary.ColumnsSent);
+        _columnsNote.Visibility = summary is { ColumnsTruncated: true } ? Visibility.Visible : Visibility.Collapsed;
+        var tooLarge = summary?.TooLarge switch
+        {
+            ShareTooLarge.Cell cell => Strings.Format("ShareTooLargeCell", cell.Column),
+            ShareTooLarge.FirstRow => Strings.Get("ShareTooLargeFirstRow"),
+            _ => null,
+        };
+        _tooLarge.Message = tooLarge ?? string.Empty;
+        _tooLarge.IsOpen = tooLarge is not null;
+        _tooLarge.Visibility = tooLarge is null ? Visibility.Collapsed : Visibility.Visible;
+        if (_previewGrid is { } grid)
+        {
+            grid.Visibility = summary is { TooLarge: null } ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
 
     // The core masks and cuts the preview as the link will be, so a Stable Hash shows as it will be sent.
-    private async Task RefreshPreviewAsync()
+    private async Task RefreshPreviewAsync(ShareSummary summary)
     {
         if (_previewGrid is not { } grid || _plan is not { } plan || _content.Rows is not { } rows
             || _columns is not { RemovesEveryColumn: false } columns)
@@ -774,7 +856,7 @@ internal sealed class ShareSheet
         }
 
         var generation = ++_previewGeneration;
-        var count = (int)plan.PreviewRowCount;
+        var count = SharePlan.PreviewRowsOf(summary);
         ResultSet preview;
         try
         {
@@ -978,7 +1060,7 @@ internal sealed class ShareSheet
         }
 
         var choices = _columns?.Choices ?? [];
-        if (_subject.Kind == ShareKind.Result && (_columns is null || _columns.RemovesEveryColumn))
+        if (plan.Readiness(_columns, _summary) != ShareReadiness.Ready)
         {
             return;
         }

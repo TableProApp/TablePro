@@ -14,6 +14,15 @@ public enum ShareStage
     Form,
 }
 
+// Whether a result can be shared now: its columns and the core's summary of what they send must be read first.
+public enum ShareReadiness
+{
+    Reading,
+    Ready,
+    NoColumns,
+    TooLarge,
+}
+
 // Every expiry is listed; one the plan does not allow is disabled, and Never on Free carries a Pro tag.
 public sealed record ExpiryChoice(ShareExpiry Expiry, bool Enabled, bool ProTag);
 
@@ -137,6 +146,30 @@ public sealed class SharePlan
     {
         ArgumentNullException.ThrowIfNull(limits);
         return new SharePlan(limits, kind, totalRows, hasSql, teamId);
+    }
+
+    // A summary read for older choices is never passed here: the sheet drops it as stale, so Share waits.
+    public ShareReadiness Readiness(ShareColumns? columns, ShareSummary? summary) => Kind switch
+    {
+        ShareKind.Query => ShareReadiness.Ready,
+        _ when columns is null => ShareReadiness.Reading,
+        _ when columns.RemovesEveryColumn => ShareReadiness.NoColumns,
+        _ when summary is null => ShareReadiness.Reading,
+        _ when summary.TooLarge is not null => ShareReadiness.TooLarge,
+        _ => ShareReadiness.Ready,
+    };
+
+    // The body budget can cut a share below the plan's rows, so the row note follows what the core says it sends.
+    public bool CutsRows(ShareSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return Kind == ShareKind.Result && summary.TooLarge is null && summary.RowsSent < TotalRows;
+    }
+
+    public static int PreviewRowsOf(ShareSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return (int)Math.Clamp(summary.RowsSent, 0, PreviewRows);
     }
 
     // The server takes the first MaxColumns visible columns of a result, on every plan.
