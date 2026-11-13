@@ -7,6 +7,7 @@ nonisolated enum RowInsertPlanner {
     static func statements(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         driver: any DatabaseDriver,
         columns: [ColumnInfo],
@@ -21,6 +22,7 @@ nonisolated enum RowInsertPlanner {
             SQLBuilder.buildInsert(
                 table: table,
                 schema: schema,
+                database: database,
                 type: type,
                 driver: driver,
                 columns: values.map(\.column),
@@ -32,6 +34,7 @@ nonisolated enum RowInsertPlanner {
     static func batch(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         driver: any DatabaseDriver,
         columns: [ColumnInfo],
@@ -41,7 +44,7 @@ nonisolated enum RowInsertPlanner {
     ) throws -> RowWriteBatch? {
         guard let writer = driver as? any DriverRowWriting else {
             let sql = try statements(
-                table: table, schema: schema, type: type, driver: driver, columns: columns, rows: rows,
+                table: table, schema: schema, database: database, type: type, driver: driver, columns: columns, rows: rows,
                 allowAllDefaults: allowAllDefaults, dropsEmptyPrimaryKey: dropsEmptyPrimaryKey
             )
             return sql.isEmpty ? nil : .sql(sql, driver)
@@ -80,13 +83,15 @@ nonisolated enum RowInserter {
         table: String,
         type: DatabaseType,
         schema: String?,
+        database: String? = nil,
         qualifier: String?,
         rows: [PayloadRow]
     ) async throws -> Int {
-        let columns = try await driver.fetchColumns(table: table, schema: schema)
+        let columns = try await driver.fetchColumns(table: table, schema: schema, database: database)
         guard let batch = try RowInsertPlanner.batch(
             table: table,
             schema: qualifier,
+            database: database,
             type: type,
             driver: driver,
             columns: columns,

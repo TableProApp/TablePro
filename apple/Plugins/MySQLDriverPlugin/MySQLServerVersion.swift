@@ -101,6 +101,19 @@ nonisolated internal enum MySQLServerVersion {
         flavor.isMariaDB && isAtLeast((10, 2, 7), banner: banner)
     }
 
+    // MySQL 5.6.5 (WL #5968) and MariaDB 10.0.0 added `START TRANSACTION READ ONLY`. No other flavor is held to it, as
+    // `MySQLServerFlavor.enforcesReadOnlyTransactions` says.
+    static func hasReadOnlyTransactions(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        switch flavor {
+        case .mysql:
+            return !isLegacy(below: (5, 6, 5), banner: banner, flavor: flavor)
+        case .mariadb:
+            return !isLegacy(below: (10, 0, 0), banner: banner, flavor: flavor)
+        case .tidb, .oceanbase, .databend, .starrocks:
+            return false
+        }
+    }
+
     // A binary default arrives as its bytes from MySQL 5.7.44, MariaDB and OceanBase, and as `0x` hex from MySQL 8.0.11 to 8.4.13.
     static func reportsBinaryDefaultAsHex(banner: String?, flavor: MySQLServerFlavor) -> Bool {
         switch flavor {

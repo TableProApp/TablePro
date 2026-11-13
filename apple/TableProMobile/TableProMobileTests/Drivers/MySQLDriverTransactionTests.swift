@@ -87,6 +87,20 @@ struct MySQLSessionTransactionTests {
         )
     }
 
+    @Test("Read-Only's own transaction reads as idle while it runs, and the flags decide once it ends")
+    func readOnlyTransactionReadsAsIdle() {
+        #expect(
+            MySQLSessionTransaction.state(
+                infoResult: 0, serverStatus: inTransaction | autocommit, holdsReadOnlyTransaction: true
+            ) == .idle
+        )
+        #expect(
+            MySQLSessionTransaction.state(
+                infoResult: 0, serverStatus: inTransaction | autocommit, holdsReadOnlyTransaction: false
+            ) == .explicitTransaction
+        )
+    }
+
     @Test("A transaction the server opened because autocommit is off is implicit")
     func autocommitOffTransactionIsImplicit() {
         #expect(MySQLSessionTransaction.state(infoResult: 0, serverStatus: inTransaction) == .implicitTransaction)

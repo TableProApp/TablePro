@@ -267,13 +267,19 @@ final class QueryEditorViewModel {
         return error.message
     }
 
-    func run(driver: DatabaseDriver, script: QueryScript, maxRows: Int = QueryEditorViewModel.maxBufferedRows) async {
+    func run(
+        driver: DatabaseDriver,
+        script: QueryScript,
+        maxRows: Int = QueryEditorViewModel.maxBufferedRows,
+        enforcesReadOnly: Bool = false
+    ) async {
         fetchTask?.cancel()
         let options = StreamOptions(
             textTruncationBytes: 4_096,
             inlineBinary: false,
             maxRows: maxRows,
-            lazyContext: nil
+            lazyContext: nil,
+            enforcesReadOnly: enforcesReadOnly
         )
         runID &+= 1
         let run = runID

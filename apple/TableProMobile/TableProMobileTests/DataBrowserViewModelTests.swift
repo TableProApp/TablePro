@@ -7,7 +7,6 @@ import TableProQuery
 import Testing
 
 @MainActor
-@Suite("DataBrowserViewModel")
 struct DataBrowserViewModelTests {
     private func makeSession(driver: MockDatabaseDriver) -> ConnectionSession {
         ConnectionSession(
@@ -1034,6 +1033,87 @@ struct DataBrowserViewModelTests {
         #expect(keyed == "SELECT * FROM [events] ORDER BY [tenant] ASC, [id] ASC OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY")
         let keyless = await firstPageQuery(.mssql, columns: [ColumnInfo(name: "note", typeName: "NVARCHAR", ordinalPosition: 0)])
         #expect(keyless == "SELECT * FROM [events] ORDER BY [note] ASC OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY")
+    }
+
+    @Test("A SQL Server page, its count and its column and key reads name the browser's database")
+    func sqlServerPageNamesTheDatabase() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        // A full page leaves the total to the count.
+        driver.scriptedExecuteResults = [
+            .success(numberedPage(from: 1, count: vm.pagination.pageSize)),
+            .success(QueryResult(columns: [], rows: [["500"]], rowsAffected: 0, executionTime: 0))
+        ]
+        vm.attach(
+            session: makeSession(driver: driver), table: TableInfo(name: "orders"), databaseType: .mssql,
+            host: "localhost", schema: "dbo", database: "shop"
+        )
+        await vm.load(isInitial: true)
+
+        #expect(driver.executedQueries.first?.hasPrefix("SELECT * FROM [shop].[dbo].[orders] ORDER BY [id] ASC") == true)
+        #expect(driver.executedQueries.contains("SELECT COUNT(*) FROM [shop].[dbo].[orders]"))
+        #expect(driver.fetchColumnsDatabases == ["shop"])
+        #expect(driver.fetchForeignKeysDatabases == ["shop"])
+        #expect(vm.pagination.totalRows == 500)
+    }
+
+    @Test("A SQL Server delete, and the read that finds its row gone, name the browser's database")
+    func sqlServerDeleteNamesTheDatabase() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(
+            session: makeSession(driver: driver), table: TableInfo(name: "orders"), databaseType: .mssql,
+            host: "localhost", schema: "dbo", database: "shop"
+        )
+        await vm.load(isInitial: true)
+        // SET NOCOUNT ON reports 0, so the delete looks for the row afterwards.
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0))
+        ]
+
+        let deleted = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
+
+        #expect(deleted)
+        #expect(driver.executedQueries.contains("DELETE FROM [shop].[dbo].[orders] WHERE [id] = 1"))
+        #expect(driver.executedQueries.contains("SELECT TOP 1 [id] FROM [shop].[dbo].[orders] WHERE [id] = 1"))
+    }
+
+    @Test("A delete confirmed after the browser moved to another database is refused")
+    func deleteRaisedInAnotherDatabaseIsRefused() {
+        let session = makeSession(driver: MockDatabaseDriver())
+        let vm = DataBrowserViewModel()
+        vm.attach(
+            session: session, table: TableInfo(name: "orders"), databaseType: .mssql, host: "localhost",
+            schema: "dbo", database: "shop"
+        )
+        let raised = vm.rowSource
+
+        vm.attach(
+            session: session, table: TableInfo(name: "orders"), databaseType: .mssql, host: "localhost",
+            schema: "dbo", database: "staging"
+        )
+
+        #expect(vm.refusesDelete(raisedOn: raised))
+    }
+
+    @Test("A SQL Server full value is read from the database its row came from")
+    func sqlServerFullValueNamesTheDatabase() async throws {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        driver.scriptedExecuteResults = [.success(QueryResult(columns: [], rows: [["full"]], rowsAffected: 0, executionTime: 0))]
+
+        let value = try await vm.loadFullValue(
+            driver: driver, ref: bodyRef("bio"), databaseType: .mssql, schema: "dbo", database: "shop"
+        )
+
+        #expect(value == "full")
+        #expect(driver.executedQueries.first?.hasPrefix("SELECT TOP 1 [bio] FROM [shop].[dbo].[users] WHERE") == true)
     }
 
     @Test("MySQL and Redshift pages keep their scan order")

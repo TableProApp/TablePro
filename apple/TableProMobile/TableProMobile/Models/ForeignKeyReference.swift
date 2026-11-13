@@ -9,20 +9,32 @@ nonisolated struct ForeignKeyReference: Hashable, Identifiable, Sendable {
 
     let table: String
     let schema: String?
+    // Where the key was read. A SQL Server foreign key never crosses databases.
+    let database: String?
     let parts: [Part]
 
     var id: Self { self }
+
+    init(table: String, schema: String?, database: String? = nil, parts: [Part]) {
+        self.table = table
+        self.schema = schema
+        self.database = database
+        self.parts = parts
+    }
 
     static func make(
         forColumn column: String,
         foreignKeys: [ForeignKeyInfo],
         columns: [ColumnInfo],
         cells: [Cell],
-        sourceSchema: String?
+        sourceSchema: String?,
+        sourceDatabase: String? = nil
     ) -> Self? {
         guard let target = columnIndex(named: column, in: columns) else { return nil }
         for key in keys(in: foreignKeys) where key.contains(where: { columnIndex(named: $0.column, in: columns) == target }) {
-            if let reference = resolve(key, columns: columns, cells: cells, sourceSchema: sourceSchema) {
+            if let reference = resolve(
+                key, columns: columns, cells: cells, sourceSchema: sourceSchema, sourceDatabase: sourceDatabase
+            ) {
                 return reference
             }
         }
@@ -33,11 +45,14 @@ nonisolated struct ForeignKeyReference: Hashable, Identifiable, Sendable {
         foreignKeys: [ForeignKeyInfo],
         columns: [ColumnInfo],
         cells: [Cell],
-        sourceSchema: String?
+        sourceSchema: String?,
+        sourceDatabase: String? = nil
     ) -> [(name: String, column: String, reference: Self)] {
         keys(in: foreignKeys).compactMap { key in
             guard let first = key.first,
-                  let reference = resolve(key, columns: columns, cells: cells, sourceSchema: sourceSchema)
+                  let reference = resolve(
+                      key, columns: columns, cells: cells, sourceSchema: sourceSchema, sourceDatabase: sourceDatabase
+                  )
             else { return nil }
             return (name: first.name, column: key.map(\.column).joined(separator: ", "), reference: reference)
         }
@@ -85,7 +100,8 @@ nonisolated struct ForeignKeyReference: Hashable, Identifiable, Sendable {
         _ key: [ForeignKeyInfo],
         columns: [ColumnInfo],
         cells: [Cell],
-        sourceSchema: String?
+        sourceSchema: String?,
+        sourceDatabase: String?
     ) -> Self? {
         guard let first = key.first else { return nil }
         var parts: [Part] = []
@@ -95,7 +111,10 @@ nonisolated struct ForeignKeyReference: Hashable, Identifiable, Sendable {
             else { return nil }
             parts.append(Part(column: pair.referencedColumn, value: value))
         }
-        return Self(table: first.referencedTable, schema: first.referencedSchema ?? sourceSchema, parts: parts)
+        return Self(
+            table: first.referencedTable, schema: first.referencedSchema ?? sourceSchema, database: sourceDatabase,
+            parts: parts
+        )
     }
 
     private static func columnIndex(named name: String, in columns: [ColumnInfo]) -> Int? {

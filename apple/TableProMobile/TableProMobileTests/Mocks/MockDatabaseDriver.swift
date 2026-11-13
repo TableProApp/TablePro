@@ -31,6 +31,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var connectError: Error?
     var switchDatabaseError: Error?
     var fetchTablesError: Error?
+    var fetchDatabasesError: Error?
     var commitError: Error?
     var rollbackError: Error?
 
@@ -39,6 +40,8 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var fetchForeignKeysCalls: Int = 0
     private(set) var fetchColumnsSchemas: [String?] = []
     private(set) var fetchForeignKeysSchemas: [String?] = []
+    private(set) var fetchColumnsDatabases: [String?] = []
+    private(set) var fetchForeignKeysDatabases: [String?] = []
     private(set) var beganTransactionModes: [PluginTransactionAccessMode] = []
     private(set) var didBeginTransaction = false
     private(set) var didCommitTransaction = false
@@ -58,6 +61,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var holdsSuspensionBlockingResource: Bool = false
     var sendsBatchesWhole: Bool = false
     var usesBackslashEscaping: Bool = false
+    var enforcesReadOnlyMode: Bool = false
 
     func escapeStringLiteral(_ value: String) -> String {
         usesBackslashEscaping
@@ -107,8 +111,13 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
+        try await fetchColumns(table: table, schema: schema, database: nil)
+    }
+
+    func fetchColumns(table: String, schema: String?, database: String?) async throws -> [ColumnInfo] {
         fetchColumnsCalls += 1
         fetchColumnsSchemas.append(schema)
+        fetchColumnsDatabases.append(database)
         if let fetchColumnsError { throw fetchColumnsError }
         return scriptedColumns
     }
@@ -116,14 +125,20 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        try await fetchForeignKeys(table: table, schema: schema, database: nil)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?, database: String?) async throws -> [ForeignKeyInfo] {
         fetchForeignKeysCalls += 1
         fetchForeignKeysSchemas.append(schema)
+        fetchForeignKeysDatabases.append(database)
         if let fetchForeignKeysError { throw fetchForeignKeysError }
         return scriptedForeignKeys
     }
 
     func fetchDatabases() async throws -> [String] {
         fetchDatabasesCalls += 1
+        if let fetchDatabasesError { throw fetchDatabasesError }
         return scriptedDatabases
     }
 
