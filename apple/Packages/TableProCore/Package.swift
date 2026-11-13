@@ -412,7 +412,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProWeaviateClientTests",
-            dependencies: ["TableProWeaviateClient", "TableProTLSTestFixtures"],
+            dependencies: ["TableProWeaviateClient", "TableProWeaviateCore", "TableProTLSTestFixtures"],
             path: "Tests/TableProWeaviateClientTests"
         ),
         .testTarget(

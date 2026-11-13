@@ -97,6 +97,31 @@ struct SQLBareNameCallsTests {
         #expect(!Self.calls("SELECT pk.f FROM orders pk", "Dameng", catalog: SQLCallableCatalog(functions: [], roots: [])))
     }
 
+    // Measured on Oracle 23ai: functions RUNNING, FINAL and WIPE did not run for these.
+    @Test("MATCH_RECOGNIZE's own words, a measure's alias, a pattern variable and RUNNING or FINAL before a call are not calls")
+    func rowPatternClauseNames() {
+        let catalog = SQLCallableCatalog(
+            functions: [
+                "WIPE", "RUNNING", "FINAL", "MEASURES", "ONE", "ROW", "ROWS", "PER", "MATCH", "AFTER", "SKIP", "PAST",
+                "LAST", "NEXT", "FIRST", "SUBSET", "DEFINE", "X", "Y", "U", "EMPTY", "MATCHES", "SHOW",
+            ],
+            roots: []
+        )
+        for sql in [
+            "SELECT * FROM orders MATCH_RECOGNIZE (ORDER BY id MEASURES x.id AS wipe ONE ROW PER MATCH PATTERN (x) DEFINE x AS 1 = 1)",
+            "SELECT * FROM orders MATCH_RECOGNIZE (ORDER BY id MEASURES FINAL LAST(x.purge) AS l, RUNNING COUNT(*) AS c "
+                + "ALL ROWS PER MATCH SHOW EMPTY MATCHES AFTER MATCH SKIP PAST LAST ROW PATTERN (x y*) SUBSET u = (x, y) "
+                + "DEFINE x AS RUNNING COUNT(*) < 9, y AS u.purge > PREV(y.purge))",
+            "SELECT * FROM orders MATCH_RECOGNIZE (ORDER BY id MEASURES x.id wipe AFTER MATCH SKIP TO NEXT ROW PATTERN (x) "
+                + "DEFINE x AS CAST(x.purge AS NUMBER) > 0)",
+        ] {
+            #expect(!Self.calls(sql, catalog: catalog), "\(sql)")
+        }
+        #expect(Self.calls(
+            "SELECT * FROM orders MATCH_RECOGNIZE (ORDER BY id PATTERN (x) DEFINE x AS final > 1)", catalog: catalog
+        ))
+    }
+
     @Test("A VALUES row, a MATCH_RECOGNIZE condition and a PARTITION FOR value are read")
     func rowValuesAndConditions() {
         #expect(Self.calls("SELECT * FROM (VALUES (wipe)) t (a)"))
@@ -106,6 +131,23 @@ struct SQLBareNameCallsTests {
         #expect(!Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PATTERN (x) DEFINE x AS purge = 100)"))
         #expect(!Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PATTERN (up+) DEFINE up AS up.purge > 1)"))
         #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PATTERN (up+) DEFINE up AS other.purge > 1)"))
+        #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (MEASURES wipe AS w PATTERN (x) DEFINE x AS 1 = 1)"))
+        #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (MEASURES x.id w, wipe m PATTERN (x) DEFINE x AS 1 = 1)"))
+        #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PARTITION BY wipe PATTERN (x) DEFINE x AS 1 = 1)"))
+        // Measured on Oracle 23ai: a section word as an alias or a column opens no section, and WIPE runs.
+        #expect(Self.calls(
+            "SELECT * FROM orders MATCH_RECOGNIZE (ORDER BY id MEASURES x.id AS subset, wipe AS w PATTERN (x) DEFINE x AS 1 = 1)"
+        ))
+        #expect(Self.calls(
+            "SELECT * FROM orders MATCH_RECOGNIZE (ORDER BY id MEASURES x.id AS define, wipe AS w PATTERN (x) DEFINE x AS 1 = 1)"
+        ))
+        #expect(Self.calls(
+            "SELECT * FROM (SELECT id, 1 AS subset FROM orders) MATCH_RECOGNIZE (ORDER BY id MEASURES x.subset + wipe AS m "
+                + "PATTERN (x) DEFINE x AS 1 = 1)"
+        ))
+        #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (MEASURES subset + wipe AS m PATTERN (x) DEFINE x AS 1 = 1)"))
+        // Out of Oracle's order, so the clause is read whole, a name after AS included.
+        #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (DEFINE x AS wipe = 1 PATTERN (x))"))
         #expect(Self.calls("SELECT * FROM orders, dual PIVOT (MAX(purge) FOR dummy IN ('X' AS x))"))
         #expect(!Self.calls("SELECT * FROM orders, dual PIVOT (MAX(dummy) FOR dummy IN ('X' AS x)) WHERE purge = 1"))
         #expect(Self.calls("SELECT * FROM orders PARTITION FOR (wipe)"))

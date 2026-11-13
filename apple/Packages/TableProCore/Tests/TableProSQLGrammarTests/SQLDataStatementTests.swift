@@ -198,4 +198,19 @@ struct SQLDataStatementTests {
         #expect(SQLStatementClassifier.isSystemScope(database: "system_auth", schema: nil, databaseTypeId: engine))
         #expect(!SQLStatementClassifier.isSystemScope(database: "shop", schema: nil, databaseTypeId: engine))
     }
+
+    @Test("ScyllaDB's audit keyspace holds its audit log, so a row change there is not data; on Cassandra it is a user's")
+    func scyllaAuditKeyspace() {
+        for sql in [
+            "DELETE FROM audit.audit_log WHERE date = '2026-11-13' AND node = '10.0.0.1'",
+            "UPDATE \"audit\".audit_log SET operation = 'x' WHERE date = '2026-11-13' AND node = '10.0.0.1'",
+            "INSERT INTO AUDIT.audit_log (date, node) VALUES ('2026-11-13', '10.0.0.1')",
+        ] {
+            #expect(!Self.isData(sql, "ScyllaDB"))
+            #expect(Self.isData(sql, "Cassandra"))
+        }
+        #expect(Self.isData("SELECT * FROM audit.audit_log", "ScyllaDB"))
+        #expect(SQLStatementClassifier.isSystemScope(database: "audit", schema: nil, databaseTypeId: "ScyllaDB"))
+        #expect(!SQLStatementClassifier.isSystemScope(database: "audit", schema: nil, databaseTypeId: "Cassandra"))
+    }
 }

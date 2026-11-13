@@ -102,7 +102,7 @@ extension QueryClassifier {
     private static let elasticsearchServerCommands: Set<String> = ["_flush", "_refresh", "_reload_search_analyzers"]
     private static let elasticsearchBulkActions: Set<String> = ["index", "create", "update", "delete"]
     private static let typesenseMethods: Set<String> = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
-    private static let realtimeDatabaseMetadataKeys: Set<String> = [".value", ".priority", ".sv"]
+    static let realtimeDatabaseMetadataKeys: Set<String> = [".value", ".priority", ".sv"]
     private static let bigtableChanges: Set<String> = ["INSERT", "PUT", "DELETE"]
 
     private static func elasticsearchRunsServerCommand(_ route: String) -> Bool {
@@ -189,7 +189,7 @@ extension QueryClassifier {
     }
 
     // Read as `WeaviatePathEncoding.resolve` sends it, which keeps a dot segment as written.
-    private static func weaviateSegments(of path: String) -> [String]? {
+    static func weaviateSegments(of path: String) -> [String]? {
         guard let encoded = URLComponents(string: path)?.percentEncodedPath,
               let segments = requestSegments(of: encoded)
         else { return nil }

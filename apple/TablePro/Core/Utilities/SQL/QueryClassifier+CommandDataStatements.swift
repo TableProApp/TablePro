@@ -121,10 +121,24 @@ extension QueryClassifier {
         // Reads by the driver's own rule, `KafkaStatement.refusal`. The SQL tier reads CONSUME as a write.
         case .consume, .showTopics, .showBrokers, .showGroups, .showCluster, .describeGroup, .describeTopic:
             return [.read]
-        case .produce:
-            return [.named("PRODUCE")]
+        case .produce(let query):
+            return [kafkaNamesServiceTopic(query.topic) ? .refused : .named("PRODUCE")]
         case .dropTopic:
             return [.named("DROP TOPIC")]
         }
+    }
+
+    // The broker refuses a produce only into its own `__` topics. Schema Registry keeps its schemas in `_schemas`
+    // (`kafkastore.topic`), and Confluent names every internal topic with a leading `_`. Kafka's
+    // `ReplicationPolicy.isInternalTopic` (4.4) adds a leading `.` and MirrorMaker 2's `.internal` topics, its Connect
+    // stores among them. A Connect worker's stores have no default name; these are the ones Kafka ships in
+    // `config/connect-distributed.properties`. Kafka Streams names a store's log and a repartition topic with these
+    // suffixes. The broker does not say which topics a worker, a registry or an application uses.
+    private static let kafkaConnectTopics: Set<String> = ["connect-configs", "connect-offsets", "connect-status"]
+
+    static func kafkaNamesServiceTopic(_ topic: String) -> Bool {
+        if topic.hasPrefix("_") || topic.hasPrefix(".") || kafkaConnectTopics.contains(topic) { return true }
+        if topic.hasSuffix("-changelog") || topic.hasSuffix("-repartition") { return true }
+        return (topic.hasPrefix("mm2") && topic.hasSuffix(".internal")) || topic.hasSuffix(".checkpoints.internal")
     }
 }

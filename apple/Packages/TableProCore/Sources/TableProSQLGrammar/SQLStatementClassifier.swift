@@ -170,7 +170,9 @@ struct SQLStatementTiering {
             guard case .explains(let start, true) = explain.reading else { return false }
             return statementDeletesEveryRow((statement as NSString).substring(from: start), grammar: grammar)
         }
-        return SQLUnfilteredWrite.writes(in: statement, grammar: grammar).contains(.delete)
+        let readsRecordIds = databaseTypeId == Self.surrealDB
+        return SQLUnfilteredWrite.writes(in: statement, grammar: grammar, readsRecordIds: readsRecordIds)
+            .contains(.delete)
     }
 
     func sqlClassification(_ statement: String, grammar: SQLLexicalGrammar, depth: Int = 0) -> StatementClassification {

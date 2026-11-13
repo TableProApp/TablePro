@@ -81,10 +81,11 @@ struct EditModeDataCommandsCommandTests {
         #expect(refusal(sql, on: .memcached) == nil)
     }
 
-    @Test("A Memcached delete is a data change the destructive rule refuses")
-    func memcachedDeleteIsData() {
+    @Test("Edit runs a Memcached delete, which takes one key, and refuses flush_all as destructive")
+    func memcachedDeleteRunsInEdit() {
         #expect(QueryClassifier.isDataStatement("delete k", databaseType: .memcached))
-        #expect(refusal("delete k", on: .memcached) == .denied(ExternalStatementGate.destructiveRefusal))
+        #expect(refusal("delete k", on: .memcached) == nil)
+        #expect(refusal("flush_all", on: .memcached) == .denied(ExternalStatementGate.destructiveRefusal))
     }
 
     @Test("Edit refuses an etcd command that changes no data", arguments: [
@@ -96,15 +97,22 @@ struct EditModeDataCommandsCommandTests {
     }
 
     @Test("Edit still refuses the etcd commands refused before", arguments: [
-        "auth disable", "user delete app", "compaction 5", "lease revoke 694da1d22d63c20a", "del app/a", "defrag",
+        "auth disable", "user delete app", "compaction 5", "lease revoke 694da1d22d63c20a", "del app/ --prefix", "defrag",
     ])
     func etcdKeepsEarlierRefusals(sql: String) {
         #expect(refusal(sql, on: .etcd) != nil)
     }
 
+    @Test("Edit refuses an etcd del of a prefix or a range as destructive", arguments: [
+        "del app/ --prefix", "del --prefix app/", "del app/a app/z", "del --from-key app/a", "del app/ --prefix=true",
+    ])
+    func etcdManyKeyDeleteIsDestructive(sql: String) {
+        #expect(refusal(sql, on: .etcd) == .denied(ExternalStatementGate.destructiveRefusal))
+    }
+
     @Test("Edit runs etcd reads and data changes", arguments: [
-        "put app/a 1", "put app/a 1 --lease=694da1d22d63c20a", "create app/b 2", "lease grant 60",
-        "lease keep-alive 694da1d22d63c20a", "get app/ --prefix", "user list",
+        "put app/a 1", "put app/a 1 --lease=694da1d22d63c20a", "create app/b 2", "del app/a", "delete app/a",
+        "lease grant 60", "lease keep-alive 694da1d22d63c20a", "get app/ --prefix", "user list",
     ])
     func etcdRunsDataWork(sql: String) {
         #expect(refusal(sql, on: .etcd) == nil)
@@ -125,6 +133,33 @@ struct EditModeDataCommandsCommandTests {
         "SELECT * FROM orders", "SHOW TOPICS", "DESCRIBE GROUP \"g\"",
     ])
     func kafkaRunsDataWork(sql: String) {
+        #expect(refusal(sql, on: .kafka) == nil)
+    }
+
+    @Test("Edit refuses PRODUCE into a topic another service keeps its state in", arguments: [
+        "PRODUCE INTO \"_schemas\" KEY \"k\" VALUE \"v\"",
+        "PRODUCE INTO \"_confluent-ksql-default__command_topic\" VALUE \"v\"",
+        "PRODUCE INTO \"__consumer_offsets\" VALUE \"v\"",
+        "PRODUCE INTO \"connect-configs\" KEY \"connector-sink\" VALUE \"{}\"",
+        "PRODUCE INTO \"connect-offsets\" VALUE \"v\"",
+        "PRODUCE INTO \"connect-status\" VALUE \"v\"",
+        "PRODUCE INTO \"mm2-configs.east.internal\" VALUE \"v\"",
+        "PRODUCE INTO \"east.checkpoints.internal\" VALUE \"v\"",
+        "PRODUCE INTO \".hidden\" VALUE \"v\"",
+        "PRODUCE INTO \"orders-app-counts-store-changelog\" VALUE \"v\"",
+        "PRODUCE INTO \"orders-app-KSTREAM-AGGREGATE-0000000003-repartition\" VALUE \"v\"",
+    ])
+    func kafkaRefusesServiceTopics(sql: String) {
+        #expect(refusal(sql, on: .kafka) == .denied(ExternalStatementGate.dataStatementRefusal))
+    }
+
+    @Test("A topic that only looks like a service's is a user's", arguments: [
+        "PRODUCE INTO \"schemas\" VALUE \"v\"",
+        "PRODUCE INTO \"my_connect-configs\" VALUE \"v\"",
+        "PRODUCE INTO \"orders.internal\" VALUE \"v\"",
+        "CONSUME \"_schemas\" FROM OLDEST LIMIT 10",
+    ])
+    func kafkaRunsUserTopics(sql: String) {
         #expect(refusal(sql, on: .kafka) == nil)
     }
 }

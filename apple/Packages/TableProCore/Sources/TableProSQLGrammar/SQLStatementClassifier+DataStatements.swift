@@ -70,7 +70,9 @@ extension SQLStatementTiering {
         case "ClickHouse": return ["SYSTEM"]
         // A row change there passes the server's MODIFY check: `UPDATE system_auth.roles SET is_superuser = true`,
         // ScyllaDB's `system.roles` and its live `system.config`, Cassandra's writable `system_views` cache tables.
-        case "Cassandra", "ScyllaDB": return cassandraSystemKeyspaces
+        case "Cassandra": return cassandraSystemKeyspaces
+        // ScyllaDB 2026.1 writes its table audit backend to `audit.audit_log`, which the server does not mark internal.
+        case "ScyllaDB": return cassandraSystemKeyspaces.union(["AUDIT"])
         default: return []
         }
     }

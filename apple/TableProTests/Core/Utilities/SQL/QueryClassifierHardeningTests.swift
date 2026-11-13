@@ -685,7 +685,8 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.isWriteQuery("get /keys", databaseType: .etcd))
         #expect(!QueryClassifier.isWriteQuery("watch /keys", databaseType: .etcd))
         #expect(QueryClassifier.isWriteQuery("put /keys value", databaseType: .etcd))
-        #expect(QueryClassifier.classifyTier("del /keys", databaseType: .etcd) == .destructive)
+        #expect(QueryClassifier.classifyTier("del /keys", databaseType: .etcd) == .write)
+        #expect(QueryClassifier.classifyTier("del /keys --prefix", databaseType: .etcd) == .destructive)
         #expect(QueryClassifier.classifyTier("compact 5", databaseType: .etcd) == .destructive)
         #expect(QueryClassifier.reachesFilesystemOrExecutesCode("snapshot save backup.db", databaseType: .etcd))
     }
@@ -698,7 +699,7 @@ struct QueryClassifierNonSqlTests {
             "user delete alice",
             "role delete readers",
             "auth disable",
-            "delete /keys",
+            "delete /keys --prefix",
             "compaction 5 --physical"
         ]
         for statement in destructive {
@@ -827,8 +828,9 @@ struct QueryClassifierNonSqlTests {
             QueryClassifier.classifyTier(
                 "DELETE /collections/books/documents/1",
                 databaseType: .typesense
-            ) == .destructive
+            ) == .write
         )
+        #expect(QueryClassifier.classifyTier("DELETE /collections/books", databaseType: .typesense) == .destructive)
     }
 
     /// The body of a Typesense console request is the caller's own JSON. Scanning the whole
@@ -1037,7 +1039,7 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.reachesFilesystemOrExecutesCode("GET /collections", databaseType: .qdrant))
     }
 
-    @Test("Memcached reads are safe, stores write, and delete and flush_all are destructive")
+    @Test("Memcached reads are safe, stores and delete write, and flush_all is destructive")
     func memcachedTiers() {
         #expect(!QueryClassifier.isWriteQuery("MEMCACHED_BROWSE:e30=", databaseType: .memcached))
         #expect(!QueryClassifier.isWriteQuery("get user:1 user:2", databaseType: .memcached))
@@ -1054,12 +1056,16 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("set k 0 0 \"v\"", databaseType: .memcached) == .write)
         #expect(QueryClassifier.classifyTier("gat 60 k", databaseType: .memcached) == .write)
         #expect(QueryClassifier.classifyTier("touch k 0", databaseType: .memcached) == .write)
-        #expect(QueryClassifier.classifyTier("delete k", databaseType: .memcached) == .destructive)
+        #expect(QueryClassifier.classifyTier("delete k", databaseType: .memcached) == .write)
         #expect(QueryClassifier.classifyTier("FLUSH_ALL", databaseType: .memcached) == .destructive)
         #expect(QueryClassifier.classifyTier("get k; flush_all", databaseType: .memcached) == .destructive)
+        // The driver decodes an escape inside a quoted word before it names the command.
+        #expect(QueryClassifier.classifyTier(#""flush\x5fall""#, databaseType: .memcached) == .destructive)
+        #expect(QueryClassifier.classifyTier(#""flush\_all""#, databaseType: .memcached) == .destructive)
+        #expect(QueryClassifier.classifyTier(#""\x67et" k"#, databaseType: .memcached) == .safe)
     }
 
-    @Test("Bigtable request lines are tiered by their verb, and a PUT that nulls a cell is destructive")
+    @Test("Bigtable request lines are tiered by their verb, and a change to one row is a write, deletes included")
     func bigtableTiers() {
         #expect(!QueryClassifier.isWriteQuery("BIGTABLE_BROWSE:e30=", databaseType: .bigtable))
         #expect(!QueryClassifier.isWriteQuery("GET events/user#42", databaseType: .bigtable))
@@ -1067,9 +1073,9 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.isWriteQuery("READ events {\"rowsLimit\": \"5\"}", databaseType: .bigtable))
         #expect(QueryClassifier.classifyTier("INSERT events/k {\"cf:a\": \"1\"}", databaseType: .bigtable) == .write)
         #expect(QueryClassifier.classifyTier("PUT events/k {\"cf:a\": \"1\"}", databaseType: .bigtable) == .write)
-        #expect(QueryClassifier.classifyTier("PUT events/k {\"cf:a\": null}", databaseType: .bigtable) == .destructive)
-        #expect(QueryClassifier.classifyTier("PUT events/\"a{b\" {\"cf:a\": null}", databaseType: .bigtable) == .destructive)
-        #expect(QueryClassifier.classifyTier("DELETE events/k", databaseType: .bigtable) == .destructive)
+        #expect(QueryClassifier.classifyTier("PUT events/k {\"cf:a\": null}", databaseType: .bigtable) == .write)
+        #expect(QueryClassifier.classifyTier("PUT events/\"a{b\" {\"cf:a\": null}", databaseType: .bigtable) == .write)
+        #expect(QueryClassifier.classifyTier("DELETE events/k", databaseType: .bigtable) == .write)
         #expect(QueryClassifier.isWriteQuery("SELECT * FROM events", databaseType: .bigtable))
     }
 
@@ -1166,19 +1172,27 @@ struct QueryClassifierNonSqlTests {
             #expect(QueryClassifier.isWriteQuery("POST users {}", databaseType: type))
             #expect(QueryClassifier.isWriteQuery("PUT /config/maintenance false", databaseType: type))
             #expect(QueryClassifier.isWriteQuery("SELECT * FROM users", databaseType: type))
-            #expect(QueryClassifier.classifyTier("DELETE users/alice", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("DELETE users/alice", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("DELETE users", databaseType: type) == .destructive)
         }
     }
 
-    @Test("A Firebase write that replaces the root or leaves a node empty ranks with DELETE")
+    @Test("A Firebase write that replaces the root or a Realtime Database table, or leaves a node empty, ranks with DELETE")
     func firebaseWritesThatDelete() {
         for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
             #expect(QueryClassifier.classifyTier("PUT / {\"a\": 1}", databaseType: type) == .destructive)
             #expect(QueryClassifier.classifyTier("PUT %2F 1", databaseType: type) == .destructive)
             #expect(QueryClassifier.classifyTier("PUT users null", databaseType: type) == .destructive)
             #expect(QueryClassifier.classifyTier("PUT users\n{\"a\": {}, \"b\": [null]}", databaseType: type) == .destructive)
-            #expect(QueryClassifier.classifyTier("PUT users {\"a\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users/alice {\"a\": 1}", databaseType: type) == .write)
         }
+        #expect(QueryClassifier.classifyTier("PUT users {\"a\": 1}", databaseType: .firestore) == .write)
+        // A top-level node is a table: replacing it drops every record under it.
+        #expect(QueryClassifier.classifyTier("PUT users {\"a\": 1}", databaseType: .firebaseRealtimeDatabase) == .destructive)
+        #expect(QueryClassifier.classifyTier("PATCH / {\"users\": {\"x\": 1}}", databaseType: .firebaseRealtimeDatabase) == .destructive)
+        #expect(QueryClassifier.classifyTier("PATCH / {\"users/x\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
+        #expect(QueryClassifier.classifyTier("PATCH users {\"x\": {\"n\": 1}}", databaseType: .firebaseRealtimeDatabase) == .write)
+        #expect(QueryClassifier.classifyTier("POST users {\"n\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
         #expect(QueryClassifier.classifyTier("PATCH / {\"users\": null}", databaseType: .firebaseRealtimeDatabase) == .destructive)
         #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
         #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": null}", databaseType: .firestore) == .write)
@@ -1191,12 +1205,12 @@ struct QueryClassifierNonSqlTests {
             #expect(QueryClassifier.classifyTier("PUT users {\".value\": null, \".priority\": 1}", databaseType: type) == .destructive)
             #expect(QueryClassifier.classifyTier("PUT users {\"a\": {\".priority\": 1}}", databaseType: type) == .destructive)
             #expect(QueryClassifier.classifyTier("PUT users {\".value\": {\".priority\": 1}}", databaseType: type) == .destructive)
-            #expect(QueryClassifier.classifyTier("PUT users {\".value\": 5, \".priority\": 1}", databaseType: type) == .write)
-            #expect(QueryClassifier.classifyTier("PUT users {\".sv\": \"timestamp\"}", databaseType: type) == .write)
-            #expect(QueryClassifier.classifyTier("PUT users {\"a\": 1, \".priority\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users/a {\".value\": 5, \".priority\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users/a {\".sv\": \"timestamp\"}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users/a {\"a\": 1, \".priority\": 1}", databaseType: type) == .write)
         }
         #expect(QueryClassifier.classifyTier("PATCH / {\"users\": {\".priority\": 1}}", databaseType: .firebaseRealtimeDatabase) == .destructive)
-        #expect(QueryClassifier.classifyTier("PATCH users {\".priority\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
+        #expect(QueryClassifier.classifyTier("PATCH users/a {\".priority\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
     }
 
     @Test("A Firebase path that starts with a mark is tiered as the driver reads it", arguments: [
@@ -1206,11 +1220,13 @@ struct QueryClassifierNonSqlTests {
         for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
             #expect(QueryClassifier.classifyTier("PUT \(name) null", databaseType: type) == .destructive)
             #expect(QueryClassifier.classifyTier(FirebaseRequest(method: .put, path: name, body: "null").text, databaseType: type) == .destructive)
-            #expect(QueryClassifier.classifyTier("PUT \(name) {\"a\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT \(name)/a {\"a\": 1}", databaseType: type) == .write)
             #expect(QueryClassifier.classifyTier("DELETE \(name)", databaseType: type) == .destructive)
             #expect(QueryClassifier.classifyTier("GET \(name)", databaseType: type) == .safe)
         }
-        #expect(QueryClassifier.classifyTier("PATCH \(name) {\"x\": null}", databaseType: .firebaseRealtimeDatabase) == .destructive)
+        #expect(QueryClassifier.classifyTier("PUT \(name) {\"a\": 1}", databaseType: .firestore) == .write)
+        // Read as the root, this PATCH would remove a top-level node; read as the driver does, it removes one record.
+        #expect(QueryClassifier.classifyTier("PATCH \(name) {\"x\": null}", databaseType: .firebaseRealtimeDatabase) == .write)
     }
 
     @Test("A console body declaring a mutation is classified the same as a bare one")
@@ -1247,13 +1263,12 @@ struct QueryClassifierNonSqlTests {
     }
 
     @Test("A request text is tiered by the requests the scanner hands the driver", arguments: [
-        (DatabaseType.firestore, "GET users", "DELETE users/alice"),
-        (.firebaseRealtimeDatabase, "GET users", "DELETE users/alice"),
-        (.bigtable, "GET events/k", "DELETE events/k"),
+        (DatabaseType.firestore, "GET users", "DELETE users"),
+        (.firebaseRealtimeDatabase, "GET users", "DELETE users"),
         (.typesense, "GET /collections", "DELETE /collections/books"),
         (.weaviate, "GET /v1/schema", "DELETE /v1/schema/Article"),
         (.elasticsearch, "GET /_cat/indices", "DELETE /orders"),
-        (.etcd, "get /keys", "del /keys")
+        (.etcd, "get /keys", "del /keys --prefix")
     ])
     func requestTextTiersWhatTheDriverReceives(type: DatabaseType, read: String, delete: String) {
         for text in [";\(delete)", "\(read);\(delete)", "--\n;\(delete)", "--\r\(read)\n;\(delete)", "/**/;\(delete)"] {
@@ -1261,6 +1276,19 @@ struct QueryClassifierNonSqlTests {
         }
         for text in ["\(read);", ";\(read)", "-- note\n;\(read)", "-- \(delete)", ";"] {
             #expect(QueryClassifier.classifyTier(text, databaseType: type) == .safe, "\(text) must be safe")
+        }
+    }
+
+    // Every Bigtable change touches one row, so the hidden one is a write.
+    @Test("A Bigtable request text is tiered by the requests the scanner hands the driver")
+    func bigtableRequestTextTiersWhatTheDriverReceives() {
+        let read = "GET events/k"
+        let delete = "DELETE events/k"
+        for text in [";\(delete)", "\(read);\(delete)", "--\n;\(delete)", "--\r\(read)\n;\(delete)", "/**/;\(delete)"] {
+            #expect(QueryClassifier.classifyTier(text, databaseType: .bigtable) == .write, "\(text) must be a write")
+        }
+        for text in ["\(read);", ";\(read)", "-- note\n;\(read)", "-- \(delete)", ";"] {
+            #expect(QueryClassifier.classifyTier(text, databaseType: .bigtable) == .safe, "\(text) must be safe")
         }
     }
 
