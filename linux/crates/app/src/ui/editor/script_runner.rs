@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use tablepro_core::masking::{MaskingPolicy, table_name};
+use tablepro_core::masking::{SharedMaskingPolicy, table_name};
 use tablepro_core::sql_syntax::script::text_offsets::CharCounter;
 use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan};
 use tablepro_core::sql_syntax::{SqlGrammar, source_table};
@@ -53,7 +53,8 @@ pub struct ScriptRun {
 // How a run's rows meet the connection's masking rules.
 #[derive(Debug, Clone, Default)]
 pub struct RunMasking {
-    pub policy: MaskingPolicy,
+    // The session's live rules, which a save during the run changes.
+    pub rules: SharedMaskingPolicy,
     // The grammar a statement's table is read with; `None` reads none.
     pub grammar: Option<SqlGrammar>,
     // The tab shows its values unmasked.
@@ -61,20 +62,19 @@ pub struct RunMasking {
 }
 
 impl RunMasking {
-    // The grid matches a `table.column` rule against the one table the statement reads, when it reads one.
-    fn for_statement(&self, sql: &str) -> Option<StatementMasking> {
-        if self.policy.is_empty() {
-            return None;
-        }
+    // The grid matches a `table.column` rule against the one table the statement reads; with no rule there is nothing
+    // to parse it for, and a rule saved later matches by column alone.
+    fn for_statement(&self, sql: &str) -> StatementMasking {
         let table = self
             .grammar
+            .filter(|_| !self.rules.get().is_empty())
             .and_then(|grammar| source_table(sql, grammar).ok())
             .map(|source| table_name(&source.table));
-        Some(StatementMasking {
-            policy: self.policy.clone(),
+        StatementMasking {
+            rules: self.rules.clone(),
             source: MaskSource::Query { table },
             revealed: self.revealed,
-        })
+        }
     }
 }
 
@@ -220,7 +220,7 @@ pub async fn run_batches(
             let collector = Arc::new(Mutex::new(
                 BatchCollector::new(sql.clone())
                     .within(room)
-                    .masked(run.masking.for_statement(&batch.text)),
+                    .masked(Some(run.masking.for_statement(&batch.text))),
             ));
             let options = RunOptions::new(cancel.child_token())
                 .with_deadline(run.statement_timeout)
@@ -481,22 +481,20 @@ mod tests {
 
     #[test]
     fn a_statement_s_rows_meet_the_rules_by_the_one_table_it_reads() {
-        use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
+        use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget};
 
         let masking = RunMasking {
-            policy: MaskingPolicy::new([MaskingRule::new(
+            rules: SharedMaskingPolicy::new(MaskingPolicy::new([MaskingRule::new(
                 "users.email",
                 MaskingTarget::Column,
                 MaskingStyle::Email,
-            )]),
+            )])),
             grammar: Some(SqlGrammar::PostgreSql),
             revealed: false,
         };
 
-        let read = masking.for_statement("SELECT email FROM public.users").expect("masked");
-        let joined = masking
-            .for_statement("SELECT u.email FROM users u JOIN orders o ON o.user_id = u.id")
-            .expect("masked");
+        let read = masking.for_statement("SELECT email FROM public.users");
+        let joined = masking.for_statement("SELECT u.email FROM users u JOIN orders o ON o.user_id = u.id");
 
         assert_eq!(
             read.source,
@@ -505,7 +503,6 @@ mod tests {
             }
         );
         assert_eq!(joined.source, MaskSource::Query { table: None });
-        assert!(RunMasking::default().for_statement("SELECT 1").is_none());
     }
 
     #[tokio::test]

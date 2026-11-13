@@ -3617,5 +3617,6 @@ fn a_saved_rule_masks_the_result_on_screen() {
         .set_masking_policy(email_rule());
     harness.editor.masking_changed();
 
-    assert_eq!(shown_email(&harness), masked_email());
+    wait_until(WAIT, || shown_email(&harness) == masked_email()).expect("the result masked off the main loop");
+    assert!(shown_grid(&harness).masks().is_masked(1));
 }

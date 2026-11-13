@@ -4,7 +4,7 @@ use tablepro_core::{
     Truncation, UserSql,
 };
 
-use tablepro_core::masking::MaskingPolicy;
+use tablepro_core::masking::{MaskingPolicy, SharedMaskingPolicy};
 
 use super::script_runner::sql_preview;
 use crate::services::grid::{GridMasks, MaskSource, remask_rows};
@@ -141,12 +141,15 @@ pub struct BatchCollector {
     sets: Vec<usize>,
     room: RowRoom,
     masking: Option<StatementMasking>,
+    // The rules as last read, with the generation they were read at.
+    read: Option<(u64, MaskingPolicy)>,
 }
 
 // How one statement's rows meet the connection's masking rules as they arrive, so no value a rule hides is ever held.
 #[derive(Debug, Clone)]
 pub struct StatementMasking {
-    pub policy: MaskingPolicy,
+    // The session's live rules: a save during the run reaches the rows that arrive after it.
+    pub rules: SharedMaskingPolicy,
     pub source: MaskSource,
     // The tab shows its values unmasked.
     pub revealed: bool,
@@ -160,6 +163,7 @@ impl BatchCollector {
             sets: Vec::new(),
             room: RowRoom::UNLIMITED,
             masking: None,
+            read: None,
         }
     }
 
@@ -177,6 +181,11 @@ impl BatchCollector {
             ResultEvent::ResultSetStarted { columns } => self.start_set(columns),
             ResultEvent::ColumnsResolved { set_index, columns } => self.resolve_columns(set_index, columns),
             ResultEvent::Rows(rows) => {
+                if self.rules_moved()
+                    && let Some(last) = self.sets.len().checked_sub(1)
+                {
+                    self.refresh_masks(last);
+                }
                 if self.sets.is_empty() {
                     // Rows with no columns would draw a grid that cannot
                     // say what any cell is.
@@ -314,11 +323,34 @@ impl BatchCollector {
         (self.entries, verdict, transaction)
     }
 
+    // The generation first, so rules set between the two reads are read again on the next check.
+    fn policy(&mut self) -> Option<MaskingPolicy> {
+        let rules = &self.masking.as_ref()?.rules;
+        let generation = rules.generation();
+        match &self.read {
+            Some((read, policy)) if *read == generation => Some(policy.clone()),
+            _ => {
+                let policy = rules.get();
+                self.read = Some((generation, policy.clone()));
+                Some(policy)
+            }
+        }
+    }
+
+    fn rules_moved(&self) -> bool {
+        match (&self.masking, &self.read) {
+            (Some(masking), Some((read, _))) => masking.rules.generation() != *read,
+            _ => false,
+        }
+    }
+
     fn start_set(&mut self, columns: std::sync::Arc<[tablepro_core::column::ResultColumn]>) {
         self.sets.push(self.entries.len());
         let mut view = ResultSetView::new(columns, self.statement.clone());
-        if let Some(masking) = &self.masking {
-            view.masks = masking.source.masks(&masking.policy, &view.columns, masking.revealed);
+        if let Some(policy) = self.policy()
+            && let Some(masking) = &self.masking
+        {
+            view.masks = masking.source.masks(&policy, &view.columns, masking.revealed);
             view.mask_source = masking.source.clone();
         }
         self.entries.push(EntryKind::ResultSet(view));
@@ -326,15 +358,25 @@ impl BatchCollector {
 
     // Types the driver resolved late can bring a type rule into play, also for rows already held.
     fn resolve_columns(&mut self, set_index: usize, columns: std::sync::Arc<[tablepro_core::column::ResultColumn]>) {
-        let masking = self.masking.clone();
         let Some(result) = self.set(set_index) else {
             return;
         };
         result.columns = columns;
-        let Some(masking) = masking else {
+        self.refresh_masks(set_index);
+    }
+
+    // Masks the set's held rows of every column the rules now mask, as when its columns resolved or a save landed.
+    fn refresh_masks(&mut self, set_index: usize) {
+        let Some(policy) = self.policy() else {
             return;
         };
-        let fresh = masking.source.masks(&masking.policy, &result.columns, masking.revealed);
+        let Some(masking) = self.masking.clone() else {
+            return;
+        };
+        let Some(result) = self.set(set_index) else {
+            return;
+        };
+        let fresh = masking.source.masks(&policy, &result.columns, masking.revealed);
         let shown = match result.rows.is_empty() {
             true => fresh.shown.clone(),
             false => match remask_rows(&result.columns, &result.masks.shown, &fresh.shown, &result.rows) {
@@ -969,7 +1011,7 @@ mod tests {
 
     fn masked_by(policy: MaskingPolicy, revealed: bool) -> BatchCollector {
         BatchCollector::new(UserSql::new("SELECT id, email FROM users")).masked(Some(StatementMasking {
-            policy,
+            rules: SharedMaskingPolicy::new(policy),
             source: MaskSource::Query {
                 table: Some("users".to_owned()),
             },
@@ -1024,6 +1066,32 @@ mod tests {
             revealed.masks.external.is_masked(1),
             "a revealed result still masks on the way out"
         );
+    }
+
+    #[test]
+    fn a_rule_saved_during_the_run_masks_the_rows_held_and_those_after_it() {
+        let rules = SharedMaskingPolicy::default();
+        let mut collector =
+            BatchCollector::new(UserSql::new("SELECT id, email FROM users")).masked(Some(StatementMasking {
+                rules: rules.clone(),
+                source: MaskSource::Query {
+                    table: Some("users".to_owned()),
+                },
+                revealed: false,
+            }));
+        let row = |id: i64, email: &str| vec![Value::Int(id), Value::Text(email.to_owned())];
+        collector.record(ResultEvent::ResultSetStarted {
+            columns: columns(&["id", "email"]),
+        });
+        collector.record(ResultEvent::Rows(vec![row(1, "ann@example.com")]));
+
+        rules.set(email_rule());
+        collector.record(ResultEvent::Rows(vec![row(2, "bo@example.com")]));
+
+        let result = first_result(collector);
+        assert_eq!(result.rows[0][1], Value::Text("a•••@example.com".to_owned()));
+        assert_eq!(result.rows[1][1], Value::Text("b•••@example.com".to_owned()));
+        assert!(result.masks.is_masked(1));
     }
 
     #[test]

@@ -64,7 +64,7 @@ pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::data_grid::{DialectSource, GridRequest};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::handler_guard::HandlerGuard;
-use super::result_pane::ResultGridDeps;
+use super::result_pane::{ResultGridDeps, ResultSetView};
 use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
 use crate::services::grid::{GridMasks, remask_rows};
@@ -517,7 +517,7 @@ impl SqlEditor {
         let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         imp.last_run.replace(Some((scoped.clone(), grammar)));
         let masking = RunMasking {
-            policy: session.masking_policy(),
+            rules: session.masking(),
             grammar: grammar.is_sql().then_some(grammar),
             revealed: imp.reveals_masked.get(),
         };
@@ -593,6 +593,7 @@ impl SqlEditor {
             Some(log) => log.apply(event),
             None => return,
         };
+        self.remask_new_entries(before);
         self.show_new_entries(before);
     }
 
@@ -709,45 +710,86 @@ impl SqlEditor {
         }
     }
 
-    // A saved change to the rules: the rows on screen take every new mask.
+    // A saved change to the rules: the rows on screen take every new mask, worked out off the main loop, since a run
+    // holds up to 100,000 rows.
     pub(crate) fn masking_changed(&self) {
         let imp = self.imp();
-        let Some(session) = self.deps().and_then(|deps| deps.session.get()) else {
+        let Some(deps) = self.deps() else {
+            return;
+        };
+        let Some(session) = deps.session.get() else {
             return;
         };
         let policy = session.masking_policy();
-        let changed: Vec<usize> = {
-            let mut log = imp.log.borrow_mut();
+        let held: Vec<(usize, ResultSetView)> = {
+            let log = imp.log.borrow();
+            let Some(log) = log.as_ref() else {
+                return;
+            };
+            (0..log.entries().len())
+                .filter_map(|index| log.result(index).map(|result| (index, result.clone())))
+                .collect()
+        };
+        let working = deps.tasks.spawn_blocking_task(move || {
+            held.into_iter()
+                .filter_map(|(index, result)| remasked(&policy, &result).map(|fresh| (index, result, fresh)))
+                .collect::<Vec<_>>()
+        });
+        let editor = self.downgrade();
+        glib::spawn_future_local(async move {
+            let Ok(remasked) = working.await else {
+                return;
+            };
+            if let Some(editor) = editor.upgrade() {
+                editor.take_remasked(remasked);
+            }
+        });
+    }
+
+    // A result the log replaced or changed meanwhile keeps what it holds; the next save or run masks it.
+    fn take_remasked(&self, remasked: Vec<(usize, ResultSetView, ResultSetView)>) {
+        let mut taken = Vec::new();
+        {
+            let mut log = self.imp().log.borrow_mut();
             let Some(log) = log.as_mut() else {
                 return;
             };
-            let count = log.entries().len();
-            (0..count)
-                .filter(|index| {
-                    let Some(result) = log.result_mut(*index) else {
-                        return false;
-                    };
-                    let fresh = result
-                        .mask_source
-                        .masks(&policy, &result.columns, result.masks.revealed);
-                    let remasked = remask_rows(&result.columns, &result.masks.shown, &fresh.shown, &result.rows);
-                    let shown = match remasked {
-                        Some((shown, rows)) => {
-                            result.rows = rows;
-                            shown
-                        }
-                        None => result.masks.shown.clone(),
-                    };
-                    let masks = GridMasks { shown, ..fresh };
-                    let differs = masks != result.masks;
-                    result.masks = masks;
-                    differs
-                })
-                .collect()
-        };
-        for index in changed {
+            for (index, before, after) in remasked {
+                let Some(result) = log.result_mut(index) else {
+                    continue;
+                };
+                if !same_rows(result, &before) {
+                    continue;
+                }
+                *result = after;
+                taken.push(index);
+            }
+        }
+        for index in taken {
             self.lock_masked_key(index);
             self.refresh_result_page(index);
+        }
+    }
+
+    // Results that land after a save checked the rules as they arrived, but the save may have come between.
+    fn remask_new_entries(&self, from: usize) {
+        let Some(policy) = self
+            .deps()
+            .and_then(|deps| deps.session.get())
+            .map(|session| session.masking_policy())
+        else {
+            return;
+        };
+        let mut log = self.imp().log.borrow_mut();
+        let Some(log) = log.as_mut() else {
+            return;
+        };
+        for index in from..log.entries().len() {
+            if let Some(result) = log.result_mut(index)
+                && let Some(fresh) = remasked(&policy, result)
+            {
+                *result = fresh;
+            }
         }
     }
 
@@ -1357,4 +1399,33 @@ fn source_language(grammar: SqlGrammar) -> Option<&'static str> {
         SqlGrammar::Mongo => Some("js"),
         _ => Some("sql"),
     }
+}
+
+// The result as the rules mask it now, `None` when they add no mask: a mask already laid stays, as the value is gone.
+fn remasked(policy: &tablepro_core::masking::MaskingPolicy, result: &ResultSetView) -> Option<ResultSetView> {
+    let fresh = result.mask_source.masks(policy, &result.columns, result.masks.revealed);
+    let (shown, rows) = match remask_rows(&result.columns, &result.masks.shown, &fresh.shown, &result.rows) {
+        Some((shown, rows)) => (shown, Some(rows)),
+        None => (result.masks.shown.clone(), None),
+    };
+    let masks = GridMasks { shown, ..fresh };
+    if masks == result.masks && rows.is_none() {
+        return None;
+    }
+    let mut after = result.clone();
+    if let Some(rows) = rows {
+        after.rows = rows;
+    }
+    after.masks = masks;
+    Some(after)
+}
+
+fn same_rows(held: &ResultSetView, read: &ResultSetView) -> bool {
+    held.masks == read.masks
+        && held.rows.len() == read.rows.len()
+        && held
+            .rows
+            .iter()
+            .zip(&read.rows)
+            .all(|(held, read)| Arc::ptr_eq(held, read))
 }
