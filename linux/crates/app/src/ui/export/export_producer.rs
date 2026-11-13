@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use tablepro_core::browse::{DeclaredPrecisionSink, build_export};
 use tablepro_core::column::ResultColumn;
-use tablepro_core::masking::{ColumnMasks, MaskingScope, MaskingSink, table_name};
+use tablepro_core::masking::{ColumnMasks, MaskingScope, table_name};
 use tablepro_core::{ReadStatement, ResultEvent, ResultSink, SinkFlow, StreamSummary, Truncation};
 use tablepro_session::runtime::{TaskResult, Tasks};
 use tablepro_session::{OperationError, OperationKind, Session};
 use tokio_util::sync::CancellationToken;
 
+use super::live_masking_sink::LiveMaskingSink;
 use super::{ExportQuery, ExportSinkParts};
 use crate::services::grid::RowSnapshot;
 
@@ -76,7 +77,7 @@ pub(crate) fn start_query_producer(
             .run_cancellable(OperationKind::Export, &cancel, move |lease, options| {
                 let parts = parts.clone();
                 let query = Arc::clone(&query);
-                let policy = masking.get();
+                let rules = masking.clone();
                 async move {
                     let (read, sink): (_, Box<dyn ResultSink>) = match &*query {
                         ExportQuery::Table(export) => {
@@ -84,7 +85,7 @@ pub(crate) fn start_query_producer(
                                 table: Some(table_name(&export.table)),
                             };
                             // After the declared precision, so a mask reads the value as the file would hold it.
-                            let masked = MaskingSink::wrap(parts.sink(), policy, scope);
+                            let masked = Box::new(LiveMaskingSink::new(parts.sink(), rules, scope));
                             (
                                 ReadStatement::Generated(build_export(&*lease.dialect(), &export.request())?),
                                 Box::new(DeclaredPrecisionSink::new(masked, Arc::clone(&export.columns))),
@@ -92,7 +93,11 @@ pub(crate) fn start_query_producer(
                         }
                         ExportQuery::Editor { sql } => (
                             ReadStatement::User(sql.clone()),
-                            MaskingSink::wrap(parts.sink(), policy, MaskingScope::External { table: None }),
+                            Box::new(LiveMaskingSink::new(
+                                parts.sink(),
+                                rules,
+                                MaskingScope::External { table: None },
+                            )),
                         ),
                     };
                     Ok(lease.stream_read(&read, sink, options).await?)
