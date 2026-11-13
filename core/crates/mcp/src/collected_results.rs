@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::value::RawValue;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::{ResultEvent, ResultSink, SinkFlow, Truncation, Value};
+use tablepro_core::{ResultEvent, ResultSink, ServerCode, SinkFlow, Truncation, Value};
 
 use crate::tool_error::ToolError;
 
@@ -94,12 +94,21 @@ impl Keep {
     }
 }
 
+fn withheld_notice(code: Option<&ServerCode>) -> String {
+    let reason = "TablePro withholds its text because this connection masks values and the text can repeat one";
+    match code {
+        Some(code) => format!("a notice with code {code}; {reason}"),
+        None => format!("a notice; {reason}"),
+    }
+}
+
 // A streamed read has no limit of its own, so with `stop_at_limit` the first row it cannot keep ends it. An editor
 // run keeps going for what it writes.
 pub struct ResultCollector {
     state: Arc<Mutex<CollectedResults>>,
     keep: Keep,
     stop_at_limit: bool,
+    withhold_notices: bool,
 }
 
 impl ResultCollector {
@@ -108,7 +117,16 @@ impl ResultCollector {
             state,
             keep,
             stop_at_limit,
+            withhold_notices: false,
         }
+    }
+
+    // On a connection with masking rules a notice's text can repeat a value the statement read, as an error's can, so
+    // the answer keeps its severity and code.
+    #[must_use]
+    pub fn withholding_notices(mut self, withhold: bool) -> Self {
+        self.withhold_notices = withhold;
+        self
     }
 
     fn accept_now(&self, event: ResultEvent) -> SinkFlow {
@@ -159,9 +177,10 @@ impl ResultCollector {
             }
             ResultEvent::Notice(notice) => {
                 if state.notices.len() < MAX_NOTICES {
-                    let message = match notice.message.len() > MAX_VALUE_BYTES {
-                        true => cut_text(&notice.message, notice.message.len()),
-                        false => notice.message,
+                    let message = match (self.withhold_notices, notice.message.len() > MAX_VALUE_BYTES) {
+                        (true, _) => withheld_notice(notice.code.as_ref()),
+                        (false, true) => cut_text(&notice.message, notice.message.len()),
+                        (false, false) => notice.message,
                     };
                     state.notices.push(format!("{}: {message}", notice.severity));
                 }
@@ -623,6 +642,39 @@ mod tests {
                 "n".repeat(MAX_VALUE_BYTES),
                 cut_mark(3 * MAX_VALUE_BYTES)
             )]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_notice_on_a_connection_with_masking_rules_keeps_only_its_severity_and_code() {
+        let state = Arc::new(Mutex::new(CollectedResults::default()));
+        let mut sink = ResultCollector::new(state.clone(), Keep::results(10), true).withholding_notices(true);
+
+        for code in [Some(ServerCode::SqlState("01000".to_owned())), None] {
+            sink.accept(ResultEvent::Notice(ServerNotice {
+                severity: "NOTICE".to_owned(),
+                message: "old email was ann@example.com".to_owned(),
+                code,
+            }))
+            .await;
+        }
+
+        let state = state.lock().unwrap();
+        assert_eq!(state.notices.len(), 2);
+        assert!(
+            state.notices.iter().all(|notice| !notice.contains("ann@example.com")),
+            "{:?}",
+            state.notices
+        );
+        assert!(
+            state.notices[0].starts_with("NOTICE: a notice with code 01000;"),
+            "{}",
+            state.notices[0]
+        );
+        assert!(
+            state.notices[1].starts_with("NOTICE: a notice;"),
+            "{}",
+            state.notices[1]
         );
     }
 }

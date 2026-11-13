@@ -739,6 +739,65 @@ mod tests {
         })
     }
 
+    // A held row of one masked column, `email`, holding ann's address and NULL.
+    fn masked_set(style: Option<tablepro_core::masking::MaskingStyle>) -> ResultSet {
+        use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingTarget, SharedMaskingPolicy};
+
+        use crate::results::GridMasking;
+
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("email", ColumnType::untyped_text("text"))].into();
+        let rules = style.map(|style| MaskingRule::new("email", MaskingTarget::Column, style));
+        let store = Arc::new(ResultStore::with_masking(
+            columns,
+            Some(GridMasking {
+                policy: SharedMaskingPolicy::new(MaskingPolicy::new(rules)),
+                named_table: None,
+                own_table: None,
+                visible: None,
+                revealed: false,
+            }),
+        ));
+        store.append(&[vec![Value::Text("ann@example.com".to_owned())], vec![Value::Null]]);
+        store.finish();
+        ResultSet::new(0, store)
+    }
+
+    #[test]
+    fn a_null_in_a_masked_column_reads_back_as_null_under_every_style() {
+        use tablepro_core::masking::MaskingStyle;
+
+        for style in MaskingStyle::ALL {
+            let set = masked_set(Some(style));
+            let columns = set.result_columns();
+
+            assert_eq!(held_row(&set, 1, &columns), [Value::Null], "{style:?}");
+            let first = held_row(&set, 0, &columns);
+            assert_ne!(
+                first,
+                [Value::Text("ann@example.com".to_owned())],
+                "{style:?} showed the value"
+            );
+        }
+    }
+
+    #[test]
+    fn a_null_stays_null_under_an_overlay_laid_on_held_rows() {
+        use tablepro_core::masking::{ColumnMasks, MaskingStyle};
+
+        let shown = masked_set(Some(MaskingStyle::Email));
+        let plain = masked_set(None);
+        for (set, external) in [(&shown, MaskingStyle::LastFour), (&plain, MaskingStyle::Full)] {
+            let columns = set.result_columns();
+            let overlay = set.shown_masks().overlay(&ColumnMasks::new(vec![Some(external)]));
+            let mut rows = vec![held_row(set, 0, &columns), held_row(set, 1, &columns)];
+
+            overlay.apply_rows(&columns, &mut rows);
+
+            assert_eq!(rows[0], [Value::Text("••••".to_owned())], "{external:?}");
+            assert_eq!(rows[1], [Value::Null], "{external:?}");
+        }
+    }
+
     #[test]
     fn an_array_comes_back_element_by_element_as_a_streamed_read_gives_it() {
         let columns: Arc<[ResultColumn]> = vec![

@@ -249,6 +249,18 @@ impl ResultStore {
         }
     }
 
+    // The columns `external_masks` masks only because nothing traced them to a table column.
+    pub(crate) fn external_untraced(&self, columns: &[ResultColumn]) -> Vec<usize> {
+        let state = self.read();
+        match &state.masking {
+            Some(masking) => masking
+                .policy
+                .get()
+                .untraced_columns(masking.own_table.as_deref(), columns),
+            None => Vec::new(),
+        }
+    }
+
     // Masks the held cells of every column the connection's rules now mask and the grid did not, as after a saved
     // change to the rules. A column already masked keeps its mask, since the value under it is gone. False when nothing
     // changed or the tab revealed the set.
@@ -270,14 +282,15 @@ impl ResultStore {
 }
 
 impl ResultStore {
-    // `None` when the cell is not there, its value cannot be named exactly (`stored_value`) or it is masked.
+    // `None` when the cell is not there, its value cannot be named exactly (`stored_value`) or it is masked. NULL stays
+    // NULL under every mask.
     pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<Value> {
         let state = self.read();
+        let cell = state.cell(row, column)?;
         if state.shown.is_masked(column) {
-            return None;
+            return cell.kind.is_none().then_some(Value::Null);
         }
-        let read = &state.columns.get(column)?.column_type;
-        stored_value(state.cell(row, column)?, read)
+        stored_value(cell, &state.columns.get(column)?.column_type)
     }
 
     // The kind of the value in a cell, `None` for null; a dynamically typed column can hold any.
