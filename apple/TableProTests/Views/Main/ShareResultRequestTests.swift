@@ -19,7 +19,9 @@ extension GlobalStateSuites {
 
         private static let emails = ["jane@example.com", "john@example.com", "ann@example.com"]
 
-        private func load(_ tab: QueryTab) throws -> QueryTab {
+        private static let tracedOrigins = ["id", "email", "note"].map { PluginColumnOrigin(schema: "shop", table: "users", column: $0) }
+
+        private func load(_ tab: QueryTab, origins: [PluginColumnOrigin?] = tracedOrigins) throws -> QueryTab {
             let added = fixture.addTab(tab)
             fixture.coordinator.applyPhase1Result(
                 tabId: added.id,
@@ -38,7 +40,7 @@ extension GlobalStateSuites {
                 read: TableFreshness.Read(startedAt: .now, includesDefinition: false),
                 sql: tab.content.query,
                 connection: fixture.connection,
-                columnOrigins: ["id", "email", "note"].map { PluginColumnOrigin(schema: "shop", table: "users", column: $0) }
+                columnOrigins: origins
             )
             return try #require(fixture.tabManager.tabs.first { $0.id == added.id })
         }
@@ -81,6 +83,19 @@ extension GlobalStateSuites {
             #expect(shared.columns == ["email", "note"])
             #expect(shared.masks == ColumnMasks(styles: [0: .email]))
             #expect(shared.rows.first?.first == .text("j•••@example.com"))
+        }
+
+        @Test("A column nothing traced is masked whole and marked untraced, at its place after hidden columns")
+        func untracedColumnsAreMarked() async throws {
+            var tab = QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query)
+            tab.columnLayout.hiddenColumns = ["id"]
+            _ = try load(tab, origins: [Self.tracedOrigins[0], Self.tracedOrigins[1], nil])
+            let shared = try await source()
+
+            #expect(shared.columns == ["email", "note"])
+            #expect(shared.untracedColumns == [1])
+            #expect(shared.masks == ColumnMasks(styles: [0: .email, 1: .full]))
+            #expect(shared.rows.first?.last == .text("••••"))
         }
 
         @Test("A result cut short sends its exact count")

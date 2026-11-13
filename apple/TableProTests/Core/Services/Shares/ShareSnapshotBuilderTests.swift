@@ -143,15 +143,16 @@ struct ShareSnapshotBuilderTests {
         ])
     }
 
-    @Test("More columns than the server takes is too large to share")
-    func tooManyColumns() {
+    @Test("More columns than the server takes sends the first ones, never refuses")
+    func tooManyColumns() throws {
         let count = ShareSnapshotBuilder.maxColumns + 1
-        let built = ShareSnapshotBuilder.build(source(
+        let built = try snapshot(ShareSnapshotBuilder.build(source(
             columns: (0..<count).map { "c\($0)" },
             types: Array(repeating: .text(rawType: "text"), count: count),
-            rows: [Array(repeating: .text("x"), count: count)]
-        ), maxRows: 10)
-        #expect(built == .tooLarge)
+            rows: [(0..<count).map { .text("v\($0)") }]
+        ), maxRows: 10))
+        #expect(built.columns.map(\.name) == (0..<ShareSnapshotBuilder.maxColumns).map { "c\($0)" })
+        #expect(built.rows == [(0..<ShareSnapshotBuilder.maxColumns).map { .string("v\($0)") }])
     }
 
     @Test("A cell past the server's cell cap is too large to share")
@@ -232,7 +233,7 @@ struct ShareSnapshotBuilderTests {
         #expect(fewer.rows == [[.string("••••4567")]])
     }
 
-    @Test("A share with every column removed has nothing to send, and removing columns brings a wide result under the cap")
+    @Test("A share with every column removed has nothing to send, and the cap counts only the kept columns")
     func removedColumns() throws {
         let count = ShareSnapshotBuilder.maxColumns + 1
         let source = ShareResultSource(
@@ -244,7 +245,8 @@ struct ShareSnapshotBuilderTests {
         )
         #expect(ShareSnapshotBuilder.build(source, maxRows: 10, columns: []) == .noColumns)
         let kept = (1..<count).map { ShareSnapshotBuilder.SharedColumn(source: $0, applying: nil, masked: nil) }
-        #expect(try snapshot(ShareSnapshotBuilder.build(source, maxRows: 10, columns: kept)).columns.count == ShareSnapshotBuilder.maxColumns)
+        let built = try snapshot(ShareSnapshotBuilder.build(source, maxRows: 10, columns: kept))
+        #expect(built.columns.map(\.name) == (1..<count).map { "c\($0)" })
     }
 
     @Test("A cell's JSON size counts its escapes and nested arrays")

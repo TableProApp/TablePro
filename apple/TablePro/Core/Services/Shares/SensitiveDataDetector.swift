@@ -209,11 +209,15 @@ internal enum SensitiveDataDetector {
 
     // MARK: - Values
 
+    // Nil too once the caller's task is cancelled, which the caller checks.
     static func valueKind(of values: some Sequence<PluginCellValue>) -> SensitiveValueKind? {
         var nonNull = 0
+        var read = 0
         var flagged: SensitiveValueKind?
         var counts: [SensitiveValueKind: Int] = [:]
         for value in values {
+            read += 1
+            if read % 256 == 0, Task.isCancelled { return nil }
             let text: String
             switch value {
             case .null:
@@ -249,7 +253,7 @@ internal enum SensitiveDataDetector {
         case .iban: isIBAN(text)
         case .jsonWebToken: text.hasPrefix("eyJ") && hasMatch(jsonWebToken, text)
         case .apiKey: mayHoldAPIKey(text) && hasMatch(apiKey, text)
-        case .email: text.utf8.contains(0x40) && hasMatch(email, text)
+        case .email: isEmail(text)
         case .phone: isPhoneNumber(text)
         case .ipAddress: isIPv4(text) || isIPv6(text)
         }
@@ -261,11 +265,33 @@ internal enum SensitiveDataDetector {
     private static let apiKey = try? NSRegularExpression(
         pattern: "AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|xox[abprs]-|sk_live_|AIza[0-9A-Za-z_-]{35}"
     )
-    // `\p{White_Space}` is what Rust means by `\s`; ICU's `\s` leaves out U+000B and U+0085.
-    private static let email = try? NSRegularExpression(
-        pattern: "\\A[^\\p{White_Space}@]+@[^\\p{White_Space}@]+\\.[^\\p{White_Space}@]+\\z"
-    )
     private static let ibanShape = try? NSRegularExpression(pattern: "\\A[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\\z")
+
+    // `\A[^\s@]+@[^\s@]+\.[^\s@]+\z` with `\s` as White_Space, in one pass: ICU backtracks over a long domain that
+    // never matches. One `@` after at least one scalar, and a dot in the domain with a scalar on each side.
+    static func isEmail(_ text: String) -> Bool {
+        var local = 0
+        var seenAt = false
+        var domain = 0
+        var dotWaitsForScalar = false
+        var hasInnerDot = false
+        for scalar in text.unicodeScalars {
+            if scalar.properties.isWhitespace { return false }
+            if scalar == "@" {
+                guard !seenAt, local > 0 else { return false }
+                seenAt = true
+                continue
+            }
+            guard seenAt else {
+                local += 1
+                continue
+            }
+            if dotWaitsForScalar { hasInnerDot = true }
+            if scalar == ".", domain > 0 { dotWaitsForScalar = true }
+            domain += 1
+        }
+        return seenAt && hasInnerDot
+    }
 
     static func isCardNumber(_ text: String) -> Bool {
         var digits: [UInt8] = []
@@ -488,7 +514,9 @@ internal enum SensitiveDataDetector {
             let rawType = source.columnTypes.indices.contains(index) ? source.columnTypes[index].rawType : nil
             guard isTextLike(rawType) else { continue }
             let values = rows.lazy.map { $0.indices.contains(index) ? $0[index] : .null }
-            if let kind = valueKind(of: values) {
+            let kind = valueKind(of: values)
+            if Task.isCancelled { return nil }
+            if let kind {
                 detections[index] = .values(kind)
             }
         }

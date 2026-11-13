@@ -156,6 +156,17 @@ struct SensitiveDataDetectorTests {
         #expect(!SensitiveDataDetector.matches(.email, "ann@example.com\n"))
     }
 
+    @Test("An email check over a long domain that never matches stays linear")
+    func emailStaysLinear() {
+        let dots = String(repeating: ".", count: 100_000)
+        let started = ContinuousClock.now
+        #expect(!SensitiveDataDetector.matches(.email, "a@" + dots + " "))
+        #expect(SensitiveDataDetector.matches(.email, "a@b" + dots + "c"))
+        // Dots are domain characters too, so this one matches the anchored pattern.
+        #expect(SensitiveDataDetector.matches(.email, "a@" + dots))
+        #expect(ContinuousClock.now - started < .seconds(2))
+    }
+
     @Test("IP addresses are what Rust's std::net parser accepts", arguments: [
         ("255.255.255.255", true), ("01.2.3.4", false), ("1.2.3.4.5", false), ("::", true),
         ("2001:0DB8:0000:0000:0000:0000:0000:0001", true), ("::1.2.3.4", true), ("1:2:3:4:5:6:1.2.3.4", true),

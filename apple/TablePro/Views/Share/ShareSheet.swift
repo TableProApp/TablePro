@@ -278,6 +278,12 @@ internal struct ShareSheet: View {
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("share-sheet-cap-note")
                 }
+                if let note = model.columnCapNote {
+                    Text(note)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("share-sheet-column-cap-note")
+                }
             }
         } header: {
             Text("Rows that will be shared")
@@ -375,6 +381,13 @@ internal struct ShareSheet: View {
                 .truncationMode(.middle)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("share-sheet-url")
+
+            if let note = model.createdColumnCapNote {
+                Text(note)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("share-sheet-created-column-cap-note")
+            }
 
             HStack(spacing: 10) {
                 Button(String(localized: "Copy")) { model.copyLink() }
@@ -554,6 +567,9 @@ private struct ShareColumnRow: View {
     }
 
     private var reason: String? {
+        if column.isUntraced {
+            return String(localized: "Masked because TablePro cannot tell which table column this comes from.")
+        }
         if column.ruleStyle != nil {
             return String(localized: "Masked by this connection's rules")
         }

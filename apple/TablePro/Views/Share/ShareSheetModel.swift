@@ -37,6 +37,8 @@ internal final class ShareSheetModel: ObservableObject {
     @Published private(set) var linksFailure: String?
     @Published private(set) var revokingLinkIDs: Set<String> = []
     @Published private(set) var isCreating = false
+    // Set when the created link holds only the first columns.
+    @Published private(set) var createdColumnCapNote: String?
     @Published private(set) var failureMessage: String?
     @Published private(set) var sqlSecretKinds: [SecretKind] = []
     @Published private(set) var sqlPersonalData: [SensitiveValueKind] = []
@@ -61,6 +63,8 @@ internal final class ShareSheetModel: ObservableObject {
     private var signInObservation: AnyCancellable?
     private var appliedDefaults = false
     private var sourceMaxRows: Int?
+    // The rows the detectors read; a rebuild never sends past them.
+    private var rowCap: Int?
     // The column choices the snapshot was built with; a snapshot built for others is never sent.
     private var builtColumns: [ShareColumnChoice]?
     private var rebuild: Task<Void, Never>?
@@ -171,28 +175,37 @@ internal final class ShareSheetModel: ObservableObject {
     private func loadSource(maxRows: Int) async {
         guard let load = request.loadResult, sourceMaxRows != maxRows else { return }
         guard let loaded = await load(maxRows), !Task.isCancelled, !isClosed else { return }
+        // The old snapshot and choices belong to the rows being replaced: nothing built from them is sent.
+        let previous = columns
+        rebuild?.cancel()
         source = loaded
-        sourceMaxRows = maxRows
+        snapshot = nil
+        builtColumns = nil
+        rowCap = nil
+        columns = []
         scanSQL(loaded.sql)
-        let detect = Task.detached(priority: .userInitiated) {
-            ShareColumnChoice.defaults(for: loaded, maxRows: maxRows)
+        let prepare = Task.detached(priority: .userInitiated) {
+            ShareColumnChoice.prepare(loaded, maxRows: maxRows, keeping: previous)
         }
-        let choices = await withTaskCancellationHandler {
-            await detect.value
+        let prepared = await withTaskCancellationHandler {
+            await prepare.value
         } onCancel: {
-            detect.cancel()
+            prepare.cancel()
         }
-        guard let choices, !isClosed else { return }
-        columns = choices
-        await buildSnapshot()
+        guard let prepared, !isClosed else { return }
+        sourceMaxRows = maxRows
+        rowCap = prepared.rowCap
+        columns = prepared.columns
+        snapshot = prepared.snapshot
+        builtColumns = prepared.columns
     }
 
     private func buildSnapshot() async {
-        guard let source, let maxRows = sourceMaxRows else { return }
+        guard let source, let rowCap else { return }
         let choices = columns
         let shared = choices.compactMap(\.sharedColumn)
         let build = Task.detached(priority: .userInitiated) {
-            ShareSnapshotBuilder.build(source, maxRows: maxRows, columns: shared)
+            ShareSnapshotBuilder.build(source, maxRows: rowCap, columns: shared)
         }
         let built = await withTaskCancellationHandler {
             await build.value
@@ -369,11 +382,19 @@ internal final class ShareSheetModel: ObservableObject {
         isCreating = true
         failureMessage = nil
         defer { isCreating = false }
+        let capNote = isColumnCapped
+            ? String(
+                format: String(localized: "The link shares the first %lld columns."),
+                locale: .current,
+                Int64(ShareSnapshotBuilder.maxColumns)
+            )
+            : nil
         do throws(ShareFailure) {
             let created = try await service.create(draft)
             guard !isClosed else { return }
             copyToClipboard(created.url.absoluteString)
             adjustLive(by: 1)
+            createdColumnCapNote = capNote
             phase = .created(created.url)
         } catch .limitReached {
             await load()
@@ -544,8 +565,26 @@ internal final class ShareSheetModel: ObservableObject {
         )
     }
 
+    // The first kept columns up to the server's cap; the rest are not sent.
+    private var sentColumns: ArraySlice<ShareColumnChoice> {
+        columns.filter { $0.action != .remove }.prefix(ShareSnapshotBuilder.maxColumns)
+    }
+
+    var isColumnCapped: Bool {
+        columns.filter { $0.action != .remove }.count > ShareSnapshotBuilder.maxColumns
+    }
+
+    var columnCapNote: String? {
+        guard isColumnCapped else { return nil }
+        return String(
+            format: String(localized: "Shares the first %lld columns."),
+            locale: .current,
+            Int64(ShareSnapshotBuilder.maxColumns)
+        )
+    }
+
     var columnSummary: String {
-        let masked = columns.filter { $0.action == .mask }.count
+        let masked = sentColumns.filter { $0.action == .mask }.count
         let removed = columns.filter { $0.action == .remove }.count
         return String(
             format: String(localized: "%1$lld columns masked, %2$lld removed."),

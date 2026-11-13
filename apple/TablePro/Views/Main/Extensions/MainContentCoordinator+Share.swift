@@ -114,12 +114,14 @@ extension MainContentCoordinator {
             table: table, columns: rows.columns, typeNames: rows.columnTypes.map(\.rawType), origins: rows.columnOrigins
         )
         let masked = policy.isEmpty ? rows : rows.externallyMasked(by: external)
+        let projection = VisibleColumnProjection.fromColumnLayout(tab.columnLayout, columns: masked.columns)
         let read = DisplayedResultReader.read(
             tableRows: masked,
             displayIDs: nil,
             selectedDisplayIndices: [],
-            columns: .fromColumnLayout(tab.columnLayout, columns: masked.columns)
+            columns: projection
         )
+        let untraced = policy.untracedColumns(table: table, columns: rows.columns, origins: rows.columnOrigins)
         let more = result.isTruncated || read.rows.count >= maxRows
         return ShareResultSource(
             columns: read.columns,
@@ -127,13 +129,17 @@ extension MainContentCoordinator {
             rows: read.rows,
             totalRowCount: Self.shareTotal(of: tab, rows: read.rows.count, more: more),
             sql: sql,
-            masks: read.masks
+            masks: read.masks,
+            untracedColumns: projection.positions(of: Set(untraced))
         )
     }
 
     // At most max_rows display positions are read, so a large grid is never copied whole.
     private func loadedShareSource(tab: QueryTab, maxRows: Int) -> ShareResultSource {
         let tableRows = externallyMaskedRows(forTab: tab.id)
+        let table = tab.tabType == .table ? tab.tableContext.tableName : nil
+        let untraced = maskingPolicy.untracedColumns(table: table, columns: tableRows.columns, origins: tableRows.columnOrigins)
+        let projection = VisibleColumnProjection.fromColumnLayout(tab.columnLayout, columns: tableRows.columns)
         let displayIDs = displayIDs(forTab: tab.id)
         let displayed = displayIDs?.count ?? tableRows.rows.count
         let deleted = changeManager.deletedRowIDs
@@ -143,7 +149,7 @@ extension MainContentCoordinator {
             displayIDs: displayIDs,
             selectedDisplayIndices: positions,
             deletedRowIDs: deleted,
-            columns: .fromColumnLayout(tab.columnLayout, columns: tableRows.columns)
+            columns: projection
         )
         let rows = Array(read.rows.prefix(maxRows))
         let total: Int?
@@ -160,7 +166,8 @@ extension MainContentCoordinator {
             rows: rows,
             totalRowCount: total.map { max($0, rows.count) },
             sql: shareSQL(of: tab),
-            masks: read.masks
+            masks: read.masks,
+            untracedColumns: projection.positions(of: Set(untraced))
         )
     }
 

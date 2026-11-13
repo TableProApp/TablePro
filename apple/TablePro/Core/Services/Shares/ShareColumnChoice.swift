@@ -28,16 +28,19 @@ internal struct ShareColumnChoice: Identifiable, Equatable, Sendable {
     let name: String
     // The connection's rules mask this column for everything leaving the app, so it is never sent as it is.
     let ruleStyle: MaskingStyle?
+    // Masked whole only because nothing traced it to a table column, whatever the rules say.
+    let isUntraced: Bool
     let detection: SensitiveDetection?
     private(set) var action: Action
     private(set) var style: MaskingStyle
 
     var id: Int { index }
 
-    init(index: Int, name: String, ruleStyle: MaskingStyle?, detection: SensitiveDetection?) {
+    init(index: Int, name: String, ruleStyle: MaskingStyle?, detection: SensitiveDetection?, isUntraced: Bool = false) {
         self.index = index
         self.name = name
         self.ruleStyle = ruleStyle
+        self.isUntraced = isUntraced
         self.detection = detection
         if let ruleStyle {
             action = .mask
@@ -95,8 +98,50 @@ internal struct ShareColumnChoice: Identifiable, Equatable, Sendable {
                 index: index,
                 name: source.columns[index],
                 ruleStyle: source.masks.styles[index],
-                detection: detections[index]
+                detection: detections[index],
+                isUntraced: source.untracedColumns.contains(index)
             )
         }
     }
+
+    // What the person chose before the rows were read again, matched by column name and held to what each column allows.
+    static func carryingOver(_ previous: [ShareColumnChoice], onto defaults: [ShareColumnChoice]) -> [ShareColumnChoice] {
+        guard !previous.isEmpty else { return defaults }
+        var unmatched = previous
+        return defaults.map { choice in
+            guard let match = unmatched.firstIndex(where: { $0.name == choice.name }) else { return choice }
+            let earlier = unmatched.remove(at: match)
+            var carried = choice.choosing(style: earlier.style) ?? choice
+            carried = carried.choosing(earlier.action) ?? carried
+            return carried
+        }
+    }
+
+    // The body budget can cut a snapshot short of the rows the detectors read, so they read again over just the rows it
+    // sends until both cover the same rows. Nil once the caller's task is cancelled.
+    static func prepare(_ source: ShareResultSource, maxRows: Int, keeping previous: [ShareColumnChoice]) -> SharePreparation? {
+        var rowCap = max(0, maxRows)
+        var prepared: SharePreparation?
+        for _ in 0..<SharePreparation.maxPasses {
+            guard let defaults = defaults(for: source, maxRows: rowCap) else { return nil }
+            let columns = carryingOver(previous, onto: defaults)
+            let shared = columns.compactMap(\.sharedColumn)
+            guard let built = ShareSnapshotBuilder.build(source, maxRows: rowCap, columns: shared) else { return nil }
+            prepared = SharePreparation(columns: columns, rowCap: rowCap, snapshot: built)
+            guard case .snapshot(let snapshot) = built, snapshot.rows.count < min(rowCap, source.rows.count) else { break }
+            rowCap = snapshot.rows.count
+        }
+        return prepared
+    }
+}
+
+// What a share sheet starts from once the rows are read.
+internal struct SharePreparation: Sendable {
+    // Each pass reads fewer rows; the choices settle in one in practice.
+    static let maxPasses = 8
+
+    let columns: [ShareColumnChoice]
+    // The rows the detectors read, which the snapshot never goes past.
+    let rowCap: Int
+    let snapshot: ShareSnapshotOutcome
 }

@@ -50,6 +50,64 @@ struct ShareColumnChoiceTests {
         #expect(choice.allowsKeep)
     }
 
+    @Test("A column masked only because nothing traced it says so and cannot be kept")
+    func untracedColumn() throws {
+        let source = ShareResultSource(
+            columns: ["id", "total"],
+            columnTypes: [.integer(rawType: "int8"), .text(rawType: nil)],
+            rows: [[.text("1"), .text("••••")]],
+            totalRowCount: 1,
+            sql: "",
+            masks: ColumnMasks(styles: [1: .full]),
+            untracedColumns: [1]
+        )
+        let choices = try #require(ShareColumnChoice.defaults(for: source, maxRows: 10))
+        #expect(choices.map(\.isUntraced) == [false, true])
+        #expect(!choices[1].allowsKeep)
+        #expect(choices[1].allowedStyles == [.full, .null])
+    }
+
+    @Test("Choices carry over by name, held to what each column now allows")
+    func carryOver() throws {
+        let earlier = [
+            try #require(ShareColumnChoice(index: 0, name: "id", ruleStyle: nil, detection: nil).choosing(.remove)),
+            try #require(ShareColumnChoice(index: 1, name: "phone", ruleStyle: nil, detection: nil).choosing(style: .email)?.choosing(.mask)),
+            ShareColumnChoice(index: 2, name: "gone", ruleStyle: nil, detection: nil)
+        ]
+        let defaults = [
+            ShareColumnChoice(index: 0, name: "phone", ruleStyle: .lastFour, detection: nil),
+            ShareColumnChoice(index: 1, name: "id", ruleStyle: nil, detection: nil),
+            ShareColumnChoice(index: 2, name: "new", ruleStyle: nil, detection: .values(.email))
+        ]
+        let carried = ShareColumnChoice.carryingOver(earlier, onto: defaults)
+        #expect(carried.map(\.action) == [.mask, .remove, .mask])
+        #expect(carried.map(\.style) == [.lastFour, .full, .email])
+        #expect(carried.map(\.index) == [0, 1, 2])
+    }
+
+    @Test("When the body budget cuts the snapshot, the detectors read only the rows it sends")
+    func detectionCoversTheSentRows() throws {
+        let wide = String(repeating: "y", count: 200_000)
+        var rows: [[PluginCellValue]] = Array(repeating: [.text(wide), .text("x")], count: 40)
+        rows[39][1] = .text("4111111111111111")
+        let source = ShareResultSource(
+            columns: ["body", "notes"],
+            columnTypes: [.text(rawType: "text"), .text(rawType: "text")],
+            rows: rows,
+            totalRowCount: 40,
+            sql: ""
+        )
+        let prepared = try #require(ShareColumnChoice.prepare(source, maxRows: 1_000, keeping: []))
+        guard case .snapshot(let snapshot) = prepared.snapshot else {
+            Issue.record("no snapshot")
+            return
+        }
+        #expect(snapshot.rows.count < 40)
+        #expect(prepared.rowCap == snapshot.rows.count)
+        #expect(prepared.columns.map(\.action) == [.keep, .keep])
+        #expect(snapshot.rowCount == 40)
+    }
+
     @Test("Defaults come from the source's rule masks and the detectors")
     func defaults() throws {
         let source = ShareResultSource(

@@ -17,6 +17,8 @@ internal struct ShareResultSource: Sendable {
     let sql: String
     // The columns whose values the connection's rules already masked, and how.
     var masks: ColumnMasks = .none
+    // The masked columns nothing traced to a table column.
+    var untracedColumns: Set<Int> = []
 }
 
 internal enum ShareSnapshotOutcome: Equatable, Sendable {
@@ -46,12 +48,12 @@ internal enum ShareSnapshotBuilder {
         source.columns.indices.map { SharedColumn(source: $0, applying: nil, masked: source.masks.styles[$0]) }
     }
 
-    // Nil once the caller's task is cancelled.
+    // Nil once the caller's task is cancelled. Past the server's column cap the first columns go, as from every app.
     static func build(_ source: ShareResultSource, maxRows: Int, columns shared: [SharedColumn]? = nil) -> ShareSnapshotOutcome? {
         guard !source.columns.isEmpty else { return .tooLarge }
-        let shared = (shared ?? sharedColumns(of: source)).filter { source.columns.indices.contains($0.source) }
-        guard !shared.isEmpty else { return .noColumns }
-        guard shared.count <= maxColumns else { return .tooLarge }
+        let kept = (shared ?? sharedColumns(of: source)).filter { source.columns.indices.contains($0.source) }
+        guard !kept.isEmpty else { return .noColumns }
+        let shared = Array(kept.prefix(maxColumns))
         let columns = shared.map { column in
             ShareSnapshot.Column(
                 name: source.columns[column.source],

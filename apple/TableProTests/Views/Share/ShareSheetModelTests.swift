@@ -411,16 +411,15 @@ struct ShareSheetModelTests {
         #expect(model.phase == .atCap)
     }
 
-    @Test("A result too large to share cannot be created")
+    @Test("A cell past the server's cap makes the result too large to share")
     func tooLargeBlocksCreate() async {
-        let count = ShareSnapshotBuilder.maxColumns + 1
         let request = ShareRequest.result(
-            title: "Wide",
+            title: "Huge",
             dialect: nil,
             source: ShareResultSource(
-                columns: (0..<count).map { "c\($0)" },
-                columnTypes: Array(repeating: .text(rawType: "text"), count: count),
-                rows: [Array(repeating: .text("x"), count: count)],
+                columns: ["body"],
+                columnTypes: [.text(rawType: "text")],
+                rows: [[.text(String(repeating: "x", count: ShareSnapshotBuilder.maxCellBytes))]],
                 totalRowCount: 1,
                 sql: "SELECT *"
             )
@@ -430,6 +429,45 @@ struct ShareSheetModelTests {
 
         #expect(model.isSnapshotTooLarge)
         #expect(!model.canCreate)
+    }
+
+    @Test("More than 100 kept columns share the first 100, say so before and after, and count only those sent")
+    func columnCap() async throws {
+        let count = ShareSnapshotBuilder.maxColumns + 2
+        let names = (0..<count).map { "c\($0)" }
+        let request = ShareRequest.result(
+            title: "Wide",
+            dialect: nil,
+            source: ShareResultSource(
+                columns: names,
+                columnTypes: Array(repeating: .text(rawType: "text"), count: count),
+                rows: [Array(repeating: .text("x"), count: count)],
+                totalRowCount: 1,
+                sql: "SELECT *"
+            )
+        )
+        let model = makeModel(request, service: FakeShareService())
+        await model.load()
+        let capNote = formatted("Shares the first %lld columns.", Int64(ShareSnapshotBuilder.maxColumns))
+
+        #expect(model.canCreate)
+        #expect(model.columnCapNote == capNote)
+        #expect(model.previewColumns.map(\.name) == Array(names.prefix(ShareSnapshotBuilder.maxColumns)))
+        model.setAction(.mask, forColumn: count - 1)
+        #expect(model.columnSummary == formatted("%1$lld columns masked, %2$lld removed.", Int64(0), Int64(0)))
+
+        model.setAction(.remove, forColumn: 0)
+        try await waitUntil { model.canCreate }
+        #expect(model.columnCapNote == capNote)
+        #expect(model.previewColumns.map(\.name) == Array(names.dropFirst().prefix(ShareSnapshotBuilder.maxColumns)))
+        await model.create()
+        #expect(model.createdColumnCapNote == formatted("The link shares the first %lld columns.", Int64(ShareSnapshotBuilder.maxColumns)))
+
+        let narrow = makeModel(Self.peopleRequest(), service: FakeShareService())
+        await narrow.load()
+        #expect(narrow.columnCapNote == nil)
+        await narrow.create()
+        #expect(narrow.createdColumnCapNote == nil)
     }
 
     // MARK: - At the cap
@@ -533,7 +571,11 @@ struct ShareSheetModelTests {
     // MARK: - Columns
 
     private static func peopleRequest(sql: String = "SELECT * FROM people") -> ShareRequest {
-        .result(title: "People", dialect: "PostgreSQL", source: ShareResultSource(
+        .result(title: "People", dialect: "PostgreSQL", source: peopleSource(sql: sql))
+    }
+
+    private static func peopleSource(sql: String = "SELECT * FROM people") -> ShareResultSource {
+        ShareResultSource(
             columns: ["id", "email", "ip", "note"],
             columnTypes: [.integer(rawType: "int8"), .text(rawType: "text"), .text(rawType: "inet"), .text(rawType: "text")],
             rows: [
@@ -543,7 +585,32 @@ struct ShareSheetModelTests {
             totalRowCount: 2,
             sql: sql,
             masks: ColumnMasks(styles: [2: .hash])
-        ))
+        )
+    }
+
+    @Test("Rows read again for a new row limit keep the column choices, and the snapshot follows them")
+    func reloadKeepsChoices() async throws {
+        let service = FakeShareService()
+        service.limitsResults = [.success(.free()), .success(.pro())]
+        service.createResult = .failure(.limitReached)
+        let asked = Asked()
+        let request = ShareRequest.result(title: "People", sql: "SELECT * FROM people", dialect: nil) { maxRows in
+            asked.maxRows.append(maxRows)
+            return Self.peopleSource()
+        }
+        let model = makeModel(request, service: service)
+        await model.load()
+        model.setAction(.mask, forColumn: 0)
+        model.setAction(.remove, forColumn: 3)
+        try await waitUntil { model.canCreate }
+
+        await model.create()
+        #expect(asked.maxRows == [1_000, 10_000])
+        #expect(model.columns.map(\.action) == [.mask, .mask, .mask, .remove])
+        try await waitUntil { model.canCreate }
+        let snapshot = try #require(model.makeDraft()?.snapshot)
+        #expect(snapshot.columns.map(\.name) == ["id", "email", "ip"])
+        #expect(snapshot.columns.map(\.masked) == [.full, .email, .hash])
     }
 
     @Test("Columns start from the rules and the detectors, and the snapshot sends the values as the preview shows them")

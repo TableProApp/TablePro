@@ -80,6 +80,19 @@ struct SecretScannerTests {
         #expect(SecretScanner.scanSQL("SELECT 1;\nUPDATE users SET password =\r\n'a\nb'") == [SecretHit(kind: .passwordLiteral, line: 2)])
     }
 
+    @Test("Two hits of a kind on two lines are both reported, each on its own line")
+    func twoHitsOnTwoLines() {
+        #expect(SecretScanner.scanSQL("password='a'\npassword='b'") == [
+            SecretHit(kind: .passwordLiteral, line: 1),
+            SecretHit(kind: .passwordLiteral, line: 2)
+        ])
+        #expect(SecretScanner.scanSQL("-- postgres://app:pw@db1/x\r\n-- mysql://root:pw@db2/y") == [
+            SecretHit(kind: .urlCredentials, line: 1),
+            SecretHit(kind: .urlCredentials, line: 2)
+        ])
+        #expect(SecretScanner.scanSQL("-- postgres://app:pw@db1/x mysql://root:pw@db2/y") == [SecretHit(kind: .urlCredentials, line: 1)])
+    }
+
     @Test("A kind found twice on one line is reported once")
     func oneHitPerKindAndLine() {
         #expect(SecretScanner.scanSQL("SELECT 'sk_live_a', 'sk_live_b'") == [SecretHit(kind: .stripeSecretKey, line: 1)])
