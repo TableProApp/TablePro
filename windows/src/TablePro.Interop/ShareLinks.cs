@@ -54,7 +54,7 @@ public sealed record ShareRequest(ShareKind Kind, string Sql)
     public string? TeamId { get; init; }
 }
 
-// A link as its owner sees it. Kind, Scope, State and SuspendedBy stay the server's codes; Sql only when read on its own.
+// A link as its owner sees it. Kind, Scope, State and SuspendedBy stay the server's codes; Sql only when read alone.
 // A suspended link keeps its State and has no Url while the team or staff has sharing off.
 public sealed record SharedLink(
     string Id,
@@ -91,7 +91,8 @@ public sealed record CreatedShare(SharedLink Share, string Url);
 // NextCursor is null on the last page.
 public sealed record SharePage(IReadOnlyList<SharedLink> Shares, string? NextCursor);
 
-// A link as anyone with it reads it. Sql is null when the owner hid it, so there is nothing to open.
+// A link as anyone with it reads it. Sql is null when the owner hid it or shared a result without it, so there is
+// nothing to open.
 public sealed record PublicShare(
     string Kind,
     string Title,

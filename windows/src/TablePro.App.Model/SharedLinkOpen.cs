@@ -10,7 +10,7 @@ public enum SharedLinkStep
     AskPasswordAgain,
     Unavailable,
 
-    // The owner hid the SQL, so there is nothing to open.
+    // The owner hid the SQL or shared a result without it, so there is nothing to open.
     HiddenSql,
     Open,
     Failed,
