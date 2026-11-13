@@ -1,0 +1,29 @@
+# 0026: Masking hides values by a connection's rules, with the macOS engine's output, on every path out of the app
+
+- **Status**: Accepted
+- **Date**: 2026-11-13
+
+## Context
+
+The macOS app masks a connection's values by rules the user sets: a rule names a column or a type with a glob and shows its values as Full, Last 4 Characters, Email, Stable Hash or NULL. The grid shows masked values unless the tab is revealed, and every path out of the app (export, share, MCP, the assistant) stays masked. On 2026-11-13 the maintainer decided that the Linux and Windows apps get the same, and that a share link masks columns that look sensitive before it leaves the machine (PLAN-MASKING, share-v2). The three apps must give the same output for the same rule and value, since one connection's rules can move between them and a share link from any app reads the same.
+
+## Decision
+
+- **One engine, the macOS one.** `tablepro_core::masking` follows `apple/TablePro/Core/Services/Masking`: the styles and their output (four U+2022 bullets; Last 4 and Email by extended grapheme cluster, Email on the last `@`; Stable Hash as the first 6 bytes of HMAC-SHA256 under a key drawn once per process and never stored; NULL stays NULL; bytes hash raw and otherwise show bullets), the glob (lower-cased in full, compared by grapheme and canonical equivalence), the match (`table.column` split at the last dot, an unknown table matches, a type rule on the raw type then the unwrapped base type), first match wins and `strictest`. A cell is masked from the text `export::value_text` writes, at the column's declared precision.
+- **Two scopes.** The grid matches the names a result shows (`MaskingPolicy::column_masks`), with the page's table or the one a query reads. Every path out matches what each column reads (`external_column_masks`): a traced origin by its relation and column, an alias taking the stricter of the origin's and the name's style, an untraced column Full. The app's own statement over one table (a browse, a table export) matches by name when no column carries an origin, as the macOS bridge does when a driver reports none. `MaskingSink` masks a run's rows before the sink behind it sees them, so a cut by size or count reads masked values.
+- **Storage.** `SavedConnection.masking_rules` holds the macOS JSON shape (`{id, pattern, target, style}`, upper-case UUIDs) in `connections.json`. Decoding is the macOS decoder's: a missing id gets a new one, a missing pattern or an unknown target masks everything, a missing or unknown style is Full, and a list nothing can read is one rule that masks everything. A request built from a saved connection carries its rules; `Session` keeps them in a `SharedMaskingPolicy` its siblings share, and `follow_saved_masking` adopts a saved change as it lands.
+- **Where it applies.** The FFI masks a set's rows as they arrive, unless the run or page was asked for with `reveal_masked`, which only a tab the user revealed passes; `ResultColumnInfo.masked` marks a column, a masked cell refuses an edit, a masked key locks the page (`EditLock::MaskedKey`), and `ResultSet::remask` masks held rows after a saved change. `export_rows` and `create_share` lay the external masks over what the grid already hid (`ColumnMasks::overlay`), so a revealed tab still exports and shares masked; `export_table` streams through `MaskingSink`. A share also takes the sheet's Keep, Mask or Remove for each column, never weaker than a rule, and the snapshot names each masked column's style. MCP masks `execute_query` by origin and a browse or export by table. A server's message can repeat a value it read, so where a connection has rules MCP and the AI Fix prompt carry only its code (`may_repeat_a_value`, `server_code`).
+- **Detectors.** `masking::detect` suggests masks for a share: column names by whole words, values of text-like columns (card with Luhn, IBAN with mod-97, JWT, API keys, email, phone, IP) over the rows to be shared, and personal data in the SQL's single-quoted literals. The lists, thresholds and edge cases are PLAN-MASKING 8.3 and 8.3.1; `detect/fixtures.rs` pins them and the macOS app mirrors the same table. `secret_scan` follows the same definition: no lookaround or possessive runs, CR, LF and CRLF line breaks, the name splitting the detectors use.
+
+## Consequences
+
+- `SavedConnection`, `ConnectRequest`, `ConnectionRecord`, `ResultColumnInfo`, `QueryEditor::run`, `read_table_page` and `create_share` change shape; the Linux and Windows apps follow in their own lanes.
+- Masking is free on every plan and needs no account.
+- CloudKit sync of the rules waits for slice 2 of [0010](0010-macos-on-the-core.md), which maps `additionalFieldsJson`; the stored shape is already the one it carries.
+- A pattern or threshold added to the detectors changes all three apps only once the macOS lane mirrors the fixtures.
+
+## Alternatives considered
+
+- **Mask in each app.** Three engines would drift on grapheme counting and hashing, and a share link would read differently by the app that made it.
+- **Keep raw rows in the FFI store and mask each window as it is read.** Every value the user hid would stay in memory and reach any path that read the store directly, and the macOS app masks on arrival.
+- **A stored hash key.** A hash could then be looked up across launches and apps; the macOS key is per launch on purpose.

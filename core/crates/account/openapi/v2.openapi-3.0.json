@@ -1254,6 +1254,18 @@
       },
       "PublicColumn": {
         "properties": {
+          "masked": {
+            "description": "Extensible enum: full, lastFour, email, hash, null. How the app masked the column's values before sharing; absent for an unmasked column",
+            "example": "full",
+            "type": "string",
+            "x-extensible-enum": [
+              "full",
+              "lastFour",
+              "email",
+              "hash",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -1330,8 +1342,9 @@
             "type": "array"
           },
           "row_count": {
-            "description": "The rows the query returned, which may be more than those shown",
+            "description": "The rows the query returned, which may be more than those shown; null when the app cut the result without knowing its total",
             "format": "int64",
+            "nullable": true,
             "type": "integer"
           },
           "rows": {
@@ -1556,6 +1569,16 @@
         ],
         "type": "string"
       },
+      "ShareMaskStyle": {
+        "enum": [
+          "full",
+          "lastFour",
+          "email",
+          "hash",
+          "null"
+        ],
+        "type": "string"
+      },
       "ShareReportReason": {
         "enum": [
           "illegal",
@@ -1660,8 +1683,9 @@
             "type": "string"
           },
           "row_count": {
-            "description": "With a snapshot: the rows the query returned, which may be more than those shared",
+            "description": "With a snapshot: the rows the query returned, which may be more than those shared; null when the app cut the result without knowing its total",
             "format": "int64",
+            "nullable": true,
             "type": "integer"
           },
           "scope": {
@@ -1756,6 +1780,10 @@
             "minItems": 1,
             "type": "array"
           },
+          "more_rows": {
+            "description": "The app holds rows past those sent; with no row_count above them, the total is stored as unknown",
+            "type": "boolean"
+          },
           "row_count": {
             "description": "The rows the query returned, when more than those sent",
             "format": "int64",
@@ -1781,6 +1809,10 @@
       "SnapshotColumnBody": {
         "additionalProperties": false,
         "properties": {
+          "masked": {
+            "$ref": "#/components/schemas/ShareMaskStyle",
+            "description": "How the app masked the column's values before sharing; omit for an unmasked column"
+          },
           "name": {
             "maxLength": 256,
             "type": "string"
@@ -3750,6 +3782,28 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "service_unavailable": {
+                    "summary": "Service unavailable",
+                    "value": {
+                      "code": "service_unavailable",
+                      "detail": "This shared result is busy. Try again in a moment.",
+                      "status": 503,
+                      "title": "Service unavailable",
+                      "type": "https://api.tablepro.app/problems/service-unavailable"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Read a shared link",
@@ -4806,6 +4860,16 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "email_unverified": {
+                    "summary": "Email unverified",
+                    "value": {
+                      "code": "email_unverified",
+                      "detail": "Verify your email address to share links.",
+                      "status": 403,
+                      "title": "Email unverified",
+                      "type": "https://api.tablepro.app/problems/email-unverified"
+                    }
+                  },
                   "forbidden": {
                     "summary": "Forbidden",
                     "value": {
@@ -4824,6 +4888,36 @@
                       "status": 403,
                       "title": "Pro required",
                       "type": "https://api.tablepro.app/problems/pro-required"
+                    }
+                  },
+                  "seat_required": {
+                    "summary": "Seat required",
+                    "value": {
+                      "code": "seat_required",
+                      "detail": "A team link needs a seat in the team.",
+                      "status": 403,
+                      "title": "Seat required",
+                      "type": "https://api.tablepro.app/problems/seat-required"
+                    }
+                  },
+                  "sharing_disabled": {
+                    "summary": "Sharing disabled",
+                    "value": {
+                      "code": "sharing_disabled",
+                      "detail": "Sharing is turned off for this account.",
+                      "status": 403,
+                      "title": "Sharing disabled",
+                      "type": "https://api.tablepro.app/problems/sharing-disabled"
+                    }
+                  },
+                  "team_sharing_disabled": {
+                    "summary": "Team sharing disabled",
+                    "value": {
+                      "code": "team_sharing_disabled",
+                      "detail": "Public links are turned off for this team.",
+                      "status": 403,
+                      "title": "Team sharing disabled",
+                      "type": "https://api.tablepro.app/problems/team-sharing-disabled"
                     }
                   }
                 },

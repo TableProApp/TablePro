@@ -69,6 +69,7 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
         workspace_settings: WorkspaceSettings::workspace(saved.safe_mode.blocks_writes())
             .with_editor_timeout(QueryTimeout::from_seconds(saved.query_timeout_secs)),
         safe_mode: saved.safe_mode,
+        masking: saved.masking_policy(),
     })
 }
 
@@ -137,6 +138,7 @@ mod tests {
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
+            masking_rules: Vec::new(),
             auth_mode: AuthMode::Password,
             ssh,
             last_opened_at: None,
@@ -157,6 +159,29 @@ mod tests {
             jump_hosts: vec!["ops@jump1:2200,jump2".to_owned()],
             auth,
         }
+    }
+
+    #[tokio::test]
+    async fn the_request_carries_the_saved_masking_rules() {
+        use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
+
+        let mut saved = saved(None);
+        saved.masking_rules = vec![
+            MaskingRule::new("*.email", MaskingTarget::Column, MaskingStyle::Email),
+            MaskingRule::new("  ", MaskingTarget::Column, MaskingStyle::Full),
+        ];
+
+        let refreshed = resolve_saved(
+            &saved,
+            &drivers(),
+            &NoStoredCredentials,
+            CredentialInteraction::Unattended,
+            CredentialDemand::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(refreshed.request.masking.rules(), &saved.masking_rules[..1]);
     }
 
     #[tokio::test]

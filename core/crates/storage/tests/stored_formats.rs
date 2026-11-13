@@ -74,6 +74,7 @@ fn saved(id: &str, name: &str, driver_id: &str, host: &str, port: u16) -> Result
         external_access: ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
+        masking_rules: Vec::new(),
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,

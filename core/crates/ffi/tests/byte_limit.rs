@@ -85,7 +85,7 @@ async fn a_run_keeps_whole_rows_up_to_its_byte_limit() {
         ..RunSettings::default()
     };
 
-    let query = editor.run(BLOBS.to_owned(), settings, Box::new(Quiet));
+    let query = editor.run(BLOBS.to_owned(), settings, false, Box::new(Quiet));
     let outcome = query.outcome().await.unwrap();
     let events = query.drain_events();
 
@@ -123,7 +123,7 @@ async fn a_run_keeps_whole_rows_up_to_its_byte_limit() {
     let last = set.cell_text(15, 1).unwrap().unwrap();
     assert_eq!(last.len(), 2 + 2 * 65_536, "the row that crossed the limit was cut");
 
-    let next = editor.run("SELECT 1".to_owned(), RunSettings::default(), Box::new(Quiet));
+    let next = editor.run("SELECT 1".to_owned(), RunSettings::default(), false, Box::new(Quiet));
     let after = next.outcome().await.unwrap();
     assert!(matches!(after, RunOutcome::Completed { .. }), "{after:?}");
 }

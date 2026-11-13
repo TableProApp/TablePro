@@ -48,6 +48,7 @@ mod liveness_policy;
 mod local_socket;
 mod local_socket_problem;
 mod loss_phase;
+pub mod masking;
 pub mod meta;
 mod network_endpoint;
 mod network_options;

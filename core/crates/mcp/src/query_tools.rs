@@ -3,6 +3,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, build_count, build_export};
+use tablepro_core::masking::{MaskingPolicy, MaskingScope, MaskingSink, table_name};
 use tablepro_core::meta::{ObjectScope, RowIdentity};
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
 use tablepro_core::sql_syntax::{
@@ -71,7 +72,7 @@ pub async fn execute_query(
         ExternalGate::Refuse(reason) => return Err(refusal(&connection, reason)),
         ExternalGate::Run => {
             let (executed_at, started) = (SystemTime::now(), Instant::now());
-            let ran = run_read(&session, &text, limit, timeout, &cancel).await;
+            let ran = run_read(&session, &text, limit, timeout, &cancel, &connection.masking_policy()).await;
             (ran, executed_at, started.elapsed())
         }
         ExternalGate::Confirm { destructive } => {
@@ -96,7 +97,7 @@ pub async fn execute_query(
             }
             // The time the question was open is not the statement's.
             let (executed_at, started) = (SystemTime::now(), Instant::now());
-            let ran = run_write(&session, &text, limit, timeout, &cancel).await;
+            let ran = run_write(&session, &text, limit, timeout, &cancel, &now.masking_policy()).await;
             let elapsed = started.elapsed();
             // A batch that fails after its DDL committed still changed
             // the catalog.
@@ -190,18 +191,45 @@ type Ran = Result<(CollectedResults, Vec<&'static str>), ToolError>;
 
 /// A read runs on a connection of its own that the engine holds
 /// read-only, so a write the statement gate did not see still fails.
-async fn run_read(session: &Session, text: &str, limit: usize, timeout: Duration, cancel: &CancellationToken) -> Ran {
+/// The client's statement can rename or compute any column, so its rows
+/// are masked by what each column reads.
+async fn run_read(
+    session: &Session,
+    text: &str,
+    limit: usize,
+    timeout: Duration,
+    cancel: &CancellationToken,
+    policy: &MaskingPolicy,
+) -> Ran {
     let read = ReadStatement::User(UserSql::new(text));
-    let collected = stream(session, Keep::results(limit), timeout, cancel, None, move |_| {
-        Ok(read.clone())
-    })
+    let masking = Masking {
+        policy,
+        scope: MaskingScope::External { table: None },
+    };
+    let collected = stream(
+        session,
+        Keep::results(limit),
+        timeout,
+        cancel,
+        None,
+        masking,
+        move |_| Ok(read.clone()),
+    )
     .await?;
     Ok((collected, Vec::new()))
 }
 
 /// A write runs on an editor session of its own, opened for the one
 /// statement and closed after it, as an editor tab would run it.
-async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duration, cancel: &CancellationToken) -> Ran {
+async fn run_write(
+    session: &Session,
+    text: &str,
+    limit: usize,
+    timeout: Duration,
+    cancel: &CancellationToken,
+    policy: &MaskingPolicy,
+) -> Ran {
+    let masks_values = !policy.is_empty();
     let options = EditorSessionOptions {
         statement_timeout: Some(timeout),
         database: None,
@@ -209,9 +237,14 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
     let editor = session
         .open_editor_session(options, cancel)
         .await
-        .map_err(|error| ToolError::from_operation(&error))?;
+        .map_err(|error| ToolError::from_operation_masked(&error, masks_values))?;
     let state = Arc::new(Mutex::new(CollectedResults::default()));
-    let sink = ResultCollector::new(state.clone(), Keep::results(limit), false);
+    // Masked before the collector keeps them, so a cut by size reads masked values.
+    let sink = MaskingSink::wrap(
+        Box::new(ResultCollector::new(state.clone(), Keep::results(limit), false)),
+        policy.clone(),
+        MaskingScope::External { table: None },
+    );
     let stop = cancel.child_token();
     // What the user approved runs to its end. A driver stops fetching at
     // the limit, and with it a statement's side effects; the answer keeps
@@ -222,7 +255,7 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
     // The window's teardown closes only its own editor sessions, so this
     // one stops when the session does, as an editor tab's run would.
     let closing = session.shutdown_signal();
-    let running = editor.run(UserSql::new(text), run, Box::new(sink));
+    let running = editor.run(UserSql::new(text), run, sink);
     tokio::pin!(running);
     let (summary, closed) = tokio::select! {
         summary = &mut running => (summary, false),
@@ -233,7 +266,7 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
     };
     editor.close().await;
     let collected = std::mem::take(&mut *state.lock().unwrap_or_else(PoisonError::into_inner));
-    let summary = summary.map_err(|error| ToolError::from_driver(&error))?;
+    let summary = summary.map_err(|error| ToolError::from_driver_masked(&error, masks_values))?;
     match summary.end {
         RunEnd::Completed => {
             let notes = match summary.transaction_state {
@@ -241,6 +274,9 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
                 TransactionState::Idle | TransactionState::Unknown => Vec::new(),
             };
             Ok((collected, notes))
+        }
+        RunEnd::Failed(error) if masks_values && tablepro_core::masking::may_repeat_a_value(&error) => {
+            Err(ToolError::from_driver_masked(&error, true))
         }
         RunEnd::Failed(error) => Err(ToolError::QueryFailed(error.to_string())),
         RunEnd::Cancelled if closed => Err(ToolError::NotConnected(
@@ -251,13 +287,33 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
     }
 }
 
-// A table's rows pass through `precision`, so a decimal keeps the scale its column declares, as in an export.
+// The connection's rules and how a read meets them.
+pub(crate) struct Masking<'a> {
+    pub policy: &'a MaskingPolicy,
+    pub scope: MaskingScope,
+}
+
+impl Masking<'_> {
+    // The app's own statement over one table's columns, as a browse or an export reads it.
+    pub(crate) fn table<'a>(policy: &'a MaskingPolicy, table: &TableRef) -> Masking<'a> {
+        Masking {
+            policy,
+            scope: MaskingScope::External {
+                table: Some(table_name(table)),
+            },
+        }
+    }
+}
+
+// A table's rows pass through `precision`, so a decimal keeps the scale its column declares, as in an export. Then
+// they are masked, before the collector cuts them to the answer's size.
 pub(crate) async fn stream<F>(
     session: &Session,
     keep: Keep,
     timeout: Duration,
     cancel: &CancellationToken,
     precision: Option<Arc<[ColumnInfo]>>,
+    masking: Masking<'_>,
     build: F,
 ) -> Result<CollectedResults, ToolError>
 where
@@ -266,17 +322,21 @@ where
     let state = Arc::new(Mutex::new(CollectedResults::default()));
     let deadline = tokio::time::Instant::now() + timeout;
     let build = &build;
+    let masks_values = !masking.policy.is_empty();
+    let (policy, scope) = (masking.policy.clone(), masking.scope);
     let result = session
         .run_cancellable(OperationKind::Export, cancel, |lease, call| {
             let state = state.clone();
             let precision = precision.clone();
+            let (policy, scope) = (policy.clone(), scope.clone());
             async move {
                 *state.lock().unwrap_or_else(PoisonError::into_inner) = CollectedResults::default();
                 let read = build(&lease)?;
                 let collector: Box<dyn ResultSink> = Box::new(ResultCollector::new(state, keep, true));
+                let masked = MaskingSink::wrap(collector, policy, scope);
                 let sink: Box<dyn ResultSink> = match precision {
-                    Some(catalog) => Box::new(DeclaredPrecisionSink::new(collector, catalog)),
-                    None => collector,
+                    Some(catalog) => Box::new(DeclaredPrecisionSink::new(masked, catalog)),
+                    None => masked,
                 };
                 let options = CallOptions::new(Some(deadline), call.cancel().clone());
                 Ok(lease.stream_read(&read, sink, options).await?)
@@ -290,7 +350,7 @@ where
         // as a stop.
         Err(_) if collected.stopped_at_limit => Ok(collected),
         Err(OperationError::Driver(tablepro_core::DriverError::Timeout { .. })) => Err(timed_out(timeout)),
-        Err(error) => Err(ToolError::from_operation(&error)),
+        Err(error) => Err(ToolError::from_operation_masked(&error, masks_values)),
     }
 }
 
@@ -308,12 +368,15 @@ pub async fn browse_table(
     let sort = sort_keys(&args.sort, &columns)?;
     let catalog: Arc<[ColumnInfo]> = columns.into();
     let started = Instant::now();
+    let policy = connection.masking_policy();
+    let masking = Masking::table(&policy, &table);
     let collected = stream(
         &session,
         Keep::results(limit),
         Duration::from_secs(u64::from(DEFAULT_TIMEOUT_SECONDS)),
         &cancel,
         Some(catalog.clone()),
+        masking,
         move |lease| {
             let request = ExportRequest {
                 table: &table,
