@@ -481,12 +481,13 @@ mod tests {
     #[test]
     fn a_result_shared_with_blank_sql_has_none_to_open() {
         let read = |sql: Option<&str>| {
-            let mut json = serde_json::json!({"kind":"result","title":"Orders","note":"","dialect":"postgres",
-                "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro"});
-            if let Some(sql) = sql {
-                json["sql"] = sql.into();
-            }
-            SharedLink::from(serde_json::from_value::<types::PublicShare>(json).expect("a shared link")).sql
+            let sql = sql.map(|sql| format!(r#""sql":{},"#, serde_json::to_string(sql).expect("JSON")));
+            let json = format!(
+                r#"{{"kind":"result","title":"Orders","note":"","dialect":"postgres",{}
+                "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro"}}"#,
+                sql.unwrap_or_default()
+            );
+            SharedLink::from(serde_json::from_str::<types::PublicShare>(&json).expect("a shared link")).sql
         };
 
         assert_eq!([read(Some("")), read(Some(" \r\n\t")), read(None)], [None, None, None]);
