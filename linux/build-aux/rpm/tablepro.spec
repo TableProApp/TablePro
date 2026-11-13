@@ -164,6 +164,9 @@ an SSH bastion.
 # Writes .cargo/config.toml with the vendored crates as the only source.
 # Cargo reads it from the parent of the Meson build directory it runs in.
 %cargo_prep -v vendor
+# %%cargo_prep replaces only crates.io. The vendored crates that come from
+# a git repository need the source replacement cargo vendor wrote for them.
+sed -n '/^\[source\."git+/,/^$/p' vendor/cargo-config.toml >> .cargo/config.toml
 # Some crates ship executable .rs files, whose leading #![...] attribute
 # brp-mangle-shebangs then rejects as a shebang in the debugsource package.
 find vendor -type f -name '*.rs' -perm /111 -exec chmod a-x {} +

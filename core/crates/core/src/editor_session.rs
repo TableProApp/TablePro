@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use crate::call_options::CallOptions;
+use crate::copy_in::{CopyInRows, CopyInSummary};
 use crate::error::DriverError;
 use crate::result_event::RunSummary;
 use crate::result_sink::ResultSink;
@@ -74,6 +75,24 @@ pub trait EditorSession: Send + Sync {
     ) -> Result<RunSummary, DriverError>;
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError>;
+
+    /// Run `statement`, a `COPY ... FROM STDIN`, with the pieces `rows`
+    /// gives as its data, sent on as they come. A cancel, or a source that
+    /// closes before `CopyInPiece::End`, abandons the copy and ends it
+    /// cancelled, whatever the server answers to that. A copy the server
+    /// refused ends `Failed`. `Unsupported`, which a session without
+    /// copy-in returns, fails only this statement; any other error is the
+    /// session failing, as with `run`.
+    async fn copy_in(
+        &self,
+        _statement: UserSql,
+        _rows: CopyInRows,
+        _options: RunOptions,
+    ) -> Result<CopyInSummary, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: crate::UnsupportedFeature::CopyFromStdin,
+        })
+    }
 
     /// The database an unqualified name resolves to now, as the server
     /// last said. `None` where the driver does not follow it: the session

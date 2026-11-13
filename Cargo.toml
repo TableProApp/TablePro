@@ -197,6 +197,16 @@ testcontainers = { version = "0.27", default-features = false, features = ["aws-
 testcontainers-modules = { version = "0.15", default-features = false, features = ["aws-lc-rs"] }
 oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto", "unstable"] }
 
+# TablePro's fork of rust-postgres, pinned by revision: the tokio-postgres-v0.7.18 tag plus the
+# copy_in fix in rust-postgres/rust-postgres#1402, without which a COPY the server refuses before
+# copy-in mode leaves the connection out of step. All three crates come from the fork, so the
+# driver's postgres-types and postgres-protocol stay the ones tokio-postgres uses. Remove this
+# once a tokio-postgres release has the fix.
+[patch.crates-io]
+tokio-postgres = { git = "https://github.com/TableProApp/rust-postgres", rev = "f8bdf78d12df410a1c1b485445a9d0683361a173" }
+postgres-types = { git = "https://github.com/TableProApp/rust-postgres", rev = "f8bdf78d12df410a1c1b485445a9d0683361a173" }
+postgres-protocol = { git = "https://github.com/TableProApp/rust-postgres", rev = "f8bdf78d12df410a1c1b485445a9d0683361a173" }
+
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 
