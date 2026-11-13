@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use tablepro_core::Truncation;
 use tablepro_core::column::ResultColumn;
+use tablepro_core::export::SnapshotTooLarge;
 use tablepro_core::masking::detect::{
     MaskSuggestion, PersonalDataHit, SensitiveKind, SuggestionReason, scan_sql_personal_data, suggest_masks,
 };
 use tablepro_core::masking::{ColumnMasks, MaskingRule, MaskingStyle, MaskingTarget, ShareChoice};
 use uuid::Uuid;
 
-use crate::account::share::{rows_sent, sent_row, share_plan};
+use crate::account::share::{rows_sent, sent_row, share_plan, summary_of};
 use crate::error::CoreError;
 use crate::export::held_row;
 use crate::results::{ResultSet, ResultStore};
@@ -100,6 +101,25 @@ pub struct PersonalDataHitInfo {
     pub line: u32,
 }
 
+// Why a share cannot go even cut.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SnapshotTooLargeReason {
+    // A value of this column is over 256 KiB.
+    Cell { column: String },
+    // The first row alone is over the 4.5 MB a share's body may weigh.
+    FirstRow,
+}
+
+// What a share with the sheet's choices sends, for its note: `rows_sent` is what the snapshot keeps under the plan's
+// row limit and the body budget, so it can be fewer than `max_rows`.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ShareSummary {
+    pub rows_sent: u64,
+    pub columns_sent: u32,
+    pub columns_truncated: bool,
+    pub too_large: Option<SnapshotTooLargeReason>,
+}
+
 // Personal data in the SQL's single-quoted literals, each kind once per line: the sheet suggests Hide SQL.
 #[uniffi::export]
 pub fn scan_sql_for_personal_data(sql: String) -> Vec<PersonalDataHitInfo> {
@@ -151,6 +171,50 @@ impl ResultSet {
         })
         .await
     }
+}
+
+#[uniffi::export]
+impl ResultSet {
+    // What `create_share` with the same arguments would send, by the same plan and budget: cheap enough for each change
+    // of the sheet's choices, run off the UI thread.
+    pub async fn share_summary(
+        self: Arc<Self>,
+        visible_columns: u32,
+        max_rows: u32,
+        columns: Vec<ShareColumnChoice>,
+    ) -> Result<ShareSummary, CoreError> {
+        let tasks = crate::runtime::tasks()?;
+        let blocking = tasks.clone();
+        on_runtime(&tasks, async move {
+            blocking
+                .spawn_blocking_task(move || share_summary(&self, visible_columns, max_rows, &columns))
+                .await
+                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))?
+        })
+        .await
+    }
+}
+
+pub(crate) fn share_summary(
+    set: &ResultSet,
+    visible_columns: u32,
+    max_rows: u32,
+    choices: &[ShareColumnChoice],
+) -> Result<ShareSummary, CoreError> {
+    if !set.is_finished() {
+        return Err(CoreError::failed("ffi.share_unfinished", "the rows are still arriving"));
+    }
+    let (visible, plan) = share_plan(set, visible_columns, choices);
+    let summary = summary_of(set, &visible, &plan, max_rows);
+    Ok(ShareSummary {
+        rows_sent: summary.rows_sent as u64,
+        columns_sent: u32::try_from(summary.columns_sent).unwrap_or(u32::MAX),
+        columns_truncated: summary.columns_cut,
+        too_large: summary.too_large.map(|refused| match refused {
+            SnapshotTooLarge::Cell { column } => SnapshotTooLargeReason::Cell { column },
+            SnapshotTooLarge::FirstRow => SnapshotTooLargeReason::FirstRow,
+        }),
+    })
 }
 
 pub(crate) fn share_preview(

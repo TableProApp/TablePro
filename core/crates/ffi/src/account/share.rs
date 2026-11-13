@@ -8,8 +8,8 @@ use tablepro_account::{
 };
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot, snapshot_row_count};
-use tablepro_core::masking::{ShareChoice, SharePlan};
+use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot};
+use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
 
 use super::account_service::AccountService;
 use crate::error::CoreError;
@@ -280,14 +280,20 @@ pub(crate) fn rows_sent(
     plan: &SharePlan,
     max_rows: u32,
 ) -> Result<u64, CoreError> {
-    let rows = (0..set.extent().held).map(|row| sent_row(set, visible, plan, row));
-    let kept = snapshot_row_count(
-        &plan.columns(visible),
-        rows,
+    let summary = summary_of(set, visible, plan, max_rows);
+    match summary.too_large {
+        Some(refused) => Err(too_large(refused)),
+        None => Ok(summary.rows_sent as u64),
+    }
+}
+
+pub(crate) fn summary_of(set: &ResultSet, visible: &[ResultColumn], plan: &SharePlan, max_rows: u32) -> ShareSummary {
+    plan.summary(
+        visible,
+        usize::try_from(set.extent().held).unwrap_or(usize::MAX),
+        |row, index| held_value(set, row as u64, index, &visible[index]),
         usize::try_from(max_rows).unwrap_or(usize::MAX),
     )
-    .map_err(too_large)?;
-    Ok(kept as u64)
 }
 
 pub(crate) fn sent_row(set: &ResultSet, visible: &[ResultColumn], plan: &SharePlan, row: u64) -> Vec<Value> {
@@ -625,7 +631,13 @@ mod tests {
         let preview = crate::masking::share_preview(&set, 1, 1_000, &[]).unwrap();
         let (masked, _) = snapshot_of(&set, 1, 1_000, None, &full).unwrap();
 
+        let summary = crate::masking::share_summary(&set, 1, 1_000, &[]).unwrap();
         assert_eq!(snapshot.rows.len(), 22);
+        assert_eq!(summary.rows_sent, snapshot.rows.len() as u64);
+        assert_eq!(
+            (summary.columns_sent, summary.columns_truncated, summary.too_large),
+            (1, false, None)
+        );
         assert_eq!(snapshot.row_count, Some(30), "the server would not mark the share cut");
         assert_eq!(preview.row_count(), 22);
         assert_eq!(masked.rows.len(), 30, "masked text was not what was weighed");
@@ -638,7 +650,15 @@ mod tests {
             .err()
             .unwrap();
 
+        let summary = crate::masking::share_summary(&notes(1, 300_000), 1, 1_000, &[]).unwrap();
         assert_eq!(over.code(), "account.snapshot_too_large");
+        assert_eq!(summary.rows_sent, 0);
+        assert_eq!(
+            summary.too_large,
+            Some(crate::masking::SnapshotTooLargeReason::Cell {
+                column: "note".to_owned()
+            })
+        );
         assert_eq!(preview.code(), "account.snapshot_too_large");
     }
 }
