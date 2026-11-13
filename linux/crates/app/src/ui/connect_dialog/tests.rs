@@ -1168,6 +1168,9 @@ fn edit_dialog_prefills_and_saves_same_id() {
     let log = SignalLog::connect(&harness.dialog, "saved", |values| {
         values[1].get::<String>().expect("an id")
     });
+    let reconnects = SignalLog::connect(&harness.dialog, "saved", |values| {
+        values[2].get::<bool>().expect("whether the session reconnects")
+    });
     let closed = SignalLog::connect(&harness.dialog, "closed", |_| ());
     imp.name_row.set_text("Shop (EU)");
     imp.host_row.set_text("db2.example.com");
@@ -1179,6 +1182,7 @@ fn edit_dialog_prefills_and_saves_same_id() {
 
     assert_eq!(closed.count(), 1, "the landed save left the dialog open");
     assert_eq!(log.take(), [saved.id.to_string()]);
+    assert_eq!(reconnects.take(), [true], "a new host reached the open session");
     let stored = harness.store.load_blocking().expect("the list");
     assert_eq!(stored.len(), 1, "the edit added an entry");
     assert_eq!(stored[0].id, saved.id);
@@ -1227,13 +1231,16 @@ fn an_edit_opens_on_its_masking_rules_and_saves_them_without_blank_patterns() {
         assert_eq!(rows[1].expander().title(), "uuid");
         rows[2].pattern().set_text("   ");
     }
-    let log = SignalLog::connect(&harness.dialog, "saved", |_| ());
+    let log = SignalLog::connect(&harness.dialog, "saved", |values| {
+        values[2].get::<bool>().expect("whether the session reconnects")
+    });
 
     without_criticals(|| {
         imp.connect_button.emit_clicked();
         wait_until(WAIT, || log.count() == 1).expect("the save");
     });
 
+    assert_eq!(log.take(), [false], "a masking-only edit asked for a reconnect");
     let stored = harness.store.load_blocking().expect("the list");
     let rules = &stored[0].masking_rules;
     assert_eq!(rules.len(), 2, "a blank pattern was kept: {rules:?}");
@@ -1253,17 +1260,45 @@ fn a_removed_rule_is_not_saved() {
         ..shop()
     };
     let harness = editing(&saved, FakeConnector::new([]));
+    let _window = present(&harness.dialog);
     let imp = harness.dialog.imp();
-    let remove = crate::test_support::descendants(imp.masking_rules.borrow()[0].expander())
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
-        .find(|button| button.tooltip_text().as_deref() == Some("Remove Rule"))
-        .expect("the remove button");
+    imp.add_masking_rule_row.emit_by_name::<()>("activated", &[]);
+    crate::test_support::drain_main_context();
+    assert_eq!(
+        crate::test_support::unlabelled_icon_buttons(&*imp.masking_group),
+        Vec::<String>::new()
+    );
+    let remove = imp.masking_rules.borrow()[0].remove().clone();
+    assert_eq!(remove.tooltip_text().as_deref(), Some("Remove rule ssn"));
+    assert_eq!(
+        imp.masking_rules.borrow()[1].remove().tooltip_text().as_deref(),
+        Some("Remove the new rule")
+    );
+    imp.masking_rules.borrow()[1].pattern().set_text("uuid");
+    assert_eq!(
+        imp.masking_rules.borrow()[1].remove().tooltip_text().as_deref(),
+        Some("Remove rule uuid")
+    );
+    if crate::test_support::test_backend_records_properties() {
+        assert!(gtk4::test_accessible_has_property(
+            &remove,
+            gtk4::AccessibleProperty::Label
+        ));
+    }
 
     remove.emit_clicked();
 
-    assert!(imp.masking_rules.borrow().is_empty());
-    assert!(harness.dialog.form().masking_rules.is_empty());
+    assert_eq!(imp.masking_rules.borrow().len(), 1);
+    assert_eq!(
+        harness
+            .dialog
+            .form()
+            .masking_rules
+            .iter()
+            .map(|rule| rule.pattern.as_str())
+            .collect::<Vec<_>>(),
+        ["uuid"]
+    );
 }
 
 #[gtk4::test]

@@ -475,7 +475,7 @@ impl SessionWindow {
             SessionWindowInput::ShowConnectFailure(key) => self.on_show_connect_failure(key),
             SessionWindowInput::ForgetConnectFailure(key) => self.forget_failure(&key),
             SessionWindowInput::EditSavedConnection(id) => self.on_edit_saved_connection(id),
-            SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
+            SessionWindowInput::ConnectionSaved { id, reconnect } => self.on_connection_saved(id, reconnect),
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),

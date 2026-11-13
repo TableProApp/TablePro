@@ -76,8 +76,12 @@ pub(crate) enum SessionWindowInput {
     ForgetConnectFailure(SessionKey),
     /// Open the connect dialog on a saved connection to change it.
     EditSavedConnection(Uuid),
-    /// The connect dialog saved its changes to a saved connection.
-    ConnectionSaved(Uuid),
+    // The connect dialog saved its changes to a saved connection; `reconnect` when an open session takes them only on
+    // its next connect.
+    ConnectionSaved {
+        id: Uuid,
+        reconnect: bool,
+    },
     /// Close the session in front through its prompts.
     Disconnect,
     /// Close the session open under the key through its prompts.
