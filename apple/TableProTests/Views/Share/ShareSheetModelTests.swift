@@ -808,6 +808,40 @@ struct ShareSheetModelTests {
         #expect(snapshot.rows == [[.string("••••")]])
     }
 
+    @Test("A rule saved during a reload as Free reads the rows again at the Free limit, not the Pro one")
+    func ruleSavedDuringAFreeReloadUsesItsLimit() async throws {
+        let service = FakeShareService()
+        service.limitsResults = [.success(.pro()), .success(.free())]
+        service.createResult = .failure(.limitReached)
+        let changes = PassthroughSubject<Void, Never>()
+        let asked = Asked()
+        let freeReadHeld = AsyncGate()
+        let request = ShareRequest.result(
+            title: "Users", sql: "SELECT id FROM users", dialect: nil, sourceChanges: changes.eraseToAnyPublisher()
+        ) { maxRows in
+            asked.maxRows.append(maxRows)
+            if asked.maxRows.count == 2 {
+                await freeReadHeld.wait()
+            }
+            return Self.source(rows: 1_200, total: 48_210, sql: "SELECT id FROM users")
+        }
+        let model = makeModel(request, service: service)
+        await model.load()
+
+        let create = Task { await model.create() }
+        await freeReadHeld.arrived(1)
+        changes.send()
+        try await waitUntil { asked.maxRows.count == 3 }
+        await freeReadHeld.open()
+        await create.value
+        // Never stays picked after the reload as Free, and holds Create until changed.
+        model.expiry = .thirtyDays
+        try await waitUntil { model.canCreate }
+
+        #expect(asked.maxRows == [10_000, 1_000, 1_000])
+        #expect(model.makeDraft()?.snapshot?.rows.count == 1_000)
+    }
+
     @Test("A result no longer open says why Create is off")
     func resultGone() async {
         let request = ShareRequest.result(title: "Gone", sql: "SELECT 1", dialect: nil) { _ in nil }

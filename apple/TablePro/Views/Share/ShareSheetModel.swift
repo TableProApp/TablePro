@@ -69,7 +69,8 @@ internal final class ShareSheetModel: ObservableObject {
     private var sourceObservation: AnyCancellable?
     private var appliedDefaults = false
     private var sourceMaxRows: Int?
-    private var loadingMaxRows: Int?
+    // The row limit of the latest read asked for, done or still in flight, as during a reload as Free.
+    private var requestedMaxRows: Int?
     // Moves on every read of the rows, so a read another one overtook is dropped.
     private var sourceGeneration = 0
     private var sourceReload: Task<Void, Never>?
@@ -189,7 +190,7 @@ internal final class ShareSheetModel: ObservableObject {
         guard let load = request.loadResult, force || sourceMaxRows != maxRows else { return }
         sourceGeneration += 1
         let generation = sourceGeneration
-        loadingMaxRows = maxRows
+        requestedMaxRows = maxRows
         let loaded = await load(maxRows)
         guard !Task.isCancelled, !isClosed, generation == sourceGeneration else { return }
         guard let loaded else {
@@ -225,7 +226,7 @@ internal final class ShareSheetModel: ObservableObject {
 
     // A masking rule saved in another window masked the rows again: Create waits for them to be read once more.
     private func sourceChanged() {
-        guard !isClosed, request.kind == .result, let maxRows = sourceMaxRows ?? loadingMaxRows else { return }
+        guard !isClosed, request.kind == .result, let maxRows = requestedMaxRows else { return }
         isSourceStale = true
         sourceReload?.cancel()
         let task = Task { await loadSource(maxRows: maxRows, force: true) }
