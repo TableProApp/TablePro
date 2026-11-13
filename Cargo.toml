@@ -107,6 +107,8 @@ comfy-table = "8.0"
 unicode-width = "0.2"
 # Folds accents out of a name for the Finder-like order the Apple apps sort a library by.
 unicode-normalization = "0.1.25"
+# Extended grapheme clusters, the characters a masking rule and a mask count in, as Swift counts them.
+unicode-segmentation = "1.13"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
 # the build free of another C dependency. Constant memory lets a sheet
 # spill its rows to a temporary file instead of holding them.
@@ -190,6 +192,8 @@ salsa20 = "0.10"
 chacha20 = "0.9"
 sha1 = "0.11"
 sha2 = "0.11"
+# A masked value's Stable Hash, HMAC-SHA256 as the macOS app computes it.
+hmac = "0.13"
 hex = "0.4"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 zeroize = "1.9"

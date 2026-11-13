@@ -9,5 +9,5 @@ mod value_kind;
 
 pub(crate) use cursor::Cursor;
 pub use result_set::{ResultColumnInfo, ResultSet};
-pub(crate) use store::ResultStore;
+pub(crate) use store::{GridMasking, ResultStore};
 pub use value_kind::ValueKind;

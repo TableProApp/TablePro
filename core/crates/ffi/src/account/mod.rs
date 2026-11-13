@@ -4,7 +4,7 @@ mod host_browser;
 #[cfg(windows)]
 mod machine_guid;
 mod secret_scan;
-mod share;
+pub(crate) mod share;
 
 pub use account_info::{
     AccountStateTag, AccountStatusInfo, DeviceInfo, EntitlementProblemTag, FeatureAccessTag, LicenseInfo,
@@ -17,5 +17,5 @@ pub use secret_scan::{
 };
 pub use share::{
     CreatedShareInfo, ShareExpiryTag, ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo, ShareRequestArg,
-    SharedLinkInfo,
+    ShareTeamInfo, SharedLinkInfo,
 };

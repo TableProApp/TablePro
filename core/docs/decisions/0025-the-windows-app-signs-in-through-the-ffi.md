@@ -13,7 +13,7 @@
 
 | Seam | Windows app |
 | --- | --- |
-| `RefreshTokenVault` | the Core's own secret store: the generic credential `TablePro/account-refresh-token` in Credential Manager under `Core::with_system_secrets`, or the host's `SecretItemTag::AccountRefreshToken` under `Core::new` |
+| `RefreshTokenVault` | the Core's own secret store: under `Core::with_system_secrets`, the generic credential `TablePro/account/<key>/refresh-token` in Credential Manager, `<key>` being `AccountSettings::sign_in_key`; under `Core::new`, the host's one `SecretItemTag::AccountRefreshToken` |
 | `BrowserLauncher` | the `HostBrowser` callback, on a thread the core lets block |
 | `MachineId` | `MachineId::derive_machine_guid` of `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`, read from the 64-bit registry view with `RegGetValueW` |
 | `AppClient` | `AppClient::WINDOWS`: client `tablepro-windows`, platform `windows` |
@@ -22,6 +22,7 @@
 - **Machine ID.** HMAC-SHA256 keyed with `app.tablepro.TablePro` over the 16 bytes the GUID's 32 hex digits write, in the order they are written, as 64 lowercase hex characters: Linux's rule for `/etc/machine-id`, so the same 16 bytes name the same device on both. The written order, not the mixed-endian layout of a Windows `GUID` struct, since the value is text in the registry and nothing reads it as a struct. A host off Windows gives the GUID in `AccountConfig::machine_guid`.
 - **The object.** `Core::open_account(config, browser, listener)` returns an `AccountService`, which restores the last sign-in and runs the refresh schedule until it is dropped. Its calls are the account's: sign-in with a `CancelToken` that ends only the wait for the browser, sign-out, refresh, the refresh past the device limit, profile, devices, remove device, and `feature_access`.
 - **Status.** `status()` is a snapshot record: the state, the entitlement's account, features and licenses, its expiry and the problem with its code or the devices that hold the license. `AccountListener::status_changed` only signals, on a runtime thread, as `RunListener` does; the app reads `status()` on its own thread.
+- **One token per sign-in.** `sign_in_key` is 16 hex characters of SHA-256 over the API endpoint and the account file's path. A development build against a local stack, or a second build with its own state folder, would otherwise overwrite the one token every sign-in shares, and a rotated token read by the other is a reuse that revokes the whole family. A sign-in with tablepro.app whose own target is empty moves a token from `TablePro/account-refresh-token`, the target before keys, so a user signed in then stays signed in; a sign-out removes both.
 - **Errors.** `From<AccountError> for CoreError` keeps `AccountError::code()`. A cancelled sign-in is `CoreError::Cancelled`. A refusal keeps the server's problem code and detail in `ErrorInfo::server`.
 
 ## Consequences

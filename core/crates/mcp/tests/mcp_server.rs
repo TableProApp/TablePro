@@ -20,6 +20,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value as Json, json};
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
 use tablepro_core::{
     ConnectEnvironment, ExternalAccess, FileEndpoint, LivenessPolicy, ResultEvent, ResultSink, RunOptions,
     SafeModeLevel, SinkFlow, TableRef, TlsConfig, UserSql, WorkspaceSettings,
@@ -106,6 +107,7 @@ struct Harness {
     server: McpServer,
     host: Arc<TestHost>,
     ids: Ids,
+    store: ConnectionStore,
 }
 
 fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConnection {
@@ -122,6 +124,7 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         external_access: access,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
+        masking_rules: Vec::new(),
         auth_mode: tablepro_core::AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -167,6 +170,7 @@ async fn open_session(dir: &Path, file: &Path, id: Uuid, read_only: bool, create
             true => SafeModeLevel::ReadOnly,
             false => SafeModeLevel::Off,
         },
+        masking: Default::default(),
     };
     let pending = connector
         .establish(request, CredentialInteraction::Unattended, CancellationToken::new())
@@ -268,7 +272,7 @@ async fn harness() -> Harness {
     let token = AccessToken::from_secret(SecretString::from(TOKEN.to_owned())).expect("a token");
     let context = ToolContext {
         host: host.clone(),
-        connections: store,
+        connections: store.clone(),
     };
     let server = McpServer::start(0, token, context, "0.0.0-test", &tasks())
         .await
@@ -278,6 +282,7 @@ async fn harness() -> Harness {
         server,
         host,
         ids,
+        store,
     }
 }
 
@@ -666,6 +671,131 @@ async fn a_read_runs_and_answers_with_its_rows() {
     let recorded = harness.host.recorded.lock().expect("recorded");
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].query, "SELECT id, status FROM orders ORDER BY id");
+}
+
+// Saves `rules` on Readable; a tool reads the saved connection on each call.
+fn mask_readable(harness: &Harness, rules: Vec<MaskingRule>) -> String {
+    let mut readable = harness
+        .store
+        .load_blocking()
+        .expect("the list")
+        .iter()
+        .find(|connection| connection.id == harness.ids.readable)
+        .cloned()
+        .expect("Readable");
+    readable.masking_rules = rules;
+    harness.store.upsert_blocking(readable).expect("saved");
+    harness.ids.readable.to_string()
+}
+
+// Masks orders.status whole on Readable.
+fn mask_status(harness: &Harness) -> String {
+    mask_readable(
+        harness,
+        vec![MaskingRule::new(
+            "orders.status",
+            MaskingTarget::Column,
+            MaskingStyle::Full,
+        )],
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_value_past_the_answer_s_cut_is_masked_whole_before_it_is_cut() {
+    let harness = harness().await;
+    let writable = harness.host.sessions.lock().expect("sessions")[&harness.ids.writable].clone();
+    run_all(
+        &writable,
+        &[
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT, token TEXT)",
+            "INSERT INTO notes VALUES (1, replace(hex(zeroblob(40000)), '0', 'x') || '1234', \
+             replace(hex(zeroblob(40000)), '0', 'x') || '1234')",
+        ],
+    )
+    .await;
+    let long = format!("{}1234", "x".repeat(80_000));
+    assert!(long.len() > tablepro_mcp::MAX_VALUE_BYTES);
+    let id = mask_readable(
+        &harness,
+        vec![
+            MaskingRule::new("notes.body", MaskingTarget::Column, MaskingStyle::LastFour),
+            MaskingRule::new("notes.token", MaskingTarget::Column, MaskingStyle::Hash),
+        ],
+    );
+
+    let (failed, text) = call(
+        &harness,
+        "execute_query",
+        json!({ "connection_id": id, "query": "SELECT body, token FROM notes" }),
+    )
+    .await;
+
+    assert!(!failed, "{text}");
+    let row = &parsed(&text)["result_sets"][0]["rows"][0];
+    assert_eq!(row["body"], "••••1234");
+    assert_eq!(row["token"], tablepro_core::masking::stable_hash(long.as_bytes()));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_connection_s_rules_mask_query_browse_and_export_answers() {
+    let harness = harness().await;
+    let id = mask_status(&harness);
+
+    let (query_failed, query) = call(
+        &harness,
+        "execute_query",
+        json!({
+            "connection_id": id,
+            "query": "SELECT id, status AS state, 'open' AS label FROM orders ORDER BY id",
+            "max_rows": 1,
+        }),
+    )
+    .await;
+    let (browse_failed, browsed) = call(
+        &harness,
+        "browse_table",
+        json!({ "connection_id": id, "table": "orders", "limit": 1 }),
+    )
+    .await;
+    let (export_failed, exported) = call(
+        &harness,
+        "export_data",
+        json!({ "connection_id": id, "tables": ["orders"], "format": "csv", "max_rows": 1 }),
+    )
+    .await;
+
+    assert!(
+        !query_failed && !browse_failed && !export_failed,
+        "{query} {browsed} {exported}"
+    );
+    assert_eq!(
+        parsed(&query)["result_sets"][0]["rows"],
+        json!([{ "id": 1, "state": "••••", "label": "••••" }])
+    );
+    let row = &parsed(&browsed)["result_sets"][0]["rows"][0];
+    assert_eq!((&row["id"], &row["status"]), (&json!(1), &json!("••••")));
+    let data = parsed(&exported)["exports"][0]["data"]
+        .as_str()
+        .expect("CSV")
+        .to_owned();
+    assert!(data.contains(r#""1","••••","10""#), "{data}");
+    assert!(!data.contains("open"), "{data}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_connection_with_rules_withholds_the_server_s_message() {
+    let harness = harness().await;
+    let query = json!("SELECT nosuch_column FROM orders");
+    let arguments = json!({ "connection_id": harness.ids.readable.to_string(), "query": query });
+
+    let (plain_failed, plain) = call(&harness, "execute_query", arguments.clone()).await;
+    mask_status(&harness);
+    let (masked_failed, masked) = call(&harness, "execute_query", arguments).await;
+
+    assert!(masked_failed && plain_failed);
+    assert!(masked.starts_with("query_failed:"), "{masked}");
+    assert!(!masked.contains("nosuch_column"), "{masked}");
+    assert!(plain.contains("nosuch_column"), "{plain}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

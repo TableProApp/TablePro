@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
 use secrecy::SecretString;
-use tablepro_account::RefreshTokenVault;
+use tablepro_account::{AccountSettings, RefreshTokenVault};
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
@@ -42,7 +42,7 @@ pub struct Core {
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
     // The TablePro account's, in the same store as every other secret.
-    refresh_tokens: Arc<dyn RefreshTokenVault>,
+    refresh_tokens: RefreshTokens,
     paths: Option<StoragePaths>,
     store: Option<ConnectionStore>,
     writes: LibraryWrites,
@@ -74,7 +74,8 @@ impl Core {
             SystemSecrets {
                 vault: host.clone(),
                 items: host.clone(),
-                refresh_tokens: host,
+                // A host keeps one item for it, whichever server the sign-in is with.
+                refresh_tokens: Arc::new(move |_: &AccountSettings| host.clone() as Arc<dyn RefreshTokenVault>),
             },
             tasks,
         ))
@@ -153,6 +154,8 @@ impl Core {
                 target: RequestTarget::File(endpoint),
                 workspace_settings: WorkspaceSettings::workspace(false),
                 safe_mode: SafeModeLevel::default(),
+                // A file opened by path is no saved connection, so it has no rules.
+                masking: Default::default(),
             };
             if request.read_only {
                 connect.open_read_only();
@@ -236,6 +239,8 @@ impl Core {
                     prompter,
                 },
             );
+            // A save of the connection's masking rules reaches the session as it lands.
+            session.follow_saved_masking(&store);
             let stamped = tasks
                 .spawn_blocking_task(move || store.touch_last_opened_blocking(id))
                 .await;
@@ -344,7 +349,7 @@ impl Core {
         self.items.clone()
     }
 
-    pub(crate) fn refresh_tokens(&self) -> Arc<dyn RefreshTokenVault> {
+    pub(crate) fn refresh_tokens(&self) -> RefreshTokens {
         self.refresh_tokens.clone()
     }
 }
@@ -372,10 +377,13 @@ fn no_storage() -> CoreError {
     CoreError::failed("ffi.no_storage", "the core was started without a storage folder")
 }
 
+// Where one sign-in keeps its refresh token, chosen by its settings.
+pub(crate) type RefreshTokens = Arc<dyn Fn(&AccountSettings) -> Arc<dyn RefreshTokenVault> + Send + Sync>;
+
 struct SystemSecrets {
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
-    refresh_tokens: Arc<dyn RefreshTokenVault>,
+    refresh_tokens: RefreshTokens,
 }
 
 #[cfg(windows)]
@@ -387,7 +395,10 @@ fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
     Ok(SystemSecrets {
         vault: manager.clone(),
         items: manager.clone(),
-        refresh_tokens: manager,
+        refresh_tokens: Arc::new(move |settings: &AccountSettings| {
+            Arc::new(manager.refresh_token(&settings.sign_in_key(), settings.is_production()))
+                as Arc<dyn RefreshTokenVault>
+        }),
     })
 }
 
@@ -629,7 +640,7 @@ mod tests {
             SystemSecrets {
                 vault: Arc::new(Vault::default()),
                 items: Arc::new(NoItems),
-                refresh_tokens: Arc::new(NoItems),
+                refresh_tokens: Arc::new(|_: &AccountSettings| Arc::new(NoItems) as Arc<dyn RefreshTokenVault>),
             },
             runtime::tasks().unwrap(),
         );

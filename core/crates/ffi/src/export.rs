@@ -6,13 +6,15 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, SortKey, build_export};
-use tablepro_core::column::ResultColumn;
+use tablepro_core::column::{ColumnKind, ColumnType, ResultColumn};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::edit::parse_filter_text;
 use tablepro_core::export::{
     CsvEncoder, CsvOptions, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder,
     SqlInsertEncoder, XLSX_MAX_DATA_ROWS, XlsxSheetWriter, XmlEncoder,
 };
 use tablepro_core::filter::FilterSet;
+use tablepro_core::masking::{ColumnMasks, MaskingScope, MaskingSink};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::value::{JsonText, OtherValue, UndecodableReason, UndecodedValue};
 use tablepro_core::{ColumnInfo, ReadStatement, ResultEvent, ResultSink, SinkFlow, Truncation, Value};
@@ -93,6 +95,9 @@ impl DatabaseSession {
             let held = rows.result_columns();
             let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
             let columns: Arc<[ResultColumn]> = held.iter().take(visible).cloned().collect();
+            // Masked by the connection's rules, also for a tab the user revealed: a table's page by the table, a
+            // query's result by what each column reads.
+            let overlay = rows.shown_masks().overlay(&rows.external_masks(&columns));
             let part = Arc::new(PartFile::beside(target)?);
             let ending = Ending::default();
             let mut sink = FileSink::new(
@@ -102,7 +107,7 @@ impl DatabaseSession {
                 tasks.clone(),
                 ending.clone(),
             );
-            let fed = feed(&mut sink, &rows, &columns, &cancel).await;
+            let fed = feed(&mut sink, &rows, &columns, &overlay, &cancel).await;
             drop(sink);
             settle(part, &tasks, &ending, fed).await
         })
@@ -143,6 +148,10 @@ impl DatabaseSession {
                 title: title(Some(&table), &target),
                 insert: (format == ExportFormatTag::SqlInsert).then(|| InsertTarget::of(&table, &columns)),
             };
+            let masking = MaskingScope::External {
+                table: Some(tablepro_core::masking::table_name(&table)),
+            };
+            let policy = session.masking_policy();
             let read = Arc::new(TableRead {
                 table,
                 columns,
@@ -162,9 +171,11 @@ impl DatabaseSession {
                         tasks.clone(),
                         ending.clone(),
                     );
+                    // After the declared precision, so a mask reads the value as the file would have held it.
+                    let sink = MaskingSink::wrap(Box::new(sink), policy.clone(), masking.clone());
                     async move {
                         let statement = build_export(&*lease.dialect(), &read.request())?;
-                        let sink = DeclaredPrecisionSink::new(Box::new(sink), read.columns.clone());
+                        let sink = DeclaredPrecisionSink::new(sink, read.columns.clone());
                         Ok(lease
                             .stream_read(&ReadStatement::Generated(statement), Box::new(sink), options)
                             .await?)
@@ -440,6 +451,7 @@ async fn feed(
     sink: &mut FileSink,
     set: &ResultSet,
     columns: &Arc<[ResultColumn]>,
+    overlay: &ColumnMasks,
     cancel: &CancellationToken,
 ) -> Result<(), CoreError> {
     let total = set.row_count();
@@ -455,7 +467,8 @@ async fn feed(
             return Err(CoreError::Cancelled);
         }
         let end = total.min(next + ROWS_PER_BATCH);
-        let batch = (next..end).map(|row| held_row(set, row, columns)).collect();
+        let mut batch: Vec<Vec<Value>> = (next..end).map(|row| held_row(set, row, columns)).collect();
+        overlay.apply_rows(columns, &mut batch);
         if sink.accept(ResultEvent::Rows(batch)).await == SinkFlow::ConsumerGone {
             return Ok(());
         }
@@ -482,7 +495,7 @@ pub(crate) fn held_row(set: &ResultSet, row: u64, columns: &[ResultColumn]) -> V
 }
 
 // The value where the store kept it exactly, else read back from the text the core's export wrote for it on arrival.
-fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) -> Value {
+pub(crate) fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) -> Value {
     if let Some(value) = set.stored_value(row, index) {
         return value;
     }
@@ -502,12 +515,47 @@ fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) ->
             Ok(json) => Value::Json(json),
             Err(_) => other(text),
         },
+        Some(ValueKind::Array) => array_value(&text, &column.column_type).unwrap_or_else(|| other(text)),
         // Refused by every encoder, as a streamed export refuses it.
         Some(ValueKind::Undecodable) => Value::Undecodable(Box::new(UndecodedValue {
             type_name: column.column_type.name.clone(),
             reason: UndecodableReason::UnsupportedType,
         })),
         _ => other(text),
+    }
+}
+
+// The store keeps an array as JSON whose items are each element's text (`value_text`), so each is read back by the
+// element's kind: a number stays a number and a binary value its bytes, as a streamed read gives them.
+fn array_value(text: &str, column: &ColumnType) -> Option<Value> {
+    items(&serde_json::from_str(text).ok()?, &element_of(column))
+}
+
+fn items(json: &serde_json::Value, element: &ColumnType) -> Option<Value> {
+    let serde_json::Value::Array(list) = json else {
+        return None;
+    };
+    list.iter()
+        .map(|item| match item {
+            serde_json::Value::Null => Some(Value::Null),
+            serde_json::Value::String(text) => {
+                Some(parse_filter_text(text, element).unwrap_or_else(|_| Value::Text(text.clone())))
+            }
+            // An inner dimension, which a declared kind such as PostgreSQL's int4[][] does not name again.
+            serde_json::Value::Array(_) => items(item, &element_of(element)),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(Value::Array)
+}
+
+fn element_of(column: &ColumnType) -> ColumnType {
+    match &column.kind {
+        ColumnKind::Array { element } => ColumnType {
+            kind: (**element).clone(),
+            ..column.clone()
+        },
+        _ => column.clone(),
     }
 }
 
@@ -659,4 +707,140 @@ fn file_gone() -> CoreError {
 
 fn not_connected() -> CoreError {
     CoreError::failed("ffi.not_connected", "the session has no connection")
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::column::{IntegerKind, IntegerWidth, ReadForm, TextLength};
+    use tablepro_core::export::{ResultExtent, build_snapshot};
+
+    use super::*;
+    use crate::results::ResultStore;
+
+    fn array_of(name: &str, element: ColumnKind) -> ResultColumn {
+        ResultColumn::new(
+            name,
+            ColumnType {
+                name: format!("{name}[]"),
+                kind: ColumnKind::Array {
+                    element: Box::new(element),
+                },
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
+        )
+    }
+
+    fn bigint() -> ColumnKind {
+        ColumnKind::Integer(IntegerKind {
+            width: IntegerWidth::W64,
+            signed: true,
+        })
+    }
+
+    // A held row of one masked column, `email`, holding ann's address and NULL.
+    fn masked_set(style: Option<tablepro_core::masking::MaskingStyle>) -> ResultSet {
+        use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingTarget, SharedMaskingPolicy};
+
+        use crate::results::GridMasking;
+
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("email", ColumnType::untyped_text("text"))].into();
+        let rules = style.map(|style| MaskingRule::new("email", MaskingTarget::Column, style));
+        let store = Arc::new(ResultStore::with_masking(
+            columns,
+            Some(GridMasking {
+                policy: SharedMaskingPolicy::new(MaskingPolicy::new(rules)),
+                named_table: None,
+                own_table: None,
+                visible: None,
+                revealed: false,
+            }),
+        ));
+        store.append(&[vec![Value::Text("ann@example.com".to_owned())], vec![Value::Null]]);
+        store.finish();
+        ResultSet::new(0, store)
+    }
+
+    #[test]
+    fn a_null_in_a_masked_column_reads_back_as_null_under_every_style() {
+        use tablepro_core::masking::MaskingStyle;
+
+        for style in MaskingStyle::ALL {
+            let set = masked_set(Some(style));
+            let columns = set.result_columns();
+
+            assert_eq!(held_row(&set, 1, &columns), [Value::Null], "{style:?}");
+            let first = held_row(&set, 0, &columns);
+            assert_ne!(
+                first,
+                [Value::Text("ann@example.com".to_owned())],
+                "{style:?} showed the value"
+            );
+        }
+    }
+
+    #[test]
+    fn a_null_stays_null_under_an_overlay_laid_on_held_rows() {
+        use tablepro_core::masking::{ColumnMasks, MaskingStyle};
+
+        let shown = masked_set(Some(MaskingStyle::Email));
+        let plain = masked_set(None);
+        for (set, external) in [(&shown, MaskingStyle::LastFour), (&plain, MaskingStyle::Full)] {
+            let columns = set.result_columns();
+            let overlay = set.shown_masks().overlay(&ColumnMasks::new(vec![Some(external)]));
+            let mut rows = vec![held_row(set, 0, &columns), held_row(set, 1, &columns)];
+
+            overlay.apply_rows(&columns, &mut rows);
+
+            assert_eq!(rows[0], [Value::Text("••••".to_owned())], "{external:?}");
+            assert_eq!(rows[1], [Value::Null], "{external:?}");
+        }
+    }
+
+    #[test]
+    fn an_array_comes_back_element_by_element_as_a_streamed_read_gives_it() {
+        let columns: Arc<[ResultColumn]> = vec![
+            array_of("ids", bigint()),
+            array_of(
+                "blobs",
+                ColumnKind::Bytes {
+                    length: TextLength::Unbounded,
+                },
+            ),
+            array_of("grid", bigint()),
+        ]
+        .into();
+        let row = vec![
+            Value::Array(vec![Value::Int(1), Value::Int(9_007_199_254_740_993), Value::Null]),
+            Value::Array(vec![Value::Bytes(vec![0xca, 0xfe])]),
+            Value::Array(vec![
+                Value::Array(vec![Value::Int(1), Value::Int(2)]),
+                Value::Array(vec![Value::Int(3), Value::Int(4)]),
+            ]),
+        ];
+        let store = Arc::new(ResultStore::new(columns.clone()));
+        store.append(std::slice::from_ref(&row));
+        store.finish();
+        let set = ResultSet::new(0, store);
+
+        let held = held_row(&set, 0, &columns);
+        let snapshot = build_snapshot(&columns, [held.clone()], ResultExtent::complete(1), 10).expect("a snapshot");
+
+        assert_eq!(held, row);
+        let cells: Vec<&str> = snapshot.rows[0].iter().map(|cell| cell.get()).collect();
+        assert_eq!(
+            cells,
+            ["[1,9007199254740993,null]", r#"["(binary, 2 bytes)"]"#, "[[1,2],[3,4]]"]
+        );
+    }
+
+    #[test]
+    fn an_array_whose_text_does_not_read_back_stays_its_text() {
+        let column = array_of("odd", bigint());
+
+        let value = array_value("{1,2,3}", &column.column_type);
+
+        assert_eq!(value, None);
+    }
 }

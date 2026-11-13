@@ -184,6 +184,7 @@ fn record(name: &str, driver_id: &str, database: &str) -> ConnectionRecord {
         ssh: None,
         safe_mode: SafeModeTag::Off,
         query_timeout_secs: None,
+        masking_rules: Vec::new(),
         color: None,
         group_id: None,
         last_opened_ms: None,
@@ -212,6 +213,7 @@ async fn sqlite_file(core: &Core, path: &Path) {
     let run = editor.run(
         "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)".to_owned(),
         RunSettings::default(),
+        false,
         Box::new(Quiet),
     );
     assert!(matches!(run.outcome().await.unwrap(), RunOutcome::Completed { .. }));
@@ -567,6 +569,7 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
             None,
             100,
             0,
+            false,
             Box::new(Quiet),
             None,
         )

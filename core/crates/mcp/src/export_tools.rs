@@ -5,6 +5,7 @@ use serde::Serialize;
 use tablepro_core::browse::{ExportFields, ExportRequest, build_export};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::{CsvOptions, render_csv, render_json, render_sql_insert};
+use tablepro_core::masking::MaskingPolicy;
 use tablepro_core::{ColumnInfo, ReadStatement, TableRef, Value};
 use tablepro_session::Session;
 use tokio_util::sync::CancellationToken;
@@ -12,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 use crate::browse_request::filter_set;
 use crate::collected_results::{Keep, MAX_ANSWER_BYTES};
 use crate::connection_tools::to_json;
-use crate::query_tools::{DEFAULT_TIMEOUT_SECONDS, row_limit, stream, table_shape};
+use crate::query_tools::{DEFAULT_TIMEOUT_SECONDS, Masking, row_limit, stream, table_shape};
 use crate::tool_args::{ExportArgs, ExportFormat};
 use crate::tool_context::ToolContext;
 use crate::tool_error::ToolError;
@@ -59,13 +60,14 @@ pub async fn export_data(
         .held_session(&connection, args.database.as_deref(), &cancel)
         .await?
         .session;
+    let policy = connection.masking_policy();
     let mut exports = Vec::with_capacity(args.tables.len());
     let (mut undecodable, mut size_limited, mut spent) = (false, false, 0_usize);
     for name in args.tables {
         let table = TableRef::new(args.schema.clone(), name);
         // Every table of the call shares one answer, so each gets what the ones before it left.
         let keep = Keep::export(limit, MAX_ANSWER_BYTES.saturating_sub(spent));
-        let (export, read) = export_table(&session, table, args.format, keep, &cancel).await?;
+        let (export, read) = export_table(&session, table, args.format, keep, &policy, &cancel).await?;
         exports.push(export);
         undecodable |= read.undecodable;
         size_limited |= read.size_limited;
@@ -100,6 +102,7 @@ async fn export_table(
     table: TableRef,
     format: ExportFormat,
     keep: Keep,
+    policy: &MaskingPolicy,
     cancel: &CancellationToken,
 ) -> Result<(TableExport, TableRead), ToolError> {
     let (columns, identity) = table_shape(session, &table, cancel).await?;
@@ -107,12 +110,14 @@ async fn export_table(
     let filter = filter_set(&[], None)?;
     let read_table = table.clone();
     let read_catalog = catalog.clone();
+    let masking = Masking::table(policy, session, &table).await;
     let mut collected = stream(
         session,
         keep,
         Duration::from_secs(u64::from(DEFAULT_TIMEOUT_SECONDS)),
         cancel,
         Some(catalog.clone()),
+        masking,
         move |lease| {
             let request = ExportRequest {
                 table: &read_table,

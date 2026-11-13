@@ -2,13 +2,19 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use secrecy::SecretString;
-use tablepro_account::{CreatedShare, Share, ShareExpiry, ShareKind, ShareLimits, SharePage, ShareRequest, SharedLink};
+use tablepro_account::{
+    CreatedShare, MAX_SHARE_COLUMNS, Share, ShareExpiry, ShareKind, ShareLimits, SharePage, ShareRequest, ShareTeam,
+    SharedLink,
+};
+use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::export::{Snapshot, build_snapshot};
+use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot};
+use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
 
 use super::account_service::AccountService;
 use crate::error::CoreError;
-use crate::export::held_row;
+use crate::export::held_value;
+use crate::masking::ShareColumnChoice;
 use crate::results::ResultSet;
 use crate::runtime::on_runtime;
 
@@ -34,6 +40,8 @@ pub struct ShareLimitsInfo {
     pub live: u64,
     pub live_limit: u64,
     pub max_rows: u64,
+    // A result with more visible columns shares the first ones, on every plan.
+    pub max_columns: u64,
     pub expiries: Vec<ShareExpiryTag>,
     pub default_expiry: Option<ShareExpiryTag>,
     pub password: bool,
@@ -41,6 +49,18 @@ pub struct ShareLimitsInfo {
     pub team: bool,
     pub email_verified: bool,
     pub sharing_disabled: bool,
+    // The teams the account holds a seat in, for a team link; empty on Free.
+    pub teams: Vec<ShareTeamInfo>,
+}
+
+// A team link counts against the team's own `live_limit`. `public_links` false: the team turned them off.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ShareTeamInfo {
+    pub id: String,
+    pub name: String,
+    pub live: u64,
+    pub live_limit: u64,
+    pub public_links: bool,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -79,6 +99,9 @@ pub struct ShareInfo {
     pub has_password: bool,
     pub state: String,
     pub removed_reason: Option<String>,
+    // The link does not resolve until its switch is on again; `suspended_by` is account, team or team_deleted.
+    pub suspended: bool,
+    pub suspended_by: Option<String>,
     pub view_count: u64,
     pub created_at_secs: i64,
     pub updated_at_secs: i64,
@@ -86,16 +109,14 @@ pub struct ShareInfo {
     pub revoked_at_secs: Option<i64>,
     pub removed_at_secs: Option<i64>,
     pub url: Option<String>,
-    // The team or staff turned sharing off: the state stays, the link does not resolve and has no url.
-    pub suspended: bool,
-    // "account", "team" or "team_deleted" while suspended.
-    pub suspended_by: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct CreatedShareInfo {
     pub share: ShareInfo,
     pub url: String,
+    // Only the first `max_columns` of the visible columns were shared.
+    pub columns_truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -130,6 +151,8 @@ impl AccountService {
     // A result share takes the set's first `visible_columns` columns and its first `max_rows` rows, the plan's
     // limit from `share_limits`; the set must have all its rows. A query share takes no set. For a table page, the
     // SQL is the page's `view_sql` and `total_rows` what `table_row_count` counts, since the set holds one page.
+    // `columns` is the sheet's choice for each visible column, in order, Keep for any it leaves out; the connection's
+    // rules mask on top of them, also for a tab the user revealed.
     pub async fn create_share(
         &self,
         request: ShareRequestArg,
@@ -137,12 +160,13 @@ impl AccountService {
         visible_columns: u32,
         max_rows: u32,
         total_rows: Option<u64>,
+        columns: Vec<ShareColumnChoice>,
     ) -> Result<CreatedShareInfo, CoreError> {
         let account = self.account.clone();
         let tasks = self.tasks.clone();
         on_runtime(&self.tasks, async move {
-            let snapshot = match (request.kind, result) {
-                (ShareKindTag::Query, _) => None,
+            let (snapshot, cut) = match (request.kind, result) {
+                (ShareKindTag::Query, _) => (None, false),
                 (ShareKindTag::Result, None) => {
                     return Err(CoreError::failed(
                         "ffi.share_needs_result",
@@ -150,24 +174,34 @@ impl AccountService {
                     ));
                 }
                 (ShareKindTag::Result, Some(set)) => {
-                    let built = tasks
-                        .spawn_blocking_task(move || snapshot_of(&set, visible_columns, max_rows, total_rows))
+                    let (built, cut) = tasks
+                        .spawn_blocking_task(move || snapshot_of(&set, visible_columns, max_rows, total_rows, &columns))
                         .await
                         .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
-                    Some(built)
+                    (Some(built), cut)
                 }
             };
             let created = account.create_share(share_request(request, snapshot)).await?;
-            Ok(created.into())
+            let mut info = CreatedShareInfo::from(created);
+            info.columns_truncated |= cut;
+            Ok(info)
         })
         .await
     }
 
-    // The account's own links, newest first, without their SQL.
-    pub async fn list_shares(&self, live_only: bool, cursor: Option<String>) -> Result<SharePageInfo, CoreError> {
+    // The account's own links, or with `team_id` a team's, newest first, without their SQL.
+    pub async fn list_shares(
+        &self,
+        live_only: bool,
+        team_id: Option<String>,
+        cursor: Option<String>,
+    ) -> Result<SharePageInfo, CoreError> {
         let account = self.account.clone();
         on_runtime(&self.tasks, async move {
-            Ok(account.list_shares(live_only, cursor.as_deref()).await?.into())
+            let page = account
+                .list_shares(live_only, team_id.as_deref(), cursor.as_deref())
+                .await?;
+            Ok(page.into())
         })
         .await
     }
@@ -204,29 +238,91 @@ impl AccountService {
     }
 }
 
+// Also whether columns past the server's cap were left out. A removed column is never read; a masked one leaves
+// masked, and the snapshot says how.
 fn snapshot_of(
     set: &ResultSet,
     visible_columns: u32,
     max_rows: u32,
     total_rows: Option<u64>,
-) -> Result<Snapshot, CoreError> {
+    choices: &[ShareColumnChoice],
+) -> Result<(Snapshot, bool), CoreError> {
     // A set still reading would share the rows held so far as if they were all of them.
     if !set.is_finished() {
         return Err(CoreError::failed("ffi.share_unfinished", "the rows are still arriving"));
     }
-    let held = set.result_columns();
-    let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
-    let columns: Vec<ResultColumn> = held.iter().take(visible).cloned().collect();
-    let held = set.row_count();
-    let taken = held.min(u64::from(max_rows));
-    let rows = (0..taken).map(|row| held_row(set, row, &columns));
-    let total = total_rows.map_or(held, |total| total.max(held));
-    Ok(build_snapshot(
-        &columns,
+    let (visible, plan) = share_plan(set, visible_columns, choices);
+    let ended = set.extent();
+    let rows = (0..ended.held).map(|row| sent_row(set, &visible, &plan, row));
+    // A count the app made of a table view outranks what the page's own read knew.
+    let extent = ResultExtent {
+        total: total_rows.or(ended.total),
+        ..ended
+    };
+    let mut snapshot = build_snapshot(
+        &plan.columns(&visible),
         rows,
-        total,
+        extent,
         usize::try_from(max_rows).unwrap_or(usize::MAX),
-    ))
+    )
+    .map_err(too_large)?;
+    for (column, style) in snapshot.columns.iter_mut().zip(plan.masked()) {
+        column.masked = style;
+    }
+    Ok((snapshot, plan.columns_cut()))
+}
+
+// How many rows a share of `max_rows` sends with `plan`: the prefix the snapshot keeps under the plan's rows and its
+// body budget, masked values weighed, so detection and the preview read the same rows the snapshot sends.
+pub(crate) fn rows_sent(
+    set: &ResultSet,
+    visible: &[ResultColumn],
+    plan: &SharePlan,
+    max_rows: u32,
+) -> Result<u64, CoreError> {
+    let summary = summary_of(set, visible, plan, max_rows);
+    match summary.too_large {
+        Some(refused) => Err(too_large(refused)),
+        None => Ok(summary.rows_sent as u64),
+    }
+}
+
+pub(crate) fn summary_of(set: &ResultSet, visible: &[ResultColumn], plan: &SharePlan, max_rows: u32) -> ShareSummary {
+    plan.summary(
+        visible,
+        usize::try_from(set.extent().held).unwrap_or(usize::MAX),
+        |row, index| held_value(set, row as u64, index, &visible[index]),
+        usize::try_from(max_rows).unwrap_or(usize::MAX),
+    )
+}
+
+pub(crate) fn sent_row(set: &ResultSet, visible: &[ResultColumn], plan: &SharePlan, row: u64) -> Vec<Value> {
+    plan.row(visible, |index| held_value(set, row, index, &visible[index]))
+}
+
+// Worded as the server's own refusal of a body too large, which every app already words.
+fn too_large(error: SnapshotTooLarge) -> CoreError {
+    CoreError::failed("account.snapshot_too_large", error.to_string())
+}
+
+// The set's first `visible_columns` columns and how a share sends them, by the connection's rules and the sheet.
+pub(crate) fn share_plan(
+    set: &ResultSet,
+    visible_columns: u32,
+    choices: &[ShareColumnChoice],
+) -> (Vec<ResultColumn>, SharePlan) {
+    let held = set.result_columns();
+    let count = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
+    let visible: Vec<ResultColumn> = held[..count].to_vec();
+    let choices: Vec<ShareChoice> = choices.iter().copied().map(ShareChoice::from).collect();
+    let plan = SharePlan::new(
+        count,
+        &set.external_masks(&visible),
+        &set.shown_masks(),
+        &choices,
+        MAX_SHARE_COLUMNS,
+    );
+    (visible, plan)
 }
 
 fn share_request(request: ShareRequestArg, snapshot: Option<Snapshot>) -> ShareRequest {
@@ -277,6 +373,7 @@ impl From<ShareLimits> for ShareLimitsInfo {
             live: limits.live,
             live_limit: limits.live_limit,
             max_rows: limits.max_rows,
+            max_columns: limits.max_columns,
             expiries: limits.expiries.into_iter().map(ShareExpiryTag::from).collect(),
             default_expiry: limits.default_expiry.map(ShareExpiryTag::from),
             password: limits.password,
@@ -284,6 +381,19 @@ impl From<ShareLimits> for ShareLimitsInfo {
             team: limits.team,
             email_verified: limits.email_verified,
             sharing_disabled: limits.sharing_disabled,
+            teams: limits.teams.into_iter().map(ShareTeamInfo::from).collect(),
+        }
+    }
+}
+
+impl From<ShareTeam> for ShareTeamInfo {
+    fn from(team: ShareTeam) -> Self {
+        Self {
+            id: team.id,
+            name: team.name,
+            live: team.live,
+            live_limit: team.live_limit,
+            public_links: team.public_links,
         }
     }
 }
@@ -307,6 +417,8 @@ impl From<Share> for ShareInfo {
             has_password: share.has_password,
             state: share.state,
             removed_reason: share.removed_reason,
+            suspended: share.suspended,
+            suspended_by: share.suspended_by,
             view_count: share.view_count,
             created_at_secs: seconds(share.created_at),
             updated_at_secs: seconds(share.updated_at),
@@ -314,8 +426,6 @@ impl From<Share> for ShareInfo {
             revoked_at_secs: share.revoked_at.map(seconds),
             removed_at_secs: share.removed_at.map(seconds),
             url: share.url,
-            suspended: share.suspended,
-            suspended_by: share.suspended_by,
         }
     }
 }
@@ -325,6 +435,7 @@ impl From<CreatedShare> for CreatedShareInfo {
         Self {
             share: created.share.into(),
             url: created.url,
+            columns_truncated: created.columns_truncated,
         }
     }
 }
@@ -368,5 +479,186 @@ impl std::fmt::Debug for ShareRequestArg {
             .field("allow_download", &self.allow_download)
             .field("has_password", &self.password.is_some())
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::column::{ColumnOrigin, ColumnType};
+    use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget, SharedMaskingPolicy};
+    use tablepro_core::meta::TableRef;
+    use tablepro_core::{Truncation, Value};
+
+    use super::*;
+    use crate::masking::MaskStyleTag;
+    use crate::results::{GridMasking, ResultStore};
+
+    fn cut_set() -> ResultSet {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("int"))].into();
+        let store = Arc::new(ResultStore::new(columns));
+        store.append(&[vec![Value::Int(1)], vec![Value::Int(2)]]);
+        store.finish_as(None, Truncation::ReadPastLimit);
+        ResultSet::new(0, store)
+    }
+
+    #[test]
+    fn a_set_cut_with_no_count_shares_that_more_rows_exist() {
+        let (uncounted, _) = snapshot_of(&cut_set(), 1, 1_000, None, &[]).unwrap();
+        let (counted, _) = snapshot_of(&cut_set(), 1, 1_000, Some(48_210), &[]).unwrap();
+
+        assert_eq!((uncounted.row_count, uncounted.more_rows), (None, true));
+        assert_eq!(uncounted.rows.len(), 2);
+        assert_eq!((counted.row_count, counted.more_rows), (Some(48_210), false));
+    }
+
+    fn traced(name: &str, source: &str) -> ResultColumn {
+        ResultColumn::new(name, ColumnType::untyped_text("text"))
+            .with_origin(Some(ColumnOrigin::new(TableRef::unqualified("users"), source)))
+    }
+
+    // users.email masked as Email, read by `SELECT id, email, phone, notes FROM users`.
+    fn ruled_set(revealed: bool) -> ResultSet {
+        let columns: Arc<[ResultColumn]> = vec![
+            traced("id", "id"),
+            traced("email", "email"),
+            traced("phone", "phone"),
+            traced("notes", "notes"),
+        ]
+        .into();
+        let policy = MaskingPolicy::new([MaskingRule::new(
+            "users.email",
+            MaskingTarget::Column,
+            MaskingStyle::Email,
+        )]);
+        let masking = GridMasking {
+            policy: SharedMaskingPolicy::new(policy),
+            named_table: Some("users".to_owned()),
+            own_table: None,
+            visible: None,
+            revealed,
+        };
+        let store = Arc::new(ResultStore::with_masking(columns, Some(masking)));
+        let text = |value: &str| Value::Text(value.to_owned());
+        store.append(&[vec![
+            text("1"),
+            text("ann@example.com"),
+            text("+1 555 0100"),
+            text("vip"),
+        ]]);
+        store.finish();
+        ResultSet::new(0, store)
+    }
+
+    fn cells(snapshot: &Snapshot) -> Vec<&str> {
+        snapshot.rows[0].iter().map(|cell| cell.get()).collect()
+    }
+
+    #[test]
+    fn a_rule_masks_the_share_also_when_the_tab_revealed_its_rows() {
+        for revealed in [false, true] {
+            let (snapshot, _) = snapshot_of(&ruled_set(revealed), 4, 10, None, &[]).unwrap();
+
+            assert_eq!(
+                cells(&snapshot),
+                [r#""1""#, r#""a•••@example.com""#, r#""+1 555 0100""#, r#""vip""#],
+                "revealed {revealed}"
+            );
+            let masked: Vec<Option<MaskingStyle>> = snapshot.columns.iter().map(|column| column.masked).collect();
+            assert_eq!(masked, [None, Some(MaskingStyle::Email), None, None]);
+        }
+    }
+
+    #[test]
+    fn the_sheet_masks_and_removes_columns_and_never_keeps_a_ruled_one() {
+        let mask = |style| ShareColumnChoice::Mask { style };
+        let choices = [
+            ShareColumnChoice::Remove,
+            ShareColumnChoice::Keep,
+            mask(MaskStyleTag::LastFour),
+            mask(MaskStyleTag::Null),
+        ];
+
+        let (snapshot, cut) = snapshot_of(&ruled_set(true), 4, 10, None, &choices).unwrap();
+
+        let names: Vec<&str> = snapshot.columns.iter().map(|column| column.name.as_str()).collect();
+        assert_eq!(names, ["email", "phone", "notes"]);
+        assert_eq!(cells(&snapshot), [r#""a•••@example.com""#, r#""••••0100""#, "null"]);
+        let masked: Vec<Option<MaskingStyle>> = snapshot.columns.iter().map(|column| column.masked).collect();
+        assert_eq!(
+            masked,
+            [
+                Some(MaskingStyle::Email),
+                Some(MaskingStyle::LastFour),
+                Some(MaskingStyle::Null)
+            ]
+        );
+        assert!(!cut);
+    }
+
+    #[test]
+    fn a_style_that_shows_what_the_rule_hides_leaves_as_full() {
+        let choices = [
+            ShareColumnChoice::Keep,
+            ShareColumnChoice::Mask {
+                style: MaskStyleTag::LastFour,
+            },
+        ];
+
+        let (snapshot, _) = snapshot_of(&ruled_set(false), 2, 10, None, &choices).unwrap();
+
+        assert_eq!(cells(&snapshot), [r#""1""#, r#""••••""#]);
+        assert_eq!(snapshot.columns[1].masked, Some(MaskingStyle::Full));
+    }
+
+    fn notes(rows: usize, chars: usize) -> Arc<ResultSet> {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("note", ColumnType::untyped_text("text"))].into();
+        let store = Arc::new(ResultStore::new(columns));
+        let held: Vec<Vec<Value>> = (0..rows).map(|_| vec![Value::Text("x".repeat(chars))]).collect();
+        store.append(&held);
+        store.finish();
+        Arc::new(ResultSet::new(0, store))
+    }
+
+    #[test]
+    fn a_big_share_is_cut_at_the_budget_and_the_preview_keeps_the_same_rows() {
+        // 32 bytes of header, then 200,005 a row: 22 rows fit in 4,500,000.
+        let set = notes(30, 200_000);
+        let full = [ShareColumnChoice::Mask {
+            style: MaskStyleTag::Full,
+        }];
+
+        let (snapshot, _) = snapshot_of(&set, 1, 1_000, None, &[]).unwrap();
+        let preview = crate::masking::share_preview(&set, 1, 1_000, &[]).unwrap();
+        let (masked, _) = snapshot_of(&set, 1, 1_000, None, &full).unwrap();
+
+        let summary = crate::masking::share_summary(&set, 1, 1_000, &[]).unwrap();
+        assert_eq!(snapshot.rows.len(), 22);
+        assert_eq!(summary.rows_sent, snapshot.rows.len() as u64);
+        assert_eq!(
+            (summary.columns_sent, summary.columns_truncated, summary.too_large),
+            (1, false, None)
+        );
+        assert_eq!(snapshot.row_count, Some(30), "the server would not mark the share cut");
+        assert_eq!(preview.row_count(), 22);
+        assert_eq!(masked.rows.len(), 30, "masked text was not what was weighed");
+    }
+
+    #[test]
+    fn a_share_that_cannot_go_even_cut_is_refused_as_too_large() {
+        let over = snapshot_of(&notes(1, 300_000), 1, 1_000, None, &[]).err().unwrap();
+        let preview = crate::masking::share_preview(&notes(1, 300_000), 1, 1_000, &[])
+            .err()
+            .unwrap();
+
+        let summary = crate::masking::share_summary(&notes(1, 300_000), 1, 1_000, &[]).unwrap();
+        assert_eq!(over.code(), "account.snapshot_too_large");
+        assert_eq!(summary.rows_sent, 0);
+        assert_eq!(
+            summary.too_large,
+            Some(crate::masking::SnapshotTooLargeReason::Cell {
+                column: "note".to_owned()
+            })
+        );
+        assert_eq!(preview.code(), "account.snapshot_too_large");
     }
 }

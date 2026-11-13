@@ -66,7 +66,7 @@ fn table(name: &str) -> TableName {
 
 async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
     let editor = session.open_editor(None).await.unwrap();
-    let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
+    let run = editor.run(sql.to_owned(), RunSettings::default(), false, Box::new(Quiet));
     let outcome = run.outcome().await.unwrap();
     assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
     let set = run.result_set(0);
@@ -186,7 +186,7 @@ async fn a_page_exports_only_its_visible_columns() {
     )
     .await;
     let page = session
-        .read_table_page(table("notes"), None, None, 100, 0, Box::new(Quiet), None)
+        .read_table_page(table("notes"), None, None, 100, 0, false, Box::new(Quiet), None)
         .await
         .unwrap();
     let read = page.run();
@@ -381,6 +381,7 @@ async fn rows_still_arriving_are_not_exported() {
     let run = editor.run(
         "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT x FROM c".to_owned(),
         settings,
+        false,
         Box::new(Quiet),
     );
     let started = Instant::now();

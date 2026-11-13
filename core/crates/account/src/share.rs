@@ -6,6 +6,10 @@ use tablepro_core::export::Snapshot;
 
 use crate::cloud_api::v2::types;
 
+// The server's caps on a snapshot's columns: more columns or a longer name is refused, so the rest are left out.
+pub const MAX_SHARE_COLUMNS: usize = 100;
+const COLUMN_NAME_CHARACTERS: usize = 256;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShareKind {
     Query,
@@ -54,6 +58,8 @@ pub struct ShareLimits {
     pub live: u64,
     pub live_limit: u64,
     pub max_rows: u64,
+    // The same on every plan; a result with more shares the first ones.
+    pub max_columns: u64,
     // An expiry this build does not know is left out.
     pub expiries: Vec<ShareExpiry>,
     pub default_expiry: Option<ShareExpiry>,
@@ -62,9 +68,28 @@ pub struct ShareLimits {
     pub team: bool,
     pub email_verified: bool,
     pub sharing_disabled: bool,
+    // The teams the account holds a seat in, for a team link; empty on Free.
+    pub teams: Vec<ShareTeam>,
+}
+
+// A team link counts against the team's own limit, never the account's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareTeam {
+    pub id: String,
+    pub name: String,
+    pub live: u64,
+    pub live_limit: u64,
+    // False: the team turned public links off, and a team link answers team_sharing_disabled.
+    pub public_links: bool,
 }
 
 impl ShareLimits {
+    pub fn at_limit(&self) -> bool {
+        self.live >= self.live_limit
+    }
+}
+
+impl ShareTeam {
     pub fn at_limit(&self) -> bool {
         self.live >= self.live_limit
     }
@@ -109,6 +134,10 @@ pub struct Share {
     pub has_password: bool,
     pub state: String,
     pub removed_reason: Option<String>,
+    // A team turned public links off, staff turned the creator's sharing off, or the team was deleted: the link
+    // does not resolve until the switch is on again. `suspended_by` is account, team or team_deleted.
+    pub suspended: bool,
+    pub suspended_by: Option<String>,
     pub view_count: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -116,10 +145,6 @@ pub struct Share {
     pub revoked_at: Option<DateTime<Utc>>,
     pub removed_at: Option<DateTime<Utc>>,
     pub url: Option<String>,
-    // The team or staff turned sharing off: the state stays, the link does not resolve and has no url.
-    pub suspended: bool,
-    // "account", "team" or "team_deleted" while suspended.
-    pub suspended_by: Option<String>,
 }
 
 impl Share {
@@ -132,6 +157,8 @@ impl Share {
 pub struct CreatedShare {
     pub share: Share,
     pub url: String,
+    // The result had more than `MAX_SHARE_COLUMNS` columns, and only the first ones were shared.
+    pub columns_truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,7 +174,7 @@ pub struct SharedLink {
     pub title: String,
     pub note: String,
     pub dialect: String,
-    // None when the owner hid it, or a result was shared with no SQL.
+    // None when the owner hid it.
     pub sql: Option<String>,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -164,6 +191,10 @@ pub struct SnapshotBody {
     pub rows: Vec<Vec<Box<RawValue>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row_count: Option<i64>,
+    // Rows exist beyond those sent and nobody counted them; the viewer then says so rather than read the rows as
+    // the whole result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub more_rows: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -171,25 +202,39 @@ pub struct SnapshotColumnBody {
     pub name: String,
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_name: Option<String>,
+    // The document's ShareMaskStyle: how the app masked the column's values before they left it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub masked: Option<String>,
 }
 
-// The document's maxLength for a column's name and its type.
-const COLUMN_TEXT_CHARACTERS: usize = 256;
+// The document's maxLength for a column's type.
+const COLUMN_TYPE_CHARACTERS: usize = 256;
 
+// Only the first `MAX_SHARE_COLUMNS` columns, and each row's cells for them.
 impl From<Snapshot> for SnapshotBody {
     fn from(snapshot: Snapshot) -> Self {
         Self {
             columns: snapshot
                 .columns
                 .into_iter()
+                .take(MAX_SHARE_COLUMNS)
                 .map(|column| SnapshotColumnBody {
-                    name: column.name.chars().take(COLUMN_TEXT_CHARACTERS).collect(),
-                    type_name: Some(column.type_name.chars().take(COLUMN_TEXT_CHARACTERS).collect())
+                    name: column.name.chars().take(COLUMN_NAME_CHARACTERS).collect(),
+                    type_name: Some(column.type_name.chars().take(COLUMN_TYPE_CHARACTERS).collect())
                         .filter(|type_name: &String| !type_name.is_empty()),
+                    masked: column.masked.map(|style| style.code().to_owned()),
                 })
                 .collect(),
-            rows: snapshot.rows,
-            row_count: Some(i64::try_from(snapshot.row_count).unwrap_or(i64::MAX)),
+            rows: snapshot
+                .rows
+                .into_iter()
+                .map(|mut row| {
+                    row.truncate(MAX_SHARE_COLUMNS);
+                    row
+                })
+                .collect(),
+            row_count: snapshot.row_count.map(|count| i64::try_from(count).unwrap_or(i64::MAX)),
+            more_rows: snapshot.more_rows.then_some(true),
         }
     }
 }
@@ -198,7 +243,9 @@ impl From<Snapshot> for SnapshotBody {
 // app opens a link's SQL, so its rows are skipped rather than parsed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicSnapshot {
-    pub row_count: i64,
+    // None for a result cut with no count.
+    #[serde(default)]
+    pub row_count: Option<i64>,
     pub truncated: bool,
 }
 
@@ -209,6 +256,7 @@ impl From<types::ShareLimits> for ShareLimits {
             live: count(limits.live),
             live_limit: count(limits.live_limit),
             max_rows: count(limits.max_rows),
+            max_columns: MAX_SHARE_COLUMNS as u64,
             expiries: limits
                 .expiries
                 .iter()
@@ -220,6 +268,17 @@ impl From<types::ShareLimits> for ShareLimits {
             team: limits.team,
             email_verified: limits.email_verified,
             sharing_disabled: limits.sharing_disabled,
+            teams: limits
+                .teams
+                .into_iter()
+                .map(|team| ShareTeam {
+                    id: team.id,
+                    name: team.name,
+                    live: count(team.live),
+                    live_limit: count(team.live_limit),
+                    public_links: team.public_links,
+                })
+                .collect(),
         }
     }
 }
@@ -243,6 +302,8 @@ impl From<types::ShareView> for Share {
             has_password: view.has_password,
             state: view.state.to_string(),
             removed_reason: view.removed_reason.filter(|reason| !reason.is_empty()),
+            suspended: view.suspended,
+            suspended_by: view.suspended_by.filter(|by| view.suspended && !by.is_empty()),
             view_count: count(view.view_count),
             created_at: view.created_at,
             updated_at: view.updated_at,
@@ -250,8 +311,6 @@ impl From<types::ShareView> for Share {
             revoked_at: view.revoked_at,
             removed_at: view.removed_at,
             url: view.url.filter(|url| !url.is_empty()),
-            suspended: view.suspended,
-            suspended_by: view.suspended_by.filter(|by| !by.is_empty()),
         }
     }
 }
@@ -261,6 +320,7 @@ impl From<types::CreatedShare> for CreatedShare {
         Self {
             share: created.share.into(),
             url: created.url,
+            columns_truncated: false,
         }
     }
 }
@@ -281,11 +341,11 @@ impl From<types::PublicShare> for SharedLink {
             title: shared.title,
             note: shared.note,
             dialect: shared.dialect,
-            sql: shared.sql.filter(|sql| !sql.trim().is_empty()),
+            sql: shared.sql,
             created_at: shared.created_at,
             expires_at: shared.expires_at,
             allow_download: shared.allow_download,
-            row_count: shared.snapshot.map(|snapshot| count(snapshot.row_count)),
+            row_count: shared.snapshot.and_then(|snapshot| snapshot.row_count).map(count),
             truncated: shared.snapshot.map(|snapshot| snapshot.truncated),
         }
     }
@@ -294,4 +354,127 @@ impl From<types::PublicShare> for SharedLink {
 // A count the server sends as a signed integer, never below zero.
 fn count(number: i64) -> u64 {
     u64::try_from(number).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::column::{ColumnType, ResultColumn};
+    use tablepro_core::export::{ResultExtent, build_snapshot};
+    use tablepro_core::value::Value;
+
+    use super::*;
+
+    #[test]
+    fn a_snapshot_shares_its_first_100_columns_with_names_cut_to_the_server_s_length() {
+        let mut columns: Vec<ResultColumn> = (0..=MAX_SHARE_COLUMNS)
+            .map(|index| ResultColumn::new(format!("c{index}"), ColumnType::untyped_text("text")))
+            .collect();
+        columns[0].name = "n".repeat(300);
+        let row: Vec<Value> = (0..=MAX_SHARE_COLUMNS).map(|index| Value::Int(index as i64)).collect();
+
+        let body =
+            SnapshotBody::from(build_snapshot(&columns, [row], ResultExtent::complete(1), 10).expect("a snapshot"));
+
+        assert_eq!(body.columns.len(), MAX_SHARE_COLUMNS);
+        assert_eq!(body.columns[0].name.chars().count(), 256);
+        assert_eq!(body.columns[99].name, "c99");
+        assert_eq!(body.rows[0].len(), MAX_SHARE_COLUMNS);
+        assert_eq!(body.rows[0][99].get(), "99");
+    }
+
+    fn view(suspended: bool, by: &str) -> Share {
+        let json = format!(
+            r#"{{"id":"shr_01","kind":"query","scope":"team","team_id":"team_01","title":"","note":"","dialect":"",
+            "has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live",
+            "suspended":{suspended},"suspended_by":"{by}","view_count":0,
+            "created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z"}}"#
+        );
+        serde_json::from_str::<types::ShareView>(&json).expect("a share").into()
+    }
+
+    #[test]
+    fn a_masked_column_names_its_style_and_an_unmasked_one_sends_none() {
+        use tablepro_core::masking::MaskingStyle;
+
+        let columns = [
+            ResultColumn::new("email", ColumnType::untyped_text("text")),
+            ResultColumn::new("id", ColumnType::untyped_text("int")),
+        ];
+        let mut snapshot = build_snapshot(
+            &columns,
+            [vec![Value::Text("a•••@x.io".to_owned()), Value::Int(1)]],
+            ResultExtent::complete(1),
+            10,
+        )
+        .expect("a snapshot");
+        snapshot.columns[0].masked = Some(MaskingStyle::LastFour);
+
+        let json = serde_json::to_string(&SnapshotBody::from(snapshot)).expect("JSON");
+
+        assert!(
+            json.contains(r#"{"name":"email","type":"text","masked":"lastFour"}"#),
+            "{json}"
+        );
+        assert!(json.contains(r#"{"name":"id","type":"int"}"#), "{json}");
+    }
+
+    #[test]
+    fn every_style_is_one_the_document_takes() {
+        use tablepro_core::masking::MaskingStyle;
+
+        for style in MaskingStyle::ALL {
+            let parsed: types::ShareMaskStyle =
+                serde_json::from_value(serde_json::json!(style.code())).expect("a ShareMaskStyle");
+            assert_eq!(parsed.to_string(), style.code());
+        }
+    }
+
+    #[test]
+    fn a_suspended_link_says_who_suspended_it() {
+        let deleted = view(true, "team_deleted");
+        let live = view(false, "team");
+
+        assert!(deleted.suspended);
+        assert_eq!(deleted.suspended_by.as_deref(), Some("team_deleted"));
+        assert!(!live.suspended);
+        assert_eq!(live.suspended_by, None);
+    }
+
+    #[test]
+    fn a_cut_result_nobody_counted_sends_more_rows_and_no_count() {
+        let columns = [ResultColumn::new("n", ColumnType::untyped_text("int"))];
+        let rows = [vec![Value::Int(1)]];
+        let uncounted = ResultExtent::finished(1, None, tablepro_core::Truncation::ReadPastLimit);
+
+        let cut = serde_json::to_string(&SnapshotBody::from(
+            build_snapshot(&columns, rows.clone(), uncounted, 10).expect("a snapshot"),
+        ))
+        .expect("JSON");
+        let whole = serde_json::to_string(&SnapshotBody::from(
+            build_snapshot(&columns, rows, ResultExtent::complete(1), 10).expect("a snapshot"),
+        ))
+        .expect("JSON");
+
+        assert!(
+            cut.contains(r#""more_rows":true"#) && !cut.contains("row_count"),
+            "{cut}"
+        );
+        assert!(
+            whole.contains(r#""row_count":1"#) && !whole.contains("more_rows"),
+            "{whole}"
+        );
+    }
+
+    #[test]
+    fn a_shared_result_with_no_count_reads_as_cut_without_one() {
+        let json = r#"{"kind":"result","title":"","note":"","dialect":"","created_at":"2026-11-13T00:00:00Z",
+            "allow_download":true,"made_with":"TablePro",
+            "snapshot":{"columns":[{"name":"n","type":"int"}],"rows":[[1]],"row_count":null,"truncated":true}}"#;
+
+        let shared: SharedLink = serde_json::from_str::<types::PublicShare>(json)
+            .expect("a shared link")
+            .into();
+
+        assert_eq!((shared.row_count, shared.truncated), (None, Some(true)));
+    }
 }
