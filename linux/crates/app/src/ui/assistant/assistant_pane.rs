@@ -1003,7 +1003,9 @@ mod tests {
         harness.pane.run_action(AssistantRequest {
             action: tablepro_ai::Action::Fix,
             statement: "SELEC 1".to_owned(),
-            error: Some("syntax error at or near \"SELEC\"".to_owned()),
+            error: Some(crate::ui::assistant::FixError::Text(
+                "syntax error at or near \"SELEC\"".to_owned(),
+            )),
         });
         wait_until(WAIT, || !provider.bodies.lock().expect("the bodies").is_empty()).expect("the request");
         // The question's statement has an Insert of its own; the reply's

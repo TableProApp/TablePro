@@ -1,5 +1,7 @@
 use tablepro_ai::{Action, ChatMessage, ChatRequest};
 
+use super::FixError;
+
 /// What the user asked in one turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Asked {
@@ -7,7 +9,7 @@ pub(crate) enum Asked {
     Action {
         action: Action,
         statement: String,
-        error: Option<String>,
+        error: Option<FixError>,
     },
 }
 
@@ -20,7 +22,7 @@ impl Asked {
                 action,
                 statement,
                 error,
-            } => tablepro_ai::action_message(*action, statement, error.as_deref()),
+            } => tablepro_ai::action_message(*action, statement, error.as_ref().map(FixError::server_error)),
         }
     }
 }
@@ -111,12 +113,29 @@ mod tests {
         conversation.ask(Asked::Action {
             action: Action::Fix,
             statement: "SELEC 1".to_owned(),
-            error: Some("syntax error".to_owned()),
+            error: Some(FixError::Text("syntax error".to_owned())),
         });
 
         let request = conversation.request(100);
 
         assert!(request.messages[0].text.contains("SELEC 1"));
         assert!(request.messages[0].text.contains("syntax error"));
+    }
+
+    #[test]
+    fn a_withheld_error_sends_its_code_and_never_the_message() {
+        let mut conversation = Conversation::new(String::new());
+        conversation.ask(Asked::Action {
+            action: Action::Fix,
+            statement: "SELECT CAST(email AS int) FROM users".to_owned(),
+            error: Some(FixError::Withheld {
+                code: Some("22P02".to_owned()),
+            }),
+        });
+
+        let text = &conversation.request(100).messages[0].text;
+
+        assert!(text.contains("22P02"), "{text}");
+        assert!(!text.contains("The server said"), "{text}");
     }
 }
