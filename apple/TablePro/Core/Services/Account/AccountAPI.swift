@@ -20,20 +20,6 @@ internal enum AccountAPI {
         )
     }
 
-    // A client with no bearer token, for the public read (GET /v2/shared/{token}): a share a recipient opens may be
-    // viewed while signed out.
-    static func publicClient(
-        configuration: AccountConfiguration,
-        transport: any ClientTransport
-    ) -> Client {
-        Client(
-            serverURL: configuration.apiServerURL,
-            configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
-            transport: transport,
-            middlewares: []
-        )
-    }
-
     static func transport(session: URLSession) -> any ClientTransport {
         URLSessionTransport(configuration: .init(session: session))
     }

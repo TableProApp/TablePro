@@ -209,9 +209,6 @@ extension DataGridViewController {
         if gridCommands.offers(.exportResults) {
             items.append(menuItem(String(localized: "Export Results…"), #selector(exportResultsFromMenu(_:)), context))
         }
-        if gridCommands.offers(.shareResult), FeatureAccess.shared.isAvailable(.sharedLinks) {
-            items.append(menuItem(String(localized: "Share Result…"), #selector(shareResultFromMenu(_:)), context))
-        }
         if gridCommands.offers(.clearResults) {
             items.append(menuItem(String(localized: "Clear Results"), #selector(clearResultsFromMenu(_:)), context))
         }
@@ -241,7 +238,6 @@ extension DataGridViewController {
         #selector(DataGridViewController.applySetValueFromMenu(_:)),
         #selector(DataGridViewController.removeFieldFromMenu(_:)),
         #selector(DataGridViewController.exportResultsFromMenu(_:)),
-        #selector(DataGridViewController.shareResultFromMenu(_:)),
         #selector(DataGridViewController.clearResultsFromMenu(_:)),
         #selector(DataGridViewController.duplicateRowsFromMenu(_:)),
         #selector(DataGridViewController.copySummaryFigureFromMenu(_:)),
@@ -267,10 +263,6 @@ extension DataGridViewController {
 
     @objc func exportResultsFromMenu(_ sender: Any?) {
         model.actions?.gridExportResults()
-    }
-
-    @objc func shareResultFromMenu(_ sender: Any?) {
-        model.actions?.gridShareResult()
     }
 
     @objc func clearResultsFromMenu(_ sender: Any?) {

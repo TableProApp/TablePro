@@ -23,7 +23,6 @@ internal enum LaunchIntent: @unchecked Sendable {
     case openDatabaseFile(URL, DatabaseType)
     case openDataFile(URL)
     case openConnectionShare(URL)
-    case openShare(token: String)
     case pairIntegration(PairingRequest)
     case startMCPServer
     /// nil opens the last-used pane.
@@ -47,7 +46,6 @@ internal enum LaunchIntent: @unchecked Sendable {
              .openSQLFile,
              .importConnection,
              .openConnectionShare,
-             .openShare,
              .pairIntegration,
              .startMCPServer,
              .openSettings,

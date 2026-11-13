@@ -475,20 +475,6 @@ internal final class TabRouter {
 
     // MARK: - SQL File
 
-    /// Opens a shared query's SQL in the connection the user is looking at, like a SQL file but seeded from text.
-    /// Returns false when no connection is open, so the caller can tell the user to connect first.
-    @discardableResult
-    internal func openSharedQuery(sql: String) async throws -> Bool {
-        let target = Self.sqlFileConnectionId(
-            shownConnectionId: WindowManager.shared.frontmostHost()?.workspaces.selectedConnectionId,
-            lastActiveConnectionId: DatabaseManager.shared.lastActiveSessionId,
-            activeSessionIds: Set(DatabaseManager.shared.activeSessions.keys)
-        )
-        guard let target else { return false }
-        try await openQuery(connectionId: target, sql: sql)
-        return true
-    }
-
     private func openSQLFile(_ url: URL) async throws {
         if HostedTabRouting.live.revealTab(editing: url) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)

@@ -202,7 +202,7 @@ extension MainContentCoordinator {
 
     private func gridCommands(for tab: QueryTab, isSelected: Bool, isEditable: Bool) -> Set<DataGridCommand> {
         var commands: Set<DataGridCommand> = [
-            .hideColumns, .showRowsAsJSON, .exportResults, .shareResult, .navigateForeignKey,
+            .hideColumns, .showRowsAsJSON, .exportResults, .navigateForeignKey,
             .highlightValues, .displayAs, .freezeColumns, .valueFilter
         ]
         let operations = isEditable ? (activeViewWriteTarget?.operations ?? .all) : []

@@ -184,11 +184,6 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
         coordinator?.commandActions?.exportQueryResults()
     }
 
-    func gridShareResult() {
-        guard ownsWindowState else { return }
-        coordinator?.shareActiveResult()
-    }
-
     func gridClearResults() {
         guard ownsWindowState else { return }
         coordinator?.clearActiveQueryResults()

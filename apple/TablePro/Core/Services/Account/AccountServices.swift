@@ -51,8 +51,6 @@ internal final class AccountServices {
     let devices: DeviceRegistry
     let access: FeatureAccess
     let api: any APIProtocol
-    // No bearer token, for the public share read.
-    let publicAPI: any APIProtocol
     let events = PassthroughSubject<AccountEvent, Never>()
     private let entitlements: EntitlementStore
     private let legacy: LegacyLicenseStore
@@ -94,7 +92,6 @@ internal final class AccountServices {
             onRefused: { Task { @MainActor in refusals.services?.sessionWasRefused() } }
         )
         self.api = AccountAPI.client(configuration: configuration, transport: transport, session: session)
-        self.publicAPI = AccountAPI.publicClient(configuration: configuration, transport: transport)
         self.devices = DeviceRegistry(api: api, machine: machine)
         self.entitlements = EntitlementStore(
             fileURL: entitlementFile,

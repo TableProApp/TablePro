@@ -1404,13 +1404,8 @@ final class MainContentCommandActions: ObservableObject {
         observeKeyWindowOnly(AppCommands.shared.openSQLFiles) { [weak self] urls in
             self?.handleOpenSQLFiles(urls)
         }
-        observeKeyWindowOnly(AppCommands.shared.openSharedSQL) { [weak self] statements in
-            self?.handleOpenSharedSQL(statements)
-        }
     }
-}
 
-extension MainContentCommandActions {
     private func handleOpenSQLFiles(_ urls: [URL]) {
         Task {
             for url in urls {
@@ -1423,14 +1418,6 @@ extension MainContentCommandActions {
                         closeAnchorWindow
                     )
                 }
-            }
-        }
-    }
-
-    private func handleOpenSharedSQL(_ statements: [String]) {
-        Task {
-            for sql in statements {
-                _ = try? await TabRouter.shared.openSharedQuery(sql: sql)
             }
         }
     }

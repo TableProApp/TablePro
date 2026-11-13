@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import os
-import TableProCloudAPI
 
 @MainActor
 internal final class LaunchIntentRouter {
@@ -45,9 +44,6 @@ internal final class LaunchIntentRouter {
 
             case .installPlugin(let url):
                 try await installPlugin(url)
-
-            case .openShare(let token):
-                try await openShare(token: token)
             }
         } catch let error where error.isUserCancellation {
             Self.logger.info("Intent cancelled: \(error.publicLogShape, privacy: .public)")
@@ -55,41 +51,6 @@ internal final class LaunchIntentRouter {
             Self.logger.error("Intent failed: \(error.publicLogShape, privacy: .public)")
             await presentError(error, for: intent)
         }
-    }
-
-    private func openShare(token: String) async throws {
-        let client = ShareClient(api: AccountServices.shared.publicAPI)
-        let share: Components.Schemas.PublicShare
-        do throws(ShareFailure) {
-            share = try await client.view(token: token)
-        } catch {
-            presentShareUnavailable(error)
-            return
-        }
-        let opened = try await TabRouter.shared.openSharedQuery(sql: share.sql)
-        if !opened {
-            // No connected database to open against. Queue the SQL the way openSQLFile does, so it
-            // opens once the user connects one, and show where to do that.
-            WelcomeRouter.shared.enqueueSharedSQL(share.sql)
-        }
-    }
-
-    private func presentShareUnavailable(_ failure: ShareFailure) {
-        let message: String
-        switch failure {
-        case .canceled:
-            return
-        case .notFound:
-            message = String(localized: "This shared link is no longer available.")
-        case .offline:
-            message = String(localized: "You appear to be offline. Try again once you're connected.")
-        case .rateLimited:
-            message = String(localized: "Too many requests just now. Try again in a moment.")
-        case .signedOut, .featureRequired, .forbidden, .limitReached, .refused, .server:
-            message = String(localized: "The shared query couldn't be opened.")
-        }
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        AlertHelper.showInfoSheet(title: String(localized: "Open Shared Query"), message: message, window: nil)
     }
 
     private func openDataFileDocument(at url: URL) async throws {
@@ -202,7 +163,7 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openDataFile:
             title = String(localized: "Could Not Open File")
-        case .importConnection, .openConnectionShare, .openShare, .startMCPServer, .openSettings:
+        case .importConnection, .openConnectionShare, .startMCPServer, .openSettings:
             title = String(localized: "Action Failed")
         }
         if presentRecoverableError(error, for: intent, title: title) { return }

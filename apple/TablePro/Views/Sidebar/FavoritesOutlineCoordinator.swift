@@ -329,7 +329,6 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
             allFolders: owner.input.allFolders,
             teamLibraryTeams: owner.input.teamLibraryTeams,
             hasTeamLibraryConflicts: owner.input.hasTeamLibraryConflicts,
-            canShare: owner.input.canShare,
             databaseEntityName: owner.input.databaseEntityName,
             activeDatabase: owner.input.activeDatabase,
             linkedFileGitStates: owner.input.linkedFileGitStates,
