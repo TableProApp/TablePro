@@ -434,6 +434,13 @@ struct ConnectionCoordinatorStatusTests {
         #expect(ranUpdate(second))
     }
 
+    // An open dials the remembered database first; this one refuses it as a dropped database.
+    private func goneStagingDriver() -> MockDatabaseDriver {
+        let gone = driver()
+        gone.connectError = MySQLError.databaseRefused("Unknown database 'app_staging'")
+        return gone
+    }
+
     // A window on app_staging whose redial failed; `beforeLoss` runs while it is still connected.
     private func lostOnStaging(
         beforeLoss: (ConnectionCoordinator) -> Void = { _ in }
@@ -450,8 +457,9 @@ struct ConnectionCoordinatorStatusTests {
         return coordinator
     }
 
-    // Another window opens the connection, which dials the saved app_prod.
+    // Another window opens the connection once app_staging is gone, so it lands on the saved app_prod.
     private func reconnectAnotherWindow() async -> MockDatabaseDriver {
+        factory.queue(goneStagingDriver())
         let second = driver(tables: ["orders"])
         factory.queue(second)
         await ConnectionCoordinator(connection: connection, appState: appState).connect()
@@ -497,6 +505,7 @@ struct ConnectionCoordinatorStatusTests {
         let second = driver(tables: ["orders"])
         let loading = TestGate()
         second.beforeFetchTables = { await loading.enter() }
+        factory.queue(goneStagingDriver())
         factory.queue(second)
         let other = ConnectionCoordinator(connection: connection, appState: appState)
 

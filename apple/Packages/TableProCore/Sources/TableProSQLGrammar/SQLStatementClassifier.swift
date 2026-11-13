@@ -121,6 +121,7 @@ struct SQLStatementTiering {
     let databaseTypeId: String
     let readings: SQLLexicalReadings
     let request: SQLStatementClassifier.RequestClassification?
+    var rowChanges: Set<String>?
 
     // Each nested statement copies and reads what is left of the text, so nesting past this is refused.
     static let deepestNesting = 32

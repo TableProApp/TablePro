@@ -75,6 +75,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         parent.isShowingSafeModePrompt = true
         let request = makeExecuteRequest(
             statements: batches.flatMap(\.statements),
+            tabIndex: index,
             extraCapabilities: extraCapabilities
         )
         Task { [parent] in
@@ -132,9 +133,11 @@ final class QueryExecutionCoordinator: ObservableObject {
 
     private func makeExecuteRequest(
         statements: [SQLStatementScanner.ExecutableStatement],
+        tabIndex index: Int,
         extraCapabilities: CallerCapabilities = []
     ) -> OperationRequest {
         let sql = statements.map(\.sql)
+        let tabs = parent.tabManager.tabs
         return OperationRequest(
             connectionId: parent.connectionId,
             databaseType: parent.connection.type,
@@ -142,7 +145,8 @@ final class QueryExecutionCoordinator: ObservableObject {
             kind: OperationKind.worst(of: sql, databaseType: parent.connection.type),
             caller: .userInterface,
             capabilities: CallerCapabilities.interactiveUser.union(extraCapabilities),
-            operationDescription: String(localized: "Execute Query")
+            operationDescription: String(localized: "Execute Query"),
+            runsIn: tabs.indices.contains(index) ? parent.scope(for: tabs[index]) : nil
         )
     }
 
@@ -159,6 +163,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         parent.isShowingSafeModePrompt = true
         let request = makeExecuteRequest(
             statements: batches.flatMap(\.statements),
+            tabIndex: index,
             extraCapabilities: extraCapabilities
         )
         Task { [parent] in

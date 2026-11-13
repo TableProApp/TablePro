@@ -768,7 +768,7 @@ extension QueryExecutionCoordinator {
                     logicMode: logicMode,
                     safeModeIsReadOnly: parent.runsAtReadOnly,
                     gate: parent.rawFilterNeedsReadOnlyGate(filters)
-                        ? sql.map { parent.rawFilterRequest(sql: $0, canPrompt: false) }
+                        ? sql.map { parent.rawFilterRequest(sql: $0, canPrompt: false, scope: scope) }
                         : nil
                 )
                 return (plan, input, scope)

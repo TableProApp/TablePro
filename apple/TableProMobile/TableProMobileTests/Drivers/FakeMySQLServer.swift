@@ -13,8 +13,9 @@ import TableProTLSTestFixtures
 // statement does, or with `killedQueriesComplete` succeeds as one that finished before the kill landed. Unkilled,
 // or after `release`, it succeeds. A query starting with `streamsRowsStarting` returns `streamedRows` one-column rows,
 // cut by a kill for its session with 1317. A cleartext password passed to `refuse` is answered with 1045, as an expired
-// token is. A query in `failures` is answered with its error, after its rows when it has any. Replies carry
-// SERVER_STATUS_IN_TRANS from a BEGIN or START TRANSACTION to the COMMIT or ROLLBACK that ends it.
+// token is. With `refusesLogin` every login gets that error, as a refused sign-in or database does. A query in
+// `failures` is answered with its error, after its rows when it has any. Replies carry SERVER_STATUS_IN_TRANS from a
+// BEGIN or START TRANSACTION to the COMMIT or ROLLBACK that ends it.
 final class FakeMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -30,6 +31,16 @@ final class FakeMySQLServer: @unchecked Sendable {
                 code: 1_792, sqlState: "25006", message: "Cannot execute statement in a READ ONLY transaction.",
                 rowsFirst: rowsFirst
             )
+        }
+    }
+
+    struct LoginRefusal {
+        let code: UInt16
+        let sqlState: String
+        let message: String
+
+        var packet: [UInt8] {
+            [0xFF, UInt8(code & 0xFF), UInt8(code >> 8)] + Array("#\(sqlState)".utf8) + Array(message.utf8)
         }
     }
 
@@ -111,6 +122,7 @@ final class FakeMySQLServer: @unchecked Sendable {
     private let streamedRows: Int
     private let serverVersion: String
     private let failures: [String: Failure]
+    private let loginRefusal: LoginRefusal?
     private let fixtures: URL?
     private let kills = KillBoard()
     private let refusedPasswords = OSAllocatedUnfairLock<Set<String>>(initialState: [])
@@ -139,7 +151,8 @@ final class FakeMySQLServer: @unchecked Sendable {
         streamsRowsStarting streamedPrefix: String? = nil,
         streamedRows: Int = 0,
         serverVersion: String = "8.0.36",
-        failures: [String: Failure] = [:]
+        failures: [String: Failure] = [:],
+        refusesLogin loginRefusal: LoginRefusal? = nil
     ) throws {
         self.asksForCleartext = asksForCleartext
         self.asksForFullSHA2Auth = asksForFullSHA2Auth
@@ -151,6 +164,7 @@ final class FakeMySQLServer: @unchecked Sendable {
         self.streamedRows = streamedRows
         self.serverVersion = serverVersion
         self.failures = failures
+        self.loginRefusal = loginRefusal
         if let identity {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("FakeMySQLServer-\(UUID().uuidString)", isDirectory: true)
@@ -294,6 +308,10 @@ final class FakeMySQLServer: @unchecked Sendable {
                 _ = channel.send(Self.accessDeniedPacket, sequence: sequence &+ 1)
                 return
             }
+        }
+        if let loginRefusal {
+            _ = channel.send(loginRefusal.packet, sequence: sequence &+ 1)
+            return
         }
         guard channel.send(Self.okPacket(inTransaction: false), sequence: sequence &+ 1) else { return }
         session.loggedIn = true

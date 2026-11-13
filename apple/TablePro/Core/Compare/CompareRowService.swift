@@ -153,7 +153,8 @@ internal struct CompareRowService {
             databaseType: endpoint.databaseType,
             gate: gate,
             operationDescription: String(localized: "Execute Query"),
-            manager: manager
+            manager: manager,
+            runsIn: endpoint.scope
         )
     }
 

@@ -101,8 +101,8 @@ struct ExecuteQueryChatTool: ChatTool {
         )
         // A table named without a schema lands in the scope's, and the engine's own schemas hold its grant, setup and
         // settings tables.
-        if context.chatMode != .agent, classification.tier != .safe, SQLStatementClassifier.isSystemScope(
-            database: scope.database, schema: scope.schema, databaseTypeId: meta.databaseType.rawValue
+        if context.chatMode != .agent, classification.tier != .safe, QueryClassifier.writesSystemScope(
+            database: scope.database, schema: scope.schema, databaseType: meta.databaseType
         ) {
             return ChatToolResult(content: ExternalStatementGate.dataStatementRefusal, isError: true)
         }
