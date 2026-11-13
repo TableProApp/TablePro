@@ -89,12 +89,18 @@ extension MainContentCoordinator {
     // never the result instance.
     func shareResultKey(of tab: QueryTab) -> ShareResultKey {
         let scope = scope(for: tab)
+        let statement = shareSQL(of: tab)
+        // A table view the host cannot write as SQL is told apart by what narrows and orders its rows.
+        let view = tab.tabType == .table && statement.isEmpty
+            ? ShareTableView(tab, search: filterCoordinator.activeBrowseSearch(for: tab.filterState))
+            : nil
         return ShareResultKey(
             table: tab.tabType == .table ? tab.tableContext.tableName : nil,
-            statement: shareSQL(of: tab),
+            statement: statement,
             parameters: tab.tabType == .table ? nil : tab.display.activeResultSet?.baseQueryParameterValues,
             database: scope?.database,
-            schema: scope?.schema
+            schema: scope?.schema,
+            view: view
         )
     }
 
@@ -262,6 +268,23 @@ internal struct ShareResultKey: Equatable, Sendable {
     let parameters: [TypedParameterValue?]?
     let database: String?
     let schema: String?
+    let view: ShareTableView?
+}
+
+internal struct ShareTableView: Equatable, Sendable {
+    let filters: [TableFilter]
+    let logicMode: FilterLogicMode
+    let search: BrowseSearchState?
+    let sort: [SortColumn]
+
+    @MainActor
+    init(_ tab: QueryTab, search: BrowseSearchState?) {
+        let rerun = tab.filterState.rerunFilters
+        filters = rerun.filters
+        logicMode = rerun.logicMode
+        self.search = search
+        sort = tab.sortState.columns
+    }
 }
 
 // The tab's row count, taken on the main actor for the rows built off it.

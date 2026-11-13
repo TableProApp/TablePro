@@ -238,7 +238,34 @@ extension GlobalStateSuites {
             #expect(await read.value == nil)
         }
 
-        @Test("Only a change to the connection's masking rules makes the share read its rows again")
+        @Test("A table view the host cannot write as SQL stops sharing once its filters or sort change")
+        func unwrittenTableViewFollowsFiltersAndSort() async throws {
+            fixture.coordinator.queryBuilder = TableQueryBuilder(
+                databaseType: .mysql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+            )
+            let tab = try load(
+                QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users"), origins: nil
+            )
+            let loader = try #require(fixture.coordinator.activeResultShareRequest()?.loadResult)
+            let openedSort = try #require(fixture.tabManager.tabs.first { $0.id == tab.id }).sortState
+
+            fixture.tabManager.mutate(tabId: tab.id) {
+                $0.sortState = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending, columnName: "email")], source: .user)
+            }
+            #expect(await loader(1_000) == nil)
+
+            fixture.tabManager.mutate(tabId: tab.id) { $0.sortState = openedSort }
+            #expect(await loader(1_000)?.rows.count == 3)
+
+            fixture.tabManager.mutate(tabId: tab.id) {
+                $0.filterState.filters = [TableFilter(columnName: "email", filterOperator: .equal, value: "jane@example.com")]
+                $0.filterState.commit = .all
+                $0.filterState.adoptAppliedFiltersAsRunning()
+            }
+            #expect(await loader(1_000) == nil)
+        }
+
+        @Test("Only a change to what the connection's masking rules do makes the share read again, ids or none")
         func onlyRuleChangesSignalTheSheet() async throws {
             let events = AppEvents()
             let suite = try EphemeralDefaults()
@@ -248,6 +275,8 @@ extension GlobalStateSuites {
                 fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain(), appEvents: events
             )
             var connection = fixture.connection
+            // Hand-written or foreign JSON carries no id, so each read decodes a new one.
+            connection.additionalFields[DatabaseConnection.maskingRulesKey] = #"[{"pattern":"*.email","style":"email"}]"#
             _ = storage.addConnection(connection)
             let services = AppServices.live.replacing(databaseManager: DatabaseManager(connectionStorage: storage), appEvents: events)
             let ruled = CoordinatorFixture(connection: connection, services: services)
