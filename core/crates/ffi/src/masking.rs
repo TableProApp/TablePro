@@ -473,8 +473,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_preview_shows_what_the_snapshot_sends() {
+    #[tokio::test]
+    async fn the_preview_shows_what_the_snapshot_sends() {
         use tablepro_core::column::{ColumnOrigin, ColumnType};
         use tablepro_core::masking::{MaskingPolicy, SharedMaskingPolicy, stable_hash};
         use tablepro_core::meta::TableRef;
@@ -536,7 +536,7 @@ mod tests {
         assert_eq!(preview.cell_text(0, 0).unwrap().as_deref(), Some("a•••@example.com"));
         assert_eq!(preview.cell_text(0, 1).unwrap(), Some(stable_hash(b"+1 555 0100")));
         assert_eq!(preview.cell_text(0, 2).unwrap().as_deref(), Some("vip"));
-        assert!(!preview.remask(), "a preview was masked again");
+        assert!(!preview.remask().await.unwrap(), "a preview was masked again");
     }
 
     #[test]

@@ -338,13 +338,13 @@ async fn a_saved_change_to_the_rules_reaches_the_session_and_the_rows_on_screen(
         .await
         .unwrap();
     assert!(
-        on_screen.remask(),
+        on_screen.clone().remask().await.unwrap(),
         "the save returned before the session held the new rules"
     );
     assert_eq!(masked(&on_screen)[2], Some(MaskStyleTag::Email));
     assert_eq!(texts(&on_screen, 2)[0].as_deref(), Some("a•••@example.com"));
     assert_eq!(texts(&on_screen, 3)[1].as_deref(), Some("••••0199"));
-    assert!(!revealed.remask(), "a revealed run was masked");
+    assert!(!revealed.clone().remask().await.unwrap(), "a revealed run was masked");
     let next = run(&session, SELECT, false).await;
     assert_eq!(texts(&next, 2)[1].as_deref(), Some("g•••@example.com"));
     let listed = core.library().unwrap().snapshot().await.unwrap();
