@@ -95,9 +95,19 @@ impl ResultSet {
     }
 
     // After the connection's masking rules were saved: masks the held rows of every column the rules now mask, unless
-    // the tab revealed this run. True when a column changed, so the grid draws again and reads `columns`.
-    pub fn remask(&self) -> bool {
-        self.store.remask()
+    // the tab revealed this run, off the caller's thread; windows keep reading meanwhile. True when a column changed, so
+    // the grid draws again and reads `columns`. Rows that arrive after a save are masked without it.
+    pub async fn remask(self: Arc<Self>) -> Result<bool, CoreError> {
+        let tasks = crate::runtime::tasks()?;
+        let blocking = tasks.clone();
+        let store = self.store.clone();
+        crate::runtime::on_runtime(&tasks, async move {
+            blocking
+                .spawn_blocking_task(move || store.remask())
+                .await
+                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))
+        })
+        .await
     }
 
     // The whole value, `None` for null.
