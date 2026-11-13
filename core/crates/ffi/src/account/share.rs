@@ -252,8 +252,8 @@ fn snapshot_of(
     }
     let (visible, plan) = share_plan(set, visible_columns, choices);
     let ended = set.extent();
-    let taken = ended.held.min(u64::from(max_rows));
-    let rows = (0..taken).map(|row| plan.row(&visible, |index| held_value(set, row, index, &visible[index])));
+    let rows = (0..rows_sent(set, max_rows))
+        .map(|row| plan.row(&visible, |index| held_value(set, row, index, &visible[index])));
     // A count the app made of a table view outranks what the page's own read knew.
     let extent = ResultExtent {
         total: total_rows.or(ended.total),
@@ -269,6 +269,11 @@ fn snapshot_of(
         column.masked = style;
     }
     Ok((snapshot, plan.columns_cut()))
+}
+
+// The rows a share of `max_rows` sends, a prefix of the set; detection and the preview read the same ones.
+pub(crate) fn rows_sent(set: &ResultSet, max_rows: u32) -> u64 {
+    set.extent().held.min(u64::from(max_rows))
 }
 
 // The set's first `visible_columns` columns and how a share sends them, by the connection's rules and the sheet.

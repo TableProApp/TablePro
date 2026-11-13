@@ -241,7 +241,7 @@ async fn run_write(
     let state = Arc::new(Mutex::new(CollectedResults::default()));
     // Masked before the collector keeps them, so a cut by size reads masked values.
     let sink = MaskingSink::wrap(
-        Box::new(ResultCollector::new(state.clone(), Keep::results(limit), false)),
+        Box::new(ResultCollector::new(state.clone(), Keep::results(limit), false).withholding_notices(masks_values)),
         policy.clone(),
         MaskingScope::External { table: None },
     );
@@ -352,7 +352,8 @@ where
             async move {
                 *state.lock().unwrap_or_else(PoisonError::into_inner) = CollectedResults::default();
                 let read = build(&lease)?;
-                let collector: Box<dyn ResultSink> = Box::new(ResultCollector::new(state, keep, true));
+                let collector: Box<dyn ResultSink> =
+                    Box::new(ResultCollector::new(state, keep, true).withholding_notices(masks_values));
                 let masked = MaskingSink::wrap(collector, policy, scope);
                 let sink: Box<dyn ResultSink> = match precision {
                     Some(catalog) => Box::new(DeclaredPrecisionSink::new(masked, catalog)),

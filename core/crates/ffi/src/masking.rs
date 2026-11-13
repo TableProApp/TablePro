@@ -11,7 +11,7 @@ use tablepro_core::masking::detect::{
 use tablepro_core::masking::{ColumnMasks, MaskingRule, MaskingStyle, MaskingTarget, ShareChoice};
 use uuid::Uuid;
 
-use crate::account::share::share_plan;
+use crate::account::share::{rows_sent, share_plan};
 use crate::error::CoreError;
 use crate::export::{held_row, held_value};
 use crate::results::{ResultSet, ResultStore};
@@ -74,12 +74,22 @@ pub struct MaskSuggestionInfo {
     pub reason: MaskReason,
 }
 
+// Why the connection's rules mask a shared column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RuleReason {
+    // A rule matches what the column reads.
+    Rule,
+    // Nothing traced the column to a table column, so it is masked whole whatever its name.
+    Untraced,
+}
+
 // One shared column as the sheet starts it: `rule` is the style the connection's rules mask it with on the way out,
-// which can never be Keep; otherwise `suggestion` is what the detectors saw, masked by default.
+// which can never be Keep, and `rule_reason` why; otherwise `suggestion` is what the detectors saw, masked by default.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ShareColumnMasking {
     pub name: String,
     pub rule: Option<MaskStyleTag>,
+    pub rule_reason: Option<RuleReason>,
     pub suggestion: Option<MaskSuggestionInfo>,
 }
 
@@ -154,7 +164,7 @@ fn share_preview(
     }
     let (visible, plan) = share_plan(set, visible_columns, choices);
     let ended = set.extent();
-    let taken = ended.held.min(u64::from(max_rows));
+    let taken = rows_sent(set, max_rows);
     let rows: Vec<Vec<tablepro_core::Value>> = (0..taken)
         .map(|row| plan.row(&visible, |index| held_value(set, row, index, &visible[index])))
         .collect();
@@ -174,17 +184,26 @@ fn share_masking(set: &ResultSet, visible_columns: u32, max_rows: u32) -> Vec<Sh
     let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
     let columns: Vec<ResultColumn> = held[..visible].to_vec();
     let rules = set.external_masks(&columns);
-    let rows: Vec<Vec<tablepro_core::Value>> = (0..set.row_count().min(u64::from(max_rows)))
+    let untraced = set.untraced_columns(&columns);
+    // Exactly the rows the snapshot sends, so "at least half" never counts a row that stays behind.
+    let rows: Vec<Vec<tablepro_core::Value>> = (0..rows_sent(set, max_rows))
         .map(|row| held_row(set, row, &columns))
         .collect();
     suggest_masks(&columns, &rows, &rules)
         .into_iter()
         .zip(&columns)
         .enumerate()
-        .map(|(index, (suggestion, column))| ShareColumnMasking {
-            name: column.name.clone(),
-            rule: rules.style(index).map(MaskStyleTag::from),
-            suggestion: suggestion.map(MaskSuggestionInfo::from),
+        .map(|(index, (suggestion, column))| {
+            let rule = rules.style(index);
+            ShareColumnMasking {
+                name: column.name.clone(),
+                rule: rule.map(MaskStyleTag::from),
+                rule_reason: rule.map(|_| match untraced.contains(&index) {
+                    true => RuleReason::Untraced,
+                    false => RuleReason::Rule,
+                }),
+                suggestion: suggestion.map(MaskSuggestionInfo::from),
+            }
         })
         .collect()
 }
@@ -368,7 +387,9 @@ mod tests {
         let started = share_masking(&ResultSet::new(0, store), 3, 1_000);
 
         assert_eq!(started[0].rule, Some(MaskStyleTag::Hash));
+        assert_eq!(started[0].rule_reason, Some(RuleReason::Rule));
         assert_eq!(started[0].suggestion, None);
+        assert_eq!(started[1].rule_reason, None);
         assert_eq!(
             started[1].suggestion,
             Some(MaskSuggestionInfo {
@@ -453,5 +474,54 @@ mod tests {
         assert_eq!(preview.cell_text(0, 1).unwrap(), Some(stable_hash(b"+1 555 0100")));
         assert_eq!(preview.cell_text(0, 2).unwrap().as_deref(), Some("vip"));
         assert!(!preview.remask(), "a preview was masked again");
+    }
+
+    #[test]
+    fn detection_reads_only_the_rows_a_share_sends_and_names_an_untraced_mask() {
+        use tablepro_core::column::ColumnType;
+        use tablepro_core::masking::{MaskingPolicy, SharedMaskingPolicy};
+
+        use crate::results::{GridMasking, ResultStore};
+
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("contact", ColumnType::untyped_text("text"))].into();
+        let set = |rules: Vec<MaskingRule>| {
+            let store = Arc::new(ResultStore::with_masking(
+                columns.clone(),
+                Some(GridMasking {
+                    policy: SharedMaskingPolicy::new(MaskingPolicy::new(rules)),
+                    named_table: None,
+                    own_table: None,
+                    visible: None,
+                    revealed: true,
+                }),
+            ));
+            let text = |value: &str| tablepro_core::Value::Text(value.to_owned());
+            store.append(&[
+                vec![text("ann@example.com")],
+                vec![text("x")],
+                vec![text("y")],
+                vec![text("z")],
+            ]);
+            store.finish();
+            ResultSet::new(0, store)
+        };
+        let plain = set(Vec::new());
+        let ruled = set(vec![MaskingRule::new(
+            "users.email",
+            MaskingTarget::Column,
+            MaskingStyle::Email,
+        )]);
+
+        let sent_one = share_masking(&plain, 1, 1);
+        let sent_all = share_masking(&plain, 1, 4);
+        let untraced = share_masking(&ruled, 1, 4);
+
+        assert_eq!(
+            sent_one[0].suggestion.as_ref().map(|found| found.style),
+            Some(MaskStyleTag::Email)
+        );
+        assert_eq!(sent_all[0].suggestion, None, "rows past the share counted");
+        assert_eq!(untraced[0].rule, Some(MaskStyleTag::Full));
+        assert_eq!(untraced[0].rule_reason, Some(RuleReason::Untraced));
     }
 }

@@ -673,8 +673,8 @@ async fn a_read_runs_and_answers_with_its_rows() {
     assert_eq!(recorded[0].query, "SELECT id, status FROM orders ORDER BY id");
 }
 
-// Saves a rule on Readable that masks orders.status whole; a tool reads the saved connection on each call.
-fn mask_status(harness: &Harness) -> String {
+// Saves `rules` on Readable; a tool reads the saved connection on each call.
+fn mask_readable(harness: &Harness, rules: Vec<MaskingRule>) -> String {
     let mut readable = harness
         .store
         .load_blocking()
@@ -683,13 +683,57 @@ fn mask_status(harness: &Harness) -> String {
         .find(|connection| connection.id == harness.ids.readable)
         .cloned()
         .expect("Readable");
-    readable.masking_rules = vec![MaskingRule::new(
-        "orders.status",
-        MaskingTarget::Column,
-        MaskingStyle::Full,
-    )];
+    readable.masking_rules = rules;
     harness.store.upsert_blocking(readable).expect("saved");
     harness.ids.readable.to_string()
+}
+
+// Masks orders.status whole on Readable.
+fn mask_status(harness: &Harness) -> String {
+    mask_readable(
+        harness,
+        vec![MaskingRule::new(
+            "orders.status",
+            MaskingTarget::Column,
+            MaskingStyle::Full,
+        )],
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_value_past_the_answer_s_cut_is_masked_whole_before_it_is_cut() {
+    let harness = harness().await;
+    let writable = harness.host.sessions.lock().expect("sessions")[&harness.ids.writable].clone();
+    run_all(
+        &writable,
+        &[
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT, token TEXT)",
+            "INSERT INTO notes VALUES (1, replace(hex(zeroblob(40000)), '0', 'x') || '1234', \
+             replace(hex(zeroblob(40000)), '0', 'x') || '1234')",
+        ],
+    )
+    .await;
+    let long = format!("{}1234", "x".repeat(80_000));
+    assert!(long.len() > tablepro_mcp::MAX_VALUE_BYTES);
+    let id = mask_readable(
+        &harness,
+        vec![
+            MaskingRule::new("notes.body", MaskingTarget::Column, MaskingStyle::LastFour),
+            MaskingRule::new("notes.token", MaskingTarget::Column, MaskingStyle::Hash),
+        ],
+    );
+
+    let (failed, text) = call(
+        &harness,
+        "execute_query",
+        json!({ "connection_id": id, "query": "SELECT body, token FROM notes" }),
+    )
+    .await;
+
+    assert!(!failed, "{text}");
+    let row = &parsed(&text)["result_sets"][0]["rows"][0];
+    assert_eq!(row["body"], "••••1234");
+    assert_eq!(row["token"], tablepro_core::masking::stable_hash(long.as_bytes()));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
