@@ -110,13 +110,14 @@ async fn export_table(
     let filter = filter_set(&[], None)?;
     let read_table = table.clone();
     let read_catalog = catalog.clone();
+    let masking = Masking::table(policy, session, &table).await;
     let mut collected = stream(
         session,
         keep,
         Duration::from_secs(u64::from(DEFAULT_TIMEOUT_SECONDS)),
         cancel,
         Some(catalog.clone()),
-        Masking::table(policy, &table),
+        masking,
         move |lease| {
             let request = ExportRequest {
                 table: &read_table,
