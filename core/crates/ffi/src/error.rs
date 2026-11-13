@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use tablepro_account::AccountError;
 use tablepro_core::{DriverError, ServerDiagnostics, SshFailure, TlsFailure, TransportError};
 use tablepro_session::{ConnectError, OperationError};
 
@@ -318,6 +319,26 @@ impl From<ConnectError> for CoreError {
     }
 }
 
+// A cancelled sign-in is a cancel. A problem the account service answered keeps its own code in `server`.
+impl From<AccountError> for CoreError {
+    fn from(error: AccountError) -> Self {
+        let server = match &error {
+            AccountError::SignInCanceled => return Self::Cancelled,
+            AccountError::Refused { code, detail, .. } => Some(ServerMessage {
+                code: Some(code.clone()),
+                ..named_only(detail)
+            }),
+            _ => None,
+        };
+        Self::Failed {
+            info: Box::new(ErrorInfo {
+                server,
+                ..ErrorInfo::plain(&[error.code()], error.to_string())
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -471,6 +492,27 @@ mod tests {
         assert_eq!(server.message, "shopp");
         assert_eq!((server.code, server.sqlstate, server.detail), (None, None, None));
         assert!(info.path.is_none());
+    }
+
+    #[test]
+    fn an_account_error_keeps_its_code_and_a_refusal_the_server_s_own() {
+        let limited = info(AccountError::DeviceLimitReached { devices: Vec::new() }.into());
+        let refused = info(
+            AccountError::Refused {
+                status: 409,
+                code: "offline_file_active".to_owned(),
+                detail: "The device holds an offline file".to_owned(),
+            }
+            .into(),
+        );
+
+        assert_eq!(limited.codes, ["account.device_limit_reached"]);
+        assert_eq!(limited.server, None);
+        assert_eq!(refused.code, "account.refused");
+        let server = refused.server.expect("the server's problem");
+        assert_eq!(server.code.as_deref(), Some("offline_file_active"));
+        assert_eq!(server.message, "The device holds an offline file");
+        assert_eq!(CoreError::from(AccountError::SignInCanceled), CoreError::Cancelled);
     }
 
     #[test]

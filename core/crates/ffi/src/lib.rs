@@ -1,5 +1,6 @@
 // Foreign code is called only from a runtime thread, never under a lock (core/ARCHITECTURE.md, Bindings).
 
+mod account;
 mod cancel_token;
 mod catalog;
 mod cloud;
@@ -31,6 +32,11 @@ mod structure;
 mod syntax;
 pub mod window_abi;
 
+pub use account::{
+    AccountConfig, AccountListener, AccountService, AccountStateTag, AccountStatusInfo, DeviceInfo,
+    EntitlementProblemTag, FeatureAccessTag, HostBrowser, HostBrowserError, LicenseInfo, MembershipInfo, ProfileInfo,
+    TeamInfo,
+};
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};

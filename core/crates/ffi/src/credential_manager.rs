@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use secrecy::zeroize::{Zeroize, Zeroizing};
 use secrecy::{ExposeSecret, SecretString};
+use tablepro_account::RefreshTokenVault;
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
@@ -25,6 +26,10 @@ const COMMENT_UNITS: usize = CRED_MAX_STRING_LENGTH as usize - 1;
 // An attribute keyword of the form CREDENTIAL_ATTRIBUTEW asks for, <Company>_<Name>.
 const LAYOUT_KEYWORD: &str = "TablePro_Parts";
 
+const REFRESH_TOKEN_ITEM: &str = "account-refresh-token";
+// Credential Manager shows it as the credential's comment; Linux's keyring item has the same label.
+const REFRESH_TOKEN_LABEL: &str = "TablePro account sign-in";
+
 // Generic credentials under one prefix, so Credential Manager lists TablePro's together and a test keeps to its own.
 pub(crate) struct CredentialManager {
     prefix: String,
@@ -45,6 +50,10 @@ impl CredentialManager {
 
     fn item_target(&self, item: SecretItem) -> String {
         format!("{}/{}", self.prefix, item_name(item))
+    }
+
+    fn refresh_token_target(&self) -> String {
+        format!("{}/{REFRESH_TOKEN_ITEM}", self.prefix)
     }
 
     // One call at a time: concurrent writes from one process lost each other's changes on both CI runners.
@@ -107,13 +116,10 @@ fn failure(action: &str) -> SecretError {
 
 // The blob holds UTF-16, as cmdkey and the Credential Manager control panel write it.
 fn decode(blob: &[u8]) -> Result<SecretString, SecretError> {
-    if blob.len() % 2 != 0 {
+    let (pairs, []) = blob.as_chunks::<2>() else {
         return Err(SecretError::InvalidEncoding);
-    }
-    let units: Vec<u16> = blob
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .collect();
+    };
+    let units: Vec<u16> = pairs.iter().map(|pair| u16::from_le_bytes(*pair)).collect();
     let units = Zeroizing::new(units);
     // Sized exactly, so neither a push nor SecretString's shrink to fit leaves a copy in freed memory.
     let mut size = 0;
@@ -325,6 +331,26 @@ impl SecretItems for CredentialManager {
     }
 }
 
+#[async_trait]
+impl RefreshTokenVault for CredentialManager {
+    async fn load_refresh_token(&self) -> Result<Option<SecretString>, SecretError> {
+        let target = self.refresh_token_target();
+        self.blocking(move || read(&target)).await
+    }
+
+    async fn store_refresh_token(&self, token: &SecretString) -> Result<(), SecretError> {
+        let target = self.refresh_token_target();
+        let token = token.clone();
+        self.blocking(move || write(&target, token.expose_secret(), REFRESH_TOKEN_LABEL))
+            .await
+    }
+
+    async fn delete_refresh_token(&self) -> Result<(), SecretError> {
+        let target = self.refresh_token_target();
+        self.blocking(move || delete(&target)).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,6 +520,34 @@ mod tests {
             Some("sk-test".to_owned())
         );
         assert!(gone.is_none());
+    }
+
+    #[tokio::test]
+    async fn the_refresh_token_is_kept_apart_from_the_items_and_removed_whole() {
+        let manager = manager();
+        let token = format!("{}tail", "r".repeat(PART_SIZE));
+        manager
+            .store_item(SecretItem::McpToken, &SecretString::from("mcp"))
+            .await
+            .unwrap();
+
+        manager
+            .store_refresh_token(&SecretString::from(token.clone()))
+            .await
+            .unwrap();
+        let found = manager.load_refresh_token().await.unwrap();
+        manager.delete_refresh_token().await.unwrap();
+        let gone = manager.load_refresh_token().await.unwrap();
+        let continued = Credentials
+            .read(&format!("{}/1", manager.refresh_token_target()))
+            .unwrap();
+        let kept = manager.load_item(SecretItem::McpToken).await.unwrap();
+        manager.delete_item(SecretItem::McpToken).await.unwrap();
+
+        assert_eq!(found.map(|found| found.expose_secret().to_owned()), Some(token));
+        assert!(gone.is_none());
+        assert!(continued.is_none());
+        assert_eq!(kept.map(|kept| kept.expose_secret().to_owned()), Some("mcp".to_owned()));
     }
 
     #[tokio::test]
