@@ -255,9 +255,16 @@ impl Harness {
         self.dialog.page()
     }
 
+    // A form waits for its rows' summary, which says what Create sends.
     fn wait_for(&self, wanted: impl Fn(&SheetPage) -> bool) {
         wait_until(WAIT, || self.page().as_ref().is_some_and(&wanted))
             .unwrap_or_else(|_| panic!("the sheet stayed on {:?}", self.page()));
+        self.summarized();
+    }
+
+    fn summarized(&self) {
+        let imp = self.dialog.imp();
+        wait_until(WAIT, || imp.summaries.get() == imp.summarized.get()).expect("the share summarized");
     }
 
     fn chrome(&self) -> &Chrome {
@@ -368,7 +375,10 @@ fn result(rows: usize) -> ShareSubject {
             rows: (0..rows)
                 .map(|id| RowSnapshot::new(vec![Value::Text(id.to_string()), Value::Null].into(), Vec::new()))
                 .collect(),
-            row_count: rows as u64,
+            extent: tablepro_core::export::ResultExtent::complete(rows as u64),
+            shown: Default::default(),
+            rules: Default::default(),
+            untraced: Vec::new(),
         }),
         ..query()
     }
@@ -402,6 +412,8 @@ fn a_free_result_shows_its_fields_pro_tags_preview_and_footer() {
             "Hide SQL",
             "Password",
             "Allow viewers to download",
+            "id",
+            "password",
             "Some columns may hold secrets: password.",
         ]
     );
@@ -430,7 +442,8 @@ fn a_free_result_shows_its_fields_pro_tags_preview_and_footer() {
         .into_iter()
         .find_map(|widget| widget.downcast::<gtk::ColumnView>().ok())
         .expect("the preview");
-    assert_eq!(preview.model().map(|model| model.n_items()), Some(5));
+    // The preview shows only rows the link sends: the plan's 3.
+    assert_eq!(preview.model().map(|model| model.n_items()), Some(3));
     let groups: Vec<adw::PreferencesGroup> = descendants(&harness.content())
         .into_iter()
         .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
@@ -734,7 +747,10 @@ fn wide_result(columns: usize) -> ShareSubject {
                     .into(),
                 Vec::new(),
             )],
-            row_count: 1,
+            extent: tablepro_core::export::ResultExtent::complete(1),
+            shown: Default::default(),
+            rules: Default::default(),
+            untraced: Vec::new(),
         }),
         ..query()
     }
@@ -815,7 +831,7 @@ fn a_result_past_the_column_cap_says_so_before_and_after_the_link_is_made() {
         .expect("the created page");
     assert_eq!(
         status.description().as_deref(),
-        Some("The link holds the first 100 columns of the result.")
+        Some("The link shares the first 100 columns.")
     );
 }
 
@@ -886,10 +902,185 @@ fn a_table_view_is_read_up_to_the_plans_rows_before_the_form_shows() {
         .and_then(|subject| subject.rows.clone())
         .expect("the rows read");
     assert_eq!(read.rows.len(), 3);
-    assert_eq!(read.row_count, 40);
+    assert_eq!(read.total(), 40);
     let described = descendants(&harness.content())
         .into_iter()
         .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
         .any(|group| group.description().as_deref() == Some("Shares the first 3 of 40 rows."));
     assert!(described, "the cap note is missing");
+}
+
+fn people() -> ShareSubject {
+    use tablepro_core::masking::{ColumnMasks, MaskingStyle};
+
+    let columns: Arc<[ResultColumn]> = ["id", "email", "notes"]
+        .into_iter()
+        .map(|name| ResultColumn::new(name, ColumnType::untyped_text("text")))
+        .collect();
+    let text = |value: &str| Value::Text(value.to_owned());
+    ShareSubject {
+        sql: "SELECT * FROM users WHERE email = 'ann@example.com'".to_owned(),
+        rows: Some(SharedRows {
+            columns,
+            rows: vec![RowSnapshot::new(
+                vec![text("1"), text("ann@example.com"), text("+1 555 0100")].into(),
+                Vec::new(),
+            )],
+            extent: tablepro_core::export::ResultExtent::complete(1),
+            shown: ColumnMasks::none(),
+            rules: ColumnMasks::new(vec![None, Some(MaskingStyle::Email), None]),
+            untraced: Vec::new(),
+        }),
+        ..query()
+    }
+}
+
+fn column_row(harness: &Harness, title: &str) -> adw::ActionRow {
+    descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+        .find(|row| row.title() == title)
+        .unwrap_or_else(|| panic!("no {title} column"))
+}
+
+fn choice_of(row: &adw::ActionRow) -> adw::ToggleGroup {
+    descendants(row)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<adw::ToggleGroup>().ok())
+        .expect("the row's choice")
+}
+
+fn labels(harness: &Harness) -> Vec<String> {
+    descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .map(|label| label.label().to_string())
+        .collect()
+}
+
+fn has_label(harness: &Harness, text: &str) -> bool {
+    labels(harness).iter().any(|label| label == text)
+}
+
+#[gtk4::test]
+fn the_columns_list_masks_ruled_and_detected_columns_and_the_preview_shows_what_is_sent() {
+    use tablepro_core::masking::{MaskingStyle, ShareChoice};
+
+    let harness = Harness::new(Cloud::free(0), people(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    let email = choice_of(&column_row(&harness, "email"));
+    assert_eq!(email.active_name().as_deref(), Some("mask"));
+    assert!(
+        !email.toggle_by_name("keep").expect("Keep").is_enabled(),
+        "a ruled column could be kept"
+    );
+    let notes = column_row(&harness, "notes");
+    assert_eq!(notes.subtitle().as_deref(), Some("Values look like phone numbers"));
+    assert_eq!(choice_of(&notes).active_name().as_deref(), Some("mask"));
+    assert_eq!(
+        choice_of(&column_row(&harness, "id")).active_name().as_deref(),
+        Some("keep")
+    );
+    assert!(has_label(&harness, "2 columns masked, 0 removed."));
+    assert!(has_label(&harness, "a•••@example.com"), "{:?}", labels(&harness));
+    assert!(has_label(&harness, "••••0100"));
+    assert!(
+        descendants(&harness.content())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+            .any(|group| group.description().as_deref()
+                == Some("TablePro masked columns that look sensitive. Check them before sharing.")),
+        "the detection note is missing"
+    );
+
+    choice_of(&notes).set_active_name(Some("keep"));
+    choice_of(&column_row(&harness, "id")).set_active_name(Some("remove"));
+    harness.summarized();
+
+    assert!(
+        has_label(&harness, "1 column masked, 1 removed."),
+        "{:?}",
+        labels(&harness)
+    );
+    assert!(has_label(&harness, "+1 555 0100"));
+    let chosen = harness
+        .dialog
+        .imp()
+        .form
+        .borrow()
+        .as_ref()
+        .map(|form| form.values().columns)
+        .expect("the form");
+    assert_eq!(
+        chosen,
+        [
+            ShareChoice::Remove,
+            ShareChoice::Mask(MaskingStyle::Email),
+            ShareChoice::Keep
+        ]
+    );
+    harness.audit();
+}
+
+#[gtk4::test]
+fn personal_data_in_the_sql_offers_hide_sql_in_a_notice() {
+    let harness = Harness::new(Cloud::free(0), people(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+    let hide_sql = descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::SwitchRow>().ok())
+        .find(|row| row.title() == "Hide SQL")
+        .expect("the Hide SQL switch");
+    let [button] = harness.buttons("Hide SQL").try_into().expect("one Hide SQL button");
+    let notice = button
+        .ancestor(adw::PreferencesGroup::static_type())
+        .expect("the notice's group");
+    assert!(notice.is_visible());
+
+    button.emit_clicked();
+
+    assert!(hide_sql.is_active());
+    assert!(!notice.is_visible(), "the notice stayed after Hide SQL went on");
+}
+
+#[gtk4::test]
+fn a_result_whose_first_row_cannot_go_says_so_and_cannot_be_created() {
+    let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("note", ColumnType::untyped_text("text"))].into();
+    let subject = ShareSubject {
+        rows: Some(SharedRows {
+            columns,
+            rows: vec![RowSnapshot::new(
+                vec![Value::Text("x".repeat(300_000))].into(),
+                Vec::new(),
+            )],
+            extent: tablepro_core::export::ResultExtent::complete(1),
+            shown: Default::default(),
+            rules: Default::default(),
+            untraced: Vec::new(),
+        }),
+        ..query()
+    };
+    let harness = Harness::new(Cloud::free(0), subject, true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    assert!(
+        descendants(&harness.content())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+            .any(|group| group.description().as_deref() == Some("This result is too large to share.")),
+        "the sheet does not say the result is too large"
+    );
+    assert!(!harness.chrome().create.is_sensitive());
+
+    harness.dialog.create();
+    harness.settle();
+
+    assert_eq!(harness.posts(), 0, "a share too large was sent");
+
+    let full = choice_of(&column_row(&harness, "note"));
+    full.set_active_name(Some("mask"));
+    harness.summarized();
+
+    assert!(harness.chrome().create.is_sensitive(), "a masked value fits the budget");
 }

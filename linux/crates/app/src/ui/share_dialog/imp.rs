@@ -35,6 +35,11 @@ pub struct ShareDialog {
     // What the form held when the sheet left it, so a revoke or a refusal brings it back as typed.
     pub(super) draft: RefCell<Option<ShareForm>>,
     pub(super) following: RefCell<Vec<glib::JoinHandle<()>>>,
+    // Moved by each change of the Columns list, so only the newest summary lands.
+    pub(super) summaries: Cell<u64>,
+    pub(super) summarized: Cell<u64>,
+    // The share as the sheet holds it is summarized and can go; false while a summary runs or it is too large.
+    pub(super) sendable: Cell<bool>,
 }
 
 #[glib::object_subclass]

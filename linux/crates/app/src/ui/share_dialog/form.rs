@@ -1,19 +1,25 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use secrecy::{ExposeSecret as _, SecretString};
 use tablepro_account::{ShareExpiry, ShareLimits};
+use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
 
 use super::ShareDialog;
-use super::preview::preview_table;
+use super::preview::{PREVIEW_ROWS, preview_table};
+use super::share_columns::{self, ShareColumn};
 use super::sheet_view::{self, ExpiryChoice};
 use crate::i18n::{gettext, gettext_f};
-use crate::services::share_subject::{ShareForm, ShareSubject};
+use crate::services::share_subject::{ShareForm, ShareSubject, SharedRows};
 use crate::ui::icons;
+use crate::ui::masking_text::personal_data_kind;
 
 pub(super) const PRICING: &str = "https://tablepro.app/?ref=app-share#pricing";
 
@@ -28,6 +34,8 @@ pub(super) struct FormFields {
     hide_sql: Option<adw::SwitchRow>,
     password: Option<adw::PasswordEntryRow>,
     allow_download: Option<adw::SwitchRow>,
+    // The Columns list's choice for each shared column.
+    columns: Option<Rc<RefCell<Vec<ShareChoice>>>>,
 }
 
 impl FormFields {
@@ -54,6 +62,11 @@ impl FormFields {
                 .iter()
                 .find(|(_, button)| button.is_active())
                 .and_then(|(team, _)| team.clone()),
+            columns: self
+                .columns
+                .as_ref()
+                .map(|columns| columns.borrow().clone())
+                .unwrap_or_default(),
         }
     }
 }
@@ -105,10 +118,14 @@ pub(super) fn build_form(
     let password = password_row(dialog, &options, limits, draft);
     let allow_download = download_row(dialog, &options, limits, draft);
     page.add(&options);
-
-    if let Some(rows) = &subject.rows {
-        page.add(&preview_group(rows, limits));
+    if let Some(hide_sql) = &hide_sql {
+        add_hide_sql_notice(&page, subject, hide_sql);
     }
+
+    let columns = subject
+        .rows
+        .as_ref()
+        .map(|rows| add_columns(dialog, &page, rows, limits, draft));
     add_warnings(&page, subject, hide_sql.as_ref());
     FormFields {
         page,
@@ -120,29 +137,200 @@ pub(super) fn build_form(
         hide_sql,
         password,
         allow_download,
+        columns,
     }
 }
 
-// The first rows under the columns the server keeps, with what the plan's caps leave out.
-fn preview_group(rows: &crate::services::share_subject::SharedRows, limits: &ShareLimits) -> adw::PreferencesGroup {
-    let preview = adw::PreferencesGroup::builder()
-        .title(gettext("Rows that will be shared"))
-        .build();
-    let notes: Vec<String> = [
-        sheet_view::cap_note(rows.total(), limits.max_rows),
-        sheet_view::column_note(rows.columns.len(), limits.max_columns),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    if !notes.is_empty() {
-        preview.set_description(Some(&notes.join(" ")));
+// The preview shows the rows as the link carries them, and follows every choice in the Columns list below it.
+fn add_columns(
+    dialog: &ShareDialog,
+    page: &adw::PreferencesPage,
+    rows: &SharedRows,
+    limits: &ShareLimits,
+    draft: Option<&ShareForm>,
+) -> Rc<RefCell<Vec<ShareChoice>>> {
+    let columns = share_columns::share_columns(rows, limits.max_rows, limits.max_columns);
+    let choices: Vec<ShareChoice> = match draft {
+        Some(draft) if draft.columns.len() == columns.len() => draft.columns.clone(),
+        _ => columns.iter().map(ShareColumn::initial).collect(),
+    };
+    let choices = Rc::new(RefCell::new(choices));
+    let preview = Rc::new(Preview::new());
+    let summary = share_columns::summary_label();
+    let rows = Arc::new(rows.clone());
+    let changed: Rc<dyn Fn()> = {
+        let (dialog, preview, choices, summary, limits) = (
+            dialog.downgrade(),
+            preview.clone(),
+            choices.clone(),
+            summary.downgrade(),
+            limits.clone(),
+        );
+        Rc::new(move || {
+            if let Some(dialog) = dialog.upgrade() {
+                let watch = Watch {
+                    preview: preview.clone(),
+                    summary: summary.clone(),
+                };
+                dialog.summarize(rows.clone(), choices.borrow().clone(), limits.clone(), watch);
+            }
+        })
+    };
+    page.add(&preview.group);
+    page.add(&share_columns::columns_group(&columns, &choices, &changed, &summary));
+    changed();
+    choices
+}
+
+// What a summary updates once it lands.
+struct Watch {
+    preview: Rc<Preview>,
+    summary: glib::WeakRef<gtk::Label>,
+}
+
+// A share as the plan sends it, worked out off the main loop.
+struct Sent {
+    plan: SharePlan,
+    choices: Vec<ShareChoice>,
+    summary: ShareSummary,
+    columns: Vec<tablepro_core::column::ResultColumn>,
+    rows: Vec<crate::services::grid::RowSnapshot>,
+    total: u64,
+}
+
+impl ShareDialog {
+    // The same plan and budget as the snapshot, so the notes and the preview say what Create sends; Create waits.
+    fn summarize(&self, rows: Arc<SharedRows>, choices: Vec<ShareChoice>, limits: ShareLimits, watch: Watch) {
+        let imp = self.imp();
+        let Some(deps) = imp.deps.get() else {
+            return;
+        };
+        let ticket = imp.summaries.get() + 1;
+        imp.summaries.set(ticket);
+        self.set_sendable(false);
+        let (max_rows, max_columns) = (limits.max_rows, limits.max_columns);
+        let working = deps.tasks.spawn_blocking_task(move || {
+            let plan = rows.plan(&choices, max_columns);
+            let summary = rows.summary(&plan, max_rows);
+            let (columns, sent) = rows.sent(&plan, summary.rows_sent.min(PREVIEW_ROWS));
+            Sent {
+                plan,
+                choices,
+                summary,
+                columns,
+                rows: sent,
+                total: rows.total(),
+            }
+        });
+        let dialog = self.downgrade();
+        glib::spawn_future_local(async move {
+            let sent = working.await;
+            let Some(dialog) = dialog.upgrade() else {
+                return;
+            };
+            if dialog.imp().summaries.get() != ticket {
+                return;
+            }
+            let sent = match sent {
+                Ok(sent) => sent,
+                Err(failure) => {
+                    tracing::warn!(%failure, "the share was not summarized");
+                    return;
+                }
+            };
+            watch.preview.show(&sent, &limits);
+            if let Some(summary) = watch.summary.upgrade() {
+                summary.set_label(&share_columns::summary(&sent.plan, &sent.choices));
+            }
+            dialog.imp().summarized.set(ticket);
+            dialog.set_sendable(sent.summary.too_large.is_none());
+        });
     }
-    let kept = usize::try_from(limits.max_columns)
-        .unwrap_or(usize::MAX)
-        .min(rows.columns.len());
-    preview.add(&preview_table(&rows.columns[..kept], &rows.rows));
-    preview
+}
+
+// The first rows as sent, with what the plan's caps leave out.
+struct Preview {
+    group: adw::PreferencesGroup,
+    table: RefCell<Option<gtk::Widget>>,
+}
+
+impl Preview {
+    fn new() -> Self {
+        Self {
+            group: adw::PreferencesGroup::builder()
+                .title(gettext("Rows that will be shared"))
+                .build(),
+            table: RefCell::new(None),
+        }
+    }
+
+    fn show(&self, sent: &Sent, limits: &ShareLimits) {
+        let notes: Vec<String> = [
+            match &sent.summary.too_large {
+                None => sheet_view::cap_note(sent.total, sent.summary.rows_sent as u64),
+                Some(_) => Some(gettext("This result is too large to share.")),
+            },
+            sheet_view::column_note(sent.summary.columns_cut, limits.max_columns),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        self.group.set_description(
+            Some(&notes.join(" "))
+                .filter(|notes| !notes.is_empty())
+                .map(String::as_str),
+        );
+        let table = preview_table(&sent.columns, &sent.rows);
+        if let Some(old) = self.table.replace(Some(table.clone())) {
+            self.group.remove(&old);
+        }
+        self.group.add(&table);
+    }
+}
+
+// Personal data in the SQL's literals suggests Hide SQL, which the notice turns on; it goes once Hide SQL is on.
+fn add_hide_sql_notice(page: &adw::PreferencesPage, subject: &ShareSubject, hide_sql: &adw::SwitchRow) {
+    let hits = subject.personal_data();
+    if hits.is_empty() {
+        return;
+    }
+    let kinds: Vec<String> = hits.iter().map(|hit| personal_data_kind(hit.kind)).collect();
+    let row = adw::ActionRow::builder()
+        .title(gettext_f(
+            "This query contains what looks like personal data ({kind}). Turn on Hide SQL to keep the query private.",
+            &[("kind", &kinds.join(", "))],
+        ))
+        .use_markup(false)
+        .title_lines(0)
+        .build();
+    let icon = gtk::Image::builder()
+        .icon_name(icons::DIALOG_WARNING)
+        .valign(gtk::Align::Center)
+        .accessible_role(gtk::AccessibleRole::Presentation)
+        .css_classes(["warning"])
+        .build();
+    row.add_prefix(&icon);
+    let button = gtk::Button::builder()
+        .label(gettext("Hide SQL"))
+        .valign(gtk::Align::Center)
+        .build();
+    let switch = hide_sql.downgrade();
+    button.connect_clicked(move |_| {
+        if let Some(switch) = switch.upgrade() {
+            switch.set_active(true);
+        }
+    });
+    row.add_suffix(&button);
+    let group = adw::PreferencesGroup::new();
+    group.add(&row);
+    group.set_visible(!hide_sql.is_active());
+    let shown = group.downgrade();
+    hide_sql.connect_active_notify(move |hide_sql| {
+        if let Some(group) = shown.upgrade() {
+            group.set_visible(!hide_sql.is_active());
+        }
+    });
+    page.add(&group);
 }
 
 // Personal first, then each team the account holds a seat in; a team without public links shows but cannot be picked.

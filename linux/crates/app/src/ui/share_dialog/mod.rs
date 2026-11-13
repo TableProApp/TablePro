@@ -2,6 +2,7 @@ mod form;
 mod imp;
 mod pages;
 mod preview;
+mod share_columns;
 mod sheet_view;
 mod table_read;
 #[cfg(test)]
@@ -277,6 +278,7 @@ impl ShareDialog {
             imp.draft.replace(Some(left.values()));
         }
         let form = matches!(page, SheetPage::Form);
+        imp.sendable.set(true);
         chrome.banner.set_revealed(false);
         chrome.cancel.set_visible(form);
         chrome.create.set_visible(form);
@@ -319,7 +321,7 @@ impl ShareDialog {
         imp.busy.set(busy);
         self.set_can_close(!busy);
         if let Some(chrome) = imp.chrome.get() {
-            chrome.create.set_sensitive(!busy);
+            chrome.create.set_sensitive(!busy && imp.sendable.get());
             chrome.cancel.set_sensitive(!busy);
             match busy {
                 true => chrome.create.set_child(Some(&adw::Spinner::new())),
@@ -328,6 +330,14 @@ impl ShareDialog {
         }
         if let Some(form) = imp.form.borrow().as_ref() {
             form.page.set_sensitive(!busy);
+        }
+    }
+
+    pub(super) fn set_sendable(&self, sendable: bool) {
+        let imp = self.imp();
+        imp.sendable.set(sendable);
+        if let Some(chrome) = imp.chrome.get() {
+            chrome.create.set_sensitive(sendable && !imp.busy.get());
         }
     }
 
@@ -340,7 +350,7 @@ impl ShareDialog {
 
     fn create(&self) {
         let imp = self.imp();
-        if imp.busy.get() {
+        if imp.busy.get() || !imp.sendable.get() {
             return;
         }
         let (Some(deps), Some(account), Some(subject)) = (imp.deps.get(), self.account(), self.current_subject())
@@ -358,8 +368,18 @@ impl ShareDialog {
         spawn_and_deliver(
             &deps.tasks,
             async move {
-                let snapshot = subject.rows.as_ref().map(|rows| rows.snapshot(limits.max_rows));
-                account.create_share(subject.request(&form, &limits, snapshot)).await
+                let (snapshot, columns_cut) = match subject.rows.as_ref() {
+                    Some(rows) => {
+                        let plan = rows.plan(&form.columns, limits.max_columns);
+                        let snapshot = rows.snapshot(limits.max_rows, &plan).map_err(too_large)?;
+                        (Some(snapshot), plan.columns_cut())
+                    }
+                    None => (None, false),
+                };
+                let mut created = account.create_share(subject.request(&form, &limits, snapshot)).await?;
+                // The plan cut the columns before the request, so the account saw no more than it sends.
+                created.columns_truncated |= columns_cut;
+                Ok(created)
             },
             move |result| {
                 if let Some(dialog) = dialog.upgrade() {
@@ -552,6 +572,15 @@ async fn read_limits(account: Account, team: Option<String>) -> LimitsRead {
         }
     }
     Ok((limits, live))
+}
+
+// Worded as the server's own refusal of a body too large.
+fn too_large(error: tablepro_core::export::SnapshotTooLarge) -> AccountError {
+    AccountError::Refused {
+        status: 413,
+        code: "snapshot_too_large".to_owned(),
+        detail: error.to_string(),
+    }
 }
 
 fn load_error_message(error: &AccountError) -> String {

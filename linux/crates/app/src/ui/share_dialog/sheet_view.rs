@@ -232,9 +232,8 @@ pub(crate) fn at_limit_upsell(limits: &ShareLimits, team: Option<&ShareTeam>) ->
 }
 
 // The server takes the first `max_columns` columns of a result and leaves the rest out.
-pub(crate) fn column_note(columns: usize, max_columns: u64) -> Option<String> {
-    let max = usize::try_from(max_columns).unwrap_or(usize::MAX);
-    (columns > max).then(|| {
+pub(crate) fn column_note(columns_cut: bool, max_columns: u64) -> Option<String> {
+    columns_cut.then(|| {
         ngettext_f(
             "Shares the first {count} column.",
             "Shares the first {count} columns.",
@@ -246,8 +245,8 @@ pub(crate) fn column_note(columns: usize, max_columns: u64) -> Option<String> {
 
 pub(crate) fn columns_left_out(max_columns: u64) -> String {
     ngettext_f(
-        "The link holds the first {count} column of the result.",
-        "The link holds the first {count} columns of the result.",
+        "The link shares the first {count} column.",
+        "The link shares the first {count} columns.",
         max_columns,
         &[("count", &format_thousands(max_columns))],
     )
@@ -588,11 +587,8 @@ mod tests {
 
     #[test]
     fn only_a_result_past_the_column_cap_gets_the_column_note() {
-        assert_eq!(column_note(101, 100).as_deref(), Some("Shares the first 100 columns."));
-        assert_eq!(column_note(100, 100), None);
-        assert_eq!(
-            columns_left_out(100),
-            "The link holds the first 100 columns of the result."
-        );
+        assert_eq!(column_note(true, 100).as_deref(), Some("Shares the first 100 columns."));
+        assert_eq!(column_note(false, 100), None);
+        assert_eq!(columns_left_out(100), "The link shares the first 100 columns.");
     }
 }
