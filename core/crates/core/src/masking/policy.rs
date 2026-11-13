@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, PoisonError, RwLock, Weak};
 
 use super::glob::glob_matches;
@@ -179,44 +180,64 @@ fn trim_blanks(text: &str) -> &str {
     })
 }
 
-// The policy a live session masks by now. A saved change replaces it, and every reader sees the new rules at once.
+// The policy a live session masks by now. A saved change replaces it, and every reader sees the new rules at once;
+// the generation counts the changes, so a result set started earlier can tell it has to match again.
 #[derive(Debug, Clone, Default)]
 pub struct SharedMaskingPolicy {
-    policy: Arc<RwLock<MaskingPolicy>>,
+    cell: Arc<PolicyCell>,
+}
+
+#[derive(Debug, Default)]
+struct PolicyCell {
+    policy: RwLock<MaskingPolicy>,
+    generation: AtomicU64,
 }
 
 impl SharedMaskingPolicy {
     pub fn new(policy: MaskingPolicy) -> Self {
         Self {
-            policy: Arc::new(RwLock::new(policy)),
+            cell: Arc::new(PolicyCell {
+                policy: RwLock::new(policy),
+                generation: AtomicU64::new(0),
+            }),
         }
     }
 
     pub fn get(&self) -> MaskingPolicy {
-        self.policy.read().unwrap_or_else(PoisonError::into_inner).clone()
+        self.cell.policy.read().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
+    // The same rules set again are no change.
     pub fn set(&self, policy: MaskingPolicy) {
-        *self.policy.write().unwrap_or_else(PoisonError::into_inner) = policy;
+        let mut held = self.cell.policy.write().unwrap_or_else(PoisonError::into_inner);
+        if *held != policy {
+            *held = policy;
+            self.cell.generation.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    // Moves on each change `set` makes.
+    pub fn generation(&self) -> u64 {
+        self.cell.generation.load(Ordering::Acquire)
     }
 
     // A handle that does not keep the session's rules alive, for the connection store to set on each save.
     pub fn downgrade(&self) -> WeakMaskingPolicy {
         WeakMaskingPolicy {
-            policy: Arc::downgrade(&self.policy),
+            cell: Arc::downgrade(&self.cell),
         }
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct WeakMaskingPolicy {
-    policy: Weak<RwLock<MaskingPolicy>>,
+    cell: Weak<PolicyCell>,
 }
 
 impl WeakMaskingPolicy {
     // None once every session holding the rules is gone.
     pub fn upgrade(&self) -> Option<SharedMaskingPolicy> {
-        self.policy.upgrade().map(|policy| SharedMaskingPolicy { policy })
+        self.cell.upgrade().map(|cell| SharedMaskingPolicy { cell })
     }
 }
 
@@ -396,6 +417,20 @@ mod tests {
         assert!(!shared.get().is_empty());
         drop(shared);
         assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn the_generation_moves_on_a_change_and_not_on_the_same_rules() {
+        let shared = SharedMaskingPolicy::default();
+        let rules = policy(vec![column_rule("*", Full)]);
+
+        shared.set(rules.clone());
+        shared.set(rules);
+        let once = shared.generation();
+        shared.set(MaskingPolicy::none());
+
+        assert_eq!(once, 1);
+        assert_eq!(shared.generation(), 2);
     }
 
     #[test]
