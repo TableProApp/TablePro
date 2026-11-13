@@ -16683,6 +16683,9 @@
     "A public link to this query is on your clipboard." : {
 
     },
+    "A public link to this result is on your clipboard." : {
+
+    },
     "A publish to the team library is still running. Try again when it finishes." : {
 
     },
@@ -166115,6 +166118,12 @@
 
     },
     "Share Links" : {
+
+    },
+    "Share Result" : {
+
+    },
+    "Share Result…" : {
 
     },
     "Share usage data" : {

@@ -333,28 +333,9 @@ internal struct FavoritesTabView: View {
                     window: nil
                 )
             } catch {
-                guard let message = Self.shareFailureMessage(error) else { return }
+                guard let message = error.createMessage else { return }
                 AlertHelper.showInfoSheet(title: String(localized: "Share Link"), message: message, window: nil)
             }
-        }
-    }
-
-    private static func shareFailureMessage(_ failure: ShareFailure) -> String? {
-        switch failure {
-        case .canceled:
-            return nil
-        case .featureRequired:
-            return String(localized: "Sharing links needs a paid plan.")
-        case .signedOut:
-            return String(localized: "Sign in to your account to share links.")
-        case .limitReached:
-            return String(localized: "You've reached your share limit. Revoke a link and try again.")
-        case .offline:
-            return String(localized: "You appear to be offline. Try again once you're connected.")
-        case .rateLimited:
-            return String(localized: "Too many shares just now. Try again in a moment.")
-        case .forbidden, .notFound, .refused, .server:
-            return String(localized: "The link couldn't be created. Try again.")
         }
     }
 

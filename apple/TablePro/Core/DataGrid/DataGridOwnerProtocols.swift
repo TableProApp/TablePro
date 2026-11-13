@@ -12,6 +12,7 @@ enum DataGridCommand: Hashable, CaseIterable {
     case hideColumns
     case showRowsAsJSON
     case exportResults
+    case shareResult
     case clearResults
     case searchAllRows
     case navigateForeignKey
@@ -95,6 +96,7 @@ protocol DataGridActions: AnyObject {
     func gridNavigateForeignKey(value: String, info: ForeignKeyInfo, intent: ReferenceOpenIntent)
     func gridShowRowsAsJSON(_ rowIDs: [RowID])
     func gridExportResults()
+    func gridShareResult()
     func gridClearResults()
     func gridSearchAllRows(term: String)
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn)
@@ -127,6 +129,7 @@ extension DataGridActions {
     func gridNavigateForeignKey(value: String, info: ForeignKeyInfo, intent: ReferenceOpenIntent) {}
     func gridShowRowsAsJSON(_ rowIDs: [RowID]) {}
     func gridExportResults() {}
+    func gridShareResult() {}
     func gridClearResults() {}
     func gridSearchAllRows(term: String) {}
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn) {}

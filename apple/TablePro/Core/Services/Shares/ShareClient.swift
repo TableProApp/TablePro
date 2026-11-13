@@ -34,6 +34,26 @@ internal enum ShareFailure: Error, Equatable, Sendable {
         }
     }
 
+    // The message a create flow (a favorite, a result) shows, or nil when there is nothing to say.
+    var createMessage: String? {
+        switch self {
+        case .canceled:
+            return nil
+        case .featureRequired:
+            return String(localized: "Sharing links needs a paid plan.")
+        case .signedOut:
+            return String(localized: "Sign in to your account to share links.")
+        case .limitReached:
+            return String(localized: "You've reached your share limit. Revoke a link and try again.")
+        case .offline:
+            return String(localized: "You appear to be offline. Try again once you're connected.")
+        case .rateLimited:
+            return String(localized: "Too many shares just now. Try again in a moment.")
+        case .forbidden, .notFound, .refused, .server:
+            return String(localized: "The link couldn't be created. Try again.")
+        }
+    }
+
     static func from(_ error: AccountError) -> ShareFailure {
         switch error {
         case .canceled:
@@ -66,11 +86,25 @@ internal struct ShareClient: Sendable {
     let api: any APIProtocol
 
     func createQuery(title: String, sql: String, note: String?, dialect: String?) async throws(ShareFailure) -> CreatedShareLink {
+        try await create(body: .init(dialect: dialect, kind: "query", note: note, sql: sql, title: title))
+    }
+
+    func createResult(
+        title: String,
+        sql: String,
+        note: String?,
+        dialect: String?,
+        snapshot: Components.Schemas.SnapshotInput
+    ) async throws(ShareFailure) -> CreatedShareLink {
+        try await create(body: .init(dialect: dialect, kind: "result", note: note, snapshot: snapshot, sql: sql, title: title))
+    }
+
+    private func create(body: Components.Schemas.CreateShareBody) async throws(ShareFailure) -> CreatedShareLink {
         do {
-            switch try await api.createShare(body: .json(.init(dialect: dialect, kind: "query", note: note, sql: sql, title: title))) {
+            switch try await api.createShare(body: .json(body)) {
             case .ok(let answer):
-                let body = try answer.body.json
-                return CreatedShareLink(id: body.id, token: body.token, url: body.url)
+                let created = try answer.body.json
+                return CreatedShareLink(id: created.id, token: created.token, url: created.url)
             case .unauthorized:
                 throw ShareFailure.signedOut
             case .forbidden(let answer):
