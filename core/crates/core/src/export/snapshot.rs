@@ -71,18 +71,24 @@ impl Snapshot {
 pub const MAX_SNAPSHOT_BODY_BYTES: usize = 4_500_000;
 pub const MAX_SNAPSHOT_CELL_BYTES: usize = 256 * 1_024;
 
-// A share that cannot go out even cut: the server refuses a cell this big, and a body with no row is no share.
+// A share that cannot go out even cut: the server refuses a cell this big, a body with no row and a body with no
+// column.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum SnapshotTooLarge {
+pub enum SnapshotRefusal {
     #[error("a value in column {column} is over 256 KiB")]
     Cell { column: String },
     #[error("the first row alone is over the share's 4.5 MB")]
     FirstRow,
+    #[error("every column was removed")]
+    NoColumns,
 }
 
-impl SnapshotTooLarge {
+impl SnapshotRefusal {
     pub fn code(&self) -> &'static str {
-        "export.snapshot_too_large"
+        match self {
+            Self::Cell { .. } | Self::FirstRow => "export.snapshot_too_large",
+            Self::NoColumns => "export.snapshot_no_columns",
+        }
     }
 }
 
@@ -94,7 +100,10 @@ pub fn build_snapshot<R: AsRef<[Value]>>(
     rows: impl IntoIterator<Item = R>,
     extent: ResultExtent,
     max_rows: usize,
-) -> Result<Snapshot, SnapshotTooLarge> {
+) -> Result<Snapshot, SnapshotRefusal> {
+    if columns.is_empty() {
+        return Err(SnapshotRefusal::NoColumns);
+    }
     let mut budget = Budget::new(columns);
     let mut kept: Vec<Vec<Box<RawValue>>> = Vec::new();
     for row in rows.into_iter().take(max_rows) {
@@ -131,7 +140,10 @@ pub fn snapshot_row_count<R: AsRef<[Value]>>(
     columns: &[ResultColumn],
     rows: impl IntoIterator<Item = R>,
     max_rows: usize,
-) -> Result<usize, SnapshotTooLarge> {
+) -> Result<usize, SnapshotRefusal> {
+    if columns.is_empty() {
+        return Err(SnapshotRefusal::NoColumns);
+    }
     let mut budget = Budget::new(columns);
     let mut kept = 0;
     for row in rows.into_iter().take(max_rows) {
@@ -161,10 +173,10 @@ impl Budget {
     }
 
     // False once the row would cross the budget; the first row not fitting refuses the share.
-    fn take(&mut self, row: usize, first: bool) -> Result<bool, SnapshotTooLarge> {
+    fn take(&mut self, row: usize, first: bool) -> Result<bool, SnapshotRefusal> {
         if self.spent + row > MAX_SNAPSHOT_BODY_BYTES {
             return match first {
-                true => Err(SnapshotTooLarge::FirstRow),
+                true => Err(SnapshotRefusal::FirstRow),
                 false => Ok(false),
             };
         }
@@ -173,7 +185,7 @@ impl Budget {
     }
 }
 
-fn sized_row(columns: &[ResultColumn], row: &[Value]) -> Result<(Vec<Box<RawValue>>, usize), SnapshotTooLarge> {
+fn sized_row(columns: &[ResultColumn], row: &[Value]) -> Result<(Vec<Box<RawValue>>, usize), SnapshotRefusal> {
     let mut bytes = 2 + columns.len().saturating_sub(1) + 1;
     let mut cells = Vec::with_capacity(columns.len());
     for (index, column) in columns.iter().enumerate() {
@@ -186,7 +198,7 @@ fn sized_row(columns: &[ResultColumn], row: &[Value]) -> Result<(Vec<Box<RawValu
         let token = serde_json::value::to_raw_value(&cell).unwrap_or_else(|_| RawValue::NULL.to_owned());
         let size = cell_bytes(&value, &column.column_type.kind, &token);
         if size > MAX_SNAPSHOT_CELL_BYTES {
-            return Err(SnapshotTooLarge::Cell {
+            return Err(SnapshotRefusal::Cell {
                 column: column.name.clone(),
             });
         }
@@ -556,9 +568,20 @@ mod tests {
 
         assert_eq!(
             build_snapshot(&columns, &rows, ResultExtent::complete(1), 10).err(),
-            Some(SnapshotTooLarge::FirstRow)
+            Some(SnapshotRefusal::FirstRow)
         );
-        assert_eq!(snapshot_row_count(&columns, &rows, 10), Err(SnapshotTooLarge::FirstRow));
+        assert_eq!(snapshot_row_count(&columns, &rows, 10), Err(SnapshotRefusal::FirstRow));
+    }
+
+    #[test]
+    fn a_snapshot_with_no_column_is_refused() {
+        let rows = vec![vec![Value::Int(1)]];
+
+        let refused = build_snapshot(&[], &rows, ResultExtent::complete(1), 10).err();
+
+        assert_eq!(refused, Some(SnapshotRefusal::NoColumns));
+        assert_eq!(snapshot_row_count(&[], &rows, 10), Err(SnapshotRefusal::NoColumns));
+        assert_eq!(SnapshotRefusal::NoColumns.code(), "export.snapshot_no_columns");
     }
 
     #[test]
@@ -570,7 +593,7 @@ mod tests {
         assert_eq!(snap(&columns, &at_limit, ResultExtent::complete(1), 10).rows.len(), 1);
         assert_eq!(
             build_snapshot(&columns, &over, ResultExtent::complete(1), 10).err(),
-            Some(SnapshotTooLarge::Cell {
+            Some(SnapshotRefusal::Cell {
                 column: "note".to_owned()
             })
         );

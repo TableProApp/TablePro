@@ -10,6 +10,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use secrecy::{ExposeSecret as _, SecretString};
 use tablepro_account::{ShareExpiry, ShareLimits};
+use tablepro_core::export::SnapshotRefusal;
 use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
 
 use super::ShareDialog;
@@ -344,7 +345,7 @@ impl ShareDialog {
             .summary
             .set_label(&share_columns::summary(&sent.plan, &sent.choices));
         imp.summarized.set(ticket);
-        self.set_sendable(sent.summary.too_large.is_none());
+        self.set_sendable(sent.summary.refused.is_none());
         imp.sent.replace(Some(sent));
     }
 }
@@ -367,9 +368,12 @@ impl Preview {
 
     fn show(&self, sent: &Sent, limits: &ShareLimits) {
         let notes: Vec<String> = [
-            match &sent.summary.too_large {
+            match &sent.summary.refused {
                 None => sheet_view::cap_note(sent.total, sent.summary.rows_sent as u64),
-                Some(_) => Some(gettext("This result is too large to share.")),
+                Some(SnapshotRefusal::NoColumns) => Some(sheet_view::no_columns_note()),
+                Some(SnapshotRefusal::Cell { .. } | SnapshotRefusal::FirstRow) => {
+                    Some(gettext("This result is too large to share."))
+                }
             },
             sheet_view::column_note(sent.summary.columns_cut, limits.max_columns),
         ]

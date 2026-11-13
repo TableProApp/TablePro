@@ -11407,7 +11407,7 @@ internal record ShareSummary (
     ulong RowsSent, 
     uint ColumnsSent, 
     bool ColumnsTruncated, 
-    SnapshotTooLargeReason? TooLarge
+    ShareRefusal? Refused
 ) {
 }
 
@@ -11419,7 +11419,7 @@ class FfiConverterTypeShareSummary: FfiConverterRustBuffer<ShareSummary> {
             RowsSent: FfiConverterUInt64.INSTANCE.Read(stream),
             ColumnsSent: FfiConverterUInt32.INSTANCE.Read(stream),
             ColumnsTruncated: FfiConverterBoolean.INSTANCE.Read(stream),
-            TooLarge: FfiConverterOptionalTypeSnapshotTooLargeReason.INSTANCE.Read(stream)
+            Refused: FfiConverterOptionalTypeShareRefusal.INSTANCE.Read(stream)
         );
     }
 
@@ -11428,14 +11428,14 @@ class FfiConverterTypeShareSummary: FfiConverterRustBuffer<ShareSummary> {
             + FfiConverterUInt64.INSTANCE.AllocationSize(value.RowsSent)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.ColumnsSent)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.ColumnsTruncated)
-            + FfiConverterOptionalTypeSnapshotTooLargeReason.INSTANCE.AllocationSize(value.TooLarge);
+            + FfiConverterOptionalTypeShareRefusal.INSTANCE.AllocationSize(value.Refused);
     }
 
     public override void Write(ShareSummary value, BigEndianStream stream) {
             FfiConverterUInt64.INSTANCE.Write(value.RowsSent, stream);
             FfiConverterUInt32.INSTANCE.Write(value.ColumnsSent, stream);
             FfiConverterBoolean.INSTANCE.Write(value.ColumnsTruncated, stream);
-            FfiConverterOptionalTypeSnapshotTooLargeReason.INSTANCE.Write(value.TooLarge, stream);
+            FfiConverterOptionalTypeShareRefusal.INSTANCE.Write(value.Refused, stream);
     }
 }
 
@@ -14895,60 +14895,71 @@ class FfiConverterTypeShareKindTag: FfiConverterRustBuffer<ShareKindTag> {
 
 
 
-internal record SnapshotTooLargeReason {
+internal record ShareRefusal {
     
     public record Cell (
         string Column
-    ) : SnapshotTooLargeReason {}
+    ) : ShareRefusal {}
     
-    public record FirstRow: SnapshotTooLargeReason {}
+    public record FirstRow: ShareRefusal {}
+    
+    
+    public record NoColumns: ShareRefusal {}
     
     
 
     
 }
 
-class FfiConverterTypeSnapshotTooLargeReason : FfiConverterRustBuffer<SnapshotTooLargeReason>{
-    public static FfiConverterRustBuffer<SnapshotTooLargeReason> INSTANCE = new FfiConverterTypeSnapshotTooLargeReason();
+class FfiConverterTypeShareRefusal : FfiConverterRustBuffer<ShareRefusal>{
+    public static FfiConverterRustBuffer<ShareRefusal> INSTANCE = new FfiConverterTypeShareRefusal();
 
-    public override SnapshotTooLargeReason Read(BigEndianStream stream) {
+    public override ShareRefusal Read(BigEndianStream stream) {
         var value = stream.ReadInt();
         switch (value) {
             case 1:
-                return new SnapshotTooLargeReason.Cell(
+                return new ShareRefusal.Cell(
                     FfiConverterString.INSTANCE.Read(stream)
                 );
             case 2:
-                return new SnapshotTooLargeReason.FirstRow(
+                return new ShareRefusal.FirstRow(
+                );
+            case 3:
+                return new ShareRefusal.NoColumns(
                 );
             default:
-                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSnapshotTooLargeReason.Read()", value));
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeShareRefusal.Read()", value));
         }
     }
 
-    public override int AllocationSize(SnapshotTooLargeReason value) {
+    public override int AllocationSize(ShareRefusal value) {
         switch (value) {
-            case SnapshotTooLargeReason.Cell variant_value:
+            case ShareRefusal.Cell variant_value:
                 return 4
                     + FfiConverterString.INSTANCE.AllocationSize(variant_value.Column);
-            case SnapshotTooLargeReason.FirstRow variant_value:
+            case ShareRefusal.FirstRow variant_value:
+                return 4;
+            case ShareRefusal.NoColumns variant_value:
                 return 4;
             default:
-                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSnapshotTooLargeReason.AllocationSize()", value));
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeShareRefusal.AllocationSize()", value));
         }
     }
 
-    public override void Write(SnapshotTooLargeReason value, BigEndianStream stream) {
+    public override void Write(ShareRefusal value, BigEndianStream stream) {
         switch (value) {
-            case SnapshotTooLargeReason.Cell variant_value:
+            case ShareRefusal.Cell variant_value:
                 stream.WriteInt(1);
                 FfiConverterString.INSTANCE.Write(variant_value.Column, stream);
                 break;
-            case SnapshotTooLargeReason.FirstRow variant_value:
+            case ShareRefusal.FirstRow variant_value:
                 stream.WriteInt(2);
                 break;
+            case ShareRefusal.NoColumns variant_value:
+                stream.WriteInt(3);
+                break;
             default:
-                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSnapshotTooLargeReason.Write()", value));
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeShareRefusal.Write()", value));
         }
     }
 }
@@ -16960,30 +16971,30 @@ class FfiConverterOptionalTypeShareExpiryTag: FfiConverterRustBuffer<ShareExpiry
 
 
 
-class FfiConverterOptionalTypeSnapshotTooLargeReason: FfiConverterRustBuffer<SnapshotTooLargeReason?> {
-    public static FfiConverterOptionalTypeSnapshotTooLargeReason INSTANCE = new FfiConverterOptionalTypeSnapshotTooLargeReason();
+class FfiConverterOptionalTypeShareRefusal: FfiConverterRustBuffer<ShareRefusal?> {
+    public static FfiConverterOptionalTypeShareRefusal INSTANCE = new FfiConverterOptionalTypeShareRefusal();
 
-    public override SnapshotTooLargeReason? Read(BigEndianStream stream) {
+    public override ShareRefusal? Read(BigEndianStream stream) {
         if (stream.ReadByte() == 0) {
             return null;
         }
-        return FfiConverterTypeSnapshotTooLargeReason.INSTANCE.Read(stream);
+        return FfiConverterTypeShareRefusal.INSTANCE.Read(stream);
     }
 
-    public override int AllocationSize(SnapshotTooLargeReason? value) {
+    public override int AllocationSize(ShareRefusal? value) {
         if (value == null) {
             return 1;
         } else {
-            return 1 + FfiConverterTypeSnapshotTooLargeReason.INSTANCE.AllocationSize((SnapshotTooLargeReason)value);
+            return 1 + FfiConverterTypeShareRefusal.INSTANCE.AllocationSize((ShareRefusal)value);
         }
     }
 
-    public override void Write(SnapshotTooLargeReason? value, BigEndianStream stream) {
+    public override void Write(ShareRefusal? value, BigEndianStream stream) {
         if (value == null) {
             stream.WriteByte(0);
         } else {
             stream.WriteByte(1);
-            FfiConverterTypeSnapshotTooLargeReason.INSTANCE.Write((SnapshotTooLargeReason)value, stream);
+            FfiConverterTypeShareRefusal.INSTANCE.Write((ShareRefusal)value, stream);
         }
     }
 }

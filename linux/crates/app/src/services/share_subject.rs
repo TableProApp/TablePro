@@ -4,9 +4,9 @@ use secrecy::{ExposeSecret as _, SecretString};
 use tablepro_account::{ShareExpiry, ShareKind, ShareLimits, ShareRequest};
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot};
-use tablepro_core::masking::detect::{MaskSuggestion, PersonalDataHit, scan_sql_personal_data, suggest_masks};
-use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
+use tablepro_core::export::{ResultExtent, Snapshot, SnapshotRefusal, build_snapshot};
+use tablepro_core::masking::detect::{MaskSuggestion, PersonalDataHit, scan_sql_personal_data};
+use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary, share_suggestions};
 use tablepro_core::secret_scan::{self, SecretHitKind};
 
 use crate::services::grid::RowSnapshot;
@@ -138,7 +138,7 @@ impl SharedRows {
     }
 
     // Cut to the plan's rows and the body's budget before upload, masked values weighed; removed columns are never read.
-    pub(crate) fn snapshot(&self, max_rows: u64, plan: &SharePlan) -> Result<Snapshot, SnapshotTooLarge> {
+    pub(crate) fn snapshot(&self, max_rows: u64, plan: &SharePlan) -> Result<Snapshot, SnapshotRefusal> {
         let max_rows = usize::try_from(max_rows).unwrap_or(usize::MAX);
         let columns = plan.columns(&self.columns);
         let rows = self.rows.iter().map(|row| self.sent_row(plan, row));
@@ -174,11 +174,14 @@ impl SharedRows {
         plan.row(&self.columns, |index| row.value(index).clone())
     }
 
-    // What the detectors see in the rows the sheet as it starts would send.
+    // What the detectors suggest for the sheet as it starts, by the core's windows of the held rows.
     pub(crate) fn suggestions(&self, max_rows: u64, max_columns: u64) -> Vec<Option<MaskSuggestion>> {
-        let sent = self.summary(&self.plan(&[], max_columns), max_rows).rows_sent;
-        let rows: Vec<Vec<Value>> = self.rows.iter().take(sent).map(RowSnapshot::to_values).collect();
-        suggest_masks(&self.columns, &rows)
+        share_suggestions(
+            &self.columns,
+            self.rows.iter().map(RowSnapshot::to_values),
+            usize::try_from(max_rows).unwrap_or(usize::MAX),
+            usize::try_from(max_columns).unwrap_or(usize::MAX),
+        )
     }
 
     pub(crate) fn total(&self) -> u64 {
@@ -438,6 +441,30 @@ mod tests {
             .collect();
 
         assert_eq!(styles, [None, Some(MaskingStyle::Email), Some(MaskingStyle::LastFour)]);
+    }
+
+    #[test]
+    fn a_first_row_too_large_to_send_still_has_its_values_read() {
+        let text = |value: &str| Value::Text(value.to_owned());
+        let shared = SharedRows {
+            columns: vec![text_column("blob"), text_column("notes")].into(),
+            rows: vec![
+                RowSnapshot::new(
+                    vec![text(&"x".repeat(300 * 1_024)), text("ann@example.com")].into(),
+                    Vec::new(),
+                ),
+                RowSnapshot::new(vec![text("small"), text("bob@example.com")].into(), Vec::new()),
+            ],
+            extent: ResultExtent::complete(2),
+        };
+
+        let styles: Vec<Option<MaskingStyle>> = shared
+            .suggestions(1_000, 100)
+            .iter()
+            .map(|suggestion| suggestion.map(|suggestion| suggestion.style))
+            .collect();
+
+        assert_eq!(styles, [None, Some(MaskingStyle::Email)]);
     }
 
     #[test]

@@ -1,6 +1,7 @@
+use super::detect::{MaskSuggestion, suggest_masks_over};
 use super::{MaskingStyle, mask_value};
 use crate::column::ResultColumn;
-use crate::export::{SnapshotTooLarge, snapshot_row_count};
+use crate::export::{SnapshotRefusal, snapshot_row_count};
 use crate::value::Value;
 
 // What the share sheet does with one column.
@@ -36,7 +37,7 @@ pub struct ShareSummary {
     pub rows_sent: usize,
     pub columns_sent: usize,
     pub columns_cut: bool,
-    pub too_large: Option<SnapshotTooLarge>,
+    pub refused: Option<SnapshotRefusal>,
 }
 
 impl SharePlan {
@@ -107,7 +108,7 @@ impl SharePlan {
             (0..rows).map(|row| self.row(visible, |column| read(row, column))),
             max_rows,
         );
-        let (rows_sent, too_large) = match sent {
+        let (rows_sent, refused) = match sent {
             Ok(rows) => (rows, None),
             Err(refused) => (0, Some(refused)),
         };
@@ -115,9 +116,29 @@ impl SharePlan {
             rows_sent,
             columns_sent: self.kept.len(),
             columns_cut: self.columns_cut,
-            too_large,
+            refused,
         }
     }
+}
+
+// The first `max_rows` held rows whatever they weigh, and the rows a share keeping every column sends (core ADR 0028).
+pub fn share_suggestions<R: AsRef<[Value]>>(
+    visible: &[ResultColumn],
+    held: impl IntoIterator<Item = R>,
+    max_rows: usize,
+    max_columns: usize,
+) -> Vec<Option<MaskSuggestion>> {
+    let first: Vec<R> = held.into_iter().take(max_rows).collect();
+    let plan = SharePlan::new(visible.len(), &[], max_columns);
+    let sent = plan
+        .summary(
+            visible,
+            first.len(),
+            |row, column| first[row].as_ref().get(column).cloned().unwrap_or(Value::Null),
+            max_rows,
+        )
+        .rows_sent;
+    suggest_masks_over(visible, &[first.as_slice(), &first[..sent.min(first.len())]])
 }
 
 #[cfg(test)]
@@ -203,16 +224,110 @@ mod tests {
                 rows_sent: 22,
                 columns_sent: 1,
                 columns_cut: false,
-                too_large: None,
+                refused: None,
             }
         );
         assert_eq!(refused.rows_sent, 0);
         assert_eq!(
-            refused.too_large,
-            Some(SnapshotTooLarge::Cell {
+            refused.refused,
+            Some(SnapshotRefusal::Cell {
                 column: "note".to_owned()
             })
         );
         assert_eq!(masked.rows_sent, 30, "masked text was not what was weighed");
+    }
+
+    #[test]
+    fn removing_every_column_refuses_the_share() {
+        let removed = [
+            ShareChoice::Remove,
+            ShareChoice::Remove,
+            ShareChoice::Remove,
+            ShareChoice::Remove,
+        ];
+
+        let summary =
+            SharePlan::new(4, &removed, 100).summary(&columns(), 2, |_, column| held()[column].clone(), 1_000);
+
+        assert_eq!(
+            summary,
+            ShareSummary {
+                rows_sent: 0,
+                columns_sent: 0,
+                columns_cut: false,
+                refused: Some(SnapshotRefusal::NoColumns),
+            }
+        );
+    }
+
+    fn style_of(suggestion: Option<MaskSuggestion>) -> Option<MaskingStyle> {
+        suggestion.map(|suggestion| suggestion.style)
+    }
+
+    #[test]
+    fn a_first_row_too_large_to_send_still_has_its_values_read() {
+        let visible = [
+            ResultColumn::new("blob", ColumnType::untyped_text("text")),
+            ResultColumn::new("notes", ColumnType::untyped_text("text")),
+        ];
+        let rows = vec![
+            vec![Value::Text("x".repeat(300 * 1_024)), text("ann@example.com")],
+            vec![text("small"), text("bob@example.com")],
+        ];
+
+        let suggested = share_suggestions(&visible, &rows, 1_000, 100);
+
+        assert_eq!(
+            suggested.iter().map(|found| style_of(*found)).collect::<Vec<_>>(),
+            [None, Some(Email)]
+        );
+    }
+
+    #[test]
+    fn values_in_rows_that_go_only_once_a_wide_column_is_removed_are_read() {
+        let visible = [
+            ResultColumn::new("blob", ColumnType::untyped_text("text")),
+            ResultColumn::new("notes", ColumnType::untyped_text("text")),
+        ];
+        // 22 rows fit the budget with the blob kept; the e-mails are in the 8 after them.
+        let rows: Vec<Vec<Value>> = (0..30)
+            .map(|row| {
+                let notes = match row < 22 {
+                    true => Value::Null,
+                    false => text(&format!("person{row}@example.com")),
+                };
+                vec![Value::Text("x".repeat(200_000)), notes]
+            })
+            .collect();
+
+        let suggested = share_suggestions(&visible, &rows, 1_000, 100);
+
+        assert_eq!(style_of(suggested[1]), Some(Email));
+    }
+
+    #[test]
+    fn each_window_keeps_its_own_threshold() {
+        let visible = [
+            ResultColumn::new("blob", ColumnType::untyped_text("text")),
+            ResultColumn::new("contact", ColumnType::untyped_text("text")),
+        ];
+        // With the wide blob, the budget sends the 22 rows of e-mails; over all 60 they are fewer than half.
+        let rows = |blob: &str| -> Vec<Vec<Value>> {
+            (0..60)
+                .map(|row| {
+                    let contact = match row < 22 {
+                        true => format!("p{row}@example.com"),
+                        false => "word".to_owned(),
+                    };
+                    vec![text(blob), Value::Text(contact)]
+                })
+                .collect()
+        };
+
+        let wide = share_suggestions(&visible, rows(&"x".repeat(200_000)), 1_000, 100);
+        let narrow = share_suggestions(&visible, rows("x"), 1_000, 100);
+
+        assert_eq!(style_of(wide[1]), Some(Email));
+        assert_eq!(style_of(narrow[1]), None);
     }
 }

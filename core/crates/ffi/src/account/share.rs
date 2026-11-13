@@ -8,7 +8,7 @@ use tablepro_account::{
 };
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot};
+use tablepro_core::export::{ResultExtent, Snapshot, SnapshotRefusal, build_snapshot};
 use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
 
 use super::account_service::AccountService;
@@ -151,8 +151,7 @@ impl AccountService {
     // A result share takes the set's first `visible_columns` columns and its first `max_rows` rows, the plan's
     // limit from `share_limits`; the set must have all its rows. A query share takes no set. For a table page, the
     // SQL is the page's `view_sql` and `total_rows` what `table_row_count` counts, since the set holds one page.
-    // `columns` is the sheet's choice for each visible column, in order, Keep for any it leaves out; the connection's
-    // rules mask on top of them, also for a tab the user revealed.
+    // `columns` is the sheet's choice for each visible column, in order, Keep for any it leaves out.
     pub async fn create_share(
         &self,
         request: ShareRequestArg,
@@ -265,7 +264,7 @@ fn snapshot_of(
         extent,
         usize::try_from(max_rows).unwrap_or(usize::MAX),
     )
-    .map_err(too_large)?;
+    .map_err(refused)?;
     for (column, style) in snapshot.columns.iter_mut().zip(plan.masked()) {
         column.masked = style;
     }
@@ -281,8 +280,8 @@ pub(crate) fn rows_sent(
     max_rows: u32,
 ) -> Result<u64, CoreError> {
     let summary = summary_of(set, visible, plan, max_rows);
-    match summary.too_large {
-        Some(refused) => Err(too_large(refused)),
+    match summary.refused {
+        Some(refusal) => Err(refused(refusal)),
         None => Ok(summary.rows_sent as u64),
     }
 }
@@ -300,9 +299,19 @@ pub(crate) fn sent_row(set: &ResultSet, visible: &[ResultColumn], plan: &SharePl
     plan.row(visible, |index| held_value(set, row, index, &visible[index]))
 }
 
-// Worded as the server's own refusal of a body too large, which every app already words.
-fn too_large(error: SnapshotTooLarge) -> CoreError {
-    CoreError::failed("account.snapshot_too_large", error.to_string())
+// A body too large is worded as the server's own refusal, which every app already words.
+fn refused(refusal: SnapshotRefusal) -> CoreError {
+    let code = match refusal {
+        SnapshotRefusal::Cell { .. } | SnapshotRefusal::FirstRow => "account.snapshot_too_large",
+        SnapshotRefusal::NoColumns => "ffi.share_no_columns",
+    };
+    CoreError::failed(code, refusal.to_string())
+}
+
+pub(crate) fn visible_columns_of(set: &ResultSet, visible_columns: u32) -> Vec<ResultColumn> {
+    let held = set.result_columns();
+    let count = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
+    held[..count].to_vec()
 }
 
 // The set's first `visible_columns` columns and how a share sends them, by the sheet's choices.
@@ -311,11 +320,10 @@ pub(crate) fn share_plan(
     visible_columns: u32,
     choices: &[ShareColumnChoice],
 ) -> (Vec<ResultColumn>, SharePlan) {
-    let held = set.result_columns();
-    let count = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
-    let visible: Vec<ResultColumn> = held[..count].to_vec();
+    let visible = visible_columns_of(set, visible_columns);
     let choices: Vec<ShareChoice> = choices.iter().copied().map(ShareChoice::from).collect();
-    (visible, SharePlan::new(count, &choices, MAX_SHARE_COLUMNS))
+    let plan = SharePlan::new(visible.len(), &choices, MAX_SHARE_COLUMNS);
+    (visible, plan)
 }
 
 fn share_request(request: ShareRequestArg, snapshot: Option<Snapshot>) -> ShareRequest {
@@ -588,7 +596,7 @@ mod tests {
         assert_eq!(snapshot.rows.len(), 22);
         assert_eq!(summary.rows_sent, snapshot.rows.len() as u64);
         assert_eq!(
-            (summary.columns_sent, summary.columns_truncated, summary.too_large),
+            (summary.columns_sent, summary.columns_truncated, summary.refused),
             (1, false, None)
         );
         assert_eq!(snapshot.row_count, Some(30), "the server would not mark the share cut");
@@ -607,11 +615,24 @@ mod tests {
         assert_eq!(over.code(), "account.snapshot_too_large");
         assert_eq!(summary.rows_sent, 0);
         assert_eq!(
-            summary.too_large,
-            Some(crate::masking::SnapshotTooLargeReason::Cell {
+            summary.refused,
+            Some(crate::masking::ShareRefusal::Cell {
                 column: "note".to_owned()
             })
         );
         assert_eq!(preview.code(), "account.snapshot_too_large");
+    }
+
+    #[test]
+    fn a_share_with_every_column_removed_is_refused_before_the_server_sees_it() {
+        let removed = [ShareColumnChoice::Remove; 4];
+
+        let refused = snapshot_of(&people(), 4, 10, None, &removed).err().unwrap();
+        let summary = crate::masking::share_summary(&people(), 4, 10, &removed).unwrap();
+
+        assert_eq!(refused.code(), "ffi.share_no_columns");
+        assert_eq!(summary.rows_sent, 0);
+        assert_eq!(summary.columns_sent, 0);
+        assert_eq!(summary.refused, Some(crate::masking::ShareRefusal::NoColumns));
     }
 }

@@ -62,7 +62,7 @@ public sealed class MaskingTests
         var sends = await rows.GetShareSummaryAsync(3, 2, removed);
         var masked = await rows.GetShareSummaryAsync(3, 1_000, [.. removed[..2], new ShareColumnChoice.Mask(MaskStyle.Full)]);
 
-        Assert.Equal(new ShareSummary(0, 3, false, new ShareTooLarge.Cell("blob")), tooLarge);
+        Assert.Equal(new ShareSummary(0, 3, false, new ShareRefusal.Cell("blob")), tooLarge);
         Assert.Equal(new ShareSummary(2, 2, false, null), sends);
         Assert.Equal(new ShareSummary(3, 3, false, null), masked);
     }

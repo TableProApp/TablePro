@@ -58,10 +58,11 @@ internal static partial class Mapping
         Count(summary.RowsSent),
         checked((int)summary.ColumnsSent),
         summary.ColumnsTruncated,
-        summary.TooLarge switch
+        summary.Refused switch
         {
-            Native.SnapshotTooLargeReason.Cell cell => new ShareTooLarge.Cell(cell.Column),
-            Native.SnapshotTooLargeReason.FirstRow => ShareTooLarge.FirstRow.Instance,
+            Native.ShareRefusal.Cell cell => new ShareRefusal.Cell(cell.Column),
+            Native.ShareRefusal.FirstRow => ShareRefusal.FirstRow.Instance,
+            Native.ShareRefusal.NoColumns => ShareRefusal.NoColumns.Instance,
             _ => null,
         });
 

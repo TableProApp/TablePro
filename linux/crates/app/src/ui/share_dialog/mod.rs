@@ -18,6 +18,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_account::{Account, AccountError, CreatedShare, Share, ShareLimits};
+use tablepro_core::export::SnapshotRefusal;
 use tablepro_session::runtime::{TaskFailure, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -372,7 +373,7 @@ impl ShareDialog {
                 let (snapshot, columns_cut) = match subject.rows.as_ref() {
                     Some(rows) => {
                         let plan = rows.plan(&form.columns, limits.max_columns);
-                        let snapshot = rows.snapshot(limits.max_rows, &plan).map_err(too_large)?;
+                        let snapshot = rows.snapshot(limits.max_rows, &plan).map_err(refused)?;
                         (Some(snapshot), plan.columns_cut())
                     }
                     None => (None, false),
@@ -418,7 +419,10 @@ impl ShareDialog {
             "account.share_limit_reached" | "account.email_unverified" | "account.sharing_disabled" => {
                 self.load_limits();
             }
-            _ => self.alert(&share_error_message(&error)),
+            _ => self.alert(&match &error {
+                AccountError::Refused { code, .. } if code == NO_COLUMNS => sheet_view::no_columns_note(),
+                _ => share_error_message(&error),
+            }),
         }
     }
 
@@ -575,12 +579,19 @@ async fn read_limits(account: Account, team: Option<String>) -> LimitsRead {
     Ok((limits, live))
 }
 
-// Worded as the server's own refusal of a body too large.
-fn too_large(error: tablepro_core::export::SnapshotTooLarge) -> AccountError {
+// The core's refusal of a share before the upload. Never a server code: the server would refuse it with a 422.
+const NO_COLUMNS: &str = "share_no_columns";
+
+// A body too large is worded as the server's own refusal of one.
+fn refused(refusal: SnapshotRefusal) -> AccountError {
+    let (status, code) = match refusal {
+        SnapshotRefusal::Cell { .. } | SnapshotRefusal::FirstRow => (413, "snapshot_too_large"),
+        SnapshotRefusal::NoColumns => (422, NO_COLUMNS),
+    };
     AccountError::Refused {
-        status: 413,
-        code: "snapshot_too_large".to_owned(),
-        detail: error.to_string(),
+        status,
+        code: code.to_owned(),
+        detail: refusal.to_string(),
     }
 }
 

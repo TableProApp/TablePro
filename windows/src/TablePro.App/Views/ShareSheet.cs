@@ -839,7 +839,7 @@ internal sealed class ShareSheet
 
         ShowSummary(plan, summary);
         UpdateShareButton();
-        if (summary.TooLarge is null)
+        if (summary.Refused is null)
         {
             await RefreshPreviewAsync(round, summary).ConfigureAwait(true);
         }
@@ -853,18 +853,21 @@ internal sealed class ShareSheet
         _capNote.Visibility = cut ? Visibility.Visible : Visibility.Collapsed;
         _columnsNote.Text = summary is null ? string.Empty : Strings.Format("ShareColumnsNote", summary.ColumnsSent);
         _columnsNote.Visibility = summary is { ColumnsTruncated: true } ? Visibility.Visible : Visibility.Collapsed;
-        var tooLarge = summary?.TooLarge switch
+        var tooLarge = summary?.Refused switch
         {
-            ShareTooLarge.Cell cell => Strings.Format("ShareTooLargeCell", cell.Column),
-            ShareTooLarge.FirstRow => Strings.Get("ShareTooLargeFirstRow"),
+            ShareRefusal.Cell cell => Strings.Format("ShareTooLargeCell", cell.Column),
+            ShareRefusal.FirstRow => Strings.Get("ShareTooLargeFirstRow"),
             _ => null,
         };
+        var noColumns = _columns is { RemovesEveryColumn: true } || summary?.Refused is ShareRefusal.NoColumns;
+        _noColumns.IsOpen = noColumns;
+        _noColumns.Visibility = noColumns ? Visibility.Visible : Visibility.Collapsed;
         _tooLarge.Message = tooLarge ?? string.Empty;
         _tooLarge.IsOpen = tooLarge is not null;
         _tooLarge.Visibility = tooLarge is null ? Visibility.Collapsed : Visibility.Visible;
         if (_previewGrid is { } grid)
         {
-            grid.Visibility = summary is { TooLarge: null } ? Visibility.Visible : Visibility.Collapsed;
+            grid.Visibility = summary is { Refused: null } ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

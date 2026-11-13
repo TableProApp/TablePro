@@ -39,7 +39,7 @@ public sealed class ShareRounds
     // Only after this round's summary said the rows can go; a preview never stands for rows too large to send.
     public bool TakePreview(int round)
     {
-        if (round != Round || Summary is not { TooLarge: null })
+        if (round != Round || Summary is not { Refused: null })
         {
             return false;
         }

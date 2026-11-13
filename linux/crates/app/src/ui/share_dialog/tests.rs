@@ -1112,3 +1112,28 @@ fn a_form_built_again_for_the_same_rows_reads_what_the_detectors_and_the_summary
     );
     assert_eq!(chosen(&column_row(&harness, "notes")), "Mask as Last 4 Characters");
 }
+
+#[gtk4::test]
+fn removing_every_column_says_so_and_cannot_be_created() {
+    let harness = Harness::new(Cloud::free(0), people(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    for column in ["id", "email", "notes"] {
+        choose(&column_row(&harness, column), "Remove");
+    }
+    harness.summarized();
+
+    assert!(
+        descendants(&harness.content())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+            .any(|group| group.description().as_deref() == Some("Keep or mask at least one column to share.")),
+        "the sheet does not say every column is removed"
+    );
+    assert!(!harness.chrome().create.is_sensitive());
+
+    harness.dialog.create();
+    harness.settle();
+
+    assert_eq!(harness.posts(), 0, "a share with no column was sent");
+}

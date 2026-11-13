@@ -3,15 +3,16 @@
 
 use std::sync::Arc;
 
+use tablepro_account::MAX_SHARE_COLUMNS;
 use tablepro_core::Truncation;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::export::SnapshotTooLarge;
+use tablepro_core::export::SnapshotRefusal;
 use tablepro_core::masking::detect::{
-    MaskSuggestion, PersonalDataHit, SensitiveKind, SuggestionReason, scan_sql_personal_data, suggest_masks,
+    MaskSuggestion, PersonalDataHit, SensitiveKind, SuggestionReason, scan_sql_personal_data,
 };
-use tablepro_core::masking::{MaskingStyle, ShareChoice};
+use tablepro_core::masking::{MaskingStyle, ShareChoice, share_suggestions};
 
-use crate::account::share::{rows_sent, sent_row, share_plan, summary_of};
+use crate::account::share::{rows_sent, sent_row, share_plan, summary_of, visible_columns_of};
 use crate::error::CoreError;
 use crate::export::held_row;
 use crate::results::{ResultSet, ResultStore};
@@ -74,11 +75,13 @@ pub struct PersonalDataHitInfo {
 
 // Why a share cannot go even cut.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum SnapshotTooLargeReason {
+pub enum ShareRefusal {
     // A value of this column is over 256 KiB.
     Cell { column: String },
     // The first row alone is over the 4.5 MB a share's body may weigh.
     FirstRow,
+    // The sheet removed every column.
+    NoColumns,
 }
 
 // What a share with the sheet's choices sends, for its note: `rows_sent` is what the snapshot keeps under the plan's
@@ -88,7 +91,7 @@ pub struct ShareSummary {
     pub rows_sent: u64,
     pub columns_sent: u32,
     pub columns_truncated: bool,
-    pub too_large: Option<SnapshotTooLargeReason>,
+    pub refused: Option<ShareRefusal>,
 }
 
 // Personal data in the SQL's single-quoted literals, each kind once per line: the sheet suggests Hide SQL.
@@ -102,8 +105,8 @@ pub fn scan_sql_for_personal_data(sql: String) -> Vec<PersonalDataHitInfo> {
 
 #[uniffi::export]
 impl ResultSet {
-    // The share sheet's columns as it starts them, from the set's first `visible_columns` columns and the rows a share
-    // of `max_rows` would send.
+    // The share sheet's columns as it starts them, from the set's first `visible_columns` columns and its first
+    // `max_rows` rows (`tablepro_core::masking::share_suggestions`).
     pub async fn share_masking(
         self: Arc<Self>,
         visible_columns: u32,
@@ -153,19 +156,21 @@ where
 }
 
 fn share_masking(set: &ResultSet, visible_columns: u32, max_rows: u32) -> Vec<ShareColumnMasking> {
-    let (columns, plan) = share_plan(set, visible_columns, &[]);
-    // The rows the snapshot sends with every column kept, so "at least half" never counts a row that stays behind;
-    // none when even the first row cannot go.
-    let sent = rows_sent(set, &columns, &plan, max_rows).unwrap_or(0);
-    let rows: Vec<Vec<tablepro_core::Value>> = (0..sent).map(|row| held_row(set, row, &columns)).collect();
-    suggest_masks(&columns, &rows)
-        .into_iter()
-        .zip(&columns)
-        .map(|(suggestion, column)| ShareColumnMasking {
-            name: column.name.clone(),
-            suggestion: suggestion.map(MaskSuggestionInfo::from),
-        })
-        .collect()
+    let columns = visible_columns_of(set, visible_columns);
+    let held = (0..set.extent().held).map(|row| held_row(set, row, &columns));
+    share_suggestions(
+        &columns,
+        held,
+        usize::try_from(max_rows).unwrap_or(usize::MAX),
+        MAX_SHARE_COLUMNS,
+    )
+    .into_iter()
+    .zip(&columns)
+    .map(|(suggestion, column)| ShareColumnMasking {
+        name: column.name.clone(),
+        suggestion: suggestion.map(MaskSuggestionInfo::from),
+    })
+    .collect()
 }
 
 pub(crate) fn share_preview(
@@ -207,11 +212,18 @@ pub(crate) fn share_summary(
         rows_sent: summary.rows_sent as u64,
         columns_sent: u32::try_from(summary.columns_sent).unwrap_or(u32::MAX),
         columns_truncated: summary.columns_cut,
-        too_large: summary.too_large.map(|refused| match refused {
-            SnapshotTooLarge::Cell { column } => SnapshotTooLargeReason::Cell { column },
-            SnapshotTooLarge::FirstRow => SnapshotTooLargeReason::FirstRow,
-        }),
+        refused: summary.refused.map(ShareRefusal::from),
     })
+}
+
+impl From<SnapshotRefusal> for ShareRefusal {
+    fn from(refused: SnapshotRefusal) -> Self {
+        match refused {
+            SnapshotRefusal::Cell { column } => Self::Cell { column },
+            SnapshotRefusal::FirstRow => Self::FirstRow,
+            SnapshotRefusal::NoColumns => Self::NoColumns,
+        }
+    }
 }
 
 impl From<MaskingStyle> for MaskStyleTag {
@@ -369,6 +381,45 @@ mod tests {
             Some(MaskStyleTag::Email)
         );
         assert_eq!(sent_all[0].suggestion, None, "rows past the share counted");
+    }
+
+    #[test]
+    fn a_first_row_too_large_to_send_still_has_its_values_read() {
+        let notes = set(
+            &["blob", "notes"],
+            &[
+                vec![text(&"x".repeat(300 * 1_024)), text("ann@example.com")],
+                vec![text("small"), text("bob@example.com")],
+            ],
+        );
+
+        let started = share_masking(&notes, 2, 1_000);
+
+        assert_eq!(
+            started[1].suggestion.as_ref().map(|found| found.style),
+            Some(MaskStyleTag::Email)
+        );
+    }
+
+    #[test]
+    fn values_in_rows_that_go_only_once_a_wide_column_is_removed_are_read() {
+        // 22 rows fit the budget with the blob kept; the e-mails are in the 8 after them.
+        let rows: Vec<Vec<tablepro_core::Value>> = (0..30)
+            .map(|row| {
+                let notes = match row < 22 {
+                    true => tablepro_core::Value::Null,
+                    false => text(&format!("person{row}@example.com")),
+                };
+                vec![text(&"x".repeat(200_000)), notes]
+            })
+            .collect();
+
+        let started = share_masking(&set(&["blob", "notes"], &rows), 2, 1_000);
+
+        assert_eq!(
+            started[1].suggestion.as_ref().map(|found| found.style),
+            Some(MaskStyleTag::Email)
+        );
     }
 
     #[test]

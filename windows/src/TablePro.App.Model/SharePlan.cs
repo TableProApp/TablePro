@@ -155,7 +155,8 @@ public sealed class SharePlan
         _ when columns is null => ShareReadiness.Reading,
         _ when columns.RemovesEveryColumn => ShareReadiness.NoColumns,
         _ when summary is null => ShareReadiness.Reading,
-        _ when summary.TooLarge is not null => ShareReadiness.TooLarge,
+        _ when summary.Refused is ShareRefusal.NoColumns => ShareReadiness.NoColumns,
+        _ when summary.Refused is not null => ShareReadiness.TooLarge,
         _ => ShareReadiness.Ready,
     };
 
@@ -163,7 +164,7 @@ public sealed class SharePlan
     public bool CutsRows(ShareSummary summary)
     {
         ArgumentNullException.ThrowIfNull(summary);
-        return Kind == ShareKind.Result && summary.TooLarge is null && summary.RowsSent < TotalRows;
+        return Kind == ShareKind.Result && summary.Refused is null && summary.RowsSent < TotalRows;
     }
 
     public static int PreviewRowsOf(ShareSummary summary)
@@ -233,6 +234,7 @@ public static class ShareErrors
         "account.rate_limited" => "ShareErrorRateLimited",
         "account.unreachable" => "ShareErrorOffline",
         "account.validation_failed" => "ShareErrorInvalid",
+        "ffi.share_no_columns" => "ShareNoColumns",
         _ => Failed,
     };
 

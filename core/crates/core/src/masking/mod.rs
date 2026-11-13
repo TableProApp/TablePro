@@ -7,5 +7,5 @@ mod share;
 mod style;
 
 pub use mask_value::{BULLETS, mask_text, mask_value, stable_hash};
-pub use share::{ShareChoice, SharePlan, ShareSummary};
+pub use share::{ShareChoice, SharePlan, ShareSummary, share_suggestions};
 pub use style::MaskingStyle;

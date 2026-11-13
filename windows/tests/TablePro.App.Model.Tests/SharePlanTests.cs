@@ -276,6 +276,7 @@ public sealed class SharePlanTests
     [InlineData("account.rate_limited", "ShareErrorRateLimited")]
     [InlineData("account.unreachable", "ShareErrorOffline")]
     [InlineData("account.validation_failed", "ShareErrorInvalid")]
+    [InlineData("ffi.share_no_columns", "ShareNoColumns")]
     [InlineData("account.refused", "ShareErrorFailed")]
     [InlineData("ffi.share_unfinished", "ShareErrorFailed")]
     public void EachProblemCodeHasTheSheetsSentence(string code, string key) =>
@@ -330,7 +331,7 @@ public sealed class SharePlanTests
         Assert.Equal(ShareReadiness.Ready, plan.Readiness(columns, sends));
         Assert.Equal(
             ShareReadiness.TooLarge,
-            plan.Readiness(columns, new ShareSummary(0, 2, false, new ShareTooLarge.Cell("note"))));
+            plan.Readiness(columns, new ShareSummary(0, 2, false, new ShareRefusal.Cell("note"))));
         foreach (var column in columns.Columns)
         {
             column.Choose(ShareColumnAction.Remove);
@@ -347,7 +348,7 @@ public sealed class SharePlanTests
         Assert.False(plan.IsTruncated);
         Assert.True(plan.CutsRows(new ShareSummary(22, 1, false, null)));
         Assert.False(plan.CutsRows(new ShareSummary(5_000, 1, false, null)));
-        Assert.False(plan.CutsRows(new ShareSummary(0, 1, false, ShareTooLarge.FirstRow.Instance)));
+        Assert.False(plan.CutsRows(new ShareSummary(0, 1, false, ShareRefusal.FirstRow.Instance)));
         Assert.Equal(3, SharePlan.PreviewRowsOf(new ShareSummary(3, 1, false, null)));
         Assert.Equal(SharePlan.PreviewRows, SharePlan.PreviewRowsOf(new ShareSummary(22, 1, false, null)));
     }

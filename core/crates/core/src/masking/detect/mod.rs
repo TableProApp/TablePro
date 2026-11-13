@@ -33,6 +33,14 @@ pub enum SuggestionReason {
 
 // One per column, from the rows to be shared. A name beats what the values show.
 pub fn suggest_masks<R: AsRef<[Value]>>(columns: &[ResultColumn], rows: &[R]) -> Vec<Option<MaskSuggestion>> {
+    suggest_masks_over(columns, &[rows])
+}
+
+// A column any window flags; each window keeps its thresholds, and the first kind in table order wins.
+pub fn suggest_masks_over<R: AsRef<[Value]>>(
+    columns: &[ResultColumn],
+    windows: &[&[R]],
+) -> Vec<Option<MaskSuggestion>> {
     columns
         .iter()
         .enumerate()
@@ -43,11 +51,19 @@ pub fn suggest_masks<R: AsRef<[Value]>>(columns: &[ResultColumn], rows: &[R]) ->
                     reason: SuggestionReason::ColumnName { term: hit.term },
                 });
             }
-            let values = rows.iter().filter_map(|row| row.as_ref().get(index));
-            column_value_kind(&column.column_type, values).map(|kind| MaskSuggestion {
-                style: kind.style(),
-                reason: SuggestionReason::Values { kind },
-            })
+            windows
+                .iter()
+                .filter_map(|rows| {
+                    column_value_kind(
+                        &column.column_type,
+                        rows.iter().filter_map(|row| row.as_ref().get(index)),
+                    )
+                })
+                .min()
+                .map(|kind| MaskSuggestion {
+                    style: kind.style(),
+                    reason: SuggestionReason::Values { kind },
+                })
         })
         .collect()
 }
@@ -91,6 +107,26 @@ mod tests {
                 }),
                 None,
             ]
+        );
+    }
+
+    #[test]
+    fn a_column_two_windows_flag_differently_takes_the_first_kind_in_table_order() {
+        let columns = [ResultColumn::new("contact", ColumnType::untyped_text("text"))];
+        let emails = vec![vec![text("ann@example.com")]];
+        let cards = vec![
+            vec![text("4111 1111 1111 1111")],
+            vec![text("ann@example.com")],
+            vec![text("x")],
+        ];
+
+        let suggested = suggest_masks_over(&columns, &[emails.as_slice(), cards.as_slice()]);
+
+        assert_eq!(
+            suggested[0].map(|found| found.reason),
+            Some(SuggestionReason::Values {
+                kind: SensitiveKind::Card
+            })
         );
     }
 }

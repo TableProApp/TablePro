@@ -243,6 +243,11 @@ pub(crate) fn column_note(columns_cut: bool, max_columns: u64) -> Option<String>
     })
 }
 
+// macOS words it the same.
+pub(crate) fn no_columns_note() -> String {
+    gettext("Keep or mask at least one column to share.")
+}
+
 pub(crate) fn columns_left_out(max_columns: u64) -> String {
     ngettext_f(
         "The link shares the first {count} column.",

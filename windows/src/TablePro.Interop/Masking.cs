@@ -59,22 +59,28 @@ public sealed record MaskSuggestion(MaskStyle Style, MaskReason Reason);
 public sealed record ShareColumnMasking(string Name, MaskSuggestion? Suggestion);
 
 // What a share with the sheet's choices sends, by the plan and the body budget create uses: RowsSent can be fewer than
-// the plan's rows, and none when TooLarge says why even one row cannot go.
-public sealed record ShareSummary(long RowsSent, int ColumnsSent, bool ColumnsTruncated, ShareTooLarge? TooLarge);
+// the plan's rows, and none when Refused says why the link cannot go.
+public sealed record ShareSummary(long RowsSent, int ColumnsSent, bool ColumnsTruncated, ShareRefusal? Refused);
 
-public abstract record ShareTooLarge
+public abstract record ShareRefusal
 {
-    private ShareTooLarge()
+    private ShareRefusal()
     {
     }
 
     // A value of the column is over 256 KiB.
-    public sealed record Cell(string Column) : ShareTooLarge;
+    public sealed record Cell(string Column) : ShareRefusal;
 
     // The first row alone is over the 4.5 MB a link's body may weigh.
-    public sealed record FirstRow : ShareTooLarge
+    public sealed record FirstRow : ShareRefusal
     {
         public static FirstRow Instance { get; } = new();
+    }
+
+    // Every column was removed; CreateShareAsync refuses it with ffi.share_no_columns.
+    public sealed record NoColumns : ShareRefusal
+    {
+        public static NoColumns Instance { get; } = new();
     }
 }
 

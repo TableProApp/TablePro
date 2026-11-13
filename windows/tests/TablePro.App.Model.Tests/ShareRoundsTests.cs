@@ -56,7 +56,7 @@ public sealed class ShareRoundsTests
         var round = rounds.Begin();
 
         Assert.False(rounds.TakePreview(round));
-        Assert.True(rounds.TakeSummary(round, new ShareSummary(0, 2, false, new ShareTooLarge.Cell("email"))));
+        Assert.True(rounds.TakeSummary(round, new ShareSummary(0, 2, false, new ShareRefusal.Cell("email"))));
         Assert.False(rounds.TakePreview(round));
         Assert.Equal(ShareReadiness.TooLarge, rounds.Readiness(Result, Columns()));
     }
@@ -75,6 +75,18 @@ public sealed class ShareRoundsTests
 
         Assert.Equal(ShareReadiness.Ready, rounds.Readiness(SharePlan.For(Free, ShareKind.Query), null));
         Assert.Equal(ShareReadiness.NoColumns, rounds.Readiness(Result, columns));
+    }
+
+    [Fact]
+    public void TheCoresRefusalOfEveryColumnRemovedReadsAsNoColumns()
+    {
+        var rounds = new ShareRounds();
+        var round = rounds.Begin();
+
+        Assert.True(rounds.TakeSummary(round, new ShareSummary(0, 0, false, ShareRefusal.NoColumns.Instance)));
+
+        Assert.False(rounds.TakePreview(round));
+        Assert.Equal(ShareReadiness.NoColumns, rounds.Readiness(Result, Columns()));
     }
 
     [Fact]
