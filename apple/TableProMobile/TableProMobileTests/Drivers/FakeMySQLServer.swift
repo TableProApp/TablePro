@@ -13,9 +13,19 @@ import TableProTLSTestFixtures
 // statement does, or with `killedQueriesComplete` succeeds as one that finished before the kill landed. Unkilled,
 // or after `release`, it succeeds. A query starting with `streamsRowsStarting` returns `streamedRows` one-column rows,
 // cut by a kill for its session with 1317. A cleartext password passed to `refuse` is answered with 1045, as an expired
-// token is.
+// token is. With `refusesLogin` every login gets that error, as a refused sign-in or database does.
 final class FakeMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
+
+    struct LoginRefusal {
+        let code: UInt16
+        let sqlState: String
+        let message: String
+
+        var packet: [UInt8] {
+            [0xFF, UInt8(code & 0xFF), UInt8(code >> 8)] + Array("#\(sqlState)".utf8) + Array(message.utf8)
+        }
+    }
 
     struct Identity {
         let certificate: String
@@ -96,6 +106,7 @@ final class FakeMySQLServer: @unchecked Sendable {
     private let killedQueriesComplete: Bool
     private let streamedPrefix: String?
     private let streamedRows: Int
+    private let loginRefusal: LoginRefusal?
     private let fixtures: URL?
     private let kills = KillBoard()
     private let refusedPasswords = OSAllocatedUnfairLock<Set<String>>(initialState: [])
@@ -122,7 +133,8 @@ final class FakeMySQLServer: @unchecked Sendable {
         holdSeconds: TimeInterval = 10,
         killedQueriesComplete: Bool = false,
         streamsRowsStarting streamedPrefix: String? = nil,
-        streamedRows: Int = 0
+        streamedRows: Int = 0,
+        refusesLogin loginRefusal: LoginRefusal? = nil
     ) throws {
         self.asksForCleartext = asksForCleartext
         self.asksForFullSHA2Auth = asksForFullSHA2Auth
@@ -132,6 +144,7 @@ final class FakeMySQLServer: @unchecked Sendable {
         self.killedQueriesComplete = killedQueriesComplete
         self.streamedPrefix = streamedPrefix
         self.streamedRows = streamedRows
+        self.loginRefusal = loginRefusal
         if let identity {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("FakeMySQLServer-\(UUID().uuidString)", isDirectory: true)
@@ -275,6 +288,10 @@ final class FakeMySQLServer: @unchecked Sendable {
                 _ = channel.send(Self.accessDeniedPacket, sequence: sequence &+ 1)
                 return
             }
+        }
+        if let loginRefusal {
+            _ = channel.send(loginRefusal.packet, sequence: sequence &+ 1)
+            return
         }
         guard channel.send(Self.okPacket, sequence: sequence &+ 1) else { return }
         session.loggedIn = true

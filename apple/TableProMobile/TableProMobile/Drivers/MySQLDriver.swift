@@ -438,6 +438,13 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 }
 
+// The sign-in went through and the database was refused as a USE there is (scripts/probes/check-mysql-dial-database-refusal.sh).
+nonisolated enum MySQLDatabaseRefusal {
+    static func isRefusal(code: UInt32) -> Bool {
+        code == 1_044 || code == 1_049
+    }
+}
+
 nonisolated enum MySQLTokenSignIn {
     // A token session refuses a server without TLS before the token is sent; this names that refusal.
     static func connectFailure(
@@ -735,8 +742,13 @@ private actor MySQLActor {
             ) {
                 throw tokenFailure
             }
-            throw MariaDBSSLClassifier.classifySSLError(code: failure.code, message: failure.message)
-                ?? MySQLError.connectionFailed(failure.message)
+            if let tlsFailure = MariaDBSSLClassifier.classifySSLError(code: failure.code, message: failure.message) {
+                throw tlsFailure
+            }
+            if MySQLDatabaseRefusal.isRefusal(code: failure.code) {
+                throw MySQLError.databaseRefused(failure.message)
+            }
+            throw MySQLError.connectionFailed(failure.message)
         }
 
         guard MariaDBCharacterSet.establishSession(on: handle, encoding: encoding) else {
@@ -1258,13 +1270,15 @@ nonisolated private struct RawMySQLResult: Sendable {
 
 nonisolated enum MySQLError: Error, LocalizedError {
     case connectionFailed(String)
+    // The database the handshake named was refused; it reads as any failed connect.
+    case databaseRefused(String)
     case notConnected
     case queryFailed(String)
     case unsupported(String)
 
     var errorDescription: String? {
         switch self {
-        case .connectionFailed(let msg): return "MySQL connection failed: \(msg)"
+        case .connectionFailed(let msg), .databaseRefused(let msg): return "MySQL connection failed: \(msg)"
         case .notConnected: return "Not connected to MySQL database"
         case .queryFailed(let msg): return "MySQL query failed: \(msg)"
         case .unsupported(let msg): return msg
