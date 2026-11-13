@@ -58,16 +58,15 @@ use self::result_widgets::PageActions;
 use self::results_pane::ResultPage;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
-use self::script_runner::{RUN_ROW_LIMIT, RunBatch, RunMasking, ScriptRun, plan_batches, run_in_tab};
+use self::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, plan_batches, run_in_tab};
 pub(crate) use self::sql_file::load_text;
 pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::data_grid::{DialectSource, GridRequest};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::handler_guard::HandlerGuard;
-use super::result_pane::{ResultGridDeps, ResultSetView};
+use super::result_pane::ResultGridDeps;
 use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
-use crate::services::grid::{GridMasks, remask_rows};
 use crate::services::history_service::HistoryService;
 use crate::services::share_subject::{ShareSubject, SharedRows};
 use crate::services::snippet_library::SnippetLibrary;
@@ -515,12 +514,6 @@ impl SqlEditor {
                 .any(|batch| tablepro_core::sql_syntax::may_change_database(&batch.text, grammar)),
         );
         let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
-        imp.last_run.replace(Some((scoped.clone(), grammar)));
-        let masking = RunMasking {
-            rules: session.masking(),
-            grammar: grammar.is_sql().then_some(grammar),
-            revealed: imp.reveals_masked.get(),
-        };
         let run = ScriptRun {
             batches,
             policy,
@@ -531,7 +524,6 @@ impl SqlEditor {
             row_limit: RowLimit::EDITOR_DEFAULT,
             run_row_limit: RUN_ROW_LIMIT,
             byte_limit: ByteLimit::EDITOR_DEFAULT,
-            masking,
         };
         let metadata = session.metadata().clone();
         // Read again at the end from the run's own session, never the
@@ -593,7 +585,6 @@ impl SqlEditor {
             Some(log) => log.apply(event),
             None => return,
         };
-        self.remask_new_entries(before);
         self.show_new_entries(before);
     }
 
@@ -677,7 +668,6 @@ impl SqlEditor {
             settings: deps.settings.clone(),
             tasks: deps.tasks.clone(),
             dialect: Some(dialect),
-            rules: deps.session.get().map(|session| session.masking()),
         })
     }
 
@@ -686,116 +676,10 @@ impl SqlEditor {
     fn grid_request(&self, index: u32, request: GridRequest) {
         match request {
             GridRequest::Export(shown) => self.offer_export(index, shown),
-            GridRequest::Share(rows) => self.offer_share(index, *rows),
+            GridRequest::Share(rows) => self.offer_share(index, rows),
             GridRequest::Toast(text) => self.emit_by_name::<()>("toast", &[&text]),
             GridRequest::PendingChanged => self.on_rows_pending_changed(),
-            GridRequest::RevealMasked => self.reveal_masked(),
             GridRequest::Sort(_) | GridRequest::FollowReference(_) | GridRequest::FilterByValue(_) => {}
-        }
-    }
-
-    // The values are gone from the rows held, so they are read again: at once when the run only read.
-    fn reveal_masked(&self) {
-        let imp = self.imp();
-        imp.reveals_masked.set(true);
-        let last = imp.last_run.borrow().clone();
-        let Some((scoped, grammar)) = last else {
-            return;
-        };
-        match tablepro_core::sql_syntax::reads_only(&scoped.text, grammar) && !self.is_running() {
-            true => self.execute(scoped),
-            false => self.emit_by_name::<()>(
-                "toast",
-                &[&crate::i18n::gettext("Run the query again to see its masked values.")],
-            ),
-        }
-    }
-
-    // A saved change to the rules: the rows on screen take every new mask, worked out off the main loop, since a run
-    // holds up to 100,000 rows.
-    pub(crate) fn masking_changed(&self) {
-        let imp = self.imp();
-        let Some(deps) = self.deps() else {
-            return;
-        };
-        let Some(session) = deps.session.get() else {
-            return;
-        };
-        let policy = session.masking_policy();
-        let held: Vec<(usize, ResultSetView)> = {
-            let log = imp.log.borrow();
-            let Some(log) = log.as_ref() else {
-                return;
-            };
-            (0..log.entries().len())
-                .filter_map(|index| log.result(index).map(|result| (index, result.clone())))
-                .collect()
-        };
-        let working = deps.tasks.spawn_blocking_task(move || {
-            held.into_iter()
-                .filter_map(|(index, result)| remasked(&policy, &result).map(|fresh| (index, result, fresh)))
-                .collect::<Vec<_>>()
-        });
-        let editor = self.downgrade();
-        glib::spawn_future_local(async move {
-            let Ok(remasked) = working.await else {
-                return;
-            };
-            if let Some(editor) = editor.upgrade() {
-                editor.take_remasked(remasked);
-            }
-        });
-    }
-
-    // A result the log changed meanwhile is masked again from what it holds now, until the newest rules are on it.
-    fn take_remasked(&self, remasked: Vec<(usize, ResultSetView, ResultSetView)>) {
-        let mut taken = Vec::new();
-        let mut stale = false;
-        {
-            let mut log = self.imp().log.borrow_mut();
-            let Some(log) = log.as_mut() else {
-                return;
-            };
-            for (index, before, after) in remasked {
-                let Some(result) = log.result_mut(index) else {
-                    continue;
-                };
-                if !same_rows(result, &before) {
-                    stale = true;
-                    continue;
-                }
-                *result = after;
-                taken.push(index);
-            }
-        }
-        for index in taken {
-            self.lock_masked_key(index);
-            self.refresh_result_page(index);
-        }
-        if stale {
-            self.masking_changed();
-        }
-    }
-
-    // Results that land after a save checked the rules as they arrived, but the save may have come between.
-    fn remask_new_entries(&self, from: usize) {
-        let Some(policy) = self
-            .deps()
-            .and_then(|deps| deps.session.get())
-            .map(|session| session.masking_policy())
-        else {
-            return;
-        };
-        let mut log = self.imp().log.borrow_mut();
-        let Some(log) = log.as_mut() else {
-            return;
-        };
-        for index in from..log.entries().len() {
-            if let Some(result) = log.result_mut(index)
-                && let Some(fresh) = remasked(&policy, result)
-            {
-                *result = fresh;
-            }
         }
     }
 
@@ -1405,35 +1289,4 @@ fn source_language(grammar: SqlGrammar) -> Option<&'static str> {
         SqlGrammar::Mongo => Some("js"),
         _ => Some("sql"),
     }
-}
-
-// The result as the rules mask it now, `None` when they add no mask: a mask already laid stays, as the value is gone.
-fn remasked(policy: &tablepro_core::masking::MaskingPolicy, result: &ResultSetView) -> Option<ResultSetView> {
-    let fresh = result.mask_source.masks(policy, &result.columns, result.masks.revealed);
-    let (shown, rows) = match remask_rows(&result.columns, &result.masks.shown, &fresh.shown, &result.rows) {
-        Some((shown, rows)) => (shown, Some(rows)),
-        None => (result.masks.shown.clone(), None),
-    };
-    let masks = GridMasks { shown, ..fresh };
-    if masks == result.masks && rows.is_none() {
-        return None;
-    }
-    let mut after = result.clone();
-    if let Some(rows) = rows {
-        after.rows = rows;
-    }
-    after.masks = masks;
-    Some(after)
-}
-
-// The columns are each run's own, so two empty results of different runs are never taken for one.
-fn same_rows(held: &ResultSetView, read: &ResultSetView) -> bool {
-    Arc::ptr_eq(&held.columns, &read.columns)
-        && held.masks == read.masks
-        && held.rows.len() == read.rows.len()
-        && held
-            .rows
-            .iter()
-            .zip(&read.rows)
-            .all(|(held, read)| Arc::ptr_eq(held, read))
 }

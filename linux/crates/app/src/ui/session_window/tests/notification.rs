@@ -304,7 +304,6 @@ fn an_export_from_a_background_tab_notifies() {
             source: ExportSource::Rows {
                 columns,
                 rows: Vec::new(),
-                masks: Default::default(),
             },
             expected_rows: None,
             tab: Some(first),

@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::{SecretKind, SecretSave};
-use tablepro_core::masking::MaskingRule;
 use tablepro_core::{
     AiPolicy, AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint,
     NetworkEndpoint, NetworkOption, NetworkOptions, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig,
@@ -106,38 +105,6 @@ pub fn driver_shows_server_name(driver: Option<&DriverCapabilities>, route: Tran
         .is_some_and(|tls| shows_server_name(tls, route))
 }
 
-// The rules a save keeps: patterns trimmed, blank ones dropped, as the macOS app stores them.
-pub fn saved_rules(rules: &[MaskingRule]) -> Vec<MaskingRule> {
-    rules
-        .iter()
-        .filter(|rule| !rule.trimmed_pattern().is_empty())
-        .map(|rule| MaskingRule {
-            pattern: rule.trimmed_pattern().to_owned(),
-            ..rule.clone()
-        })
-        .collect()
-}
-
-// Whether a live session must reconnect to take `edited`: masking rules, the name, the icon and the tags reach it as
-// they are saved, and a secret typed in reaches only the next login.
-pub fn needs_reconnect(original: &SavedConnection, edited: &SavedConnection, secrets: &SecretChanges) -> bool {
-    let typed = [
-        &secrets.database_password,
-        &secrets.ssh_password,
-        &secrets.ssh_passphrase,
-    ]
-    .into_iter()
-    .any(|change| !matches!(change, crate::services::secret_change::SecretChange::Keep));
-    let live = SavedConnection {
-        masking_rules: original.masking_rules.clone(),
-        name: original.name.clone(),
-        icon: original.icon,
-        tags: original.tags.clone(),
-        ..edited.clone()
-    };
-    typed || live != *original
-}
-
 /// What the connect dialog holds, read from its rows in one go so a
 /// connect works from a snapshot.
 #[derive(Debug, Clone)]
@@ -163,8 +130,6 @@ pub struct ConnectForm {
     pub ai_policy: AiPolicy,
     /// `None` follows the timeout in Preferences.
     pub query_timeout_secs: Option<u32>,
-    // What the grid and every path out of the app mask here.
-    pub masking_rules: Vec<MaskingRule>,
     pub ssh: Option<SshFormState>,
     pub file: Option<FileEndpoint>,
     /// The ids of the tags ticked in the Appearance group.
@@ -201,7 +166,6 @@ impl ConnectForm {
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
             query_timeout_secs: None,
-            masking_rules: Vec::new(),
             ssh: None,
             file: None,
             tags: Vec::new(),
@@ -220,7 +184,6 @@ impl ConnectForm {
         form.external_access = saved.external_access;
         form.ai_policy = saved.ai_policy;
         form.query_timeout_secs = saved.query_timeout_secs;
-        form.masking_rules.clone_from(&saved.masking_rules);
         form.tags.clone_from(&saved.tags);
         form.icon = saved.icon;
         if caps.is_file_based() {
@@ -578,7 +541,6 @@ impl ConnectForm {
             external_access: self.external_access,
             ai_policy: self.ai_policy,
             query_timeout_secs: self.query_timeout_secs,
-            masking_rules: saved_rules(&self.masking_rules),
             auth_mode,
             ssh: valid.ssh.as_ref().map(|(saved, _)| saved.clone()),
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),

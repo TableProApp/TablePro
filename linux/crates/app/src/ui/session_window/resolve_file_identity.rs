@@ -46,7 +46,6 @@ pub(crate) fn file_request(
         target: RequestTarget::File(endpoint),
         workspace_settings: WorkspaceSettings::workspace(false),
         safe_mode: SafeModeLevel::Off,
-        masking: Default::default(),
     };
     if read_only {
         request.open_read_only();

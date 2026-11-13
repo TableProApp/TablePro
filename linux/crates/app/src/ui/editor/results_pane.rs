@@ -504,7 +504,6 @@ mod tests {
             entry(EntryKind::Failed {
                 message: "boom".to_owned(),
                 error_char: None,
-                server: None,
             }),
             entry(EntryKind::NotRun),
         ]);

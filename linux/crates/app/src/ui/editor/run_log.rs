@@ -4,10 +4,7 @@ use tablepro_core::{
     Truncation, UserSql,
 };
 
-use tablepro_core::masking::{MaskingPolicy, SharedMaskingPolicy};
-
 use super::script_runner::sql_preview;
-use crate::services::grid::{GridMasks, MaskSource, remask_rows};
 use crate::ui::result_pane::{ResultSetView, ResultSummary};
 use crate::workspace::WorkOutcome;
 
@@ -28,8 +25,6 @@ pub enum EntryKind {
         /// Where in the buffer the server says the error is, in
         /// characters, when it says.
         error_char: Option<usize>,
-        // Set when the message holds the server's own words, which can repeat a value the statement read.
-        server: Option<ServerWords>,
     },
     /// Something the editor noticed before sending, such as a string
     /// that never ends. The text is still sent, so the server has the
@@ -44,12 +39,6 @@ pub enum EntryKind {
     /// Never sent: a statement before it failed, or the run was
     /// stopped first.
     NotRun,
-}
-
-// What a failure keeps of the server's error for a Fix that cannot send its words.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServerWords {
-    pub code: Option<String>,
 }
 
 impl EntryKind {
@@ -140,19 +129,6 @@ pub struct BatchCollector {
     /// Where each result set of this run sits in `entries`.
     sets: Vec<usize>,
     room: RowRoom,
-    masking: Option<StatementMasking>,
-    // The rules as last read, with the generation they were read at.
-    read: Option<(u64, MaskingPolicy)>,
-}
-
-// How one statement's rows meet the connection's masking rules as they arrive, so no value a rule hides is ever held.
-#[derive(Debug, Clone)]
-pub struct StatementMasking {
-    // The session's live rules: a save during the run reaches the rows that arrive after it.
-    pub rules: SharedMaskingPolicy,
-    pub source: MaskSource,
-    // The tab shows its values unmasked.
-    pub revealed: bool,
 }
 
 impl BatchCollector {
@@ -162,8 +138,6 @@ impl BatchCollector {
             entries: Vec::new(),
             sets: Vec::new(),
             room: RowRoom::UNLIMITED,
-            masking: None,
-            read: None,
         }
     }
 
@@ -172,20 +146,21 @@ impl BatchCollector {
         Self { room, ..self }
     }
 
-    pub fn masked(self, masking: Option<StatementMasking>) -> Self {
-        Self { masking, ..self }
-    }
-
     pub fn record(&mut self, event: ResultEvent) {
         match event {
-            ResultEvent::ResultSetStarted { columns } => self.start_set(columns),
-            ResultEvent::ColumnsResolved { set_index, columns } => self.resolve_columns(set_index, columns),
-            ResultEvent::Rows(rows) => {
-                if self.rules_moved()
-                    && let Some(last) = self.sets.len().checked_sub(1)
-                {
-                    self.refresh_masks(last);
+            ResultEvent::ResultSetStarted { columns } => {
+                self.sets.push(self.entries.len());
+                self.entries.push(EntryKind::ResultSet(ResultSetView::new(
+                    columns,
+                    self.statement.clone(),
+                )));
+            }
+            ResultEvent::ColumnsResolved { set_index, columns } => {
+                if let Some(result) = self.set(set_index) {
+                    result.columns = columns;
                 }
+            }
+            ResultEvent::Rows(rows) => {
                 if self.sets.is_empty() {
                     // Rows with no columns would draw a grid that cannot
                     // say what any cell is.
@@ -201,11 +176,7 @@ impl BatchCollector {
                 let cut_by = (cut && !full).then_some(self.room.run_limit);
                 let cut_for_size = (cut && full).then_some(self.room.run_bytes);
                 if let Some(result) = self.last_set() {
-                    let (shown, columns) = (result.masks.shown.clone(), result.columns.clone());
-                    result.rows.extend(rows.into_iter().take(kept).map(|mut row| {
-                        shown.apply(&columns, &mut row);
-                        row.into()
-                    }));
+                    result.rows.extend(rows.into_iter().take(kept).map(Into::into));
                     result.summary.retained = result.rows.len() as u64;
                     result.summary.run_limit = result.summary.run_limit.or(cut_by);
                     result.summary.size_limit = result.summary.size_limit.or(cut_for_size);
@@ -323,73 +294,6 @@ impl BatchCollector {
         (self.entries, verdict, transaction)
     }
 
-    // The generation first, so rules set between the two reads are read again on the next check.
-    fn policy(&mut self) -> Option<MaskingPolicy> {
-        let rules = &self.masking.as_ref()?.rules;
-        let generation = rules.generation();
-        match &self.read {
-            Some((read, policy)) if *read == generation => Some(policy.clone()),
-            _ => {
-                let policy = rules.get();
-                self.read = Some((generation, policy.clone()));
-                Some(policy)
-            }
-        }
-    }
-
-    fn rules_moved(&self) -> bool {
-        match (&self.masking, &self.read) {
-            (Some(masking), Some((read, _))) => masking.rules.generation() != *read,
-            _ => false,
-        }
-    }
-
-    fn start_set(&mut self, columns: std::sync::Arc<[tablepro_core::column::ResultColumn]>) {
-        self.sets.push(self.entries.len());
-        let mut view = ResultSetView::new(columns, self.statement.clone());
-        if let Some(policy) = self.policy()
-            && let Some(masking) = &self.masking
-        {
-            view.masks = masking.source.masks(&policy, &view.columns, masking.revealed);
-            view.mask_source = masking.source.clone();
-        }
-        self.entries.push(EntryKind::ResultSet(view));
-    }
-
-    // Types the driver resolved late can bring a type rule into play, also for rows already held.
-    fn resolve_columns(&mut self, set_index: usize, columns: std::sync::Arc<[tablepro_core::column::ResultColumn]>) {
-        let Some(result) = self.set(set_index) else {
-            return;
-        };
-        result.columns = columns;
-        self.refresh_masks(set_index);
-    }
-
-    // Masks the set's held rows of every column the rules now mask, as when its columns resolved or a save landed.
-    fn refresh_masks(&mut self, set_index: usize) {
-        let Some(policy) = self.policy() else {
-            return;
-        };
-        let Some(masking) = self.masking.clone() else {
-            return;
-        };
-        let Some(result) = self.set(set_index) else {
-            return;
-        };
-        let fresh = masking.source.masks(&policy, &result.columns, masking.revealed);
-        let shown = match result.rows.is_empty() {
-            true => fresh.shown.clone(),
-            false => match remask_rows(&result.columns, &result.masks.shown, &fresh.shown, &result.rows) {
-                Some((shown, rows)) => {
-                    result.rows = rows;
-                    shown
-                }
-                None => result.masks.shown.clone(),
-            },
-        };
-        result.masks = GridMasks { shown, ..fresh };
-    }
-
     fn set(&mut self, set_index: usize) -> Option<&mut ResultSetView> {
         let index = *self.sets.get(set_index)?;
         match self.entries.get_mut(index) {
@@ -436,14 +340,7 @@ fn failed(error: &DriverError, lost: SessionLoss, error_base: usize) -> EntryKin
             .map(|position| error_base + position - 1),
         _ => None,
     };
-    let server = tablepro_core::masking::may_repeat_a_value(error).then(|| ServerWords {
-        code: tablepro_core::masking::server_code(error),
-    });
-    EntryKind::Failed {
-        message,
-        error_char,
-        server,
-    }
+    EntryKind::Failed { message, error_char }
 }
 
 /// The results list of one run, built as the batches report.
@@ -968,7 +865,6 @@ mod tests {
                 vec![EntryKind::Failed {
                     message: "boom".to_owned(),
                     error_char: None,
-                    server: None,
                 }],
                 Verdict::Failed,
             )
@@ -1009,114 +905,6 @@ mod tests {
         ));
     }
 
-    fn masked_by(policy: MaskingPolicy, revealed: bool) -> BatchCollector {
-        BatchCollector::new(UserSql::new("SELECT id, email FROM users")).masked(Some(StatementMasking {
-            rules: SharedMaskingPolicy::new(policy),
-            source: MaskSource::Query {
-                table: Some("users".to_owned()),
-            },
-            revealed,
-        }))
-    }
-
-    fn email_rule() -> MaskingPolicy {
-        use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
-        MaskingPolicy::new([MaskingRule::new(
-            "users.email",
-            MaskingTarget::Column,
-            MaskingStyle::Email,
-        )])
-    }
-
-    fn first_result(collector: BatchCollector) -> ResultSetView {
-        let (entries, _, _) = collector.finish(summary(RunEnd::Completed), EditorSessionState::Ready, false, 0);
-        match entries.into_iter().next() {
-            Some(EntryKind::ResultSet(result)) => result,
-            other => panic!("no result: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn rows_are_masked_as_they_arrive_and_a_revealed_tab_keeps_them() {
-        let events = || {
-            vec![
-                ResultEvent::ResultSetStarted {
-                    columns: columns(&["id", "email"]),
-                },
-                ResultEvent::Rows(vec![vec![Value::Int(1), Value::Text("ann@example.com".to_owned())]]),
-            ]
-        };
-        let mut masked = masked_by(email_rule(), false);
-        let mut revealed = masked_by(email_rule(), true);
-        for event in events() {
-            masked.record(event);
-        }
-        for event in events() {
-            revealed.record(event);
-        }
-
-        let masked = first_result(masked);
-        let revealed = first_result(revealed);
-
-        assert_eq!(masked.rows[0][1], Value::Text("a•••@example.com".to_owned()));
-        assert!(masked.masks.is_masked(1));
-        assert_eq!(revealed.rows[0][1], Value::Text("ann@example.com".to_owned()));
-        assert!(revealed.masks.revealed);
-        assert!(
-            revealed.masks.external.is_masked(1),
-            "a revealed result still masks on the way out"
-        );
-    }
-
-    #[test]
-    fn a_rule_saved_during_the_run_masks_the_rows_held_and_those_after_it() {
-        let rules = SharedMaskingPolicy::default();
-        let mut collector =
-            BatchCollector::new(UserSql::new("SELECT id, email FROM users")).masked(Some(StatementMasking {
-                rules: rules.clone(),
-                source: MaskSource::Query {
-                    table: Some("users".to_owned()),
-                },
-                revealed: false,
-            }));
-        let row = |id: i64, email: &str| vec![Value::Int(id), Value::Text(email.to_owned())];
-        collector.record(ResultEvent::ResultSetStarted {
-            columns: columns(&["id", "email"]),
-        });
-        collector.record(ResultEvent::Rows(vec![row(1, "ann@example.com")]));
-
-        rules.set(email_rule());
-        collector.record(ResultEvent::Rows(vec![row(2, "bo@example.com")]));
-
-        let result = first_result(collector);
-        assert_eq!(result.rows[0][1], Value::Text("a•••@example.com".to_owned()));
-        assert_eq!(result.rows[1][1], Value::Text("b•••@example.com".to_owned()));
-        assert!(result.masks.is_masked(1));
-    }
-
-    #[test]
-    fn a_type_resolved_late_masks_the_rows_already_held() {
-        use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
-        let policy = MaskingPolicy::new([MaskingRule::new("uuid", MaskingTarget::Type, MaskingStyle::Full)]);
-        let mut collector = masked_by(policy, false);
-        collector.record(ResultEvent::ResultSetStarted {
-            columns: columns(&["token"]),
-        });
-        collector.record(ResultEvent::Rows(vec![vec![Value::Text("a1".to_owned())]]));
-        collector.record(ResultEvent::ColumnsResolved {
-            set_index: 0,
-            columns: vec![ResultColumn::new("token", ColumnType::untyped_text("uuid"))].into(),
-        });
-        collector.record(ResultEvent::Rows(vec![vec![Value::Text("b2".to_owned())]]));
-
-        let result = first_result(collector);
-
-        assert_eq!(
-            result.rows.iter().map(|row| row[0].clone()).collect::<Vec<_>>(),
-            [Value::Text("••••".to_owned()), Value::Text("••••".to_owned())]
-        );
-    }
-
     #[test]
     fn a_server_error_position_becomes_a_buffer_position() {
         let diagnostics = ServerDiagnostics {
@@ -1138,7 +926,6 @@ mod tests {
                 entries.as_slice(),
                 [EntryKind::Failed {
                     error_char: Some(107),
-                    server: Some(ServerWords { code: Some(_) }),
                     ..
                 }]
             ),
@@ -1151,7 +938,6 @@ mod tests {
         let failed = vec![EntryKind::Failed {
             message: "boom".to_owned(),
             error_char: None,
-            server: None,
         }];
         assert!(!continues(Verdict::Failed, BatchErrorPolicy::StopScript));
         let mut log = RunLog::new(

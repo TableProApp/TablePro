@@ -21,7 +21,6 @@ mod highlight_dialog;
 mod imp;
 mod keys;
 mod layout_binding;
-mod masking;
 mod pinned_numbers;
 mod pointer;
 mod references;

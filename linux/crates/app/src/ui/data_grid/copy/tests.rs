@@ -237,7 +237,7 @@ fn copies_and_exports_follow_a_moved_and_a_hidden_column() {
     let rows = copied(&grid, || activate(&grid.grid, "copy-rows-headers"));
     activate(&grid.grid, "export");
     let exported = grid.take_requests().into_iter().find_map(|request| match request {
-        GridRequest::Export(ExportSource::Rows { columns, rows, .. }) => Some((columns, rows)),
+        GridRequest::Export(ExportSource::Rows { columns, rows }) => Some((columns, rows)),
         _ => None,
     });
 

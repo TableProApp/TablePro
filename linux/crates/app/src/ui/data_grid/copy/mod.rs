@@ -13,7 +13,7 @@ use super::selection::Resolved;
 use super::{DataGrid, GridRequest, GridRow, RowJsonRequest, present_row_json};
 use crate::i18n::gettext;
 use crate::services::grid::{CopyScope, GridColumn, GridRowId, RowSnapshot, cell_filter_rule, copy_scope};
-use crate::services::share_subject::{LiveRules, SharedRows};
+use crate::services::share_subject::SharedRows;
 use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows, InsertCopy, InsertRow};
 use crate::ui::export::ExportSource;
 use crate::ui::filter_strip::FilterVocabulary;
@@ -63,7 +63,7 @@ pub fn install_actions(grid: &DataGrid) {
         grid.request(GridRequest::Export(export_source(grid)))
     });
     add(grid, "share", |grid| {
-        grid.request(GridRequest::Share(Box::new(shared_rows(grid))))
+        grid.request(GridRequest::Share(shared_rows(grid)))
     });
     add(grid, "filter-by-value", |grid| filter_by_value(grid, false));
     add(grid, "exclude-value", |grid| filter_by_value(grid, true));
@@ -102,38 +102,18 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
 
 /// The rows the grid shows, pending edits included, under the columns
 /// on screen in their order.
-// The rules as they are now, never a remask still on its way.
 pub fn export_source(grid: &DataGrid) -> ExportSource {
-    let indices = ShownColumns::of(grid).indices;
     let (columns, rows) = shown_rows(grid, &grid.shown_rows());
-    let (masks, _) = grid.outward_masks();
-    ExportSource::Rows {
-        columns,
-        rows,
-        masks: masks.outward(&indices),
-    }
+    ExportSource::Rows { columns, rows }
 }
 
-// What a share link takes: the rows an export of the shown rows would write, with how the rules meet each column.
+// What a share link takes: the rows an export of the shown rows would write.
 pub fn shared_rows(grid: &DataGrid) -> SharedRows {
-    let indices = ShownColumns::of(grid).indices;
     let (columns, rows) = shown_rows(grid, &grid.shown_rows());
-    let (masks, outward) = grid.outward_masks();
-    let live = outward.map(|(generation, outward)| LiveRules {
-        outward,
-        columns: grid.grid_columns().iter().map(GridColumn::result_column).collect(),
-        table: grid.config().and_then(|config| config.table.clone()),
-        indices: indices.clone(),
-        generation,
-    });
     SharedRows {
         columns,
         extent: ResultExtent::complete(rows.len() as u64),
         rows,
-        shown: masks.shown_at(&indices),
-        rules: masks.external_at(&indices),
-        untraced: masks.untraced_at(&indices),
-        live,
     }
 }
 

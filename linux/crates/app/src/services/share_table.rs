@@ -4,14 +4,12 @@ use async_trait::async_trait;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, SortKey, build_export};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::ResultExtent;
-use tablepro_core::masking::{ColumnMasks, table_name};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, FilterSet, ReadStatement, ResultEvent, ResultSink, SinkFlow, Value};
 use tablepro_session::{OperationError, OperationKind, Session};
 
-use super::grid::OutwardRules;
 use super::grid::RowSnapshot;
-use super::share_subject::{LiveRules, SharedRows};
+use super::share_subject::SharedRows;
 
 // A table tab's view, read from its first row once the plan says how many rows a link carries.
 #[derive(Debug, Clone)]
@@ -98,11 +96,6 @@ impl TableShare {
                 RowSnapshot::new(cells.into(), Vec::new())
             })
             .collect();
-        // The rows are read fresh, so nothing in them is masked yet; the table's rules match by the table.
-        let generation = self.session.masking().generation();
-        let (policy, table) = (self.session.masking_policy(), table_name(&self.table));
-        let rules = policy.external_column_masks(Some(&table), &columns);
-        let untraced = policy.untraced_columns(Some(&table), &columns);
         let held = rows.len() as u64;
         let extent = match self.total {
             Some(total) => ResultExtent {
@@ -116,22 +109,7 @@ impl TableShare {
                 cut: full,
             },
         };
-        let live = LiveRules {
-            outward: OutwardRules::table(self.session.masking()),
-            columns: columns.to_vec(),
-            table: Some(self.table.clone()),
-            indices: (0..columns.len()).collect(),
-            generation,
-        };
-        SharedRows {
-            columns,
-            rows,
-            extent,
-            shown: ColumnMasks::none(),
-            rules,
-            untraced,
-            live: Some(live),
-        }
+        SharedRows { columns, rows, extent }
     }
 }
 
@@ -241,31 +219,6 @@ mod tests {
             [Value::Text("name 4".to_owned()), Value::Text("4".to_owned())]
         );
         assert_eq!(shared.total(), 48_210);
-        assert!(shared.rules.is_empty());
-    }
-
-    #[tokio::test]
-    async fn a_table_share_carries_the_table_s_rules_for_the_shown_columns() {
-        use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget};
-
-        let mut script = ConnectionScript::default();
-        script.stream_read.always(FakeReply::ok(events(2)));
-        let fake = FakeSession::start(script, [], paused_tasks());
-        fake.session.set_masking_policy(MaskingPolicy::new([MaskingRule::new(
-            "orders.id",
-            MaskingTarget::Column,
-            MaskingStyle::Hash,
-        )]));
-
-        let shared = table(fake.session.clone(), None).read(10).await.expect("the rows read");
-
-        assert_eq!(shared.rules.styles(), [None, Some(MaskingStyle::Hash)]);
-        assert!(shared.shown.is_empty());
-        assert_eq!(
-            shared.rows[1].to_values()[1],
-            Value::Text("1".to_owned()),
-            "the rows held are masked only as they leave"
-        );
     }
 
     #[tokio::test]

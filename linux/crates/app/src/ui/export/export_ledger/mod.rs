@@ -562,8 +562,8 @@ impl Producer {
     /// running behind a dropped future.
     fn start(tasks: &Tasks, source: ExportSource, parts: ExportSinkParts, cancel: &CancellationToken) -> Self {
         match source {
-            ExportSource::Rows { columns, rows, masks } => {
-                Self::Rows(start_rows_producer(tasks, columns, rows, masks, parts, cancel.clone()))
+            ExportSource::Rows { columns, rows } => {
+                Self::Rows(start_rows_producer(tasks, columns, rows, parts, cancel.clone()))
             }
             ExportSource::Query { session, query } => {
                 let rerun = matches!(query, ExportQuery::Editor { .. });

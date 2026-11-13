@@ -195,7 +195,6 @@ mod tests {
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
             query_timeout_secs: None,
-            masking_rules: Vec::new(),
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,

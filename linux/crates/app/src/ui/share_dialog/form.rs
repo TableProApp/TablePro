@@ -13,13 +13,13 @@ use tablepro_account::{ShareExpiry, ShareLimits};
 use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
 
 use super::ShareDialog;
+use super::masking_text::personal_data_kind;
 use super::preview::{PREVIEW_ROWS, preview_table};
 use super::share_columns::{self, ShareColumn};
 use super::sheet_view::{self, ExpiryChoice};
 use crate::i18n::{gettext, gettext_f};
 use crate::services::share_subject::{ShareForm, ShareSubject, SharedRows};
 use crate::ui::icons;
-use crate::ui::masking_text::personal_data_kind;
 
 pub(super) const PRICING: &str = "https://tablepro.app/?ref=app-share#pricing";
 
