@@ -31,9 +31,13 @@ pub(super) enum SharedOutcome {
 
 pub(super) fn outcome(fetched: Result<SharedLink, AccountError>) -> SharedOutcome {
     match fetched {
+        // Anyone can write a link, and GTK refuses text with a NUL in it.
         Ok(SharedLink {
             title, sql: Some(sql), ..
-        }) => SharedOutcome::Open { title, sql },
+        }) => SharedOutcome::Open {
+            title: title.replace('\0', ""),
+            sql: sql.replace('\0', ""),
+        },
         Ok(SharedLink { sql: None, .. }) => SharedOutcome::Say(gettext(
             "This shared result hides its SQL, so there is nothing to open.",
         )),
@@ -49,7 +53,7 @@ impl TableProApplication {
     pub(super) fn open_share_link(&self, link: &str, placement: Placement) {
         let Some(token) = share_token_from_link(link) else {
             tracing::warn!("a share link without a token TablePro reads");
-            return self.say_about_share(placement, &gettext("This shared link is no longer available."));
+            return self.say_about_share(&gettext("This shared link is no longer available."));
         };
         let Some(services) = self.services() else {
             tracing::warn!("no share link opened: the application has no services");
@@ -73,7 +77,7 @@ impl TableProApplication {
                     other => {
                         let reason = account_unavailable_message(&other)
                             .unwrap_or_else(|| gettext("This shared link is no longer available."));
-                        app.say_about_share(placement, &reason);
+                        app.say_about_share(&reason);
                     }
                 }
             }
@@ -116,17 +120,13 @@ impl TableProApplication {
                     }
                 });
             }
-            SharedOutcome::Say(message) => self.say_about_share(placement, &message),
+            SharedOutcome::Say(message) => self.say_about_share(&message),
         }
     }
 
     async fn ask_share_password(&self, account: Account, token: String, ask: PasswordAsk, placement: Placement) {
-        let parent = match self.active_window().and_downcast::<SessionWindow>() {
-            Some(window) => window,
-            None => match self.link_window(placement) {
-                Some(window) => window,
-                None => return,
-            },
+        let Some(parent) = self.share_window() else {
+            return;
         };
         let (dialog, entry) = password_dialog(ask);
         let hold = self.hold();
@@ -138,8 +138,8 @@ impl TableProApplication {
         drop(hold);
     }
 
-    fn say_about_share(&self, placement: Placement, message: &str) {
-        match self.link_window(placement) {
+    fn say_about_share(&self, message: &str) {
+        match self.share_window() {
             Some(window) => {
                 window.send(SessionWindowInput::ShowToast(message.to_owned()));
                 window.present();
@@ -147,9 +147,24 @@ impl TableProApplication {
             None => tracing::warn!("no window to say why a share link did not open"),
         }
     }
+
+    // A word about a link goes on a window already open; a picker opens only when there is none.
+    fn share_window(&self) -> Option<SessionWindow> {
+        self.active_window()
+            .and_downcast::<SessionWindow>()
+            .or_else(|| {
+                self.windows()
+                    .into_iter()
+                    .find_map(|window| window.downcast::<SessionWindow>().ok())
+            })
+            .or_else(|| {
+                self.open_window(super::WindowLaunch::Picker)
+                    .and_downcast::<SessionWindow>()
+            })
+    }
 }
 
-// Cancel is the default and the close response, as for any link a web page can send.
+// Enter opens with the typed password; Escape and closing cancel.
 pub(super) fn password_dialog(ask: PasswordAsk) -> (adw::AlertDialog, adw::PasswordEntryRow) {
     let body = match ask {
         PasswordAsk::First => gettext("This link is password protected."),
@@ -225,6 +240,20 @@ mod tests {
     }
 
     #[test]
+    fn a_nul_in_a_links_title_or_sql_is_dropped_before_gtk_sees_it() {
+        let mut shared = link(Some("SELECT\0 1"));
+        shared.title = "Ord\0ers".to_owned();
+
+        assert_eq!(
+            outcome(Ok(shared)),
+            SharedOutcome::Open {
+                title: "Orders".to_owned(),
+                sql: "SELECT 1".to_owned()
+            }
+        );
+    }
+
+    #[test]
     fn a_password_is_asked_for_and_asked_again_after_a_wrong_one() {
         assert_eq!(
             outcome(Err(refused(401, "share_password_required"))),
@@ -245,10 +274,11 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn the_password_dialog_waits_for_a_password_and_cancels_by_default() {
+    fn the_password_dialog_opens_on_enter_once_typed_and_closes_as_cancel() {
         let (dialog, entry) = password_dialog(PasswordAsk::AfterWrongOne);
 
         assert_eq!(dialog.body(), "That password is not correct.");
+        assert_eq!(dialog.default_response().as_deref(), Some(OPEN));
         assert_eq!(dialog.close_response(), CANCEL);
         assert!(!dialog.is_response_enabled(OPEN));
         entry.set_text("hunter2");
