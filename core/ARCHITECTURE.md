@@ -98,7 +98,7 @@ A `cfg` split inside a crate:
 | SQLite | the distribution's | bundled | bundled |
 | DuckDB's file lock while a file is replaced | fcntl | fcntl | LockFileEx |
 | SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the system's GSS framework, behind the `kerberos` feature | SSPI, NTLM only (winauth) |
-| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>`, `TablePro/<item>` and `TablePro/account-refresh-token`; a secret over a credential's 2,560 bytes goes on in `<name>/1`, `<name>/2`, each part carrying a `TablePro_Parts` attribute with its write, part count and length (`credential_parts`) |
+| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>`, `TablePro/<item>` and `TablePro/account/<sign-in key>/refresh-token`; a secret over a credential's 2,560 bytes goes on in `<name>/1`, `<name>/2`, each part carrying a `TablePro_Parts` attribute with its write, part count and length (`credential_parts`) |
 | The account's machine ID (`ffi`) | not read | not read | `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`, from the 64-bit view |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | The in-process SSH transport's agent | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK`, else `\\.\pipe\openssh-ssh-agent`, then Pageant |

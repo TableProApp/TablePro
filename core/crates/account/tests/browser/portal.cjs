@@ -27,12 +27,12 @@ const seedDevices = Number(process.env.TABLEPRO_CLOUD_SEED_DEVICES ?? '0');
 // Where the redirect to the app goes instead of to the app, for an app the browser cannot reach.
 const callbackFile = process.env.TABLEPRO_CLOUD_CALLBACK_FILE ?? '';
 const [step, authorizeURL] = process.argv.slice(2);
-const signInSubject = /^Sign in to TablePro$/;
+const signInSubject = /^Your TablePro sign-in code$/;
 
 async function signInEmails() {
   const response = await fetch(`${mailURL}/_e2e/emails?to=${encodeURIComponent(email)}`);
   if (!response.ok) {
-    throw new Error(`the fake Resend answered ${response.status}`);
+    throw new Error(`the fake SES answered ${response.status}`);
   }
   return (await response.json()).filter((sent) => signInSubject.test(sent.subject));
 }

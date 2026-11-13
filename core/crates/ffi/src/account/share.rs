@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use secrecy::SecretString;
-use tablepro_account::{CreatedShare, Share, ShareExpiry, ShareKind, ShareLimits, SharePage, ShareRequest, SharedLink};
+use tablepro_account::{
+    CreatedShare, MAX_SHARE_COLUMNS, Share, ShareExpiry, ShareKind, ShareLimits, SharePage, ShareRequest, ShareTeam,
+    SharedLink,
+};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::{Snapshot, build_snapshot};
 
@@ -34,6 +37,8 @@ pub struct ShareLimitsInfo {
     pub live: u64,
     pub live_limit: u64,
     pub max_rows: u64,
+    // A result with more visible columns shares the first ones, on every plan.
+    pub max_columns: u64,
     pub expiries: Vec<ShareExpiryTag>,
     pub default_expiry: Option<ShareExpiryTag>,
     pub password: bool,
@@ -41,6 +46,18 @@ pub struct ShareLimitsInfo {
     pub team: bool,
     pub email_verified: bool,
     pub sharing_disabled: bool,
+    // The teams the account holds a seat in, for a team link; empty on Free.
+    pub teams: Vec<ShareTeamInfo>,
+}
+
+// A team link counts against the team's own `live_limit`. `public_links` false: the team turned them off.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ShareTeamInfo {
+    pub id: String,
+    pub name: String,
+    pub live: u64,
+    pub live_limit: u64,
+    pub public_links: bool,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -79,6 +96,9 @@ pub struct ShareInfo {
     pub has_password: bool,
     pub state: String,
     pub removed_reason: Option<String>,
+    // The link does not resolve until its switch is on again; `suspended_by` is account, team or team_deleted.
+    pub suspended: bool,
+    pub suspended_by: Option<String>,
     pub view_count: u64,
     pub created_at_secs: i64,
     pub updated_at_secs: i64,
@@ -92,6 +112,8 @@ pub struct ShareInfo {
 pub struct CreatedShareInfo {
     pub share: ShareInfo,
     pub url: String,
+    // Only the first `max_columns` of the visible columns were shared.
+    pub columns_truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -137,8 +159,8 @@ impl AccountService {
         let account = self.account.clone();
         let tasks = self.tasks.clone();
         on_runtime(&self.tasks, async move {
-            let snapshot = match (request.kind, result) {
-                (ShareKindTag::Query, _) => None,
+            let (snapshot, cut) = match (request.kind, result) {
+                (ShareKindTag::Query, _) => (None, false),
                 (ShareKindTag::Result, None) => {
                     return Err(CoreError::failed(
                         "ffi.share_needs_result",
@@ -146,24 +168,34 @@ impl AccountService {
                     ));
                 }
                 (ShareKindTag::Result, Some(set)) => {
-                    let built = tasks
+                    let (built, cut) = tasks
                         .spawn_blocking_task(move || snapshot_of(&set, visible_columns, max_rows, total_rows))
                         .await
                         .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
-                    Some(built)
+                    (Some(built), cut)
                 }
             };
             let created = account.create_share(share_request(request, snapshot)).await?;
-            Ok(created.into())
+            let mut info = CreatedShareInfo::from(created);
+            info.columns_truncated |= cut;
+            Ok(info)
         })
         .await
     }
 
-    // The account's own links, newest first, without their SQL.
-    pub async fn list_shares(&self, live_only: bool, cursor: Option<String>) -> Result<SharePageInfo, CoreError> {
+    // The account's own links, or with `team_id` a team's, newest first, without their SQL.
+    pub async fn list_shares(
+        &self,
+        live_only: bool,
+        team_id: Option<String>,
+        cursor: Option<String>,
+    ) -> Result<SharePageInfo, CoreError> {
         let account = self.account.clone();
         on_runtime(&self.tasks, async move {
-            Ok(account.list_shares(live_only, cursor.as_deref()).await?.into())
+            let page = account
+                .list_shares(live_only, team_id.as_deref(), cursor.as_deref())
+                .await?;
+            Ok(page.into())
         })
         .await
     }
@@ -200,29 +232,26 @@ impl AccountService {
     }
 }
 
+// Also whether visible columns past the server's cap were left out, before any of their cells is built.
 fn snapshot_of(
     set: &ResultSet,
     visible_columns: u32,
     max_rows: u32,
     total_rows: Option<u64>,
-) -> Result<Snapshot, CoreError> {
+) -> Result<(Snapshot, bool), CoreError> {
     // A set still reading would share the rows held so far as if they were all of them.
     if !set.is_finished() {
         return Err(CoreError::failed("ffi.share_unfinished", "the rows are still arriving"));
     }
     let held = set.result_columns();
     let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
-    let columns: Vec<ResultColumn> = held.iter().take(visible).cloned().collect();
+    let columns: Vec<ResultColumn> = held.iter().take(visible.min(MAX_SHARE_COLUMNS)).cloned().collect();
     let held = set.row_count();
     let taken = held.min(u64::from(max_rows));
     let rows = (0..taken).map(|row| held_row(set, row, &columns));
     let total = total_rows.map_or(held, |total| total.max(held));
-    Ok(build_snapshot(
-        &columns,
-        rows,
-        total,
-        usize::try_from(max_rows).unwrap_or(usize::MAX),
-    ))
+    let snapshot = build_snapshot(&columns, rows, total, usize::try_from(max_rows).unwrap_or(usize::MAX));
+    Ok((snapshot, visible > MAX_SHARE_COLUMNS))
 }
 
 fn share_request(request: ShareRequestArg, snapshot: Option<Snapshot>) -> ShareRequest {
@@ -273,6 +302,7 @@ impl From<ShareLimits> for ShareLimitsInfo {
             live: limits.live,
             live_limit: limits.live_limit,
             max_rows: limits.max_rows,
+            max_columns: limits.max_columns,
             expiries: limits.expiries.into_iter().map(ShareExpiryTag::from).collect(),
             default_expiry: limits.default_expiry.map(ShareExpiryTag::from),
             password: limits.password,
@@ -280,6 +310,19 @@ impl From<ShareLimits> for ShareLimitsInfo {
             team: limits.team,
             email_verified: limits.email_verified,
             sharing_disabled: limits.sharing_disabled,
+            teams: limits.teams.into_iter().map(ShareTeamInfo::from).collect(),
+        }
+    }
+}
+
+impl From<ShareTeam> for ShareTeamInfo {
+    fn from(team: ShareTeam) -> Self {
+        Self {
+            id: team.id,
+            name: team.name,
+            live: team.live,
+            live_limit: team.live_limit,
+            public_links: team.public_links,
         }
     }
 }
@@ -303,6 +346,8 @@ impl From<Share> for ShareInfo {
             has_password: share.has_password,
             state: share.state,
             removed_reason: share.removed_reason,
+            suspended: share.suspended,
+            suspended_by: share.suspended_by,
             view_count: share.view_count,
             created_at_secs: seconds(share.created_at),
             updated_at_secs: seconds(share.updated_at),
@@ -319,6 +364,7 @@ impl From<CreatedShare> for CreatedShareInfo {
         Self {
             share: created.share.into(),
             url: created.url,
+            columns_truncated: created.columns_truncated,
         }
     }
 }

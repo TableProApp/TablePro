@@ -62,7 +62,7 @@ impl Core {
         browser: Box<dyn HostBrowser>,
         listener: Box<dyn AccountListener>,
     ) -> Result<Arc<AccountService>, CoreError> {
-        let vault = self.refresh_tokens();
+        let refresh_tokens = self.refresh_tokens();
         let tasks = self.tasks.clone();
         let browser = Arc::new(HostBrowserBridge::new(browser, tasks.clone()));
         let listener: Arc<dyn AccountListener> = Arc::from(listener);
@@ -71,6 +71,7 @@ impl Core {
             let account = tasks
                 .spawn_blocking_task(move || {
                     let settings = settings(config)?;
+                    let vault = refresh_tokens(&settings);
                     let status = watch::Sender::new(AccountStatus::SignedOut);
                     Account::new(settings, vault, browser, status).map_err(CoreError::from)
                 })

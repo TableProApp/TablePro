@@ -522,7 +522,7 @@ impl Account {
             && let Some((access, until)) = &session.access
             && *until > Utc::now() + ACCESS_TOKEN_MARGIN
         {
-            return Ok(Bearer(Some(access.clone())));
+            return Ok(Bearer::token(access.clone()));
         }
         let refresh = session.refresh.clone().ok_or(AccountError::SignedOut)?;
         session.waited(Call::Token)?;
@@ -530,7 +530,7 @@ impl Account {
         let tokens = session.answered(Call::Token, tokens)?;
         let access = tokens.access.clone();
         self.adopt(session, tokens).await;
-        Ok(Bearer(Some(access)))
+        Ok(Bearer::token(access))
     }
 
     async fn adopt(&self, session: &mut Session, tokens: Tokens) {

@@ -1,5 +1,7 @@
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use aws_lc_rs::digest;
 use url::Url;
 
 use crate::cloud_api::v2::types::Platform;
@@ -86,6 +88,27 @@ pub struct AccountSettings {
     pub callback_page: CallbackPage,
 }
 
+impl AccountSettings {
+    // Names this sign-in among the others a user's secret store can hold: another server, or another build's
+    // state folder, keeps a refresh token of its own. 16 hex characters of SHA-256 over the API and the file.
+    pub fn sign_in_key(&self) -> String {
+        let named = format!("{}\n{}", self.endpoints.api, self.account_file.display());
+        let hash = digest::digest(&digest::SHA256, named.as_bytes());
+        hash.as_ref()
+            .iter()
+            .take(8)
+            .fold(String::with_capacity(16), |mut text, byte| {
+                let _ = write!(text, "{byte:02x}");
+                text
+            })
+    }
+
+    // tablepro.app's own service, which a sign-in kept before the key existed was always for.
+    pub fn is_production(&self) -> bool {
+        self.endpoints == Endpoints::production()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +134,41 @@ mod tests {
             (AppClient::WINDOWS.client_id, AppClient::WINDOWS.platform.to_string()),
             ("tablepro-windows", "windows".to_owned())
         );
+    }
+
+    fn settings(api: &str, file: &str) -> AccountSettings {
+        AccountSettings {
+            client: AppClient::WINDOWS,
+            endpoints: Endpoints::new("https://account.tablepro.app", api).expect("the endpoints"),
+            device: DeviceDescription {
+                name: "Lab".to_owned(),
+                app_version: "1.0.0".to_owned(),
+                os_version: "Windows 11".to_owned(),
+            },
+            machine_id: MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine"),
+            keys: crate::entitlement::test_tokens::keys(),
+            account_file: PathBuf::from(file),
+            callback_page: CallbackPage {
+                finished: String::new(),
+                unknown: String::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn each_server_and_state_folder_signs_in_under_a_key_of_its_own() {
+        let production = settings("https://api.tablepro.app/v2", "C:/Users/a/LocalState/account.json");
+        let local = settings("http://api.localhost:5284/v2", "C:/Users/a/LocalState/account.json");
+        let other_build = settings("https://api.tablepro.app/v2", "C:/Users/a/Dev/LocalState/account.json");
+        // python3 -c 'import hashlib;print(hashlib.sha256(b"https://api.tablepro.app/v2\nC:/Users/a/LocalState/account.json").hexdigest()[:16])'
+        let expected = "e6989de2b8e8cbc0";
+
+        assert_eq!(production.sign_in_key(), expected);
+        assert_eq!(production.sign_in_key(), production.clone().sign_in_key());
+        assert_ne!(production.sign_in_key(), local.sign_in_key());
+        assert_ne!(production.sign_in_key(), other_build.sign_in_key());
+        assert!(production.is_production());
+        assert!(!local.is_production());
     }
 
     #[test]

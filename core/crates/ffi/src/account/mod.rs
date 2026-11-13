@@ -17,5 +17,5 @@ pub use secret_scan::{
 };
 pub use share::{
     CreatedShareInfo, ShareExpiryTag, ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo, ShareRequestArg,
-    SharedLinkInfo,
+    ShareTeamInfo, SharedLinkInfo,
 };
