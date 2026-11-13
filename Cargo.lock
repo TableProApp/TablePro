@@ -7730,6 +7730,7 @@ dependencies = [
  "num-bigint 0.4.8",
  "percent-encoding",
  "proptest",
+ "regex",
  "rust_xlsxwriter",
  "rustix",
  "rustls-pki-types",
