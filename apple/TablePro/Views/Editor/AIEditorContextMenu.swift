@@ -14,6 +14,7 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     var aiAvailability: (() -> AIQueryActionAvailability)?
     var onAIAction: ((AIQueryAction) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
+    var onShareQuery: ((String) -> Void)?
     var onFormatSQL: ((NSRange) -> Void)?
     var canFormatSQL: (() -> Bool)?
     /// Whether the cursor sits inside a collapsed fold. `nil` when there is no fold at the cursor.
@@ -84,15 +85,29 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     }
 
     private var favoriteItems: [NSMenuItem] {
-        guard hasText, onSaveAsFavorite != nil else { return [] }
-        let item = NSMenuItem(
-            title: String(localized: "Save as Favorite…"),
-            action: #selector(handleSaveAsFavorite),
-            keyEquivalent: ""
-        )
-        item.target = self
-        item.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
-        return [item]
+        guard hasText else { return [] }
+        var items: [NSMenuItem] = []
+        if onSaveAsFavorite != nil {
+            let item = NSMenuItem(
+                title: String(localized: "Save as Favorite…"),
+                action: #selector(handleSaveAsFavorite),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
+            items.append(item)
+        }
+        if onShareQuery != nil {
+            let item = NSMenuItem(
+                title: String(localized: "Share Query…"),
+                action: #selector(handleShareQuery),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil)
+            items.append(item)
+        }
+        return items
     }
 
     private var aiItems: [NSMenuItem] {
@@ -132,5 +147,11 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         guard let text = fullText?(), !text.isEmpty else { return }
         let selected = selection?().selectedText(in: text)
         onSaveAsFavorite?(selected ?? text)
+    }
+
+    @objc private func handleShareQuery() {
+        guard let text = fullText?(), !text.isEmpty else { return }
+        let selected = selection?().selectedText(in: text)
+        onShareQuery?(selected ?? text)
     }
 }

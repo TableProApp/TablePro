@@ -125,12 +125,20 @@ internal final class FavoritesNSOutlineView: SidebarOutlineView {
         favoritesCoordinator?.performMenuCommand(.copyRelativePath(relative))
     }
 
+    // File > Share Query… on the selected saved query, ahead of the window's editor.
+    @objc internal func shareQuery(_ sender: Any?) {
+        guard let favorite = favoritesCoordinator?.selectedFavorite else { return }
+        favoritesCoordinator?.performMenuCommand(.shareFavorite(favorite))
+    }
+
     override internal func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
         switch item.action {
         case #selector(copyPath(_:)):
             return favoritesCoordinator?.selectedFilePath != nil
         case #selector(copyRelativePath(_:)):
             return favoritesCoordinator?.selectedFilePath?.relative != nil
+        case #selector(shareQuery(_:)):
+            return favoritesCoordinator?.selectedFavorite != nil
         default:
             return super.validateUserInterfaceItem(item)
         }
@@ -140,6 +148,7 @@ internal final class FavoritesNSOutlineView: SidebarOutlineView {
 @MainActor
 internal protocol FavoritesOutlineKeyHandling: AnyObject {
     var selectedFilePath: FavoriteFilePath? { get }
+    var selectedFavorite: SQLFavorite? { get }
     func performPrimaryAction()
     func performDelete()
     func performMenuCommand(_ command: FavoritesMenuCommand)

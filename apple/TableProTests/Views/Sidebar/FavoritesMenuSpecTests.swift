@@ -376,6 +376,21 @@ struct FavoritesMenuSpecTests {
         #expect(issued.contains(.showFavoriteHistory(query)))
     }
 
+    @Test("A saved query offers Share… right after Copy Query, whatever the plan")
+    func savedQueryOffersShare() throws {
+        let query = favorite()
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.favorite(query)))))
+        let copy = try #require(issued.firstIndex(of: .copyText(query.query)))
+        #expect(issued.firstIndex(of: .shareFavorite(query)) == copy + 1)
+    }
+
+    @Test("Only a saved query offers Share…")
+    func onlySavedQueriesOfferShare() {
+        let folder = SQLFavoriteFolder(name: "Reports")
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.folder(folder, children: [])))))
+        #expect(!issued.contains { if case .shareFavorite = $0 { return true } else { return false } })
+    }
+
     private func linkedFile() -> LinkedSQLFavorite {
         LinkedSQLFavorite(
             folderId: UUID(),

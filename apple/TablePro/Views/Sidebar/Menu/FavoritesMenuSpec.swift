@@ -153,6 +153,7 @@ internal enum FavoritesMenuSpec {
     ) -> [FavoritesMenuSection] {
         var edits: [FavoritesMenuItem] = [
             .command(String(localized: "Copy Query"), .copyText(favorite.query)),
+            .command(String(localized: "Share…"), .shareFavorite(favorite)),
             .command(String(localized: "Edit…"), .editFavorite(favorite)),
             .command(String(localized: "Show History"), .showFavoriteHistory(favorite))
         ]

@@ -90,6 +90,7 @@ enum ActiveSheet: Identifiable {
     case searchDatabase(DatabaseSearchSession)
     case joinBuilder(JoinBuilderLaunchRequest)
     case generateRows(RowGenerationSession)
+    case share(ShareRequest)
 
     var id: String {
         switch self {
@@ -123,6 +124,7 @@ enum ActiveSheet: Identifiable {
         case .searchDatabase(let session): "searchDatabase-\(session.id.uuidString)"
         case .joinBuilder(let launch): "joinBuilder-\(launch.id.uuidString)"
         case .generateRows(let session): "generateRows-\(session.id.uuidString)"
+        case .share(let request): "share-\(request.id.uuidString)"
         }
     }
 }

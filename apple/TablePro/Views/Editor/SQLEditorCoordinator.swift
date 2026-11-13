@@ -144,6 +144,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     var currentAIAvailability: (() -> AIQueryActionAvailability)?
     var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
+    var onShareQuery: ((String) -> Void)?
     var databaseType: DatabaseType?
     var tabID: UUID?
     var connectionId: UUID?
@@ -358,6 +359,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         currentAIAvailability = nil
         onAIAction = nil
         onSaveAsFavorite = nil
+        onShareQuery = nil
         schemaProvider = nil
         controller?.textView?.menu = nil
         contextMenu = nil
@@ -473,6 +475,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             self?.onAIAction?(action, Self.aiTarget(for: controller?.textView))
         }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
+        menu.onShareQuery = { [weak self] text in self?.onShareQuery?(text) }
         menu.onFormatSQL = { [weak self] range in self?.formatSQL(selectedRange: range) }
         menu.canFormatSQL = { [weak self] in QueryFormatterFactory.supportsFormatting(self?.databaseType) }
         menu.foldStateAtCursor = { [weak controller] in controller?.foldStateAtCursor() }

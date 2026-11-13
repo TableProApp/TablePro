@@ -12,6 +12,7 @@ import Testing
 struct FavoritesOutlinePathCommandTests {
     private final class Handler: FavoritesOutlineKeyHandling {
         var selectedFilePath: FavoriteFilePath?
+        var selectedFavorite: SQLFavorite?
         var performed: [FavoritesMenuCommand] = []
 
         func performPrimaryAction() {}
@@ -71,6 +72,26 @@ struct FavoritesOutlinePathCommandTests {
         #expect(!validates(view, #selector(FavoritesNSOutlineView.copyRelativePath(_:))))
 
         view.copyPath(nil)
+        #expect(handler.performed.isEmpty)
+    }
+
+    @Test("A selected saved query answers File > Share Query… with that query")
+    func savedQueryAnswersShareQuery() {
+        let (view, handler) = outline(selecting: nil)
+        let favorite = SQLFavorite(name: "Report", query: "SELECT 1")
+        handler.selectedFavorite = favorite
+
+        #expect(validates(view, #selector(FavoritesNSOutlineView.shareQuery(_:))))
+        view.shareQuery(nil)
+        #expect(handler.performed == [.shareFavorite(favorite)])
+    }
+
+    @Test("Share Query… is dimmed with no saved query selected")
+    func noSavedQueryDimsShareQuery() {
+        let (view, handler) = outline(selecting: FavoriteFilePath(absolute: "/tmp/queries/a.sql", relative: "a.sql"))
+
+        #expect(!validates(view, #selector(FavoritesNSOutlineView.shareQuery(_:))))
+        view.shareQuery(nil)
         #expect(handler.performed.isEmpty)
     }
 }
