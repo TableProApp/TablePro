@@ -43,6 +43,8 @@ pub struct ShareDialog {
     pub(super) sent: RefCell<Option<std::rc::Rc<super::form::Sent>>>,
     // The share as the sheet holds it is summarized and can go; false while a summary runs or it is too large.
     pub(super) sendable: Cell<bool>,
+    // A field holds what the core refuses at create, such as a password of only spaces.
+    pub(super) field_problem: Cell<bool>,
 }
 
 #[glib::object_subclass]

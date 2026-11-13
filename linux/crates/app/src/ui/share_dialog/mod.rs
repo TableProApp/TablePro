@@ -281,6 +281,7 @@ impl ShareDialog {
         }
         let form = matches!(page, SheetPage::Form);
         imp.sendable.set(true);
+        imp.field_problem.set(false);
         chrome.banner.set_revealed(false);
         chrome.cancel.set_visible(form);
         chrome.create.set_visible(form);
@@ -315,6 +316,9 @@ impl ShareDialog {
             self.set_focus(Some(&focus));
         }
         imp.page.replace(Some(page));
+        if form {
+            self.check_fields();
+        }
         self.set_busy(false);
     }
 
@@ -322,8 +326,8 @@ impl ShareDialog {
         let imp = self.imp();
         imp.busy.set(busy);
         self.set_can_close(!busy);
+        self.update_create();
         if let Some(chrome) = imp.chrome.get() {
-            chrome.create.set_sensitive(!busy && imp.sendable.get());
             chrome.cancel.set_sensitive(!busy);
             match busy {
                 true => chrome.create.set_child(Some(&adw::Spinner::new())),
@@ -336,10 +340,16 @@ impl ShareDialog {
     }
 
     pub(super) fn set_sendable(&self, sendable: bool) {
+        self.imp().sendable.set(sendable);
+        self.update_create();
+    }
+
+    pub(super) fn update_create(&self) {
         let imp = self.imp();
-        imp.sendable.set(sendable);
         if let Some(chrome) = imp.chrome.get() {
-            chrome.create.set_sensitive(sendable && !imp.busy.get());
+            chrome
+                .create
+                .set_sensitive(imp.sendable.get() && !imp.field_problem.get() && !imp.busy.get());
         }
     }
 
@@ -352,7 +362,7 @@ impl ShareDialog {
 
     fn create(&self) {
         let imp = self.imp();
-        if imp.busy.get() || !imp.sendable.get() {
+        if imp.busy.get() || !imp.sendable.get() || imp.field_problem.get() {
             return;
         }
         let (Some(deps), Some(account), Some(subject)) = (imp.deps.get(), self.account(), self.current_subject())

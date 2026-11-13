@@ -35,6 +35,9 @@ pub(super) struct FormFields {
     hide_sql: Option<adw::SwitchRow>,
     password: Option<adw::PasswordEntryRow>,
     allow_download: Option<adw::SwitchRow>,
+    // What a field holds that the core refuses at create, said under the options.
+    problems: adw::PreferencesGroup,
+    problem_rows: Rc<RefCell<Vec<adw::ActionRow>>>,
     // The Columns list's choice for each shared column.
     // The Columns list and the preview, which live as long as the form.
     sheet: Option<Rc<Sheet>>,
@@ -120,6 +123,8 @@ pub(super) fn build_form(
     let password = password_row(dialog, &options, limits, draft);
     let allow_download = download_row(dialog, &options, limits, draft);
     page.add(&options);
+    let problems = adw::PreferencesGroup::builder().visible(false).build();
+    page.add(&problems);
     if let Some(hide_sql) = &hide_sql {
         add_hide_sql_notice(&page, subject, hide_sql);
     }
@@ -136,6 +141,8 @@ pub(super) fn build_form(
         hide_sql,
         password,
         allow_download,
+        problems,
+        problem_rows: Rc::default(),
         sheet,
     }
 }
@@ -216,6 +223,32 @@ fn summarize_rows(rows: &Arc<SharedRows>, choices: Vec<ShareChoice>, caps: (u64,
 }
 
 impl ShareDialog {
+    // Create stays off while a field holds what the core refuses at create, and the form says why, as macOS does.
+    pub(super) fn check_fields(&self) {
+        let imp = self.imp();
+        let Some(subject) = self.current_subject() else {
+            return;
+        };
+        let problems = {
+            let form = imp.form.borrow();
+            let Some(fields) = form.as_ref() else {
+                return;
+            };
+            let password = fields.password.as_ref().map(|row| row.text());
+            let problems = sheet_view::field_problems(&subject.sql, password.as_deref());
+            fill_notices(
+                &fields.problems,
+                &fields.problem_rows,
+                &problems,
+                icons::DIALOG_ERROR,
+                "error",
+            );
+            problems
+        };
+        imp.field_problem.set(!problems.is_empty());
+        self.update_create();
+    }
+
     // The subject's detection is reused while the subject and the caps stay; otherwise it runs with the first summary.
     fn detect(&self, sheet: &Rc<Sheet>) {
         let imp = self.imp();
@@ -500,6 +533,12 @@ fn password_row(
     if let Some(draft) = draft {
         row.set_text(draft.password.expose_secret());
     }
+    let weak = dialog.downgrade();
+    row.connect_changed(move |_| {
+        if let Some(dialog) = weak.upgrade() {
+            dialog.check_fields();
+        }
+    });
     options.add(&row);
     Some(row)
 }
@@ -612,22 +651,32 @@ fn add_warnings(page: &adw::PreferencesPage, subject: &ShareSubject, hide_sql: O
 }
 
 fn fill_warnings(group: &adw::PreferencesGroup, rows: &RefCell<Vec<adw::ActionRow>>, warnings: Vec<String>) {
+    fill_notices(group, rows, &warnings, icons::DIALOG_WARNING, "warning");
+}
+
+fn fill_notices(
+    group: &adw::PreferencesGroup,
+    rows: &RefCell<Vec<adw::ActionRow>>,
+    notices: &[String],
+    icon_name: &str,
+    class: &str,
+) {
     for row in rows.take() {
         group.remove(&row);
     }
-    let added: Vec<adw::ActionRow> = warnings
+    let added: Vec<adw::ActionRow> = notices
         .iter()
-        .map(|warning| {
+        .map(|notice| {
             let row = adw::ActionRow::builder()
-                .title(warning)
+                .title(notice)
                 .use_markup(false)
                 .title_lines(0)
                 .build();
             let icon = gtk::Image::builder()
-                .icon_name(icons::DIALOG_WARNING)
+                .icon_name(icon_name)
                 .valign(gtk::Align::Center)
                 .accessible_role(gtk::AccessibleRole::Presentation)
-                .css_classes(["warning"])
+                .css_classes([class])
                 .build();
             row.add_prefix(&icon);
             group.add(&row);

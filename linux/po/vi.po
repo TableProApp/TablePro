@@ -12266,6 +12266,14 @@ msgstr "Ẩn SQL"
 msgid "Keep or mask at least one column to share."
 msgstr "Giữ hoặc che ít nhất một cột để chia sẻ."
 
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "This query is too long to share. A link holds up to 256 KB of SQL."
+msgstr "Truy vấn này quá dài để chia sẻ. Một liên kết chứa tối đa 256 KB SQL."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "A password can’t be only spaces or tabs."
+msgstr "Mật khẩu không thể chỉ gồm dấu cách hoặc tab."
+
 #: crates/app/src/ui/share_dialog/pages.rs
 msgid "Link copied"
 msgstr "Đã sao chép liên kết"

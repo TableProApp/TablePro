@@ -1210,3 +1210,58 @@ fn a_team_at_its_cap_names_the_team_as_written_and_offers_another_owner() {
 
     assert_eq!(harness.chrome().footer.label(), "Pro · 12 links");
 }
+
+fn password_row(harness: &Harness) -> adw::PasswordEntryRow {
+    descendants(&harness.content())
+        .into_iter()
+        .find_map(|widget| widget.downcast::<adw::PasswordEntryRow>().ok())
+        .expect("the password field")
+}
+
+#[gtk4::test]
+fn a_password_of_only_spaces_keeps_create_off_and_says_why() {
+    let mut cloud = Cloud::free(12);
+    cloud.pro = true;
+    let harness = Harness::new(cloud, query(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+    let password = password_row(&harness);
+
+    password.set_text(" \t ");
+
+    assert!(!harness.chrome().create.is_sensitive());
+    assert!(
+        harness
+            .row_titles()
+            .contains(&"A password can’t be only spaces or tabs.".to_owned()),
+        "{:?}",
+        harness.row_titles()
+    );
+    harness.dialog.create();
+    harness.settle();
+    assert_eq!(harness.posts(), 0, "a password of only spaces was sent");
+
+    password.set_text(" hunter2 ");
+
+    assert!(harness.chrome().create.is_sensitive());
+    assert!(
+        !harness
+            .row_titles()
+            .contains(&"A password can’t be only spaces or tabs.".to_owned())
+    );
+}
+
+#[gtk4::test]
+fn sql_past_256_kib_keeps_create_off_and_says_why() {
+    let subject = ShareSubject::query("Long".to_owned(), "é".repeat(131_073), None);
+    let harness = Harness::new(Cloud::free(0), subject, true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    assert!(!harness.chrome().create.is_sensitive());
+    assert!(
+        harness
+            .row_titles()
+            .contains(&"This query is too long to share. A link holds up to 256 KB of SQL.".to_owned()),
+        "{:?}",
+        harness.row_titles()
+    );
+}

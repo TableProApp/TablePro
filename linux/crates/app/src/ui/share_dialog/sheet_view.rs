@@ -1,4 +1,6 @@
-use tablepro_account::{AccountStatus, Share, ShareExpiry, ShareKind, ShareLimits, ShareTeam};
+use tablepro_account::{
+    AccountStatus, MAX_SHARE_SQL_BYTES, Share, ShareExpiry, ShareKind, ShareLimits, ShareTeam, sent_share_password,
+};
 use tablepro_core::secret_scan::SecretHitKind;
 
 use crate::i18n::{gettext, gettext_f, ngettext_f};
@@ -241,6 +243,20 @@ pub(crate) fn column_note(columns_cut: bool, max_columns: u64) -> Option<String>
             &[("count", &format_thousands(max_columns))],
         )
     })
+}
+
+// What keeps Create off in the form's own fields, worded as macOS words it; the core refuses the same at create.
+pub(crate) fn field_problems(sql: &str, password: Option<&str>) -> Vec<String> {
+    let mut problems = Vec::new();
+    if sql.len() > MAX_SHARE_SQL_BYTES {
+        problems.push(gettext(
+            "This query is too long to share. A link holds up to 256 KB of SQL.",
+        ));
+    }
+    if password.is_some_and(|password| !password.is_empty() && sent_share_password(password).is_empty()) {
+        problems.push(gettext("A password can’t be only spaces or tabs."));
+    }
+    problems
 }
 
 // macOS words it the same.
@@ -595,5 +611,19 @@ mod tests {
         assert_eq!(column_note(true, 100).as_deref(), Some("Shares the first 100 columns."));
         assert_eq!(column_note(false, 100), None);
         assert_eq!(columns_left_out(100), "The link shares the first 100 columns.");
+    }
+
+    #[test]
+    fn a_password_of_only_spaces_or_sql_past_256_kib_keeps_create_off() {
+        let blank = "A password can’t be only spaces or tabs.";
+        let too_long = "This query is too long to share. A link holds up to 256 KB of SQL.";
+
+        assert_eq!(field_problems("SELECT 1", Some(" \t ")), [blank]);
+        assert!(field_problems("SELECT 1", Some(" pw\t")).is_empty());
+        assert!(field_problems("SELECT 1", Some("")).is_empty());
+        assert!(field_problems("SELECT 1", None).is_empty());
+        // Two bytes a character: 131,073 of them are past 256 KiB though far fewer characters.
+        assert!(field_problems(&"é".repeat(131_072), None).is_empty());
+        assert_eq!(field_problems(&"é".repeat(131_073), Some(" ")), [too_long, blank]);
     }
 }
