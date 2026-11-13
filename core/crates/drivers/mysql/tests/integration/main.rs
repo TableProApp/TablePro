@@ -18,6 +18,7 @@ mod lenient_server;
 mod local_socket;
 mod metadata;
 mod non_transactional;
+mod read_only;
 mod round_trip;
 mod row_limit;
 mod server_time_zone;

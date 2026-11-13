@@ -98,7 +98,14 @@ A call that timed out or lost its connection is checked before the link is decla
 
 ## Read-only
 
-`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. At Safe Mode Read-Only the app refuses every editor statement that does not read before it is sent, `SET TRANSACTION READ WRITE` included; a function a `SELECT` calls is the server's to refuse. For a guarantee, connect with a login that has no write privileges.
+`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. At Safe Mode Read-Only the app refuses every editor statement that does not read before it is sent, `SET TRANSACTION READ WRITE` included.
+
+The session default alone does not hold: a stored function a `SELECT` calls can run `SET SESSION transaction_read_only = 0`, and the next statement writes (measured on MySQL 8.4.13 and MariaDB 11.4.13). So on a read-only session the editor:
+
+- runs each text in `START TRANSACTION READ ONLY`, ended by the next text's `START` or a `ROLLBACK` after the last, so a function's write fails with 1792 whatever the session default says. A `SHOW WARNINGS`, `SHOW ERRORS` or `GET DIAGNOSTICS` text runs in the transaction of the text before it in the same run, since MySQL 8.4 clears the warnings at `ROLLBACK`; run on its own after a read, it finds them cleared there;
+- refuses a run that makes a transaction or the session read-write before sending anything: `START TRANSACTION READ WRITE`, `SET [SESSION] TRANSACTION READ WRITE`, any `SET` of `transaction_read_only` or `tx_read_only` (`tablepro_core::sql_syntax::turns_read_write`).
+
+DDL commits implicitly, which ends the read-only transaction; at Read-Only the app refuses it before it is sent.
 
 An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL that Safe Mode would not count as a read (`tablepro_core::sql_syntax::statement_access`). The text protocol runs every statement a text holds, so user SQL is first prepared, which the server parses with multiple statements off: a text it reads as two fails there, and one it parses but does not prepare (1295, such as some `SHOW`) still runs. A read that finds no rows takes its columns from that prepare, since sqlx gives an empty set as its OK alone, so the export still has its header.
 

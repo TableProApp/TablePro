@@ -6,8 +6,12 @@ use sqlx::mysql::{MySqlColumn, MySqlConnection, MySqlQueryResult, MySqlRow};
 use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, SqlSafeStr as _, Statement as _};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
-use tablepro_core::sql_syntax::{SourceTable, SqlGrammar, StatementAccess, source_table, statement_access};
-use tablepro_core::{DriverError, ErrorCategory, ResultEvent, ResultSink, RowBatch, RowLimit, SinkFlow, Truncation};
+use tablepro_core::sql_syntax::{
+    SourceTable, SqlGrammar, StatementAccess, source_table, statement_access, turns_read_write,
+};
+use tablepro_core::{
+    DriverError, ErrorCategory, ReadOnlyRefusal, ResultEvent, ResultSink, RowBatch, RowLimit, SinkFlow, Truncation,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::catalog::result_column;
@@ -34,14 +38,16 @@ enum TextKind {
 
 pub(crate) struct EditorLink {
     pub connection: MySqlConnection,
+    pub read_only: bool,
     // None once a SET failed, since a KILL that stopped it may have come after it took.
     pub select_limit: Option<SelectLimit>,
 }
 
 impl EditorLink {
-    pub(crate) fn new(connection: MySqlConnection) -> Self {
+    pub(crate) fn new(connection: MySqlConnection, read_only: bool) -> Self {
         Self {
             connection,
+            read_only,
             select_limit: Some(SelectLimit::Server),
         }
     }
@@ -78,6 +84,11 @@ pub(crate) async fn run_script(
     stopped: &CancellationToken,
     halt: impl Fn() -> bool,
 ) -> Result<RunOutcome, DriverError> {
+    // Measured on MySQL 8.4.13 and MariaDB 11.4.13: each of these turns the session's read-only default off, and
+    // START TRANSACTION READ WRITE overrides it.
+    if link.read_only && turns_read_write(sql, SqlGrammar::MySql) {
+        return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
+    }
     let texts = script_split::texts(sql);
     // The table is looked up once the run is over, when only a run of one statement still has what that statement read.
     let trace = match texts.as_slice() {
@@ -101,37 +112,94 @@ pub(crate) async fn run_script(
     }
     let stopping = || stopped.is_cancelled() || halt();
     let mut halted = false;
-    for (text, kind) in texts.into_iter().zip(kinds) {
-        if emitter.gone {
-            break;
+    // A function a read calls can turn the session's read-only default off, measured on MySQL 8.4.13 and MariaDB
+    // 11.4.13, so at read-only each text runs in a read-only transaction of its own. Each START commits the one before.
+    let mut in_read_only = false;
+    let ran: Result<(), DriverError> = async {
+        for (text, kind) in texts.into_iter().zip(kinds) {
+            if emitter.gone {
+                break;
+            }
+            if stopping() {
+                halted = true;
+                break;
+            }
+            if link.read_only && !reads_diagnostics(text) {
+                in_read_only = true;
+                execute(&mut link.connection, flavour, READ_ONLY_BEGIN).await?;
+            }
+            let results = link
+                .connection
+                .fetch_many(sqlx::raw_sql(AssertSqlSafe(text.to_owned())));
+            let read = emitter
+                .read(results, flavour, stopped, kind == TextKind::PlainRead)
+                .await;
+            if read.is_err() {
+                emitter.release().await;
+            }
+            read?;
+            // sqlx gives an empty set as its OK alone, and the prepare's columns tell it from a statement that sends no rows.
+            if let Some(rows_affected) = emitter.held_back.take() {
+                let columns = match stopping() {
+                    true => Vec::new(),
+                    false => described(&mut link.connection, flavour, text).await?,
+                };
+                emitter.answered(rows_affected, &columns).await;
+            }
         }
-        if stopping() {
-            halted = true;
-            break;
-        }
-        let results = link
-            .connection
-            .fetch_many(sqlx::raw_sql(AssertSqlSafe(text.to_owned())));
-        let read = emitter
-            .read(results, flavour, stopped, kind == TextKind::PlainRead)
-            .await;
-        if read.is_err() {
-            emitter.release().await;
-        }
-        read?;
-        // sqlx gives an empty set as its OK alone, and the prepare's columns tell it from a statement that sends no rows.
-        if let Some(rows_affected) = emitter.held_back.take() {
-            let columns = match stopping() {
-                true => Vec::new(),
-                false => described(&mut link.connection, flavour, text).await?,
-            };
-            emitter.answered(rows_affected, &columns).await;
-        }
+        Ok(())
     }
+    .await;
+    let ended = match in_read_only {
+        true => execute(&mut link.connection, flavour, READ_ONLY_END).await,
+        false => Ok(()),
+    };
+    ran?;
+    ended?;
     Ok(RunOutcome {
         consumer_gone: emitter.gone,
         halted,
         traced: emitter.traced,
+    })
+}
+
+const READ_ONLY_BEGIN: &str = "START TRANSACTION READ ONLY";
+const READ_ONLY_END: &str = "ROLLBACK";
+
+async fn execute(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+    sql: &'static str,
+) -> Result<(), DriverError> {
+    connection
+        .execute(sql)
+        .await
+        .map(drop)
+        .map_err(|error| map_error(&error, flavour))
+}
+
+// SHOW WARNINGS, SHOW ERRORS and GET DIAGNOSTICS read what the text before them left, which a ROLLBACK clears on MySQL
+// 8.4 (measured), and call no function, so they run in the transaction that text opened.
+fn reads_diagnostics(text: &str) -> bool {
+    [true, false].into_iter().all(|backslash_escapes| {
+        let plan = ScriptPlan::build(text, SqlGrammar::MySql, LexicalSettings { backslash_escapes });
+        let [statement] = plan.statements() else {
+            return false;
+        };
+        let mut words = plan
+            .tokens(statement.range.clone())
+            .filter(|token| token.kind == ScriptTokenKind::Word)
+            .filter_map(|token| text.get(token.range));
+        let named = |word: Option<&str>, names: &[&str]| {
+            word.is_some_and(|word| names.iter().any(|name| word.eq_ignore_ascii_case(name)))
+        };
+        match words.next() {
+            Some(first) if first.eq_ignore_ascii_case("SHOW") => named(words.next(), &["WARNINGS", "ERRORS", "COUNT"]),
+            Some(first) if first.eq_ignore_ascii_case("GET") => {
+                named(words.next(), &["DIAGNOSTICS", "CURRENT", "STACKED"])
+            }
+            _ => false,
+        }
     })
 }
 
@@ -541,5 +609,28 @@ mod tests {
             run_wants(&[r"INSERT INTO log VALUES ('C:\\tmp'); SELECT * FROM big INTO OUTFILE '/tmp/big.csv'"]),
             Some(SelectLimit::Server)
         );
+    }
+
+    #[test]
+    fn only_a_lone_diagnostics_statement_runs_in_the_transaction_before_it() {
+        for text in [
+            "SHOW WARNINGS",
+            "show errors limit 2",
+            "SHOW COUNT(*) WARNINGS",
+            "GET DIAGNOSTICS @n = NUMBER",
+            "get current diagnostics condition 1 @m = MESSAGE_TEXT",
+        ] {
+            assert!(reads_diagnostics(text), "{text}");
+        }
+        for text in [
+            "SELECT wr()",
+            "SHOW TABLES",
+            "SHOW WARNINGS; SELECT wr()",
+            "SHOW WARNINGS /*!99999 ; SELECT wr() */",
+            "SELECT @@warning_count",
+            "SHOW 'x\\'; SELECT wr(); -- '",
+        ] {
+            assert!(!reads_diagnostics(text), "{text}");
+        }
     }
 }

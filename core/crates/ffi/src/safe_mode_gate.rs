@@ -151,6 +151,31 @@ mod tests {
     }
 
     #[test]
+    fn read_only_keeps_back_a_statement_that_turns_read_only_off() {
+        for (grammar, sql) in [
+            (
+                SqlGrammar::PostgreSql,
+                "BEGIN; SET TRANSACTION READ WRITE; DELETE FROM t",
+            ),
+            (
+                SqlGrammar::PostgreSql,
+                "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE",
+            ),
+            (
+                SqlGrammar::PostgreSql,
+                "SELECT set_config('default_transaction_read_only', 'off', false)",
+            ),
+            (SqlGrammar::MySql, "SET SESSION transaction_read_only = 0"),
+            (SqlGrammar::MySql, "START TRANSACTION READ WRITE"),
+        ] {
+            assert!(
+                gate(sql, grammar, SafeModeLevel::ReadOnly).refused,
+                "{grammar:?}: {sql}"
+            );
+        }
+    }
+
+    #[test]
     fn a_mysql_executable_comment_is_read_as_the_server_reads_it() {
         // MySQL 8.0 skips the second comment past its nested `/* */` and runs the DROP after it.
         let script = "/*!40103 SET TIME_ZONE='+00:00' */;\nSELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '";
