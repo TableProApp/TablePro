@@ -51,6 +51,7 @@ internal final class AccountServices {
     let devices: DeviceRegistry
     let access: FeatureAccess
     let api: any APIProtocol
+    let shares: any ShareService
     let events = PassthroughSubject<AccountEvent, Never>()
     private let entitlements: EntitlementStore
     private let legacy: LegacyLicenseStore
@@ -92,6 +93,10 @@ internal final class AccountServices {
             onRefused: { Task { @MainActor in refusals.services?.sessionWasRefused() } }
         )
         self.api = AccountAPI.client(configuration: configuration, transport: transport, session: session)
+        self.shares = CloudShareService(
+            api: api,
+            publicAPI: AccountAPI.publicClient(configuration: configuration, transport: transport)
+        )
         self.devices = DeviceRegistry(api: api, machine: machine)
         self.entitlements = EntitlementStore(
             fileURL: entitlementFile,
