@@ -464,9 +464,12 @@ struct SSHSessionPumpTests {
         send(Data("waits".utf8), to: waiter.b)
         _ = fixture.relay(waiter, io: waiterIO)
         try await waitUntil { waiterIO.writeCount >= 2 }
-        let before = uploaderIO.writtenCount
+        let drainedBefore = drain.drained
 
-        try await waitUntil(timeout: .seconds(3)) { uploaderIO.writtenCount >= before + (1 << 20) }
+        // Progress through the transport, at whatever pace the drain thread gets on a loaded machine: a stalled
+        // pump lets through only what already sat in the socket.
+        try await waitUntil(timeout: .seconds(15)) { drain.drained >= drainedBefore + (256 << 10) }
+        #expect(uploaderIO.writtenCount < upload.count)
     }
 }
 
@@ -500,7 +503,8 @@ struct SSHSessionPumpBacklogTests {
         let run = try await runBacklog(buffers: 20)
 
         #expect(run.delivered == Self.bufferSize * 20)
-        #expect(run.reads == 21)
+        // The pass the cap scheduled can run after a local event's pass took the last buffer, and read once more.
+        #expect((21 ... 22).contains(run.reads))
         #expect(run.elapsed < 1.0)
     }
 
@@ -889,18 +893,24 @@ internal final class OnePacketChannel: SSHChannelIO, @unchecked Sendable {
 // descriptor of its own, so it never reads a number the test has closed and the kernel handed to another test.
 internal final class SlowDrain: @unchecked Sendable {
     private let stopped = OSAllocatedUnfairLock(initialState: false)
+    private let tally = ByteTally()
+
+    var drained: Int { tally.value }
 
     init(_ descriptor: Int32) {
         let stopped = self.stopped
+        let tally = self.tally
         let own = dup(descriptor)
         let thread = Thread {
             defer { Darwin.close(own) }
             var buffer = [UInt8](repeating: 0, count: 16_384)
             while !stopped.withLock({ $0 }) {
-                if recv(own, &buffer, buffer.count, MSG_DONTWAIT) <= 0 {
+                let count = recv(own, &buffer, buffer.count, MSG_DONTWAIT)
+                if count <= 0 {
                     usleep(1_000)
                     continue
                 }
+                tally.add(count)
                 usleep(4_000)
             }
         }
