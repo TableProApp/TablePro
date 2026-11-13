@@ -719,14 +719,16 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func stream(_ query: String, rules: SQLiteStatementRules) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
+            let spill = PluginRowSpill(continuation: continuation)
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(queryToRun, rules: rules, continuation: continuation)
+                    try await self.backend.streamQuery(queryToRun, rules: rules, into: spill)
                 } catch {
-                    continuation.finish(throwing: error)
+                    spill.finish(throwing: error)
                 }
             }
             continuation.onTermination = { @Sendable _ in
+                spill.abandon()
                 streamTask.cancel()
             }
         }

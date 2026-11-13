@@ -14,12 +14,14 @@ import Testing
 struct SQLiteAgentStreamPacingTests {
     // About 54 MB on the wire, several times what the stream, both loopback sockets (up to 4 MB each) and the pipe hold.
     private static let rowCount = 250_000
-    private static let bufferedBytesLimit = 12_000_000
     private static let watchdogSeconds = 2.0
     private static let heartbeatSeconds = 0.25
 
     // Table order with no sort, so the first rows go out at once.
     private static let scan = "SELECT id, payload FROM t ORDER BY rowid"
+    // Never ends on its own, so the agent is still reading it whenever the test looks.
+    private static let endless =
+        "WITH RECURSIVE g(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM g) SELECT x, hex(randomblob(100)) FROM g"
 
     private static func scaledProgram() throws -> [String] {
         let deadline = "IDLE_DEADLINE_SECONDS = 60.0"
@@ -89,21 +91,6 @@ struct SQLiteAgentStreamPacingTests {
         await backend.close()
     }
 
-    // The agent waits once the bytes it sent stop growing for a while.
-    private static func waitUntilAgentWaits(_ loopback: SQLiteAgentLoopback) async throws {
-        var last = -1
-        var steadySince = ContinuousClock.now
-        try await waitUntil(timeout: .seconds(30)) {
-            let now = loopback.agentBytes
-            if now != last {
-                last = now
-                steadySince = .now
-                return false
-            }
-            return now > 0 && ContinuousClock.now - steadySince > .milliseconds(500)
-        }
-    }
-
     private struct NoAnswer: Error {}
 
     // A statement queued behind a stream that never ends ignores the time limit's cancellation, so it gets its own.
@@ -137,14 +124,17 @@ struct SQLiteAgentStreamPacingTests {
         }
     }
 
-    @Test("A reader held past the agent's watchdog still gets every row, in order, on a live session")
+    @Test("A reader held past the agent's watchdog gets every row, in order, and the agent's read ends without it")
     func heldReaderOutlastsTheWatchdog() async throws {
         try await Self.withAgent(arguments: try Self.scaledProgram()) { fixture in
             var iterator = fixture.driver.streamRows(query: Self.scan).makeAsyncIterator()
             var read = OrderedRead()
             while read.expected == 1, let element = try await iterator.next() { read.take(element) }
 
-            try await Self.waitUntilAgentWaits(fixture.loopback)
+            // The agent read the whole table into the spill, so the connection takes the next statement at once.
+            let driver = fixture.driver
+            #expect(try await Self.answer { try await driver.execute(query: "SELECT count(*) FROM t") } == String(Self.rowCount))
+
             // Long enough for the watchdog to have ended the session twice over without heartbeats.
             let heartbeatsBeforeHold = fixture.loopback.heartbeats
             let holdHeartbeats = Int(Self.watchdogSeconds * 2.5 / Self.heartbeatSeconds)
@@ -152,70 +142,68 @@ struct SQLiteAgentStreamPacingTests {
                 fixture.loopback.heartbeats - heartbeatsBeforeHold >= holdHeartbeats
             }
             #expect(fixture.loopback.agentIsRunning)
-            let heldBytes = fixture.loopback.agentBytes
 
             while let element = try await iterator.next() { read.take(element) }
             #expect(read.expected - 1 == Self.rowCount)
             #expect(read.mismatches == 0)
-            #expect(heldBytes < Self.bufferedBytesLimit, "the agent sent \(heldBytes) of \(fixture.loopback.agentBytes) bytes by the end of the hold")
-
-            let driver = fixture.driver
-            #expect(try await Self.answer { try await driver.execute(query: "SELECT count(*) FROM t") } == String(Self.rowCount))
+            #expect(try await Self.answer { try await driver.execute(query: "SELECT 42") } == "42")
         }
     }
 
-    @Test("Without heartbeats the same hold outlasts the watchdog and the read fails")
-    func holdWithoutHeartbeatsLosesTheSession() async throws {
+    @Test("Without heartbeats an idle session outlasts the watchdog and its next statement fails")
+    func idleWithoutHeartbeatsLosesTheSession() async throws {
         try await Self.withAgent(arguments: try Self.scaledProgram(), heartbeat: 3_600) { fixture in
-            var iterator = fixture.driver.streamRows(query: Self.scan).makeAsyncIterator()
-            var read = OrderedRead()
-            // On a loaded machine the watchdog can end the session before the first batch arrives.
-            await #expect(throws: (any Error).self) {
-                while read.expected == 1, let element = try await iterator.next() { read.take(element) }
-                try await waitUntil(timeout: .seconds(30)) { !fixture.loopback.agentIsRunning }
-                while let element = try await iterator.next() { read.take(element) }
+            _ = try await fixture.driver.execute(query: "SELECT 1")
+            try await waitUntil(timeout: .seconds(30)) { !fixture.loopback.agentIsRunning }
+
+            let driver = fixture.driver
+            let failed = await BoundedCall.result(within: .seconds(5)) {
+                do {
+                    _ = try await driver.execute(query: "SELECT 1")
+                    return false
+                } catch {
+                    return true
+                }
             }
-            #expect(!fixture.loopback.agentIsRunning)
-            #expect(read.expected - 1 < Self.rowCount)
+            #expect(failed == true)
         }
     }
 
     @Test("A reader that leaves stops the agent's read, and the next statement gets its own answer")
     func abandonedReadStopsTheAgent() async throws {
         try await Self.withAgent { fixture in
-            let bytesBeforeRead = fixture.loopback.agentBytes
             var iterator: AsyncThrowingStream<PluginStreamElement, Error>.Iterator? =
-                fixture.driver.streamRows(query: Self.scan).makeAsyncIterator()
+                fixture.driver.streamRows(query: Self.endless).makeAsyncIterator()
             var rows = 0
             while rows == 0, let element = try await iterator?.next() {
                 if case .rows(let batch) = element { rows += batch.count }
             }
-            try await Self.waitUntilAgentWaits(fixture.loopback)
             iterator = nil
 
             let driver = fixture.driver
             #expect(try await Self.answer { try await driver.execute(query: "SELECT 42") } == "42")
             #expect(fixture.loopback.agentIsRunning)
-            let readBytes = fixture.loopback.agentBytes - bytesBeforeRead
-            #expect(readBytes < Self.bufferedBytesLimit, "the agent sent \(readBytes) bytes")
         }
     }
 
-    @Test("A statement sent while a stream is open waits for it instead of taking its rows")
+    @Test("A statement sent while the agent is still reading a stream waits for it instead of taking its rows")
     func statementWaitsForTheOpenStream() async throws {
         try await Self.withAgent { fixture in
-            var iterator = fixture.driver.streamRows(query: Self.scan).makeAsyncIterator()
-            var read = OrderedRead()
-            while read.expected == 1, let element = try await iterator.next() { read.take(element) }
+            var iterator: AsyncThrowingStream<PluginStreamElement, Error>.Iterator? =
+                fixture.driver.streamRows(query: Self.endless).makeAsyncIterator()
+            var rows = 0
+            while rows == 0, let element = try await iterator?.next() {
+                if case .rows(let batch) = element { rows += batch.count }
+            }
 
             let driver = fixture.driver
             let statement = Task { try await driver.execute(query: "SELECT 42") }
-            try await Self.waitUntilAgentWaits(fixture.loopback)
+            // The reader holds, and the agent keeps reading into the spill while the statement stays queued.
+            let bytesWhenSent = fixture.loopback.agentBytes
+            try await waitUntil(timeout: .seconds(30)) { fixture.loopback.agentBytes > bytesWhenSent + 20_000_000 }
             #expect(fixture.loopback.requests == 1, "the statement went out while the stream was open")
 
-            while let element = try await iterator.next() { read.take(element) }
-            #expect(read.expected - 1 == Self.rowCount)
-            #expect(read.mismatches == 0)
+            iterator = nil
             #expect(try await Self.answer { try await statement.value } == "42")
         }
     }

@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProWireIO
 
 extension DynamoDBPluginDriver {
     func execute(query: String) async throws -> PluginQueryResult {
@@ -377,33 +378,30 @@ extension DynamoDBPluginDriver {
             return
         }
 
-        let spoolURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TablePro-DynamoDB-\(UUID().uuidString).jsonl")
-        guard FileManager.default.createFile(atPath: spoolURL.path, contents: nil) else {
+        let spool: SpoolFile
+        do {
+            spool = try SpoolFile(prefix: "TablePro-DynamoDB")
+        } catch {
             throw DynamoDBError.transport(String(localized: "Could not create a temporary file for the export"))
         }
-        defer { try? FileManager.default.removeItem(at: spoolURL) }
 
         let sortsLocally = !source.clientOrder.isEmpty
         let readOffset = sortsLocally ? 0 : source.window.offset
         let readLimit = sortsLocally ? Int.max : max(source.window.limit ?? Int.max, 0)
-        var collector = SpoolCollector(handle: try FileHandle(forWritingTo: spoolURL))
+        var collector = SpoolCollector(spool: spool)
         try await source.read(readOffset, readLimit) { item in
             try collector.add(item)
             return true
         }
-        try collector.handle.close()
 
         let columns = collector.columns(preferred: source.preferredColumns, schema: source.schema)
         continuation.yield(.header(PluginStreamHeader(columns: columns, columnTypeNames: collector.typeNames(for: columns, schema: source.schema))))
 
         if sortsLocally {
             var items: [DynamoDBItem] = []
-            var lines = try SpoolLines(url: spoolURL)
-            defer { lines.close() }
-            while let line = try lines.next() {
+            while let record = try spool.next() {
                 try Task.checkCancellation()
-                items.append(try DynamoDBItem(wireItem: DynamoDBJSON.parse(line)))
+                items.append(try DynamoDBItem(wireItem: DynamoDBJSON.parse(Data(record))))
             }
             let sorted = DynamoDBItemTable.sorted(items, by: source.clientOrder)
             let end = source.window.limit.map { limit in
@@ -421,11 +419,9 @@ extension DynamoDBPluginDriver {
 
         var batch: [PluginRow] = []
         batch.reserveCapacity(1_000)
-        var lines = try SpoolLines(url: spoolURL)
-        defer { lines.close() }
-        while let line = try lines.next() {
+        while let record = try spool.next() {
             try Task.checkCancellation()
-            let item = try DynamoDBItem(wireItem: DynamoDBJSON.parse(line))
+            let item = try DynamoDBItem(wireItem: DynamoDBJSON.parse(Data(record)))
             batch.append(columns.map { DynamoDBCellCodec.cell(for: item[$0]) })
             if batch.count == 1_000 {
                 _ = await PluginRowStream.deliver(.rows(batch), to: continuation)
@@ -519,62 +515,18 @@ extension DynamoDBPluginDriver {
     }
 }
 
-/// Reads the spool file back one line at a time with plain reads.
-///
-/// `URL.lines` would read it through `FileHandle.AsyncBytes`, and Foundation serves every AsyncBytes reader in the
-/// process from one serial queue. A reader blocked on a pipe that stays quiet, such as a language server's output,
-/// holds that queue, and the export then waits for it.
-private struct SpoolLines {
-    private static let chunkSize = 1 << 20
-
-    private let handle: FileHandle
-    private var buffer = Data()
-    private var start = 0
-    private var reachedEnd = false
-
-    init(url: URL) throws {
-        handle = try FileHandle(forReadingFrom: url)
-    }
-
-    mutating func next() throws -> Data? {
-        while true {
-            if let newline = buffer[start...].firstIndex(of: UInt8(ascii: "\n")) {
-                let line = buffer[start..<newline]
-                start = newline + 1
-                return Data(line)
-            }
-            if reachedEnd {
-                guard start < buffer.count else { return nil }
-                let rest = Data(buffer[start...])
-                start = buffer.count
-                return rest
-            }
-            // Each read hands back an autoreleased buffer, which a loop with no pool of its own keeps until it ends.
-            let chunk = try autoreleasepool { try handle.read(upToCount: Self.chunkSize) } ?? Data()
-            buffer = buffer.subdata(in: start..<buffer.endIndex)
-            buffer.append(chunk)
-            start = 0
-            reachedEnd = chunk.isEmpty
-        }
-    }
-
-    func close() {
-        try? handle.close()
-    }
-}
-
-/// Writes streamed items to the spool file and tallies their attributes and types as it goes.
+// One record per item; the attributes and their types are tallied as the items go by.
 private struct SpoolCollector {
-    let handle: FileHandle
+    let spool: SpoolFile
     private(set) var attributes = Set<String>()
     private var typeCounts: [String: [DynamoDBAttributeType: Int]] = [:]
 
-    init(handle: FileHandle) {
-        self.handle = handle
+    init(spool: SpoolFile) {
+        self.spool = spool
     }
 
     mutating func add(_ item: DynamoDBItem) throws {
-        try handle.write(contentsOf: Data((item.wireJSON.serialized() + "\n").utf8))
+        try spool.append(Array(item.wireJSON.serialized().utf8))
         for (name, value) in item {
             attributes.insert(name)
             guard value != .null else { continue }
