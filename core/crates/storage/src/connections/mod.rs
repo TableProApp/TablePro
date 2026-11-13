@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::credentials::SecretKind;
+use tablepro_core::masking::{MaskingPolicy, MaskingRule};
 use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -50,6 +51,14 @@ pub struct SavedConnection {
     /// Preferences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_timeout_secs: Option<u32>,
+    /// What the grid and every path out of the app mask here, in the
+    /// macOS app's shape. A list nothing can read masks everything.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "tablepro_core::masking::deserialize_rules"
+    )]
+    pub masking_rules: Vec<MaskingRule>,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -80,6 +89,10 @@ pub struct SavedConnection {
 }
 
 impl SavedConnection {
+    pub fn masking_policy(&self) -> MaskingPolicy {
+        MaskingPolicy::new(self.masking_rules.iter().cloned())
+    }
+
     /// What a secret of this connection belongs to, in the user's own
     /// terms. Seahorse and the credential prompt both show it, so it
     /// has to identify the connection without TablePro open.
@@ -1077,6 +1090,7 @@ mod tests {
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
+            masking_rules: Vec::new(),
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(Utc::now()),
@@ -1107,6 +1121,7 @@ mod tests {
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
+            masking_rules: Vec::new(),
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
@@ -1162,6 +1177,60 @@ mod tests {
 
         assert_eq!(list.len(), 1);
         assert_eq!(list[0], connection);
+    }
+
+    #[test]
+    fn masking_rules_are_kept_with_the_connection_in_the_macos_shape() {
+        use tablepro_core::masking::{MaskingStyle, MaskingTarget};
+
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut connection = sample_connection();
+        connection.masking_rules = vec![MaskingRule::new(
+            "users.email",
+            MaskingTarget::Column,
+            MaskingStyle::Email,
+        )];
+        let id = connection.masking_rules[0].id.to_string().to_uppercase();
+
+        store.upsert_blocking(connection.clone()).expect("upsert");
+
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(store.path()).expect("read")).expect("JSON");
+        let rule = &written["connections"][0]["masking_rules"][0];
+        assert_eq!(
+            [&rule["id"], &rule["pattern"], &rule["target"], &rule["style"]],
+            [id.as_str(), "users.email", "column", "email"]
+        );
+        let reopened = ConnectionStore::new(&crate::StoragePaths::under(
+            root.path(),
+            "tablepro",
+            "app.tablepro.TablePro",
+        ));
+        assert_eq!(reopened.load_blocking().expect("load")[0], connection);
+        assert!(!connection.masking_policy().is_empty());
+    }
+
+    #[test]
+    fn masking_rules_nothing_can_read_mask_everything_and_none_stored_is_none() {
+        for (extra, rules) in [
+            ("", 0),
+            (r#","masking_rules":null"#, 0),
+            (r#","masking_rules":[]"#, 0),
+            (r#","masking_rules":"oops""#, 1),
+            (r#","masking_rules":{"pattern":"ssn"}"#, 1),
+            (r#","masking_rules":[{"pattern":"ssn","target":"schema"}]"#, 1),
+        ] {
+            let root = TempDir::new().expect("tempdir");
+            seed(&root, &connections_json(extra));
+
+            let list = store(&root).load_blocking().expect("load");
+
+            assert_eq!(list[0].masking_rules.len(), rules, "{extra}");
+            if rules == 1 {
+                assert_eq!(list[0].masking_rules[0].pattern, "*", "{extra}");
+            }
+        }
     }
 
     #[test]

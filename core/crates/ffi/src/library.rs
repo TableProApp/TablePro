@@ -721,6 +721,7 @@ pub(crate) fn blank(id: Uuid) -> SavedConnection {
         external_access: tablepro_core::ExternalAccess::default(),
         ai_policy: tablepro_core::AiPolicy::default(),
         query_timeout_secs: None,
+        masking_rules: Vec::new(),
         auth_mode: AuthMode::default(),
         ssh: None,
         last_opened_at: None,

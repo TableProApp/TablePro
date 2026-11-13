@@ -129,6 +129,7 @@ async fn keys_list_and_commands_run_through_openssh() {
         },
         workspace_settings: WorkspaceSettings::workspace(false),
         safe_mode: tablepro_core::SafeModeLevel::Off,
+        masking: Default::default(),
     };
     let pending = connector
         .establish(request, CredentialInteraction::Unattended, CancellationToken::new())
