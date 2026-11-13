@@ -372,7 +372,8 @@ mod tests {
         columns[0].name = "n".repeat(300);
         let row: Vec<Value> = (0..=MAX_SHARE_COLUMNS).map(|index| Value::Int(index as i64)).collect();
 
-        let body = SnapshotBody::from(build_snapshot(&columns, [row], ResultExtent::complete(1), 10));
+        let body =
+            SnapshotBody::from(build_snapshot(&columns, [row], ResultExtent::complete(1), 10).expect("a snapshot"));
 
         assert_eq!(body.columns.len(), MAX_SHARE_COLUMNS);
         assert_eq!(body.columns[0].name.chars().count(), 256);
@@ -404,7 +405,8 @@ mod tests {
             [vec![Value::Text("a•••@x.io".to_owned()), Value::Int(1)]],
             ResultExtent::complete(1),
             10,
-        );
+        )
+        .expect("a snapshot");
         snapshot.columns[0].masked = Some(MaskingStyle::LastFour);
 
         let json = serde_json::to_string(&SnapshotBody::from(snapshot)).expect("JSON");
@@ -444,19 +446,13 @@ mod tests {
         let rows = [vec![Value::Int(1)]];
         let uncounted = ResultExtent::finished(1, None, tablepro_core::Truncation::ReadPastLimit);
 
-        let cut = serde_json::to_string(&SnapshotBody::from(build_snapshot(
-            &columns,
-            rows.clone(),
-            uncounted,
-            10,
-        )))
+        let cut = serde_json::to_string(&SnapshotBody::from(
+            build_snapshot(&columns, rows.clone(), uncounted, 10).expect("a snapshot"),
+        ))
         .expect("JSON");
-        let whole = serde_json::to_string(&SnapshotBody::from(build_snapshot(
-            &columns,
-            rows,
-            ResultExtent::complete(1),
-            10,
-        )))
+        let whole = serde_json::to_string(&SnapshotBody::from(
+            build_snapshot(&columns, rows, ResultExtent::complete(1), 10).expect("a snapshot"),
+        ))
         .expect("JSON");
 
         assert!(

@@ -6,8 +6,9 @@ use tablepro_account::{
     CreatedShare, MAX_SHARE_COLUMNS, Share, ShareExpiry, ShareKind, ShareLimits, SharePage, ShareRequest, ShareTeam,
     SharedLink,
 };
+use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::export::{ResultExtent, Snapshot, build_snapshot};
+use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot, snapshot_row_count};
 use tablepro_core::masking::{ShareChoice, SharePlan};
 
 use super::account_service::AccountService;
@@ -252,8 +253,7 @@ fn snapshot_of(
     }
     let (visible, plan) = share_plan(set, visible_columns, choices);
     let ended = set.extent();
-    let rows = (0..rows_sent(set, max_rows))
-        .map(|row| plan.row(&visible, |index| held_value(set, row, index, &visible[index])));
+    let rows = (0..ended.held).map(|row| sent_row(set, &visible, &plan, row));
     // A count the app made of a table view outranks what the page's own read knew.
     let extent = ResultExtent {
         total: total_rows.or(ended.total),
@@ -264,16 +264,39 @@ fn snapshot_of(
         rows,
         extent,
         usize::try_from(max_rows).unwrap_or(usize::MAX),
-    );
+    )
+    .map_err(too_large)?;
     for (column, style) in snapshot.columns.iter_mut().zip(plan.masked()) {
         column.masked = style;
     }
     Ok((snapshot, plan.columns_cut()))
 }
 
-// The rows a share of `max_rows` sends, a prefix of the set; detection and the preview read the same ones.
-pub(crate) fn rows_sent(set: &ResultSet, max_rows: u32) -> u64 {
-    set.extent().held.min(u64::from(max_rows))
+// How many rows a share of `max_rows` sends with `plan`: the prefix the snapshot keeps under the plan's rows and its
+// body budget, masked values weighed, so detection and the preview read the same rows the snapshot sends.
+pub(crate) fn rows_sent(
+    set: &ResultSet,
+    visible: &[ResultColumn],
+    plan: &SharePlan,
+    max_rows: u32,
+) -> Result<u64, CoreError> {
+    let rows = (0..set.extent().held).map(|row| sent_row(set, visible, plan, row));
+    let kept = snapshot_row_count(
+        &plan.columns(visible),
+        rows,
+        usize::try_from(max_rows).unwrap_or(usize::MAX),
+    )
+    .map_err(too_large)?;
+    Ok(kept as u64)
+}
+
+pub(crate) fn sent_row(set: &ResultSet, visible: &[ResultColumn], plan: &SharePlan, row: u64) -> Vec<Value> {
+    plan.row(visible, |index| held_value(set, row, index, &visible[index]))
+}
+
+// Worded as the server's own refusal of a body too large, which every app already words.
+fn too_large(error: SnapshotTooLarge) -> CoreError {
+    CoreError::failed("account.snapshot_too_large", error.to_string())
 }
 
 // The set's first `visible_columns` columns and how a share sends them, by the connection's rules and the sheet.
@@ -579,5 +602,43 @@ mod tests {
 
         assert_eq!(cells(&snapshot), [r#""1""#, r#""••••""#]);
         assert_eq!(snapshot.columns[1].masked, Some(MaskingStyle::Full));
+    }
+
+    fn notes(rows: usize, chars: usize) -> Arc<ResultSet> {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("note", ColumnType::untyped_text("text"))].into();
+        let store = Arc::new(ResultStore::new(columns));
+        let held: Vec<Vec<Value>> = (0..rows).map(|_| vec![Value::Text("x".repeat(chars))]).collect();
+        store.append(&held);
+        store.finish();
+        Arc::new(ResultSet::new(0, store))
+    }
+
+    #[test]
+    fn a_big_share_is_cut_at_the_budget_and_the_preview_keeps_the_same_rows() {
+        // 32 bytes of header, then 200,005 a row: 22 rows fit in 4,500,000.
+        let set = notes(30, 200_000);
+        let full = [ShareColumnChoice::Mask {
+            style: MaskStyleTag::Full,
+        }];
+
+        let (snapshot, _) = snapshot_of(&set, 1, 1_000, None, &[]).unwrap();
+        let preview = crate::masking::share_preview(&set, 1, 1_000, &[]).unwrap();
+        let (masked, _) = snapshot_of(&set, 1, 1_000, None, &full).unwrap();
+
+        assert_eq!(snapshot.rows.len(), 22);
+        assert_eq!(snapshot.row_count, Some(30), "the server would not mark the share cut");
+        assert_eq!(preview.row_count(), 22);
+        assert_eq!(masked.rows.len(), 30, "masked text was not what was weighed");
+    }
+
+    #[test]
+    fn a_share_that_cannot_go_even_cut_is_refused_as_too_large() {
+        let over = snapshot_of(&notes(1, 300_000), 1, 1_000, None, &[]).err().unwrap();
+        let preview = crate::masking::share_preview(&notes(1, 300_000), 1, 1_000, &[])
+            .err()
+            .unwrap();
+
+        assert_eq!(over.code(), "account.snapshot_too_large");
+        assert_eq!(preview.code(), "account.snapshot_too_large");
     }
 }

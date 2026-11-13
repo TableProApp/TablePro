@@ -506,12 +506,15 @@ mod tests {
         let request = ShareRequest {
             kind: ShareKind::Result,
             hide_sql: true,
-            snapshot: Some(build_snapshot(
-                &columns,
-                &rows,
-                ResultExtent::finished(2, Some(48_210), tablepro_core::Truncation::ReadPastLimit),
-                1,
-            )),
+            snapshot: Some(
+                build_snapshot(
+                    &columns,
+                    &rows,
+                    ResultExtent::finished(2, Some(48_210), tablepro_core::Truncation::ReadPastLimit),
+                    1,
+                )
+                .expect("a snapshot"),
+            ),
             ..query("Orders")
         };
 
@@ -753,7 +756,7 @@ mod tests {
         let row: Vec<Value> = (0..120).map(Value::Int).collect();
         let request = ShareRequest {
             kind: ShareKind::Result,
-            snapshot: Some(build_snapshot(&columns, [row], ResultExtent::complete(1), 10)),
+            snapshot: Some(build_snapshot(&columns, [row], ResultExtent::complete(1), 10).expect("a snapshot")),
             ..query("Wide")
         };
 

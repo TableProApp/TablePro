@@ -11,9 +11,9 @@ use tablepro_core::masking::detect::{
 use tablepro_core::masking::{ColumnMasks, MaskingRule, MaskingStyle, MaskingTarget, ShareChoice};
 use uuid::Uuid;
 
-use crate::account::share::{rows_sent, share_plan};
+use crate::account::share::{rows_sent, sent_row, share_plan};
 use crate::error::CoreError;
-use crate::export::{held_row, held_value};
+use crate::export::held_row;
 use crate::results::{ResultSet, ResultStore};
 use crate::runtime::on_runtime;
 
@@ -153,7 +153,7 @@ impl ResultSet {
     }
 }
 
-fn share_preview(
+pub(crate) fn share_preview(
     set: &ResultSet,
     visible_columns: u32,
     max_rows: u32,
@@ -164,10 +164,8 @@ fn share_preview(
     }
     let (visible, plan) = share_plan(set, visible_columns, choices);
     let ended = set.extent();
-    let taken = rows_sent(set, max_rows);
-    let rows: Vec<Vec<tablepro_core::Value>> = (0..taken)
-        .map(|row| plan.row(&visible, |index| held_value(set, row, index, &visible[index])))
-        .collect();
+    let taken = rows_sent(set, &visible, &plan, max_rows)?;
+    let rows: Vec<Vec<tablepro_core::Value>> = (0..taken).map(|row| sent_row(set, &visible, &plan, row)).collect();
     let store = ResultStore::with_masking(plan.columns(&visible).into(), None);
     store.append(&rows);
     store.mark_masked(ColumnMasks::new(plan.masked()));
@@ -185,10 +183,11 @@ fn share_masking(set: &ResultSet, visible_columns: u32, max_rows: u32) -> Vec<Sh
     let columns: Vec<ResultColumn> = held[..visible].to_vec();
     let rules = set.external_masks(&columns);
     let untraced = set.untraced_columns(&columns);
-    // Exactly the rows the snapshot sends, so "at least half" never counts a row that stays behind.
-    let rows: Vec<Vec<tablepro_core::Value>> = (0..rows_sent(set, max_rows))
-        .map(|row| held_row(set, row, &columns))
-        .collect();
+    // The rows the snapshot sends with the sheet as it starts, so "at least half" never counts a row that stays behind;
+    // none when even the first row cannot go.
+    let (_, plan) = share_plan(set, visible_columns, &[]);
+    let sent = rows_sent(set, &columns, &plan, max_rows).unwrap_or(0);
+    let rows: Vec<Vec<tablepro_core::Value>> = (0..sent).map(|row| held_row(set, row, &columns)).collect();
     suggest_masks(&columns, &rows, &rules)
         .into_iter()
         .zip(&columns)
