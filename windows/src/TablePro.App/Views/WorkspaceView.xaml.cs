@@ -639,7 +639,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 ShareSubject.Result(query.LastStatement ?? string.Empty, query.Title, dialect, rows, query.ResultsView.Columns),
             (TableTabView { IsRunning: false, HasUnsavedChanges: false } table, ShareKind.Result)
                 when table.ResultsView.ShownSet is { IsFinished: true } =>
-                ShareSubject.Table(table.Title, dialect, maxRows => table.Model.ReadForShareAsync(maxRows, default)),
+                ShareSubject.Table(table.Title, dialect, table.Model.ReadForShareAsync),
             _ => null,
         };
     }

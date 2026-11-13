@@ -8,10 +8,10 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// A tablepro://share link: the password it asks for, and what is said when it cannot open (PLAN, Wording).
+// A tablepro://share link's password and messages wait for the window and any open dialog, so none is dropped.
 internal static class SharedLinkDialogs
 {
-    // Null when the link has nothing to open, the person cancels, or another dialog holds the window.
+    // Null when the link has nothing to open or the person cancels.
     public static async Task<PublicShare?> FetchAsync(FrameworkElement owner, Workbench workbench, string link)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -94,7 +94,7 @@ internal static class SharedLinkDialogs
             CloseButtonText = Strings.Get("Close"),
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true) == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowWhenFreeAsync(dialog, owner).ConfigureAwait(true) == ContentDialogResult.Primary)
         {
             WorkspaceView.CopyText(shared.Sql ?? string.Empty);
         }
@@ -129,13 +129,13 @@ internal static class SharedLinkDialogs
         };
         box.PasswordChanged += (_, _) => dialog.IsPrimaryButtonEnabled = box.Password.Length > 0;
         dialog.Opened += (_, _) => box.Focus(FocusState.Programmatic);
-        return await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true) == ContentDialogResult.Primary
+        return await WindowDialogs.ShowWhenFreeAsync(dialog, owner).ConfigureAwait(true) == ContentDialogResult.Primary
             ? box.Password
             : null;
     }
 
     private static Task<ContentDialogResult> TellAsync(FrameworkElement owner, string message) =>
-        WindowDialogs.ShowAsync(
+        WindowDialogs.ShowWhenFreeAsync(
             new ContentDialog
             {
                 RequestedTheme = owner.ActualTheme,

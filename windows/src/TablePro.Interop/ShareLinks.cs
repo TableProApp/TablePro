@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
@@ -52,6 +54,18 @@ public sealed record ShareRequest(ShareKind Kind, string Sql)
     public string? Password { get; init; }
 
     public string? TeamId { get; init; }
+
+    // The record's own ToString would print the password into a log line or a debugger's summary.
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"Kind = {Kind}, SqlLength = {Sql.Length}, Title = {Title}, Dialect = {Dialect}, Expiry = {Expiry}, ");
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"HideSql = {HideSql}, AllowDownload = {AllowDownload}, HasPassword = {Password is not null}, TeamId = {TeamId}");
+        return true;
+    }
 }
 
 // A link as its owner sees it. Kind, Scope and State stay the server's codes; Sql only when read on its own.

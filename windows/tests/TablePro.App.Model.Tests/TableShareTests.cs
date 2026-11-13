@@ -84,4 +84,21 @@ public sealed class TableShareTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => _tab.ReadForShareAsync(1_000, TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task ClosingTheSheetStopsTheReadAndCountsNothing()
+    {
+        await _tab.RunAsync();
+        var counts = _session.Counts;
+        var querying = new Gate();
+        _session.Querying = querying;
+        using var closing = new CancellationTokenSource();
+
+        var reading = _tab.ReadForShareAsync(1_000, closing.Token);
+        await querying.Reached;
+        await closing.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reading);
+        Assert.Equal(counts, _session.Counts);
+    }
 }

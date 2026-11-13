@@ -160,6 +160,25 @@ public sealed class SharePlanTests
     }
 
     [Fact]
+    public void TheCapLineCountsTheLiveLinksWhichADowngradeCanLeaveAboveTheLimit()
+    {
+        Assert.Equal(new ShareCap(false, 7, 5), SharePlan.For(Free with { Live = 7 }, ShareKind.Query).Cap);
+        Assert.Equal(new ShareCap(true, 1_000, 1_000), SharePlan.For(Pro with { Live = 1_000 }, ShareKind.Query).Cap);
+        Assert.Equal(ShareStage.AtCap, SharePlan.For(Free with { Live = 7 }, ShareKind.Query).Stage);
+    }
+
+    [Fact]
+    public void NeitherTheFormNorTheRequestPrintsThePassword()
+    {
+        var request = SharePlan.For(Pro, ShareKind.Result, 10).Request(Everything, "SELECT 1", null);
+
+        Assert.DoesNotContain("hunter2", Everything.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("hunter2", request.ToString(), StringComparison.Ordinal);
+        Assert.Contains("HasPassword = True", request.ToString(), StringComparison.Ordinal);
+        Assert.Equal("hunter2", request.Password);
+    }
+
+    [Fact]
     public void TheStageFollowsTheEmailTheSwitchAndTheCapInThatOrder()
     {
         Assert.Equal(ShareStage.Form, SharePlan.For(Free, ShareKind.Query).Stage);
@@ -197,7 +216,8 @@ public sealed class SharePlanTests
     [InlineData("account.snapshot_too_large", "ShareErrorTooLarge")]
     [InlineData("account.rate_limited", "ShareErrorRateLimited")]
     [InlineData("account.unreachable", "ShareErrorOffline")]
-    [InlineData("account.validation_failed", "ShareErrorFailed")]
+    [InlineData("account.validation_failed", "ShareErrorInvalid")]
+    [InlineData("account.refused", "ShareErrorFailed")]
     [InlineData("ffi.share_unfinished", "ShareErrorFailed")]
     public void EachProblemCodeHasTheSheetsSentence(string code, string key) =>
         Assert.Equal(key, ShareErrors.KeyFor(code));

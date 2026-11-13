@@ -19,7 +19,7 @@ internal sealed record ShareSubject(
     string? Dialect,
     ResultSet? Rows,
     IReadOnlyList<ResultColumn> Columns,
-    Func<long, Task<TableShareRead>>? ReadTable = null)
+    Func<long, CancellationToken, Task<TableShareRead>>? ReadTable = null)
 {
     public long TotalRows => Rows?.RowCount ?? 0;
 
@@ -31,7 +31,8 @@ internal sealed record ShareSubject(
         new(ShareKind.Result, sql, title, dialect, rows, columns);
 
     // The view is read from its first row up to the plan's rows, so the sheet reads it after the limits.
-    public static ShareSubject Table(string title, string? dialect, Func<long, Task<TableShareRead>> read) =>
+    public static ShareSubject Table(
+        string title, string? dialect, Func<long, CancellationToken, Task<TableShareRead>> read) =>
         new(ShareKind.Result, string.Empty, title, dialect, null, [], read);
 }
 
@@ -51,6 +52,9 @@ internal sealed class ShareSheet
 
     private readonly Workbench _workbench;
     private readonly ShareSubject _subject;
+
+    // Cancelled when the sheet closes, so a table read it started stops with it.
+    private readonly CancellationToken _closing;
     private readonly ContentDialog _dialog;
     private readonly StackPanel _busy = new() { Orientation = Orientation.Horizontal, Spacing = 12 };
     private readonly TextBlock _busyText = new() { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
@@ -85,10 +89,11 @@ internal sealed class ShareSheet
     private bool _created;
     private bool _closed;
 
-    private ShareSheet(FrameworkElement owner, Workbench workbench, ShareSubject subject)
+    private ShareSheet(FrameworkElement owner, Workbench workbench, ShareSubject subject, CancellationToken closing)
     {
         _workbench = workbench;
         _subject = subject;
+        _closing = closing;
         _content = new SharedContent(subject.Sql, subject.Rows, subject.Columns, subject.TotalRows, null);
         _dialog = new ContentDialog
         {
@@ -114,7 +119,8 @@ internal sealed class ShareSheet
             return;
         }
 
-        var sheet = new ShareSheet(owner, workbench, subject);
+        using var lifetime = new CancellationTokenSource();
+        var sheet = new ShareSheet(owner, workbench, subject, lifetime.Token);
         workbench.AccountChanged += sheet.OnAccountChanged;
         try
         {
@@ -125,6 +131,7 @@ internal sealed class ShareSheet
         finally
         {
             sheet._closed = true;
+            await lifetime.CancelAsync().ConfigureAwait(true);
             workbench.AccountChanged -= sheet.OnAccountChanged;
             // The grid gives its cursor back here, before the result set can go.
             sheet._previewGrid?.SetData(null);
@@ -385,10 +392,10 @@ internal sealed class ShareSheet
     }
 
     // The preview and the link both take these rows, so they are read once per plan.
-    private async Task ReadTableAsync(Func<long, Task<TableShareRead>> read, long maxRows)
+    private async Task ReadTableAsync(Func<long, CancellationToken, Task<TableShareRead>> read, long maxRows)
     {
         ShowBusy(Strings.Get("ShareReadingRows"));
-        var table = await read(maxRows).ConfigureAwait(true);
+        var table = await read(maxRows, _closing).ConfigureAwait(true);
         if (_closed)
         {
             table.Dispose();
@@ -510,10 +517,10 @@ internal sealed class ShareSheet
         _atCap.Children.Clear();
         _atCap.Children.Add(new TextBlock
         {
-            Text = Strings.Format(plan.IsPro ? "ShareAtCapPro" : "ShareAtCapFree", plan.Limits.LiveLimit),
+            Text = Strings.Format(plan.Cap.Pro ? "ShareAtCapPro" : "ShareAtCapFree", plan.Cap.Live, plan.Cap.Limit),
             TextWrapping = TextWrapping.Wrap,
         });
-        if (!plan.IsPro)
+        if (!plan.Cap.Pro)
         {
             _atCap.Children.Add(new TextBlock { Text = Strings.Get("ShareAtCapProAllows"), TextWrapping = TextWrapping.Wrap });
         }

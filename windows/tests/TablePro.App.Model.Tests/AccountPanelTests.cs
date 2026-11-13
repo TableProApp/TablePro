@@ -83,6 +83,25 @@ public sealed class AccountPanelTests
     }
 
     [Fact]
+    public void ARemovalThatThrewCountsAsDoneWhenTheDeviceIsNoLongerListed()
+    {
+        var other = Device("other", Now);
+
+        Assert.Equal(DeviceRemoval.Removed, AccountDevices.Removal(true, null, "gone"));
+        Assert.Equal(DeviceRemoval.RemovedNotRefreshed, AccountDevices.Removal(false, [other], "gone"));
+        Assert.Equal(DeviceRemoval.NotRemoved, AccountDevices.Removal(false, [other, Device("gone", Now)], "gone"));
+        Assert.Equal(DeviceRemoval.NotRemoved, AccountDevices.Removal(false, null, "gone"));
+    }
+
+    [Fact]
+    public void TheDeviceLimitDialogStaysOnlyWhileTheLicenseIsPastItsLimit()
+    {
+        Assert.True(AccountDevices.PastLimit(SignedIn(problem: new EntitlementProblem.DeviceLimitReached([]))));
+        Assert.False(AccountDevices.PastLimit(SignedIn()));
+        Assert.False(AccountDevices.PastLimit(SignedIn(problem: EntitlementProblem.Expired.Instance)));
+    }
+
+    [Fact]
     public void AnOfflineFileIsNotASignIn()
     {
         var panel = AccountPanel.For(

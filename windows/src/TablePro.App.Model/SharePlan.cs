@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using TablePro.Interop;
 
 namespace TablePro.App.Model;
@@ -18,6 +20,9 @@ public sealed record ExpiryChoice(ShareExpiry Expiry, bool Enabled, bool ProTag)
 // The footer line: "Free · 3 of 5 links · first 1,000 rows" or "Pro · 12 links".
 public sealed record ShareFooter(bool Pro, long Live, long Limit, long MaxRows);
 
+// The at-cap line: "You have 7 live links. Free allows 5." and, on Free, "Pro allows up to 1,000."
+public sealed record ShareCap(bool Pro, long Live, long Limit);
+
 // What the sheet's fields hold when Share is pressed.
 public sealed record ShareForm(
     string Title,
@@ -25,7 +30,18 @@ public sealed record ShareForm(
     ShareExpiry Expiry,
     bool HideSql,
     string Password,
-    bool AllowDownload);
+    bool AllowDownload)
+{
+    // The record's own ToString would print the password into a log line or a debugger's summary.
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"Title = {Title}, Expiry = {Expiry}, HideSql = {HideSql}, HasPassword = {Password.Length > 0}, ");
+        builder.Append(CultureInfo.InvariantCulture, $"AllowDownload = {AllowDownload}");
+        return true;
+    }
+}
 
 // What one share sheet offers, from the plan's limits (share links PLAN, Client UX).
 public sealed class SharePlan
@@ -92,6 +108,9 @@ public sealed class SharePlan
 
     public ShareFooter Footer => new(IsPro, Limits.Live, Limits.LiveLimit, Limits.MaxRows);
 
+    // Live, not the limit: after a downgrade an account can hold more live links than its plan allows.
+    public ShareCap Cap => new(IsPro, Limits.Live, Limits.LiveLimit);
+
     public static SharePlan For(ShareLimits limits, ShareKind kind, long totalRows = 0, bool hasSql = true)
     {
         ArgumentNullException.ThrowIfNull(limits);
@@ -150,6 +169,7 @@ public static class ShareErrors
         "account.snapshot_too_large" => "ShareErrorTooLarge",
         "account.rate_limited" => "ShareErrorRateLimited",
         "account.unreachable" => "ShareErrorOffline",
+        "account.validation_failed" => "ShareErrorInvalid",
         _ => Failed,
     };
 

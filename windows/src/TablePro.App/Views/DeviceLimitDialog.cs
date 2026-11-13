@@ -7,7 +7,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// The license is in use on as many devices as it allows: one is removed here, then the account asks again.
+// The license is in use on as many devices as it allows: one is removed here, which asks the account again.
 internal static class DeviceLimitDialog
 {
     public static async Task ShowAsync(FrameworkElement owner, Workbench workbench, IReadOnlyList<AccountDevice> devices)
@@ -30,30 +30,67 @@ internal static class DeviceLimitDialog
             DefaultButton = ContentDialogButton.Close,
         };
         AutomationProperties.SetAutomationId(list, "DeviceLimitList");
+        void Show(InfoBarSeverity severity, string message)
+        {
+            error.Severity = severity;
+            error.Message = message;
+            error.Visibility = Visibility.Visible;
+            error.IsOpen = true;
+        }
+
         foreach (var device in AccountDevices.Ordered(devices))
         {
-            list.Children.Add(Row(device, async button =>
+            list.Children.Add(Row(device, async (row, button) =>
             {
+                if (await workbench.GetAccountAsync().ConfigureAwait(true) is not { } account)
+                {
+                    return;
+                }
+
                 button.IsEnabled = false;
                 error.Visibility = Visibility.Collapsed;
                 error.IsOpen = false;
+                TableProException? failure = null;
+                IReadOnlyList<AccountDevice>? listed = null;
                 try
                 {
-                    if (await workbench.GetAccountAsync().ConfigureAwait(true) is { } account)
-                    {
-                        await account.RemoveDeviceAsync(device.Id).ConfigureAwait(true);
-                        await account.RefreshPastDeviceLimitAsync().ConfigureAwait(true);
-                        workbench.ShowAccount(account.Status);
-                    }
-
-                    dialog.Hide();
+                    // The core asks the account again after a removal, so no refresh is asked here.
+                    await account.RemoveDeviceAsync(device.Id).ConfigureAwait(true);
                 }
                 catch (TableProException exception)
                 {
-                    button.IsEnabled = true;
-                    error.Message = Strings.Error(exception.Error);
-                    error.Visibility = Visibility.Visible;
-                    error.IsOpen = true;
+                    failure = exception;
+                    try
+                    {
+                        listed = await account.GetDevicesAsync().ConfigureAwait(true);
+                    }
+                    catch (TableProException)
+                    {
+                        // Unknown, so the device counts as still there.
+                    }
+                }
+
+                var status = account.Status;
+                workbench.ShowAccount(status);
+                switch (AccountDevices.Removal(failure is null, listed, device.Id))
+                {
+                    case DeviceRemoval.NotRemoved:
+                        button.IsEnabled = true;
+                        Show(InfoBarSeverity.Error, Strings.Error(failure!.Error));
+                        break;
+                    case DeviceRemoval.RemovedNotRefreshed:
+                        list.Children.Remove(row);
+                        var reason = Strings.Error(failure!.Error);
+                        Show(InfoBarSeverity.Warning, Strings.Format("DeviceRemovedNotRefreshed", device.Name, reason));
+                        break;
+                    default:
+                        list.Children.Remove(row);
+                        if (!AccountDevices.PastLimit(status))
+                        {
+                            dialog.Hide();
+                        }
+
+                        break;
                 }
             }));
         }
@@ -61,7 +98,7 @@ internal static class DeviceLimitDialog
         await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true);
     }
 
-    private static Grid Row(AccountDevice device, Func<Button, Task> remove)
+    private static Grid Row(AccountDevice device, Func<Grid, Button, Task> remove)
     {
         var row = new Grid { ColumnSpacing = 12 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -82,7 +119,7 @@ internal static class DeviceLimitDialog
             IsEnabled = AccountDevices.CanRemove(device, DateTimeOffset.Now),
         };
         AutomationProperties.SetName(button, Strings.Format("DeviceRemoveName", device.Name));
-        button.Click += async (_, _) => await remove(button).ConfigureAwait(true);
+        button.Click += async (_, _) => await remove(row, button).ConfigureAwait(true);
         Grid.SetColumn(button, 1);
         row.Children.Add(button);
         return row;
