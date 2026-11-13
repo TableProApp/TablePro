@@ -73,7 +73,7 @@ public enum SQLCatalogEffectClassifier {
             return .opaque
         }
         let tokens = leadingTokens(of: trimmed, grammar: grammar)
-        let leading = leadingKeywordEffect(tokens: tokens, trimmed: trimmed)
+        let leading = leadingKeywordEffect(tokens: tokens, trimmed: trimmed, grammar: grammar)
         guard leading.kinds.isEmpty else { return leading }
         return leading.union(embeddedDefinitionEffect(tokens: tokens))
     }
@@ -89,9 +89,17 @@ public enum SQLCatalogEffectClassifier {
         return SQLCatalogEffect(kinds: definedKinds(after: tokens[(index + 1)...]), endsTransaction: false)
     }
 
-    private static func leadingKeywordEffect(tokens: [String], trimmed: String) -> SQLCatalogEffect {
+    private static func leadingKeywordEffect(
+        tokens: [String],
+        trimmed: String,
+        grammar: SQLLexicalGrammar
+    ) -> SQLCatalogEffect {
         guard let keyword = tokens.first else { return .none }
 
+        if grammar.contains(.transactionShortForms), tokens.count == 1 {
+            if keyword == "ET" { return SQLCatalogEffect(kinds: [], endsTransaction: true) }
+            if keyword == "BT" { return .none }
+        }
         if transactionEndKeywords.contains(keyword) {
             let rollsBackToSavepoint = keyword == "ROLLBACK" && tokens.dropFirst().prefix(2).contains("TO")
             return rollsBackToSavepoint ? .none : SQLCatalogEffect(kinds: [], endsTransaction: true)
@@ -160,8 +168,7 @@ public enum SQLCatalogEffectClassifier {
         sql.range(of: #"\bINTO\b"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    // ET is Teradata's END TRANSACTION.
-    private static let transactionEndKeywords: Set<String> = ["COMMIT", "END", "ROLLBACK", "ABORT", "ET"]
+    private static let transactionEndKeywords: Set<String> = ["COMMIT", "END", "ROLLBACK", "ABORT"]
 
     // PostgreSQL's `DISCARD TEMP` and `DISCARD ALL` drop the session's temporary tables.
     private static let discardedTableTargets: Set<String> = ["TEMP", "TEMPORARY", "ALL"]

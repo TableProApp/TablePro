@@ -43,9 +43,11 @@ struct BatchCommitStatementTests {
         #expect(Self.matches(sql, type: .teradata))
     }
 
-    @Test("ET followed by anything is not ET")
+    @Test("ET followed by anything is not ET, and ET is only Teradata's")
     func etWithAFollowerIsNotACommitPoint() {
         #expect(Self.matches("ET AL", type: .teradata) == false)
+        #expect(Self.matches("ET") == false)
+        #expect(Self.matches("ET", type: .mysql) == false)
     }
 
     /// A block terminator is never a transaction's end, whichever engine wrote it.

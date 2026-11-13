@@ -59,6 +59,17 @@ struct SQLCatalogEffectClassifierTests {
         #expect(SQLCatalogEffectClassifier.effect(of: "ET", grammar: grammar("Teradata")).endsTransaction)
     }
 
+    // Only Teradata reads BT and ET as transaction control; elsewhere a lone word is a statement nothing knows.
+    @Test("BT and ET are transaction control in Teradata's grammar alone")
+    func transactionShortFormsAreTeradatas() {
+        #expect(SQLCatalogEffectClassifier.effect(of: "et", grammar: grammar("Teradata")).endsTransaction)
+        #expect(SQLCatalogEffectClassifier.effect(of: "BT", grammar: grammar("Teradata")) == .none)
+        for engine in ["PostgreSQL", "MySQL", "SQL Server", "Oracle", "Nonesuch"] {
+            #expect(!SQLCatalogEffectClassifier.effect(of: "ET", grammar: grammar(engine)).endsTransaction, "\(engine)")
+        }
+        #expect(SQLLexicalProfile.everyKnownReading.allSatisfy { !$0.contains(.transactionShortForms) })
+    }
+
     @Test("Code the text cannot show refreshes every kind")
     func opaqueCode() {
         #expect(kinds("DO $$ BEGIN EXECUTE 'CREATE TABLE t (id int)'; END $$") == .everything)

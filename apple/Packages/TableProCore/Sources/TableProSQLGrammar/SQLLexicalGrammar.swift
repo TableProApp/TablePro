@@ -164,6 +164,9 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// PostgreSQL 17.11. That pass reads quotes its own way, so DuckDB's profile also doubts this fact. Curated only.
     public static let nonASCIISpacesEndNames = SQLLexicalGrammar(rawValue: 1 << 42)
 
+    // `BT` and `ET` begin and end a transaction, as Teradata reads them; anywhere else they are names. Curated only.
+    public static let transactionShortForms = SQLLexicalGrammar(rawValue: 1 << 43)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

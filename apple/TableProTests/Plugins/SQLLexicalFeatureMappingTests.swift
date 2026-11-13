@@ -30,9 +30,10 @@ struct SQLLexicalFeatureMappingTests {
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
             .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
             .withoutDashComments, .escapeStringContinuations, .databendTokens, .psqlScripts, .nonASCIISpacesEndNames,
+            .transactionShortForms,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 43) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 44) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
