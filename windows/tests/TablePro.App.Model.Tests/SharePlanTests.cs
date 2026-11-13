@@ -168,6 +168,14 @@ public sealed class SharePlanTests
     }
 
     [Fact]
+    public void ProsFooterTakesTheSingularForOneLink()
+    {
+        Assert.Equal("ShareFooterProOne", SharePlan.For(Pro with { Live = 1 }, ShareKind.Query).Footer.ProKey);
+        Assert.Equal("ShareFooterProMany", SharePlan.For(Pro, ShareKind.Query).Footer.ProKey);
+        Assert.Equal("ShareFooterProMany", SharePlan.For(Pro with { Live = 0 }, ShareKind.Query).Footer.ProKey);
+    }
+
+    [Fact]
     public void TheCapLineCountsTheLiveLinksWhichADowngradeCanLeaveAboveTheLimit()
     {
         Assert.Equal(new ShareCap(false, 7, 5), SharePlan.For(Free with { Live = 7 }, ShareKind.Query).Cap);
@@ -275,7 +283,7 @@ public sealed class SharePlanTests
     [InlineData("account.snapshot_too_large", "ShareErrorTooLarge")]
     [InlineData("account.rate_limited", "ShareErrorRateLimited")]
     [InlineData("account.unreachable", "ShareErrorOffline")]
-    [InlineData("account.validation_failed", "ShareErrorInvalid")]
+    [InlineData("account.validation_failed", "ShareErrorFailed")]
     [InlineData("ffi.share_no_columns", "ShareNoColumns")]
     [InlineData("account.refused", "ShareErrorFailed")]
     [InlineData("ffi.share_unfinished", "ShareErrorFailed")]

@@ -50,6 +50,16 @@ public sealed class ShareColumnsTests
     }
 
     [Fact]
+    public void ThePreviewMarksEachSentColumnByItsStyleAndSkipsRemovedOnes()
+    {
+        var columns = Columns();
+
+        columns.Columns[1].Choose(ShareColumnAction.Remove);
+
+        Assert.Equal([null, MaskStyle.LastFour], columns.SentStyles);
+    }
+
+    [Fact]
     public void RemovingEveryColumnLeavesNothingToShare()
     {
         var columns = Columns();

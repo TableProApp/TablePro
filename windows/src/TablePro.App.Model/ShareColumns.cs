@@ -75,6 +75,14 @@ public sealed class ShareColumns
 
     public IReadOnlyList<ShareColumnChoice> Choices => [.. Columns.Select(column => column.Choice)];
 
+    // The style of each column the link sends, in its order; null for one sent as it is. The preview marks the rest.
+    public IReadOnlyList<MaskStyle?> SentStyles =>
+    [
+        .. Columns
+            .Where(column => column.Action != ShareColumnAction.Remove)
+            .Select(column => column.Action == ShareColumnAction.Mask ? column.Style : (MaskStyle?)null),
+    ];
+
     public static ShareColumns From(IReadOnlyList<ShareColumnMasking> masking)
     {
         ArgumentNullException.ThrowIfNull(masking);

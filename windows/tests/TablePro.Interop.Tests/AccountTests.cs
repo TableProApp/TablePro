@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 
 namespace TablePro.Interop.Tests;
 
@@ -139,6 +140,57 @@ public sealed class AccountTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheColumnsTheSheetChoseAreWhatTheLinkUploads()
+    {
+        const string Tokens = """{"access_token":"stub-access","token_type":"Bearer","expires_in":900,"refresh_token":"stub-refresh"}""";
+        var created = $$"""
+            {"share":{"id":"shr_01","kind":"result","scope":"account","title":"People","note":"","dialect":"sqlite",
+            "has_snapshot":true,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live","suspended":false,
+            "view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z"},
+            "token":"{{Token}}","url":"https://s.tablepro.app/{{Token}}"}
+            """;
+        await File.WriteAllTextAsync(
+            Path.Combine(_directory, "account.json"),
+            """{"version":1,"device_id":"dev_01"}""",
+            TestContext.Current.CancellationToken);
+        _secrets.StoreItem(SecretItem.AccountRefreshToken, "stub-refresh");
+        _cloud = Stub.Start(request => (request.Method, request.Path) switch
+        {
+            ("POST", "/oauth/token") => (200, Tokens),
+            ("POST", "/v2/shares") => (201, created),
+            _ => (404, Problem(404, "not_found")),
+        });
+        using var account = await OpenAsync(_cloud.Base, new RecordingBrowser());
+        await using var database = await SqliteDatabase.CreateAsync();
+        using var run = database.Editor.Run(
+            "SELECT id, name, note FROM people ORDER BY id", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.IsType<QueryOutcome.Completed>(await run.Completion);
+        using var rows = run.GetResultSet(0) ?? throw new InvalidOperationException("The run held no set.");
+
+        var link = await account.CreateShareAsync(
+            new ShareRequest(ShareKind.Result, "SELECT id, name, note FROM people"),
+            rows,
+            visibleColumns: 3,
+            maxRows: 2,
+            columns: [ShareColumnChoice.Remove.Instance, new ShareColumnChoice.Mask(MaskStyle.LastFour), ShareColumnChoice.Keep.Instance]);
+
+        Assert.Equal($"https://s.tablepro.app/{Token}", link.Url);
+        var upload = _cloud.Requests.Single(request => request is { Method: "POST", Path: "/v2/shares" });
+        using var body = JsonDocument.Parse(upload.Body);
+        var snapshot = body.RootElement.GetProperty("snapshot");
+        Assert.Equal(
+            ["name:lastFour", "note:"],
+            snapshot.GetProperty("columns").EnumerateArray().Select(column =>
+                column.GetProperty("name").GetString() + ":"
+                + (column.TryGetProperty("masked", out var masked) ? masked.GetString() : string.Empty)));
+        Assert.Equal(
+            ["••••|NULL", "••••race|line one\nline two"],
+            snapshot.GetProperty("rows").EnumerateArray().Select(row => string.Join(
+                '|',
+                row.EnumerateArray().Select(cell => cell.ValueKind == JsonValueKind.Null ? "NULL" : cell.GetString()))));
+    }
+
+    [Fact]
     public async Task AMachineGuidThatIsNotAGuidIsRefusedBeforeTheAccountStarts()
     {
         var refused = await Assert.ThrowsAsync<TableProException>(() => _core.OpenAccountAsync(
@@ -271,7 +323,7 @@ public sealed class AccountTests : IAsyncDisposable
         }
     }
 
-    private sealed record StubRequest(string Path, string? Password, bool Authorized);
+    private sealed record StubRequest(string Method, string Path, string? Password, bool Authorized, string Body);
 
     // One request per connection, answered as the core's own tests answer: JSON, then close.
     private sealed class Stub : IAsyncDisposable
@@ -335,12 +387,12 @@ public sealed class AccountTests : IAsyncDisposable
         private async Task AnswerAsync(TcpClient client)
         {
             var stream = client.GetStream();
-            using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
-            var line = await reader.ReadLineAsync(_stop.Token) ?? string.Empty;
-            var path = line.Split(' ') is [_, var target, ..] ? target : string.Empty;
+            var lines = (await ReadHeadAsync(stream)).Split("\r\n");
+            var (method, path) = lines[0].Split(' ') is [var verb, var target, ..] ? (verb, target) : (string.Empty, string.Empty);
             string? password = null;
             var authorized = false;
-            while (await reader.ReadLineAsync(_stop.Token) is { Length: > 0 } header)
+            var length = 0;
+            foreach (var header in lines.Skip(1).Where(line => line.Length > 0))
             {
                 var colon = header.IndexOf(':', StringComparison.Ordinal);
                 var name = colon < 0 ? header : header[..colon].Trim();
@@ -353,9 +405,15 @@ public sealed class AccountTests : IAsyncDisposable
                 {
                     authorized = true;
                 }
+                else if (name.Equals("content-length", StringComparison.OrdinalIgnoreCase))
+                {
+                    length = int.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                }
             }
 
-            var request = new StubRequest(path, password, authorized);
+            var sent = new byte[length];
+            await stream.ReadExactlyAsync(sent, _stop.Token);
+            var request = new StubRequest(method, path, password, authorized, Encoding.UTF8.GetString(sent));
             lock (_gate)
             {
                 _requests.Add(request);
@@ -367,6 +425,23 @@ public sealed class AccountTests : IAsyncDisposable
             await stream.WriteAsync(Encoding.ASCII.GetBytes(head), _stop.Token);
             await stream.WriteAsync(bytes, _stop.Token);
             await stream.FlushAsync(_stop.Token);
+        }
+
+        // Byte by byte up to the blank line, so the body after it stays in the stream to read by its length.
+        private async Task<string> ReadHeadAsync(NetworkStream stream)
+        {
+            var head = new List<byte>();
+            var one = new byte[1];
+            while (await stream.ReadAsync(one, _stop.Token) == 1)
+            {
+                head.Add(one[0]);
+                if (head.Count >= 4 && head[^4] == '\r' && head[^3] == '\n' && head[^2] == '\r' && head[^1] == '\n')
+                {
+                    break;
+                }
+            }
+
+            return Encoding.ASCII.GetString([.. head]);
         }
     }
 }

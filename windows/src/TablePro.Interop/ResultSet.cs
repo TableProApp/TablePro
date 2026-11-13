@@ -34,8 +34,8 @@ public sealed class ResultSet : IDisposable
     // Each thread that reads windows opens its own.
     public ResultCursor OpenCursor() => new(_set.OpenCursor());
 
-    // The share sheet's columns as it starts them, from the first visibleColumns columns and the rows a share of
-    // maxRows sends: the style the rules mask each with on the way out, else what the detectors saw.
+    // The share sheet's columns as it starts them, from the first visibleColumns columns and the first maxRows rows:
+    // what the detectors saw in each column's name and values.
     public async Task<IReadOnlyList<ShareColumnMasking>> GetShareMaskingAsync(int visibleColumns, long maxRows)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);

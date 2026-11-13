@@ -90,6 +90,26 @@ public sealed class ShareRoundsTests
     }
 
     [Fact]
+    public void AnOwnerAtItsCapClearsThePlanSoShareStaysOff()
+    {
+        var pro = Free with
+        {
+            Plan = SharePlan.ProPlan,
+            LiveLimit = 1_000,
+            Team = true,
+            Teams = [new ShareTeam("team_data", "Data", 1_000, 1_000, true)],
+        };
+        var rounds = new ShareRounds();
+        rounds.Show(SharePlan.For(pro, ShareKind.Query));
+        Assert.True(rounds.CanShare(null));
+
+        rounds.Show(SharePlan.For(pro, ShareKind.Query, teamId: "team_data"));
+
+        Assert.Null(rounds.Plan);
+        Assert.False(rounds.CanShare(null));
+    }
+
+    [Fact]
     public void TheSummaryLineTakesTheSingularForOneMaskedColumn()
     {
         var one = ShareColumns.From(

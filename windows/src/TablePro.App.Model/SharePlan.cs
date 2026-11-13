@@ -27,7 +27,11 @@ public enum ShareReadiness
 public sealed record ExpiryChoice(ShareExpiry Expiry, bool Enabled, bool ProTag);
 
 // The footer line: "Free · 3 of 5 links · first 1,000 rows", "Pro · 12 links", or a team's "Data · 4 of 1,000 links".
-public sealed record ShareFooter(bool Pro, long Live, long Limit, long MaxRows, string? Team = null);
+public sealed record ShareFooter(bool Pro, long Live, long Limit, long MaxRows, string? Team = null)
+{
+    // "Pro · 1 link" counts its links; the others count against a limit, which stays plural.
+    public string ProKey => Live == 1 ? "ShareFooterProOne" : "ShareFooterProMany";
+}
 
 // The at-cap line: "You have 7 live links. Free allows 5." and, on Free, "Pro allows up to 1,000."; or a team's.
 public sealed record ShareCap(bool Pro, long Live, long Limit, string? Team = null);
@@ -233,7 +237,6 @@ public static class ShareErrors
         "account.snapshot_too_large" => "ShareErrorTooLarge",
         "account.rate_limited" => "ShareErrorRateLimited",
         "account.unreachable" => "ShareErrorOffline",
-        "account.validation_failed" => "ShareErrorInvalid",
         "ffi.share_no_columns" => "ShareNoColumns",
         _ => Failed,
     };

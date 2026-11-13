@@ -2814,6 +2814,9 @@ New fingerprint: {2}</value>
   <data name="SharePreviewHeader" xml:space="preserve">
     <value>Rows that will be shared</value>
   </data>
+  <data name="SharePreviewMasked" xml:space="preserve">
+    <value>Masked: {0}</value>
+  </data>
   <data name="ShareNoColumns" xml:space="preserve">
     <value>Keep or mask at least one column to share.</value>
   </data>
@@ -2910,7 +2913,10 @@ New fingerprint: {2}</value>
   <data name="ShareFooterFree" xml:space="preserve">
     <value>Free · {0:N0} of {1:N0} links · first {2:N0} rows</value>
   </data>
-  <data name="ShareFooterPro" xml:space="preserve">
+  <data name="ShareFooterProOne" xml:space="preserve">
+    <value>Pro · {0:N0} link</value>
+  </data>
+  <data name="ShareFooterProMany" xml:space="preserve">
     <value>Pro · {0:N0} links</value>
   </data>
   <data name="ShareAtCapFree" xml:space="preserve">
@@ -3023,9 +3029,6 @@ New fingerprint: {2}</value>
   </data>
   <data name="ShareErrorOffline" xml:space="preserve">
     <value>You appear to be offline. Try again once you're connected.</value>
-  </data>
-  <data name="ShareErrorInvalid" xml:space="preserve">
-    <value>This share is not valid. Check the title, the SQL and the columns.</value>
   </data>
   <data name="ShareErrorFailed" xml:space="preserve">
     <value>The link couldn't be created. Try again.</value>

@@ -94,16 +94,15 @@ internal sealed class ShareSheet
     // The set the preview grid reads, which the core masked and cut as the link will be.
     private ResultSet? _previewRows;
 
-    // Read once per content: the rules' styles and what the detectors saw, then the user's choices.
+    // Read once per content: what the detectors saw, then the user's choices.
     private ShareColumns? _columns;
     private SharedContent? _columnsFor;
 
-    // What the link sends with the choices as they are now, and whether the preview shows it yet.
+    // The form's plan, what the link sends with the choices as they are now, and whether the preview shows it yet.
     private readonly ShareRounds _rounds = new();
     private SharedContent _content;
     private TableShareRead? _tableRead;
     private long _tableReadFor = -1;
-    private SharePlan? _plan;
     private ShareLimits? _limits;
 
     // Share as: null for a personal link, else the team's id.
@@ -226,7 +225,13 @@ internal sealed class ShareSheet
                 Text = Strings.Get("SharePreviewHeader"),
                 Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
             });
-            _previewGrid = new DataGridView { SizeColumnsToContent = true };
+            // As the macOS preview: a long value ends in an ellipsis at 200 px, and its tooltip shows it whole.
+            _previewGrid = new DataGridView
+            {
+                SizeColumnsToContent = true,
+                MaximumContentColumnWidth = 200,
+                ShowsCellTips = true,
+            };
             AutomationProperties.SetName(_previewGrid, Strings.Get("SharePreviewHeader"));
             AutomationProperties.SetAutomationId(_previewGrid, "SharePreview");
             _preview.Children.Add(_previewGrid);
@@ -348,7 +353,7 @@ internal sealed class ShareSheet
     private async Task LoadAsync()
     {
         var generation = ++_generation;
-        _plan = null;
+        _rounds.Show(null);
         _dialog.IsPrimaryButtonEnabled = false;
         switch (_workbench.AccountPanel.Stage)
         {
@@ -439,11 +444,14 @@ internal sealed class ShareSheet
     {
         _limits = limits;
         var plan = Plan(limits);
+        // Share and Enter stay off until the form shows, so an owner at its cap never creates with the last plan.
+        _rounds.Show(null);
+        UpdateShareButton();
         ListOwners(plan);
         _footer.Text = plan.Footer switch
         {
             { Team: { } team } footer => Strings.Format("ShareFooterTeam", team, footer.Live, footer.Limit),
-            { Pro: true } footer => Strings.Format("ShareFooterPro", footer.Live),
+            { Pro: true } footer => Strings.Format(footer.ProKey, footer.Live),
             var footer => Strings.Format("ShareFooterFree", footer.Live, footer.Limit, footer.MaxRows),
         };
         switch (plan.Stage)
@@ -564,7 +572,7 @@ internal sealed class ShareSheet
 
     private void ShowForm(SharePlan plan)
     {
-        _plan = plan;
+        _rounds.Show(plan);
         var picked = (_expires.SelectedItem as ComboBoxItem)?.Tag as ShareExpiry?;
         _expires.Items.Clear();
         foreach (var choice in plan.Expiries)
@@ -752,7 +760,7 @@ internal sealed class ShareSheet
     // The counts, the notes, the warnings, the preview and Share follow every choice.
     private void ColumnsChanged()
     {
-        if (_plan is not { } plan)
+        if (_rounds.Plan is null)
         {
             return;
         }
@@ -787,13 +795,12 @@ internal sealed class ShareSheet
     // A result is shared only once this round's columns, summary and preview are in, so a detected column never
     // leaves unmasked by a quick click, a result too large never reaches the server, and the preview shows what goes.
     private void UpdateShareButton() =>
-        _dialog.IsPrimaryButtonEnabled = _plan is { Stage: ShareStage.Form } plan && !_creating && !_created
-            && _rounds.Readiness(plan, _columns) == ShareReadiness.Ready;
+        _dialog.IsPrimaryButtonEnabled = !_creating && !_created && _rounds.CanShare(_columns);
 
     // Read again for each choice, off the UI thread; an older read that lands late is dropped, so Share waits.
     private async Task RefreshSummaryAsync()
     {
-        if (_plan is not { } plan || _content.Rows is not { } rows || _columns is not { } columns)
+        if (_rounds.Plan is not { } plan || _content.Rows is not { } rows || _columns is not { } columns)
         {
             UpdateShareButton();
             return;
@@ -832,7 +839,7 @@ internal sealed class ShareSheet
             return;
         }
 
-        if (_closed || !ReferenceEquals(_plan, plan) || !_rounds.TakeSummary(round, summary))
+        if (_closed || !ReferenceEquals(_rounds.Plan, plan) || !_rounds.TakeSummary(round, summary))
         {
             return;
         }
@@ -915,6 +922,12 @@ internal sealed class ShareSheet
         if (_previewGrid is { } grid)
         {
             grid.Height = ((count + 1) * 32) + 2 + PreviewScrollBarRoom;
+            // Before the data, so a column sized to its header leaves room for the mark.
+            grid.SetMaskedColumns(preview is null || _columns is not { } columns
+                ? []
+                : [.. columns.SentStyles.Select(style => style is { } masked
+                    ? Strings.Format("SharePreviewMasked", Strings.Get("MaskStyle_" + masked))
+                    : null)]);
             grid.SetData(preview is null ? null : new ResultSetData(preview, preview.GetColumns()));
         }
 
@@ -943,7 +956,7 @@ internal sealed class ShareSheet
         if (_subject.Kind == ShareKind.Result)
         {
             // A masked or removed column sends no value that could be a secret.
-            var shared = _plan?.SharedColumns(_content.Columns.Count) ?? _content.Columns.Count;
+            var shared = _rounds.Plan?.SharedColumns(_content.Columns.Count) ?? _content.Columns.Count;
             var names = _columns is { } chosen
                 ? chosen.Columns.Where(column => column.Action == ShareColumnAction.Keep).Select(column => column.Name)
                 : _content.Columns.Take(shared).Select(column => column.Name);
@@ -963,7 +976,7 @@ internal sealed class ShareSheet
     // Only while Hide SQL is off and there is SQL to hide; the notice's button turns it on.
     private void ShowHideSqlSuggestion()
     {
-        var kinds = _subject.Kind == ShareKind.Result && _plan is { OffersHideSql: true } && _hideSql.IsChecked != true
+        var kinds = _subject.Kind == ShareKind.Result && _rounds.Plan is { OffersHideSql: true } && _hideSql.IsChecked != true
             ? ShareLinks.ScanSqlForPersonalData(_content.Sql)
                 .Select(hit => hit.Kind)
                 .Distinct()
@@ -1086,16 +1099,12 @@ internal sealed class ShareSheet
     private async void OnShare(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         args.Cancel = true;
-        if (_creating || _created || _plan is not { Stage: ShareStage.Form } plan)
+        if (_creating || _created || _rounds.Plan is not { } plan || !_rounds.CanShare(_columns))
         {
             return;
         }
 
         var choices = _columns?.Choices ?? [];
-        if (_rounds.Readiness(plan, _columns) != ShareReadiness.Ready)
-        {
-            return;
-        }
 
         _creating = true;
         _dialog.IsPrimaryButtonEnabled = false;
@@ -1165,7 +1174,7 @@ internal sealed class ShareSheet
     private void ShowCreated(CreatedShare created)
     {
         _url.Text = created.Url;
-        if (created.ColumnsTruncated && _plan is { } plan)
+        if (created.ColumnsTruncated && _rounds.Plan is { } plan)
         {
             _doneNote.Text = Strings.Format("ShareColumnsCut", plan.Limits.MaxColumns);
             _doneNote.Visibility = Visibility.Visible;

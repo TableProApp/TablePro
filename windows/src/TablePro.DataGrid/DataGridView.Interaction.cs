@@ -242,7 +242,7 @@ public sealed partial class DataGridView
             if (!_sizedByUser[column])
             {
                 _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
-                    ContentMinimumWidth, ContentMaximumWidth));
+                    ContentMinimumWidth, Math.Max(ContentMinimumWidth, MaximumContentColumnWidth)));
             }
         }
         _sizedToRows = rows > 0;
@@ -252,8 +252,8 @@ public sealed partial class DataGridView
     private double ContentWidth(int column, int firstRow, int lastRow, int maxCharacters)
     {
         var painter = Painter;
-        // Room for the sort glyph.
-        var widest = painter.Measure(Head(_names[column], maxCharacters)) + 24;
+        // Room for the sort glyph, and for the masked mark on a column that has one.
+        var widest = painter.Measure(Head(_names[column], maxCharacters)) + 24 + (MaskNote(column) is null ? 0 : 20);
         for (var row = firstRow; row <= lastRow; row++)
         {
             var cell = Cell(row, column);
@@ -461,11 +461,15 @@ public sealed partial class DataGridView
 
     private void OnPaneMoved(PointerRoutedEventArgs e, bool frozen)
     {
+        var pane = frozen ? (UIElement)_frozenContent : _content;
+        if (!_dragging && ShowsCellTips)
+        {
+            ShowCellTip(pane, HitTest(frozen, e.GetCurrentPoint(pane).Position));
+        }
         if (!_dragging || frozen != _dragFrozen)
         {
             return;
         }
-        var pane = frozen ? (UIElement)_frozenContent : _content;
         if (HitTest(frozen, e.GetCurrentPoint(pane).Position) is not { } hit)
         {
             return;
@@ -481,6 +485,30 @@ public sealed partial class DataGridView
         {
             SelectCell(hit.Row, hit.Column, extend: true);
         }
+    }
+
+    // One tooltip per pane, its text following the cell under the pointer; none over a NULL or the row numbers.
+    private void ShowCellTip(UIElement pane, (int Row, int Column)? hit)
+    {
+        string? text = null;
+        if (hit is { Column: >= 0 } at)
+        {
+            var cell = Cell(at.Row, at.Column);
+            text = cell.IsNull || cell.IsDefault ? null
+                : cell.IsTruncated ? _cache?.ReadWhole(at.Row, at.Column)
+                : cell.Text.ToString();
+        }
+        if (string.IsNullOrEmpty(text))
+        {
+            ToolTipService.SetToolTip(pane, null);
+            return;
+        }
+        var tip = ToolTipService.GetToolTip(pane) as ToolTip ?? new ToolTip();
+        if (!string.Equals(tip.Content as string, text, StringComparison.Ordinal))
+        {
+            tip.Content = text;
+        }
+        ToolTipService.SetToolTip(pane, tip);
     }
 
     // A press at a point in a pane, in that pane's coordinates. Also how the tests click.

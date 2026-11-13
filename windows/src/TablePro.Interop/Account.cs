@@ -184,7 +184,7 @@ public sealed class TableProAccount : IDisposable
         Mapping.Limits(await CoreCall.RunAsync(() => _service.ShareLimits()).ConfigureAwait(false));
 
     // A finished set's first visibleColumns columns and maxRows rows; totalRows is a table view's count, else null.
-    // Columns is the sheet's choice per visible column, Keep for any it leaves out; the connection's rules mask on top.
+    // Columns is the sheet's choice per visible column, Keep for any it leaves out.
     public async Task<CreatedShare> CreateShareAsync(
         ShareRequest request,
         ResultSet? rows = null,
