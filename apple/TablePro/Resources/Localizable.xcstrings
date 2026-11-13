@@ -16909,6 +16909,46 @@
         }
       }
     },
+    "A password can't be only spaces or tabs." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un mot de passe ne peut pas contenir uniquement des espaces ou des tabulations."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비밀번호는 공백이나 탭으로만 이루어질 수 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parola yalnızca boşluk veya sekmelerden oluşamaz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu không thể chỉ gồm dấu cách hoặc tab."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码不能只包含空格或制表符。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼不能只包含空格或定位字元。"
+          }
+        }
+      }
+    },
     "A password is sent only over TLS, and SSL Mode is Disabled. Set SSL Mode to Verify Identity, or clear the password if the cluster has no authentication." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -39460,6 +39500,46 @@
         }
       }
     },
+    "Choose another expiry to create the link." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez une autre expiration pour créer le lien."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "링크를 만들려면 다른 만료 기간을 선택하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantıyı oluşturmak için başka bir süre seçin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn thời hạn khác để tạo liên kết."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择其他有效期以创建链接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請選擇其他有效期限以建立連結。"
+          }
+        }
+      }
+    },
     "Choose Another Folder…" : {
       "localizations" : {
         "fr" : {
@@ -41224,6 +41304,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Effacez le filtre et le tri pour réorganiser les colonnes."
+          }
+        }
+      }
+    },
+    "Clear the password to create the link." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effacez le mot de passe pour créer le lien."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "링크를 만들려면 비밀번호를 지우세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantıyı oluşturmak için parolayı temizleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa mật khẩu để tạo liên kết."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除密码以创建链接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除密碼以建立連結。"
           }
         }
       }
@@ -136907,7 +137027,44 @@
       }
     },
     "Personal" : {
-
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personnel"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "개인"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kişisel"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cá nhân"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "个人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "個人"
+          }
+        }
+      }
     },
     "Phone" : {
       "extractionState" : "manual",
@@ -205982,6 +206139,46 @@
         }
       }
     },
+    "This query is too long to share. A link holds up to %@ of SQL." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette requête est trop longue pour être partagée. Un lien contient au plus %@ de SQL."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 쿼리는 너무 길어 공유할 수 없습니다. 링크에는 최대 %@의 SQL을 담을 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sorgu paylaşmak için çok uzun. Bir bağlantı en fazla %@ SQL tutabilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn này quá dài để chia sẻ. Một liên kết chứa tối đa %@ SQL."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此查询过长，无法分享。一个链接最多可包含 %@ 的 SQL。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此查詢過長，無法分享。一個連結最多可包含 %@ 的 SQL。"
+          }
+        }
+      }
+    },
     "This query is too long to share. A link holds up to %lld characters." : {
       "localizations" : {
         "fr" : {
@@ -206122,6 +206319,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ce résultat n’a aucune colonne nommée %@"
+          }
+        }
+      }
+    },
+    "This result is no longer open, so there are no rows to share." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce résultat n’est plus ouvert, il n’y a donc aucune ligne à partager."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 결과가 더 이상 열려 있지 않아 공유할 행이 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sonuç artık açık değil, bu yüzden paylaşılacak satır yok."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết quả này không còn mở, nên không có hàng nào để chia sẻ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此结果已不再打开，因此没有可分享的行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此結果已不再開啟，因此沒有可分享的列。"
           }
         }
       }
@@ -211771,6 +212008,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "把問題轉成 SQL"
+          }
+        }
+      }
+    },
+    "Turn downloads back on to create the link." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réactivez les téléchargements pour créer le lien."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "링크를 만들려면 다운로드를 다시 켜세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantıyı oluşturmak için indirmeleri yeniden açın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bật lại tải xuống để tạo liên kết."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新开启下载以创建链接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新開啟下載以建立連結。"
           }
         }
       }
