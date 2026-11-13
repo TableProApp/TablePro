@@ -12208,3 +12208,320 @@ msgstr "Chưa liệt kê hết các khóa. Hãy tìm kiếm để thu hẹp danh
 
 #~ msgid "Filter tables…"
 #~ msgstr "Lọc bảng…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "1 day"
+msgstr "1 ngày"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "7 days"
+msgstr "7 ngày"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "30 days"
+msgstr "30 ngày"
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "A team link needs a seat on the team."
+msgstr "Liên kết của nhóm cần một chỗ trong nhóm."
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Allow viewers to download"
+msgstr "Cho phép người xem tải xuống"
+
+#: crates/app/src/ui/session_window/mod.rs
+msgid "Choose a connection to open the shared query"
+msgstr "Chọn kết nối để mở truy vấn được chia sẻ"
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "Choose a connection to open {n} query"
+msgid_plural "Choose a connection to open {n} queries"
+msgstr[0] "Chọn kết nối để mở {n} truy vấn"
+
+#: crates/app/src/ui/share_dialog/mod.rs
+msgid "Create Link"
+msgstr "Tạo liên kết"
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Expires"
+msgstr "Hết hạn"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Expires {date}"
+msgstr "Hết hạn {date}"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Free · {live} of {limit} link · first {max_rows} rows"
+msgid_plural "Free · {live} of {limit} links · first {max_rows} rows"
+msgstr[0] "Miễn phí · {live}/{limit} liên kết · {max_rows} dòng đầu"
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Hide SQL"
+msgstr "Ẩn SQL"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Link copied"
+msgstr "Đã sao chép liên kết"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Link created"
+msgstr "Đã tạo liên kết"
+
+#: data/resources/gtk/menus.ui
+msgid "Manage Shared _Links…"
+msgstr "Quản lý _liên kết chia sẻ…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Never expires"
+msgstr "Không hết hạn"
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Note"
+msgstr "Ghi chú"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Open Account"
+msgstr "Mở tài khoản"
+
+#: crates/app/src/application/open_share_link.rs
+msgid "Open Shared Link"
+msgstr "Mở liên kết chia sẻ"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Open in Browser"
+msgstr "Mở trong trình duyệt"
+
+#: crates/app/src/ui/preferences_dialog/account_view.rs
+msgid "Pro Options for Shared Links"
+msgstr "Tùy chọn Pro cho liên kết chia sẻ"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Pro allows up to 1,000."
+msgstr "Gói Pro cho phép tối đa 1.000 liên kết."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Pro · {live} link"
+msgid_plural "Pro · {live} links"
+msgstr[0] "Pro · {live} liên kết"
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "Public links are turned off for this team."
+msgstr "Nhóm này đã tắt liên kết công khai."
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Revoke"
+msgstr "Thu hồi"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+#, rust-format
+msgid "Revoke {title}"
+msgstr "Thu hồi {title}"
+
+#: crates/app/src/ui/share_dialog/form.rs crates/app/src/ui/share_dialog/preview.rs
+msgid "Rows that will be shared"
+msgstr "Các dòng sẽ được chia sẻ"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Run a query that returns rows to share its result."
+msgstr "Hãy chạy một truy vấn trả về dòng để chia sẻ kết quả của nó."
+
+#: data/resources/ui/sql-editor.ui
+msgid "S_hare Query…"
+msgstr "Chi_a sẻ truy vấn…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Share Query"
+msgstr "Chia sẻ truy vấn"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Share Res_ult…"
+msgstr "Chia sẻ _kết quả…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Share Result"
+msgstr "Chia sẻ kết quả"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Shared query"
+msgstr "Truy vấn được chia sẻ"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Shared result"
+msgstr "Kết quả được chia sẻ"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Shared {date}"
+msgstr "Chia sẻ ngày {date}"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Shares the first {shared} of {total} rows."
+msgstr "Chia sẻ {shared} dòng đầu trong số {total} dòng."
+
+#: crates/app/src/ui/error_text/account.rs crates/app/src/ui/share_dialog/pages.rs
+msgid "Sharing is turned off for this account."
+msgstr "Tài khoản này đã tắt tính năng chia sẻ."
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Show the Pro plan in your browser"
+msgstr "Xem gói Pro trong trình duyệt"
+
+#: crates/app/src/ui/error_text/account.rs crates/app/src/ui/share_dialog/pages.rs
+msgid "Sign in to your TablePro account to share links."
+msgstr "Đăng nhập tài khoản TablePro để chia sẻ liên kết."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Some columns may hold secrets: {names}."
+msgstr "Một số cột có thể chứa thông tin bí mật: {names}."
+
+#: crates/app/src/ui/share_dialog/mod.rs
+msgid "TablePro could not open the page in a web browser."
+msgstr "TablePro không mở được trang trong trình duyệt web."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "TablePro removed this link."
+msgstr "TablePro đã gỡ liên kết này."
+
+#: crates/app/src/application/open_share_link.rs crates/app/src/ui/error_text/account.rs
+msgid "That password is not correct."
+msgstr "Mật khẩu không đúng."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "The account service did not accept what was sent. Check the fields and try again."
+msgstr "Dịch vụ tài khoản không chấp nhận dữ liệu đã gửi. Hãy kiểm tra các trường rồi thử lại."
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "The link could not be copied to the clipboard. Copy it with the button below."
+msgstr "Không sao chép được liên kết vào bảng nhớ tạm. Hãy sao chép bằng nút bên dưới."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "The link couldn’t be created. Try again."
+msgstr "Không tạo được liên kết. Hãy thử lại."
+
+#: crates/app/src/ui/share_dialog/mod.rs
+msgid "The link is on its way. Wait for it before closing."
+msgstr "Liên kết đang được tạo. Hãy chờ trước khi đóng."
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "There is nothing in the editor to share."
+msgstr "Trình soạn thảo không có gì để chia sẻ."
+
+#: crates/app/src/application/open_share_link.rs crates/app/src/ui/error_text/account.rs
+msgid "This link is password protected."
+msgstr "Liên kết này được bảo vệ bằng mật khẩu."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "This link was revoked."
+msgstr "Liên kết này đã bị thu hồi."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "This option needs TablePro Pro."
+msgstr "Tùy chọn này cần TablePro Pro."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "This query may contain a secret ({kind}). Anyone with the link can read it."
+msgstr "Truy vấn này có thể chứa thông tin bí mật ({kind}). Ai có liên kết cũng đọc được."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "This result is too large to share."
+msgstr "Kết quả này quá lớn để chia sẻ."
+
+#: crates/app/src/application/open_share_link.rs crates/app/src/ui/error_text/account.rs
+msgid "This shared link is no longer available."
+msgstr "Liên kết chia sẻ này không còn khả dụng."
+
+#: crates/app/src/application/open_share_link.rs
+msgid "This shared result hides its SQL, so there is nothing to open."
+msgstr "Kết quả được chia sẻ này ẩn SQL, nên không có gì để mở."
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Title"
+msgstr "Tiêu đề"
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "Too many links just now. Try again in a moment."
+msgstr "Vừa tạo quá nhiều liên kết. Hãy thử lại sau giây lát."
+
+#: crates/app/src/ui/error_text/account.rs crates/app/src/ui/share_dialog/pages.rs
+msgid "Verify your email address to share links."
+msgstr "Hãy xác minh địa chỉ email để chia sẻ liên kết."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "You appear to be offline. Try again once you’re connected."
+msgstr "Có vẻ bạn đang ngoại tuyến. Hãy thử lại khi đã có kết nối."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "You have reached your plan’s limit of live links. Revoke one to share another."
+msgstr "Bạn đã đạt giới hạn liên kết đang hoạt động của gói. Hãy thu hồi một liên kết để chia sẻ liên kết khác."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "You have {live} live link. Free allows {limit}. Revoke one to share another."
+msgid_plural "You have {live} live links. Free allows {limit}. Revoke one to share another."
+msgstr[0] "Bạn có {live} liên kết đang hoạt động. Gói Miễn phí cho phép {limit}. Hãy thu hồi một liên kết để chia sẻ liên kết khác."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "You have {live} live link. Pro allows {limit}. Revoke one to share another."
+msgid_plural "You have {live} live links. Pro allows {limit}. Revoke one to share another."
+msgstr[0] "Bạn có {live} liên kết đang hoạt động. Gói Pro cho phép {limit}. Hãy thu hồi một liên kết để chia sẻ liên kết khác."
+
+#: crates/app/src/application/open_links.rs crates/app/src/application/open_share_link.rs
+msgid "_Open"
+msgstr "_Mở"
+
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Share Result…"
+msgstr "Chia sẻ kết _quả…"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+msgid "_Share…"
+msgstr "Chia _sẻ…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a GitHub token"
+msgstr "token GitHub"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a Google API key"
+msgstr "khóa API của Google"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a JSON Web Token"
+msgstr "JSON Web Token"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a Slack token"
+msgstr "token Slack"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a Stripe key"
+msgstr "khóa Stripe"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a password in a URL"
+msgstr "mật khẩu trong URL"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a password or token"
+msgstr "mật khẩu hoặc token"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a private key"
+msgstr "khóa riêng tư"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "an AWS access key"
+msgstr "khóa truy cập AWS"
+
+#: crates/app/src/ui/share_dialog/form.rs
+#, rust-format
+msgid "{option} needs TablePro Pro."
+msgstr "{option} cần TablePro Pro."
