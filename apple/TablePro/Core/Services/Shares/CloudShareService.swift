@@ -10,7 +10,8 @@ import TableProCloudAPI
 internal struct CloudShareService: ShareService {
     private static let pageSize: Int64 = 200
     private static let maxPages = 5
-    private static let typeLabelLimit = 256
+    // The contract's maxLength for a column's name and its type.
+    private static let columnTextLimit = 256
 
     let api: any APIProtocol
     let publicAPI: any APIProtocol
@@ -206,13 +207,18 @@ internal struct CloudShareService: ShareService {
         Components.Schemas.SnapshotBody(
             columns: snapshot.columns.map { column in
                 Components.Schemas.SnapshotColumnBody(
-                    name: column.name,
-                    _type: column.type.map { String($0.prefix(typeLabelLimit)) }
+                    name: clipped(column.name),
+                    _type: column.type.map(clipped)
                 )
             },
             rowCount: snapshot.isTruncated ? Int64(snapshot.rowCount) : nil,
             rows: snapshot.rows.map { $0.map(value) }
         )
+    }
+
+    // The server counts maxLength in Unicode scalars, not Characters.
+    private static func clipped(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.prefix(columnTextLimit)))
     }
 
     static func value(_ cell: ShareCell) -> OpenAPIValueContainer {

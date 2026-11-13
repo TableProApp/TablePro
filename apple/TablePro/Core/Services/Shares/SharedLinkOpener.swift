@@ -54,7 +54,7 @@ internal final class SharedLinkOpener {
         while true {
             do throws(ShareFailure) {
                 let shared = try await service.fetchShared(token: token, password: password)
-                guard let sql = shared.sql, !sql.isEmpty else {
+                guard let sql = shared.sql, !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     tell(String(localized: "This shared result hides its SQL, so there is nothing to open."))
                     return
                 }

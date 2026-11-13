@@ -125,6 +125,14 @@ struct CloudShareServiceTests {
         #expect(body.rowCount == nil)
     }
 
+    @Test("A column's name and type are cut to the contract's 256 characters")
+    func columnTextIsCut() {
+        let column = ShareSnapshot.Column(name: String(repeating: "é", count: 300), type: String(repeating: "t", count: 300))
+        let body = CloudShareService.snapshot(ShareSnapshot(columns: [column], rows: [], rowCount: 0))
+        #expect(body.columns.first?.name == String(repeating: "é", count: 256))
+        #expect(body.columns.first?._type == String(repeating: "t", count: 256))
+    }
+
     @Test("Problem codes reach the sheet as their own failures", arguments: [
         (403, "email_unverified", ShareFailure.emailUnverified),
         (403, "pro_required", .proRequired),

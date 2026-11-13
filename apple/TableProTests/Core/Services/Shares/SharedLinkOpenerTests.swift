@@ -79,10 +79,10 @@ struct SharedLinkOpenerTests {
         #expect(recorder.messages.isEmpty)
     }
 
-    @Test("A result share with hidden SQL has nothing to open")
-    func hiddenSQL() async {
+    @Test("A result share with hidden or no SQL has nothing to open", arguments: [nil, "", " \n"] as [String?])
+    func hiddenSQL(sql: String?) async {
         let service = FakeShareService()
-        service.fetchResults = [.success(SharedQuery(kind: .result, title: "Report", sql: nil))]
+        service.fetchResults = [.success(SharedQuery(kind: .result, title: "Report", sql: sql))]
         let recorder = Recorder()
         await makeOpener(service, recorder).open(token: Self.token)
 
