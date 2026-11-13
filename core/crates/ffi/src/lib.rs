@@ -62,7 +62,7 @@ pub use library::{
     SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
 };
 pub use masking::{
-    MaskReason, MaskStyleTag, MaskSuggestionInfo, MaskTargetTag, MaskingRuleRecord, PersonalDataHitInfo,
+    MaskReason, MaskStyleTag, MaskSuggestionInfo, MaskTargetTag, MaskingRuleRecord, PersonalDataHitInfo, RuleReason,
     SensitiveKindTag, ShareColumnChoice, ShareColumnMasking,
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};

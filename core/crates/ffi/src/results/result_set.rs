@@ -50,6 +50,10 @@ impl ResultSet {
         self.store.external_masks(columns)
     }
 
+    pub(crate) fn untraced_columns(&self, columns: &[ResultColumn]) -> Vec<usize> {
+        self.store.external_untraced(columns)
+    }
+
     pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<tablepro_core::Value> {
         self.store.stored_value(self.stored_row(row), column)
     }
