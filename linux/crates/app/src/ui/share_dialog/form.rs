@@ -5,13 +5,13 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret as _, SecretString};
 use tablepro_account::{ShareExpiry, ShareLimits};
 
 use super::ShareDialog;
 use super::preview::preview_table;
 use super::sheet_view::{self, ExpiryChoice};
-use crate::i18n::gettext;
+use crate::i18n::{gettext, gettext_f};
 use crate::services::share_subject::{ShareForm, ShareSubject};
 use crate::ui::icons;
 
@@ -51,58 +51,40 @@ impl FormFields {
     }
 }
 
-pub(super) fn build_form(dialog: &ShareDialog, subject: &ShareSubject, limits: &ShareLimits) -> FormFields {
+// A draft is the form as the user left it, which a re-read of the limits brings back.
+pub(super) fn build_form(
+    dialog: &ShareDialog,
+    subject: &ShareSubject,
+    limits: &ShareLimits,
+    draft: Option<&ShareForm>,
+) -> FormFields {
     let page = adw::PreferencesPage::new();
     let title = adw::EntryRow::builder()
         .title(gettext("Title"))
-        .text(&subject.title)
+        .text(draft.map_or(subject.title.as_str(), |draft| draft.title.as_str()))
         .build();
-    let note = adw::EntryRow::builder().title(gettext("Note")).build();
+    let note = adw::EntryRow::builder()
+        .title(gettext("Note"))
+        .text(draft.map_or("", |draft| draft.note.as_str()))
+        .build();
     let about = adw::PreferencesGroup::new();
     about.add(&title);
     about.add(&note);
     page.add(&about);
 
     let options = adw::PreferencesGroup::new();
-    let (expiry_row, expiry) = expiry_row(dialog, limits);
+    let (expiry_row, expiry) = expiry_row(dialog, limits, draft.map(|draft| draft.expiry));
     options.add(&expiry_row);
     let hide_sql = subject.rows.is_some().then(|| {
-        let row = adw::SwitchRow::builder().title(gettext("Hide SQL")).build();
+        let row = adw::SwitchRow::builder()
+            .title(gettext("Hide SQL"))
+            .active(draft.is_some_and(|draft| draft.hide_sql))
+            .build();
         options.add(&row);
         row
     });
-    let password = match limits.password {
-        true => {
-            let row = adw::PasswordEntryRow::builder().title(gettext("Password")).build();
-            options.add(&row);
-            Some(row)
-        }
-        false => {
-            options.add(&pro_only_row(dialog, &gettext("Password"), None));
-            None
-        }
-    };
-    let allow_download = match limits.disable_download {
-        true => {
-            let row = adw::SwitchRow::builder()
-                .title(gettext("Allow viewers to download"))
-                .active(true)
-                .build();
-            options.add(&row);
-            Some(row)
-        }
-        false => {
-            let title = gettext("Allow viewers to download");
-            let switch = gtk::Switch::builder()
-                .active(true)
-                .sensitive(false)
-                .valign(gtk::Align::Center)
-                .build();
-            switch.update_property(&[gtk::accessible::Property::Label(&title)]);
-            options.add(&pro_only_row(dialog, &title, Some(&switch)));
-            None
-        }
-    };
+    let password = password_row(dialog, &options, limits, draft);
+    let allow_download = download_row(dialog, &options, limits, draft);
     page.add(&options);
 
     if let Some(rows) = &subject.rows {
@@ -128,8 +110,57 @@ pub(super) fn build_form(dialog: &ShareDialog, subject: &ShareSubject, limits: &
     }
 }
 
-fn expiry_row(dialog: &ShareDialog, limits: &ShareLimits) -> (adw::ActionRow, adw::ToggleGroup) {
-    let row = adw::ActionRow::builder().title(gettext("Expires")).build();
+fn password_row(
+    dialog: &ShareDialog,
+    options: &adw::PreferencesGroup,
+    limits: &ShareLimits,
+    draft: Option<&ShareForm>,
+) -> Option<adw::PasswordEntryRow> {
+    let title = gettext("Password");
+    if !limits.password {
+        options.add(&pro_only_row(dialog, &title, None));
+        return None;
+    }
+    let row = adw::PasswordEntryRow::builder().title(&title).build();
+    if let Some(draft) = draft {
+        row.set_text(draft.password.expose_secret());
+    }
+    options.add(&row);
+    Some(row)
+}
+
+fn download_row(
+    dialog: &ShareDialog,
+    options: &adw::PreferencesGroup,
+    limits: &ShareLimits,
+    draft: Option<&ShareForm>,
+) -> Option<adw::SwitchRow> {
+    let title = gettext("Allow viewers to download");
+    if !limits.disable_download {
+        let switch = gtk::Switch::builder()
+            .active(true)
+            .sensitive(false)
+            .valign(gtk::Align::Center)
+            .build();
+        switch.update_property(&[gtk::accessible::Property::Label(&title)]);
+        options.add(&pro_only_row(dialog, &title, Some(&switch)));
+        return None;
+    }
+    let row = adw::SwitchRow::builder()
+        .title(&title)
+        .active(draft.is_none_or(|draft| draft.allow_download))
+        .build();
+    options.add(&row);
+    Some(row)
+}
+
+fn expiry_row(
+    dialog: &ShareDialog,
+    limits: &ShareLimits,
+    kept: Option<ShareExpiry>,
+) -> (adw::ActionRow, adw::ToggleGroup) {
+    let title = gettext("Expires");
+    let row = adw::ActionRow::builder().title(&title).build();
     let group = adw::ToggleGroup::builder().valign(gtk::Align::Center).build();
     let choices = sheet_view::expiry_choices(limits);
     for ExpiryChoice { expiry, allowed } in &choices {
@@ -140,11 +171,14 @@ fn expiry_row(dialog: &ShareDialog, limits: &ShareLimits) -> (adw::ActionRow, ad
             .build();
         group.add(toggle);
     }
-    group.set_active_name(Some(sheet_view::default_expiry(limits).code()));
-    group.update_property(&[gtk::accessible::Property::Label(&gettext("Expires"))]);
+    let active = kept
+        .filter(|kept| limits.expiries.contains(kept))
+        .unwrap_or_else(|| sheet_view::default_expiry(limits));
+    group.set_active_name(Some(active.code()));
+    group.update_property(&[gtk::accessible::Property::Label(&title)]);
     row.add_suffix(&group);
-    if choices.iter().any(|choice| !choice.allowed) {
-        row.add_suffix(&pro_tag(dialog));
+    if let Some(locked) = choices.iter().find(|choice| !choice.allowed) {
+        row.add_suffix(&pro_tag(dialog, &sheet_view::expiry_label(locked.expiry)));
     }
     (row, group)
 }
@@ -155,17 +189,22 @@ fn pro_only_row(dialog: &ShareDialog, title: &str, control: Option<&gtk::Switch>
     if let Some(control) = control {
         row.add_suffix(control);
     }
-    row.add_suffix(&pro_tag(dialog));
+    row.add_suffix(&pro_tag(dialog, title));
     row
 }
 
-fn pro_tag(dialog: &ShareDialog) -> gtk::Button {
+// Every tag reads "Pro", so its description names the option it stands for.
+fn pro_tag(dialog: &ShareDialog, option: &str) -> gtk::Button {
     let tag = gtk::Button::builder()
         .label(gettext("Pro"))
         .valign(gtk::Align::Center)
         .tooltip_text(gettext("Show the Pro plan in your browser"))
         .css_classes(["flat", "accent", "caption-heading"])
         .build();
+    tag.update_property(&[gtk::accessible::Property::Description(&gettext_f(
+        "{option} needs TablePro Pro.",
+        &[("option", option)],
+    ))]);
     let dialog = dialog.downgrade();
     tag.connect_clicked(move |_| {
         if let Some(dialog) = dialog.upgrade() {

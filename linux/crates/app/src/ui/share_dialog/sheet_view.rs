@@ -19,7 +19,8 @@ pub(crate) enum SheetPage {
     Disabled,
     AtLimit,
     Form,
-    Created(String),
+    // Whether the link reached the clipboard, which the page says.
+    Created { url: String, copied: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,16 +132,22 @@ pub(crate) fn cap_note(total: u64, max_rows: u64) -> Option<String> {
     })
 }
 
+// A downgrade can leave more live links than the plan allows, so the count and the limit are both named.
 pub(crate) fn at_limit_message(limits: &ShareLimits) -> String {
-    let limit = format_thousands(limits.live_limit);
+    let (live, limit) = (format_thousands(limits.live), format_thousands(limits.live_limit));
+    let args = [("live", live.as_str()), ("limit", limit.as_str())];
     match is_pro(limits) {
-        true => gettext_f(
-            "You have {limit} live links, the Pro limit. Revoke one to share another.",
-            &[("limit", &limit)],
+        true => ngettext_f(
+            "You have {live} live link. Pro allows {limit}. Revoke one to share another.",
+            "You have {live} live links. Pro allows {limit}. Revoke one to share another.",
+            limits.live,
+            &args,
         ),
-        false => gettext_f(
-            "You have {limit} live links, the Free limit. Revoke one to share another.",
-            &[("limit", &limit)],
+        false => ngettext_f(
+            "You have {live} live link. Free allows {limit}. Revoke one to share another.",
+            "You have {live} live links. Free allows {limit}. Revoke one to share another.",
+            limits.live,
+            &args,
         ),
     }
 }
@@ -163,8 +170,10 @@ pub(crate) fn live_link_rows(shares: &[Share]) -> Vec<LiveLinkRow> {
         .collect()
 }
 
+// GTK refuses text with a NUL in it, which the server passes through from whoever named the link.
 fn link_title(share: &Share) -> String {
-    match (share.title.trim(), share.kind.as_str()) {
+    let title = share.title.replace('\0', "");
+    match (title.trim(), share.kind.as_str()) {
         ("", "result") => gettext("Shared result"),
         ("", _) => gettext("Shared query"),
         (title, _) => title.to_owned(),
@@ -342,7 +351,12 @@ mod tests {
     fn at_the_limit_free_hears_about_pro_and_pro_does_not() {
         assert_eq!(
             at_limit_message(&limits("free", 5)),
-            "You have 5 live links, the Free limit. Revoke one to share another."
+            "You have 5 live links. Free allows 5. Revoke one to share another."
+        );
+        assert_eq!(
+            at_limit_message(&limits("free", 12)),
+            "You have 12 live links. Free allows 5. Revoke one to share another.",
+            "a downgrade left more links than Free allows"
         );
         assert_eq!(
             at_limit_upsell(&limits("free", 5)).as_deref(),
@@ -350,7 +364,7 @@ mod tests {
         );
         assert_eq!(
             at_limit_message(&limits("pro", 1_000)),
-            "You have 1,000 live links, the Pro limit. Revoke one to share another."
+            "You have 1,000 live links. Pro allows 1,000. Revoke one to share another."
         );
         assert_eq!(at_limit_upsell(&limits("pro", 1_000)), None);
     }
@@ -358,7 +372,7 @@ mod tests {
     #[test]
     fn live_links_list_oldest_first_and_only_live_ones() {
         let shares = [
-            share("shr_new", "New", "live", 1),
+            share("shr_new", "N\0ew", "live", 1),
             share("shr_gone", "Gone", "revoked", 9),
             share("shr_old", "", "live", 5),
         ];
@@ -370,6 +384,7 @@ mod tests {
             ["shr_old", "shr_new"]
         );
         assert_eq!(rows[0].title, "Shared result");
+        assert_eq!(rows[1].title, "New");
         assert!(rows[0].subtitle.ends_with("Never expires"), "{}", rows[0].subtitle);
     }
 

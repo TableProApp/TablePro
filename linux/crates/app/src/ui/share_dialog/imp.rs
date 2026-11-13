@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use super::form::FormFields;
 use super::sheet_view::SheetPage;
 use super::{Chrome, Deps};
-use crate::services::share_subject::ShareSubject;
+use crate::services::share_subject::{ShareForm, ShareSubject};
 
 #[derive(Default)]
 pub struct ShareDialog {
@@ -27,6 +27,10 @@ pub struct ShareDialog {
     // Moved by each read of the limits, so a read a later one replaced lands nowhere.
     pub(super) read: Cell<u64>,
     pub(super) signing_in: RefCell<Option<CancellationToken>>,
+    // Moved by each sign-in, so one that a later one replaced ends without touching the sheet.
+    pub(super) sign_in_attempt: Cell<u64>,
+    // What the form held when the sheet left it, so a revoke or a refusal brings it back as typed.
+    pub(super) draft: RefCell<Option<ShareForm>>,
     pub(super) following: RefCell<Vec<glib::JoinHandle<()>>>,
 }
 

@@ -120,6 +120,10 @@ impl ShareDialog {
                 dialog.create();
             }
         });
+        // A create in flight would make a link nobody sees; the sheet stays until it answers.
+        self.connect_close_attempt(|dialog| {
+            dialog.alert(&gettext("The link is on its way. Wait for it before closing."));
+        });
         Chrome {
             toolbar,
             header,
@@ -161,7 +165,7 @@ impl ShareDialog {
     fn account_changed(&self) {
         let reading = self.signed_in() && self.account().is_some();
         let keep = match self.page() {
-            Some(SheetPage::Created(_)) => true,
+            Some(SheetPage::Created { .. }) => true,
             Some(
                 SheetPage::Form
                 | SheetPage::AtLimit
@@ -257,6 +261,13 @@ impl ShareDialog {
         let Some(chrome) = imp.chrome.get() else {
             return;
         };
+        // A read still in flight answers a page the user has left.
+        if page != SheetPage::Loading {
+            imp.read.set(imp.read.get() + 1);
+        }
+        if let Some(left) = imp.form.borrow().as_ref() {
+            imp.draft.replace(Some(left.values()));
+        }
         let form = matches!(page, SheetPage::Form);
         chrome.banner.set_revealed(false);
         chrome.cancel.set_visible(form);
@@ -265,12 +276,12 @@ impl ShareDialog {
         chrome
             .toolbar
             .set_reveal_bottom_bars(matches!(page, SheetPage::Form | SheetPage::AtLimit));
-        let content = match (&page, imp.limits.borrow().as_ref(), imp.subject.get()) {
+        let (content, focus) = match (&page, imp.limits.borrow().as_ref(), imp.subject.get()) {
             (SheetPage::Form, Some(limits), Some(subject)) => {
-                let fields = build_form(self, subject, limits);
+                let fields = build_form(self, subject, limits, imp.draft.borrow().as_ref());
                 let page = fields.page.clone().upcast::<gtk::Widget>();
                 imp.form.replace(Some(fields));
-                page
+                (page, None)
             }
             _ => {
                 imp.form.replace(None);
@@ -278,6 +289,9 @@ impl ShareDialog {
             }
         };
         chrome.toolbar.set_content(Some(&content));
+        if let Some(focus) = focus {
+            self.set_focus(Some(&focus));
+        }
         imp.page.replace(Some(page));
         self.set_busy(false);
     }
@@ -285,6 +299,7 @@ impl ShareDialog {
     fn set_busy(&self, busy: bool) {
         let imp = self.imp();
         imp.busy.set(busy);
+        self.set_can_close(!busy);
         if let Some(chrome) = imp.chrome.get() {
             chrome.create.set_sensitive(!busy);
             chrome.cancel.set_sensitive(!busy);
@@ -339,16 +354,30 @@ impl ShareDialog {
     fn created(&self, result: Result<Result<CreatedShare, AccountError>, TaskFailure>) {
         self.set_busy(false);
         let error = match result {
+            // A link GTK cannot show is no link to hand over.
+            Ok(Ok(created)) if created.url.chars().any(char::is_control) => {
+                AccountError::Protocol("the link holds a control character".to_owned())
+            }
             Ok(Ok(created)) => {
-                crate::ui::clipboard::copy_text(self, created.url.clone(), |_| {});
-                return self.show(SheetPage::Created(created.url));
+                let copied = crate::ui::clipboard::put_text(self, created.url.clone())
+                    .inspect_err(|error| tracing::warn!(?error, "the new link did not reach the clipboard"))
+                    .is_ok();
+                self.imp().draft.replace(None);
+                self.imp().form.replace(None);
+                return self.show(SheetPage::Created {
+                    url: created.url,
+                    copied,
+                });
             }
             Ok(Err(error)) => error,
             Err(failure) => AccountError::Protocol(failure.to_string()),
         };
         match error.code() {
             "account.signed_out" => self.show(SheetPage::SignedOut),
-            "account.share_limit_reached" => self.load_limits(),
+            // The limits say what changed, and their page says it.
+            "account.share_limit_reached" | "account.email_unverified" | "account.sharing_disabled" => {
+                self.load_limits();
+            }
             _ => self.alert(&share_error_message(&error)),
         }
     }
@@ -389,9 +418,8 @@ impl ShareDialog {
     // The Revoke buttons go insensitive while one runs.
     fn show_busy_list(&self) {
         if let Some(chrome) = self.imp().chrome.get() {
-            chrome
-                .toolbar
-                .set_content(Some(&pages::page_widget(self, &SheetPage::AtLimit)));
+            let (list, _) = pages::page_widget(self, &SheetPage::AtLimit);
+            chrome.toolbar.set_content(Some(&list));
         }
     }
 
@@ -404,6 +432,8 @@ impl ShareDialog {
         if let Some(earlier) = imp.signing_in.replace(Some(cancel.clone())) {
             earlier.cancel();
         }
+        let attempt = imp.sign_in_attempt.get() + 1;
+        imp.sign_in_attempt.set(attempt);
         self.show(SheetPage::SigningIn);
         let telemetry = deps.telemetry.clone();
         let dialog = self.downgrade();
@@ -414,6 +444,9 @@ impl ShareDialog {
                 let Some(dialog) = dialog.upgrade() else {
                     return;
                 };
+                if dialog.imp().sign_in_attempt.get() != attempt {
+                    return;
+                }
                 dialog.imp().signing_in.replace(None);
                 dialog.signed_in_with(result, &telemetry);
             },
@@ -456,18 +489,16 @@ impl ShareDialog {
     }
 
     pub(super) fn copy_link(&self) {
-        if let Some(SheetPage::Created(url)) = self.page() {
-            let dialog = self.downgrade();
-            crate::ui::clipboard::copy_text(self, url, move |message| {
-                if let Some(dialog) = dialog.upgrade() {
-                    dialog.alert(message);
-                }
-            });
+        if let Some(SheetPage::Created { url, .. }) = self.page() {
+            match crate::ui::clipboard::put_text(self, url) {
+                Ok(()) => self.alert(&gettext("Copied to clipboard")),
+                Err(error) => self.alert(&error.message()),
+            }
         }
     }
 
     pub(super) fn open_link(&self) {
-        if let Some(SheetPage::Created(url)) = self.page() {
+        if let Some(SheetPage::Created { url, .. }) = self.page() {
             self.open_uri(&url);
         }
     }

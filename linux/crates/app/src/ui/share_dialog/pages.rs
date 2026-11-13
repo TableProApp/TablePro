@@ -10,8 +10,9 @@ use super::sheet_view::{self, SheetPage};
 use crate::i18n::{gettext, gettext_f};
 use crate::ui::icons;
 
-pub(super) fn page_widget(dialog: &ShareDialog, page: &SheetPage) -> gtk::Widget {
-    match page {
+// The page, and what takes the focus when it shows.
+pub(super) fn page_widget(dialog: &ShareDialog, page: &SheetPage) -> (gtk::Widget, Option<gtk::Widget>) {
+    let widget = match page {
         SheetPage::Unavailable(reason) => status(icons::DIALOG_WARNING, &gettext("Accounts Unavailable"), reason, None),
         SheetPage::SignedOut => status(
             icons::ACCOUNT,
@@ -66,8 +67,9 @@ pub(super) fn page_widget(dialog: &ShareDialog, page: &SheetPage) -> gtk::Widget
             None,
         ),
         SheetPage::AtLimit => at_limit(dialog),
-        SheetPage::Created(url) => created(dialog, url),
-    }
+        SheetPage::Created { url, copied } => return created(dialog, url, *copied),
+    };
+    (widget, None)
 }
 
 fn status(icon: &str, title: &str, body: &str, child: Option<gtk::Widget>) -> gtk::Widget {
@@ -162,7 +164,7 @@ fn description(limits: &ShareLimits) -> String {
     }
 }
 
-fn created(dialog: &ShareDialog, url: &str) -> gtk::Widget {
+fn created(dialog: &ShareDialog, url: &str, copied: bool) -> (gtk::Widget, Option<gtk::Widget>) {
     let link = gtk::Label::builder()
         .label(url)
         .selectable(true)
@@ -204,12 +206,21 @@ fn created(dialog: &ShareDialog, url: &str) -> gtk::Widget {
         .build();
     content.append(&link);
     content.append(&buttons);
+    let (title, icon) = match copied {
+        true => (gettext("Link copied"), icons::SUCCESS),
+        false => (gettext("Link created"), icons::DIALOG_WARNING),
+    };
     let page = adw::StatusPage::builder()
-        .icon_name(icons::SUCCESS)
-        .title(gettext("Link copied"))
+        .icon_name(icon)
+        .title(title)
         .child(&content)
         .vexpand(true)
         .build();
+    if !copied {
+        page.set_description(Some(&gettext(
+            "The link could not be copied to the clipboard. Copy it with the button below.",
+        )));
+    }
     page.add_css_class("compact");
-    page.upcast()
+    (page.upcast(), Some(copy.upcast()))
 }
