@@ -118,7 +118,7 @@ pub struct Share {
     pub url: Option<String>,
     // The team or staff turned sharing off: the state stays, the link does not resolve and has no url.
     pub suspended: bool,
-    // "account" or "team" while suspended.
+    // "account", "team" or "team_deleted" while suspended.
     pub suspended_by: Option<String>,
 }
 
@@ -147,7 +147,7 @@ pub struct SharedLink {
     pub title: String,
     pub note: String,
     pub dialect: String,
-    // None when the owner hid it.
+    // None when the owner hid it, or a result was shared with no SQL.
     pub sql: Option<String>,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -173,8 +173,8 @@ pub struct SnapshotColumnBody {
     pub type_name: Option<String>,
 }
 
-// The document's maxLength for a column's type.
-const COLUMN_TYPE_CHARACTERS: usize = 256;
+// The document's maxLength for a column's name and its type.
+const COLUMN_TEXT_CHARACTERS: usize = 256;
 
 impl From<Snapshot> for SnapshotBody {
     fn from(snapshot: Snapshot) -> Self {
@@ -183,8 +183,8 @@ impl From<Snapshot> for SnapshotBody {
                 .columns
                 .into_iter()
                 .map(|column| SnapshotColumnBody {
-                    name: column.name,
-                    type_name: Some(column.type_name.chars().take(COLUMN_TYPE_CHARACTERS).collect())
+                    name: column.name.chars().take(COLUMN_TEXT_CHARACTERS).collect(),
+                    type_name: Some(column.type_name.chars().take(COLUMN_TEXT_CHARACTERS).collect())
                         .filter(|type_name: &String| !type_name.is_empty()),
                 })
                 .collect(),
@@ -281,7 +281,7 @@ impl From<types::PublicShare> for SharedLink {
             title: shared.title,
             note: shared.note,
             dialect: shared.dialect,
-            sql: shared.sql,
+            sql: shared.sql.filter(|sql| !sql.trim().is_empty()),
             created_at: shared.created_at,
             expires_at: shared.expires_at,
             allow_download: shared.allow_download,

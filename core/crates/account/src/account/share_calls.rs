@@ -486,6 +486,25 @@ mod tests {
         assert!(body.contains(r#""hide_sql":true"#), "{body}");
     }
 
+    #[test]
+    fn a_column_s_name_and_type_are_cut_to_the_document_s_length() {
+        use tablepro_core::export::{Snapshot, SnapshotColumn};
+
+        let snapshot = Snapshot {
+            columns: vec![SnapshotColumn {
+                name: "é".repeat(300),
+                type_name: "t".repeat(300),
+            }],
+            rows: Vec::new(),
+            row_count: 0,
+        };
+
+        let body = crate::share::SnapshotBody::from(snapshot);
+
+        assert_eq!(body.columns[0].name, "é".repeat(256));
+        assert_eq!(body.columns[0].type_name.as_deref(), Some("t".repeat(256).as_str()));
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn each_refusal_reads_as_the_code_the_app_words() {
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -643,5 +662,30 @@ mod tests {
             "{log:?}"
         );
         assert!(opened.created_at <= Utc::now());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_result_shared_without_sql_has_none_to_open() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = format!("GET /v2/shared/{TOKEN}");
+        let answers = Arc::new(Mutex::new(vec![r#""sql":"","#, ""]));
+        let (endpoints, _) = cloud(move |sent| match sent.request.as_str() {
+            request if request == path => {
+                let sql = answers.lock().expect("the answers").remove(0);
+                let body = format!(
+                    r#"{{"kind":"result","title":"Orders","note":"","dialect":"postgres",{sql}
+                    "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro",
+                    "snapshot":{{"columns":[{{"name":"n","type":"int"}}],"rows":[[1]],"row_count":1,"truncated":false}}}}"#
+                );
+                (200, "", body)
+            }
+            _ => (404, "", String::new()),
+        });
+        let account = signed_in(dir.path(), endpoints).await;
+
+        let empty = account.fetch_shared(TOKEN, None).await.expect("the link");
+        let absent = account.fetch_shared(TOKEN, None).await.expect("the link");
+
+        assert_eq!((empty.sql, absent.sql), (None, None));
     }
 }

@@ -143,7 +143,7 @@
             "description": "Required with kind result, refused with kind query"
           },
           "sql": {
-            "description": "Always stored; the viewer hides it with hide_sql",
+            "description": "Always stored; the viewer hides it with hide_sql. May be empty for a result share, which then shares its data alone",
             "maxLength": 262144,
             "type": "string"
           },
@@ -1374,14 +1374,13 @@
             "$ref": "#/components/schemas/ShareReportReason"
           },
           "turnstile_token": {
-            "description": "The token of the viewer's Turnstile widget, rendered with the action share_report",
+            "description": "The token of the viewer's Turnstile widget, rendered with the action share_report; a missing or rejected one answers human_check_failed",
             "maxLength": 2048,
             "type": "string"
           }
         },
         "required": [
-          "reason",
-          "turnstile_token"
+          "reason"
         ],
         "type": "object"
       },
@@ -1653,12 +1652,13 @@
             "type": "boolean"
           },
           "suspended_by": {
-            "description": "Extensible enum: account, team. With suspended: account (staff turned the creator's sharing off) or team (the team turned public links off); account when both are off",
+            "description": "Extensible enum: account, team, team_deleted. With suspended: account (staff turned the creator's sharing off), team (the team turned public links off) or team_deleted (its owner deleted the team); team_deleted wins, then account",
             "example": "account",
             "type": "string",
             "x-extensible-enum": [
               "account",
-              "team"
+              "team",
+              "team_deleted"
             ]
           },
           "team_id": {
@@ -1741,6 +1741,7 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "maxLength": 256,
             "type": "string"
           },
           "type": {
@@ -3554,7 +3555,7 @@
     },
     "/shared/{token}": {
       "get": {
-        "description": "No authentication. An unknown, revoked, removed or expired link, a malformed token and a deleted team's link all answer 404 alike. Password guesses are limited per link and client, and per link.",
+        "description": "No authentication. An unknown, revoked, removed, expired or suspended link, a malformed token and a deleted team's link all answer 404 alike. Password guesses are limited per link and client, and per link.",
         "operationId": "get-shared",
         "parameters": [
           {
@@ -3586,7 +3587,7 @@
                 }
               }
             },
-            "description": "OK",
+            "description": "The shared link",
             "headers": {
               "X-RateLimit-Limit": {
                 "$ref": "#/components/headers/X-RateLimit-Limit"

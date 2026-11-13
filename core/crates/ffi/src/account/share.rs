@@ -88,7 +88,7 @@ pub struct ShareInfo {
     pub url: Option<String>,
     // The team or staff turned sharing off: the state stays, the link does not resolve and has no url.
     pub suspended: bool,
-    // "account" or "team" while suspended.
+    // "account", "team" or "team_deleted" while suspended.
     pub suspended_by: Option<String>,
 }
 
