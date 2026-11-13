@@ -825,7 +825,7 @@ mod tests {
         let set = ResultSet::new(0, store);
 
         let held = held_row(&set, 0, &columns);
-        let snapshot = build_snapshot(&columns, [held.clone()], ResultExtent::complete(1), 10);
+        let snapshot = build_snapshot(&columns, [held.clone()], ResultExtent::complete(1), 10).expect("a snapshot");
 
         assert_eq!(held, row);
         let cells: Vec<&str> = snapshot.rows[0].iter().map(|cell| cell.get()).collect();
