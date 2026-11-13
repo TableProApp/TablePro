@@ -319,7 +319,8 @@ public enum SQLNonCodeSpan {
             )
             if grammar.contains(.escapeStringContinuations) {
                 var newlines = span.newlines
-                while span.isClosed, let continued = continuingQuote(after: span.next, in: text, length: length) {
+                while span.isClosed,
+                      let continued = continuingQuote(after: span.next, in: text, length: length, grammar: grammar) {
                     span = SqlLexer.skipQuotedString(
                         text,
                         from: continued.quote,
@@ -351,15 +352,20 @@ public enum SQLNonCodeSpan {
     private static let verticalTab: UInt16 = 0x0B
 
     // DuckDB turns these into spaces before it lexes, outside what its pre-lexing pass reads as a quote, and no other
-    // non-ASCII unit (measured on 1.5.4 and 2.0.0).
-    // PostgreSQL and CockroachDB do not, and the text a join there leaves them does not parse, so they run none of it.
+    // non-ASCII unit (measured on 1.5.4 and 2.0.0). PostgreSQL and CockroachDB read them as part of a name.
     static let spacesBeforeLexing: Set<UInt16> = Set([0x00A0, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF])
         .union(0x2000...0x200B)
 
     /// The quote that carries on the string closed just before `index`, as PostgreSQL's `quotecontinue` finds it: only
     /// blanks and `--` comments between, a line break among them. PostgreSQL 16 and later take a vertical tab for a
-    /// blank; an older server refuses the text.
-    private static func continuingQuote(after index: Int, in text: NSString, length: Int) -> (quote: Int, newlines: Int)? {
+    /// blank; an older server refuses the text. A non-ASCII space is a blank only where DuckDB 1.5 has blanked it
+    /// first: PostgreSQL 17.11 reads `E'a'` + U+00A0 + line break + `'b'` as a name between two strings.
+    private static func continuingQuote(
+        after index: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> (quote: Int, newlines: Int)? {
         var cursor = index
         var lineBroke = false
         var newlines = 0
@@ -374,7 +380,7 @@ public enum SQLNonCodeSpan {
                 cursor += 1
             case SqlLexer.space, SqlLexer.tab, verticalTab, SqlLexer.formFeed:
                 cursor += 1
-            case let unit where spacesBeforeLexing.contains(unit):
+            case let unit where endsNameAsBlank(unit, grammar: grammar):
                 cursor += 1
             case SqlLexer.dash where SqlLexer.startsLineComment(text, at: cursor, length: length):
                 cursor = SqlLexer.endOfLineComment(
