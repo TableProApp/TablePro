@@ -7959,6 +7959,7 @@ dependencies = [
  "futures",
  "russh",
  "secrecy",
+ "serde_json",
  "tablepro-account",
  "tablepro-core",
  "tablepro-driver-cassandra",

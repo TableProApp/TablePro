@@ -411,7 +411,7 @@ mod shares {
         format!(
             r#"{{"share":{{"id":"shr_01","kind":"result","scope":"account","title":"Orders","note":"","dialect":"sqlite",
             "has_snapshot":true,"row_count":2,"truncated":true,"hide_sql":true,"allow_download":true,"has_password":false,
-            "state":"live","view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z",
+            "state":"live","suspended":false,"view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z",
             "expires_at":"2026-12-13T00:00:00Z","url":"https://s.tablepro.app/{TOKEN}"}},
             "token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#
         )
@@ -450,11 +450,11 @@ mod shares {
             .create_share(request(ShareKindTag::Result), Some(set), 2, 1, None)
             .await
             .unwrap();
-        let query = opened
-            .service
-            .create_share(request(ShareKindTag::Query), None, 0, 0, None)
-            .await
-            .unwrap();
+        let team_query = ShareRequestArg {
+            team_id: Some("team_01".to_owned()),
+            ..request(ShareKindTag::Query)
+        };
+        let query = opened.service.create_share(team_query, None, 0, 0, None).await.unwrap();
         let needs_set = opened
             .service
             .create_share(request(ShareKindTag::Result), None, 0, 1_000, None)
@@ -475,6 +475,7 @@ mod shares {
         assert!(!bodies[0].contains("hidden"), "{}", bodies[0]);
         assert!(bodies[0].contains(r#""hide_sql":true"#), "{}", bodies[0]);
         assert!(!bodies[1].contains("snapshot"), "{}", bodies[1]);
+        assert!(bodies[1].contains(r#""team_id":"team_01""#), "{}", bodies[1]);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -520,5 +521,26 @@ mod shares {
         assert!(body.contains(r#""columns":[{"name":"body","type":"TEXT"}]"#), "{body}");
         assert!(body.contains(r#""rows":[["first"],["second"]]"#), "{body}");
         assert!(body.contains(r#""row_count":3"#), "{body}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_result_past_the_column_cap_shares_its_first_columns_and_says_so() {
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let opened = signed_in(&bodies).await;
+        let dir = tempfile::tempdir().unwrap();
+        let (_core, session) = sqlite(dir.path()).await;
+        let wide: Vec<String> = (0..101).map(|index| format!("{index} AS c{index}")).collect();
+        let set = run(&session, &format!("SELECT {}", wide.join(", "))).await.unwrap();
+
+        let created = opened
+            .service
+            .create_share(request(ShareKindTag::Result), Some(set), 101, 1_000, None)
+            .await
+            .unwrap();
+
+        assert!(created.columns_truncated);
+        let body = bodies.lock().unwrap()[0].clone();
+        assert!(body.contains(r#""name":"c99""#), "{body}");
+        assert!(!body.contains(r#""c100""#), "{body}");
     }
 }
