@@ -42,6 +42,8 @@ internal struct CellImageViewer<Source: View>: View {
     let format: CellImageFormat
     let sourceKind: CellImageSourceKind
     var onPopOut: (() -> Void)?
+    // A new one is another value, which opens on the picture.
+    var documentID: AnyHashable?
     @ViewBuilder let source: () -> Source
 
     @State private var mode: CellImageViewMode = .image
@@ -52,6 +54,9 @@ internal struct CellImageViewer<Source: View>: View {
             Divider()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onChange(of: documentID) { _ in
+            mode = .image
         }
     }
 

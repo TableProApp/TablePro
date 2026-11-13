@@ -125,5 +125,18 @@ struct DataGridSection: View {
                 """)
             }
         }
+
+        Section {
+            Picker("Results kept per run:", selection: $settings.resultSetsKeptPerRun) {
+                Text("No limit").tag(0)
+                ForEach([10, 20, 50, 100, 200, 500, 1_000], id: \.self) { count in
+                    Text(count.formatted()).tag(count)
+                }
+            }
+        } header: {
+            Text("Multiple Results")
+        } footer: {
+            Text("A run that returns more results with rows keeps only the newest. Pinned results always stay.")
+        }
     }
 }

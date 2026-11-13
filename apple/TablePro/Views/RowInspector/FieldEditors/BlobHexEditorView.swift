@@ -29,6 +29,8 @@ internal struct BlobHexEditorView: View {
     /// committed. A first-appearance flag would not do: this branch is rebuilt when the field leaves
     /// read-only (a row marked deleted, then restored), and its new `onChange` misses what changed.
     @State private var draftSource: String?
+    // Another document reloads the draft even while the field has focus.
+    @State private var draftDocument: UUID?
 
     var body: some View {
         if context.isReadOnly {
@@ -85,9 +87,10 @@ internal struct BlobHexEditorView: View {
             statusLine
         }
         .onAppear(perform: loadDraftIfStale)
-        .onChange(of: context.value.wrappedValue) { _ in
-            if !isFocused {
-                loadDraft()
+        // The argument, never `context`: an action reads the previous render's.
+        .onChange(of: DraftSource(documentID: context.documentID, stored: context.value.wrappedValue)) { source in
+            if source.documentID != draftDocument || !isFocused {
+                loadDraft(from: source)
             }
         }
     }
@@ -113,16 +116,25 @@ internal struct BlobHexEditorView: View {
 
     /// One place that formats the stored value for editing, so the draft and the truncation flag
     /// are always taken from the same read rather than from two.
+    private struct DraftSource: Equatable {
+        let documentID: UUID?
+        let stored: String
+    }
+
     private func loadDraft() {
-        let stored = context.value.wrappedValue
-        let formatted = BlobFormattingService.shared.format(stored, for: .edit) ?? ""
+        loadDraft(from: DraftSource(documentID: context.documentID, stored: context.value.wrappedValue))
+    }
+
+    private func loadDraft(from source: DraftSource) {
+        let formatted = BlobFormattingService.shared.format(source.stored, for: .edit) ?? ""
         hexEditText = formatted
         isTruncated = formatted.hasSuffix("…")
-        draftSource = stored
+        draftSource = source.stored
+        draftDocument = source.documentID
     }
 
     private func loadDraftIfStale() {
-        guard draftSource != context.value.wrappedValue else { return }
+        guard draftSource != context.value.wrappedValue || draftDocument != context.documentID else { return }
         loadDraft()
     }
 
@@ -132,6 +144,8 @@ internal struct BlobHexEditorView: View {
             loadDraft()
             return
         }
+        // The bytes the field already holds stage nothing, so leaving it untouched never marks the row edited.
+        guard !(raw as NSString).isEqual(to: context.value.wrappedValue) else { return }
         if let commitBytes = context.commitBytes,
            let data = raw.data(using: .isoLatin1) {
             commitBytes(data)

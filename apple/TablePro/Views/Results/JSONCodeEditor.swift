@@ -16,6 +16,8 @@ internal struct JSONCodeEditor: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
     let isEditable: Bool
+    // A new one is text replaced from outside: a new undo history, read from the top.
+    let documentID: AnyHashable?
 
     @State private var editorState = SourceEditorState()
     @State private var configuration: SourceEditorConfiguration
@@ -24,9 +26,15 @@ internal struct JSONCodeEditor: View {
     /// modifier names the representable and never reaches it.
     @State private var coordinators: [any TextViewCoordinator]
 
-    init(text: Binding<String>, isEditable: Bool, accessibilityIdentifier: String? = nil) {
+    init(
+        text: Binding<String>,
+        isEditable: Bool,
+        accessibilityIdentifier: String? = nil,
+        documentID: AnyHashable? = nil
+    ) {
         self._text = text
         self.isEditable = isEditable
+        self.documentID = documentID
         self._configuration = State(wrappedValue: Self.makeConfiguration(isEditable: isEditable))
         self._coordinators = State(
             wrappedValue: accessibilityIdentifier.map { [EditorAccessibilityIdentifier($0)] } ?? []
@@ -39,9 +47,14 @@ internal struct JSONCodeEditor: View {
             language: .json,
             configuration: configuration,
             state: $editorState,
-            coordinators: coordinators
+            coordinators: coordinators,
+            documentID: documentID
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: documentID) { _ in
+            editorState.cursorPositions = [CursorPosition(range: NSRange(location: 0, length: 0))]
+            editorState.scrollPosition = .zero
+        }
         .onChange(of: isEditable) { _ in
             rebuildConfiguration()
         }

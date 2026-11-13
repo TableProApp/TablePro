@@ -22,6 +22,8 @@ internal struct TextValueEditor: NSViewRepresentable {
     var textContainerInset = NSSize(width: 4, height: 6)
     var style: Style = .plain
     var marksInvisibleCharacters = false
+    // A new one is another document: the view shows it from the top, with no undo left from the one before.
+    var documentID: AnyHashable?
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -35,6 +37,7 @@ internal struct TextValueEditor: NSViewRepresentable {
 
         textView.string = text
         context.coordinator.lastAppliedText = text
+        context.coordinator.documentID = documentID
         return scrollView
     }
 
@@ -42,6 +45,11 @@ internal struct TextValueEditor: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         applyConfiguration(to: scrollView, textView: textView, coordinator: context.coordinator)
 
+        if context.coordinator.documentID != documentID {
+            context.coordinator.documentID = documentID
+            openDocument(in: textView, coordinator: context.coordinator)
+            return
+        }
         guard context.coordinator.lastAppliedText != text else { return }
         context.coordinator.lastAppliedText = text
 
@@ -49,6 +57,21 @@ internal struct TextValueEditor: NSViewRepresentable {
         textView.string = text
         let clamped = min(caret, (text as NSString).length)
         textView.setSelectedRange(NSRange(location: clamped, length: 0))
+    }
+
+    // The typing undo indexes into the text being replaced, and undoing it afterwards raises (measured). NSTextView files
+    // it under its text storage, so only this view's history goes.
+    private func openDocument(in textView: NSTextView, coordinator: Coordinator) {
+        textView.breakUndoCoalescing()
+        if let storage = textView.textStorage {
+            textView.undoManager?.removeAllActions(withTarget: storage)
+        }
+        if coordinator.lastAppliedText != text {
+            coordinator.lastAppliedText = text
+            textView.string = text
+        }
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        textView.scroll(.zero)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -123,6 +146,7 @@ internal struct TextValueEditor: NSViewRepresentable {
         /// moved" without bridging the whole NSString back, which costs 45ms on a 1 MB value and
         /// would run on every SwiftUI update pass.
         var lastAppliedText: String = ""
+        var documentID: AnyHashable?
         var themeStyle: ThemeTextViewStyle?
         var invisibleCharacters: InvisibleCharacterTextDisplay?
 

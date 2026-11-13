@@ -100,9 +100,13 @@ private struct ExecutedStatementHistory {
     let results: [QueryResult]
     let parameters: [QueryParameter]
     let connection: DatabaseConnection
+    // Read once per run: the rows built off the main actor and the results shown take the same plan.
+    let rowResultLimit: Int?
 
     func keeping(_ kept: [QueryResult]) -> ExecutedStatementHistory {
-        ExecutedStatementHistory(prepared: prepared, results: kept, parameters: parameters, connection: connection)
+        ExecutedStatementHistory(
+            prepared: prepared, results: kept, parameters: parameters, connection: connection, rowResultLimit: rowResultLimit
+        )
     }
 }
 
@@ -473,7 +477,8 @@ extension QueryExecutionCoordinator {
             case .completed(let ran), .cancelled(let ran), .failed(let ran, _, _):
                 results = ran
             }
-            let resultPlan = RunResultPlan(producesRows: results.map { !$0.columns.isEmpty })
+            let rowResultLimit = AppSettingsManager.shared.dataGrid.resultSetLimitPerRun
+            let resultPlan = RunResultPlan(producesRows: results.map { !$0.columns.isEmpty }, keepingRowResults: rowResultLimit)
             let built = await buildStatementRows(
                 zip(sent, results).enumerated().map { index, pair in
                     resultPlan.showsRows(ofStatement: index) ? (sql: pair.0.originalSQL as String?, result: pair.1) : nil
@@ -482,7 +487,7 @@ extension QueryExecutionCoordinator {
             )
 
             let history = ExecutedStatementHistory(
-                prepared: sent, results: results, parameters: parameters, connection: conn
+                prepared: sent, results: results, parameters: parameters, connection: conn, rowResultLimit: rowResultLimit
             )
             guard parent.tabExecution.settle(claim) || reportsUnknownCommitAfterStop(outcome, claim: claim) else {
                 keepStatementsAfterStop(
@@ -786,7 +791,7 @@ extension QueryExecutionCoordinator {
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
         let reading = parent.tableNameReading
         let ran = Array(zip(history.prepared, history.results))
-        let plan = RunResultPlan(producesRows: ran.map { !$0.1.columns.isEmpty })
+        let plan = RunResultPlan(producesRows: ran.map { !$0.1.columns.isEmpty }, keepingRowResults: history.rowResultLimit)
         let resultSets = plan.entries.enumerated().map { position, entry -> ResultSet in
             switch entry {
             case .summary(let indices):
