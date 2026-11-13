@@ -167,6 +167,20 @@ struct CloudShareServiceTests {
         #expect(columns.first?["type"] == String(repeating: "t", count: 256))
     }
 
+    @Test("A masked column names its style as the contract spells it, and an unmasked one sends no masked key")
+    func maskedColumns() throws {
+        // api/v2.json, ShareMaskStyle.
+        #expect(MaskingStyle.allCases.map(\.rawValue) == ["full", "lastFour", "email", "hash", "null"])
+        let columns = [
+            ShareSnapshot.Column(name: "email", type: "text", masked: .email),
+            ShareSnapshot.Column(name: "id", type: "int8")
+        ]
+        let text = ShareBodyWriter.snapshot(ShareSnapshot(columns: columns, rows: [], rowCount: 0))
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        let sent = try #require(object["columns"] as? [[String: String]])
+        #expect(sent == [["name": "email", "type": "text", "masked": "email"], ["name": "id", "type": "int8"]])
+    }
+
     @Test("Strings are escaped so the body stays valid JSON")
     func stringsAreEscaped() throws {
         let text = ShareBodyWriter.quoted("a\"b\\c\n\u{01}é")

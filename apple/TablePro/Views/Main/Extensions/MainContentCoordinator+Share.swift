@@ -126,7 +126,8 @@ extension MainContentCoordinator {
             columnTypes: read.columnTypes,
             rows: read.rows,
             totalRowCount: Self.shareTotal(of: tab, rows: read.rows.count, more: more),
-            sql: sql
+            sql: sql,
+            masks: read.masks
         )
     }
 
@@ -158,7 +159,8 @@ extension MainContentCoordinator {
             columnTypes: read.columnTypes,
             rows: rows,
             totalRowCount: total.map { max($0, rows.count) },
-            sql: shareSQL(of: tab)
+            sql: shareSQL(of: tab),
+            masks: read.masks
         )
     }
 

@@ -152,6 +152,15 @@ internal struct ShareSheet: View {
                 if model.isResult, model.hasSharedSQL {
                     Toggle(String(localized: "Hide SQL"), isOn: $model.hidesSQL)
                         .accessibilityIdentifier("share-sheet-hide-sql")
+                    if let suggestion = model.hideSQLSuggestion {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            NoticeLabel(suggestion)
+                            Spacer(minLength: 8)
+                            Button(String(localized: "Hide SQL")) { model.hidesSQL = true }
+                                .accessibilityHint(Text("Turns on Hide SQL for this link."))
+                                .accessibilityIdentifier("share-sheet-hide-sql-suggestion")
+                        }
+                    }
                 } else if model.isResult {
                     Text("This table view has no SQL to share, so the link shares its rows only.")
                         .font(.callout)
@@ -167,6 +176,9 @@ internal struct ShareSheet: View {
 
             if model.isResult {
                 previewSection
+                if !model.columns.isEmpty {
+                    columnsSection
+                }
             }
 
             if let message = model.sqlTooLongMessage {
@@ -255,6 +267,9 @@ internal struct ShareSheet: View {
         Section {
             if model.isSnapshotTooLarge {
                 NoticeLabel(String(localized: "This result is too large to share."), severity: .error)
+            } else if model.isEveryColumnRemoved {
+                NoticeLabel(String(localized: "Keep or mask at least one column to share."), severity: .error)
+                    .accessibilityIdentifier("share-sheet-no-columns")
             } else {
                 SharePreviewGrid(columns: model.previewColumns, rows: model.previewRows)
                 if let note = model.capNote {
@@ -266,6 +281,32 @@ internal struct ShareSheet: View {
             }
         } header: {
             Text("Rows that will be shared")
+        }
+    }
+
+    private var columnsSection: some View {
+        Section {
+            ForEach(model.columns) { column in
+                ShareColumnRow(
+                    column: column,
+                    action: Binding(get: { column.action }, set: { model.setAction($0, forColumn: column.index) }),
+                    style: Binding(get: { column.style }, set: { model.setStyle($0, forColumn: column.index) })
+                )
+            }
+        } header: {
+            Text("Columns")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.columnSummary)
+                    .accessibilityIdentifier("share-sheet-column-summary")
+                if model.hasDetections {
+                    Text("TablePro masked columns that look sensitive. Check them before sharing.")
+                        .accessibilityIdentifier("share-sheet-detection-notice")
+                }
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -471,6 +512,56 @@ private struct LiveLinkRow: View {
     }
 }
 
+private struct ShareColumnRow: View {
+    let column: ShareColumnChoice
+    @Binding var action: ShareColumnChoice.Action
+    @Binding var style: MaskingStyle
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 8) {
+                Picker(String(format: String(localized: "Sharing for %@"), column.name), selection: $action) {
+                    ForEach(ShareColumnChoice.Action.allCases) { action in
+                        Text(action.displayName)
+                            .tag(action)
+                            .disabled(action == .keep && !column.allowsKeep)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                if column.action == .mask {
+                    Picker(String(format: String(localized: "Mask style for %@"), column.name), selection: $style) {
+                        ForEach(column.allowedStyles) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: column.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let reason {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var reason: String? {
+        if column.ruleStyle != nil {
+            return String(localized: "Masked by this connection's rules")
+        }
+        guard let detection = column.detection else { return nil }
+        return String(format: String(localized: "Looks like: %@"), detection.displayName)
+    }
+}
+
 private struct SharePreviewGrid: View {
     let columns: [ShareSnapshot.Column]
     let rows: [[ShareCell]]
@@ -480,9 +571,16 @@ private struct SharePreviewGrid: View {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                 GridRow {
                     ForEach(columns.indices, id: \.self) { index in
-                        Text(verbatim: columns[index].name)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(1)
+                        HStack(spacing: 3) {
+                            Text(verbatim: columns[index].name)
+                                .lineLimit(1)
+                            if columns[index].masked != nil {
+                                Image(systemName: "eye.slash")
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityLabel(Text("Masked"))
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
                     }
                 }
                 Divider()

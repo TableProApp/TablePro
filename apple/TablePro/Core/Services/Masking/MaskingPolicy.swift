@@ -116,7 +116,7 @@ struct MaskingPolicy: Equatable, Sendable {
     }
 
     // A result names `TINYINT(1)`, `BIT(8)` or `Nullable(String)` where the rule says `tinyint`, `bit` or `string`.
-    private static func baseTypeName(_ typeName: String) -> String {
+    static func baseTypeName(_ typeName: String) -> String {
         let unwrapped = ColumnType.unwrappedTypeName(typeName) ?? typeName
         return unwrapped.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
     }

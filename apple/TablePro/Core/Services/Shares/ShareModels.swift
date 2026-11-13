@@ -100,6 +100,7 @@ internal struct ShareSnapshot: Equatable, Sendable {
     struct Column: Equatable, Sendable {
         let name: String
         let type: String?
+        var masked: MaskingStyle?
     }
 
     let columns: [Column]

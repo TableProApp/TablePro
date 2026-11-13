@@ -189,6 +189,64 @@ struct ShareSnapshotBuilderTests {
         #expect(await task.value == nil)
     }
 
+    @Test("Rule-masked columns are marked, and their values go as text even in a number column")
+    func ruleMasksAreMarked() throws {
+        let built = try snapshot(ShareSnapshotBuilder.build(ShareResultSource(
+            columns: ["id", "email"],
+            columnTypes: [.integer(rawType: "int8"), .text(rawType: "text")],
+            rows: [[.text("123456789012"), .text("j•••@example.com")]],
+            totalRowCount: 1,
+            sql: "",
+            masks: ColumnMasks(styles: [0: .hash, 1: .email])
+        ), maxRows: 10))
+
+        #expect(built.columns.map(\.masked) == [.hash, .email])
+        #expect(built.columns.map(\.type) == ["int8", "text"])
+        #expect(built.rows == [[.string("123456789012"), .string("j•••@example.com")]])
+    }
+
+    @Test("Chosen columns are read in order, masked here when asked, and the rest are left out")
+    func sharedColumnsApplyStyles() throws {
+        let source = ShareResultSource(
+            columns: ["id", "phone", "secret", "note"],
+            columnTypes: [.integer(rawType: "int8"), .text(rawType: "text"), .text(rawType: "text"), .text(rawType: "text")],
+            rows: [[.text("7"), .text("+1 555 123 4567"), .text("••••"), .null]],
+            totalRowCount: 1,
+            sql: "",
+            masks: ColumnMasks(styles: [2: .full])
+        )
+        let shared: [ShareSnapshotBuilder.SharedColumn] = [
+            .init(source: 0, applying: nil, masked: nil),
+            .init(source: 1, applying: .lastFour, masked: .lastFour),
+            .init(source: 2, applying: .null, masked: .null),
+            .init(source: 3, applying: .full, masked: .full)
+        ]
+        let built = try snapshot(ShareSnapshotBuilder.build(source, maxRows: 10, columns: shared))
+
+        #expect(built.columns.map(\.name) == ["id", "phone", "secret", "note"])
+        #expect(built.columns.map(\.masked) == [nil, .lastFour, .null, .full])
+        #expect(built.rows == [[.number("7"), .string("••••4567"), .null, .null]])
+
+        let fewer = try snapshot(ShareSnapshotBuilder.build(source, maxRows: 10, columns: [shared[1]]))
+        #expect(fewer.columns.map(\.name) == ["phone"])
+        #expect(fewer.rows == [[.string("••••4567")]])
+    }
+
+    @Test("A share with every column removed has nothing to send, and removing columns brings a wide result under the cap")
+    func removedColumns() throws {
+        let count = ShareSnapshotBuilder.maxColumns + 1
+        let source = ShareResultSource(
+            columns: (0..<count).map { "c\($0)" },
+            columnTypes: Array(repeating: .text(rawType: "text"), count: count),
+            rows: [Array(repeating: .text("x"), count: count)],
+            totalRowCount: 1,
+            sql: ""
+        )
+        #expect(ShareSnapshotBuilder.build(source, maxRows: 10, columns: []) == .noColumns)
+        let kept = (1..<count).map { ShareSnapshotBuilder.SharedColumn(source: $0, applying: nil, masked: nil) }
+        #expect(try snapshot(ShareSnapshotBuilder.build(source, maxRows: 10, columns: kept)).columns.count == ShareSnapshotBuilder.maxColumns)
+    }
+
     @Test("A cell's JSON size counts its escapes and nested arrays")
     func jsonByteCount() {
         #expect(ShareCellEncoder.jsonByteCount(.string("ab")) == 4)

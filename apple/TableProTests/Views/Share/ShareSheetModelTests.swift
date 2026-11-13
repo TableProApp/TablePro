@@ -514,9 +514,113 @@ struct ShareSheetModelTests {
         #expect(model.secretWarnings.count == 1)
         model.hidesSQL = true
         #expect(model.secretWarnings.isEmpty)
+    }
+
+    @Test("A column that may hold secrets warns only once it is sent as it is")
+    func columnWarningForKeptColumns() async throws {
+        let model = makeModel(Self.resultRequest(), service: FakeShareService())
+        await model.load()
+        #expect(model.columns.map(\.action) == [.keep, .mask])
+        #expect(model.columnWarning == nil)
+
+        model.setAction(.keep, forColumn: 1)
         #expect(model.columnWarning == String(
             format: String(localized: "Some columns may hold secrets: %@."),
             ListFormatter.localizedString(byJoining: ["api_key"])
         ))
+    }
+
+    // MARK: - Columns
+
+    private static func peopleRequest(sql: String = "SELECT * FROM people") -> ShareRequest {
+        .result(title: "People", dialect: "PostgreSQL", source: ShareResultSource(
+            columns: ["id", "email", "ip", "note"],
+            columnTypes: [.integer(rawType: "int8"), .text(rawType: "text"), .text(rawType: "inet"), .text(rawType: "text")],
+            rows: [
+                [.text("1"), .text("jane@example.com"), .text("j•••@x.io"), .text("hello")],
+                [.text("2"), .text("john@example.com"), .text("a1b2c3d4e5f6"), .text("world")]
+            ],
+            totalRowCount: 2,
+            sql: sql,
+            masks: ColumnMasks(styles: [2: .hash])
+        ))
+    }
+
+    @Test("Columns start from the rules and the detectors, and the snapshot sends the values as the preview shows them")
+    func columnDefaults() async throws {
+        let model = makeModel(Self.peopleRequest(), service: FakeShareService())
+        await model.load()
+
+        #expect(model.columns.map(\.action) == [.keep, .mask, .mask, .keep])
+        #expect(model.columns.map(\.style) == [.full, .email, .hash, .full])
+        #expect(model.hasDetections)
+        #expect(model.columnSummary == formatted("%1$lld columns masked, %2$lld removed.", Int64(2), Int64(0)))
+        let snapshot = try #require(model.makeDraft()?.snapshot)
+        #expect(snapshot.columns.map(\.masked) == [nil, .email, .hash, nil])
+        #expect(snapshot.rows.first == [.number("1"), .string("j•••@example.com"), .string("j•••@x.io"), .string("hello")])
+        #expect(model.previewRows.first == snapshot.rows.first)
+    }
+
+    @Test("A rule-masked column cannot be kept and takes only a stricter style")
+    func ruleMaskedColumnStaysMasked() async {
+        let model = makeModel(Self.peopleRequest(), service: FakeShareService())
+        await model.load()
+
+        model.setAction(.keep, forColumn: 2)
+        model.setStyle(.email, forColumn: 2)
+        #expect(model.columns[2].action == .mask)
+        #expect(model.columns[2].style == .hash)
+        #expect(model.canCreate)
+    }
+
+    @Test("A change to the columns holds Create until the snapshot is rebuilt with it")
+    func columnChangeRebuilds() async throws {
+        let model = makeModel(Self.peopleRequest(), service: FakeShareService())
+        await model.load()
+
+        model.setAction(.remove, forColumn: 3)
+        model.setAction(.keep, forColumn: 1)
+        model.setStyle(.null, forColumn: 2)
+        #expect(!model.canCreate)
+        #expect(model.makeDraft() == nil)
+
+        try await waitUntil { model.canCreate }
+        let snapshot = try #require(model.makeDraft()?.snapshot)
+        #expect(snapshot.columns.map(\.name) == ["id", "email", "ip"])
+        #expect(snapshot.columns.map(\.masked) == [nil, nil, .null])
+        #expect(snapshot.rows.first == [.number("1"), .string("jane@example.com"), .null])
+        #expect(model.columnSummary == formatted("%1$lld columns masked, %2$lld removed.", Int64(1), Int64(1)))
+    }
+
+    @Test("Removing every column says so and blocks Create")
+    func everyColumnRemoved() async throws {
+        let model = makeModel(Self.peopleRequest(), service: FakeShareService())
+        await model.load()
+        for index in 0..<4 {
+            model.setAction(.remove, forColumn: index)
+        }
+        try await waitUntil { model.isEveryColumnRemoved }
+        #expect(!model.canCreate)
+    }
+
+    @Test("Personal data in the SQL suggests Hide SQL until it is on, and never for a query share")
+    func hideSQLSuggestion() async throws {
+        let model = makeModel(
+            Self.peopleRequest(sql: "SELECT * FROM people WHERE email = 'jane@example.com'"),
+            service: FakeShareService()
+        )
+        await model.load()
+        try await waitUntil { model.hideSQLSuggestion != nil }
+        #expect(model.hideSQLSuggestion == String(
+            format: String(localized: "This query contains what looks like personal data (%@). Turn on Hide SQL to keep the query private."),
+            ListFormatter.localizedString(byJoining: [SensitiveValueKind.email.displayName])
+        ))
+        model.hidesSQL = true
+        #expect(model.hideSQLSuggestion == nil)
+
+        let query = makeModel(.query(title: "Q", sql: "SELECT 'jane@example.com'", dialect: nil), service: FakeShareService())
+        await query.load()
+        try await waitUntil { !query.sqlPersonalData.isEmpty }
+        #expect(query.hideSQLSuggestion == nil)
     }
 }

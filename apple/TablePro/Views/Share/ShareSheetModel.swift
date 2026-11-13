@@ -39,7 +39,8 @@ internal final class ShareSheetModel: ObservableObject {
     @Published private(set) var isCreating = false
     @Published private(set) var failureMessage: String?
     @Published private(set) var sqlSecretKinds: [SecretKind] = []
-    @Published private(set) var sensitiveColumns: [String] = []
+    @Published private(set) var sqlPersonalData: [SensitiveValueKind] = []
+    @Published private(set) var columns: [ShareColumnChoice] = []
 
     @Published var title: String
     @Published var note = ""
@@ -60,6 +61,9 @@ internal final class ShareSheetModel: ObservableObject {
     private var signInObservation: AnyCancellable?
     private var appliedDefaults = false
     private var sourceMaxRows: Int?
+    // The column choices the snapshot was built with; a snapshot built for others is never sent.
+    private var builtColumns: [ShareColumnChoice]?
+    private var rebuild: Task<Void, Never>?
     private var scannedSQL: String?
     private var work: [Task<Void, Never>] = []
     private var isClosed = false
@@ -163,39 +167,80 @@ internal final class ShareSheetModel: ObservableObject {
         }
     }
 
-    // Up to 10,000 rows of 100 columns: read and built off the main actor, once per row limit.
+    // Up to 10,000 rows of 100 columns: read, scanned and built off the main actor, once per row limit.
     private func loadSource(maxRows: Int) async {
         guard let load = request.loadResult, sourceMaxRows != maxRows else { return }
         guard let loaded = await load(maxRows), !Task.isCancelled, !isClosed else { return }
         source = loaded
         sourceMaxRows = maxRows
-        sensitiveColumns = SecretScanner.scanColumns(loaded.columns)
         scanSQL(loaded.sql)
+        let detect = Task.detached(priority: .userInitiated) {
+            ShareColumnChoice.defaults(for: loaded, maxRows: maxRows)
+        }
+        let choices = await withTaskCancellationHandler {
+            await detect.value
+        } onCancel: {
+            detect.cancel()
+        }
+        guard let choices, !isClosed else { return }
+        columns = choices
+        await buildSnapshot()
+    }
+
+    private func buildSnapshot() async {
+        guard let source, let maxRows = sourceMaxRows else { return }
+        let choices = columns
+        let shared = choices.compactMap(\.sharedColumn)
         let build = Task.detached(priority: .userInitiated) {
-            ShareSnapshotBuilder.build(loaded, maxRows: maxRows)
+            ShareSnapshotBuilder.build(source, maxRows: maxRows, columns: shared)
         }
         let built = await withTaskCancellationHandler {
             await build.value
         } onCancel: {
             build.cancel()
         }
-        guard let built, !isClosed else { return }
+        guard let built, !isClosed, choices == columns else { return }
         snapshot = built
+        builtColumns = choices
     }
 
     private func scanSQL(_ sql: String) {
         guard sql != scannedSQL else { return }
         scannedSQL = sql
-        let scan = Task.detached(priority: .utility) { SecretScanner.scanSQL(sql) }
+        let scan = Task.detached(priority: .utility) {
+            (SecretScanner.scanSQL(sql), SensitiveDataDetector.personalData(inSQL: sql))
+        }
         track(Task { [weak self] in
-            let hits = await withTaskCancellationHandler { await scan.value } onCancel: { scan.cancel() }
+            let (hits, personalData) = await withTaskCancellationHandler { await scan.value } onCancel: { scan.cancel() }
             guard let self, self.scannedSQL == sql else { return }
             var kinds: [SecretKind] = []
             for hit in hits where !kinds.contains(hit.kind) {
                 kinds.append(hit.kind)
             }
             self.sqlSecretKinds = kinds
+            self.sqlPersonalData = personalData
         })
+    }
+
+    // MARK: - Columns
+
+    func setAction(_ action: ShareColumnChoice.Action, forColumn index: Int) {
+        update(column: index) { $0.choosing(action) }
+    }
+
+    func setStyle(_ style: MaskingStyle, forColumn index: Int) {
+        update(column: index) { $0.choosing(style: style) }
+    }
+
+    private func update(column index: Int, _ change: (ShareColumnChoice) -> ShareColumnChoice?) {
+        guard let position = columns.firstIndex(where: { $0.index == index }),
+              let changed = change(columns[position]), changed != columns[position]
+        else { return }
+        columns[position] = changed
+        rebuild?.cancel()
+        let task = Task { await buildSnapshot() }
+        rebuild = task
+        track(task)
     }
 
     func loadLiveLinks() async {
@@ -278,8 +323,13 @@ internal final class ShareSheetModel: ObservableObject {
         snapshot == .tooLarge
     }
 
+    var isEveryColumnRemoved: Bool {
+        snapshot == .noColumns && builtColumns == columns
+    }
+
+    // Also while a change to the columns is rebuilding the snapshot, so Create never sends values masked the old way.
     var isPreparingRows: Bool {
-        request.kind == .result && snapshot == nil
+        request.kind == .result && (snapshot == nil || builtColumns != columns)
     }
 
     var sharedSQL: String {
@@ -310,7 +360,7 @@ internal final class ShareSheetModel: ObservableObject {
     }
 
     var canCreate: Bool {
-        phase == .form && !isCreating && !isSnapshotTooLarge && !isPreparingRows
+        phase == .form && !isCreating && !isSnapshotTooLarge && !isEveryColumnRemoved && !isPreparingRows
             && sqlTooLongMessage == nil && passwordTooLongMessage == nil
     }
 
@@ -342,7 +392,7 @@ internal final class ShareSheetModel: ObservableObject {
         guard let limits else { return nil }
         let snapshotValue: ShareSnapshot?
         switch (request.kind, snapshot) {
-        case (.result, .snapshot(let built)):
+        case (.result, .snapshot(let built)) where builtColumns == columns:
             snapshotValue = built
         case (.result, _):
             return nil
@@ -484,11 +534,37 @@ internal final class ShareSheetModel: ObservableObject {
         }
     }
 
+    // Only columns sent as they are: a masked or removed one gives nothing away.
     var columnWarning: String? {
-        guard !sensitiveColumns.isEmpty else { return nil }
+        let kept = SecretScanner.scanColumns(columns.filter { $0.action == .keep }.map(\.name))
+        guard !kept.isEmpty else { return nil }
         return String(
             format: String(localized: "Some columns may hold secrets: %@."),
-            ListFormatter.localizedString(byJoining: sensitiveColumns)
+            ListFormatter.localizedString(byJoining: kept)
+        )
+    }
+
+    var columnSummary: String {
+        let masked = columns.filter { $0.action == .mask }.count
+        let removed = columns.filter { $0.action == .remove }.count
+        return String(
+            format: String(localized: "%1$lld columns masked, %2$lld removed."),
+            locale: .current,
+            Int64(masked),
+            Int64(removed)
+        )
+    }
+
+    var hasDetections: Bool {
+        columns.contains { $0.detection != nil }
+    }
+
+    // Only while Hide SQL is off and there is SQL to hide.
+    var hideSQLSuggestion: String? {
+        guard request.kind == .result, hasSharedSQL, !hidesSQL, !sqlPersonalData.isEmpty else { return nil }
+        return String(
+            format: String(localized: "This query contains what looks like personal data (%@). Turn on Hide SQL to keep the query private."),
+            ListFormatter.localizedString(byJoining: sqlPersonalData.map(\.displayName))
         )
     }
 }

@@ -15,11 +15,15 @@ internal struct ShareResultSource: Sendable {
     let totalRowCount: Int?
     // The statement these rows came from.
     let sql: String
+    // The columns whose values the connection's rules already masked, and how.
+    var masks: ColumnMasks = .none
 }
 
 internal enum ShareSnapshotOutcome: Equatable, Sendable {
     case snapshot(ShareSnapshot)
     case tooLarge
+    // Every column was removed.
+    case noColumns
 }
 
 internal enum ShareSnapshotBuilder {
@@ -28,25 +32,52 @@ internal enum ShareSnapshotBuilder {
     // Under the server's 5 MiB, so a size it counts differently never refuses a share the sheet offered.
     static let maxBodyBytes = 4_500_000
 
+    // One column of the snapshot, read from a column of the source.
+    struct SharedColumn: Equatable, Sendable {
+        let source: Int
+        // Masked here, over what the source holds; nil sends the source's value.
+        let applying: MaskingStyle?
+        // What the snapshot tells the viewer the values were masked with.
+        let masked: MaskingStyle?
+    }
+
+    // Every column of the source, its rule masks marked.
+    static func sharedColumns(of source: ShareResultSource) -> [SharedColumn] {
+        source.columns.indices.map { SharedColumn(source: $0, applying: nil, masked: source.masks.styles[$0]) }
+    }
+
     // Nil once the caller's task is cancelled.
-    static func build(_ source: ShareResultSource, maxRows: Int) -> ShareSnapshotOutcome? {
-        guard !source.columns.isEmpty, source.columns.count <= maxColumns else { return .tooLarge }
-        let columns = source.columns.indices.map { index in
-            ShareSnapshot.Column(name: source.columns[index], type: typeLabel(source.columnTypes, at: index))
+    static func build(_ source: ShareResultSource, maxRows: Int, columns shared: [SharedColumn]? = nil) -> ShareSnapshotOutcome? {
+        guard !source.columns.isEmpty else { return .tooLarge }
+        let shared = (shared ?? sharedColumns(of: source)).filter { source.columns.indices.contains($0.source) }
+        guard !shared.isEmpty else { return .noColumns }
+        guard shared.count <= maxColumns else { return .tooLarge }
+        let columns = shared.map { column in
+            ShareSnapshot.Column(
+                name: source.columns[column.source],
+                type: typeLabel(source.columnTypes, at: column.source),
+                masked: column.masked
+            )
         }
 
         var rows: [[ShareCell]] = []
         rows.reserveCapacity(min(source.rows.count, max(0, maxRows)))
-        var bodyBytes = 2 + columns.reduce(0) { $0 + ShareCellEncoder.quotedByteCount($1.name) + 12 }
+        var bodyBytes = 2 + columns.reduce(0) { $0 + ShareCellEncoder.quotedByteCount($1.name) + 24 }
         for row in source.rows {
             guard rows.count < maxRows else { break }
             if rows.count % 256 == 0, Task.isCancelled { return nil }
             var cells: [ShareCell] = []
             cells.reserveCapacity(columns.count)
             var rowBytes = 2 + max(0, columns.count - 1) + 1
-            for index in columns.indices {
-                let type = source.columnTypes.indices.contains(index) ? source.columnTypes[index] : .text(rawType: nil)
-                let cell = ShareCellEncoder.encode(row.indices.contains(index) ? row[index] : .null, type: type)
+            for column in shared {
+                var value = row.indices.contains(column.source) ? row[column.source] : .null
+                if let style = column.applying {
+                    value = MaskedValue.mask(value, style: style)
+                }
+                // A masked value is text whatever the column held, so a hash of digits never reads as a number.
+                let type = column.masked == nil && source.columnTypes.indices.contains(column.source)
+                    ? source.columnTypes[column.source] : .text(rawType: nil)
+                let cell = ShareCellEncoder.encode(value, type: type)
                 let size = ShareCellEncoder.jsonByteCount(cell)
                 guard size <= maxCellBytes else { return .tooLarge }
                 rowBytes += size

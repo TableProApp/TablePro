@@ -74,6 +74,10 @@ internal enum ShareBodyWriter {
             if let type = column.type {
                 object += ",\"type\":" + quoted(clipped(type, to: columnTextLimit))
             }
+            // The style names are the contract's ShareMaskStyle values.
+            if let masked = column.masked {
+                object += ",\"masked\":" + quoted(masked.rawValue)
+            }
             return object + "}"
         }
         let rows = snapshot.rows.map { row in "[" + row.map(cell).joined(separator: ",") + "]" }

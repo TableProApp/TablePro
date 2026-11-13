@@ -71,6 +71,18 @@ extension GlobalStateSuites {
             #expect(shared.sql == "SELECT id, email, note FROM users")
         }
 
+        @Test("The source says which shared columns the rules masked, at their place after hidden columns")
+        func sourceCarriesRuleMasks() async throws {
+            var tab = QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query)
+            tab.columnLayout.hiddenColumns = ["id"]
+            _ = try load(tab)
+            let shared = try await source()
+
+            #expect(shared.columns == ["email", "note"])
+            #expect(shared.masks == ColumnMasks(styles: [0: .email]))
+            #expect(shared.rows.first?.first == .text("j•••@example.com"))
+        }
+
         @Test("A result cut short sends its exact count")
         func exactCountIsTheTotal() async throws {
             let tab = try load(QueryTab(title: "Q", query: "SELECT * FROM users", tabType: .query))
