@@ -34,11 +34,12 @@ pub(super) fn outcome(fetched: Result<SharedLink, AccountError>) -> SharedOutcom
         // Anyone can write a link, and GTK refuses text with a NUL in it.
         Ok(SharedLink {
             title, sql: Some(sql), ..
-        }) => SharedOutcome::Open {
+        }) if !sql.replace('\0', "").trim().is_empty() => SharedOutcome::Open {
             title: title.replace('\0', ""),
             sql: sql.replace('\0', ""),
         },
-        Ok(SharedLink { sql: None, .. }) => SharedOutcome::Say(gettext(
+        // Hidden, or a result shared without SQL: an empty editor tab would open nothing anyone asked for.
+        Ok(SharedLink { .. }) => SharedOutcome::Say(gettext(
             "This shared result hides its SQL, so there is nothing to open.",
         )),
         Err(error) => match error.code() {
@@ -251,6 +252,17 @@ mod tests {
                 sql: "SELECT 1".to_owned()
             }
         );
+    }
+
+    #[test]
+    fn a_result_shared_with_blank_sql_opens_nothing() {
+        for sql in ["", "  \n\t", "\0"] {
+            assert_eq!(
+                outcome(Ok(link(Some(sql)))),
+                SharedOutcome::Say("This shared result hides its SQL, so there is nothing to open.".to_owned()),
+                "{sql:?}"
+            );
+        }
     }
 
     #[test]
