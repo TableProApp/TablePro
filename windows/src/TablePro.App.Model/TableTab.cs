@@ -10,6 +10,7 @@ public enum ReloadReason
     Page,
     PageSize,
     Filter,
+    Reveal,
 }
 
 public enum SaveBeforeClose
@@ -54,6 +55,12 @@ public abstract record EditRefusal
     public sealed record RowDeleted : EditRefusal
     {
         public static RowDeleted Instance { get; } = new();
+    }
+
+    // The grid holds the masked text, not the value, so there is nothing to start from or write back.
+    public sealed record MaskedCell : EditRefusal
+    {
+        public static MaskedCell Instance { get; } = new();
     }
 
     // The last save may have been written, so another waits for a reload or a discard.
@@ -113,6 +120,9 @@ public interface ITableTabView
 
     // Without the columns and their operators the filter bar has nothing to offer.
     void ShowFilterChoicesFailed(CoreError failure);
+
+    // Windows Hello where the device has it, else a confirmation; true lets the tab show the stored values.
+    Task<bool> ConfirmRevealAsync();
 }
 
 // A sort and a filter are the page's ORDER BY and WHERE, so they order and pick from the whole table.
@@ -249,6 +259,14 @@ public sealed class TableTab : IWorkspaceTab
     public ResultSet? ShownRows => _results.ShownSet;
 
     public int PageSize => _chosenSize ?? _settings().PageSize;
+
+    // Asked for once and kept by the tab, which reads its pages unmasked from then on; exports and shares stay masked.
+    public bool RevealsMasked { get; private set; }
+
+    public bool OffersReveal => !RevealsMasked && _results.Columns.Any(column => column.Masked is not null);
+
+    public bool IsColumnMasked(int column) =>
+        column >= 0 && column < _results.Columns.Count && _results.Columns[column].Masked is not null;
 
     // The page's pending changes, made anew for each page read.
     public TableEdits? Edits { get; private set; }
@@ -636,6 +654,47 @@ public sealed class TableTab : IWorkspaceTab
 
     public void Stop() => _run?.Cancel();
 
+    // The user's own check comes first, then the question about pending edits, then the page is read again unmasked.
+    public async Task RevealMaskedAsync()
+    {
+        if (!OffersReveal || !await _view.ConfirmRevealAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
+        if (RevealsMasked || !await MayReloadNowAsync(ReloadReason.Reveal).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        RevealsMasked = true;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        await LoadAsync(_page.Offset).ConfigureAwait(true);
+    }
+
+    // After the connection's masking rules were saved: the rows shown take the new masks, and so does their lock.
+    public async Task RemaskAsync()
+    {
+        if (!await _results.RemaskAsync().ConfigureAwait(true) || _work.IsClosed)
+        {
+            return;
+        }
+
+        if (Edits is not null && _tableEditor is { } editor)
+        {
+            try
+            {
+                _pageLock = editor.LockFor(_editsRows);
+            }
+            catch (TableProException)
+            {
+                // The lock read when the page arrived stays; a save meets the core's own check.
+            }
+        }
+
+        OnEditsChanged(this, EventArgs.Empty);
+    }
+
     // From the view's first row with the shown filter and sort, whichever page shows, so "first N of M" holds.
     public async Task<TableShareRead> ReadForShareAsync(long maxRows, CancellationToken cancellationToken)
     {
@@ -644,7 +703,8 @@ public sealed class TableTab : IWorkspaceTab
             ? null
             : new ColumnSort(_shownSort.Column, _shownSort.Direction == SortDirection.Ascending);
         var filter = _shownFilter;
-        var read = await _session.ReadTablePageAsync(Table, sort, filter, maxRows, 0, cancellationToken)
+        // Masked as every share is, whatever the tab revealed.
+        var read = await _session.ReadTablePageAsync(Table, sort, filter, maxRows, 0, false, cancellationToken)
             .ConfigureAwait(true);
         try
         {
@@ -769,7 +829,8 @@ public sealed class TableTab : IWorkspaceTab
                 : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
             var filter = Filter;
             // The core binds the filter's values and stops the read at the page's size.
-            var read = await _session.ReadTablePageAsync(Table, sort, filter, page.Size, page.Offset, cancellationToken)
+            var read = await _session
+                .ReadTablePageAsync(Table, sort, filter, page.Size, page.Offset, RevealsMasked, cancellationToken)
                 .ConfigureAwait(true);
             if (_work.IsClosed)
             {
@@ -940,7 +1001,7 @@ public sealed class TableTab : IWorkspaceTab
         return Lock is { } locked ? new EditRefusal.TableLocked(locked) : null;
     }
 
-    private static EditRefusal? CellRefusal(TableEdits edits, int row, int column)
+    private EditRefusal? CellRefusal(TableEdits edits, int row, int column)
     {
         if (row < 0 || row >= edits.RowCount || column < 0 || column >= edits.Columns.Count)
         {
@@ -950,6 +1011,12 @@ public sealed class TableTab : IWorkspaceTab
         if (edits.IsDeleted(row))
         {
             return EditRefusal.RowDeleted.Instance;
+        }
+
+        // A new row holds what the user types, never a masked value.
+        if (!edits.IsAdded(row) && IsColumnMasked(column))
+        {
+            return EditRefusal.MaskedCell.Instance;
         }
 
         // A saved row's key stays as it is; a new row leaves to the server what it fills.

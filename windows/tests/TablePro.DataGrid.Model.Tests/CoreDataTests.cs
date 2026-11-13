@@ -104,11 +104,25 @@ internal sealed class CoreDatabase : IAsyncDisposable
         _editor = editor;
     }
 
-    public static async Task<CoreDatabase> CreateAsync()
+    // With rules, the file is opened as a saved connection, since only a saved one has masking rules.
+    public static async Task<CoreDatabase> CreateAsync(IReadOnlyList<MaskingRule>? rules = null)
     {
         var directory = Directory.CreateTempSubdirectory("tablepro-grid-").FullName;
-        var core = TableProCore.Create(new HostConfiguration("test"), new NoSecrets());
-        var session = await core.OpenFileAsync(new FileOpenOptions(Path.Combine(directory, "grid.sqlite"), Create: true));
+        var core = TableProCore.Create(new HostConfiguration("test", directory), new NoSecrets());
+        var path = Path.Combine(directory, "grid.sqlite");
+        var session = await core.OpenFileAsync(new FileOpenOptions(path, Create: true));
+        if (rules is not null)
+        {
+            await session.DisposeAsync();
+            var saved = await core.Library.SaveAsync(
+                new SavedConnection(null, "grid", "sqlite", string.Empty, 0, path, string.Empty, TlsSettings.Disabled)
+                {
+                    MaskingRules = rules,
+                },
+                ConnectionSecrets.None);
+            session = await core.ConnectAsync(saved.Id!.Value);
+        }
+
         var editor = await session.OpenEditorAsync();
         return new CoreDatabase(directory, core, session, editor);
     }

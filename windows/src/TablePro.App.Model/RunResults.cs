@@ -7,7 +7,7 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
 {
     public int SetIndex { get; } = setIndex;
 
-    public IReadOnlyList<ResultColumn> Columns { get; } = columns;
+    public IReadOnlyList<ResultColumn> Columns { get; private set; } = columns;
 
     public int Position { get; internal set; }
 
@@ -23,6 +23,36 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
 
     // Set from ByteLimitReached alone, since a finish carries no limit.
     public long? SizeLimit { get; internal set; }
+
+    // After a remask the set's columns are read again, with the masks the saved rules gave them.
+    public void Remasked(IReadOnlyList<ResultColumn> read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        Columns = [.. read.Take(Columns.Count)];
+    }
+}
+
+// After a saved rule, each result's set is masked again in turn, and a result whose set changed takes its columns again.
+public static class ResultRemask
+{
+    // Remask gives the set's columns read again when it masked anything, else null; a set gone meanwhile gives null.
+    public static async Task<bool> ApplyAsync(
+        IReadOnlyList<RunResult> results, Func<RunResult, Task<IReadOnlyList<ResultColumn>?>> remask)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        ArgumentNullException.ThrowIfNull(remask);
+        var changed = false;
+        foreach (var result in results)
+        {
+            if (await remask(result).ConfigureAwait(true) is { } columns)
+            {
+                result.Remasked(columns);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
 }
 
 // Each result set of a run in the order it started, labelled "Result {n} ({rows})" as the Linux app lists them.

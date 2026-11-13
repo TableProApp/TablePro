@@ -33,6 +33,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ResultGrid.SizeColumnsToContent = true;
         ResultGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
         ResultGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
+        ResultGrid.MaskedStatus = Strings.Get("GridMaskedStatus");
+        ResultGrid.MaskedColumnTip = Strings.Get("GridMaskedColumnTip");
         ResultGrid.SortRequested += (_, sort) => SortRequested?.Invoke(this, sort);
     }
 
@@ -106,6 +108,48 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     }
 
     public void ShowError(CoreError failure) => ShowError(Strings.Error(failure));
+
+    // A sorted copy reads its set's rows, so masking the run's sets masks it too. A run that replaced the sets
+    // meanwhile shows its own rows, masked as they arrived.
+    public async Task<bool> RemaskAsync()
+    {
+        var held = _held;
+        var sets = held.ToDictionary(entry => entry.Result, entry => entry.Set);
+        var changed = await ResultRemask.ApplyAsync(
+                [.. held.Select(entry => entry.Result)],
+                async result =>
+                {
+                    if (!ReferenceEquals(held, _held))
+                    {
+                        return null;
+                    }
+
+                    try
+                    {
+                        var set = sets[result];
+                        return await set.RemaskAsync().ConfigureAwait(true) ? set.GetColumns() : null;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return null;
+                    }
+                })
+            .ConfigureAwait(true);
+        if (!changed || !ReferenceEquals(held, _held) || _picked is not { } picked)
+        {
+            return changed;
+        }
+
+        Columns = picked.Result.Columns;
+        var shown = ResultGrid.Data is EditedGridData edited ? edited.Data : ResultGrid.Data;
+        if (shown is ResultSetData data)
+        {
+            data.Remasked(Columns);
+        }
+
+        ResultGrid.CellsChanged();
+        return true;
+    }
 
     public void ShowError(string message)
     {

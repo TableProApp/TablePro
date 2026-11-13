@@ -41,6 +41,12 @@ public interface IQueryTabView
     Task<bool> ConfirmRollBackAsync();
 
     void CloseEditor();
+
+    // Windows Hello where the device has it, else a confirmation; true lets the tab show the stored values.
+    Task<bool> ConfirmRevealAsync();
+
+    // The statement shown did not only read, so it does not run again; the next run shows the values.
+    void ShowRevealOnNextRun();
 }
 
 // One editor connection for the tab, so a transaction holds from one run to the next.
@@ -104,6 +110,11 @@ public sealed class QueryTab : IWorkspaceTab
     // The typed SQL whose results the tab shows, which a result share sends; null after Commit or Roll back.
     public string? LastStatement => _statement;
 
+    // Asked for once and kept by the tab, whose runs show stored values from then on; exports and shares stay masked.
+    public bool RevealsMasked { get; private set; }
+
+    public bool OffersReveal => !RevealsMasked && _results.Columns.Any(column => column.Masked is not null);
+
     // A query tab's text is kept in the session, so closing loses nothing to ask about.
     public Task<bool> ConfirmCloseAsync(bool offerSave) => Task.FromResult(true);
 
@@ -147,6 +158,35 @@ public sealed class QueryTab : IWorkspaceTab
     }
 
     public void Stop() => _run?.Cancel();
+
+    // Running again could repeat a write, so only a statement that only reads runs again, as on macOS.
+    public async Task RevealMaskedAsync()
+    {
+        if (!OffersReveal || !await _view.ConfirmRevealAsync().ConfigureAwait(true) || RevealsMasked || _work.IsClosed)
+        {
+            return;
+        }
+
+        RevealsMasked = true;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        if (_statement is { } statement && !IsRunning && !_confirming && _session.ReadsOnly(statement))
+        {
+            _sort = GridSort.None;
+            await RunSqlAsync(statement, record: false).ConfigureAwait(true);
+            return;
+        }
+
+        _view.ShowRevealOnNextRun();
+    }
+
+    // After the connection's masking rules were saved: the sets shown take the new masks, unless revealed.
+    public async Task RemaskAsync()
+    {
+        if (await _results.RemaskAsync().ConfigureAwait(true) && !_work.IsClosed)
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public Task CommitAsync() => EndTransactionAsync(commit: true);
 
@@ -295,7 +335,7 @@ public sealed class QueryTab : IWorkspaceTab
             var startedAt = DateTimeOffset.Now;
             var started = Stopwatch.GetTimestamp();
             var settings = _settings();
-            _run = _editor.Run(sql, RunOptions(settings), cancellationToken);
+            _run = _editor.Run(sql, RunOptions(settings) with { RevealMasked = RevealsMasked }, cancellationToken);
             await _results.ShowRunAsync(_run, _sort, int.MaxValue, settings.ResultSetsKeptPerRun, cancellationToken)
                 .ConfigureAwait(true);
             if (!_work.IsClosed)

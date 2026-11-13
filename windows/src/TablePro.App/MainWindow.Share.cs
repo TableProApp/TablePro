@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using TablePro.App.Model;
 using TablePro.App.Services;
@@ -10,7 +11,9 @@ namespace TablePro.App;
 // Share links (docs/decisions/0009-share-links.md): the File menu's commands and tablepro://share links.
 public sealed partial class MainWindow
 {
-    // The primary opens a link; a tab window hands it over. A link never runs: its SQL opens in a new query tab.
+    private readonly PendingSharedLinks _links = new();
+
+    // The primary opens links, one at a time; a tab window hands them over. Its SQL opens in a new tab, never run.
     internal async void OpenSharedLink(string link)
     {
         if (!IsPrimary)
@@ -19,6 +22,26 @@ public sealed partial class MainWindow
             return;
         }
 
+        if (!_links.Offer(link))
+        {
+            return;
+        }
+
+        while (_links.TakeNext() is { } next)
+        {
+            try
+            {
+                await OpenOneSharedLinkAsync(next);
+            }
+            catch (Exception exception) when (exception is COMException or InvalidOperationException)
+            {
+                CrashLog.Write(exception);
+            }
+        }
+    }
+
+    private async Task OpenOneSharedLinkAsync(string link)
+    {
         if (await SharedLinkDialogs.FetchAsync(Root, _workbench, link) is not { } shared)
         {
             return;

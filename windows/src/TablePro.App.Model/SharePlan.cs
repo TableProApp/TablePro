@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using TablePro.Interop;
 
 namespace TablePro.App.Model;
@@ -12,11 +14,26 @@ public enum ShareStage
     Form,
 }
 
+// Whether a result can be shared now: its columns and the core's summary of what they send must be read first.
+public enum ShareReadiness
+{
+    Reading,
+    Ready,
+    NoColumns,
+    TooLarge,
+}
+
 // Every expiry is listed; one the plan does not allow is disabled, and Never on Free carries a Pro tag.
 public sealed record ExpiryChoice(ShareExpiry Expiry, bool Enabled, bool ProTag);
 
-// The footer line: "Free · 3 of 5 links · first 1,000 rows" or "Pro · 12 links".
-public sealed record ShareFooter(bool Pro, long Live, long Limit, long MaxRows);
+// The footer line: "Free · 3 of 5 links · first 1,000 rows", "Pro · 12 links", or a team's "Data · 4 of 1,000 links".
+public sealed record ShareFooter(bool Pro, long Live, long Limit, long MaxRows, string? Team = null);
+
+// The at-cap line: "You have 7 live links. Free allows 5." and, on Free, "Pro allows up to 1,000."; or a team's.
+public sealed record ShareCap(bool Pro, long Live, long Limit, string? Team = null);
+
+// Share as: Personal (no TeamId), then each seated team; one whose public links are off is listed, not offered.
+public sealed record ShareOwner(string? TeamId, string? Name, bool Enabled);
 
 // What the sheet's fields hold when Share is pressed.
 public sealed record ShareForm(
@@ -25,7 +42,18 @@ public sealed record ShareForm(
     ShareExpiry Expiry,
     bool HideSql,
     string Password,
-    bool AllowDownload);
+    bool AllowDownload)
+{
+    // The record's own ToString would print the password into a log line or a debugger's summary.
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"Title = {Title}, Expiry = {Expiry}, HideSql = {HideSql}, HasPassword = {Password.Length > 0}, ");
+        builder.Append(CultureInfo.InvariantCulture, $"AllowDownload = {AllowDownload}");
+        return true;
+    }
+}
 
 // What one share sheet offers, from the plan's limits (share links PLAN, Client UX).
 public sealed class SharePlan
@@ -38,11 +66,17 @@ public sealed class SharePlan
     private static readonly ShareExpiry[] AllExpiries =
         [ShareExpiry.OneDay, ShareExpiry.SevenDays, ShareExpiry.ThirtyDays, ShareExpiry.Never];
 
-    private SharePlan(ShareLimits limits, ShareKind kind, long totalRows, bool hasSql)
+    private SharePlan(ShareLimits limits, ShareKind kind, long totalRows, bool hasSql, string? teamId)
     {
         Limits = limits;
         Kind = kind;
         HasSql = hasSql;
+        Owners =
+        [
+            new ShareOwner(null, null, true),
+            .. limits.Teams.Select(team => new ShareOwner(team.Id, team.Name, team.PublicLinks)),
+        ];
+        Team = limits.Teams.FirstOrDefault(team => team.Id == teamId && team.PublicLinks);
         TotalRows = kind == ShareKind.Result ? Math.Max(0, totalRows) : 0;
         IsPro = string.Equals(limits.Plan, ProPlan, StringComparison.Ordinal);
         Expiries = [.. AllExpiries.Select(Choice)];
@@ -59,6 +93,18 @@ public sealed class SharePlan
     public bool HasSql { get; }
 
     public bool IsPro { get; }
+
+    public IReadOnlyList<ShareOwner> Owners { get; }
+
+    // The team the link is made for, null for a personal link; a team with public links off is never chosen.
+    public ShareTeam? Team { get; }
+
+    public string? TeamId => Team?.Id;
+
+    // A team link counts against the team's own limit, never the creator's.
+    public long Live => Team?.Live ?? Limits.Live;
+
+    public long LiveLimit => Team?.LiveLimit ?? Limits.LiveLimit;
 
     public IReadOnlyList<ExpiryChoice> Expiries { get; }
 
@@ -80,7 +126,7 @@ public sealed class SharePlan
 
     public bool DownloadChoiceAllowed => Limits.DisableDownload;
 
-    public bool AtCap => Limits.Live >= Limits.LiveLimit;
+    public bool AtCap => Live >= LiveLimit;
 
     public ShareStage Stage => Limits switch
     {
@@ -90,13 +136,48 @@ public sealed class SharePlan
         _ => ShareStage.Form,
     };
 
-    public ShareFooter Footer => new(IsPro, Limits.Live, Limits.LiveLimit, Limits.MaxRows);
+    public ShareFooter Footer => new(IsPro, Live, LiveLimit, Limits.MaxRows, Team?.Name);
 
-    public static SharePlan For(ShareLimits limits, ShareKind kind, long totalRows = 0, bool hasSql = true)
+    // Live, not the limit: after a downgrade an account can hold more live links than its plan allows.
+    public ShareCap Cap => new(IsPro, Live, LiveLimit, Team?.Name);
+
+    public static SharePlan For(
+        ShareLimits limits, ShareKind kind, long totalRows = 0, bool hasSql = true, string? teamId = null)
     {
         ArgumentNullException.ThrowIfNull(limits);
-        return new SharePlan(limits, kind, totalRows, hasSql);
+        return new SharePlan(limits, kind, totalRows, hasSql, teamId);
     }
+
+    // A summary read for older choices is never passed here: the sheet drops it as stale, so Share waits.
+    public ShareReadiness Readiness(ShareColumns? columns, ShareSummary? summary) => Kind switch
+    {
+        ShareKind.Query => ShareReadiness.Ready,
+        _ when columns is null => ShareReadiness.Reading,
+        _ when columns.RemovesEveryColumn => ShareReadiness.NoColumns,
+        _ when summary is null => ShareReadiness.Reading,
+        _ when summary.TooLarge is not null => ShareReadiness.TooLarge,
+        _ => ShareReadiness.Ready,
+    };
+
+    // The body budget can cut a share below the plan's rows, so the row note follows what the core says it sends.
+    public bool CutsRows(ShareSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return Kind == ShareKind.Result && summary.TooLarge is null && summary.RowsSent < TotalRows;
+    }
+
+    public static int PreviewRowsOf(ShareSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return (int)Math.Clamp(summary.RowsSent, 0, PreviewRows);
+    }
+
+    // The server takes the first MaxColumns visible columns of a result, on every plan.
+    public bool CutsColumns(int visibleColumns) =>
+        Kind == ShareKind.Result && Limits.MaxColumns > 0 && visibleColumns > Limits.MaxColumns;
+
+    public int SharedColumns(int visibleColumns) =>
+        CutsColumns(visibleColumns) ? (int)Limits.MaxColumns : Math.Max(0, visibleColumns);
 
     // Free never sends an option the server would refuse with pro_required.
     public ShareRequest Request(ShareForm form, string sql, string? dialect)
@@ -113,15 +194,16 @@ public sealed class SharePlan
             HideSql = OffersHideSql && form.HideSql,
             Password = PasswordAllowed && form.Password.Length > 0 ? form.Password : null,
             AllowDownload = DownloadChoiceAllowed && !form.AllowDownload ? false : null,
+            TeamId = TeamId,
         };
     }
 
-    // The links a revoke would free a slot of, oldest first. Team links never count against the personal limit.
-    public static IReadOnlyList<SharedLink> LiveOldestFirst(IEnumerable<SharedLink> links)
+    // The links a revoke would free a slot of, oldest first: the personal ones, or the chosen team's.
+    public static IReadOnlyList<SharedLink> LiveOldestFirst(IEnumerable<SharedLink> links, string? teamId = null)
     {
         ArgumentNullException.ThrowIfNull(links);
         return [.. links
-            .Where(link => link.IsLive && link.Scope == "account")
+            .Where(link => link.IsLive && (teamId is null ? link.Scope == "account" : link.TeamId == teamId))
             .DistinctBy(link => link.Id)
             .OrderBy(link => link.CreatedAt)];
     }
@@ -150,6 +232,7 @@ public static class ShareErrors
         "account.snapshot_too_large" => "ShareErrorTooLarge",
         "account.rate_limited" => "ShareErrorRateLimited",
         "account.unreachable" => "ShareErrorOffline",
+        "account.validation_failed" => "ShareErrorInvalid",
         _ => Failed,
     };
 

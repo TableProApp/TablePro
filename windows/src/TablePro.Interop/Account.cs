@@ -25,8 +25,7 @@ public sealed record AccountConfiguration(
     public string? MachineGuid { get; init; }
 }
 
-// Opens the sign-in page in the user's browser. The core calls it on a thread it lets block; false or a throw ends
-// the sign-in with account.browser.
+// The core calls it on a thread it lets block; false or a throw ends the sign-in with account.browser.
 public interface IAccountBrowser
 {
     Task<bool> OpenAsync(Uri url);
@@ -185,12 +184,14 @@ public sealed class TableProAccount : IDisposable
         Mapping.Limits(await CoreCall.RunAsync(() => _service.ShareLimits()).ConfigureAwait(false));
 
     // A finished set's first visibleColumns columns and maxRows rows; totalRows is a table view's count, else null.
+    // Columns is the sheet's choice per visible column, Keep for any it leaves out; the connection's rules mask on top.
     public async Task<CreatedShare> CreateShareAsync(
         ShareRequest request,
         ResultSet? rows = null,
         int visibleColumns = 0,
         long maxRows = 0,
-        long? totalRows = null)
+        long? totalRows = null,
+        IReadOnlyList<ShareColumnChoice>? columns = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
@@ -199,15 +200,17 @@ public sealed class TableProAccount : IDisposable
         var set = rows?.Handle;
         var limit = (uint)Math.Min(maxRows, uint.MaxValue);
         ulong? total = totalRows is { } count ? checked((ulong)count) : null;
+        Native.ShareColumnChoice[] choices = columns is null ? [] : [.. columns.Select(Mapping.Choice)];
         var created = await CoreCall.RunAsync(
-                () => _service.CreateShare(native, set, checked((uint)visibleColumns), limit, total))
+                () => _service.CreateShare(native, set, checked((uint)visibleColumns), limit, total, choices))
             .ConfigureAwait(false);
         return Mapping.Created(created);
     }
 
-    // The account's own links, newest first, without their SQL.
-    public async Task<SharePage> ListSharesAsync(bool liveOnly, string? cursor = null) =>
-        Mapping.Page(await CoreCall.RunAsync(() => _service.ListShares(liveOnly, cursor)).ConfigureAwait(false));
+    // The account's own links, or a team's with teamId, newest first, without their SQL.
+    public async Task<SharePage> ListSharesAsync(bool liveOnly, string? teamId = null, string? cursor = null) =>
+        Mapping.Page(
+            await CoreCall.RunAsync(() => _service.ListShares(liveOnly, teamId, cursor)).ConfigureAwait(false));
 
     public Task RevokeShareAsync(string shareId)
     {

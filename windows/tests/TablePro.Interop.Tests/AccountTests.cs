@@ -116,6 +116,29 @@ public sealed class AccountTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AResultSharedWithoutSqlReadsAsNoSql()
+    {
+        var empty = Token[..^1] + "e";
+        const string Blank = """
+            {"kind":"result","title":"Orders","note":"","dialect":"sqlite","sql":"",
+            "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro"}
+            """;
+        const string Omitted = """
+            {"kind":"result","title":"Orders","note":"","dialect":"sqlite",
+            "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro"}
+            """;
+        _cloud = Stub.Start(request => (200, request.Path == $"/v2/shared/{empty}" ? Blank : Omitted));
+        using var account = await OpenAsync(_cloud.Base, new RecordingBrowser());
+
+        var omitted = await account.FetchSharedAsync(Token);
+        var blank = await account.FetchSharedAsync(empty);
+
+        Assert.Null(omitted.Sql);
+        Assert.True(string.IsNullOrWhiteSpace(blank.Sql), blank.Sql);
+        Assert.Equal("result", blank.Kind);
+    }
+
+    [Fact]
     public async Task AMachineGuidThatIsNotAGuidIsRefusedBeforeTheAccountStarts()
     {
         var refused = await Assert.ThrowsAsync<TableProException>(() => _core.OpenAccountAsync(

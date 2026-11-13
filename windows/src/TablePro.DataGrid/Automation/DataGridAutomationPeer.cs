@@ -297,7 +297,7 @@ internal sealed partial class HeaderAutomationPeer(HeaderCell owner, DataGridVie
 
     protected override string GetNameCore() => owner.Title;
 
-    protected override string GetItemStatusCore() => grid.SortStatus(owner.SortDirection);
+    protected override string GetItemStatusCore() => grid.HeaderStatus(owner.SortDirection, owner.IsMasked);
 
     protected override object? GetPatternCore(PatternInterface patternInterface) => patternInterface switch
     {

@@ -77,8 +77,38 @@ public sealed record AccountPanel(
     };
 }
 
+public enum DeviceRemoval
+{
+    Removed,
+
+    // The device went, but the refresh the core runs after a removal failed, which the error says.
+    RemovedNotRefreshed,
+    NotRemoved,
+}
+
 public static class AccountDevices
 {
+    // A removal that threw may still have removed the device, so the list read after it decides.
+    public static DeviceRemoval Removal(bool succeeded, IReadOnlyList<AccountDevice>? listedAfter, string deviceId)
+    {
+        ArgumentNullException.ThrowIfNull(deviceId);
+        if (succeeded)
+        {
+            return DeviceRemoval.Removed;
+        }
+
+        return listedAfter is not null && listedAfter.All(device => device.Id != deviceId)
+            ? DeviceRemoval.RemovedNotRefreshed
+            : DeviceRemoval.NotRemoved;
+    }
+
+    // The device-limit dialog stays open while the license is still past its limit.
+    public static bool PastLimit(AccountStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        return status.Problem is EntitlementProblem.DeviceLimitReached;
+    }
+
     // This machine first, then the most recently seen.
     public static IReadOnlyList<AccountDevice> Ordered(IEnumerable<AccountDevice> devices)
     {

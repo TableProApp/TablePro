@@ -65,6 +65,9 @@ public sealed record SavedConnection(
 {
     // Read only: a save keeps the stored tags, which change through ConnectionLibrary.TagAsync.
     public IReadOnlyList<Guid> Tags { get; init; } = [];
+
+    // A save reaches the connection's open sessions, whose next rows follow it; ResultSet.Remask masks those held.
+    public IReadOnlyList<MaskingRule> MaskingRules { get; init; } = [];
 }
 
 // A null secret keeps what is stored; an empty one is stored as empty, for a server that takes none.

@@ -57,6 +57,9 @@ public sealed partial class DefinitionTabView : UserControl, ITabContent, IDefin
     {
     }
 
+    // A definition shows source, never rows.
+    public Task RemaskAsync() => Task.CompletedTask;
+
     public void FocusContent()
     {
         if (DefinitionText.Visibility == Visibility.Visible)

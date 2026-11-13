@@ -639,7 +639,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 ShareSubject.Result(query.LastStatement ?? string.Empty, query.Title, dialect, rows, query.ResultsView.Columns),
             (TableTabView { IsRunning: false, HasUnsavedChanges: false } table, ShareKind.Result)
                 when table.ResultsView.ShownSet is { IsFinished: true } =>
-                ShareSubject.Table(table.Title, dialect, maxRows => table.Model.ReadForShareAsync(maxRows, default)),
+                ShareSubject.Table(table.Title, dialect, table.Model.ReadForShareAsync),
             _ => null,
         };
     }
@@ -996,6 +996,15 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         // Narrator reads an InfoBar when it opens, not when its text changes.
         ChangesBar.IsOpen = false;
         ChangesBar.IsOpen = true;
+    }
+
+    internal async Task RemaskAsync()
+    {
+        var contents = Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<ITabContent>().ToList();
+        foreach (var content in contents)
+        {
+            await content.RemaskAsync().ConfigureAwait(true);
+        }
     }
 
     internal void HideChangesOnConnect()

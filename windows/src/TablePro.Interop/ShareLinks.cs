@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
@@ -17,19 +19,24 @@ public enum ShareExpiry
     Never,
 }
 
-// What the plan allows now (core ADR 0026). Plan is the server's code, "free" or "pro".
+// What the plan allows now (core ADR 0026). Plan is the server's code, "free" or "pro"; Teams, the seated ones.
 public sealed record ShareLimits(
     string Plan,
     long Live,
     long LiveLimit,
     long MaxRows,
+    long MaxColumns,
     IReadOnlyList<ShareExpiry> Expiries,
     ShareExpiry? DefaultExpiry,
     bool Password,
     bool DisableDownload,
     bool Team,
     bool EmailVerified,
-    bool SharingDisabled);
+    bool SharingDisabled,
+    IReadOnlyList<ShareTeam> Teams);
+
+// A team link counts against the team's own limit; PublicLinks false means the team turned them off.
+public sealed record ShareTeam(string Id, string Name, long Live, long LiveLimit, bool PublicLinks);
 
 // Sql is always stored; a result share's snapshot is built by the core from the set it is given.
 public sealed record ShareRequest(ShareKind Kind, string Sql)
@@ -52,10 +59,21 @@ public sealed record ShareRequest(ShareKind Kind, string Sql)
     public string? Password { get; init; }
 
     public string? TeamId { get; init; }
+
+    // The record's own ToString would print the password into a log line or a debugger's summary.
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"Kind = {Kind}, SqlLength = {Sql.Length}, Title = {Title}, Dialect = {Dialect}, Expiry = {Expiry}, ");
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"HideSql = {HideSql}, AllowDownload = {AllowDownload}, HasPassword = {Password is not null}, TeamId = {TeamId}");
+        return true;
+    }
 }
 
-// A link as its owner sees it. Kind, Scope, State and SuspendedBy stay the server's codes; Sql only when read alone.
-// A suspended link keeps its State and has no Url while the team or staff has sharing off.
+// A link as its owner sees it: Kind, Scope, State and SuspendedBy stay the server's codes; Sql only read alone.
 public sealed record SharedLink(
     string Id,
     string Kind,
@@ -73,26 +91,26 @@ public sealed record SharedLink(
     bool HasPassword,
     string State,
     string? RemovedReason,
+    bool Suspended,
+    string? SuspendedBy,
     long ViewCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DateTimeOffset? ExpiresAt,
     DateTimeOffset? RevokedAt,
     DateTimeOffset? RemovedAt,
-    string? Url,
-    bool Suspended,
-    string? SuspendedBy)
+    string? Url)
 {
     public bool IsLive => State == "live";
 }
 
-public sealed record CreatedShare(SharedLink Share, string Url);
+// ColumnsTruncated: only the first MaxColumns of the visible columns were shared.
+public sealed record CreatedShare(SharedLink Share, string Url, bool ColumnsTruncated);
 
 // NextCursor is null on the last page.
 public sealed record SharePage(IReadOnlyList<SharedLink> Shares, string? NextCursor);
 
-// A link as anyone with it reads it. Sql is null when the owner hid it or shared a result without it, so there is
-// nothing to open.
+// A link as anyone with it reads it. Sql is null when the owner hid it, so there is nothing to open.
 public sealed record PublicShare(
     string Kind,
     string Title,
@@ -129,6 +147,13 @@ public static class ShareLinks
     {
         ArgumentNullException.ThrowIfNull(sql);
         return [.. Native.CoreMethods.ScanSqlForSecrets(sql).Select(Mapping.Hit)];
+    }
+
+    // Personal data in the SQL's single-quoted literals, each kind once per line: the sheet suggests Hide SQL.
+    public static IReadOnlyList<PersonalDataHit> ScanSqlForPersonalData(string sql)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        return [.. Native.CoreMethods.ScanSqlForPersonalData(sql).Select(Mapping.Hit)];
     }
 
     // The names of the columns that may hold a secret, in their order, each once.

@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
+using Microsoft.UI.Xaml.Controls;
 using TablePro.DataGrid.Automation;
 
 namespace TablePro.DataGrid.Tests;
@@ -134,6 +135,33 @@ public sealed class AutomationTests
         Assert.Equal("Tri croissant", FrameworkElementAutomationPeer.CreatePeerForElement(grid.HeaderCell(3)!).GetItemStatus());
     });
 
+    // A masked column's header says so after its sort order, shows the mark's tooltip, and follows a remask in place.
+    [Fact]
+    public Task AMaskedColumnsHeaderSaysSoAfterItsSortOrder() => WinUiHost.RunAsync(async () =>
+    {
+        var data = new MaskedData(new SyntheticData(), masked: 2);
+        var grid = await WinUiHost.ShowAsync(data);
+        string Status(int column) => FrameworkElementAutomationPeer.CreatePeerForElement(grid.HeaderCell(column)!).GetItemStatus();
+
+        var masked = Status(2);
+        var plain = Status(1);
+        var tip = ToolTipService.GetToolTip(grid.HeaderCell(2)!);
+        grid.Sort = new Model.GridSort(2, Model.SortDirection.Ascending);
+        var sorted = Status(2);
+        data.Masked = -1;
+        grid.CellsChanged();
+        var unmasked = Status(2);
+
+        Assert.Equal("Masked", masked);
+        Assert.Equal("", plain);
+        Assert.Equal("Masked by a masking rule", tip);
+        Assert.Equal("Sorted ascending, Masked", sorted);
+        Assert.Equal("Sorted ascending", unmasked);
+        Assert.Null(ToolTipService.GetToolTip(grid.HeaderCell(2)!));
+        Assert.Equal(2, grid.HeaderColumnAt(grid.HeaderCell(2)));
+        Assert.Equal(-1, grid.HeaderColumnAt(grid));
+    });
+
     [Fact]
     public Task AHeaderResizesThroughTransformInPhysicalPixels() => WinUiHost.RunAsync(async () =>
     {
@@ -161,4 +189,20 @@ public sealed class AutomationTests
         ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
         Assert.Equal(new Model.GridSort(2, Model.SortDirection.Ascending), grid.Sort);
     });
+}
+
+// Synthetic cells with one column the header marks masked.
+internal sealed class MaskedData(Model.IGridData inner, int masked) : Model.IGridData
+{
+    public int Masked { get; set; } = masked;
+
+    public int RowCount => inner.RowCount;
+
+    public int ColumnCount => inner.ColumnCount;
+
+    public string GetColumnName(int column) => inner.GetColumnName(column);
+
+    public bool IsColumnMasked(int column) => column == Masked;
+
+    public Model.IGridReader OpenReader() => inner.OpenReader();
 }

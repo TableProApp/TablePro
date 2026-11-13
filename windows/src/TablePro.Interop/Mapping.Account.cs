@@ -73,13 +73,16 @@ internal static partial class Mapping
         Count(limits.Live),
         Count(limits.LiveLimit),
         Count(limits.MaxRows),
+        Count(limits.MaxColumns),
         [.. limits.Expiries.Select(Expiry)],
         limits.DefaultExpiry is { } expiry ? Expiry(expiry) : null,
         limits.Password,
         limits.DisableDownload,
         limits.Team,
         limits.EmailVerified,
-        limits.SharingDisabled);
+        limits.SharingDisabled,
+        [.. limits.Teams.Select(team =>
+            new ShareTeam(team.Id, team.Name, Count(team.Live), Count(team.LiveLimit), team.PublicLinks))]);
 
     public static Native.ShareRequestArg Request(ShareRequest request) => new(
         request.Kind == ShareKind.Result ? Native.ShareKindTag.Result : Native.ShareKindTag.Query,
@@ -119,17 +122,18 @@ internal static partial class Mapping
         share.HasPassword,
         share.State,
         share.RemovedReason,
+        share.Suspended,
+        share.SuspendedBy,
         Count(share.ViewCount),
         DateTimeOffset.FromUnixTimeSeconds(share.CreatedAtSecs),
         DateTimeOffset.FromUnixTimeSeconds(share.UpdatedAtSecs),
         Time(share.ExpiresAtSecs),
         Time(share.RevokedAtSecs),
         Time(share.RemovedAtSecs),
-        share.Url,
-        share.Suspended,
-        share.SuspendedBy);
+        share.Url);
 
-    public static CreatedShare Created(Native.CreatedShareInfo created) => new(Link(created.Share), created.Url);
+    public static CreatedShare Created(Native.CreatedShareInfo created) =>
+        new(Link(created.Share), created.Url, created.ColumnsTruncated);
 
     public static SharePage Page(Native.SharePageInfo page) =>
         new([.. page.Shares.Select(Link)], page.NextCursor);

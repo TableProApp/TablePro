@@ -663,6 +663,51 @@
   <data name="ConnectionTimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Query timeout in seconds</value>
   </data>
+  <data name="MaskingCard.Header" xml:space="preserve">
+    <value>Data masking</value>
+  </data>
+  <data name="MaskingCard.Description" xml:space="preserve">
+    <value>Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values.</value>
+  </data>
+  <data name="AddMaskingRuleButton.Content" xml:space="preserve">
+    <value>Add rule</value>
+  </data>
+  <data name="MaskingTargetName" xml:space="preserve">
+    <value>Match, rule {0}</value>
+  </data>
+  <data name="MaskingPatternName" xml:space="preserve">
+    <value>Pattern, rule {0}</value>
+  </data>
+  <data name="MaskingStyleName" xml:space="preserve">
+    <value>Mask, rule {0}</value>
+  </data>
+  <data name="RemoveMaskingRule" xml:space="preserve">
+    <value>Remove rule</value>
+  </data>
+  <data name="RemoveMaskingRuleName" xml:space="preserve">
+    <value>Remove rule {0}</value>
+  </data>
+  <data name="MaskTarget_Column" xml:space="preserve">
+    <value>Column</value>
+  </data>
+  <data name="MaskTarget_Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="MaskStyle_Full" xml:space="preserve">
+    <value>Full</value>
+  </data>
+  <data name="MaskStyle_LastFour" xml:space="preserve">
+    <value>Last 4 characters</value>
+  </data>
+  <data name="MaskStyle_Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="MaskStyle_Hash" xml:space="preserve">
+    <value>Stable hash</value>
+  </data>
+  <data name="MaskStyle_Null" xml:space="preserve">
+    <value>NULL</value>
+  </data>
   <data name="AppearanceExpander.Header" xml:space="preserve">
     <value>Appearance</value>
   </data>
@@ -812,6 +857,30 @@
   </data>
   <data name="GridSortedDescending" xml:space="preserve">
     <value>Sorted descending</value>
+  </data>
+  <data name="GridMaskedStatus" xml:space="preserve">
+    <value>Masked</value>
+  </data>
+  <data name="GridMaskedColumnTip" xml:space="preserve">
+    <value>Masked by a masking rule</value>
+  </data>
+  <data name="RevealMaskedCommand" xml:space="preserve">
+    <value>Reveal masked values...</value>
+  </data>
+  <data name="RevealMaskedHelloMessage" xml:space="preserve">
+    <value>Show masked values in this tab</value>
+  </data>
+  <data name="RevealMaskedTitle" xml:space="preserve">
+    <value>Reveal masked values?</value>
+  </data>
+  <data name="RevealMaskedMessage" xml:space="preserve">
+    <value>This tab shows the stored values until it closes. Exports and shared links stay masked.</value>
+  </data>
+  <data name="RevealMaskedButton" xml:space="preserve">
+    <value>Reveal</value>
+  </data>
+  <data name="StatusRevealOnNextRun" xml:space="preserve">
+    <value>Masked values show from the next run.</value>
   </data>
   <data name="SectionFavorites" xml:space="preserve">
     <value>Favorites</value>
@@ -977,6 +1046,12 @@
   </data>
   <data name="OptionsSummaryTimeout" xml:space="preserve">
     <value>Safe Mode: {0}, timeout {1} s</value>
+  </data>
+  <data name="OptionsSummaryMaskingOne" xml:space="preserve">
+    <value>{0}, 1 masking rule</value>
+  </data>
+  <data name="OptionsSummaryMaskingMany" xml:space="preserve">
+    <value>{0}, {1} masking rules</value>
   </data>
   <data name="AppearanceSummary" xml:space="preserve">
     <value>Color: {0}, group: {1}</value>
@@ -1887,6 +1962,12 @@ New fingerprint: {2}</value>
   <data name="EditCellReadOnly" xml:space="preserve">
     <value>This value cannot be edited here.</value>
   </data>
+  <data name="EditCellMasked" xml:space="preserve">
+    <value>This value is masked. Reveal masked values to edit it.</value>
+  </data>
+  <data name="EditLockMaskedKey" xml:space="preserve">
+    <value>Rows of {0} cannot be edited while its key is masked. Reveal masked values to edit them.</value>
+  </data>
   <data name="Error_edit_required" xml:space="preserve">
     <value>This column needs a value.</value>
   </data>
@@ -1979,6 +2060,12 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_edit_out_of_range" xml:space="preserve">
     <value>The rows changed since they were read. Refresh the table and edit again.</value>
+  </data>
+  <data name="Error_edit_masked_column" xml:space="preserve">
+    <value>A masked value cannot be edited. Reveal masked values to edit it.</value>
+  </data>
+  <data name="Error_edit_masked_key" xml:space="preserve">
+    <value>The key is masked, so no row can be named. Reveal masked values to edit.</value>
   </data>
   <data name="Error_build_no_row_identity" xml:space="preserve">
     <value>This table has no way to name a single row.</value>
@@ -2312,6 +2399,9 @@ New fingerprint: {2}</value>
   </data>
   <data name="ReloadDiscardFilter" xml:space="preserve">
     <value>Applying or clearing filters will reload data and discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardReveal" xml:space="preserve">
+    <value>Revealing masked values will reload data and discard all unsaved changes.</value>
   </data>
   <data name="FilterPanel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Filter rows</value>
@@ -2709,6 +2799,9 @@ New fingerprint: {2}</value>
   <data name="DeviceOfflineUntil" xml:space="preserve">
     <value>{0} · offline file until {1:d}</value>
   </data>
+  <data name="DeviceRemovedNotRefreshed" xml:space="preserve">
+    <value>{0} was removed. {1}</value>
+  </data>
   <data name="DevicePlatform_windows" xml:space="preserve">
     <value>Windows</value>
   </data>
@@ -2796,6 +2889,105 @@ New fingerprint: {2}</value>
   <data name="SharePreviewHeader" xml:space="preserve">
     <value>Rows that will be shared</value>
   </data>
+  <data name="ShareMaskedColumnTip" xml:space="preserve">
+    <value>Masked in the shared link</value>
+  </data>
+  <data name="ShareNoColumns" xml:space="preserve">
+    <value>Keep or mask at least one column to share.</value>
+  </data>
+  <data name="ShareTooLargeCell" xml:space="preserve">
+    <value>This result is too large to share: a value in {0} is over 256 KB. Mask or remove that column to share the rest.</value>
+  </data>
+  <data name="ShareTooLargeFirstRow" xml:space="preserve">
+    <value>This result is too large to share: its first row alone is over 4.5 MB. Mask or remove columns to share it.</value>
+  </data>
+  <data name="ShareColumnsHeader" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="ShareColumnsSummaryOne" xml:space="preserve">
+    <value>1 column masked, {1} removed.</value>
+  </data>
+  <data name="ShareColumnsSummaryMany" xml:space="preserve">
+    <value>{0} columns masked, {1} removed.</value>
+  </data>
+  <data name="ShareColumnsDetected" xml:space="preserve">
+    <value>TablePro masked columns that look sensitive. Check them before sharing.</value>
+  </data>
+  <data name="ShareColumn_Keep" xml:space="preserve">
+    <value>Keep</value>
+  </data>
+  <data name="ShareColumn_Mask" xml:space="preserve">
+    <value>Mask</value>
+  </data>
+  <data name="ShareColumn_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="ShareColumnActionName" xml:space="preserve">
+    <value>Sharing for {0}</value>
+  </data>
+  <data name="ShareColumnStyleName" xml:space="preserve">
+    <value>Mask style for {0}</value>
+  </data>
+  <data name="ShareColumnRuled" xml:space="preserve">
+    <value>Masked by this connection's rules</value>
+  </data>
+  <data name="ShareColumnUntraced" xml:space="preserve">
+    <value>Masked because TablePro cannot tell which table column this comes from.</value>
+  </data>
+  <data name="ShareColumnLooksLike" xml:space="preserve">
+    <value>Looks like: {0}</value>
+  </data>
+  <data name="ShareHideSqlSuggestion" xml:space="preserve">
+    <value>This query contains what looks like personal data ({0}). Turn on Hide SQL to keep the query private.</value>
+  </data>
+  <data name="SensitiveName_Email" xml:space="preserve">
+    <value>email address</value>
+  </data>
+  <data name="SensitiveName_Phone" xml:space="preserve">
+    <value>phone number</value>
+  </data>
+  <data name="SensitiveName_Secret" xml:space="preserve">
+    <value>password or secret</value>
+  </data>
+  <data name="SensitiveName_NationalId" xml:space="preserve">
+    <value>ID number</value>
+  </data>
+  <data name="SensitiveName_CardOrAccount" xml:space="preserve">
+    <value>card or account number</value>
+  </data>
+  <data name="SensitiveName_Address" xml:space="preserve">
+    <value>postal address</value>
+  </data>
+  <data name="SensitiveName_BirthDate" xml:space="preserve">
+    <value>date of birth</value>
+  </data>
+  <data name="SensitiveName_IpAddress" xml:space="preserve">
+    <value>IP address</value>
+  </data>
+  <data name="SensitiveName_PersonName" xml:space="preserve">
+    <value>person's name</value>
+  </data>
+  <data name="SensitiveValue_Card" xml:space="preserve">
+    <value>card number</value>
+  </data>
+  <data name="SensitiveValue_Iban" xml:space="preserve">
+    <value>IBAN</value>
+  </data>
+  <data name="SensitiveValue_Jwt" xml:space="preserve">
+    <value>JSON Web Token</value>
+  </data>
+  <data name="SensitiveValue_ApiKey" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="SensitiveValue_Email" xml:space="preserve">
+    <value>email address</value>
+  </data>
+  <data name="SensitiveValue_Phone" xml:space="preserve">
+    <value>phone number</value>
+  </data>
+  <data name="SensitiveValue_Ip" xml:space="preserve">
+    <value>IP address</value>
+  </data>
   <data name="ShareCapNote" xml:space="preserve">
     <value>Shares the first {0:N0} of {1:N0} rows.</value>
   </data>
@@ -2806,10 +2998,10 @@ New fingerprint: {2}</value>
     <value>Pro · {0:N0} links</value>
   </data>
   <data name="ShareAtCapFree" xml:space="preserve">
-    <value>You have {0:N0} live links, the Free limit. Revoke one to share another.</value>
+    <value>You have {0:N0} live links. Free allows {1:N0}. Revoke one to share another.</value>
   </data>
   <data name="ShareAtCapPro" xml:space="preserve">
-    <value>You have {0:N0} live links, the Pro limit. Revoke one to share another.</value>
+    <value>You have {0:N0} live links. Pro allows {1:N0}. Revoke one to share another.</value>
   </data>
   <data name="ShareAtCapProAllows" xml:space="preserve">
     <value>Pro allows up to 1,000.</value>
@@ -2822,9 +3014,6 @@ New fingerprint: {2}</value>
   </data>
   <data name="ShareLinkCreatedExpires" xml:space="preserve">
     <value>Created {0:d} · expires {1:d}</value>
-  </data>
-  <data name="ShareLinkSuspended" xml:space="preserve">
-    <value>Suspended</value>
   </data>
   <data name="ShareRevoke" xml:space="preserve">
     <value>Revoke</value>
@@ -2919,6 +3108,9 @@ New fingerprint: {2}</value>
   <data name="ShareErrorOffline" xml:space="preserve">
     <value>You appear to be offline. Try again once you're connected.</value>
   </data>
+  <data name="ShareErrorInvalid" xml:space="preserve">
+    <value>This share is not valid. Check the title, the SQL and the columns.</value>
+  </data>
   <data name="ShareErrorFailed" xml:space="preserve">
     <value>The link couldn't be created. Try again.</value>
   </data>
@@ -2927,6 +3119,30 @@ New fingerprint: {2}</value>
   </data>
   <data name="ShareTableNoSql" xml:space="preserve">
     <value>TablePro cannot write this table's query for its database, so the link shares the rows without SQL and opens nothing in TablePro.</value>
+  </data>
+  <data name="ShareAsField" xml:space="preserve">
+    <value>Share as</value>
+  </data>
+  <data name="ShareAsPersonal" xml:space="preserve">
+    <value>Personal</value>
+  </data>
+  <data name="ShareAsTeamOff" xml:space="preserve">
+    <value>{0} · Public links are off for this team.</value>
+  </data>
+  <data name="ShareFooterTeam" xml:space="preserve">
+    <value>{0} · {1:N0} of {2:N0} links</value>
+  </data>
+  <data name="ShareAtCapTeam" xml:space="preserve">
+    <value>{0} has {1:N0} live links. The team allows {2:N0}. Revoke one to share another.</value>
+  </data>
+  <data name="ShareSuspended" xml:space="preserve">
+    <value>Suspended</value>
+  </data>
+  <data name="ShareColumnsNote" xml:space="preserve">
+    <value>Shares the first {0:N0} columns.</value>
+  </data>
+  <data name="ShareColumnsCut" xml:space="preserve">
+    <value>The link shares the first {0:N0} columns.</value>
   </data>
   <data name="SharedLinkTitle" xml:space="preserve">
     <value>Shared link</value>
