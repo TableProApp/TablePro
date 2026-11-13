@@ -32,6 +32,29 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
     }
 }
 
+// After a saved rule, each result's set is masked again in turn, and a result whose set changed takes its columns again.
+public static class ResultRemask
+{
+    // Remask gives the set's columns read again when it masked anything, else null; a set gone meanwhile gives null.
+    public static async Task<bool> ApplyAsync(
+        IReadOnlyList<RunResult> results, Func<RunResult, Task<IReadOnlyList<ResultColumn>?>> remask)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        ArgumentNullException.ThrowIfNull(remask);
+        var changed = false;
+        foreach (var result in results)
+        {
+            if (await remask(result).ConfigureAwait(true) is { } columns)
+            {
+                result.Remasked(columns);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+}
+
 // Each result set of a run in the order it started, labelled "Result {n} ({rows})" as the Linux app lists them.
 public sealed class RunResults(string label, string labelMore, int kept = 0)
 {

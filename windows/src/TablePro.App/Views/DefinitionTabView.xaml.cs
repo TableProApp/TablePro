@@ -58,9 +58,7 @@ public sealed partial class DefinitionTabView : UserControl, ITabContent, IDefin
     }
 
     // A definition shows source, never rows.
-    public void Remask()
-    {
-    }
+    public Task RemaskAsync() => Task.CompletedTask;
 
     public void FocusContent()
     {

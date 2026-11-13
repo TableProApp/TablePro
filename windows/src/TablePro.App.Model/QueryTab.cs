@@ -180,9 +180,9 @@ public sealed class QueryTab : IWorkspaceTab
     }
 
     // After the connection's masking rules were saved: the sets shown take the new masks, unless revealed.
-    public void Remask()
+    public async Task RemaskAsync()
     {
-        if (_results.Remask())
+        if (await _results.RemaskAsync().ConfigureAwait(true) && !_work.IsClosed)
         {
             StateChanged?.Invoke(this, EventArgs.Empty);
         }

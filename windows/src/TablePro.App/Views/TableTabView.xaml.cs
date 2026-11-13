@@ -139,9 +139,9 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     public void Stop() => _model.Stop();
 
-    public void Remask()
+    public async Task RemaskAsync()
     {
-        _model.Remask();
+        await _model.RemaskAsync().ConfigureAwait(true);
         UpdateEditing();
     }
 

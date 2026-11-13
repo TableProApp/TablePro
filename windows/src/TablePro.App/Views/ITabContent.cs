@@ -28,5 +28,5 @@ internal interface ITabContent : IWorkspaceTab
     void FocusContent();
 
     // The connection's masking rules were saved: rows on screen take them now.
-    void Remask();
+    Task RemaskAsync();
 }

@@ -109,7 +109,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     public void Stop() => _model.Stop();
 
-    public void Remask() => _model.Remask();
+    public Task RemaskAsync() => _model.RemaskAsync();
 
     public void FocusContent() => SqlText.Focus(FocusState.Programmatic);
 

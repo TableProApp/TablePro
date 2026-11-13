@@ -112,7 +112,7 @@ public sealed class TabMaskingTests
         _results.Remasks = MaskedName;
         _session.TableEditor.PageLock = EditLock.MaskedKey;
 
-        tab.Remask();
+        await tab.RemaskAsync();
 
         Assert.Equal(1, _results.RemaskCalls);
         Assert.True(tab.IsColumnMasked(1));
@@ -166,6 +166,31 @@ public sealed class TabMaskingTests
         Assert.False(tab.RevealsMasked);
         Assert.Single(Assert.Single(_session.Editors).Runs);
         Assert.Empty(_session.ReadsOnlyAsked);
+    }
+
+    [Fact]
+    public async Task ARemaskTakesTheColumnsOfEachSetThatChangedAndSaysWhetherAnyDid()
+    {
+        var text = new ResultColumn("a", "", ValueKind.Text);
+        var first = new RunResult(0, [text]);
+        var second = new RunResult(1, [text]);
+        var asked = new List<int>();
+
+        var changed = await ResultRemask.ApplyAsync(
+            [first, second],
+            result =>
+            {
+                asked.Add(result.SetIndex);
+                IReadOnlyList<ResultColumn>? read = result.SetIndex == 1 ? [text with { Masked = MaskStyle.Full }] : null;
+                return Task.FromResult(read);
+            });
+        var none = await ResultRemask.ApplyAsync([first], _ => Task.FromResult<IReadOnlyList<ResultColumn>?>(null));
+
+        Assert.True(changed);
+        Assert.False(none);
+        Assert.Equal([0, 1], asked);
+        Assert.Null(Assert.Single(first.Columns).Masked);
+        Assert.Equal(MaskStyle.Full, Assert.Single(second.Columns).Masked);
     }
 
     [Fact]

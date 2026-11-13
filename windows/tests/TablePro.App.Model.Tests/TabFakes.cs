@@ -513,16 +513,16 @@ internal sealed class FakeResults : IResultsView
 
     public void ShowError(CoreError failure) => Shown.Add("error " + failure.Code);
 
-    public bool Remask()
+    public Task<bool> RemaskAsync()
     {
         RemaskCalls++;
         if (Remasks is not { } columns || ResultSetCount == 0)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
         Columns = columns;
-        return true;
+        return Task.FromResult(true);
     }
 
     public void Clear()

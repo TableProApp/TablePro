@@ -141,11 +141,11 @@ public sealed class MaskingTests : IAsyncLifetime
 
         await _core.Library.SaveAsync(saved with { MaskingRules = [Rule("note", MaskStyle.Full)] }, ConnectionSecrets.None);
 
-        Assert.True(onScreen.Remask());
+        Assert.True(await onScreen.RemaskAsync());
         Assert.Equal([null, Bullets, Bullets], Column(onScreen, 2));
         Assert.Equal(MaskStyle.Full, onScreen.GetColumns()[2].Masked);
-        Assert.False(onScreen.Remask());
-        Assert.False(revealed.Remask());
+        Assert.False(await onScreen.RemaskAsync());
+        Assert.False(await revealed.RemaskAsync());
         Assert.Equal("中文", revealed.GetCellText(2, 2));
     }
 

@@ -673,9 +673,9 @@ public sealed class TableTab : IWorkspaceTab
     }
 
     // After the connection's masking rules were saved: the rows shown take the new masks, and so does their lock.
-    public void Remask()
+    public async Task RemaskAsync()
     {
-        if (!_results.Remask())
+        if (!await _results.RemaskAsync().ConfigureAwait(true) || _work.IsClosed)
         {
             return;
         }

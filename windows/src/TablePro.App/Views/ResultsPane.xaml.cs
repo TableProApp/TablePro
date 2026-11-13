@@ -109,20 +109,33 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public void ShowError(CoreError failure) => ShowError(Strings.Error(failure));
 
-    // A sorted copy reads its set's rows, so masking the run's sets masks it too.
-    public bool Remask()
+    // A sorted copy reads its set's rows, so masking the run's sets masks it too. A run that replaced the sets
+    // meanwhile shows its own rows, masked as they arrived.
+    public async Task<bool> RemaskAsync()
     {
-        var changed = false;
-        foreach (var held in _held)
-        {
-            if (held.Set.Remask())
-            {
-                held.Result.Remasked(held.Set.GetColumns());
-                changed = true;
-            }
-        }
+        var held = _held;
+        var sets = held.ToDictionary(entry => entry.Result, entry => entry.Set);
+        var changed = await ResultRemask.ApplyAsync(
+                [.. held.Select(entry => entry.Result)],
+                async result =>
+                {
+                    if (!ReferenceEquals(held, _held))
+                    {
+                        return null;
+                    }
 
-        if (!changed || _picked is not { } picked)
+                    try
+                    {
+                        var set = sets[result];
+                        return await set.RemaskAsync().ConfigureAwait(true) ? set.GetColumns() : null;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return null;
+                    }
+                })
+            .ConfigureAwait(true);
+        if (!changed || !ReferenceEquals(held, _held) || _picked is not { } picked)
         {
             return changed;
         }
