@@ -13073,9 +13073,9 @@ msgstr[0] "Chia sẻ {count} cột đầu tiên."
 
 #: crates/app/src/ui/share_dialog/sheet_view.rs
 #, rust-format
-msgid "The link holds the first {count} column of the result."
-msgid_plural "The link holds the first {count} columns of the result."
-msgstr[0] "Liên kết chứa {count} cột đầu tiên của kết quả."
+msgid "The link shares the first {count} column."
+msgid_plural "The link shares the first {count} columns."
+msgstr[0] "Liên kết chia sẻ {count} cột đầu tiên."
 
 #: crates/app/src/ui/share_dialog/sheet_view.rs
 msgid "Suspended"
@@ -13667,3 +13667,142 @@ msgstr "Không có trường nào khớp"
 #: data/resources/ui/workspace-shell.ui
 msgid "Sidebar Width"
 msgstr "Độ rộng thanh bên"
+
+msgid "Data Masking"
+msgstr "Che giấu dữ liệu"
+
+msgid "Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values."
+msgstr "Che giấu ẩn giá trị trên màn hình và trong mọi thứ TablePro gửi đi. Nó không thay cho quyền trong cơ sở dữ liệu: bộ lọc và sắp xếp vẫn chạy trên giá trị đã lưu."
+
+msgid "Applies To"
+msgstr "Áp dụng cho"
+
+msgid "Column, such as *.email"
+msgstr "Cột, ví dụ *.email"
+
+msgid "Type, such as uuid"
+msgstr "Kiểu, ví dụ uuid"
+
+msgid "Style"
+msgstr "Kiểu che"
+
+msgid "New Rule"
+msgstr "Quy tắc mới"
+
+msgid "{target} · {style}"
+msgstr "{target} · {style}"
+
+msgid "Full"
+msgstr "Toàn bộ"
+
+msgid "Last 4 Characters"
+msgstr "4 ký tự cuối"
+
+msgid "Email"
+msgstr "Email"
+
+msgid "Stable Hash"
+msgstr "Băm ổn định"
+
+msgid "{column} (masked)"
+msgstr "{column} (đã che)"
+
+msgid "Reveal Mas_ked Values…"
+msgstr "Hiện giá trị đã _che…"
+
+msgid "Reveal Masked Values?"
+msgstr "Hiện giá trị đã che?"
+
+msgid "This tab shows the values the connection's masking rules hide. Exports, shares and the assistant stay masked."
+msgstr "Thẻ này sẽ hiện các giá trị mà quy tắc che giấu của kết nối ẩn đi. Bản xuất, liên kết chia sẻ và trợ lý vẫn được che."
+
+msgid "Reveal"
+msgstr "Hiện"
+
+msgid "This column is masked, so its values can't be edited here"
+msgstr "Cột này đã được che nên không thể sửa giá trị ở đây"
+
+msgid "The table's key is masked, so its rows can't be edited here"
+msgstr "Khóa của bảng đã được che nên không thể sửa các dòng ở đây"
+
+msgid "The table's key is masked, so these rows can't be edited"
+msgstr "Khóa của bảng đã được che nên không thể sửa các dòng này"
+
+msgid "Rows with masked values can't be duplicated"
+msgstr "Không thể nhân bản các dòng có giá trị đã che"
+
+msgid "Run the query again to see its masked values."
+msgstr "Chạy lại truy vấn để xem các giá trị đã che."
+
+msgid "Keep"
+msgstr "Giữ"
+
+msgid "Mask"
+msgstr "Che"
+
+msgid "Mask style for {column}"
+msgstr "Kiểu che cho {column}"
+
+msgid "What the link does with {column}"
+msgstr "Cách liên kết xử lý {column}"
+
+msgid "A masking rule hides this column"
+msgstr "Một quy tắc che giấu ẩn cột này"
+
+msgid "Masked because TablePro cannot tell which table column this comes from."
+msgstr "Được che vì TablePro không biết cột này lấy từ cột nào của bảng."
+
+msgid "The name looks like personal data"
+msgstr "Tên cột giống dữ liệu cá nhân"
+
+msgid "Values look like card numbers"
+msgstr "Giá trị giống số thẻ"
+
+msgid "Values look like IBANs"
+msgstr "Giá trị giống số IBAN"
+
+msgid "Values look like access tokens"
+msgstr "Giá trị giống mã truy cập"
+
+msgid "Values look like API keys"
+msgstr "Giá trị giống khóa API"
+
+msgid "Values look like email addresses"
+msgstr "Giá trị giống địa chỉ email"
+
+msgid "Values look like phone numbers"
+msgstr "Giá trị giống số điện thoại"
+
+msgid "Values look like IP addresses"
+msgstr "Giá trị giống địa chỉ IP"
+
+msgid "TablePro masked columns that look sensitive. Check them before sharing."
+msgstr "TablePro đã che các cột có vẻ nhạy cảm. Hãy kiểm tra trước khi chia sẻ."
+
+msgid "This query contains what looks like personal data ({kind}). Turn on Hide SQL to keep the query private."
+msgstr "Truy vấn này chứa thứ có vẻ là dữ liệu cá nhân ({kind}). Bật Ẩn SQL để giữ truy vấn riêng tư."
+
+msgid "a card number"
+msgstr "số thẻ"
+
+msgid "an IBAN"
+msgstr "số IBAN"
+
+msgid "an access token"
+msgstr "mã truy cập"
+
+msgid "an API key"
+msgstr "khóa API"
+
+msgid "an email address"
+msgstr "địa chỉ email"
+
+msgid "a phone number"
+msgstr "số điện thoại"
+
+msgid "an IP address"
+msgstr "địa chỉ IP"
+
+msgid "{n} column masked, {m} removed."
+msgid_plural "{n} columns masked, {m} removed."
+msgstr[0] "Đã che {n} cột, đã gỡ {m} cột."
