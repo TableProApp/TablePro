@@ -15,6 +15,7 @@ On 2026-11-13 the maintainer decided that every app shares a query or a result a
 - **Secret scan.** `tablepro_core::secret_scan` finds AWS access keys, private key PEM headers, JWTs, GitHub, Slack, Stripe and Google keys, URLs with credentials and a quoted literal assigned to a password, secret, token or API key, each kind once per line; and columns named for passwords, secrets, tokens, API keys, social security or card numbers. It warns; it never blocks a share.
 - **Deep link.** `share_token_from_link` takes only `tablepro://share?token=` with one token of 43 base62 characters, the format the server mints. The app opens the SQL in a new tab, never runs it and carries no connection.
 - **FFI.** `AccountService` gives the calls to the Windows app. `create_share` builds the snapshot from a finished `ResultSet` in Rust, from its visible columns, so no row crosses the FFI to come back.
+- **A table tab's query.** A table page has no SQL the user wrote, so `TablePageRead::view_sql` gives the query its view stands for: `browse::build_view_sql`, the export's statement with no row window, each filter value written as the dialect's literal (`StatementBuilder::inlining`; a shell literal on MongoDB). The page's own statement would carry bound parameters, the hidden row-address columns and one page's window. `create_share` takes the view's count from `table_row_count` as `total_rows`, since the set holds one page.
 
 ## Consequences
 

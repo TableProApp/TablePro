@@ -1,7 +1,10 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use tablepro_core::browse::{PageRequest, PagingMode, SortKey, build_count, build_page, paging_mode, read_page};
+use tablepro_core::browse::{
+    ExportFields, ExportRequest, PageRequest, PagingMode, SortKey, build_count, build_page, build_view_sql,
+    paging_mode, read_page,
+};
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, PagePosition, RowCountEstimate, RowIdentity, TableRef};
 use tablepro_core::sql_syntax::{SortReference, sort_reference, with_order_by};
@@ -36,6 +39,7 @@ pub struct TablePageRead {
     run: Arc<QueryRun>,
     visible_columns: u32,
     can_seek: bool,
+    view_sql: Option<String>,
 }
 
 #[uniffi::export]
@@ -50,6 +54,12 @@ impl TablePageRead {
 
     pub fn can_seek(&self) -> bool {
         self.can_seek
+    }
+
+    // The query the table view stands for: every row its filter and sort select, with no row window and the
+    // filter's values written in, for a share link or the editor. None when the engine cannot write it that way.
+    pub fn view_sql(&self) -> Option<String> {
+        self.view_sql.clone()
     }
 }
 
@@ -558,6 +568,7 @@ struct PagePlan {
     limit: u64,
     visible_columns: u32,
     can_seek: bool,
+    view_sql: Option<String>,
 }
 
 async fn plan_page(
@@ -607,9 +618,21 @@ async fn plan_page(
         },
     )
     .map_err(OperationError::from)?;
+    let view = ExportRequest {
+        table: &table,
+        columns: &columns,
+        filter: &filter,
+        sort: &sort,
+        identity: &identity,
+        fields: ExportFields::Listed,
+    };
+    let view_sql = build_view_sql(&*dialect, &view)
+        .inspect_err(|error| tracing::debug!(%error, "the table view has no SQL of its own"))
+        .ok();
     Ok(PagePlan {
         visible_columns: u32::try_from(spec.visible_columns()).unwrap_or(u32::MAX),
         can_seek,
+        view_sql,
         table,
         columns,
         identity,
@@ -624,6 +647,7 @@ fn start_page(session: Arc<Session>, tasks: &Tasks, plan: PagePlan, listener: Bo
     let state = Arc::new(RunState::new(listener));
     let visible_columns = plan.visible_columns;
     let can_seek = plan.can_seek;
+    let view_sql = plan.view_sql.clone();
     let run = state.clone();
     drop(tasks.spawn_task(async move {
         let started = Instant::now();
@@ -644,6 +668,7 @@ fn start_page(session: Arc<Session>, tasks: &Tasks, plan: PagePlan, listener: Bo
         run: Arc::new(QueryRun::new(state, tasks.clone())),
         visible_columns,
         can_seek,
+        view_sql,
     }
 }
 
