@@ -298,14 +298,11 @@ internal enum ManualCommit {
         grammar: SQLLexicalGrammar
     ) -> Bool {
         if startsTransaction(statements, databaseType: databaseType, grammar: grammar) { return true }
-        let isTeradata = TransactionEngineFamily.of(databaseType) == .teradata
         return statements.contains { statement in
             if CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar).endsTransaction {
                 return true
             }
-            let keyword = QueryClassifier.leadingKeyword(of: statement, grammar: grammar)
-            // Teradata's short form of END TRANSACTION.
-            return transactionControlKeywords.contains(keyword) || (isTeradata && keyword == "ET")
+            return transactionControlKeywords.contains(QueryClassifier.leadingKeyword(of: statement, grammar: grammar))
         }
     }
 
