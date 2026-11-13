@@ -69,13 +69,15 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 try await sink.beginTransaction()
             }
 
-            let stream = try await source.statements()
+            let stream = try await source.elements()
 
-            for try await (statement, lineNumber) in stream {
+            for try await element in stream {
                 try progress.checkCancellation()
+                let statement = element.statementText
+                let lineNumber = element.lineNumber
 
                 do {
-                    try await sink.execute(statement: statement, line: lineNumber)
+                    try await Self.run(element, on: sink, progress: progress)
                     executedCount += 1
                     progress.incrementStatement()
                 } catch is PluginImportCancellationError {
@@ -177,5 +179,24 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
             skippedStatements: skippedCount,
             errors: errors
         )
+    }
+
+    private static func run(
+        _ element: PluginImportElement,
+        on sink: any PluginImportDataSink,
+        progress: PluginImportProgress
+    ) async throws {
+        switch element {
+        case .statement(let statement, let lineNumber):
+            try await sink.execute(statement: statement, line: lineNumber)
+        case .copyFromStandardInput(let statement, let lineNumber, let rows):
+            let watched = SQLImportCopyRows.watching(rows, line: lineNumber, progress: progress)
+            try await sink.copyFromStandardInput(statement: statement, line: lineNumber, rows: watched)
+        @unknown default:
+            throw PluginImportError.importFailed(String(
+                format: String(localized: "This version of SQL Import cannot run line %@."),
+                element.lineNumber.formatted()
+            ))
+        }
     }
 }

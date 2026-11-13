@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tablepro_core::{
-    ByteLimitSink, CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionState, ResultSink,
-    RunOptions, RunSummary, TransactionState, UserSql,
+    ByteLimitSink, CallOptions, CopyInRows, CopyInSummary, DriverError, EditorSession, EditorSessionId,
+    EditorSessionState, ResultSink, RunOptions, RunSummary, TransactionState, UserSql,
 };
 
 // Every app opens its editor sessions here, so none can run one without the run's byte limit.
@@ -39,6 +39,15 @@ impl EditorSession for ByteLimitedEditor {
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError> {
         self.inner.transaction_state(options).await
+    }
+
+    async fn copy_in(
+        &self,
+        statement: UserSql,
+        rows: CopyInRows,
+        options: RunOptions,
+    ) -> Result<CopyInSummary, DriverError> {
+        self.inner.copy_in(statement, rows, options).await
     }
 
     fn database(&self) -> Option<String> {

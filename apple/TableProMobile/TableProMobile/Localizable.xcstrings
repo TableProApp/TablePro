@@ -6630,6 +6630,10 @@
         }
       }
     },
+    "COPY FROM STDIN takes its rows from the lines after the line its ; ends, so no rows were sent." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Copy Key" : {
 
     },
@@ -26855,6 +26859,10 @@
     "This connection called a stored routine, so TablePro cannot tell what the session is holding." : {
 
     },
+    "This connection cannot load the rows of COPY FROM STDIN." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection goes through an SSH jump host, which TablePro on iPhone and iPad cannot dial. Open it in TablePro on the Mac." : {
       "localizations" : {
         "ko" : {
@@ -27373,6 +27381,10 @@
       "generatesSymbol" : false
     },
     "This driver cannot restore an exported folder. Update it in Settings > Extensions." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This driver cannot send rows to COPY FROM STDIN." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

@@ -60,6 +60,13 @@ public sealed class RunResults(string label, string labelMore, int kept = 0)
         return result;
     }
 
+    // The set shown stays after the run unless the limit dropped it, when the newest kept takes its place, as on macOS.
+    public RunResult ShownAtEnd(RunResult shown)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        return Dropped == 0 || _results.Contains(shown) ? shown : _results[^1];
+    }
+
     // The listed set the event changed, or null.
     public RunResult? Apply(QueryEvent queryEvent)
     {

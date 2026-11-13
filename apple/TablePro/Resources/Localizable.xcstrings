@@ -17057,6 +17057,10 @@
         }
       }
     },
+    "A script cannot hold binary COPY data, so no rows were sent. Dump the rows as text or CSV." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A script wants to run a query on \"%@\"" : {
       "localizations" : {
         "fr" : {
@@ -51351,6 +51355,10 @@
     "Copy as UPDATE Statements" : {
 
     },
+    "COPY at line %@: %@ lines sent" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Copy Average" : {
 
     },
@@ -51824,6 +51832,13 @@
     },
     "Copy Fix SQL" : {
 
+    },
+    "COPY FROM STDIN takes its rows from the lines after it, which only the query editor and SQL import send. Run it there." : {
+
+    },
+    "COPY FROM STDIN takes its rows from the lines after the line its ; ends, so no rows were sent." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Copy ID" : {
       "localizations" : {
@@ -103848,6 +103863,9 @@
           }
         }
       }
+    },
+    "Line %lld runs COPY FROM STDIN, and this connection cannot load its rows. Run the file with psql, or dump it again with --inserts." : {
+
     },
     "Line %lld runs COPY FROM STDIN, whose rows TablePro cannot send. Run the file with psql, or dump it again with --inserts." : {
 
@@ -198223,6 +198241,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection cannot load the rows of COPY FROM STDIN." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection comes from a file in a linked folder, so its author chose the server and how it signs in." : {
 
     },
@@ -199856,6 +199878,10 @@
           }
         }
       }
+    },
+    "This driver cannot send rows to COPY FROM STDIN." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This driver has no TLS fallback. Preferred forces TLS, same as Required." : {
       "localizations" : {
@@ -203667,6 +203693,10 @@
           }
         }
       }
+    },
+    "This version of SQL Import cannot run line %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This version of TablePro can no longer sync with iCloud. Update TablePro to resume." : {
 

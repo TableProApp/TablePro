@@ -14,7 +14,7 @@ chrono.workspace = true
 deadpool.workspace = true
 deadpool-postgres.workspace = true
 fallible-iterator.workspace = true
-futures-util.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
 postgres-protocol.workspace = true
 postgres-types.workspace = true
 secrecy.workspace = true

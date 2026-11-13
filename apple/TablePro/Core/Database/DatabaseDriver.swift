@@ -144,6 +144,17 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// text statement by statement instead. A server error inside the batch is part of the answer, not a throw.
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult?
 
+    /// Whether ``copyFromStandardInput(statement:rows:context:)`` sends a `COPY ... FROM STDIN` its rows.
+    var supportsCopyFromStandardInput: Bool { get }
+
+    /// Runs `statement`, a `COPY ... FROM STDIN`, and sends it `rows` a piece at a time, holding the session until the
+    /// copy ends. Throws when the driver cannot.
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext?
+    ) async throws -> QueryResult
+
     func explainPlan(statement: String, variantId: String) async throws -> QueryResult
 
     // MARK: - Schema Operations
@@ -623,6 +634,16 @@ extension DatabaseDriver {
     var supportsResultSetBatches: Bool { false }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? { nil }
+
+    var supportsCopyFromStandardInput: Bool { false }
+
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext?
+    ) async throws -> QueryResult {
+        throw PluginDriverUnsupportedOperation.copyFromStandardInput
+    }
 
     func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
         throw PluginDriverUnsupportedOperation.explainPlan

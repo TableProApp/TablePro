@@ -223,7 +223,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                         break;
                     case QueryEvent.Finished finished:
                         Adopt();
-                        ShowFirstKept();
+                        ShowAtEnd(results, heldBy);
                         LetGoOfLeaving();
                         _droppedSets = results.Dropped;
                         RowCount = adopted ? (_picked?.Result.Rows ?? 0) : 0;
@@ -322,17 +322,16 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         gone.Set.Dispose();
     }
 
-    // At the run's end the first set kept takes the place of a dropped one still shown, as a run shows its first set.
-    private void ShowFirstKept()
+    private void ShowAtEnd(RunResults results, Dictionary<RunResult, HeldSet> heldBy)
     {
-        if (_leaving is not { } leaving
-            || !ReferenceEquals(leaving, _picked)
-            || _held.Find(entry => !ReferenceEquals(entry, leaving)) is not { } first)
+        if (_picked is not { } picked
+            || heldBy.GetValueOrDefault(results.ShownAtEnd(picked.Result)) is not { } shown
+            || ReferenceEquals(shown, picked))
         {
             return;
         }
 
-        Pick(first);
+        Pick(shown);
         ShowPickedLabel();
     }
 
