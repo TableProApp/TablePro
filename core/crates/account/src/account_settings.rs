@@ -6,8 +6,8 @@ use crate::cloud_api::v2::types::Platform;
 use crate::entitlement_keys::EntitlementKeys;
 use crate::machine_id::MachineId;
 
-// tablepro-cloud registers one public OAuth client per app, each with its own redirect: the loopback one
-// this crate listens on is the Linux client's (api.md, OAuth). Another app adds its own once the server does.
+// tablepro-cloud registers one public OAuth client per app, each with its own redirect: Linux's and Windows's take
+// the loopback one this crate listens on, on any port (api.md, OAuth). The Mac's is a custom scheme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppClient {
     pub client_id: &'static str,
@@ -21,6 +21,12 @@ impl AppClient {
         client_id: "tablepro-linux",
         platform: Platform::Linux,
         system: "Linux",
+    };
+
+    pub const WINDOWS: Self = Self {
+        client_id: "tablepro-windows",
+        platform: Platform::Windows,
+        system: "Windows",
     };
 }
 
@@ -93,6 +99,18 @@ mod tests {
         assert_eq!(endpoints.token, "http://account.localhost:5284/oauth/token");
         assert_eq!(endpoints.revoke, "http://account.localhost:5284/oauth/revoke");
         assert_eq!(endpoints.api, "http://api.localhost:5284/v2");
+    }
+
+    #[test]
+    fn each_desktop_app_signs_in_as_its_own_client_and_platform() {
+        assert_eq!(
+            (AppClient::LINUX.client_id, AppClient::LINUX.platform.to_string()),
+            ("tablepro-linux", "linux".to_owned())
+        );
+        assert_eq!(
+            (AppClient::WINDOWS.client_id, AppClient::WINDOWS.platform.to_string()),
+            ("tablepro-windows", "windows".to_owned())
+        );
     }
 
     #[test]
