@@ -246,9 +246,11 @@ targetTemplates:
   # Links its own SQLite (scripts/build-sqlite.sh), never -lsqlite3: macOS's library is built without
   # extension loading.
   SQLiteLinkage:
+    sources:
+      - Plugins/SharedSpill
     dependencies:
       - package: TableProCore
-        products: [CSQLite, TableProSQLGrammar, TableProSQLiteCore, TableProSQLVocabulary]
+        products: [CSQLite, TableProSQLGrammar, TableProSQLiteCore, TableProSQLVocabulary, TableProWireIO]
     settings:
       base:
         OTHER_LDFLAGS:
@@ -839,9 +841,12 @@ targets:
       - path: Plugins/SQLExportPlugin
         excludes:
           - Info.plist
+      # The agent the app launches over SSH, so the agent backend's tests run the shipped program.
+      - TablePro/Core/RemoteSQLite/RemoteSQLiteAgentSource.swift
+      - TablePro/Core/RemoteSQLite/RemoteSQLiteWire.swift
     dependencies:
       - package: TableProCore
-        products: [TableProProcess, TableProSQLGrammar]
+        products: [TableProProcess, TableProSQLGrammar, TableProTestSupport]
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]
@@ -1025,7 +1030,7 @@ targets:
       principalClass: DynamoDBPlugin
     dependencies:
       - package: TableProCore
-        product: TableProNumberFormatting
+        products: [TableProNumberFormatting, TableProWireIO]
 
   DamengDriver:
     templates: [DriverPlugin]
@@ -1135,6 +1140,8 @@ targets:
     templateAttributes:
       folder: LibSQLDriverPlugin
       principalClass: LibSQLPlugin
+    sources:
+      - Plugins/SharedSpill
     dependencies:
       - package: TableProCore
         product: CSQLite
@@ -1142,6 +1149,8 @@ targets:
         product: TableProSQLGrammar
       - package: TableProCore
         product: TableProSQLiteCore
+      - package: TableProCore
+        product: TableProWireIO
     settings:
       base:
         OTHER_LDFLAGS:

@@ -21,6 +21,19 @@ struct AppStateSyncWiringTests {
         return state
     }
 
+    @Test("A CloudKit notice downloads through the app's wiring only while sync is on")
+    func noticeDownloadsOnlyWithSyncOn() async {
+        let transport = RecordingSyncTransport()
+        let state = makeSyncedState(transport: transport)
+        state.onboarding.setSyncChoice(false)
+        #expect(await state.syncFromBackground(.remoteChange) == false)
+        #expect(await transport.pullCount == 0)
+
+        state.onboarding.setSyncChoice(true)
+        #expect(await state.syncFromBackground(.remoteChange))
+        #expect(await transport.pullCount == 1)
+    }
+
     @Test("A saved query made on the Mac reaches the saved queries and the file through the app's sync wiring")
     func pulledSavedQueryReachesTheLibrary() async {
         let folder = SavedQueryFolder(name: "Reports")

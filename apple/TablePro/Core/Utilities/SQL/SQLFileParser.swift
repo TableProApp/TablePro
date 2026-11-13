@@ -967,9 +967,10 @@ final class SQLFileParser: Sendable {
     func parseFile(
         url: URL,
         encoding: String.Encoding,
-        grammar: @escaping @Sendable () -> SQLLexicalGrammar
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar,
+        onRead: (@Sendable (_ bytesRead: Int64, _ fileSize: Int64) -> Void)? = nil
     ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
-        let session = ParseSession(url: url, encoding: encoding, grammar: grammar, countOnly: false, limits: limits)
+        let session = ParseSession(url: url, encoding: encoding, grammar: grammar, countOnly: false, limits: limits, onRead: onRead)
         return AsyncThrowingStream(unfolding: {
             try await session.nextRun()
         })
@@ -987,9 +988,10 @@ final class SQLFileParser: Sendable {
     func parseElements(
         url: URL,
         encoding: String.Encoding,
-        grammar: @escaping @Sendable () -> SQLLexicalGrammar
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar,
+        onRead: (@Sendable (_ bytesRead: Int64, _ fileSize: Int64) -> Void)? = nil
     ) -> AsyncThrowingStream<PluginImportElement, Error> {
-        let session = ParseSession(url: url, encoding: encoding, grammar: grammar, countOnly: false, limits: limits)
+        let session = ParseSession(url: url, encoding: encoding, grammar: grammar, countOnly: false, limits: limits, onRead: onRead)
         return AsyncThrowingStream(unfolding: {
             try await session.nextElement()
         })
@@ -1028,8 +1030,11 @@ extension SQLFileParser {
         private let encoding: String.Encoding
         private let grammar: @Sendable () -> SQLLexicalGrammar
         private let limits: ReadLimits
+        private let onRead: (@Sendable (Int64, Int64) -> Void)?
 
         private var fileHandle: FileHandle?
+        private var fileSize: Int64 = 0
+        private var bytesRead: Int64 = 0
         private var ctx: ParserContext
         private let nsBuffer = NSMutableString()
         // Text before it is lexed; it is deleted when the next chunk is read, not once per statement.
@@ -1053,12 +1058,14 @@ extension SQLFileParser {
             grammar: @escaping @Sendable () -> SQLLexicalGrammar,
             countOnly: Bool,
             limits: ReadLimits,
-            reading: Reading = .fromFile
+            reading: Reading = .fromFile,
+            onRead: (@Sendable (Int64, Int64) -> Void)? = nil
         ) {
             self.url = url
             self.encoding = encoding
             self.grammar = grammar
             self.limits = limits
+            self.onRead = onRead
             self.decoder = SQLChunkDecoder(encoding: encoding)
             self.readingSettled = reading == .batches
             let initialGrammar = grammar()
@@ -1179,21 +1186,29 @@ extension SQLFileParser {
             return ctx.sawBatchSeparator
         }
 
+        // A MySQL count keeps each statement's text, so the cut drains per statement as well as per chunk.
         private func readNextStatement() throws {
-            processBuffer()
-            guard ctx.collected.isEmpty else { return }
-            guard !ctx.atEndOfInput else {
-                emitTrailingStatement()
-                finished = true
-                closeFile()
-                return
+            try autoreleasepool {
+                processBuffer()
+                guard ctx.collected.isEmpty else { return }
+                guard !ctx.atEndOfInput else {
+                    emitTrailingStatement()
+                    finished = true
+                    closeFile()
+                    return
+                }
+                try readChunk()
             }
-            try readChunk()
         }
 
         private func readChunk() throws {
             let handle = try openFileIfNeeded()
-            let rawData = handle.readData(ofLength: limits.chunkSize)
+            // A count, a GO scan and a driver's COPY read chunk after chunk with nothing draining the autorelease pool.
+            let rawData = try autoreleasepool { try handle.read(upToCount: limits.chunkSize) } ?? Data()
+            if !rawData.isEmpty, let onRead {
+                bytesRead += Int64(rawData.count)
+                onRead(bytesRead, fileSize)
+            }
 
             if rawData.isEmpty && !decoder.hasPendingBytes {
                 ctx.atEndOfInput = true
@@ -1326,8 +1341,10 @@ extension SQLFileParser {
 
         private func nextRowsPiece(generation: Int) throws -> Data? {
             do {
-                guard let piece = try nextRowsRange(generation: generation) else { return nil }
-                return Data(nsBuffer.substring(with: piece).utf8)
+                return try autoreleasepool {
+                    guard let piece = try nextRowsRange(generation: generation) else { return nil }
+                    return Data(nsBuffer.substring(with: piece).utf8)
+                }
             } catch {
                 rowsFailure = error
                 copyRows = nil
@@ -1388,6 +1405,11 @@ extension SQLFileParser {
             }
             let handle = try FileHandle(forReadingFrom: url)
             fileHandle = handle
+            // Taken from the open handle; a size of 0 leaves the import's bar on statements.
+            if onRead != nil {
+                var info = stat()
+                fileSize = fstat(handle.fileDescriptor, &info) == 0 ? Int64(info.st_size) : 0
+            }
             return handle
         }
 

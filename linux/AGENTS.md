@@ -9,7 +9,7 @@ This is the guide for work under `linux/`. The root `AGENTS.md` holds the rules 
 1. **Tests define behavior**, as in the root `AGENTS.md`.
 2. **Native only.** GTK 4 and libadwaita, used the way the GNOME Human Interface Guidelines describe, with the widget the toolkit provides before anything drawn by hand. No web views, no cross-platform toolkit.
 3. **One-directional crates.** The domain crate (`tablepro-core`) never imports the GUI or a driver, and a new database engine is one crate. `core/ARCHITECTURE.md` has the graph.
-4. **Drivers are linked in at compile time** until the driver ABI lands (`core/docs/decisions/0004-driver-plugin-abi.md`).
+4. **Drivers are linked in at compile time**, for good (`core/docs/decisions/0025-linux-and-windows-link-their-drivers.md`).
 5. **Decisions are recorded.** A change that reverses a decision in `docs/decisions/` adds an ADR that supersedes it; the old one changes only its Status line (`docs/decisions/README.md`).
 
 ## Map

@@ -99,7 +99,8 @@ struct SyncSavedQueriesRefillTests {
             transport: transport,
             makeNetworkMonitor: { nil },
             columnLayouts: environment.columnLayouts,
-            licenseGate: { nil }
+            licenseGate: { nil },
+            pushRegistrar: .inert
         )
     }
 
@@ -152,6 +153,8 @@ private actor RefillZoneServer: SyncTransport {
     }
 
     func ensureZoneExists() async throws {}
+
+    func saveSubscription() async throws {}
 
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         var outcome = PushOutcome()

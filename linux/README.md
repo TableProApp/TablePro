@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. It bu
 
 ## Status
 
-The public beta is available as [0.1.0-beta.3](https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.3). It connects to 11 engines: PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, SQLite, DuckDB, Redis and MongoDB. [Supported servers](#supported-servers) lists the tested versions and limits. A window holds several connection sessions side by side in one tab view. Follow the [install guide](https://docs.tablepro.app/linux/install) for the beta PPA, COPR and Flatpak channels. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+The public beta is available as [0.1.0-beta.3](https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.3). It connects to 11 engines: PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, SQLite, DuckDB, Redis and MongoDB. [Supported servers](#supported-servers) lists the tested versions and limits. A window holds several connection sessions side by side in one tab view. Follow the [install guide](https://docs.tablepro.app/linux/install) for the beta PPA, COPR and Flatpak channels. [docs/features.md](docs/features.md) lists what is built, the repository's [ROADMAP.md](../ROADMAP.md) what is not, and [docs/releasing.md](docs/releasing.md#release-criteria) the release criteria.
 
 ## Supported servers
 
@@ -608,7 +608,9 @@ From the 30th day you use TablePro without a license, a toast asks whether you w
 | Topic | File |
 |---|---|
 | Layered architecture, crate boundaries, dependency rules | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| What is built, the backlog and the release criteria | [ROADMAP.md](ROADMAP.md) |
+| What is built | [docs/features.md](docs/features.md) |
+| The work left, for Linux, Windows and the core | [ROADMAP.md](../ROADMAP.md) |
+| The 0.1.0 release criteria | [docs/releasing.md](docs/releasing.md#release-criteria) |
 | Contributing: dev workflow, lint, commits, PRs | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | **Adding a database driver** | [docs/adding-drivers.md](docs/adding-drivers.md) |
 | State management: windows, sessions, background work | [docs/state-management.md](docs/state-management.md) |

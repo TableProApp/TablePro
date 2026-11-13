@@ -72,6 +72,12 @@ public enum SQLReadOnlyFunctionCalls {
         "BOOL_AND", "BOOL_OR", "EVERY", "POW", "LOG10", "PI", "RANDOM",
     ]
 
+    // The engines here that read MATCH_RECOGNIZE; DM8 answers it with a syntax error. Measured on Oracle 23ai: in its
+    // MEASURES and DEFINE these call the clause's own navigation, never a user function of that name, and
+    // `PATTERN (...)` is a row pattern. Elsewhere, a query nested in the clause included, each is a user's name.
+    static let rowPatternEngines: Set<String> = ["Oracle"]
+    static let rowPatternFunctions: Set<String> = ["PREV", "NEXT", "FIRST", "LAST", "CLASSIFIER", "MATCH_NUMBER"]
+
     private static let oracleFamily: Set<String> = ["Oracle", "Dameng"]
     private static let mysqlFamily: Set<String> = ["MySQL", "MariaDB", "OceanBase", "TiDB", "StarRocks", "Databend"]
     private static let postgresFamily: Set<String> = ["PostgreSQL", "CockroachDB", "PGlite", "KingbaseES", "Redshift"]
@@ -180,6 +186,7 @@ public enum SQLReadOnlyFunctionCalls {
     ) -> Bool {
         let typeNames = Set(typeNames.map { $0.uppercased() })
         let known = builtins(forDatabaseTypeId: databaseTypeId)
+        let readsRowPatterns = rowPatternEngines.contains(databaseTypeId)
         let tiering = SQLStatementTiering(databaseTypeId: databaseTypeId, readings: readings, request: nil)
         return readings.all.contains { grammar in
             SQLStatementClassifier.statements(of: sql, grammar: grammar).contains { statement in
@@ -187,7 +194,13 @@ public enum SQLReadOnlyFunctionCalls {
                 if databaseTypeId == SQLStatementTiering.surrealDB {
                     return tiering.callsSurrealStoredCode(StatementCode(statement, grammar: grammar))
                 }
-                return statementCallsUnlistedFunction(statement, grammar: grammar, builtins: known, typeNames: typeNames)
+                return statementCallsUnlistedFunction(
+                    statement,
+                    grammar: grammar,
+                    builtins: known,
+                    typeNames: typeNames,
+                    readsRowPatterns: readsRowPatterns
+                )
             }
         }
     }
@@ -196,7 +209,8 @@ public enum SQLReadOnlyFunctionCalls {
         _ statement: String,
         grammar: SQLLexicalGrammar,
         builtins: Set<String>,
-        typeNames: Set<String>
+        typeNames: Set<String>,
+        readsRowPatterns: Bool
     ) -> Bool {
         // A plain EXPLAIN plans its statement without running it.
         if let explain = SQLExplainStatement.read(statement, grammar: grammar) {
@@ -209,8 +223,19 @@ public enum SQLReadOnlyFunctionCalls {
         }
         let source = statement as NSString
         let code = SQLCodeProjection.code(of: statement, grammar: grammar) as NSString
+        let calls = SQLFunctionCallScanner.calls(in: source, code: code)
         var quoted: [Range<Int>]?
-        return SQLFunctionCallScanner.calls(in: source, code: code).contains { call in
+        func site(of call: SQLFunctionCallScanner.Call, nameStart: Int) -> CallSite {
+            let spans = quoted ?? quotedSpans(in: source, grammar: grammar)
+            quoted = spans
+            return CallSite(code: code, quotedSpans: spans, nameStart: nameStart, parenthesis: call.parenthesis)
+        }
+        let rowPatterns = readsRowPatterns
+            ? RowPatternClauses(source: source, code: code, grammar: grammar, calls: calls) {
+                site(of: $0, nameStart: $1).matches(.afterOperand)
+            }
+            : nil
+        return calls.contains { call in
             guard case .named(let name, let start) = call.callee,
                   !quoteOpeners.contains(source.character(at: start))
             else { return true }
@@ -224,11 +249,86 @@ public enum SQLReadOnlyFunctionCalls {
                 break
             }
             if builtins.contains(word) || typeNames.contains(word) || reservedWords.contains(word) { return false }
+            if rowPatterns?.ownsCall(named: word, at: start) == true { return false }
             guard let rules = syntax[word] else { return true }
-            let spans = quoted ?? quotedSpans(in: source, grammar: grammar)
-            quoted = spans
-            let site = CallSite(code: code, quotedSpans: spans, nameStart: start, parenthesis: call.parenthesis)
-            return !rules.contains { site.matches($0) }
+            let callSite = site(of: call, nameStart: start)
+            return !rules.contains { callSite.matches($0) }
+        }
+    }
+
+    // What each MATCH_RECOGNIZE clause holds: its row pattern, its MEASURES and DEFINE, where navigation is the clause's
+    // own, and the queries nested in it, which that navigation does not reach. A clause `SQLRowPatternClause` cannot read
+    // owns nothing.
+    private struct RowPatternClauses {
+        private enum Kind {
+            case clause
+            case navigation
+            case pattern
+            case query
+        }
+
+        private var groups: [(range: Range<Int>, kind: Kind)] = []
+        private var owned: Set<Int> = []
+
+        init(
+            source: NSString,
+            code: NSString,
+            grammar: SQLLexicalGrammar,
+            calls: [SQLFunctionCallScanner.Call],
+            opensClause: (SQLFunctionCallScanner.Call, Int) -> Bool
+        ) {
+            let openers = calls.filter { call in
+                guard case .named(let name, let start) = call.callee else { return false }
+                return name.uppercased() == "MATCH_RECOGNIZE" && opensClause(call, start)
+            }
+            guard !openers.isEmpty else { return }
+            let tokens = TSQLTokens.read(source, code: code, grammar: grammar)
+            for call in openers {
+                guard case .named(_, let start) = call.callee,
+                      let open = tokens.firstIndex(where: { $0.kind == .open && $0.location == call.parenthesis }),
+                      let close = Self.close(of: open, in: tokens),
+                      let clause = SQLRowPatternClause.read(tokens, body: (open + 1)..<close, text: code)
+                else { continue }
+                owned.insert(start)
+                owned.insert(tokens[clause.patternKeyword].location)
+                let end = tokens[close].location
+                groups.append(((call.parenthesis + 1)..<end, .clause))
+                let patternOpen = tokens[clause.patternKeyword + 1].location
+                groups.append(((patternOpen + 1)..<tokens[clause.pattern.upperBound].location, .pattern))
+                for section in [clause.measures, clause.define].compactMap({ $0 }) where !section.isEmpty {
+                    let stop = section.upperBound < close ? tokens[section.upperBound].location : end
+                    groups.append((tokens[section.lowerBound].location..<stop, .navigation))
+                }
+            }
+            // `((SELECT ...) UNION ALL SELECT ...)` is a query too, so a run of parentheses is skipped first.
+            for (index, token) in tokens.enumerated() where token.kind == .open {
+                let first = tokens[index...].firstIndex { $0.kind != .open }
+                guard let word = first.flatMap({ tokens[$0].word }), word == "SELECT" || word == "WITH",
+                      let close = Self.close(of: index, in: tokens)
+                else { continue }
+                groups.append(((token.location + 1)..<tokens[close].location, .query))
+            }
+        }
+
+        // The clause itself, its `PATTERN (`, anything in its row pattern, and navigation in MEASURES or DEFINE.
+        func ownsCall(named word: String, at start: Int) -> Bool {
+            if owned.contains(start) { return true }
+            switch kind(at: start) {
+            case .pattern:
+                return true
+            case .navigation:
+                return SQLReadOnlyFunctionCalls.rowPatternFunctions.contains(word)
+            case .clause, .query, nil:
+                return false
+            }
+        }
+
+        private func kind(at position: Int) -> Kind? {
+            groups.filter { $0.range.contains(position) }.max { $0.range.lowerBound < $1.range.lowerBound }?.kind
+        }
+
+        private static func close(of open: Int, in tokens: [TSQLTokens.Token]) -> Int? {
+            ((open + 1)..<tokens.count).first { tokens[$0].kind == .close && tokens[$0].depth == tokens[open].depth }
         }
     }
 

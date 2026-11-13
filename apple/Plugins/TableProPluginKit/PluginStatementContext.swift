@@ -44,6 +44,11 @@ public struct PluginStatementContext: Sendable, Equatable {
     // the statement in the engine's read-only mode whatever the origin, or throws.
     public var enforcesReadOnly = false
 
+    // False when the host read the statement and found no call off the engine's built-in function list. At
+    // `enforcesReadOnly`, a driver whose session holds a transaction or a lock the read-only mode would end runs such a
+    // statement in it as it is, which Safe Mode's function check allows, and refuses any other.
+    public var callsUnlistedFunction = true
+
     // Stop reading rows once the decoded rows pass this many bytes, keeping the row that crossed it, so the host sees
     // the limit was reached. Nil for no limit. The host sets it on reads only, since stopping a write cancels it.
     public var resultByteLimit: Int?

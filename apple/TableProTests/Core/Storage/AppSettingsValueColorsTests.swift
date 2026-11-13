@@ -53,7 +53,8 @@ struct AppSettingsValueColorsTests {
                 makeNetworkMonitor: { nil },
                 columnLayouts: columnLayouts,
                 themeCatalog: catalog,
-                licenseGate: { nil }
+                licenseGate: { nil },
+                pushRegistrar: .inert
             )
             subscription = events.valueColorSettingsChanged.sink { [weak self] in self?.sentEvents += 1 }
         }

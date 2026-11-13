@@ -100,6 +100,7 @@ internal final class ImportSinkRun: @unchecked Sendable {
         writes: Bool = false,
         deletes: Bool = false,
         statement: String? = nil,
+        interrupt: (@Sendable () -> Void)? = nil,
         operation: () async throws -> T
     ) async throws -> T {
         try await admitted(.data) {
@@ -111,7 +112,12 @@ internal final class ImportSinkRun: @unchecked Sendable {
             let before = self.run.snapshot.currentState
             let hadAuthority = self.lock.withLock { self.ownsTransaction }
             do {
-                let value = try await operation()
+                let value: T
+                if let interrupt {
+                    value = try await self.run.interruptible(by: interrupt, operation)
+                } else {
+                    value = try await operation()
+                }
                 if let index = self.fileIndex {
                     self.run.record {
                         $0.effects[index]?.submittedRows += rows

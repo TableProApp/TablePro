@@ -1,6 +1,6 @@
 # 0004: Downloadable drivers over a small C ABI of our own
 
-- **Status**: Accepted
+- **Status**: Accepted; superseded for Linux and Windows by 0025
 - **Date**: 2026-11-02
 
 ## Context

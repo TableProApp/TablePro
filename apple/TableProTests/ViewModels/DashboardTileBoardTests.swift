@@ -21,6 +21,7 @@ struct DashboardTileBoardTests {
         let changes = PassthroughSubject<UUID?, Never>()
         var catalog: DashboardSavedQueryCatalog
         var executed: [String] = []
+        var executedIn: [DatabaseScope?] = []
         var answer: (String) throws -> QueryResult = { _ in Fixture.result(columns: ["count"], rows: [["12"]]) }
         var clock = Date(timeIntervalSince1970: 1_000_000)
         var gate: any ExecutionGate = AlwaysAllowGate()
@@ -59,8 +60,9 @@ struct DashboardTileBoardTests {
                 connectionId: connectionId,
                 databaseType: databaseType,
                 environment: environment
-            ) { sql in
+            ) { sql, scope in
                 self.executed.append(sql)
+                self.executedIn.append(scope)
                 if let hold = self.holdExecution {
                     await hold.wait()
                 }
@@ -194,11 +196,13 @@ struct DashboardTileBoardTests {
         await board.refresh(force: false)
         #expect(await gate.requests.count == 1)
         #expect(await gate.requests.first?.runsIn?.schema == "HR")
+        #expect(fixture.executedIn.last == fixture.runsIn)
 
         fixture.runsIn = DatabaseScope(connectionId: fixture.connectionId, database: "FREEPDB1", schema: "APP")
         await board.refresh(force: false)
         #expect(await gate.requests.count == 2)
         #expect(await gate.requests.last?.runsIn?.schema == "APP")
+        #expect(fixture.executedIn.last == fixture.runsIn)
 
         fixture.clock.addTimeInterval(61)
         await board.refresh(force: false)

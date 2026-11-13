@@ -21,6 +21,7 @@ struct TableProMobileApp: App {
         ConnectionListTips.configure()
         let appState = AppState()
         _appState = State(initialValue: appState)
+        TableProAppDelegate.appState = appState
         // At launch, so a connection opened before the scene first turns active still sends its first-use event.
         if !TestRuntime.isActive {
             Self.startTelemetry(appState: appState)
@@ -106,15 +107,7 @@ struct TableProMobileApp: App {
     @Sendable
     private func runBackgroundSync() async {
         scheduleBackgroundSync()
-        guard AppPreferences.isCloudSyncEnabled else { return }
-        await MainActor.run { appState.retryLoadIfFailed() }
-        let status = await MainActor.run { appState.loadStatus }
-        guard status == .ready else {
-            Self.backgroundLogger.warning("Background sync skipped: persistence load not ready (likely device locked)")
-            return
-        }
-        Self.backgroundLogger.info("Background sync starting")
-        await appState.syncCoordinator.sync(.activation)
+        guard await appState.syncFromBackground(.activation) else { return }
         Self.backgroundLogger.info("Background sync completed")
     }
 }

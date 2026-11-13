@@ -1,9 +1,57 @@
 import Combine
 import Observation
+import os
 import SwiftUI
+import TableProSyncTransport
 import UIKit
 
 final class TableProAppDelegate: NSObject, UIApplicationDelegate {
+    // Set in the app's init, which runs before the system hands this delegate a launch or a notification.
+    static weak var appState: AppState?
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
+
+    // iOS ends an app that has not answered a notification in 30 seconds; a run still going finishes when the app next runs.
+    private static let notificationBudget: Duration = .seconds(25)
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        Self.appState?.syncCoordinator.registerForPushesIfEnabled()
+        return true
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+        Self.logger.warning("Push registration failed: \(error.localizedDescription, privacy: .private)")
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        guard SyncPushSubscription.announcesChange(userInfo), let appState = Self.appState else { return .noData }
+        let run = Task { await appState.syncFromBackground(.remoteChange) }
+        guard let ran = await Self.value(of: run, within: Self.notificationBudget) else { return .failed }
+        guard ran else { return .noData }
+        return appState.syncCoordinator.status.error == nil ? .newData : .failed
+    }
+
+    private static func value<Value: Sendable>(of task: Task<Value, Never>, within budget: Duration) async -> Value? {
+        await withCheckedContinuation { continuation in
+            let answer = FirstAnswer(continuation)
+            let timer = Task {
+                try? await Task.sleep(for: budget)
+                answer.give(nil)
+            }
+            Task {
+                let value = await task.value
+                timer.cancel()
+                answer.give(value)
+            }
+        }
+    }
+
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
@@ -12,6 +60,19 @@ final class TableProAppDelegate: NSObject, UIApplicationDelegate {
         let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
         configuration.delegateClass = TableProSceneDelegate.self
         return configuration
+    }
+}
+
+private final class FirstAnswer<Value: Sendable> {
+    private var continuation: CheckedContinuation<Value?, Never>?
+
+    init(_ continuation: CheckedContinuation<Value?, Never>) {
+        self.continuation = continuation
+    }
+
+    func give(_ value: Value?) {
+        continuation?.resume(returning: value)
+        continuation = nil
     }
 }
 

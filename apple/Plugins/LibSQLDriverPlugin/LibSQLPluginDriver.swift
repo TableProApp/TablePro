@@ -284,44 +284,45 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         PluginRowStream.makeBounded { continuation, abort in
+            let spill = PluginRowSpill(continuation: continuation)
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, continuation: continuation)
+                    try await self.performStreamRows(query: query, into: spill)
                 } catch {
-                    continuation.finish(throwing: error)
+                    spill.finish(throwing: error)
                 }
             }
 
-            abort.onAbort { streamTask.cancel() }
+            abort.onAbort {
+                spill.abandon()
+                streamTask.cancel()
+            }
         }
     }
 
-    private func performStreamRows(
-        query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
+    private func performStreamRows(query: String, into spill: PluginRowSpill) async throws {
         switch getBackend() {
         case .remote(let client):
             let result = try await client.execute(sql: query)
 
             let columns = result.cols.map(\.name)
             let columnTypeNames = result.cols.map { $0.decltype ?? "" }
-            continuation.yield(.header(PluginStreamHeader(
+            spill.yield(PluginStreamHeader(
                 columns: columns,
                 columnTypeNames: columnTypeNames,
                 estimatedRowCount: nil
-            )))
+            ))
 
             if !result.rows.isEmpty {
                 let rows = result.rows.map { rawRow in
                     rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
                 }
-                continuation.yield(.rows(rows))
+                spill.deliver(rows)
             }
 
-            continuation.finish()
+            spill.finish()
         case .local(let localBackend):
-            try await localBackend.streamQuery(query, continuation: continuation)
+            try await localBackend.streamQuery(query, into: spill)
         case nil:
             throw LibSQLError.notConnected
         }

@@ -107,7 +107,7 @@ enum QueryClassifier {
         // A MongoDB statement is JavaScript, where `delete d.x` removes a field from a local object.
         guard databaseType != .redis, databaseType != .mongodb else { return false }
         if databaseType == .neo4j { return cypherDeletesUnfiltered(sql) }
-        // A request engine's own reading already tiers each delete it can run as destructive.
+        // A request engine's own reading already tiers each delete of more than one item as destructive.
         guard documentStoreClassification(sql, databaseType: databaseType, readings: readings) == nil else {
             return false
         }
@@ -320,9 +320,9 @@ extension QueryClassifier {
         "_rank_eval", "_mvt"
     ]
 
-    /// Read the way `ElasticsearchConsoleParser` reads a console request: the method and path on the
-    /// first line, the rest a body. The driver sends a GET or HEAD that carries a body as a POST, so
-    /// `GET /orders/_delete_by_query` with a query under it deletes, and it is classified as that POST.
+    // Read the way `ElasticsearchConsoleParser` reads a console request: the method and path on the first line, the
+    // rest a body. The driver sends a GET or HEAD that carries a body as a POST, so `GET /orders/_delete_by_query` with
+    // a query under it deletes, and it is classified as that POST.
     static func elasticsearchClassification(_ sql: String) -> QueryClassification {
         let request = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         var lines = request.components(separatedBy: "\n")
@@ -331,6 +331,7 @@ extension QueryClassifier {
         let parts = header.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
         let declared = parts.first.map { $0.uppercased() } ?? ""
         let method = hasBody && (declared == "GET" || declared == "HEAD") ? "POST" : declared
+        let path = parts.count == 2 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
         let upper = request.uppercased()
         let touchesUnsafeSurface = upper.contains("_SCRIPTS") || upper.contains("_PAINLESS_EXECUTE")
 
@@ -339,7 +340,6 @@ extension QueryClassifier {
         case "GET", "HEAD":
             tier = .safe
         case "POST":
-            let path = parts.count == 2 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
             if path.lowercased().contains("_delete_by_query") {
                 tier = .destructive
             } else {
@@ -347,12 +347,30 @@ extension QueryClassifier {
                 tier = readsOnly && !elasticsearchKeepsResults(path) ? .safe : .write
             }
         case "DELETE":
-            tier = .destructive
+            tier = elasticsearchDeletesOneDocument(path) ? .write : .destructive
         default:
             tier = .write
         }
         return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
     }
+
+    // `/<index>/_doc/<id>` on one concrete index. A name cannot start with `_`, `-` or `+`, one starting with `.` is a
+    // system index, and the characters below make a pattern, a list, date math or a remote target. An id starting with
+    // `_` stays destructive, as older servers read `/<index>/<type>/_query` as a delete by query.
+    static func elasticsearchDeletesOneDocument(_ path: String) -> Bool {
+        let rooted = path.hasPrefix("/") ? path : "/" + path
+        guard elasticsearchEndpoint(of: rooted) == "_doc" else { return false }
+        let route = rooted.prefix { $0 != "?" && $0 != "#" }
+        let segments = Array(route.split(separator: "/", omittingEmptySubsequences: false).dropFirst())
+        guard segments.count == 3, segments[1] == "_doc", let idStart = segments[2].first, idStart != "_",
+              let indexStart = segments[0].first, !"_-+.".contains(indexStart)
+        else { return false }
+        return !segments[0].contains { elasticsearchIndexExpressionCharacters.contains($0) }
+    }
+
+    private static let elasticsearchIndexExpressionCharacters: Set<Character> = [
+        "*", "?", ",", "<", ">", ":", "|", "\""
+    ]
 
     /// The first path segment naming an API, `_search` in `/orders/_search/template`, since an index
     /// name cannot start with `_` and the body or an index may spell `_search` anywhere. Nil when the
@@ -428,9 +446,16 @@ extension QueryClassifier {
             return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
         }
         if verb == "DELETE" {
-            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+            let tier: QueryTier = route.map(typesenseNamesOneDocument) == true ? .write : .destructive
+            return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
         }
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+    }
+
+    // `/collections/<c>/documents/<id>`. Without the id, a DELETE removes every document its `filter_by` matches.
+    static func typesenseNamesOneDocument(_ route: [String]) -> Bool {
+        route.count == 4 && route[0] == "COLLECTIONS" && route[2] == "DOCUMENTS"
+            && !["IMPORT", "EXPORT", "SEARCH"].contains(route[3])
     }
 
     /// A bare operation, a `{"query": ...}` envelope and a console body are the same request, and
@@ -447,15 +472,18 @@ extension QueryClassifier {
         return query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("mutation")
     }
 
-    /// Read in the order the driver reads it, with the driver's own console parser, so the request tiered is the one
-    /// the driver sends: `DELETE` and its path may be split by any whitespace.
+    // Read in the order the driver reads it, with the driver's own console parser, so the request tiered is the one the
+    // driver sends: `DELETE` and its path may be split by any whitespace.
     static func weaviateClassification(_ statement: String) -> QueryClassification {
         let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.lowercased() == "select 1" || WeaviateBrowseQuery.isTagged(trimmed) {
             return .safe
         }
         if WeaviateWriteCodec.isTagged(trimmed) {
-            return WeaviateWriteCodec.decode(trimmed)?.method.uppercased() == "DELETE" ? .destructive : .write
+            guard let tagged = WeaviateWriteCodec.decode(trimmed), tagged.method.uppercased() == "DELETE" else {
+                return .write
+            }
+            return weaviateDeletesOneObject(path: tagged.path) ? .write : .destructive
         }
         if let request = WeaviateConsoleParser.parse(trimmed) {
             return weaviateClassification(of: request)
@@ -472,12 +500,27 @@ extension QueryClassifier {
         case "GET", "HEAD":
             return .safe
         case "DELETE":
-            return .destructive
+            return weaviateDeletesOneObject(path: request.path) ? .write : .destructive
         case "POST" where request.path.hasPrefix("/v1/graphql"):
             guard let body = request.body else { return .write }
             return weaviateDeclaresMutation(body) ? .write : .safe
         default:
             return .write
+        }
+    }
+
+    // `/v1/objects/<className>/<id>`, or one reference on one object,
+    // `/v1/objects/[<className>/]<id>/references/<name>`. `/v1/objects/<id>` without a class deletes that UUID in every
+    // class that holds one (Weaviate's `deleteObjectFromRepo`), so it stays destructive.
+    static func weaviateDeletesOneObject(path: String) -> Bool {
+        guard let segments = weaviateSegments(of: path), segments.count >= 4,
+              segments[0] == "v1", segments[1] == "objects"
+        else { return false }
+        switch segments.count {
+        case 4: return true
+        case 5: return segments[3] == "references"
+        case 6: return segments[4] == "references"
+        default: return false
         }
     }
 
@@ -491,45 +534,94 @@ extension QueryClassifier {
         let tier: QueryTier = switch kind.tier {
         case .read: .safe
         case .write: .write
-        case .remove: .destructive
+        case .remove: qdrantDeletesOnePoint(request) ? .write : .destructive
         }
         return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: kind.touchesServerFiles)
     }
 
-    /// A grid page is a tagged spec, which only reads. Anything else is read with the driver's own parser, so the path
-    /// tiered is the path the driver writes. A write that leaves a node holding nothing deletes it, so it ranks with DELETE.
+    // Qdrant's `PointsSelector` is a list of ids or a filter, either with an optional `shard_key`. Any other key, a
+    // filter or a second id can remove more than one point.
+    static func qdrantDeletesOnePoint(_ request: QdrantConsoleRequest) -> Bool {
+        guard request.method == "POST",
+              let route = QdrantPathEncoding.segments(of: request.path), route.count == 4,
+              route[0] == "collections", route[2] == "points", route[3] == "delete",
+              let data = request.body?.data(using: .utf8),
+              let selector = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(selector.keys).isSubset(of: ["points", "shard_key"]),
+              let points = selector["points"] as? [Any], points.count == 1
+        else { return false }
+        switch points[0] {
+        case let number as NSNumber:
+            return CFGetTypeID(number) != CFBooleanGetTypeID()
+        case is String:
+            return true
+        default:
+            return false
+        }
+    }
+
+    // A grid page is a tagged spec, which only reads. Anything else is read with the driver's own parser, so the path
+    // tiered is the path the driver writes. A write that leaves a node holding nothing deletes it, so it ranks with
+    // DELETE: a write when it removes one document or one record, destructive otherwise.
     static func firebaseClassification(_ statement: String, databaseType: DatabaseType) -> QueryClassification {
         let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.unicodeScalars.starts(with: FirebaseStatement.browseTag.unicodeScalars) {
             return .safe
         }
-        let destructive = QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
-        let write = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
         // The driver refuses any other text, and an unknown request is a write all the same.
-        guard case .request(let request)? = try? FirebaseStatement.parse(trimmed) else { return write }
+        guard case .request(let request)? = try? FirebaseStatement.parse(trimmed) else { return .write }
         let body = request.body ?? ""
+        let path = request.path.unicodeScalars.split(separator: "/").map(String.init)
+        let realtimeDatabase = databaseType == .firebaseRealtimeDatabase
         switch request.method {
         case .get, .query:
             return .safe
+        case .delete where databaseType == .firestore:
+            return firestoreNamesDocument(path) ? .write : .destructive
         case .delete:
-            return destructive
-        case .put where request.path.isEmpty || firebaseHoldsNothing(body):
-            return destructive
-        case .patch where databaseType == .firebaseRealtimeDatabase && firebaseRemovesChild(body):
-            return destructive
+            return realtimeDatabase && realtimeDatabaseRemovesOnlyRecords([path]) ? .write : .destructive
+        case .put where request.path.isEmpty:
+            return .destructive
+        // A PUT replaces the node at its path, every record under a table's node with it.
+        case .put where realtimeDatabase:
+            if firebaseHoldsNothing(body) { return realtimeDatabaseRemovesOnlyRecords([path]) ? .write : .destructive }
+            return path.count >= 2 ? .write : .destructive
+        case .put where firebaseHoldsNothing(body):
+            return .destructive
+        case .patch where realtimeDatabase:
+            return realtimeDatabasePatchChangesOnlyRecords(path, body: body) ? .write : .destructive
         case .put, .patch, .post:
-            return write
+            return .write
+        }
+    }
+
+    // An even number of segments names one document. Firestore refuses `.` and `..` as IDs, and the driver sends them as
+    // written, where the front end may resolve them to another path.
+    static func firestoreNamesDocument(_ path: [String]) -> Bool {
+        !path.isEmpty && path.count.isMultiple(of: 2) && !path.contains { $0 == "." || $0 == ".." }
+    }
+
+    // The plugin lists `/` and each top-level key as tables (`FirebasePluginDriver.fetchTables`), so only a node two
+    // levels down is one record. A key cannot hold `.`, so a path through one names the server's own node.
+    static func realtimeDatabaseRemovesOnlyRecords(_ nodes: [[String]]) -> Bool {
+        nodes.allSatisfy { node in node.count >= 2 && !node.contains { $0.unicodeScalars.contains(".") } }
+    }
+
+    // Each key of a PATCH body is a path below the request's, and the PATCH replaces each child it names: one set to
+    // nothing is removed, any other replaces every record under it. A metadata key sets its own node.
+    static func realtimeDatabasePatchChangesOnlyRecords(_ path: [String], body: String) -> Bool {
+        guard let members = firebaseJSON(body) as? [String: Any] else { return true }
+        return members.allSatisfy { key, value in
+            var node = path + key.unicodeScalars.split(separator: "/").map(String.init)
+            if firebaseHoldsNothing(json: value) { return realtimeDatabaseRemovesOnlyRecords([node]) }
+            if let last = node.last, realtimeDatabaseMetadataKeys.contains(last) { node.removeLast() }
+            return node.count >= 2
         }
     }
 
     static func firebaseHoldsNothing(_ body: String) -> Bool {
         guard let json = firebaseJSON(body) else { return false }
         return firebaseHoldsNothing(json: json)
-    }
-
-    static func firebaseRemovesChild(_ body: String) -> Bool {
-        guard let members = firebaseJSON(body) as? [String: Any] else { return false }
-        return members.values.contains { firebaseHoldsNothing(json: $0) }
     }
 
     private static func firebaseJSON(_ body: String) -> Any? {
@@ -560,34 +652,17 @@ extension QueryClassifier {
         }
     }
 
-    /// A PUT that sets a cell to null deletes that cell, so it ranks with DELETE. INSERT refuses a
-    /// key that already has a row, so it never overwrites one.
+    // Every change names one row by its key (`BigtableRequest.parse`) and runs as one `mutateRow`, so a DELETE or a PUT
+    // that nulls a cell removes from that row only.
     static func bigtableClassification(_ trimmed: String) -> QueryClassification {
         if trimmed.hasPrefix("BIGTABLE_BROWSE:") {
             return .safe
         }
-        let write = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
-        let destructive = QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
         switch trimmed.prefix(while: { !$0.isWhitespace }).uppercased() {
         case "GET", "SCAN", "READ":
             return .safe
-        case "DELETE":
-            return destructive
-        case "PUT":
-            return bigtableBodyDeletesCell(trimmed) ? destructive : write
         default:
-            return write
+            return .write
         }
-    }
-
-    /// The body is the JSON object that runs to the end of the text. A quoted row key may itself
-    /// hold a brace, so each brace is tried until one starts an object that parses.
-    private static func bigtableBodyDeletesCell(_ trimmed: String) -> Bool {
-        for brace in trimmed.indices where trimmed[brace] == "{" {
-            guard let data = String(trimmed[brace...]).data(using: .utf8),
-                  let cells = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-            return cells.values.contains { $0 is NSNull }
-        }
-        return false
     }
 }

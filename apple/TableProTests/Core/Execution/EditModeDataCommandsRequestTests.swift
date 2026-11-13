@@ -208,8 +208,7 @@ struct EditModeDataCommandsRequestTests {
         #expect(refusal(sql, on: .bigtable) == nil)
     }
 
-    // Every HTTP DELETE tiers destructive, so the destructive rule refuses it before the data rule reads the list.
-    @Test("A data delete is on its engine's list, and Edit still refuses it as destructive", arguments: [
+    @Test("Edit runs a delete of one item by its id or key, which is a write", arguments: [
         (DatabaseType.elasticsearch, "DELETE /orders/_doc/1"),
         (.typesense, "DELETE /collections/books/documents/1"),
         (.qdrant, #"POST /collections/docs/points/delete\#n{"points": [1]}"#),
@@ -218,8 +217,27 @@ struct EditModeDataCommandsRequestTests {
         (.firebaseRealtimeDatabase, "DELETE users/alice"),
         (.bigtable, "DELETE events/user#42"),
     ])
-    func dataDeleteIsListedButDestructive(type: DatabaseType, sql: String) {
+    func oneItemDeleteRunsInEdit(type: DatabaseType, sql: String) {
         #expect(QueryClassifier.isDataStatement(sql, databaseType: type))
+        #expect(refusal(sql, on: type) == nil)
+    }
+
+    @Test("Edit refuses a delete of a container, a batch, a filter or every item as destructive", arguments: [
+        (DatabaseType.elasticsearch, "DELETE /orders"),
+        (.elasticsearch, "DELETE /orders,archive/_doc/1"),
+        (.elasticsearch, #"POST /orders/_delete_by_query\#n{"query": {"match_all": {}}}"#),
+        (.typesense, "DELETE /collections/books/documents?filter_by=year:<2000"),
+        (.qdrant, #"POST /collections/docs/points/delete\#n{"points": [1, 2]}"#),
+        (.qdrant, #"POST /collections/docs/points/delete\#n{"filter": {"must": [{"key": "city", "match": {"value": "x"}}]}}"#),
+        (.weaviate, "DELETE /v1/objects/36ddd591-2dee-4e7e-a3cc-eb86d30a4303"),
+        (.weaviate, #"DELETE /v1/batch/objects\#n{"match": {"class": "Article", "where": {"operator": "Like", "path": ["id"], "valueText": "*"}}}"#),
+        (.firestore, "DELETE users"),
+        (.firebaseRealtimeDatabase, "DELETE users"),
+        (.firebaseRealtimeDatabase, #"PATCH / {"users": null}"#),
+        (.firebaseRealtimeDatabase, #"PUT users {"x": {"name": "a"}}"#),
+        (.firebaseRealtimeDatabase, #"PATCH / {"users": {"x": 1}}"#),
+    ])
+    func manyItemDeleteIsRefusedInEdit(type: DatabaseType, sql: String) {
         #expect(refusal(sql, on: type) == .denied(ExternalStatementGate.destructiveRefusal))
     }
 

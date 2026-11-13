@@ -21,7 +21,8 @@ final class DashboardTileBoard: ObservableObject {
         var isRunning = false
     }
 
-    typealias Execute = @MainActor (String) async throws -> QueryResult
+    // Runs the saved query in the scope the gate was asked about, nil when the gate was asked with none.
+    typealias Execute = @MainActor (String, DatabaseScope?) async throws -> QueryResult
 
     struct Environment {
         var loadCatalog: @MainActor (UUID) async -> DashboardSavedQueryCatalog
@@ -33,7 +34,8 @@ final class DashboardTileBoard: ObservableObject {
         var nullDisplay: @MainActor () -> String
         var storage: ServerDashboardTileStorage
         var now: @MainActor () -> Date = Date.init
-        // Where a tile's query runs, so Read-Only reads an Oracle or Dameng catalog in that schema.
+        // Where a tile's query runs, so Read-Only reads an Oracle or Dameng catalog in that schema and the run is pinned
+        // there.
         var runsIn: @MainActor (UUID) -> DatabaseScope? = { _ in nil }
 
         @MainActor
@@ -59,7 +61,7 @@ final class DashboardTileBoard: ObservableObject {
                 chartsAvailable: { services.featureAccess.isAvailable(.resultCharts) },
                 nullDisplay: { services.appSettings.dataGrid.nullDisplay },
                 storage: ServerDashboardTileStorage(),
-                // A tile runs on the session itself, in whichever schema it is on.
+                // A tile runs on the session itself, in the schema it is on when the tile is checked.
                 runsIn: { connectionId in
                     guard let browse = services.databaseManager.browseScope(for: connectionId) else { return nil }
                     let driver = services.databaseManager.driver(for: connectionId) as? SchemaSwitchable
@@ -283,7 +285,7 @@ final class DashboardTileBoard: ObservableObject {
         }
 
         do {
-            let result = try await execute(sql)
+            let result = try await execute(sql, runsIn)
             if let error = result.error {
                 throw error
             }

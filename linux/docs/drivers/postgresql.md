@@ -75,8 +75,8 @@ A call that timed out or lost its connection is checked before the link is decla
 - Workspace reads run in `READ ONLY` transactions, and saves are refused before anything is sent (`ReadOnly(ClientGuard)`).
 - In the editor, a statement run outside a transaction is wrapped in `START TRANSACTION READ ONLY` and `COMMIT`. After the user's own `BEGIN`, the driver sends `SET TRANSACTION READ ONLY`.
 - A statement that cannot run inside a transaction block, such as `VACUUM`, fails inside the wrapper with 25001 and is reported as refused by read-only mode. `PREPARE TRANSACTION`, `COMMIT PREPARED` and `ROLLBACK PREPARED` are refused before sending.
-- `SET default_transaction_read_only = off` does not escape, because each transaction is opened read-only explicitly.
-- A user's own `SET TRANSACTION READ WRITE` inside their transaction can still lift it. For a guarantee, connect with a role that cannot write.
+- A statement that makes a transaction or the session read-write is refused before sending: `SET TRANSACTION READ WRITE`, `BEGIN READ WRITE`, `SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE`, and any `SET` or `RESET` of `transaction_read_only` or `default_transaction_read_only` (`tablepro_core::sql_syntax::turns_read_write`). Before its first query a transaction can still be made writable, so the `SET TRANSACTION READ ONLY` after the user's `BEGIN` alone does not hold it. An isolation level still runs.
+- A session default turned off another way, such as `set_config`, does not escape, because each transaction is opened read-only explicitly, and a function cannot make a transaction writable once a query has run in it.
 
 ## Writes
 

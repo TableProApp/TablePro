@@ -24,6 +24,10 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
     private let helloBudget: SQLiteAgentHelloBudget
     private var busyTimeoutMilliseconds: Int32 = 0
 
+    // Every reply goes to the connection's one pending operation, and an await lets the next call in, so statements queue.
+    private var statementRunning = false
+    private var waitingStatements: [CheckedContinuation<Void, Never>] = []
+
     nonisolated let canceller: SQLiteCanceller
     nonisolated var resolvedServerVersion: String? { connection.cachedServerVersion }
 
@@ -32,9 +36,10 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
         port: Int,
         path: String,
         token: String,
-        helloBudget: SQLiteAgentHelloBudget
+        helloBudget: SQLiteAgentHelloBudget,
+        heartbeatInterval: TimeInterval = SQLiteAgentConnection.defaultHeartbeatInterval
     ) {
-        let connection = SQLiteAgentConnection(host: host, port: port)
+        let connection = SQLiteAgentConnection(host: host, port: port, heartbeatInterval: heartbeatInterval)
         self.connection = connection
         self.path = path
         self.token = token
@@ -98,6 +103,8 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
         rules: SQLiteStatementRules,
         rowCap: Int
     ) async throws -> SQLiteRawResult {
+        await takeTurn()
+        defer { endTurn() }
         let startTime = Date()
         let accumulator = SQLiteAgentResultAccumulator()
 
@@ -136,23 +143,24 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
         )
     }
 
-    func streamQuery(
-        _ query: String,
-        rules: SQLiteStatementRules,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
+    func streamQuery(_ query: String, rules: SQLiteStatementRules, into spill: PluginRowSpill) async throws {
+        await takeTurn()
+        defer { endTurn() }
+        try Task.checkCancellation()
         _ = try await withTaskCancellationHandler {
-            try await connection.execute(
+            // A cancel frame sent before the statement starts does nothing, so a reader that left by now ends it here.
+            try Task.checkCancellation()
+            return try await connection.execute(
                 sql: query,
                 parameters: [],
                 scope: Self.agentScope(rules),
                 rowCap: 0,
                 onHeader: { header in
-                    continuation.yield(.header(PluginStreamHeader(
+                    spill.yield(PluginStreamHeader(
                         columns: header.map(\.name),
                         columnTypeNames: header.map { $0.declaredType ?? "" },
                         estimatedRowCount: nil
-                    )))
+                    ))
                 },
                 onRows: { columnCount, values in
                     guard columnCount > 0 else { return }
@@ -162,13 +170,30 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
                         batch.append(values[index..<(index + columnCount)].map(Self.decode))
                         index += columnCount
                     }
-                    continuation.yield(.rows(batch))
+                    // The spill takes rows the stream cannot, so the agent's statement ends as fast as the session carries them.
+                    spill.deliver(batch)
                 }
             )
         } onCancel: {
             connection.sendCancel()
         }
-        continuation.finish()
+        spill.finish()
+    }
+
+    private func takeTurn() async {
+        guard statementRunning else {
+            statementRunning = true
+            return
+        }
+        await withCheckedContinuation { waitingStatements.append($0) }
+    }
+
+    private func endTurn() {
+        guard !waitingStatements.isEmpty else {
+            statementRunning = false
+            return
+        }
+        waitingStatements.removeFirst().resume()
     }
 
     // Nil runs the plain execute, so an unrestricted statement sends the frame it always sent. The agent loads no
@@ -263,16 +288,18 @@ struct SQLiteAgentExecuteOutcome: Sendable {
 /// the reader thread's cancel and heartbeat frames never interleave with a partial request.
 final class SQLiteAgentConnection: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteAgentConnection")
-    private static let heartbeatInterval: TimeInterval = 15
+    static let defaultHeartbeatInterval: TimeInterval = 15
 
     private let host: String
     private let port: Int
+    private let heartbeatInterval: TimeInterval
 
     private let stateLock = NSLock()
     private var socketFD: Int32 = -1
     private var pending: SQLiteAgentOperation?
     private var terminalFailure: Error?
     private var closed = false
+    private var readerOwnsDescriptor = false
 
     private let writeLock = NSLock()
     private var reader = SQLiteAgentFrameReader()
@@ -286,14 +313,18 @@ final class SQLiteAgentConnection: @unchecked Sendable {
         set { versionLock.lock(); _cachedServerVersion = newValue; versionLock.unlock() }
     }
 
-    init(host: String, port: Int) {
+    init(host: String, port: Int, heartbeatInterval: TimeInterval) {
         self.host = host
         self.port = port
+        self.heartbeatInterval = heartbeatInterval
     }
 
     func connect(token: String) throws {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw SQLitePluginError.connectionFailed("could not create a local socket") }
+        // A heartbeat after the session went away gets EPIPE; the default SIGPIPE would end the app.
+        var noSignal: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
 
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
@@ -313,11 +344,31 @@ final class SQLiteAgentConnection: @unchecked Sendable {
         stateLock.lock()
         socketFD = fd
         closed = false
+        readerOwnsDescriptor = false
         stateLock.unlock()
 
-        try writeAll(SQLiteAgentProtocol.admissionPreamble(token: token))
+        do {
+            try writeAll(SQLiteAgentProtocol.admissionPreamble(token: token))
+        } catch {
+            close()
+            throw error
+        }
 
-        let thread = Thread { [weak self] in self?.readLoop() }
+        stateLock.lock()
+        guard !closed else {
+            stateLock.unlock()
+            throw SQLitePluginError.notConnected
+        }
+        readerOwnsDescriptor = true
+        stateLock.unlock()
+
+        let thread = Thread { [weak self] in
+            guard let self else {
+                Darwin.close(fd)
+                return
+            }
+            self.readLoop(fd: fd)
+        }
         thread.name = "com.TablePro.sqlite.agent-reader"
         thread.stackSize = 512 * 1_024
         readerThread = thread
@@ -374,17 +425,27 @@ final class SQLiteAgentConnection: @unchecked Sendable {
         closed = true
         let fd = socketFD
         socketFD = -1
+        let readerOwnsDescriptor = self.readerOwnsDescriptor
+        // Under the lock, so a reader on its way out cannot close the number before this reaches it.
+        if fd >= 0 { shutdown(fd, SHUT_RDWR) }
         let inflight = pending
         pending = nil
+        let timer = heartbeatTimer
+        heartbeatTimer = nil
         stateLock.unlock()
 
-        heartbeatTimer?.cancel()
-        heartbeatTimer = nil
-        if fd >= 0 {
-            shutdown(fd, SHUT_RDWR)
-            Darwin.close(fd)
+        timer?.cancel()
+        if fd >= 0, !readerOwnsDescriptor {
+            closeDescriptor(fd)
         }
         inflight?.fail(SQLitePluginError.notConnected)
+    }
+
+    // After any writer that read the number before it was cleared, so none writes to a reused descriptor.
+    private func closeDescriptor(_ fd: Int32) {
+        writeLock.lock()
+        Darwin.close(fd)
+        writeLock.unlock()
     }
 
     // MARK: - Operation lifecycle
@@ -408,19 +469,26 @@ final class SQLiteAgentConnection: @unchecked Sendable {
             }
 
             stateLock.lock()
+            /// A terminal reply that arrived before this operation registered, such as the launcher's
+            /// "no python3" notice landing before the hello op was set, is delivered to this
+            /// operation rather than lost. The reader thread stores it under the same lock, so the
+            /// two orderings, store-then-register and register-then-route, both reach here correctly.
+            /// It comes before the closed check, since the reader closes the connection once it stops.
+            if let stored = terminalFailure {
+                terminalFailure = nil
+                stateLock.unlock()
+                operation.fail(stored)
+                return
+            }
             if closed {
                 stateLock.unlock()
                 continuation.resume(throwing: SQLitePluginError.notConnected)
                 return
             }
-            /// A terminal reply that arrived before this operation registered, such as the launcher's
-            /// "no python3" notice landing before the hello op was set, is delivered to this
-            /// operation rather than lost. The reader thread stores it under the same lock, so the
-            /// two orderings, store-then-register and register-then-route, both reach here correctly.
-            if let stored = terminalFailure {
-                terminalFailure = nil
+            // The backend runs one statement at a time; replacing the pending one would hand it another's replies.
+            guard pending == nil else {
                 stateLock.unlock()
-                operation.fail(stored)
+                operation.fail(SQLitePluginError.queryFailed("another statement is still running on the remote SQLite session"))
                 return
             }
             pending = operation
@@ -474,14 +542,14 @@ final class SQLiteAgentConnection: @unchecked Sendable {
 
     // MARK: - Reader
 
-    private func readLoop() {
+    // The reader closes its own descriptor on the way out, so it never reads a number something else reused.
+    private func readLoop(fd: Int32) {
         var buffer = [UInt8](repeating: 0, count: 32 * 1_024)
         while true {
             stateLock.lock()
-            let fd = socketFD
             let isClosed = closed
             stateLock.unlock()
-            guard !isClosed, fd >= 0 else { break }
+            guard !isClosed else { break }
 
             let count = read(fd, &buffer, buffer.count)
             if count <= 0 { break }
@@ -497,6 +565,9 @@ final class SQLiteAgentConnection: @unchecked Sendable {
             }
         }
         completeOrStoreFailure(SQLitePluginError.notConnected)
+        // Nothing reads the socket from here on, so a later request would wait for a reply forever.
+        close()
+        closeDescriptor(fd)
     }
 
     private func route(_ reply: SQLiteAgentReply) {
@@ -530,8 +601,11 @@ final class SQLiteAgentConnection: @unchecked Sendable {
     // MARK: - Heartbeat
 
     private func startHeartbeat() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !closed, heartbeatTimer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
-        timer.schedule(deadline: .now() + Self.heartbeatInterval, repeating: Self.heartbeatInterval)
+        timer.schedule(deadline: .now() + heartbeatInterval, repeating: heartbeatInterval)
         timer.setEventHandler { @Sendable [weak self] in
             self?.sendHeartbeat()
         }

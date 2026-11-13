@@ -67,7 +67,8 @@ extension ImportState {
             total: Int64(estimatedTotalStatements),
             unit: countsRows ? .rows : .statements,
             isEstimate: totalIsEstimate,
-            note: statusMessage
+            note: statusMessage,
+            fileFraction: !countsRows && fileBytes > 0 ? Double(fileBytesRead) / Double(fileBytes) : nil
         )
     }
 }

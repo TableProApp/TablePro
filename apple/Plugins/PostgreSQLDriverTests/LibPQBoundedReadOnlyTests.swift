@@ -65,7 +65,7 @@ struct LibPQBoundedReadOnlyTests {
             query,
             parameters: parameters,
             bound: LibPQReadBound(rowCap: rowCap, byteLimit: byteLimit),
-            reason: .safeMode
+            scope: LibPQReadOnlyTransaction.Scope(reason: .safeMode, runsInOpenTransaction: false)
         )
     }
 
