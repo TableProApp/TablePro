@@ -1811,6 +1811,22 @@
               "removed"
             ]
           },
+          "suspended": {
+            "description": "true while the team turned public links off or staff turned the creator's sharing off: the link does not resolve and has no url, and comes back when the switch is on again",
+            "type": "boolean"
+          },
+          "suspended_by": {
+            "description": "Extensible enum: account, team. With suspended: account (staff turned the creator's sharing off) or team (the team turned public links off); account when both are off",
+            "examples": [
+              "account",
+              "team"
+            ],
+            "type": "string",
+            "x-extensible-enum": [
+              "account",
+              "team"
+            ]
+          },
           "team_id": {
             "description": "Team TypeID, for a team link",
             "type": "string"
@@ -1847,6 +1863,7 @@
           "allow_download",
           "has_password",
           "state",
+          "suspended",
           "view_count",
           "created_at",
           "updated_at"
@@ -4022,16 +4039,16 @@
     },
     "/shares": {
       "get": {
-        "description": "The caller's personal links, or with team a team's links for its owner and admins. Newest first, without sql.",
+        "description": "The caller's personal links, or with team a team's links: every one for its owner and admins, its own for a seated member, seat_required for a member without a seat. Newest first, without sql.",
         "operationId": "list-shares",
         "parameters": [
           {
-            "description": "Team TypeID: that team's links, for its owner and admins; omit for the caller's personal links",
+            "description": "Team TypeID: that team's links, every one for its owner and admins, a seated member's own for a member; omit for the caller's personal links",
             "explode": false,
             "in": "query",
             "name": "team",
             "schema": {
-              "description": "Team TypeID: that team's links, for its owner and admins; omit for the caller's personal links",
+              "description": "Team TypeID: that team's links, every one for its owner and admins, a seated member's own for a member; omit for the caller's personal links",
               "maxLength": 64,
               "type": "string"
             }
@@ -4129,14 +4146,14 @@
                       "detail": "The token lacks the app scope."
                     }
                   },
-                  "forbidden_2": {
-                    "summary": "Forbidden",
+                  "seat_required": {
+                    "summary": "Seat required",
                     "value": {
-                      "type": "https://api.tablepro.app/problems/forbidden",
-                      "title": "Forbidden",
+                      "type": "https://api.tablepro.app/problems/seat-required",
+                      "title": "Seat required",
                       "status": 403,
-                      "code": "forbidden",
-                      "detail": "Only the team's owner and admins can do this."
+                      "code": "seat_required",
+                      "detail": "A team link needs a seat in the team."
                     }
                   }
                 },

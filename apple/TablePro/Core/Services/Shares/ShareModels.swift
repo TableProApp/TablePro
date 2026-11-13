@@ -122,6 +122,8 @@ internal struct ShareLink: Identifiable, Equatable, Sendable {
     let kind: ShareKind
     let createdAt: Date
     let expiresAt: Date?
+    // Still live and holding a slot, but it does not resolve while the team or staff has sharing off.
+    let isSuspended: Bool
 }
 
 internal struct SharedQuery: Equatable, Sendable {

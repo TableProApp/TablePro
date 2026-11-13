@@ -57,11 +57,11 @@ struct CloudShareServiceTests {
         ]
     }
 
-    private static func shareView(id: String, created: String) -> [String: Any] {
+    private static func shareView(id: String, created: String, suspended: Bool = false) -> [String: Any] {
         [
             "id": id, "kind": "query", "scope": "account", "title": "T", "note": "", "dialect": "MySQL",
             "has_snapshot": false, "hide_sql": false, "allow_download": true, "has_password": false,
-            "state": "live", "view_count": 0, "created_at": created, "updated_at": created
+            "state": "live", "suspended": suspended, "view_count": 0, "created_at": created, "updated_at": created
         ]
     }
 
@@ -150,12 +150,13 @@ struct CloudShareServiceTests {
     func liveLinksOldestFirst() async throws {
         let page: [String: Any] = ["data": [
             Self.shareView(id: "shr_new", created: "2026-11-13T10:00:00Z"),
-            Self.shareView(id: "shr_old", created: "2026-11-01T10:00:00Z")
+            Self.shareView(id: "shr_old", created: "2026-11-01T10:00:00Z", suspended: true)
         ]]
         let transport = CannedTransport([FakeAccountServer.json(status: .ok, page)])
         let links = try await Self.service(transport).liveLinks()
 
         #expect(links.map(\.id) == ["shr_old", "shr_new"])
+        #expect(links.map(\.isSuspended) == [true, false])
         let path = try #require(await transport.sent.first?.path)
         #expect(path.hasPrefix("/shares?"))
         #expect(path.contains("state=live"))

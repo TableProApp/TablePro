@@ -173,7 +173,8 @@ internal struct CloudShareService: ShareService {
             title: view.title,
             kind: ShareKind(rawValue: view.kind) ?? .query,
             createdAt: view.createdAt,
-            expiresAt: view.expiresAt
+            expiresAt: view.expiresAt,
+            isSuspended: view.suspended
         )
     }
 

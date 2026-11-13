@@ -341,8 +341,14 @@ private struct LiveLinkRow: View {
 
     var body: some View {
         LabeledContent {
-            Button(String(localized: "Revoke"), action: revoke)
-                .disabled(isRevoking)
+            HStack(spacing: 8) {
+                if link.isSuspended {
+                    Text("Suspended")
+                        .foregroundStyle(.secondary)
+                }
+                Button(String(localized: "Revoke"), action: revoke)
+                    .disabled(isRevoking)
+            }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: link.title.isEmpty ? String(localized: "Untitled") : link.title)

@@ -326,8 +326,8 @@ struct ShareSheetModelTests {
     @Test("At the cap the live links show oldest first, and revoking one brings the form back")
     func atCapRevoke() async throws {
         let service = FakeShareService(limits: .free(live: 5))
-        let older = ShareLink(id: "shr_old", title: "Old", kind: .query, createdAt: Date(timeIntervalSince1970: 1), expiresAt: nil)
-        let newer = ShareLink(id: "shr_new", title: "New", kind: .result, createdAt: Date(timeIntervalSince1970: 2), expiresAt: nil)
+        let older = ShareLink(id: "shr_old", title: "Old", kind: .query, createdAt: Date(timeIntervalSince1970: 1), expiresAt: nil, isSuspended: false)
+        let newer = ShareLink(id: "shr_new", title: "New", kind: .result, createdAt: Date(timeIntervalSince1970: 2), expiresAt: nil, isSuspended: false)
         service.linksResult = .success([newer, older])
         let model = makeModel(service: service)
         await model.load()
@@ -349,7 +349,7 @@ struct ShareSheetModelTests {
     @Test("A revoke the server refuses keeps the link and says so")
     func revokeFailureKeepsLink() async throws {
         let service = FakeShareService(limits: .free(live: 5))
-        let link = ShareLink(id: "shr_1", title: "One", kind: .query, createdAt: Date(), expiresAt: nil)
+        let link = ShareLink(id: "shr_1", title: "One", kind: .query, createdAt: Date(), expiresAt: nil, isSuspended: false)
         service.linksResult = .success([link])
         service.revokeFailure = .offline
         let model = makeModel(service: service)
