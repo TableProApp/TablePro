@@ -74,6 +74,14 @@ struct TransactionEngineFamilyTests {
         }
     }
 
+    @Test("Only Teradata ends a transaction at a definition statement and keeps unwrapped work open")
+    func teradataAloneHoldsDefinitionsAndUnwrappedWork() {
+        for family in TransactionEngineFamily.allCases {
+            #expect(family.definitionEndsTransaction == (family == .teradata))
+            #expect(family.unwrappedWorkStaysOpen == (family == .teradata))
+        }
+    }
+
     @Test("Redis has rules of its own, so it is not the fallback")
     func redisIsItsOwnFamily() {
         #expect(TransactionEngineFamily.of(.redis) == .redis)

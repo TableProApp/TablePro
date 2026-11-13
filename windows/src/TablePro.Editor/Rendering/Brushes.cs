@@ -19,7 +19,6 @@ internal sealed unsafe class Brushes : IStyleBrushes, IDisposable
         CurrentLine = Create(context, palette.CurrentLine);
         Selection = Create(context, palette.Selection);
         SelectionText = palette.SelectionText is Color selected ? Create(context, selected) : null;
-        Caret = Create(context, palette.Caret);
         FindMatch = Create(context, palette.FindMatch);
         _syntax = new ID2D1Brush*[palette.Syntax.Length];
         for (var i = 0; i < palette.Syntax.Length; i++)
@@ -39,8 +38,6 @@ internal sealed unsafe class Brushes : IStyleBrushes, IDisposable
     public ID2D1Brush* Selection { get; }
 
     public ID2D1Brush* SelectionText { get; }
-
-    public ID2D1Brush* Caret { get; }
 
     public ID2D1Brush* FindMatch { get; }
 

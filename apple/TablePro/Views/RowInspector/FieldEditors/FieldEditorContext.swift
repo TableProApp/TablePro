@@ -27,6 +27,9 @@ internal struct FieldEditorContext {
     internal let allowsNullAndDefault: Bool
     internal let isBinaryValue: Bool
 
+    // The field's editor id: a new one is another row or a new read, so an editor seeded from the value starts over.
+    internal let documentID: UUID?
+
     internal init(
         columnName: String,
         columnType: ColumnType,
@@ -38,7 +41,8 @@ internal struct FieldEditorContext {
         commitBytes: ((Data) -> Void)? = nil,
         editor: FieldEditorKind? = nil,
         allowsNullAndDefault: Bool = true,
-        isBinaryValue: Bool = false
+        isBinaryValue: Bool = false,
+        documentID: UUID? = nil
     ) {
         self.columnName = columnName
         self.columnType = columnType
@@ -51,6 +55,7 @@ internal struct FieldEditorContext {
         self.editor = editor
         self.allowsNullAndDefault = allowsNullAndDefault
         self.isBinaryValue = isBinaryValue
+        self.documentID = documentID
     }
 
     internal var hasMultipleValues: Bool { valueState == .multipleValues }

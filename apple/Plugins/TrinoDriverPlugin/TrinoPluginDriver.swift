@@ -10,6 +10,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var _client: TrinoStatementClient?
     private var _serverVersion: String?
+    private var _heartbeat = TrinoHeartbeat.repeatLastPage
     private var _columnTypes: [String: [String: String]] = [:]
 
     static let logger = Logger(subsystem: "com.TablePro", category: "TrinoPluginDriver")
@@ -87,7 +88,10 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             : try? await client.execute(flavor.versionStatement)
         let product = flavor.productName
         if case .text(let version)? = versionResult?.rows.first?.first {
-            lock.withLock { _serverVersion = "\(product) \(version)" }
+            lock.withLock {
+                _serverVersion = "\(product) \(version)"
+                _heartbeat = TrinoHeartbeat(flavor: flavor, version: version)
+            }
         } else {
             lock.withLock { _serverVersion = product }
         }
@@ -164,7 +168,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func stream(_ statement: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.make { continuation, abort in
+        PluginRowStream.makeBounded { continuation, abort in
             let driver = self
             let streamTask = Task {
                 guard let client = driver.client else {
@@ -173,20 +177,32 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
                 do {
                     var headerSent = false
-                    for try await element in client.executeStreamed(statement) {
-                        switch element {
-                        case .columns(let columns):
-                            continuation.yield(.header(PluginStreamHeader(
+                    try await client.executeStreamed(
+                        statement,
+                        heartbeat: driver.heartbeat,
+                        onColumns: { columns in
+                            let header = PluginStreamHeader(
                                 columns: columns.map(\.name),
                                 columnTypeNames: columns.map(\.typeName)
-                            )))
+                            )
+                            guard await PluginRowStream.deliver(.header(header), to: continuation) else {
+                                throw CancellationError()
+                            }
                             headerSent = true
-                        case .rows(let page):
-                            continuation.yield(.rows(page.map { row in row.map(Self.cellValue) }))
+                        },
+                        onPage: { page, keepAlive in
+                            let rows = PluginStreamElement.rows(page.map { row in row.map(Self.cellValue) })
+                            let delivered = try await PluginRowStream.deliver(
+                                rows,
+                                to: continuation,
+                                keepingAliveEvery: Self.heartbeatInterval,
+                                keepAlive
+                            )
+                            guard delivered else { throw CancellationError() }
                         }
-                    }
+                    )
                     if !headerSent {
-                        continuation.yield(.header(PluginStreamHeader(columns: [], columnTypeNames: [])))
+                        _ = await PluginRowStream.deliver(.header(PluginStreamHeader(columns: [], columnTypeNames: [])), to: continuation)
                     }
                     continuation.finish()
                 } catch {
@@ -196,6 +212,13 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             abort.onAbort { streamTask.cancel() }
         }
     }
+
+    private var heartbeat: TrinoHeartbeat {
+        lock.withLock { _heartbeat }
+    }
+
+    // The official client's interval: a coordinator abandons a query after query.client.timeout, 5 minutes by default.
+    private static let heartbeatInterval: TimeInterval = 30
 
     private func pluginResult(_ result: TrinoResultSet, executionTime: TimeInterval) -> PluginQueryResult {
         guard !result.columns.isEmpty else {

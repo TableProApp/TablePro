@@ -432,6 +432,27 @@
   <data name="RowLimitBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Row limit</value>
   </data>
+  <data name="ResultsKeptCard.Header" xml:space="preserve">
+    <value>Results kept per run</value>
+  </data>
+  <data name="ResultsKeptCard.Description" xml:space="preserve">
+    <value>A run that returns more results with rows keeps only the newest.</value>
+  </data>
+  <data name="ResultsKeptBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Results kept per run</value>
+  </data>
+  <data name="ResultsKeptNoLimit" xml:space="preserve">
+    <value>No limit</value>
+  </data>
+  <data name="ResultsKeptOption" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="ResultsDroppedOne" xml:space="preserve">
+    <value>{0} · 1 earlier result was dropped.</value>
+  </data>
+  <data name="ResultsDroppedOther" xml:space="preserve">
+    <value>{0} · {1:N0} earlier results were dropped.</value>
+  </data>
   <data name="TimeoutCard.Header" xml:space="preserve">
     <value>Query timeout</value>
   </data>
@@ -1457,6 +1478,21 @@
   </data>
   <data name="PageSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Default page size</value>
+  </data>
+  <data name="CountThresholdCard.Header" xml:space="preserve">
+    <value>Count rows if estimate less than</value>
+  </data>
+  <data name="CountThresholdCard.Description" xml:space="preserve">
+    <value>Tables with more estimated rows use approximate counts to avoid slow COUNT(*) queries</value>
+  </data>
+  <data name="CountThresholdBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Count rows if estimate less than</value>
+  </data>
+  <data name="CountThresholdOption" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="CountThresholdAlways" xml:space="preserve">
+    <value>Always count</value>
   </data>
   <data name="SshTrustTitle" xml:space="preserve">
     <value>Trust this SSH server?</value>

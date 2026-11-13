@@ -68,13 +68,25 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
     // After a failed statement the block takes nothing but a rollback, so one error costs every pending change.
     internal var failedStatementAbortsTransaction: Bool {
         switch self {
-        case .postgres, .redshift, .cockroach, .duckdb:
+        // Teradata mode rolls back the whole transaction on any failed request, ANSI mode on a failure such as a
+        // deadlock; the family cannot see the session's mode, so it takes the stricter one.
+        case .postgres, .redshift, .cockroach, .duckdb, .teradata:
             return true
-        // Teradata mode rolls back the whole transaction on a failed request and ANSI mode only the request; the
-        // family cannot see the session's mode, so Teradata keeps the answer it had before it had a family.
-        case .mysql, .sqlite, .sqlServer, .oracle, .redis, .teradata, .other:
+        case .mysql, .sqlite, .sqlServer, .oracle, .redis, .other:
             return false
         }
+    }
+
+    // Teradata holds a definition statement in a transaction in an ANSI session, and inside one takes nothing after
+    // it but COMMIT or ROLLBACK: Error 3722 in ANSI mode, Failure 3932 inside BT, which rolls the whole block back.
+    internal var definitionEndsTransaction: Bool {
+        self == .teradata
+    }
+
+    // A Teradata ANSI session opens a transaction with any request and ends it only with COMMIT or ROLLBACK, so work
+    // the app runs without a BEGIN of its own is still pending, and a pooled connection's logoff rolls it back.
+    internal var unwrappedWorkStaysOpen: Bool {
+        self == .teradata
     }
 
     // Redshift and DuckDB have no savepoint to take a failed statement back to.

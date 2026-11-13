@@ -14,6 +14,24 @@ enum TeradataStatementKind: Equatable {
         TeradataRequestTokens.statements(in: request).map { kind(of: $0[...]) }
     }
 
+    // `DATABASE x`, `SET SESSION DATABASE x` and its `SS` abbreviation move the session's default database, and a
+    // macro or procedure can hold one where the request text does not show it.
+    static func mayMoveDefaultDatabase(_ request: String) -> Bool {
+        TeradataRequestTokens.statements(in: request).contains { statement in
+            let words = statement.prefix(3).map(\.word)
+            switch words.first {
+            case "DATABASE"?, "EXEC"?, "EXECUTE"?, "CALL"?:
+                return true
+            case "SET"?:
+                return words.count > 2 && words[1] == "SESSION" && words[2] == "DATABASE"
+            case "SS"?:
+                return words.count > 1 && words[1] == "DATABASE"
+            default:
+                return false
+            }
+        }
+    }
+
     private static let readKeywords: Set<String> = ["SELECT", "SEL", "HELP", "SHOW", "EXPLAIN"]
     private static let writeKeywords: Set<String> = ["INSERT", "INS", "UPDATE", "UPD", "DELETE", "DEL", "MERGE"]
     private static let lockTypes: Set<String> = ["ACCESS", "READ", "WRITE", "EXCLUSIVE", "SHARE", "CHECKSUM", "LOAD"]

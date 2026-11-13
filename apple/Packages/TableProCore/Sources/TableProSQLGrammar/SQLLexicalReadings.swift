@@ -138,7 +138,7 @@ enum SQLLexicalRelevance {
         var facts: SQLLexicalGrammar = [
             .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
             .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies, .compoundStatementBodies,
-            .statementsAsValues, .pipeOperatorChains, .databendTokens, .psqlScripts,
+            .statementsAsValues, .pipeOperatorChains, .databendTokens, .psqlScripts, .transactionShortForms,
         ]
         var blockCommentOpeners = 0
         var index = 0

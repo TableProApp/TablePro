@@ -1,9 +1,19 @@
 import Foundation
 import os
 
-public enum TrinoStreamElement: Sendable {
-    case columns([TrinoColumnDescriptor])
-    case rows([[TrinoValue]])
+// How a reader that holds a page tells the coordinator it is still there. Past `query.client.timeout` (5 minutes by
+// default) without contact, the coordinator abandons the query.
+public enum TrinoHeartbeat: Sendable, Equatable {
+    // Trino 475 and later answer HEAD on the next page's URI, with no body.
+    case head
+    // Asking again for the page already received returns it from the coordinator's cache and counts as contact.
+    case repeatLastPage
+
+    // `version` is what `flavor.versionStatement` returned, such as 475 or 476-e.1.
+    public init(flavor: TrinoServerFlavor, version: String?) {
+        let release = version.flatMap { Int($0.prefix { $0.isNumber }) } ?? 0
+        self = flavor == .trino && release >= 475 ? .head : .repeatLastPage
+    }
 }
 
 public final class TrinoStatementClient: @unchecked Sendable {
@@ -41,8 +51,9 @@ public final class TrinoStatementClient: @unchecked Sendable {
         var rows: [[TrinoValue]] = []
         let outcome = try await runStatement(
             sql,
+            heartbeat: .repeatLastPage,
             onColumns: { columns = $0 },
-            onPage: { rows.append(contentsOf: $0) }
+            onPage: { page, _ in rows.append(contentsOf: page) }
         )
         return TrinoResultSet(
             columns: descriptors(from: columns),
@@ -53,26 +64,20 @@ public final class TrinoStatementClient: @unchecked Sendable {
         )
     }
 
-    /// The paging loop runs in an unstructured task, so terminating the stream has to cancel it
-    /// explicitly. Without that the loop keeps fetching pages nobody reads, and its own
-    /// `abortIfCancelled` never fires because nothing ever cancels the task it runs in.
-    public func executeStreamed(_ sql: String) -> AsyncThrowingStream<TrinoStreamElement, Error> {
-        AsyncThrowingStream { continuation in
-            let client = self
-            let statementTask = Task {
-                do {
-                    _ = try await client.runStatement(
-                        sql,
-                        onColumns: { continuation.yield(.columns(client.descriptors(from: $0))) },
-                        onPage: { continuation.yield(.rows($0)) }
-                    )
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in statementTask.cancel() }
-        }
+    // The next page is asked for only once `onPage` returns, so a reader that waits there holds the query where it
+    // is. While it waits it calls `keepAlive`. A cancelled caller stops at the next request and sends Trino the DELETE.
+    public func executeStreamed(
+        _ sql: String,
+        heartbeat: TrinoHeartbeat,
+        onColumns: ([TrinoColumnDescriptor]) async throws -> Void,
+        onPage: (_ page: [[TrinoValue]], _ keepAlive: () async throws -> Void) async throws -> Void
+    ) async throws {
+        _ = try await runStatement(
+            sql,
+            heartbeat: heartbeat,
+            onColumns: { try await onColumns(self.descriptors(from: $0)) },
+            onPage: onPage
+        )
     }
 
     /// Stops every statement running on this client, not only the one that started last: the app
@@ -93,8 +98,9 @@ public final class TrinoStatementClient: @unchecked Sendable {
 
     private func runStatement(
         _ sql: String,
-        onColumns: ([TrinoColumn]) -> Void,
-        onPage: ([[TrinoValue]]) -> Void
+        heartbeat: TrinoHeartbeat,
+        onColumns: ([TrinoColumn]) async throws -> Void,
+        onPage: ([[TrinoValue]], () async throws -> Void) async throws -> Void
     ) async throws -> StatementOutcome {
         guard let statementURL = config.statementURL else {
             throw TrinoError.invalidConfiguration("Invalid \(config.flavor.productName) server URL")
@@ -107,9 +113,16 @@ public final class TrinoStatementClient: @unchecked Sendable {
         defer { lock.withLock { running[ObjectIdentifier(statement)] = nil } }
 
         do {
-            return try await drive(statement, url: statementURL, sql: sql, onColumns: onColumns, onPage: onPage)
+            return try await drive(
+                statement,
+                url: statementURL,
+                sql: sql,
+                heartbeat: heartbeat,
+                onColumns: onColumns,
+                onPage: onPage
+            )
         } catch {
-            releaseIfCancelled(statement)
+            releaseIfCancelled(statement, after: error)
             throw error
         }
     }
@@ -118,8 +131,9 @@ public final class TrinoStatementClient: @unchecked Sendable {
         _ statement: TrinoRunningStatement,
         url statementURL: URL,
         sql: String,
-        onColumns: ([TrinoColumn]) -> Void,
-        onPage: ([[TrinoValue]]) -> Void
+        heartbeat: TrinoHeartbeat,
+        onColumns: ([TrinoColumn]) async throws -> Void,
+        onPage: ([[TrinoValue]], () async throws -> Void) async throws -> Void
     ) async throws -> StatementOutcome {
         var httpResponse = try await sendWithRetry(
             makeRequest(method: .post, url: statementURL, headers: initialHeaders(), body: Data(sql.utf8)),
@@ -134,10 +148,15 @@ public final class TrinoStatementClient: @unchecked Sendable {
         var columns = results.columns
         var columnsEmitted = false
         if let columns {
-            onColumns(columns)
+            try await onColumns(columns)
             columnsEmitted = true
         }
-        emitRows(results, columns: columns, onPage: onPage)
+        let first = results
+        try await emitRows(first, columns: columns) { rows in
+            try await onPage(rows) {
+                try await self.sendHeartbeat(heartbeat, for: statement, pageURL: nil, nextUri: first.nextUri)
+            }
+        }
         var updateType = results.updateType
         var updateCount = results.updateCount
         let queryId = results.id
@@ -159,10 +178,15 @@ public final class TrinoStatementClient: @unchecked Sendable {
                 columns = results.columns
             }
             if !columnsEmitted, let columns {
-                onColumns(columns)
+                try await onColumns(columns)
                 columnsEmitted = true
             }
-            emitRows(results, columns: columns, onPage: onPage)
+            let page = results
+            try await emitRows(page, columns: columns) { rows in
+                try await onPage(rows) {
+                    try await self.sendHeartbeat(heartbeat, for: statement, pageURL: nextURL, nextUri: page.nextUri)
+                }
+            }
             if let type = results.updateType {
                 updateType = type
             }
@@ -175,7 +199,11 @@ public final class TrinoStatementClient: @unchecked Sendable {
         return StatementOutcome(updateType: updateType, updateCount: updateCount, queryId: queryId)
     }
 
-    private func emitRows(_ results: TrinoQueryResults, columns: [TrinoColumn]?, onPage: ([[TrinoValue]]) -> Void) {
+    private func emitRows(
+        _ results: TrinoQueryResults,
+        columns: [TrinoColumn]?,
+        onPage: ([[TrinoValue]]) async throws -> Void
+    ) async throws {
         guard let data = results.data, let columns, !data.isEmpty else { return }
         var page: [[TrinoValue]] = []
         page.reserveCapacity(data.count)
@@ -188,7 +216,33 @@ public final class TrinoStatementClient: @unchecked Sendable {
             }
             page.append(decoded)
         }
-        onPage(page)
+        try await onPage(page)
+    }
+
+    // A heartbeat never asks for the next page: that would hand the reader rows it has no room for.
+    private func sendHeartbeat(
+        _ heartbeat: TrinoHeartbeat,
+        for statement: TrinoRunningStatement,
+        pageURL: URL?,
+        nextUri: String?
+    ) async throws {
+        if heartbeat == .head, !statement.refusesHeadHeartbeat, let nextUri {
+            do {
+                _ = try await sendWithRetry(
+                    makeRequest(method: .head, url: try followURL(nextUri), headers: followHeaders()),
+                    for: statement
+                )
+                return
+            } catch {
+                // A proxy can refuse HEAD where the coordinator would answer it; the page already received works anywhere.
+                try abortIfCancelled(statement)
+                if case TrinoError.httpStatus(let code, _) = error, [404, 405, 501].contains(code) {
+                    statement.refuseHeadHeartbeat()
+                }
+            }
+        }
+        guard let pageURL else { return }
+        _ = try await sendWithRetry(makeRequest(method: .get, url: pageURL, headers: followHeaders()), for: statement)
     }
 
     private func descriptors(from columns: [TrinoColumn]) -> [TrinoColumnDescriptor] {
@@ -202,8 +256,10 @@ public final class TrinoStatementClient: @unchecked Sendable {
         throw TrinoError.cancelled
     }
 
-    private func releaseIfCancelled(_ statement: TrinoRunningStatement) {
-        guard statement.isCancelled || Task.isCancelled, let uri = statement.claimRelease() else { return }
+    // A reader that stops taking pages throws CancellationError from its callback, before its task is cancelled.
+    private func releaseIfCancelled(_ statement: TrinoRunningStatement, after error: Error) {
+        guard statement.isCancelled || Task.isCancelled || error is CancellationError,
+              let uri = statement.claimRelease() else { return }
         fireDelete(uri)
     }
 
@@ -396,6 +452,15 @@ private final class TrinoRunningStatement: @unchecked Sendable {
     private var cancelled = false
     private var released = false
     private var nextUri: String?
+    private var headRefused = false
+
+    var refusesHeadHeartbeat: Bool {
+        lock.withLock { headRefused }
+    }
+
+    func refuseHeadHeartbeat() {
+        lock.withLock { headRefused = true }
+    }
 
     var isCancelled: Bool {
         lock.withLock { cancelled }

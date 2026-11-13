@@ -62,6 +62,36 @@ enum QueryClassifier {
         }
     }
 
+    // Nil on an engine with a query language of its own, Cypher, KafkaQL or a shell: which of its commands define,
+    // grant or set the session is not a SQL question.
+    static func isSQLDataStatement(_ sql: String, databaseType: DatabaseType) -> Bool? {
+        let readings = databaseType.lexicalReadings
+        guard (PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editorLanguage ?? .sql) == .sql,
+              documentStoreClassification(sql, databaseType: databaseType, readings: readings) == nil,
+              redisClassification(sql, databaseType: databaseType) == nil
+        else { return nil }
+        let leading = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: readings.execution))
+        guard beancountClassification(leading, databaseType: databaseType) == nil else { return nil }
+        return SQLStatementClassifier.isDataStatement(
+            sql,
+            databaseTypeId: databaseType.rawValue,
+            readings: readings,
+            request: requestClassification(for: databaseType),
+            requestIsData: requestDataStatement(for: databaseType)
+        )
+    }
+
+    private static func requestDataStatement(for databaseType: DatabaseType) -> SQLStatementClassifier.RequestDataStatement? {
+        switch databaseType {
+        case .dynamodb:
+            return { statement, grammar in dynamoDBIsDataStatement(statement, grammar: grammar) }
+        case .influxdb:
+            return { statement, _ in fluxIsDataStatement(statement) }
+        default:
+            return nil
+        }
+    }
+
     static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
         let readings = databaseType.lexicalReadings
         return classify(sql, databaseType: databaseType, readings: readings) { $0.tier != .safe }.tier != .safe

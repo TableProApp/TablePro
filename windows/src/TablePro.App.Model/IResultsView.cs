@@ -30,7 +30,9 @@ public interface IResultsView
 
     event EventHandler? ShownSetChanged;
 
-    Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, CancellationToken cancellationToken);
+    // keptSets past 0 keeps only the run's newest sets, as Settings asks; it applies from this run on.
+    Task ShowRunAsync(
+        ITabRun run, GridSort sort, int visibleColumns, int keptSets, CancellationToken cancellationToken);
 
     // False when no set is shown, or a run or a pick replaced it while the rows were being sorted.
     Task<bool> SortHeldRowsAsync(GridSort sort);

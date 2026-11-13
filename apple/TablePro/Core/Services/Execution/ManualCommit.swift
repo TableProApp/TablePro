@@ -326,6 +326,12 @@ internal enum ManualCommit {
         String(localized: "The open transaction on this connection ended while this statement ran.")
     }
 
+    internal static var statementOpenedNotice: String {
+        String(
+            localized: "This change is pending in a transaction the statement opened. Other statements are refused until it is committed or rolled back."
+        )
+    }
+
     internal static var pendingNotice: String {
         String(localized: "Manual Commit is on for this connection, so this change is pending until the user commits it in TablePro.")
     }

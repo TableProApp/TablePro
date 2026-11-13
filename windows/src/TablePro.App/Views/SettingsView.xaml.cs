@@ -54,8 +54,35 @@ public sealed partial class SettingsView : UserControl
         PageSizeBox.SelectedItem = PageSizeBox.Items
             .OfType<ComboBoxItem>()
             .First(item => item.Tag is int size && size == settings.PageSize);
+        ResultsKeptBox.Items.Clear();
+        foreach (var kept in AppSettings.ResultsKeptChoices.Append(settings.ResultSetsKeptPerRun).Distinct().Order())
+        {
+            ResultsKeptBox.Items.Add(new ComboBoxItem { Content = ResultsKeptLabel(kept), Tag = kept });
+        }
+
+        ResultsKeptBox.SelectedItem = ResultsKeptBox.Items
+            .OfType<ComboBoxItem>()
+            .First(item => item.Tag is int kept && kept == settings.ResultSetsKeptPerRun);
+        CountThresholdBox.Items.Clear();
+        var thresholds = AppSettings.CountThresholdChoices.Append(settings.CountRowsIfEstimateLessThan);
+        foreach (var threshold in thresholds.Distinct().Order())
+        {
+            CountThresholdBox.Items.Add(new ComboBoxItem { Content = ThresholdLabel(threshold), Tag = threshold });
+        }
+
+        CountThresholdBox.SelectedItem = CountThresholdBox.Items
+            .OfType<ComboBoxItem>()
+            .First(item => item.Tag is long threshold && threshold == settings.CountRowsIfEstimateLessThan);
         _loading = false;
     }
+
+    private static string ResultsKeptLabel(int kept) => kept == 0
+        ? Strings.Get("ResultsKeptNoLimit")
+        : Strings.Format("ResultsKeptOption", kept);
+
+    private static string ThresholdLabel(long threshold) => threshold == AppSettings.AlwaysCount
+        ? Strings.Get("CountThresholdAlways")
+        : Strings.Format("CountThresholdOption", threshold);
 
     private void OnThemeChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -98,6 +125,22 @@ public sealed partial class SettingsView : UserControl
         if (!_loading && PageSizeBox.SelectedItem is ComboBoxItem { Tag: int size })
         {
             _workbench.UpdateSettings(settings => settings with { PageSize = size });
+        }
+    }
+
+    private void OnResultsKeptChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && ResultsKeptBox.SelectedItem is ComboBoxItem { Tag: int kept })
+        {
+            _workbench.UpdateSettings(settings => settings with { ResultSetsKeptPerRun = kept });
+        }
+    }
+
+    private void OnCountThresholdChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && CountThresholdBox.SelectedItem is ComboBoxItem { Tag: long threshold })
+        {
+            _workbench.UpdateSettings(settings => settings with { CountRowsIfEstimateLessThan = threshold });
         }
     }
 

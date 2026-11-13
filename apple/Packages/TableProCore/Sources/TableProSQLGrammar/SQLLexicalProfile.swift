@@ -83,6 +83,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
                     .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies, .compoundStatementBodies,
                     .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains, .psqlScripts,
+                    // An unknown engine reads `BT` and `ET` as names, not as transaction control.
+                    .transactionShortForms,
                 ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
@@ -328,7 +330,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "Trino": trinoFamily,
             "Presto": trinoFamily,
             "Teradata": SQLLexicalProfile(
-                grammar: .ansi,
+                grammar: [.transactionShortForms],
                 undetermined: [.nestedBlockComments, .carriageReturnEndsLineComments]
             ),
             "SAP HANA": SQLLexicalProfile(

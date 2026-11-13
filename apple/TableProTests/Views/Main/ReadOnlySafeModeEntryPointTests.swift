@@ -20,7 +20,15 @@ private final class ReadOnlyRecordingDriver: PluginDriverStub, @unchecked Sendab
         let context: PluginStatementContext?
     }
 
-    var capabilities: PluginCapabilities { [.readOnlyStatements, .enforcesReadOnlyMode] }
+    private let enforcesReadOnlyMode: Bool
+
+    init(enforcesReadOnlyMode: Bool = true) {
+        self.enforcesReadOnlyMode = enforcesReadOnlyMode
+    }
+
+    var capabilities: PluginCapabilities {
+        enforcesReadOnlyMode ? [.readOnlyStatements, .enforcesReadOnlyMode] : [.readOnlyStatements]
+    }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
     var currentSchema: String? { nil }
@@ -174,9 +182,10 @@ struct ReadOnlySafeModeEntryPointTests {
 
     private func makeFixture(
         _ level: SafeModeLevel,
-        type: DatabaseType = .postgresql
+        type: DatabaseType = .postgresql,
+        enforcesReadOnlyMode: Bool = true
     ) -> (CoordinatorFixture, ReadOnlyRecordingDriver) {
-        let driver = ReadOnlyRecordingDriver()
+        let driver = ReadOnlyRecordingDriver(enforcesReadOnlyMode: enforcesReadOnlyMode)
         let connection = makeConnection(level, type: type)
         let fixture = CoordinatorFixture(
             connection: connection,
@@ -263,38 +272,39 @@ struct ReadOnlySafeModeEntryPointTests {
 
     // MARK: - Table browse
 
-    @Test("A raw filter that calls a function goes to the gate at Read-Only and runs in the read-only mode")
-    func rawFilterBrowseIsGatedAndCarriesTheMode() async throws {
-        let (fixture, driver) = makeFixture(.readOnly)
-        let gate = RequestRecordingGate(allows: true)
-        fixture.coordinator.executionGate = gate
-        defer { fixture.coordinator.cancelAllQueryTasks() }
-        let tab = fixture.addTab(rawFilterTableTab())
-
-        let confirmation = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
-        #expect(confirmation != nil)
-        await confirmation?.value
-        try await waitUntil { driver.call(containing: Self.purge) != nil }
-
-        #expect(await gate.requests.first?.sql == tab.content.query)
-        #expect(driver.call(containing: Self.purge)?.context?.enforcesReadOnly == true)
-    }
-
-    @Test("A page turn or sort under the same raw filter is not asked about again")
-    func rawFilterIsAskedOncePerFilter() async throws {
+    @Test("A raw filter that calls a function runs in the read-only mode at Read-Only, without the gate, on a driver with it")
+    func rawFilterBrowseCarriesTheMode() async throws {
         let (fixture, driver) = makeFixture(.readOnly)
         let gate = RequestRecordingGate(allows: true)
         fixture.coordinator.executionGate = gate
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(rawFilterTableTab())
 
-        await fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)?.value
+        #expect(fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow) == nil)
         try await waitUntil { driver.call(containing: Self.purge) != nil }
-        let again = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
-        try await waitUntil { driver.calls.filter { $0.query.contains(Self.purge) }.count >= 2 }
 
-        #expect(again == nil)
-        #expect(await gate.requests.count == 1)
+        #expect(await gate.requests.isEmpty)
+        #expect(driver.call(containing: Self.purge)?.context?.enforcesReadOnly == true)
+    }
+
+    @Test("On a driver without the mode, every load under the raw filter goes to the gate")
+    func rawFilterIsGatedOnEveryRun() async throws {
+        let (fixture, driver) = makeFixture(.readOnly, enforcesReadOnlyMode: false)
+        let gate = RequestRecordingGate(allows: true)
+        fixture.coordinator.executionGate = gate
+        defer { fixture.coordinator.cancelAllQueryTasks() }
+        let tab = fixture.addTab(rawFilterTableTab())
+
+        let first = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        #expect(first != nil)
+        await first?.value
+        try await waitUntil { driver.call(containing: Self.purge) != nil }
+        let second = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        #expect(second != nil)
+        await second?.value
+
+        let browses = await gate.requests.filter { $0.sql == tab.content.query }
+        #expect(browses.count == 2)
     }
 
     // A view, or a row security policy, can call a writing function with no call in the browse's text.
@@ -333,8 +343,8 @@ struct ReadOnlySafeModeEntryPointTests {
     }
 
     // DuckDB counts on its session driver, which this test installs; a pooled engine would open a connection of its own.
-    @Test("Count Exactly with a raw filter that calls a function asks the gate and runs in the read-only mode")
-    func countExactlyIsGatedAndCarriesTheMode() async throws {
+    @Test("Count Exactly with a raw filter that calls a function runs in the read-only mode without the gate")
+    func countExactlyCarriesTheMode() async throws {
         let (fixture, driver) = makeFixture(.readOnly, type: .duckdb)
         let gate = RequestRecordingGate(allows: true)
         fixture.coordinator.executionGate = gate
@@ -344,8 +354,25 @@ struct ReadOnlySafeModeEntryPointTests {
         fixture.coordinator.paginationCoordinator.requestExactRowCount()
         try await waitUntil { driver.call(containing: "COUNT") != nil }
 
-        #expect(await gate.requests.contains { $0.sql?.contains("COUNT") == true })
+        #expect(await !gate.requests.contains { $0.sql?.contains("COUNT") == true })
         #expect(driver.call(containing: "COUNT")?.context?.enforcesReadOnly == true)
+    }
+
+    @Test("Count Exactly with a raw filter that calls a function goes to the gate on a driver without the mode")
+    func countExactlyIsGatedWithoutTheMode() async throws {
+        let (fixture, driver) = makeFixture(.readOnly, type: .mysql, enforcesReadOnlyMode: false)
+        let gate = RequestRecordingGate(allows: false)
+        fixture.coordinator.executionGate = gate
+        defer { fixture.coordinator.cancelAllQueryTasks() }
+        let tab = fixture.addTab(rawFilterTableTab())
+
+        fixture.coordinator.paginationCoordinator.requestExactRowCount()
+        try await waitUntil {
+            fixture.tabManager.tabs.first { $0.id == tab.id }?.pagination.isCountingExact == false
+        }
+
+        #expect(await gate.requests.contains { $0.sql?.contains("COUNT") == true })
+        #expect(driver.call(containing: "COUNT") == nil)
     }
 
     // MARK: - Export
@@ -517,7 +544,7 @@ struct ReadOnlySafeModeEntryPointTests {
             authenticating: StubAuthenticating(answer: true),
             safeModeLevelResolver: { _ in .readOnly },
             forcesWriteResolver: { _ in false },
-            readOnlyFunctionPolicyResolver: { _, _ in ReadOnlyFunctionPolicy(functionsCanWrite: true, levelIsHeld: true) }
+            readOnlyFunctionPolicyResolver: { _, _ in ReadOnlyFunctionPolicy(functionsCanWrite: true, floor: .readOnly) }
         )
         var item = ExportObjectItem(name: "ORDERS", kind: .table)
         item.rowScope = PluginExportRowScope(filter: "purge_orders() = 1")
@@ -575,31 +602,27 @@ struct ReadOnlySafeModeEntryPointTests {
         #expect(call?.context?.enforcesReadOnly == true)
     }
 
-    // MARK: - Held level
+    // MARK: - Driver without the mode
 
-    // A profile or a floor that comes after an approval leaves nothing to approve: the gate refuses every run.
-    @Test("A held Read-Only never runs a raw filter approved before it was held")
-    func heldLevelIgnoresAnEarlierApproval() async throws {
-        let (fixture, driver) = makeFixture(.readOnly)
-        let gate = RequestRecordingGate(allows: false)
-        fixture.coordinator.executionGate = gate
+    @Test("A raw filter that calls a function is refused at Read-Only on a driver without the mode, with no question")
+    func rawFilterIsRefusedWithoutTheMode() async throws {
+        let (fixture, driver) = makeFixture(.readOnly, enforcesReadOnlyMode: false)
+        let confirm = StubConfirming(answer: true)
+        fixture.coordinator.executionGate = DefaultExecutionGate(
+            confirming: confirm,
+            authenticating: StubAuthenticating(answer: true),
+            safeModeLevelResolver: { _ in .readOnly },
+            forcesWriteResolver: { _ in false },
+            readOnlyFunctionPolicyResolver: { _, _ in ReadOnlyFunctionPolicy(functionsCanWrite: true) }
+        )
         defer { fixture.coordinator.cancelAllQueryTasks() }
-        let tab = fixture.addTab(rawFilterTableTab())
-        let filters = MainContentCoordinator.browseFilters(tab.filterState)
-        fixture.coordinator.approveReadOnlyRawFilter(filters, tabId: tab.id)
-        #expect(!fixture.coordinator.rawFilterNeedsReadOnlyGate(filters, tabId: tab.id))
+        fixture.addTab(rawFilterTableTab())
 
-        var held = fixture.connection
-        held.type = .cloudflareR2SQL
-        var session = ConnectionSession(connection: held, driver: PluginDriverAdapter(connection: held, pluginDriver: driver))
-        session.status = .connected
-        DatabaseManager.shared.injectSession(session, for: held.id)
+        let refusal = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        #expect(refusal != nil)
+        await refusal?.value
 
-        #expect(fixture.coordinator.rawFilterNeedsReadOnlyGate(filters, tabId: tab.id))
-        let confirmation = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
-        #expect(confirmation != nil)
-        await confirmation?.value
-        #expect(await gate.requests.count == 1)
+        #expect(confirm.callCount == 0)
         #expect(driver.call(containing: Self.purge) == nil)
     }
 

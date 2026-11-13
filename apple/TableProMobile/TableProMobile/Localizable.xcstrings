@@ -18210,6 +18210,9 @@
         }
       }
     },
+    "Query Blocked" : {
+
+    },
     "Query Error" : {
       "localizations" : {
         "ko" : {
@@ -22957,6 +22960,9 @@
 
     },
     "This pipeline is not something MongoDB can read: %@" : {
+
+    },
+    "This query calls a function that can change data, which Read-Only does not run. Switch Safe Mode to %@ to run it." : {
 
     },
     "This row has no _id, so TablePro cannot tell which document to change." : {

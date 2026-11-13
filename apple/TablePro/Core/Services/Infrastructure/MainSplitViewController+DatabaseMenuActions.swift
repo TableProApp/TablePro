@@ -176,7 +176,7 @@ extension MainSplitViewController {
             isManualCommitOn: DatabaseManager.shared.commitMode(for: coordinator.connectionId) == .manual,
             canHoldTransactions: reportsState,
             holdsTransaction: hold != nil,
-            canCommit: hold.map { ConnectionTransactionActions.offersCommit($0, safeModeLevel: session.safeModeLevel) } ?? false
+            canCommit: hold.map { ConnectionTransactionActions.offersCommit($0) } ?? false
         )
     }
 

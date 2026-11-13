@@ -230,6 +230,7 @@ extension AIChatViewModel {
                             connectionId: self.connection?.id,
                             bridge: ChatToolBootstrap.bridge,
                             authPolicy: ChatToolBootstrap.authPolicy,
+                            chatMode: chatMode,
                             sessionId: self.sessionId
                         )
                     }

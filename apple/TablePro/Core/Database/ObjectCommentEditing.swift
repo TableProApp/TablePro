@@ -101,12 +101,16 @@ enum DatabaseObjectCommandRunner {
         if let denial = decision.denialError { throw denial }
 
         let startedAt = Date()
+        let route = DatabaseManager.shared.schemaChangeRoute(for: scope)
+        let refusesOpenTransaction = !route.isPooled
         try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
-            route: DatabaseManager.shared.schemaChangeRoute(for: scope),
+            route: route,
             cancellation: .protectedWrite
         ) { driver in
-            _ = try await driver.execute(query: sql)
+            _ = try await AppDefinitionCommit.run(on: driver, refusesOpenTransaction: refusesOpenTransaction) {
+                try await driver.execute(query: sql)
+            }
         }
 
         await DatabaseManager.shared.historyRecorder.record(
