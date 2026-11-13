@@ -3,6 +3,8 @@ use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::{DriverCapabilities, is_local_socket_host};
 use tablepro_storage::{ConnectionStore, SavedConnection};
 
+use super::share_link::{SHARE_LINK_SCHEME, is_share_link};
+
 // The schemes tablepro_core::connection_url::parse reads; the desktop entry claims each one.
 pub const LINK_SCHEMES: [&str; 22] = [
     "cassandra",
@@ -53,7 +55,8 @@ fn link_vfs() -> Result<gio::Vfs, glib::BoolError> {
         .map_err(|_| glib::bool_error!("GIO's local implementation is not a VFS"))
 }
 
-// gvfs reads these into a mount spec that drops the password and all but one MongoDB host.
+// gvfs reads these into a mount spec that drops the password and all but one MongoDB host. A share link
+// keeps its text the same way, so its token reaches the app as the viewer page wrote it.
 pub fn register_link_schemes() -> Result<(), glib::BoolError> {
     static REGISTERED: std::sync::OnceLock<Result<(), glib::BoolError>> = std::sync::OnceLock::new();
     REGISTERED
@@ -61,14 +64,14 @@ pub fn register_link_schemes() -> Result<(), glib::BoolError> {
             let vfs = gio::Vfs::default();
             // Backend construction registers a scheme and cannot run under a lookup callback's scheme lock.
             let local = link_vfs()?;
-            for scheme in LINK_SCHEMES.into_iter().chain([JDBC_SCHEME]) {
+            for scheme in LINK_SCHEMES.into_iter().chain([JDBC_SCHEME, SHARE_LINK_SCHEME]) {
                 let uri_vfs = local.clone();
                 let parse_vfs = local.clone();
                 let registered = vfs.register_uri_scheme(
                     scheme,
                     Some(Box::new(move |_, uri| Some(uri_vfs.file_for_uri(uri)))),
                     Some(Box::new(move |_, name| {
-                        is_link(name).then(|| parse_vfs.file_for_uri(name))
+                        (is_link(name) || is_share_link(name)).then(|| parse_vfs.file_for_uri(name))
                     })),
                 );
                 if !registered {

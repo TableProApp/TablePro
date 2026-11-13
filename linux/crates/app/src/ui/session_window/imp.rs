@@ -108,7 +108,7 @@ pub struct SessionWindow {
     pub(super) opened_for_file: Cell<bool>,
     // Read while no relational session was in front; the next one the
     // window adopts opens them.
-    pub(super) waiting_scripts: RefCell<Vec<(gio::File, String)>>,
+    pub(super) waiting_scripts: RefCell<Vec<super::session_window_input::WaitingScript>>,
     /// Reads which filesystem a database file is on. `None` reads the
     /// real one; a test stands in for a network share.
     pub(super) classify_location: Cell<Option<LocationClassifier>>,
