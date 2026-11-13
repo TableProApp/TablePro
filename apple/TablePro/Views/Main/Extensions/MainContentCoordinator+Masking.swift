@@ -64,8 +64,8 @@ extension MainContentCoordinator {
             }
     }
 
-    private var storedMaskingRules: [MaskingRule]? {
-        services.databaseManager.connectionStorage.loadConnection(id: connectionId)?.maskingRules
+    private var storedMaskingRules: [MaskingRule.Effect]? {
+        services.databaseManager.connectionStorage.loadConnection(id: connectionId)?.maskingRules.map(\.effect)
     }
 
     // Masks the rows already on screen when a rule is saved, rather than waiting for the next run. Read from storage,
