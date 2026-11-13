@@ -1153,6 +1153,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1294,7 +1296,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_accountservice_create_share(ulong @ptr,RustBuffer @request,RustBuffer @result,uint @visibleColumns,uint @maxRows
+     ulong uniffi_tablepro_ffi_fn_method_accountservice_create_share(ulong @ptr,RustBuffer @request,RustBuffer @result,uint @visibleColumns,uint @maxRows,RustBuffer @totalRows
     );
 
     #if NET8_0_OR_GREATER
@@ -2582,6 +2584,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_tablepageread_run(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_tablepageread_view_sql(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -4440,6 +4453,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablepageread_view_sql(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_tablepageread_visible_columns(
     );
 
@@ -4708,8 +4732,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_accountservice_create_share();
-            if (checksum != 41975) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_create_share` checksum `41975`, library returned `{checksum}`");
+            if (checksum != 32927) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_create_share` checksum `32927`, library returned `{checksum}`");
             }
         }
         {
@@ -5265,6 +5289,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablepageread_view_sql();
+            if (checksum != 5883) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablepageread_view_sql` checksum `5883`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablepageread_visible_columns();
             if (checksum != 21678) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablepageread_visible_columns` checksum `21678`, library returned `{checksum}`");
@@ -5573,7 +5603,7 @@ internal interface IAccountService {
     Task SignOut();
     AccountStatusInfo Status();
     /// <exception cref="CoreException"></exception>
-    Task<CreatedShareInfo> CreateShare(ShareRequestArg @request, ResultSet? @result, uint @visibleColumns, uint @maxRows);
+    Task<CreatedShareInfo> CreateShare(ShareRequestArg @request, ResultSet? @result, uint @visibleColumns, uint @maxRows, ulong? @totalRows);
     /// <exception cref="CoreException"></exception>
     Task<ShareInfo> ExtendShare(string @shareId, ShareExpiryTag @expiry);
     /// <exception cref="CoreException"></exception>
@@ -5829,11 +5859,11 @@ internal class AccountService : IAccountService, IDisposable {
     
     
     /// <exception cref="CoreException"></exception>
-    public async Task<CreatedShareInfo> CreateShare(ShareRequestArg @request, ResultSet? @result, uint @visibleColumns, uint @maxRows) {
+    public async Task<CreatedShareInfo> CreateShare(ShareRequestArg @request, ResultSet? @result, uint @visibleColumns, uint @maxRows, ulong? @totalRows) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_create_share(thisPtr, FfiConverterTypeShareRequestArg.INSTANCE.Lower(@request), FfiConverterOptionalTypeResultSet.INSTANCE.Lower(@result), FfiConverterUInt32.INSTANCE.Lower(@visibleColumns), FfiConverterUInt32.INSTANCE.Lower(@maxRows));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_create_share(thisPtr, FfiConverterTypeShareRequestArg.INSTANCE.Lower(@request), FfiConverterOptionalTypeResultSet.INSTANCE.Lower(@result), FfiConverterUInt32.INSTANCE.Lower(@visibleColumns), FfiConverterUInt32.INSTANCE.Lower(@maxRows), FfiConverterOptionalUInt64.INSTANCE.Lower(@totalRows));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -8735,6 +8765,7 @@ class FfiConverterTypeTableEditor: FfiConverter<TableEditor, ulong> {
 internal interface ITablePageRead {
     bool CanSeek();
     QueryRun Run();
+    string? ViewSql();
     uint VisibleColumns();
 }
 internal class TablePageRead : ITablePageRead, IDisposable {
@@ -8838,6 +8869,14 @@ internal class TablePageRead : ITablePageRead, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterTypeQueryRun.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_tablepageread_run(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    public string? ViewSql() {
+        return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_tablepageread_view_sql(thisPtr,  ref _status)
 )));
     }
     

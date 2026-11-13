@@ -625,7 +625,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private async void OnShareRequested(object? sender, ShareKind kind) =>
         await ShareAsync(sender as ITabContent, kind).ConfigureAwait(true);
 
-    // A query's text, or the finished rows a tab shows; a table page has no statement the app can name.
+    // A query's text, the finished rows a query tab shows, or a table's whole view, read from its first row.
     private ShareSubject? ShareSubjectOf(ITabContent? tab, ShareKind kind)
     {
         var dialect = _session?.EngineId;
@@ -638,8 +638,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 when query.ResultsView.ShownSet is { IsFinished: true } rows =>
                 ShareSubject.Result(query.LastStatement ?? string.Empty, query.Title, dialect, rows, query.ResultsView.Columns),
             (TableTabView { IsRunning: false, HasUnsavedChanges: false } table, ShareKind.Result)
-                when table.ResultsView.ShownSet is { IsFinished: true } rows =>
-                ShareSubject.Result(string.Empty, table.Title, dialect, rows, table.ResultsView.Columns),
+                when table.ResultsView.ShownSet is { IsFinished: true } =>
+                ShareSubject.Table(table.Title, dialect, maxRows => table.Model.ReadForShareAsync(maxRows, default)),
             _ => null,
         };
     }

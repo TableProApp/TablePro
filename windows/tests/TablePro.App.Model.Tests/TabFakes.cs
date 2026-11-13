@@ -142,6 +142,9 @@ internal sealed class FakeSession : ITabSession
     // A page query that fails, as a server that went away does.
     public CoreError? QueryFailure { get; set; }
 
+    // The query the core gives for the whole table view, null where the engine cannot write one.
+    public string? ViewSql { get; set; } = "SELECT * FROM \"Artist\"";
+
     public int GateRuns { get; private set; }
 
     public int Counts { get; private set; }
@@ -200,13 +203,13 @@ internal sealed class FakeSession : ITabSession
         {
             var ended = FakeRun.Ending(ending);
             Pages.Add(ended);
-            return new TablePageRead(ended, 2, CanSeek: true);
+            return new TablePageRead(ended, 2, CanSeek: true, ViewSql);
         }
 
         var page = FakeRun.Rows(Math.Clamp(RowsPicked(filter) - offset, 0, limit));
         page.Reading = PageReading;
         Pages.Add(page);
-        return new TablePageRead(page, 2, CanSeek: true);
+        return new TablePageRead(page, 2, CanSeek: true, ViewSql);
     }
 
     public async Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken)

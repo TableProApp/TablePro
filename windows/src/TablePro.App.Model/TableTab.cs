@@ -636,6 +636,47 @@ public sealed class TableTab : IWorkspaceTab
 
     public void Stop() => _run?.Cancel();
 
+    // From the view's first row with the shown filter and sort, whichever page shows, so "first N of M" holds.
+    public async Task<TableShareRead> ReadForShareAsync(long maxRows, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        var sort = _shownSort.Direction == SortDirection.None
+            ? null
+            : new ColumnSort(_shownSort.Column, _shownSort.Direction == SortDirection.Ascending);
+        var filter = _shownFilter;
+        var read = await _session.ReadTablePageAsync(Table, sort, filter, maxRows, 0, cancellationToken)
+            .ConfigureAwait(true);
+        try
+        {
+            QueryOutcome? outcome = null;
+            await foreach (var queryEvent in read.Run.ReadEventsAsync(cancellationToken).ConfigureAwait(true))
+            {
+                if (queryEvent is QueryEvent.Finished finished)
+                {
+                    outcome = finished.Outcome;
+                }
+            }
+
+            switch (outcome)
+            {
+                case QueryOutcome.Completed:
+                    break;
+                case QueryOutcome.Failed failed:
+                    throw new TableProException(failed.Error);
+                default:
+                    throw new OperationCanceledException(cancellationToken);
+            }
+
+            var total = await _session.CountRowsAsync(Table, filter, cancellationToken).ConfigureAwait(true);
+            return new TableShareRead(read.Run, read.VisibleColumns, read.ViewSql, total);
+        }
+        catch
+        {
+            read.Run.Dispose();
+            throw;
+        }
+    }
+
     public Task CloseAsync() => _closing ??= CloseOnceAsync();
 
     private Task<bool> Track(Task<bool> save)

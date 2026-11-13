@@ -11,14 +11,15 @@ using Windows.System;
 
 namespace TablePro.App.Views;
 
-// What a share sends: a query's text, or a finished result with the SQL that made it ("" for a table page).
+// A query's text, a finished result with the SQL that made it, or a table view the sheet reads once it knows the plan.
 internal sealed record ShareSubject(
     ShareKind Kind,
     string Sql,
     string Title,
     string? Dialect,
     ResultSet? Rows,
-    IReadOnlyList<ResultColumn> Columns)
+    IReadOnlyList<ResultColumn> Columns,
+    Func<long, Task<TableShareRead>>? ReadTable = null)
 {
     public long TotalRows => Rows?.RowCount ?? 0;
 
@@ -28,7 +29,19 @@ internal sealed record ShareSubject(
     public static ShareSubject Result(
         string sql, string title, string? dialect, ResultSet rows, IReadOnlyList<ResultColumn> columns) =>
         new(ShareKind.Result, sql, title, dialect, rows, columns);
+
+    // The view is read from its first row up to the plan's rows, so the sheet reads it after the limits.
+    public static ShareSubject Table(string title, string? dialect, Func<long, Task<TableShareRead>> read) =>
+        new(ShareKind.Result, string.Empty, title, dialect, null, [], read);
 }
+
+// What the link sends; ViewCount is a table view's row count, which its one page of rows cannot tell.
+internal sealed record SharedContent(
+    string Sql,
+    ResultSet? Rows,
+    IReadOnlyList<ResultColumn> Columns,
+    long TotalRows,
+    long? ViewCount);
 
 // One section at a time follows the account and the plan's limits; SharePlan holds the rules (decision 0009).
 internal sealed class ShareSheet
@@ -54,6 +67,7 @@ internal sealed class ShareSheet
     private readonly HyperlinkButton _downloadPro = ProTag();
     private readonly StackPanel _preview = new() { Spacing = 8 };
     private readonly TextBlock _capNote = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _noSql = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private readonly InfoBar _secrets = new() { IsClosable = false, Severity = InfoBarSeverity.Warning };
     private readonly InfoBar _error = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
     private readonly StackPanel _atCap = new() { Spacing = 12 };
@@ -61,6 +75,9 @@ internal sealed class ShareSheet
     private readonly TextBox _url = new() { IsReadOnly = true };
     private readonly TextBlock _footer = new();
     private DataGridView? _previewGrid;
+    private SharedContent _content;
+    private TableShareRead? _tableRead;
+    private long _tableReadFor = -1;
     private SharePlan? _plan;
     private AccountStage _stage;
     private int _generation;
@@ -72,6 +89,7 @@ internal sealed class ShareSheet
     {
         _workbench = workbench;
         _subject = subject;
+        _content = new SharedContent(subject.Sql, subject.Rows, subject.Columns, subject.TotalRows, null);
         _dialog = new ContentDialog
         {
             RequestedTheme = owner.ActualTheme,
@@ -110,6 +128,7 @@ internal sealed class ShareSheet
             workbench.AccountChanged -= sheet.OnAccountChanged;
             // The grid gives its cursor back here, before the result set can go.
             sheet._previewGrid?.SetData(null);
+            sheet._tableRead?.Dispose();
         }
     }
 
@@ -139,9 +158,12 @@ internal sealed class ShareSheet
         _form.Children.Add(_title);
         _form.Children.Add(_note);
         _form.Children.Add(WithTag(_expires, _expiresPro));
-        if (_subject.Kind == ShareKind.Result && _subject.Sql.Length > 0)
+        if (_subject.Kind == ShareKind.Result)
         {
             _form.Children.Add(_hideSql);
+            _noSql.Text = Strings.Get("ShareTableNoSql");
+            AutomationProperties.SetAutomationId(_noSql, "ShareTableNoSql");
+            _form.Children.Add(_noSql);
         }
 
         _form.Children.Add(WithTag(_password, _passwordPro));
@@ -289,6 +311,14 @@ internal sealed class ShareSheet
         {
             // A newer load, or the sheet closed, says what to show.
         }
+        catch (OperationCanceledException) when (generation == _generation && !_closed)
+        {
+            ShowNotice(InfoBarSeverity.Error, Strings.Get(ShareErrors.Failed), (Strings.Get("ShareRetry"), () => _ = LoadAsync()));
+        }
+        catch (OperationCanceledException)
+        {
+            // As above.
+        }
     }
 
     private void ShowSignedOut() =>
@@ -304,19 +334,22 @@ internal sealed class ShareSheet
         {
             await _workbench.SignInAsync().ConfigureAwait(true);
         }
-        catch (TableProException exception) when (!_closed)
+        catch (TableProException exception)
         {
-            ShowNotice(
-                InfoBarSeverity.Error,
-                Strings.Error(exception.Error),
-                (Strings.Get("ShareSignIn"), () => _ = SignInAsync()),
-                "ShareSignInButton");
+            if (!_closed)
+            {
+                ShowNotice(
+                    InfoBarSeverity.Error,
+                    Strings.Error(exception.Error),
+                    (Strings.Get("ShareSignIn"), () => _ = SignInAsync()),
+                    "ShareSignInButton");
+            }
         }
     }
 
     private async Task ApplyAsync(TableProAccount account, ShareLimits limits, int generation)
     {
-        var plan = SharePlan.For(limits, _subject.Kind, _subject.TotalRows, _subject.Sql.Length > 0);
+        var plan = SharePlan.For(limits, _subject.Kind, _content.TotalRows, _content.Sql.Length > 0);
         _footer.Text = plan.Footer.Pro
             ? Strings.Format("ShareFooterPro", plan.Footer.Live)
             : Strings.Format("ShareFooterFree", plan.Footer.Live, plan.Footer.Limit, plan.Footer.MaxRows);
@@ -335,9 +368,40 @@ internal sealed class ShareSheet
                 await ShowAtCapAsync(account, plan, generation).ConfigureAwait(true);
                 break;
             default:
+                if (_subject.ReadTable is { } read && _tableReadFor != limits.MaxRows)
+                {
+                    await ReadTableAsync(read, limits.MaxRows).ConfigureAwait(true);
+                    if (generation != _generation || _closed)
+                    {
+                        return;
+                    }
+
+                    plan = SharePlan.For(limits, _subject.Kind, _content.TotalRows, _content.Sql.Length > 0);
+                }
+
                 ShowForm(plan);
                 break;
         }
+    }
+
+    // The preview and the link both take these rows, so they are read once per plan.
+    private async Task ReadTableAsync(Func<long, Task<TableShareRead>> read, long maxRows)
+    {
+        ShowBusy(Strings.Get("ShareReadingRows"));
+        var table = await read(maxRows).ConfigureAwait(true);
+        if (_closed)
+        {
+            table.Dispose();
+            return;
+        }
+
+        _previewGrid?.SetData(null);
+        _tableRead?.Dispose();
+        _tableRead = table;
+        _tableReadFor = maxRows;
+        var columns = table.Rows?.GetColumns().Take(table.VisibleColumns).ToList() ?? [];
+        _content = new SharedContent(table.ViewSql ?? string.Empty, table.Rows, columns, table.TotalRows, table.TotalRows);
+        _noSql.Visibility = table.ViewSql is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ShowForm(SharePlan plan)
@@ -368,11 +432,17 @@ internal sealed class ShareSheet
             _allowDownload.IsChecked = true;
         }
 
-        if (_subject.Rows is { } rows && _previewGrid is { Data: null } grid)
+        _hideSql.Visibility = plan.OffersHideSql ? Visibility.Visible : Visibility.Collapsed;
+        if (!plan.OffersHideSql)
+        {
+            _hideSql.IsChecked = false;
+        }
+
+        if (_content.Rows is { } rows && _previewGrid is { Data: null } grid)
         {
             var count = (int)plan.PreviewRowCount;
             grid.Height = (count + 1) * 32 + 2;
-            grid.SetData(new FirstRows(new ResultSetData(rows, _subject.Columns), count));
+            grid.SetData(new FirstRows(new ResultSetData(rows, _content.Columns), count));
         }
 
         _capNote.Text = plan.IsTruncated
@@ -389,9 +459,9 @@ internal sealed class ShareSheet
     {
         var lines = new List<string>();
         var sqlShown = _subject.Kind == ShareKind.Query || _hideSql.IsChecked != true;
-        if (sqlShown && _subject.Sql.Length > 0)
+        if (sqlShown && _content.Sql.Length > 0)
         {
-            var kinds = ShareLinks.ScanSql(_subject.Sql)
+            var kinds = ShareLinks.ScanSql(_content.Sql)
                 .Select(hit => hit.Kind)
                 .Distinct()
                 .Select(kind => Strings.Get("SecretKind_" + kind))
@@ -404,7 +474,7 @@ internal sealed class ShareSheet
 
         if (_subject.Kind == ShareKind.Result)
         {
-            var columns = ShareLinks.ScanColumns(_subject.Columns.Select(column => column.Name));
+            var columns = ShareLinks.ScanColumns(_content.Columns.Select(column => column.Name));
             if (columns.Count > 0)
             {
                 lines.Add(Strings.Format("ShareSecretColumns", string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator + " ", columns)));
@@ -488,10 +558,14 @@ internal sealed class ShareSheet
         {
             await account.RevokeShareAsync(link.Id).ConfigureAwait(true);
         }
-        catch (TableProException exception) when (!_closed)
+        catch (TableProException exception)
         {
-            button.IsEnabled = true;
-            ShowNotice(InfoBarSeverity.Error, Strings.Error(exception.Error), (Strings.Get("ShareRetry"), () => _ = LoadAsync()));
+            if (!_closed)
+            {
+                button.IsEnabled = true;
+                ShowNotice(InfoBarSeverity.Error, Strings.Error(exception.Error), (Strings.Get("ShareRetry"), () => _ = LoadAsync()));
+            }
+
             return;
         }
 
@@ -521,23 +595,31 @@ internal sealed class ShareSheet
             _hideSql.IsChecked == true,
             _password.Password,
             _allowDownload.IsChecked != false);
-        var request = plan.Request(form, _subject.Sql, _subject.Dialect);
+        var content = _content;
+        var request = plan.Request(form, content.Sql, _subject.Dialect);
         ShowBusy(Strings.Get("ShareCreating"), keep: _form);
         try
         {
             var account = await _workbench.GetAccountAsync().ConfigureAwait(true)
                 ?? throw new TableProException(new CoreError("account.signed_out", ["account.signed_out"], string.Empty, null, null));
             var created = await account.CreateShareAsync(
-                    request, _subject.Rows, _subject.Columns.Count, plan.Limits.MaxRows)
+                    request, content.Rows, content.Columns.Count, plan.Limits.MaxRows, content.ViewCount)
                 .ConfigureAwait(true);
             _created = true;
+            // The link exists, so it is copied even when the sheet closed while it was made.
+            WorkspaceView.CopyText(created.Url);
             if (!_closed)
             {
                 ShowCreated(created.Url);
             }
         }
-        catch (TableProException exception) when (!_closed)
+        catch (TableProException exception)
         {
+            if (_closed)
+            {
+                return;
+            }
+
             if (ShareErrors.ReloadsLimits(exception.Code) || exception.Code == "account.signed_out")
             {
                 _creating = false;
@@ -547,9 +629,12 @@ internal sealed class ShareSheet
 
             ShowError(Strings.Get(ShareErrors.KeyFor(exception.Code)));
         }
-        catch (ObjectDisposedException) when (!_closed)
+        catch (ObjectDisposedException)
         {
-            ShowError(Strings.Get("ShareRowsGone"));
+            if (!_closed)
+            {
+                ShowError(Strings.Get("ShareRowsGone"));
+            }
         }
         finally
         {
@@ -564,7 +649,6 @@ internal sealed class ShareSheet
 
     private void ShowCreated(string url)
     {
-        WorkspaceView.CopyText(url);
         _url.Text = url;
         _dialog.PrimaryButtonText = string.Empty;
         _dialog.CloseButtonText = Strings.Get("ShareDone");

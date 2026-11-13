@@ -2919,6 +2919,12 @@ New fingerprint: {2}</value>
   <data name="ShareErrorFailed" xml:space="preserve">
     <value>The link couldn't be created. Try again.</value>
   </data>
+  <data name="ShareReadingRows" xml:space="preserve">
+    <value>Reading the rows...</value>
+  </data>
+  <data name="ShareTableNoSql" xml:space="preserve">
+    <value>TablePro cannot write this table's query for its database, so the link shares the rows without SQL and opens nothing in TablePro.</value>
+  </data>
   <data name="SharedLinkTitle" xml:space="preserve">
     <value>Shared link</value>
   </data>

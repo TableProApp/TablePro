@@ -13,7 +13,8 @@ The sheet and the menus work as the macOS and Linux apps' do, in Windows sentenc
 
 ### Entry points
 
-- The query results grid gets its first context menu: Copy, then Share result.... A table tab's grid menu adds Share..., which shares the page shown and is off while edits are pending, since the snapshot holds the server's values.
+- The query results grid gets its first context menu: Copy, then Share result.... A table tab's grid menu adds Share..., which shares the table's whole view and is off while edits are pending, since the snapshot holds the server's values.
+- A table share reads the view again from its first row, whichever page shows, with the filter and sort the rows shown were read with and the plan's rows as its limit (`TableTab.ReadForShareAsync`), counts what the filter picks, and sends the page's `ViewSql`: the query the view stands for, with its filter values written in and no row window ([core 0025](../../../core/docs/decisions/0025-share-links.md)). So "first N of M" holds, Hide SQL is offered and the link opens in TablePro. Where the engine cannot write that query, the sheet says so and shares the rows without SQL.
 - The SQL editor's own menu gets Share query..., with the selection, else the whole text. `SqlEditor.ContextMenuOpening` lets the host add its items each time the menu opens, since the editor builds a new menu for each window it moves to.
 - The File menu has Share result..., Share query... and Manage shared links..., which opens `https://account.tablepro.app/shared-links`. The Windows app has no saved queries or favorite queries yet, so none of them offer Share....
 
@@ -22,7 +23,7 @@ The sheet and the menus work as the macOS and Linux apps' do, in Windows sentenc
 - A `ContentDialog`, titled Share result or Share query, whose one section follows the account: signed out, Sign in..., which starts the account's sign-in and waits in the sheet; an account that could not start says why; signed in, the plan's limits are read (`GET /v2/share-limits`) with a spinner, and an offline or failed read offers Retry.
 - An unverified email offers Open account; sharing turned off says so; at the cap, the live personal links are listed oldest first, each with Revoke, with "Pro allows up to 1,000." on Free, and a freed slot shows the form again from limits read anew.
 - The form: Title, prefilled from the tab or the table; Note; Expires, every expiry listed with the ones the plan does not allow disabled, and Never on Free tagged Pro; Hide SQL for a result that has its SQL; Password and Allow viewers to download, disabled with a Pro tag on Free. A Pro tag is a `HyperlinkButton` to the plans page, with no dialog.
-- A result shows its first 5 rows of the visible columns in the app's own grid, over the result set's cells, and "Shares the first 1,000 of 48,210 rows." when the plan cuts it. The core builds the snapshot from the same set and the visible column count, cut to the plan's rows, so no row crosses the FFI to come back.
+- A result shows its first 5 rows of the visible columns in the app's own grid, over the result set's cells, and "Shares the first 1,000 of 48,210 rows." when the plan cuts it. The core builds the snapshot from the same set and the visible column count, cut to the plan's rows, with a table view's count as its total, so no row crosses the FFI to come back.
 - The core's secret scan warns inline about the SQL, while it would be shown, and about the result's column names; it never blocks a share.
 - The footer reads "Free · 3 of 5 links · first 1,000 rows" or "Pro · 12 links".
 - Share creates the link once: the button is off while it runs. Success copies the URL to the clipboard and shows it with Copy and Open in browser, and the dialog's close button reads Done. A refusal the limits explain (`share_limit_reached`, `email_unverified`, `sharing_disabled`, `signed_out`) reads them again; every other code has the sheet's sentence (`ShareErrors`), and anything else "The link couldn't be created. Try again."
@@ -41,6 +42,6 @@ The sheet and the menus work as the macOS and Linux apps' do, in Windows sentenc
 
 ## Consequences
 
-- A table page has no statement the FFI can name (the core builds the page's read inside `read_table_page`), so a table tab shares its rows with an empty SQL and offers no Hide SQL; its deep link has nothing to open.
+- A table share reads up to the plan's rows once more when the sheet opens, and counts the view, so a large table waits on both before the form shows.
 - No team links and no editing of a link after it is made in the app: the portal has them.
 - The UI tests show the sheet and the Settings section signed out; a signed-in sheet needs a test stack.

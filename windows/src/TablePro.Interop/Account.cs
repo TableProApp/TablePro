@@ -184,13 +184,13 @@ public sealed class TableProAccount : IDisposable
     public async Task<ShareLimits> GetShareLimitsAsync() =>
         Mapping.Limits(await CoreCall.RunAsync(() => _service.ShareLimits()).ConfigureAwait(false));
 
-    // A result share takes the set's first visibleColumns columns and its first maxRows rows, the plan's limit; the
-    // set must have all its rows. A query share takes no set.
+    // A finished set's first visibleColumns columns and maxRows rows; totalRows is a table view's count, else null.
     public async Task<CreatedShare> CreateShareAsync(
         ShareRequest request,
         ResultSet? rows = null,
         int visibleColumns = 0,
-        long maxRows = 0)
+        long maxRows = 0,
+        long? totalRows = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
@@ -198,8 +198,9 @@ public sealed class TableProAccount : IDisposable
         var native = Mapping.Request(request);
         var set = rows?.Handle;
         var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        ulong? total = totalRows is { } count ? checked((ulong)count) : null;
         var created = await CoreCall.RunAsync(
-                () => _service.CreateShare(native, set, checked((uint)visibleColumns), limit))
+                () => _service.CreateShare(native, set, checked((uint)visibleColumns), limit, total))
             .ConfigureAwait(false);
         return Mapping.Created(created);
     }
