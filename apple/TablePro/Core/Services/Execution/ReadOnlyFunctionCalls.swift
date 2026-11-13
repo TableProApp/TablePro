@@ -33,6 +33,12 @@ internal enum ReadOnlyFunctionCalls {
             typeNames: Set(PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect?.dataTypes ?? [])
         )
     }
+
+    // Nil on an engine that calls a function only with parentheses.
+    static func bareNameReading(_ sql: String, databaseType: DatabaseType) -> SQLBareNameReading? {
+        guard SQLBareNameCalls.engines.contains(databaseType.rawValue) else { return nil }
+        return SQLBareNameCalls.read(sql, databaseTypeId: databaseType.rawValue, readings: databaseType.lexicalReadings)
+    }
 }
 
 // Export, Transfer To, Data Compare and Copy Objects read rows outside the editor, so text the user wrote into them, a
@@ -46,7 +52,8 @@ internal enum ReadOnlyReadGate {
         gate: any ExecutionGate,
         operationDescription: String = String(localized: "Export"),
         canPrompt: Bool = true,
-        manager: DatabaseManager? = nil
+        manager: DatabaseManager? = nil,
+        runsIn: DatabaseScope? = nil
     ) async throws {
         guard !statements.isEmpty, ExecutionGateProvider.runsAtReadOnly(connectionId, in: manager) else { return }
         let decision = await gate.authorize(
@@ -58,7 +65,8 @@ internal enum ReadOnlyReadGate {
                 caller: .userInterface,
                 capabilities: canPrompt ? .interactiveUser : CallerCapabilities.interactiveUser.union(.cannotPrompt),
                 operationDescription: operationDescription,
-                statements: statements
+                statements: statements,
+                runsIn: runsIn
             )
         )
         if let denial = decision.denialError { throw denial }

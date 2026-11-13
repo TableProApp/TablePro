@@ -73,6 +73,135 @@ extension QueryClassifier {
         "dbms.components", "dbms.showcurrentuser", "dbms.procedures", "dbms.functions", "apoc.meta."
     ]
 
+    // Cypher Manual, clauses index (Cypher 25, Neo4j 2026.04): the clauses a query opens with. Administration opens
+    // with any other word, including the ones a later server adds.
+    static let cypherHeadClauses: Set<String> = [
+        "MATCH", "OPTIONAL", "RETURN", "WITH", "UNWIND", "FOR", "CALL", "MERGE", "CREATE", "INSERT", "FOREACH",
+        "FINISH", "LET", "FILTER", "WHEN", "SHOW"
+    ]
+
+    // Clauses upper case, procedures lower case as `cypherReadProcedures` compares them.
+    static func cypherDataCommands(_ text: String) -> [DataCommand]? {
+        var commands: [DataCommand] = []
+        for code in cypherReadings(of: text) {
+            for statement in code.split(separator: ";") where statement.contains(where: { !$0.isWhitespace }) {
+                guard let named = cypherDataCommands(statement: Array(statement)) else { return [.refused] }
+                commands += named
+            }
+        }
+        guard commands.isEmpty else { return commands }
+        return cypherClassification(text).tier == .safe ? [.read] : [.refused]
+    }
+
+    private static func cypherDataCommands(statement code: [Character]) -> [DataCommand]? {
+        guard let head = cypherHeadClause(in: code), cypherHeadClauses.contains(head) else { return nil }
+        let words = cypherClauseWords(in: code)
+        var commands: [DataCommand] = []
+        for (position, word) in words.enumerated() {
+            let previous = position > 0 ? words[position - 1].text : nil
+            switch word.text {
+            case "DROP", "DENY", "REVOKE", "GRANT", "LOAD":
+                return nil
+            case "CREATE" where previous == "ON":
+                // MERGE's `ON CREATE SET`.
+                guard cypherNextWord(in: code, after: word.end) == "SET" else { return nil }
+            case "CREATE":
+                // `CREATE INDEX`, `CREATE USER`, `CREATE OR REPLACE DATABASE` name an object where a pattern goes.
+                guard cypherCreatesPattern(in: code, after: word.end) else { return nil }
+                commands.append(.named("CREATE"))
+            case "DELETE":
+                commands.append(.named(previous == "DETACH" ? "DETACH DELETE" : "DELETE"))
+            case "MERGE", "SET", "REMOVE", "FOREACH", "INSERT":
+                commands.append(.named(word.text))
+            case "CALL":
+                guard let procedure = cypherProcedureName(in: code, after: word.end) else { continue }
+                guard !procedure.isEmpty, !procedure.split(separator: ".").contains("_q") else { return nil }
+                if !cypherReadProcedures.contains(where: procedure.hasPrefix) {
+                    commands.append(.named(procedure))
+                }
+            case let admin where cypherAdminObjects[admin] != nil:
+                if let next = cypherNextWord(in: code, after: word.end), cypherAdminObjects[admin]?.contains(next) == true {
+                    return nil
+                }
+            default:
+                continue
+            }
+        }
+        return commands
+    }
+
+    // The first clause after the prefixes a query may carry: `CYPHER` with its version and options, `EXPLAIN` or
+    // `PROFILE`, and `USE` with its graph.
+    private static func cypherHeadClause(in code: [Character]) -> String? {
+        var index = 0
+        while let word = cypherWord(in: code, from: &index) {
+            switch word {
+            case "CYPHER":
+                cypherSkipQueryOptions(in: code, from: &index)
+            case "EXPLAIN", "PROFILE":
+                continue
+            case "USE":
+                cypherSkipGraph(in: code, from: &index)
+            default:
+                return word
+            }
+        }
+        return nil
+    }
+
+    private static func cypherWord(in code: [Character], from index: inout Int) -> String? {
+        while index < code.count, code[index].isWhitespace { index += 1 }
+        let start = index
+        while index < code.count, code[index].isLetter || code[index].isNumber || code[index] == "_" { index += 1 }
+        return start < index ? String(code[start ..< index]).uppercased() : nil
+    }
+
+    // `CYPHER 25 runtime=slotted`: a version, then `name=value` options.
+    private static func cypherSkipQueryOptions(in code: [Character], from index: inout Int) {
+        while index < code.count, code[index].isWhitespace { index += 1 }
+        while index < code.count, code[index].isNumber || code[index] == "." { index += 1 }
+        while true {
+            var probe = index
+            guard cypherWord(in: code, from: &probe) != nil else { return }
+            while probe < code.count, code[probe].isWhitespace { probe += 1 }
+            guard probe < code.count, code[probe] == "=" else { return }
+            probe += 1
+            guard cypherWord(in: code, from: &probe) != nil else { return }
+            index = probe
+        }
+    }
+
+    // A graph name, dotted or quoted, or a call such as `graph.byName('x')`.
+    private static func cypherSkipGraph(in code: [Character], from index: inout Int) {
+        while index < code.count, code[index].isWhitespace { index += 1 }
+        while index < code.count, code[index].isLetter || code[index].isNumber || code[index] == "_" || code[index] == "." {
+            index += 1
+        }
+        var probe = index
+        while probe < code.count, code[probe].isWhitespace { probe += 1 }
+        guard probe < code.count, code[probe] == "(" else { return }
+        var depth = 0
+        while probe < code.count {
+            if code[probe] == "(" { depth += 1 }
+            if code[probe] == ")" { depth -= 1 }
+            probe += 1
+            if depth == 0 { break }
+        }
+        index = probe
+    }
+
+    // A pattern, or a path name assigned one: `CREATE (n)`, `CREATE p = (a)-[:R]->(b)`.
+    private static func cypherCreatesPattern(in code: [Character], after end: Int) -> Bool {
+        guard let start = code[end...].firstIndex(where: { !$0.isWhitespace }) else { return false }
+        if code[start] == "(" { return true }
+        let name = code[start...].prefix { $0.isLetter || $0.isNumber || $0 == "_" }
+        guard !name.isEmpty,
+              let equals = code[(start + name.count)...].firstIndex(where: { !$0.isWhitespace }),
+              code[equals] == "="
+        else { return false }
+        return equals + 1 == code.count || !"=~>".contains(code[equals + 1])
+    }
+
     // JavaCC's unicode-escape rule: a backslash after an even run of backslashes, one or more `u`, four hex digits.
     static func cypherDecodingUnicodeEscapes(_ text: String) -> String {
         let units = Array(text.utf16)

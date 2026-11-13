@@ -134,4 +134,68 @@ struct SQLDataStatementTests {
             requestIsData: { statement, _ in statement.hasPrefix("REQ ") ? statement.hasSuffix("PutItem") : nil }
         ))
     }
+
+    private static let surrealRowChanges: Set<String> = ["CREATE", "INSERT", "UPDATE", "UPSERT", "DELETE", "RELATE"]
+
+    private static func isSurrealData(_ sql: String) -> Bool {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "SurrealDB", declared: nil, session: nil)
+        return SQLStatementClassifier.isDataStatement(
+            sql, databaseTypeId: "SurrealDB", readings: readings, rowChanges: surrealRowChanges
+        )
+    }
+
+    // Measured on SurrealDB 2.7.0 and 3.3.5.
+    @Test("SurrealQL record writes are data", arguments: [
+        "SELECT * FROM person LIMIT 10",
+        "CREATE person:one SET name = 'a'",
+        "CREATE person CONTENT { name: 'a' }",
+        "INSERT INTO person { name: 'b' }",
+        "RELATE person:one->knows->person:two",
+        "UPDATE person:one SET name = 'c'",
+        "UPSERT person:three SET name = 'd'",
+        "DELETE person:three",
+        "INFO FOR DB",
+        "SELECT * FROM person WHERE seen = time::now()",
+        "SELECT sleep FROM person",
+    ])
+    func surrealRecordWritesAreData(sql: String) {
+        #expect(Self.isSurrealData(sql))
+    }
+
+    @Test("SurrealQL definitions, sessions, transactions, nested statements and stored bodies are not", arguments: [
+        "DEFINE TABLE person SCHEMAFULL",
+        "DEFINE USER bob ON DATABASE PASSWORD 'x' ROLES OWNER",
+        "ACCESS acc ON DATABASE GRANT FOR USER bob",
+        "ALTER TABLE person COMMENT 'x'",
+        "REBUILD INDEX i ON person",
+        "USE NS a DB b",
+        "LET $x = 1",
+        "BEGIN TRANSACTION",
+        "OPTION IMPORT",
+        "SLEEP 10s",
+        "RETURN (DEFINE USER x ON DATABASE PASSWORD 'p' ROLES OWNER)",
+        "SELECT * FROM person WHERE name = (DEFINE TABLE t)",
+        "SELECT fn::mk() FROM ONLY person:one",
+        "RETURN api::invoke('/x')",
+    ])
+    func surrealDefinitionsAreNot(sql: String) {
+        #expect(!Self.isSurrealData(sql))
+    }
+
+    @Test("A CQL row change in a system keyspace is not data, and a read of one is", arguments: ["Cassandra", "ScyllaDB"])
+    func cassandraSystemKeyspaces(engine: String) {
+        for sql in [
+            "UPDATE system_auth.roles SET is_superuser = true WHERE role = 'app'",
+            "INSERT INTO system_distributed.partition_denylist (ks_name, table_name, key) VALUES ('ks', 't', 0x00)",
+            "DELETE FROM system_views.roles_cache_keys WHERE role = 'app'",
+            "UPDATE system.config SET value = 'false' WHERE name = 'enable_cql_config_updates'",
+            "BEGIN BATCH UPDATE system_auth.roles SET can_login = true WHERE role = 'x'; APPLY BATCH",
+        ] {
+            #expect(!Self.isData(sql, engine))
+        }
+        #expect(Self.isData("SELECT * FROM system_auth.roles", engine))
+        #expect(Self.isData("UPDATE ks.users SET name = 'b' WHERE id = 1", engine))
+        #expect(SQLStatementClassifier.isSystemScope(database: "system_auth", schema: nil, databaseTypeId: engine))
+        #expect(!SQLStatementClassifier.isSystemScope(database: "shop", schema: nil, databaseTypeId: engine))
+    }
 }

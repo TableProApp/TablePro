@@ -1093,6 +1093,7 @@ final class MainContentCoordinator: ObservableObject {
             isShowingSafeModePrompt = true
             let tabId = tab.id
             let askedContext = tab.tableContext
+            let askedScope = scope(for: tab)
             return Task {
                 let decision = await executionGate.authorize(
                     OperationRequest(
@@ -1102,7 +1103,8 @@ final class MainContentCoordinator: ObservableObject {
                         kind: .readQuery,
                         caller: .userInterface,
                         capabilities: .interactiveUser,
-                        operationDescription: String(localized: "Execute Query")
+                        operationDescription: String(localized: "Execute Query"),
+                        runsIn: askedScope
                     )
                 )
                 isShowingSafeModePrompt = false

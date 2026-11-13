@@ -307,6 +307,19 @@ struct ReadOnlySafeModeEntryPointTests {
         #expect(browses.count == 2)
     }
 
+    // Oracle and Dameng call a function named bare, which only the catalog the gate reads can tell from a column.
+    @Test("On Oracle and Dameng every raw filter goes to the gate at Read-Only, parentheses or not", arguments: [
+        DatabaseType.oracle, .dameng,
+    ])
+    func bareNameRawFilterGoesToTheGate(type: DatabaseType) {
+        let (fixture, _) = makeFixture(.readOnly, type: type, enforcesReadOnlyMode: false)
+        let (postgres, _) = makeFixture(.readOnly, enforcesReadOnlyMode: false)
+        let filters = [TableFilter.rawCondition("purge_orders IS NULL")]
+
+        #expect(fixture.coordinator.rawFilterNeedsReadOnlyGate(filters))
+        #expect(!postgres.coordinator.rawFilterNeedsReadOnlyGate(filters))
+    }
+
     // A view, or a row security policy, can call a writing function with no call in the browse's text.
     @Test("A table browse with no raw filter runs in the read-only mode at Read-Only without asking")
     func plainBrowseCarriesTheMode() async throws {
