@@ -4,13 +4,15 @@ use async_trait::async_trait;
 use tablepro_core::{ByteLimit, ResultEvent, ResultSink, SinkFlow};
 
 use super::{RunEvent, RunState};
-use crate::results::{ResultColumnInfo, ResultStore};
+use crate::results::{GridMasking, ResultStore};
 
-// Rows go into the set's store at once, so the read runs at the server's pace and not the grid's.
+// Rows go into the set's store at once, so the read runs at the server's pace and not the grid's. A store masks them
+// as they arrive.
 pub(crate) struct RunSink {
     state: Arc<RunState>,
     current: Option<(u32, Arc<ResultStore>)>,
     limit_bytes: u64,
+    masking: Option<GridMasking>,
 }
 
 impl RunSink {
@@ -19,7 +21,14 @@ impl RunSink {
             state,
             current: None,
             limit_bytes: byte_limit.get(),
+            masking: None,
         }
+    }
+
+    #[must_use]
+    pub(crate) fn masked(mut self, masking: GridMasking) -> Self {
+        self.masking = Some(masking);
+        self
     }
 }
 
@@ -28,8 +37,8 @@ impl ResultSink for RunSink {
     async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
         let event = match event {
             ResultEvent::ResultSetStarted { columns } => {
-                let infos = columns.iter().map(ResultColumnInfo::from).collect();
-                let store = Arc::new(ResultStore::new(columns));
+                let store = Arc::new(ResultStore::with_masking(columns, self.masking.clone()));
+                let infos = store.column_infos();
                 let set_index = self.state.add_set(store.clone());
                 self.current = Some((set_index, store));
                 RunEvent::ResultSetStarted {
@@ -39,10 +48,16 @@ impl ResultSink for RunSink {
             }
             ResultEvent::ColumnsResolved { set_index, columns } => {
                 let set_index = u32::try_from(set_index).unwrap_or(u32::MAX);
-                let infos = columns.iter().map(ResultColumnInfo::from).collect();
-                if let Some(store) = self.state.set(set_index) {
-                    store.resolve_columns(columns);
-                }
+                let infos = match self.state.set(set_index) {
+                    Some(store) => {
+                        store.resolve_columns(columns);
+                        store.column_infos()
+                    }
+                    None => columns
+                        .iter()
+                        .map(|column| crate::results::ResultColumnInfo::of(column, None))
+                        .collect(),
+                };
                 RunEvent::ColumnsResolved {
                     set_index,
                     columns: infos,
