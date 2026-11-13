@@ -154,6 +154,41 @@ struct LibPQReadOnlyTransactionTests {
         #expect(!wire.sent.contains(Self.statement))
     }
 
+    @Test(
+        "At Read-Only a session that is not idle runs a statement with no unlisted call in its transaction as it is",
+        arguments: [PluginSessionTransactionState.inTransaction, .abortedTransaction, .holdsSessionLocks, .unknown]
+    )
+    func runsInTheOpenTransaction(state: PluginSessionTransactionState) throws {
+        let wire = Wire()
+        var checked = Self.safeModeRead
+        checked.callsUnlistedFunction = false
+        let scope = try #require(LibPQReadOnlyTransaction.scope(for: checked, capabilities: .enforcesReadOnlyMode))
+
+        let rows = try LibPQReadOnlyTransaction.run(state: state, scope: scope, send: wire.send) {
+            try wire.send(Self.statement)
+            return 3
+        }
+
+        #expect(rows == 3)
+        #expect(wire.sent == [Self.statement])
+    }
+
+    @Test("Only a Read-Only statement the host found no unlisted call in may run in an open transaction")
+    func openTransactionNeedsTheCheck() {
+        var checked = Self.safeModeRead
+        checked.callsUnlistedFunction = false
+        var external = Self.externalRead
+        external.callsUnlistedFunction = false
+        let capabilities: PluginCapabilities = [.readOnlyStatements, .enforcesReadOnlyMode]
+
+        #expect(LibPQReadOnlyTransaction.scope(for: checked, capabilities: capabilities)?.runsInOpenTransaction == true)
+        #expect(
+            LibPQReadOnlyTransaction.scope(for: Self.safeModeRead, capabilities: capabilities)?.runsInOpenTransaction
+                == false
+        )
+        #expect(LibPQReadOnlyTransaction.scope(for: external, capabilities: capabilities)?.runsInOpenTransaction == false)
+    }
+
     @Test("An external read and an app read at Read-Only are wrapped; the app's own read-only marks are not")
     func wrapsOnlyExternalAndSafeModeReads() {
         let capabilities = PostgreSQLPluginDriver(config: Self.config).capabilities

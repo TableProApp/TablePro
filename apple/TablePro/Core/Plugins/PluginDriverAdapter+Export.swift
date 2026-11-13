@@ -22,6 +22,7 @@ extension PluginDriverAdapter {
     private func streamContext(_ query: String, _ safeModeIsReadOnly: Bool) -> PluginStatementContext {
         var context = statementContext(query)
         context.enforcesReadOnly = readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) != nil
+        context.readFunctionCalls(in: query, databaseType: connection.type)
         return context
     }
 }
