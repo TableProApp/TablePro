@@ -28,7 +28,6 @@ sqlparser.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "rt"] }
 tokio-util.workspace = true
-unicode-normalization.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
 uuid.workspace = true

@@ -1,14 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::masking::SharedMaskingPolicy;
-use tablepro_core::sql_syntax::{SqlGrammar, source_table};
 use tablepro_core::{ByteLimit, CallOptions, EditorSession, EditorSessionState, RowLimit, RunOptions, UserSql};
 use tablepro_session::runtime::{Tasks, catch_panic};
 
 use crate::cancel_token::{CancelToken, token};
 use crate::error::CoreError;
-use crate::results::GridMasking;
 use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
 use crate::runtime::on_runtime;
 
@@ -18,8 +15,6 @@ use crate::runtime::on_runtime;
 pub struct QueryEditor {
     editor: Arc<dyn EditorSession>,
     tasks: Tasks,
-    masking: SharedMaskingPolicy,
-    grammar: SqlGrammar,
 }
 
 /// What one run may do. `None` takes the editor's defaults: 10,000 rows,
@@ -33,35 +28,16 @@ pub struct RunSettings {
 }
 
 impl QueryEditor {
-    pub(crate) fn new(
-        editor: Arc<dyn EditorSession>,
-        tasks: Tasks,
-        masking: SharedMaskingPolicy,
-        grammar: SqlGrammar,
-    ) -> Self {
-        Self {
-            editor,
-            tasks,
-            masking,
-            grammar,
-        }
+    pub(crate) fn new(editor: Arc<dyn EditorSession>, tasks: Tasks) -> Self {
+        Self { editor, tasks }
     }
 }
 
 #[uniffi::export]
 impl QueryEditor {
     /// Starts `sql` and returns at once. `listener` hears when events
-    /// are waiting; the run ends with a `Finished` event. Rows arrive
-    /// masked by the connection's rules unless `reveal_masked`, which only
-    /// a tab the user revealed passes; an export or share of its rows
-    /// masks them again.
-    pub fn run(
-        &self,
-        sql: String,
-        settings: RunSettings,
-        reveal_masked: bool,
-        listener: Box<dyn RunListener>,
-    ) -> Arc<QueryRun> {
+    /// are waiting; the run ends with a `Finished` event.
+    pub fn run(&self, sql: String, settings: RunSettings, listener: Box<dyn RunListener>) -> Arc<QueryRun> {
         let state = Arc::new(RunState::new(listener));
         let mut options =
             RunOptions::new(state.cancel.clone()).with_deadline(settings.timeout_ms.map(Duration::from_millis));
@@ -72,16 +48,7 @@ impl QueryEditor {
             options = options.with_byte_limit(limit);
         }
         let editor = self.editor.clone();
-        let masking = GridMasking {
-            policy: self.masking.clone(),
-            named_table: source_table(&sql, self.grammar)
-                .ok()
-                .map(|source| tablepro_core::masking::table_name(&source.table)),
-            own_table: None,
-            visible: None,
-            revealed: reveal_masked,
-        };
-        let sink = RunSink::new(state.clone(), options.byte_limit).masked(masking);
+        let sink = RunSink::new(state.clone(), options.byte_limit);
         let run = state.clone();
         drop(self.tasks.spawn_task(async move {
             let ran = catch_panic(editor.run(UserSql::new(sql), options, Box::new(sink))).await;

@@ -1,6 +1,5 @@
 use rmcp::model::{CallToolResult, ContentBlock};
 use tablepro_core::DriverError;
-use tablepro_core::masking::{may_repeat_a_value, server_code};
 use tablepro_session::OperationError;
 
 /// Why a tool did not do what it was asked. It reaches the client as a
@@ -64,27 +63,6 @@ impl ToolError {
         }
     }
 
-    // On a connection with masking rules a server's message can repeat a value the statement read, so a client gets
-    // its code alone.
-    pub fn from_driver_masked(error: &DriverError, masks_values: bool) -> Self {
-        if !masks_values || !may_repeat_a_value(error) {
-            return Self::from_driver(error);
-        }
-        let reason =
-            "TablePro withholds its message because this connection masks values and the message can repeat one";
-        Self::QueryFailed(match server_code(error) {
-            Some(code) => format!("the server refused the statement with code {code}; {reason}"),
-            None => format!("the server refused the statement; {reason}"),
-        })
-    }
-
-    pub fn from_operation_masked(error: &OperationError, masks_values: bool) -> Self {
-        match error {
-            OperationError::Driver(driver) => Self::from_driver_masked(driver, masks_values),
-            other => Self::from_operation(other),
-        }
-    }
-
     pub fn from_operation(error: &OperationError) -> Self {
         match error {
             OperationError::Driver(driver) => Self::from_driver(driver),
@@ -109,26 +87,6 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         let text = serde_json::to_string(&result.content).expect("JSON");
         assert!(text.contains("denied: read only"), "{text}");
-    }
-
-    #[test]
-    fn a_server_s_message_is_withheld_only_where_values_are_masked() {
-        let refused = DriverError::Server(Box::new(tablepro_core::ServerDiagnostics::new(
-            Some(tablepro_core::ServerCode::SqlState("22P02".to_owned())),
-            r#"invalid input syntax for type integer: "ann@example.com""#,
-        )));
-
-        let masked = ToolError::from_driver_masked(&refused, true);
-        let plain = ToolError::from_driver_masked(&refused, false);
-
-        assert_eq!(masked.code(), "query_failed");
-        assert!(masked.message().contains("22P02"), "{}", masked.message());
-        assert!(!masked.message().contains("ann@example.com"), "{}", masked.message());
-        assert!(plain.message().contains("ann@example.com"));
-        assert_eq!(
-            ToolError::from_driver_masked(&DriverError::Cancelled, true).code(),
-            "user_cancelled"
-        );
     }
 
     #[test]

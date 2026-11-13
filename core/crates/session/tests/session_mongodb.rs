@@ -222,7 +222,6 @@ fn tunnelled_request(mongo: &MongoFixture, sshd: &OpenSshFixture, private_key: P
         },
         workspace_settings: WorkspaceSettings::workspace(false),
         safe_mode: tablepro_core::SafeModeLevel::Off,
-        masking: Default::default(),
     }
 }
 

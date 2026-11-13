@@ -1,5 +1,5 @@
-use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
-use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, sent_in_batches, statement_access};
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 use tablepro_core::{SafeModeLevel, WriteGate};
 
 // What Safe Mode lets an editor run do before it is sent. The editor sends its text whole, so one refused statement
@@ -59,6 +59,16 @@ pub(crate) fn gate(sql: &str, grammar: SqlGrammar, level: SafeModeLevel) -> RunG
         }
     }
     gate
+}
+
+// The MySQL driver sends a script with a DELIMITER line and nothing left open as these batches, one at a time, so
+// no server reads the text whole, DELIMITER lines and all.
+fn sent_in_batches(sql: &str, grammar: SqlGrammar, plan: &ScriptPlan) -> bool {
+    grammar == SqlGrammar::MySql
+        && plan.diagnostics().is_empty()
+        && plan
+            .tokens(0..sql.len())
+            .any(|token| token.kind == ScriptTokenKind::Directive)
 }
 
 #[cfg(test)]
