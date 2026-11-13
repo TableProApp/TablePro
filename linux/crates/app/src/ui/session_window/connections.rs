@@ -142,7 +142,9 @@ impl SessionWindow {
             submitted.deliver(SessionWindowInput::ConnectFromDialog(Box::new(submission)));
         });
         let saved = input.clone();
-        dialog.connect_saved(move |_, id| saved.deliver(SessionWindowInput::ConnectionSaved(id)));
+        dialog.connect_saved(move |_, id, reconnect| {
+            saved.deliver(SessionWindowInput::ConnectionSaved { id, reconnect });
+        });
         dialog.connect_closed(move |_| input.deliver(SessionWindowInput::DialogClosed));
         dialog.present(Some(self));
         if let Some(url) = link {
@@ -362,7 +364,7 @@ impl SessionWindow {
     /// An edit was saved. A connect that failed here tries again with
     /// it; a session open on the connection keeps what it connected
     /// with, since an edit never moves a live session to another server.
-    pub(super) fn on_connection_saved(&self, id: Uuid) {
+    pub(super) fn on_connection_saved(&self, id: Uuid, reconnect: bool) {
         let key = SessionKey::Saved(id);
         if self.with_failure(&key, |_, _| ()).is_some() {
             self.on_retry_connect(&key);
@@ -371,7 +373,8 @@ impl SessionWindow {
         let Some(state) = self.state() else {
             return;
         };
-        if state.context.sessions.window_for(&key).is_some() {
+        // Masking rules, the name, the icon and the tags reach the open session as they are saved.
+        if reconnect && state.context.sessions.window_for(&key).is_some() {
             self.show_toast(&crate::i18n::gettext("Changes apply the next time you connect"));
         }
     }
@@ -1632,7 +1635,10 @@ mod tests {
             .expect("a second window");
         wait_until(WAIT, || other.page_name() == "picker").expect("the second window's picker");
 
-        other.send(SessionWindowInput::ConnectionSaved(test.saved.id));
+        other.send(SessionWindowInput::ConnectionSaved {
+            id: test.saved.id,
+            reconnect: true,
+        });
 
         wait_until(WAIT, || {
             other
@@ -1652,10 +1658,34 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn an_edit_an_open_session_takes_at_once_says_nothing() {
+        let test = TestWindow::connected("EditLive");
+
+        test.window.send(SessionWindowInput::ConnectionSaved {
+            id: test.saved.id,
+            reconnect: false,
+        });
+        drain_main_context();
+
+        assert!(
+            test.window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .all(|toast| toast.title().as_deref() != Some("Changes apply the next time you connect")),
+            "a masking-only edit told the user to reconnect"
+        );
+    }
+
+    #[gtk4::test]
     fn an_edit_of_a_closed_connection_says_nothing() {
         let test = TestWindow::picker("EditWhileClosed");
 
-        test.window.send(SessionWindowInput::ConnectionSaved(test.saved.id));
+        test.window.send(SessionWindowInput::ConnectionSaved {
+            id: test.saved.id,
+            reconnect: true,
+        });
         drain_main_context();
 
         assert!(test.window.imp().toasts.borrow().is_empty());

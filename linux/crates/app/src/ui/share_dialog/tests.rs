@@ -379,6 +379,7 @@ fn result(rows: usize) -> ShareSubject {
             shown: Default::default(),
             rules: Default::default(),
             untraced: Vec::new(),
+            live: None,
         }),
         ..query()
     }
@@ -751,6 +752,7 @@ fn wide_result(columns: usize) -> ShareSubject {
             shown: Default::default(),
             rules: Default::default(),
             untraced: Vec::new(),
+            live: None,
         }),
         ..query()
     }
@@ -930,6 +932,7 @@ fn people() -> ShareSubject {
             shown: ColumnMasks::none(),
             rules: ColumnMasks::new(vec![None, Some(MaskingStyle::Email), None]),
             untraced: Vec::new(),
+            live: None,
         }),
         ..query()
     }
@@ -992,6 +995,13 @@ fn the_columns_list_masks_ruled_and_detected_columns_and_the_preview_shows_what_
     let notes = column_row(&harness, "notes");
     assert_eq!(notes.subtitle().as_deref(), Some("Values look like phone numbers"));
     assert_eq!(chosen(&notes), "Mask as Last 4 Characters");
+    assert!(
+        descendants(&notes)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+            .any(|label| label.label() == "Last 4 Characters"),
+        "the row does not show the short form of the choice"
+    );
     assert_eq!(chosen(&column_row(&harness, "id")), "Keep");
     assert!(has_label(&harness, "2 columns masked, 0 removed."));
     assert!(has_label(&harness, "a•••@example.com"), "{:?}", labels(&harness));
@@ -1069,6 +1079,7 @@ fn a_result_whose_first_row_cannot_go_says_so_and_cannot_be_created() {
             shown: Default::default(),
             rules: Default::default(),
             untraced: Vec::new(),
+            live: None,
         }),
         ..query()
     };
@@ -1093,4 +1104,71 @@ fn a_result_whose_first_row_cannot_go_says_so_and_cannot_be_created() {
     harness.summarized();
 
     assert!(harness.chrome().create.is_sensitive(), "a masked value fits the budget");
+}
+
+#[gtk4::test]
+fn a_form_built_again_for_the_same_rows_reads_what_the_detectors_and_the_summary_found() {
+    let harness = Harness::new(Cloud::free(0), people(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+    let sent = harness.dialog.imp().sent.borrow().clone().expect("a summary");
+
+    harness.dialog.load_limits();
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    let again = harness.dialog.imp().sent.borrow().clone().expect("a summary");
+    assert!(
+        std::rc::Rc::ptr_eq(&sent, &again),
+        "the same rows were summarized again"
+    );
+    assert_eq!(chosen(&column_row(&harness, "notes")), "Mask as Last 4 Characters");
+}
+
+#[gtk4::test]
+fn a_rule_saved_after_the_summary_is_read_again_before_the_link_is_made() {
+    use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget, SharedMaskingPolicy};
+
+    use crate::services::grid::{MaskSource, OutwardRules};
+    use crate::services::share_subject::LiveRules;
+
+    let rules = SharedMaskingPolicy::default();
+    let mut subject = people();
+    let rows = subject.rows.as_mut().expect("rows");
+    rows.rules = Default::default();
+    rows.live = Some(LiveRules {
+        outward: OutwardRules::new(
+            rules.clone(),
+            Arc::new(
+                |policy: &MaskingPolicy, columns: &[ResultColumn], _: Option<&tablepro_core::meta::TableRef>| {
+                    MaskSource::Table("users".to_owned()).masks(policy, columns, false)
+                },
+            ),
+        ),
+        columns: rows.columns.to_vec(),
+        table: None,
+        indices: (0..rows.columns.len()).collect(),
+        generation: rules.generation(),
+    });
+    let harness = Harness::new(Cloud::free(0), subject, true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+    assert!(offered(&column_row(&harness, "notes")).contains(&"Keep".to_owned()));
+
+    rules.set(MaskingPolicy::new([MaskingRule::new(
+        "notes",
+        MaskingTarget::Column,
+        MaskingStyle::Full,
+    )]));
+    harness.dialog.create();
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    assert_eq!(harness.posts(), 0, "the link went out under the old rules");
+    let notes = column_row(&harness, "notes");
+    assert!(
+        !offered(&notes).contains(&"Keep".to_owned()),
+        "the saved rule was not read"
+    );
+    assert!(harness.chrome().create.is_sensitive());
+
+    harness.dialog.create();
+    harness.wait_for(|page| matches!(page, SheetPage::Created { .. }));
+    assert_eq!(harness.posts(), 1);
 }

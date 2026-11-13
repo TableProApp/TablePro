@@ -118,6 +118,26 @@ pub fn saved_rules(rules: &[MaskingRule]) -> Vec<MaskingRule> {
         .collect()
 }
 
+// Whether a live session must reconnect to take `edited`: masking rules, the name, the icon and the tags reach it as
+// they are saved, and a secret typed in reaches only the next login.
+pub fn needs_reconnect(original: &SavedConnection, edited: &SavedConnection, secrets: &SecretChanges) -> bool {
+    let typed = [
+        &secrets.database_password,
+        &secrets.ssh_password,
+        &secrets.ssh_passphrase,
+    ]
+    .into_iter()
+    .any(|change| !matches!(change, crate::services::secret_change::SecretChange::Keep));
+    let live = SavedConnection {
+        masking_rules: original.masking_rules.clone(),
+        name: original.name.clone(),
+        icon: original.icon,
+        tags: original.tags.clone(),
+        ..edited.clone()
+    };
+    typed || live != *original
+}
+
 /// What the connect dialog holds, read from its rows in one go so a
 /// connect works from a snapshot.
 #[derive(Debug, Clone)]

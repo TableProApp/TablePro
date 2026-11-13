@@ -38,6 +38,9 @@ pub struct ShareDialog {
     // Moved by each change of the Columns list, so only the newest summary lands.
     pub(super) summaries: Cell<u64>,
     pub(super) summarized: Cell<u64>,
+    // What the detectors and the last summary found, which a form built again for the same subject reads.
+    pub(super) detected: RefCell<Option<super::form::Detected>>,
+    pub(super) sent: RefCell<Option<std::rc::Rc<super::form::Sent>>>,
     // The share as the sheet holds it is summarized and can go; false while a summary runs or it is too large.
     pub(super) sendable: Cell<bool>,
 }

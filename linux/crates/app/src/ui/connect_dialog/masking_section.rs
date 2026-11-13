@@ -2,6 +2,7 @@
 //! on screen and on every path out of the app (core ADR 0028).
 
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
@@ -11,6 +12,7 @@ use uuid::Uuid;
 
 use super::ConnectDialog;
 use crate::i18n::{gettext, gettext_f};
+use crate::ui::a11y::describe_icon_button;
 use crate::ui::masking_text::{style_label, target_label};
 
 // One rule's rows. The expander names the pattern, and its rows hold what it applies to, the pattern and the style.
@@ -21,6 +23,7 @@ pub struct RuleRow {
     target: adw::ComboRow,
     pattern: adw::EntryRow,
     style: adw::ComboRow,
+    remove: gtk::Button,
 }
 
 impl RuleRow {
@@ -70,19 +73,12 @@ impl ConnectDialog {
     fn add_masking_rule(&self, rule: &MaskingRule, focus: bool) {
         let imp = self.imp();
         let row = rule_row(rule);
-        let remove = gtk::Button::builder()
-            .icon_name("edit-delete-symbolic")
-            .valign(gtk::Align::Center)
-            .tooltip_text(gettext("Remove Rule"))
-            .css_classes(["flat"])
-            .build();
         let (weak, id) = (self.downgrade(), rule.id);
-        remove.connect_clicked(move |_| {
+        row.remove.connect_clicked(move |_| {
             if let Some(dialog) = weak.upgrade() {
                 dialog.remove_masking_rule(id);
             }
         });
-        row.expander.add_suffix(&remove);
         // Before Add Rule, which stays last.
         let group = &imp.masking_group;
         group.remove(&*imp.add_masking_rule_row);
@@ -117,6 +113,12 @@ fn rule_row(rule: &MaskingRule) -> RuleRow {
         .build();
     let styles: Vec<String> = MaskingStyle::ALL.iter().map(|style| style_label(*style)).collect();
     let style = combo(&gettext("Style"), &styles, style_index(rule.style));
+    let remove = gtk::Button::builder()
+        .icon_name("edit-delete-symbolic")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .build();
+    expander.add_suffix(&remove);
     expander.add_row(&target);
     expander.add_row(&pattern);
     expander.add_row(&style);
@@ -126,22 +128,21 @@ fn rule_row(rule: &MaskingRule) -> RuleRow {
         target,
         pattern,
         style,
+        remove,
     };
-    describe(&row.expander, &row.target, &row.pattern, &row.style);
-    let (expander, entry, kind, shown) = (
-        row.expander.downgrade(),
-        row.pattern.downgrade(),
-        row.target.downgrade(),
-        row.style.downgrade(),
-    );
-    let follow = move || {
-        if let (Some(expander), Some(pattern), Some(target), Some(style)) =
-            (expander.upgrade(), entry.upgrade(), kind.upgrade(), shown.upgrade())
-        {
-            describe(&expander, &target, &pattern, &style);
+    row.describe();
+    let weak = Widgets {
+        expander: row.expander.downgrade(),
+        target: row.target.downgrade(),
+        pattern: row.pattern.downgrade(),
+        style: row.style.downgrade(),
+        remove: row.remove.downgrade(),
+    };
+    let follow = std::rc::Rc::new(move || {
+        if let Some(row) = weak.upgrade() {
+            row.describe();
         }
-    };
-    let follow = std::rc::Rc::new(follow);
+    });
     let on_target = follow.clone();
     row.target.connect_selected_notify(move |_| on_target());
     let on_pattern = follow.clone();
@@ -150,20 +151,50 @@ fn rule_row(rule: &MaskingRule) -> RuleRow {
     row
 }
 
-// The expander names the rule; the pattern row's title says what kind of name it takes.
-fn describe(expander: &adw::ExpanderRow, target: &adw::ComboRow, pattern: &adw::EntryRow, style: &adw::ComboRow) {
-    let (target, style) = (picked_target(target), picked_style(style));
-    let text = pattern.text();
-    let title = match text.trim() {
-        "" => gettext("New Rule"),
-        typed => typed.to_owned(),
-    };
-    expander.set_title(&title);
-    expander.set_subtitle(&gettext_f(
-        "{target} · {style}",
-        &[("target", &target_label(target)), ("style", &style_label(style))],
-    ));
-    pattern.set_title(&pattern_title(target));
+// A row's widgets held weakly by its own handlers.
+struct Widgets {
+    expander: glib::WeakRef<adw::ExpanderRow>,
+    target: glib::WeakRef<adw::ComboRow>,
+    pattern: glib::WeakRef<adw::EntryRow>,
+    style: glib::WeakRef<adw::ComboRow>,
+    remove: glib::WeakRef<gtk::Button>,
+}
+
+impl Widgets {
+    fn upgrade(&self) -> Option<RuleRow> {
+        Some(RuleRow {
+            id: Uuid::nil(),
+            expander: self.expander.upgrade()?,
+            target: self.target.upgrade()?,
+            pattern: self.pattern.upgrade()?,
+            style: self.style.upgrade()?,
+            remove: self.remove.upgrade()?,
+        })
+    }
+}
+
+impl RuleRow {
+    // The expander and the remove button name the rule; the pattern row's title says what kind of name it takes.
+    fn describe(&self) {
+        let (target, style) = (picked_target(&self.target), picked_style(&self.style));
+        let text = self.pattern.text();
+        let typed = text.trim();
+        let title = match typed {
+            "" => gettext("New Rule"),
+            typed => typed.to_owned(),
+        };
+        self.expander.set_title(&title);
+        self.expander.set_subtitle(&gettext_f(
+            "{target} · {style}",
+            &[("target", &target_label(target)), ("style", &style_label(style))],
+        ));
+        self.pattern.set_title(&pattern_title(target));
+        let remove = match typed {
+            "" => gettext("Remove the new rule"),
+            typed => gettext_f("Remove rule {pattern}", &[("pattern", typed)]),
+        };
+        describe_icon_button(&self.remove, &remove, None);
+    }
 }
 
 fn pattern_title(target: MaskingTarget) -> String {
@@ -213,5 +244,9 @@ impl RuleRow {
 
     pub(super) fn style(&self) -> &adw::ComboRow {
         &self.style
+    }
+
+    pub(super) fn remove(&self) -> &gtk::Button {
+        &self.remove
     }
 }

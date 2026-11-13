@@ -452,6 +452,7 @@ crates/app/src/ui/export/export_query.rs
 crates/app/src/ui/export/export_scope.rs
 crates/app/src/ui/export/export_sink_parts.rs
 crates/app/src/ui/export/export_source.rs
+crates/app/src/ui/export/live_masking_sink.rs
 crates/app/src/ui/export/mod.rs
 crates/app/src/ui/export/replace_file_writer/mod.rs
 crates/app/src/ui/export/replace_file_writer/tests.rs

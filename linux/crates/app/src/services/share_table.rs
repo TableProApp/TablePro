@@ -9,8 +9,9 @@ use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, FilterSet, ReadStatement, ResultEvent, ResultSink, SinkFlow, Value};
 use tablepro_session::{OperationError, OperationKind, Session};
 
+use super::grid::OutwardRules;
 use super::grid::RowSnapshot;
-use super::share_subject::SharedRows;
+use super::share_subject::{LiveRules, SharedRows};
 
 // A table tab's view, read from its first row once the plan says how many rows a link carries.
 #[derive(Debug, Clone)]
@@ -98,6 +99,7 @@ impl TableShare {
             })
             .collect();
         // The rows are read fresh, so nothing in them is masked yet; the table's rules match by the table.
+        let generation = self.session.masking().generation();
         let (policy, table) = (self.session.masking_policy(), table_name(&self.table));
         let rules = policy.external_column_masks(Some(&table), &columns);
         let untraced = policy.untraced_columns(Some(&table), &columns);
@@ -114,6 +116,13 @@ impl TableShare {
                 cut: full,
             },
         };
+        let live = LiveRules {
+            outward: OutwardRules::table(self.session.masking()),
+            columns: columns.to_vec(),
+            table: Some(self.table.clone()),
+            indices: (0..columns.len()).collect(),
+            generation,
+        };
         SharedRows {
             columns,
             rows,
@@ -121,6 +130,7 @@ impl TableShare {
             shown: ColumnMasks::none(),
             rules,
             untraced,
+            live: Some(live),
         }
     }
 }

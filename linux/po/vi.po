@@ -13671,8 +13671,8 @@ msgstr "Độ rộng thanh bên"
 msgid "Data Masking"
 msgstr "Che giấu dữ liệu"
 
-msgid "Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values."
-msgstr "Che giấu ẩn giá trị trên màn hình và trong mọi thứ TablePro gửi đi. Nó không thay cho quyền trong cơ sở dữ liệu: bộ lọc và sắp xếp vẫn chạy trên giá trị đã lưu."
+msgid "Hides matching values in the grid, copies, exports, shared links, the AI assistant and MCP. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions."
+msgstr "Ẩn các giá trị khớp trong lưới, bản sao chép, bản xuất, liên kết chia sẻ, trợ lý AI và MCP. Mẫu là table.column hoặc column, dùng * làm ký tự đại diện, ví dụ *.email. Bộ lọc và sắp xếp vẫn chạy trên giá trị đã lưu, nên che giấu không thay cho quyền trong cơ sở dữ liệu."
 
 msgid "Applies To"
 msgstr "Áp dụng cho"
@@ -13800,3 +13800,9 @@ msgstr[0] "Đã che {n} cột, đã gỡ {m} cột."
 
 msgid "Mask as {style}"
 msgstr "Che kiểu {style}"
+
+msgid "Remove the new rule"
+msgstr "Gỡ quy tắc mới"
+
+msgid "Remove rule {pattern}"
+msgstr "Gỡ quy tắc {pattern}"

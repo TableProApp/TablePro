@@ -226,15 +226,18 @@ impl ConnectDialog {
         )
     }
 
-    /// An Edit's Save wrote the connection with id `id`.
-    pub fn connect_saved<F: Fn(&Self, Uuid) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    // An Edit's Save wrote the connection with id `id`; `reconnect` when an open session takes the edit only on its
+    // next connect.
+    pub fn connect_saved<F: Fn(&Self, Uuid, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "saved",
             false,
-            glib::closure_local!(move |dialog: &Self, id: String| match Uuid::parse_str(&id) {
-                Ok(id) => f(dialog, id),
-                Err(error) => tracing::warn!(%error, "the connect dialog saved an id it cannot read"),
-            }),
+            glib::closure_local!(
+                move |dialog: &Self, id: String, reconnect: bool| match Uuid::parse_str(&id) {
+                    Ok(id) => f(dialog, id, reconnect),
+                    Err(error) => tracing::warn!(%error, "the connect dialog saved an id it cannot read"),
+                }
+            ),
         )
     }
 
@@ -1163,6 +1166,7 @@ impl ConnectDialog {
             return;
         };
         let (connection, changes) = self.edited(original, &checked);
+        let reconnect = connect_form::needs_reconnect(original, &connection, &changes);
         self.stop_test();
         imp.saving.set(true);
         self.refresh();
@@ -1181,7 +1185,7 @@ impl ConnectDialog {
                 dialog.refresh();
                 match outcome {
                     Ok(Ok(saved)) => {
-                        dialog.emit_by_name::<()>("saved", &[&saved.id.to_string()]);
+                        dialog.emit_by_name::<()>("saved", &[&saved.id.to_string(), &reconnect]);
                         if !dialog.imp().has_closed.get() {
                             dialog.close();
                         }

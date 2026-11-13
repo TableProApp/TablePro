@@ -7,9 +7,10 @@ use tablepro_core::column::ResultColumn;
 use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot};
 use tablepro_core::masking::detect::{MaskSuggestion, PersonalDataHit, scan_sql_personal_data, suggest_masks};
 use tablepro_core::masking::{ColumnMasks, ShareChoice, SharePlan, ShareSummary};
+use tablepro_core::meta::TableRef;
 use tablepro_core::secret_scan::{self, SecretHitKind};
 
-use crate::services::grid::RowSnapshot;
+use crate::services::grid::{OutwardRules, RowSnapshot};
 use crate::services::share_table::TableShare;
 
 #[derive(Debug, Clone)]
@@ -34,6 +35,28 @@ pub struct SharedRows {
     pub rules: ColumnMasks,
     // The columns the rules mask whole only because nothing traced them to a table column.
     pub untraced: Vec<usize>,
+    // The live rules `rules` were read from, which Create reads again.
+    pub live: Option<LiveRules>,
+}
+
+// The session's rules a share's masks came from, and how to work them out again for its columns.
+#[derive(Clone)]
+pub struct LiveRules {
+    pub outward: OutwardRules,
+    // The source's columns and table, and where each shared column sits among those columns.
+    pub columns: Vec<ResultColumn>,
+    pub table: Option<TableRef>,
+    pub indices: Vec<usize>,
+    pub generation: u64,
+}
+
+impl std::fmt::Debug for LiveRules {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiveRules")
+            .field("indices", &self.indices)
+            .field("generation", &self.generation)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -133,6 +156,27 @@ impl ShareSubject {
 }
 
 impl SharedRows {
+    pub(crate) fn rules_moved(&self) -> bool {
+        self.live
+            .as_ref()
+            .is_some_and(|live| live.outward.rules.generation() != live.generation)
+    }
+
+    // A rule saved since the masks were read: they are read again, and true says the sheet must summarize anew.
+    pub(crate) fn follow_rules(&mut self) -> bool {
+        let Some(live) = self.live.as_mut() else {
+            return false;
+        };
+        if live.outward.rules.generation() == live.generation {
+            return false;
+        }
+        let (generation, fresh) = live.outward.now(&live.columns, live.table.as_ref());
+        self.rules = fresh.external_at(&live.indices);
+        self.untraced = fresh.untraced_at(&live.indices);
+        live.generation = generation;
+        true
+    }
+
     // The rules always apply, then the sheet's choices; at most the server's columns are kept.
     pub(crate) fn plan(&self, choices: &[ShareChoice], max_columns: u64) -> SharePlan {
         SharePlan::new(
@@ -259,6 +303,7 @@ mod tests {
             shown: ColumnMasks::none(),
             rules: ColumnMasks::none(),
             untraced: Vec::new(),
+            live: None,
         }
     }
 
@@ -404,6 +449,7 @@ mod tests {
             shown,
             rules: ColumnMasks::new(vec![None, Some(MaskingStyle::Email), None]),
             untraced: Vec::new(),
+            live: None,
         }
     }
 

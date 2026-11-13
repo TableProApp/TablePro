@@ -19,7 +19,7 @@ pub(crate) use self::result_limit_banner::ResultLimitBanner;
 pub(crate) use self::result_set_view::ResultSetView;
 pub(crate) use self::result_summary::ResultSummary;
 use crate::i18n::ngettext_f;
-use crate::services::grid::{GridColumn, GridMasks, ResultRefusal, grid_columns};
+use crate::services::grid::{GridColumn, GridMasks, OutwardRules, ResultRefusal, grid_columns};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::data_grid::{DataGrid, DialectSource, EditRules, GridConfig, GridSorting, RowData};
 use crate::ui::export::ExportSource;
@@ -32,6 +32,8 @@ pub(crate) struct ResultGridDeps {
     pub tasks: Tasks,
     /// `None` where the rows have no SQL spelling: no IN list to copy.
     pub dialect: Option<DialectSource>,
+    // The session's live rules, which an export or a share of the rows reads when it runs.
+    pub rules: Option<tablepro_core::masking::SharedMaskingPolicy>,
 }
 
 pub(crate) struct ResultGrid {
@@ -78,6 +80,17 @@ pub(crate) fn result_set_page(
         table,
         result_lock,
     } = shown;
+    let outward = deps.rules.clone().map(|rules| {
+        let (columns, source, revealed) = (view.columns.clone(), view.mask_source.clone(), view.masks.revealed);
+        OutwardRules::new(
+            rules,
+            Arc::new(
+                move |policy: &tablepro_core::masking::MaskingPolicy,
+                      _: &[tablepro_core::column::ResultColumn],
+                      _: Option<&TableRef>| source.masks(policy, &columns, revealed),
+            ),
+        )
+    });
     let grid = DataGrid::new(GridConfig {
         columns,
         sorting: GridSorting::Client,
@@ -93,6 +106,7 @@ pub(crate) fn result_set_page(
         filter_by_value: false,
         share: true,
         reveal: true,
+        outward,
         tasks: deps.tasks.clone(),
         label: name.to_owned(),
     });

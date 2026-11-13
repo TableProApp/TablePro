@@ -7,7 +7,7 @@ use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
 
 use super::{KeysHandle, LayoutBinding};
-use crate::services::grid::{EditPolicy, GridColumn, ResultRefusal};
+use crate::services::grid::{EditPolicy, GridColumn, OutwardRules, ResultRefusal};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 
 /// How a grid's headers sort its rows.
@@ -67,6 +67,8 @@ pub struct GridConfig {
     pub share: bool,
     // The host can show the tab's masked values again after the user confirms.
     pub reveal: bool,
+    // The connection's live rules, which an export or a share of the rows reads when it runs.
+    pub outward: Option<OutwardRules>,
     pub tasks: Tasks,
     /// What a screen reader calls the grid.
     pub label: String,

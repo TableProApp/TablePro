@@ -245,7 +245,7 @@
                     </child>
                     <child>
                       <object class="GtkLabel">
-                        <property name="label" translatable="yes">Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values.</property>
+                        <property name="label" translatable="yes">Hides matching values in the grid, copies, exports, shared links, the AI assistant and MCP. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions.</property>
                         <property name="wrap">True</property>
                         <property name="xalign">0</property>
                         <property name="margin-top">12</property>

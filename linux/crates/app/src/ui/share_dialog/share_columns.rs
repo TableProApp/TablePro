@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk4 as gtk;
+use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::masking::detect::{MaskSuggestion, SuggestionReason};
@@ -100,22 +101,30 @@ pub(crate) fn detection_note(columns: &[ShareColumn]) -> Option<String> {
         .then(|| gettext("TablePro masked columns that look sensitive. Check them before sharing."))
 }
 
-pub(super) fn columns_group(
+// The Columns group with its counts line; the rows go in once the detectors have read the columns.
+pub(super) fn columns_group(summary: &gtk::Label) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder().title(gettext("Columns")).build();
+    group.add(summary);
+    group
+}
+
+// Each shared column with Keep, Mask or Remove and, for Mask, its style, above the counts line.
+pub(super) fn fill_columns(
+    group: &adw::PreferencesGroup,
     columns: &[ShareColumn],
     choices: &Rc<RefCell<Vec<ShareChoice>>>,
     changed: &Rc<dyn Fn()>,
     summary: &gtk::Label,
-) -> adw::PreferencesGroup {
-    let group = adw::PreferencesGroup::builder().title(gettext("Columns")).build();
+) {
     if let Some(note) = detection_note(columns) {
         group.set_description(Some(&note));
     }
+    group.remove(summary);
     for (index, column) in columns.iter().enumerate() {
         let choice = choices.borrow().get(index).copied().unwrap_or(ShareChoice::Keep);
         group.add(&column_row(column, index, choice, choices, changed));
     }
     group.add(summary);
-    group
 }
 
 pub(super) fn summary_label() -> gtk::Label {
@@ -127,7 +136,8 @@ pub(super) fn summary_label() -> gtk::Label {
         .build()
 }
 
-// One picker per column, Keep, Mask as each style it may take, then Remove: the row stays one line at the sheet's width.
+// One picker per column, Keep, Mask as each style it may take, then Remove. The row shows the short form of the choice,
+// so it fits the sheet's width; the list names each in full.
 fn column_row(
     column: &ShareColumn,
     index: usize,
@@ -142,7 +152,23 @@ fn column_row(
         .title(&column.name)
         .use_markup(false)
         .model(&gtk::StringList::new(&refs))
+        .expression(gtk::PropertyExpression::new(
+            gtk::StringObject::static_type(),
+            None::<gtk::Expression>,
+            "string",
+        ))
         .build();
+    let short: Vec<(String, String)> = options
+        .iter()
+        .map(|option| (choice_label(*option), short_label(*option)))
+        .collect();
+    row.set_factory(Some(&label_factory(move |full| {
+        short
+            .iter()
+            .find(|(long, _)| long == full)
+            .map_or_else(|| full.to_owned(), |(_, short)| short.clone())
+    })));
+    row.set_list_factory(Some(&label_factory(str::to_owned)));
     if let Some(reason) = column.reason() {
         row.set_subtitle(&reason);
     }
@@ -163,6 +189,36 @@ fn column_row(
         changed();
     });
     row
+}
+
+// A label per choice, from the full text the model holds.
+fn label_factory(text: impl Fn(&str) -> String + 'static) -> gtk::SignalListItemFactory {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, item| {
+        if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
+            item.set_child(Some(&gtk::Label::builder().xalign(0.0).build()));
+        }
+    });
+    factory.connect_bind(move |_, item| {
+        let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        if let (Some(label), Some(full)) = (
+            item.child().and_downcast::<gtk::Label>(),
+            item.item().and_downcast::<gtk::StringObject>(),
+        ) {
+            label.set_label(&text(&full.string()));
+        }
+    });
+    factory
+}
+
+// What the row shows of a choice: a style alone reads as masking under the column's name.
+pub(crate) fn short_label(choice: ShareChoice) -> String {
+    match choice {
+        ShareChoice::Mask(style) => style_label(style),
+        other => choice_label(other),
+    }
 }
 
 pub(crate) fn choice_label(choice: ShareChoice) -> String {

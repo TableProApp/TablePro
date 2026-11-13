@@ -35,7 +35,8 @@ pub(super) struct FormFields {
     password: Option<adw::PasswordEntryRow>,
     allow_download: Option<adw::SwitchRow>,
     // The Columns list's choice for each shared column.
-    columns: Option<Rc<RefCell<Vec<ShareChoice>>>>,
+    // The Columns list and the preview, which live as long as the form.
+    sheet: Option<Rc<Sheet>>,
 }
 
 impl FormFields {
@@ -63,9 +64,9 @@ impl FormFields {
                 .find(|(_, button)| button.is_active())
                 .and_then(|(team, _)| team.clone()),
             columns: self
-                .columns
+                .sheet
                 .as_ref()
-                .map(|columns| columns.borrow().clone())
+                .map(|sheet| sheet.choices.borrow().clone())
                 .unwrap_or_default(),
         }
     }
@@ -122,10 +123,7 @@ pub(super) fn build_form(
         add_hide_sql_notice(&page, subject, hide_sql);
     }
 
-    let columns = subject
-        .rows
-        .as_ref()
-        .map(|rows| add_columns(dialog, &page, rows, limits, draft));
+    let sheet = subject.rows.as_ref().map(|_| add_columns(dialog, &page, limits, draft));
     add_warnings(&page, subject, hide_sql.as_ref());
     FormFields {
         page,
@@ -137,114 +135,217 @@ pub(super) fn build_form(
         hide_sql,
         password,
         allow_download,
-        columns,
+        sheet,
     }
 }
 
 // The preview shows the rows as the link carries them, and follows every choice in the Columns list below it.
+// The detectors and the summary run off the main loop; the list and the preview fill in once they land.
 fn add_columns(
     dialog: &ShareDialog,
     page: &adw::PreferencesPage,
-    rows: &SharedRows,
     limits: &ShareLimits,
     draft: Option<&ShareForm>,
-) -> Rc<RefCell<Vec<ShareChoice>>> {
-    let columns = share_columns::share_columns(rows, limits.max_rows, limits.max_columns);
-    let choices: Vec<ShareChoice> = match draft {
-        Some(draft) if draft.columns.len() == columns.len() => draft.columns.clone(),
-        _ => columns.iter().map(ShareColumn::initial).collect(),
-    };
-    let choices = Rc::new(RefCell::new(choices));
-    let preview = Rc::new(Preview::new());
+) -> Rc<Sheet> {
+    let choices = Rc::new(RefCell::new(
+        draft.map(|draft| draft.columns.clone()).unwrap_or_default(),
+    ));
+    let preview = Preview::new();
     let summary = share_columns::summary_label();
-    let rows = Arc::new(rows.clone());
-    let changed: Rc<dyn Fn()> = {
-        let (dialog, preview, choices, summary, limits) = (
-            dialog.downgrade(),
-            preview.clone(),
-            choices.clone(),
-            summary.downgrade(),
-            limits.clone(),
-        );
-        Rc::new(move || {
-            if let Some(dialog) = dialog.upgrade() {
-                let watch = Watch {
-                    preview: preview.clone(),
-                    summary: summary.clone(),
-                };
-                dialog.summarize(rows.clone(), choices.borrow().clone(), limits.clone(), watch);
-            }
-        })
-    };
+    let group = share_columns::columns_group(&summary);
     page.add(&preview.group);
-    page.add(&share_columns::columns_group(&columns, &choices, &changed, &summary));
-    changed();
-    choices
+    page.add(&group);
+    let sheet = Rc::new(Sheet {
+        limits: limits.clone(),
+        preview,
+        summary,
+        group,
+        choices,
+        rows: RefCell::new(None),
+    });
+    dialog.detect(&sheet);
+    sheet
 }
 
-// What a summary updates once it lands.
-struct Watch {
-    preview: Rc<Preview>,
-    summary: glib::WeakRef<gtk::Label>,
+// The Columns list and the preview of one form.
+struct Sheet {
+    limits: ShareLimits,
+    preview: Preview,
+    summary: gtk::Label,
+    group: adw::PreferencesGroup,
+    choices: Rc<RefCell<Vec<ShareChoice>>>,
+    rows: RefCell<Option<Arc<SharedRows>>>,
 }
 
-// A share as the plan sends it, worked out off the main loop.
-struct Sent {
+// What the detectors found for a subject's rows under a plan's caps, kept so a form built again reads it.
+pub(super) struct Detected {
+    subject: Arc<ShareSubject>,
+    rows: Arc<SharedRows>,
+    caps: (u64, u64),
+    columns: Vec<ShareColumn>,
+}
+
+// A share as the plan sends it, worked out off the main loop, kept with what it was worked out from.
+pub(super) struct Sent {
+    rows: Arc<SharedRows>,
+    caps: (u64, u64),
     plan: SharePlan,
     choices: Vec<ShareChoice>,
     summary: ShareSummary,
     columns: Vec<tablepro_core::column::ResultColumn>,
-    rows: Vec<crate::services::grid::RowSnapshot>,
+    sent: Vec<crate::services::grid::RowSnapshot>,
     total: u64,
 }
 
+fn summarize_rows(rows: &Arc<SharedRows>, choices: Vec<ShareChoice>, caps: (u64, u64)) -> Sent {
+    let (max_rows, max_columns) = caps;
+    let plan = rows.plan(&choices, max_columns);
+    let summary = rows.summary(&plan, max_rows);
+    let (columns, sent) = rows.sent(&plan, summary.rows_sent.min(PREVIEW_ROWS));
+    Sent {
+        rows: rows.clone(),
+        caps,
+        plan,
+        choices,
+        summary,
+        columns,
+        sent,
+        total: rows.total(),
+    }
+}
+
 impl ShareDialog {
-    // The same plan and budget as the snapshot, so the notes and the preview say what Create sends; Create waits.
-    fn summarize(&self, rows: Arc<SharedRows>, choices: Vec<ShareChoice>, limits: ShareLimits, watch: Watch) {
+    // The subject's detection is reused while the subject and the caps stay; otherwise it runs with the first summary.
+    fn detect(&self, sheet: &Rc<Sheet>) {
         let imp = self.imp();
-        let Some(deps) = imp.deps.get() else {
+        let (Some(deps), Some(subject)) = (imp.deps.get(), self.current_subject()) else {
             return;
         };
-        let ticket = imp.summaries.get() + 1;
-        imp.summaries.set(ticket);
-        self.set_sendable(false);
-        let (max_rows, max_columns) = (limits.max_rows, limits.max_columns);
-        let working = deps.tasks.spawn_blocking_task(move || {
-            let plan = rows.plan(&choices, max_columns);
-            let summary = rows.summary(&plan, max_rows);
-            let (columns, sent) = rows.sent(&plan, summary.rows_sent.min(PREVIEW_ROWS));
-            Sent {
-                plan,
-                choices,
-                summary,
-                columns,
-                rows: sent,
-                total: rows.total(),
-            }
+        let caps = (sheet.limits.max_rows, sheet.limits.max_columns);
+        let known = imp.detected.borrow().as_ref().and_then(|detected| {
+            (Arc::ptr_eq(&detected.subject, &subject) && detected.caps == caps)
+                .then(|| (detected.rows.clone(), detected.columns.clone()))
         });
-        let dialog = self.downgrade();
+        if let Some((rows, columns)) = known {
+            sheet.rows.replace(Some(rows));
+            self.show_columns(sheet, &columns);
+            self.summarize(sheet);
+            return;
+        }
+        let Some(rows) = subject.rows.clone().map(Arc::new) else {
+            return;
+        };
+        let ticket = self.next_summary();
+        let kept = sheet.choices.borrow().clone();
+        let working = deps.tasks.spawn_blocking_task(move || {
+            let columns = share_columns::share_columns(&rows, caps.0, caps.1);
+            let choices: Vec<ShareChoice> = match kept.len() == columns.len() {
+                true => kept,
+                false => columns.iter().map(ShareColumn::initial).collect(),
+            };
+            let sent = summarize_rows(&rows, choices, caps);
+            (columns, sent)
+        });
+        let (dialog, sheet) = (self.downgrade(), Rc::downgrade(sheet));
         glib::spawn_future_local(async move {
-            let sent = working.await;
-            let Some(dialog) = dialog.upgrade() else {
+            let landed = working.await;
+            let (Some(dialog), Some(sheet)) = (dialog.upgrade(), sheet.upgrade()) else {
                 return;
             };
             if dialog.imp().summaries.get() != ticket {
                 return;
             }
-            let sent = match sent {
-                Ok(sent) => sent,
+            let (columns, sent) = match landed {
+                Ok(landed) => landed,
                 Err(failure) => {
-                    tracing::warn!(%failure, "the share was not summarized");
+                    tracing::warn!(%failure, "the shared columns were not read");
                     return;
                 }
             };
-            watch.preview.show(&sent, &limits);
-            if let Some(summary) = watch.summary.upgrade() {
-                summary.set_label(&share_columns::summary(&sent.plan, &sent.choices));
-            }
-            dialog.imp().summarized.set(ticket);
-            dialog.set_sendable(sent.summary.too_large.is_none());
+            dialog.imp().detected.replace(Some(Detected {
+                subject,
+                rows: sent.rows.clone(),
+                caps,
+                columns: columns.clone(),
+            }));
+            sheet.rows.replace(Some(sent.rows.clone()));
+            sheet.choices.replace(sent.choices.clone());
+            dialog.show_columns(&sheet, &columns);
+            dialog.show_sent(&sheet, Rc::new(sent), ticket);
         });
+    }
+
+    fn show_columns(&self, sheet: &Rc<Sheet>, columns: &[ShareColumn]) {
+        if sheet.choices.borrow().len() != columns.len() {
+            sheet
+                .choices
+                .replace(columns.iter().map(ShareColumn::initial).collect());
+        }
+        let changed: Rc<dyn Fn()> = {
+            let (dialog, sheet) = (self.downgrade(), Rc::downgrade(sheet));
+            Rc::new(move || {
+                if let (Some(dialog), Some(sheet)) = (dialog.upgrade(), sheet.upgrade()) {
+                    dialog.summarize(&sheet);
+                }
+            })
+        };
+        share_columns::fill_columns(&sheet.group, columns, &sheet.choices, &changed, &sheet.summary);
+    }
+
+    fn next_summary(&self) -> u64 {
+        let imp = self.imp();
+        let ticket = imp.summaries.get() + 1;
+        imp.summaries.set(ticket);
+        self.set_sendable(false);
+        ticket
+    }
+
+    // The same plan and budget as the snapshot, so the notes and the preview say what Create sends; Create waits.
+    fn summarize(&self, sheet: &Rc<Sheet>) {
+        let imp = self.imp();
+        let (Some(deps), Some(rows)) = (imp.deps.get(), sheet.rows.borrow().clone()) else {
+            return;
+        };
+        let choices = sheet.choices.borrow().clone();
+        let caps = (sheet.limits.max_rows, sheet.limits.max_columns);
+        let ticket = self.next_summary();
+        let known = imp
+            .sent
+            .borrow()
+            .clone()
+            .filter(|sent| Arc::ptr_eq(&sent.rows, &rows) && sent.caps == caps && sent.choices == choices);
+        if let Some(sent) = known {
+            self.show_sent(sheet, sent, ticket);
+            return;
+        }
+        let working = deps
+            .tasks
+            .spawn_blocking_task(move || summarize_rows(&rows, choices, caps));
+        let (dialog, sheet) = (self.downgrade(), Rc::downgrade(sheet));
+        glib::spawn_future_local(async move {
+            let sent = working.await;
+            let (Some(dialog), Some(sheet)) = (dialog.upgrade(), sheet.upgrade()) else {
+                return;
+            };
+            match sent {
+                Ok(sent) => dialog.show_sent(&sheet, Rc::new(sent), ticket),
+                Err(failure) => tracing::warn!(%failure, "the share was not summarized"),
+            }
+        });
+    }
+
+    fn show_sent(&self, sheet: &Sheet, sent: Rc<Sent>, ticket: u64) {
+        let imp = self.imp();
+        if imp.summaries.get() != ticket {
+            return;
+        }
+        sheet.preview.show(&sent, &sheet.limits);
+        sheet
+            .summary
+            .set_label(&share_columns::summary(&sent.plan, &sent.choices));
+        imp.summarized.set(ticket);
+        self.set_sendable(sent.summary.too_large.is_none());
+        imp.sent.replace(Some(sent));
     }
 }
 
@@ -280,7 +381,7 @@ impl Preview {
                 .filter(|notes| !notes.is_empty())
                 .map(String::as_str),
         );
-        let table = preview_table(&sent.columns, &sent.rows);
+        let table = preview_table(&sent.columns, &sent.sent);
         if let Some(old) = self.table.replace(Some(table.clone())) {
             self.group.remove(&old);
         }

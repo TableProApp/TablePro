@@ -171,7 +171,9 @@ impl ObjectImpl for ConnectDialog {
                     .param_types([ConnectSubmission::static_type()])
                     .build(),
                 // An Edit's Save landed. Carries the connection's id.
-                Signal::builder("saved").param_types([String::static_type()]).build(),
+                Signal::builder("saved")
+                    .param_types([String::static_type(), bool::static_type()])
+                    .build(),
             ]
         })
     }
