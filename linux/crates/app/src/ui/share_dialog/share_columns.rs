@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk4 as gtk;
-use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::masking::detect::{MaskSuggestion, SuggestionReason};
@@ -11,10 +10,6 @@ use tablepro_core::masking::{MaskingStyle, ShareChoice, SharePlan};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::services::share_subject::SharedRows;
 use crate::ui::masking_text::{style_label, values_reason};
-
-const KEEP: &str = "keep";
-const MASK: &str = "mask";
-const REMOVE: &str = "remove";
 
 // One shared column as the sheet starts it (PLAN-MASKING 8.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +37,15 @@ impl ShareColumn {
     }
 
     // The styles it may take: for a ruled column, its rule's and those that hide at least as much.
+    // What the picker offers, in order: Keep where no rule hides the column, each style, then Remove.
+    pub(crate) fn options(&self) -> Vec<ShareChoice> {
+        let keep = self.keeps().then_some(ShareChoice::Keep);
+        keep.into_iter()
+            .chain(self.styles().into_iter().map(ShareChoice::Mask))
+            .chain([ShareChoice::Remove])
+            .collect()
+    }
+
     pub(crate) fn styles(&self) -> Vec<MaskingStyle> {
         MaskingStyle::ALL
             .into_iter()
@@ -123,80 +127,50 @@ pub(super) fn summary_label() -> gtk::Label {
         .build()
 }
 
+// One picker per column, Keep, Mask as each style it may take, then Remove: the row stays one line at the sheet's width.
 fn column_row(
     column: &ShareColumn,
     index: usize,
     choice: ShareChoice,
     choices: &Rc<RefCell<Vec<ShareChoice>>>,
     changed: &Rc<dyn Fn()>,
-) -> adw::ActionRow {
-    let row = adw::ActionRow::builder().title(&column.name).use_markup(false).build();
+) -> adw::ComboRow {
+    let options = column.options();
+    let labels: Vec<String> = options.iter().map(|option| choice_label(*option)).collect();
+    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let row = adw::ComboRow::builder()
+        .title(&column.name)
+        .use_markup(false)
+        .model(&gtk::StringList::new(&refs))
+        .build();
     if let Some(reason) = column.reason() {
         row.set_subtitle(&reason);
     }
-    let styles = column.styles();
-    let labels: Vec<String> = styles.iter().map(|style| style_label(*style)).collect();
-    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-    let style = gtk::DropDown::from_strings(&refs);
-    style.set_valign(gtk::Align::Center);
-    style.update_property(&[gtk::accessible::Property::Label(&gettext_f(
-        "Mask style for {column}",
-        &[("column", &column.name)],
-    ))]);
-    let toggles = adw::ToggleGroup::builder().valign(gtk::Align::Center).build();
-    for (name, label, enabled) in [
-        (KEEP, gettext("Keep"), column.keeps()),
-        (MASK, gettext("Mask"), true),
-        (REMOVE, gettext("Remove"), true),
-    ] {
-        toggles.add(adw::Toggle::builder().name(name).label(label).enabled(enabled).build());
-    }
-    toggles.update_property(&[gtk::accessible::Property::Label(&gettext_f(
-        "What the link does with {column}",
-        &[("column", &column.name)],
-    ))]);
-    let (active, masked) = match choice {
-        ShareChoice::Keep => (KEEP, None),
-        ShareChoice::Mask(style) => (MASK, Some(style)),
-        ShareChoice::Remove => (REMOVE, None),
-    };
-    toggles.set_active_name(Some(active));
-    let shown = masked
-        .or(column.suggestion.map(|suggestion| suggestion.style))
-        .or(column.rule);
-    if let Some(at) = shown.and_then(|shown| styles.iter().position(|style| *style == shown)) {
-        style.set_selected(at as u32);
-    }
-    style.set_visible(active == MASK);
-    let read = {
-        let (toggles, style, choices, changed) =
-            (toggles.downgrade(), style.downgrade(), choices.clone(), changed.clone());
-        move || {
-            let (Some(toggles), Some(style)) = (toggles.upgrade(), style.upgrade()) else {
-                return;
-            };
-            let choice = match toggles.active_name().as_deref() {
-                Some(MASK) => styles
-                    .get(style.selected() as usize)
-                    .copied()
-                    .map_or(ShareChoice::Keep, ShareChoice::Mask),
-                Some(REMOVE) => ShareChoice::Remove,
-                _ => ShareChoice::Keep,
-            };
-            style.set_visible(matches!(choice, ShareChoice::Mask(_)));
-            if let Some(slot) = choices.borrow_mut().get_mut(index) {
-                *slot = choice;
-            }
-            changed();
+    let at = options
+        .iter()
+        .position(|option| *option == choice)
+        .or_else(|| options.iter().position(|option| *option == column.initial()))
+        .unwrap_or_default();
+    row.set_selected(at as u32);
+    let (choices, changed) = (choices.clone(), changed.clone());
+    row.connect_selected_notify(move |row| {
+        let Some(picked) = options.get(row.selected() as usize).copied() else {
+            return;
+        };
+        if let Some(slot) = choices.borrow_mut().get_mut(index) {
+            *slot = picked;
         }
-    };
-    let read = Rc::new(read);
-    let on_toggle = read.clone();
-    toggles.connect_active_name_notify(move |_| on_toggle());
-    style.connect_selected_notify(move |_| read());
-    row.add_suffix(&style);
-    row.add_suffix(&toggles);
+        changed();
+    });
     row
+}
+
+pub(crate) fn choice_label(choice: ShareChoice) -> String {
+    match choice {
+        ShareChoice::Keep => gettext("Keep"),
+        ShareChoice::Mask(style) => gettext_f("Mask as {style}", &[("style", &style_label(style))]),
+        ShareChoice::Remove => gettext("Remove"),
+    }
 }
 
 #[cfg(test)]
@@ -240,6 +214,15 @@ mod tests {
             Some("Masked because TablePro cannot tell which table column this comes from.")
         );
         assert!(!untraced.keeps());
+        assert_eq!(
+            ruled.options(),
+            [
+                ShareChoice::Mask(MaskingStyle::Full),
+                ShareChoice::Mask(MaskingStyle::Email),
+                ShareChoice::Mask(MaskingStyle::Null),
+                ShareChoice::Remove
+            ]
+        );
     }
 
     #[test]

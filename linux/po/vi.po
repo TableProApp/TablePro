@@ -13737,15 +13737,6 @@ msgstr "Chạy lại truy vấn để xem các giá trị đã che."
 msgid "Keep"
 msgstr "Giữ"
 
-msgid "Mask"
-msgstr "Che"
-
-msgid "Mask style for {column}"
-msgstr "Kiểu che cho {column}"
-
-msgid "What the link does with {column}"
-msgstr "Cách liên kết xử lý {column}"
-
 msgid "A masking rule hides this column"
 msgstr "Một quy tắc che giấu ẩn cột này"
 
@@ -13806,3 +13797,6 @@ msgstr "địa chỉ IP"
 msgid "{n} column masked, {m} removed."
 msgid_plural "{n} columns masked, {m} removed."
 msgstr[0] "Đã che {n} cột, đã gỡ {m} cột."
+
+msgid "Mask as {style}"
+msgstr "Che kiểu {style}"

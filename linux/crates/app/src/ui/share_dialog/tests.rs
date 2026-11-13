@@ -935,19 +935,32 @@ fn people() -> ShareSubject {
     }
 }
 
-fn column_row(harness: &Harness, title: &str) -> adw::ActionRow {
+fn column_row(harness: &Harness, title: &str) -> adw::ComboRow {
     descendants(&harness.content())
         .into_iter()
-        .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+        .filter_map(|widget| widget.downcast::<adw::ComboRow>().ok())
         .find(|row| row.title() == title)
         .unwrap_or_else(|| panic!("no {title} column"))
 }
 
-fn choice_of(row: &adw::ActionRow) -> adw::ToggleGroup {
-    descendants(row)
-        .into_iter()
-        .find_map(|widget| widget.downcast::<adw::ToggleGroup>().ok())
-        .expect("the row's choice")
+fn offered(row: &adw::ComboRow) -> Vec<String> {
+    let model = row.model().and_downcast::<gtk::StringList>().expect("the choices");
+    (0..model.n_items())
+        .filter_map(|at| model.string(at))
+        .map(|label| label.to_string())
+        .collect()
+}
+
+fn chosen(row: &adw::ComboRow) -> String {
+    offered(row)[row.selected() as usize].clone()
+}
+
+fn choose(row: &adw::ComboRow, label: &str) {
+    let at = offered(row)
+        .iter()
+        .position(|offered| offered == label)
+        .unwrap_or_else(|| panic!("{label} is not offered"));
+    row.set_selected(at as u32);
 }
 
 fn labels(harness: &Harness) -> Vec<String> {
@@ -969,19 +982,17 @@ fn the_columns_list_masks_ruled_and_detected_columns_and_the_preview_shows_what_
     let harness = Harness::new(Cloud::free(0), people(), true);
     harness.wait_for(|page| *page == SheetPage::Form);
 
-    let email = choice_of(&column_row(&harness, "email"));
-    assert_eq!(email.active_name().as_deref(), Some("mask"));
-    assert!(
-        !email.toggle_by_name("keep").expect("Keep").is_enabled(),
-        "a ruled column could be kept"
+    let email = column_row(&harness, "email");
+    assert_eq!(chosen(&email), "Mask as Email");
+    assert_eq!(
+        offered(&email),
+        ["Mask as Full", "Mask as Email", "Mask as NULL", "Remove"],
+        "a ruled column could be kept or shown more"
     );
     let notes = column_row(&harness, "notes");
     assert_eq!(notes.subtitle().as_deref(), Some("Values look like phone numbers"));
-    assert_eq!(choice_of(&notes).active_name().as_deref(), Some("mask"));
-    assert_eq!(
-        choice_of(&column_row(&harness, "id")).active_name().as_deref(),
-        Some("keep")
-    );
+    assert_eq!(chosen(&notes), "Mask as Last 4 Characters");
+    assert_eq!(chosen(&column_row(&harness, "id")), "Keep");
     assert!(has_label(&harness, "2 columns masked, 0 removed."));
     assert!(has_label(&harness, "a•••@example.com"), "{:?}", labels(&harness));
     assert!(has_label(&harness, "••••0100"));
@@ -994,8 +1005,8 @@ fn the_columns_list_masks_ruled_and_detected_columns_and_the_preview_shows_what_
         "the detection note is missing"
     );
 
-    choice_of(&notes).set_active_name(Some("keep"));
-    choice_of(&column_row(&harness, "id")).set_active_name(Some("remove"));
+    choose(&notes, "Keep");
+    choose(&column_row(&harness, "id"), "Remove");
     harness.summarized();
 
     assert!(
@@ -1078,8 +1089,7 @@ fn a_result_whose_first_row_cannot_go_says_so_and_cannot_be_created() {
 
     assert_eq!(harness.posts(), 0, "a share too large was sent");
 
-    let full = choice_of(&column_row(&harness, "note"));
-    full.set_active_name(Some("mask"));
+    choose(&column_row(&harness, "note"), "Mask as Full");
     harness.summarized();
 
     assert!(harness.chrome().create.is_sensitive(), "a masked value fits the budget");
