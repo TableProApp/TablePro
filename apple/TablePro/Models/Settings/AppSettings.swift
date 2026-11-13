@@ -124,6 +124,8 @@ struct DataGridSettings: Codable, Equatable {
     var defaultSortDirection: SortDirection
     var rowCopyFormat: RowCopyFormat
     var showInvisibleCharacters: Bool
+    // 0 keeps every result a run returns.
+    var resultSetsKeptPerRun: Int
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -140,7 +142,8 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortBehavior: .none,
         defaultSortDirection: .ascending,
         rowCopyFormat: .rows,
-        showInvisibleCharacters: true
+        showInvisibleCharacters: true,
+        resultSetsKeptPerRun: 0
     )
 
     init(
@@ -158,7 +161,8 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortBehavior: DefaultSortBehavior = .none,
         defaultSortDirection: SortDirection = .ascending,
         rowCopyFormat: RowCopyFormat = .rows,
-        showInvisibleCharacters: Bool = true
+        showInvisibleCharacters: Bool = true,
+        resultSetsKeptPerRun: Int = 0
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -175,6 +179,7 @@ struct DataGridSettings: Codable, Equatable {
         self.defaultSortDirection = defaultSortDirection
         self.rowCopyFormat = rowCopyFormat
         self.showInvisibleCharacters = showInvisibleCharacters
+        self.resultSetsKeptPerRun = resultSetsKeptPerRun
     }
 
     init(from decoder: Decoder) throws {
@@ -202,6 +207,7 @@ struct DataGridSettings: Codable, Equatable {
         showInvisibleCharacters = container.decodeSetting(
             .showInvisibleCharacters, default: fallback.showInvisibleCharacters
         )
+        resultSetsKeptPerRun = container.decodeSetting(.resultSetsKeptPerRun, default: fallback.resultSetsKeptPerRun)
     }
 
     // MARK: - Validated Properties
@@ -242,6 +248,11 @@ struct DataGridSettings: Codable, Equatable {
             return String(format: String(localized: "Page size must be between %@ and %@"), range.lowerBound.formatted(), range.upperBound.formatted())
         }
         return nil
+    }
+
+    // Nil keeps every result.
+    var resultSetLimitPerRun: Int? {
+        resultSetsKeptPerRun > 0 ? resultSetsKeptPerRun : nil
     }
 
     var validatedQueryResultRowCap: Int {
