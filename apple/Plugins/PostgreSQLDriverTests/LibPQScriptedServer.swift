@@ -13,7 +13,8 @@ import Foundation
 // completion, except that a statement holding `failingStatement` gets an error and the ones after it nothing. Cancel
 // requests arrive on connections of their own: each is counted, and a statement waiting for one then fails as a
 // cancelled statement does. A query answered with `copyIn` starts a copy-in: the server keeps every CopyData byte, and
-// answers CopyDone with `COPY <line count>` (or the scripted failure) and CopyFail with 57014, as PostgreSQL does.
+// answers CopyDone with `COPY <line count>` (or the scripted failure) and CopyFail with 57014, as PostgreSQL does, or
+// takes no data until a cancel request arrives.
 final class LibPQScriptedServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -42,6 +43,9 @@ final class LibPQScriptedServer: @unchecked Sendable {
         var binary = false
         // Sent after CopyDone in place of the completion, as a row the server refuses is reported.
         var failure: Failure?
+        // Reads nothing until a cancel request arrives, then fails with 57014 and passes over the rest of the copy,
+        // as a server waiting for a row lock does.
+        var takesNoDataUntilCancelled = false
     }
 
     static let idle = UInt8(ascii: "I")
@@ -241,6 +245,18 @@ final class LibPQScriptedServer: @unchecked Sendable {
     private func copy(_ copyIn: CopyIn, on client: Int32, failed: inout Bool) -> Bool {
         let format: UInt8 = copyIn.binary ? 1 : 0
         guard send(client, Self.message("G", [format] + Self.bytes(UInt16(1)) + Self.bytes(UInt16(format)))) else {
+            return false
+        }
+        if copyIn.takesNoDataUntilCancelled {
+            guard cancelArrived.wait(timeout: .now() + Self.cancelWait) == .success else { return false }
+            failed = true
+            guard send(client, Self.errorResponse(Failure(
+                sqlState: "57014", message: "canceling statement due to user request"
+            ))) else { return false }
+            while let type = receive(client, 1)?.first, let body = receiveBody(client) {
+                if type == UInt8(ascii: "f") { lock.withLock { copyFailures.append(Self.cString(body, from: 0).text) } }
+                if type == UInt8(ascii: "c") || type == UInt8(ascii: "f") { return true }
+            }
             return false
         }
         var lines = 0

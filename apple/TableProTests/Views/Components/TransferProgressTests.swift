@@ -47,6 +47,19 @@ struct TransferProgressTests {
         #expect(progress.amountText == "\(grouped(5_000)) of about \(grouped(4_000)) statements")
     }
 
+    @Test("A file fraction drives the bar, short of the end, while the amount still counts statements")
+    func fileFractionDrivesTheBar() {
+        let reading = TransferProgress(
+            job: .dataImport, completed: 1, total: 40, unit: .statements, isEstimate: true, fileFraction: 0.6
+        )
+        let past = TransferProgress(job: .dataImport, completed: 40, total: 40, unit: .statements, fileFraction: 1.4)
+
+        #expect(reading.fraction == 0.6)
+        #expect(reading.amountText == "1 of about 40 statements")
+        #expect(past.fraction == 0.99)
+        #expect(past.amountText == "40 of 40 statements")
+    }
+
     @Test("Counts pick the singular where the number is one")
     func singular() {
         #expect(TransferProgress(job: .export, completed: 1, unit: .rows).amountText == "1 row")

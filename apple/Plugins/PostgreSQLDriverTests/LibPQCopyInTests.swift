@@ -131,7 +131,7 @@ struct LibPQCopyInTests {
         defer { connection.disconnect() }
 
         let pieces = Pieces(["1\tone\n", "2\ttwo\n", "3\tthree\n"]) { count in
-            if count == 1 { _ = connection.cancellationGate.cancel() }
+            if count == 1 { connection.cancelCurrentQuery() }
         }
         await #expect(throws: CancellationError.self) {
             _ = try await connection.copyFromStandardInput(Self.statement, rows: pieces.data, readOnly: nil)
@@ -140,6 +140,65 @@ struct LibPQCopyInTests {
         #expect(server.copyData == Data("1\tone\n".utf8))
         #expect(server.copyFailMessages == ["canceled by user"])
         #expect(pieces.piecesRead == 1)
+        _ = try await connection.executeQuery("SELECT 1")
+        #expect(server.cancelRequests == 0)
+    }
+
+    @Test("A Stop while the server takes no data ends the copy with one cancel request, and the session goes on")
+    func stopReachesAServerThatTakesNoData() async throws {
+        let server = try Self.server(.init(takesNoDataUntilCancelled: true))
+        defer { server.close() }
+        let connection = try await Self.connected(to: server)
+        defer { connection.disconnect() }
+
+        let pieces = Pieces(["1\tone\n", "2\ttwo\n"]) { count in
+            if count == 1 { connection.cancelCurrentQuery() }
+        }
+        await #expect(throws: CancellationError.self) {
+            _ = try await connection.copyFromStandardInput(Self.statement, rows: pieces.data, readOnly: nil)
+        }
+
+        #expect(server.cancelRequests == 1)
+        #expect(server.copyFailMessages == ["canceled by user"])
+        _ = try await connection.executeQuery("SELECT 1")
+        #expect(server.cancelRequests == 1)
+    }
+
+    @Test("A Stop while the COPY waits to start sends the cancel request at once and reads no piece")
+    func stopBeforeTheCopyStarts() async throws {
+        let stop = StopBox()
+        let server = try LibPQScriptedServer(
+            onQuery: { query in if query.hasPrefix("COPY") { stop.press() } },
+            answer: { query in query.hasPrefix("COPY") ? LibPQScriptedServer.Answer(waitsForCancel: true) : nil }
+        )
+        server.start()
+        defer { server.close() }
+        let connection = try await Self.connected(to: server)
+        defer { connection.disconnect() }
+        stop.connection = connection
+
+        let pieces = Pieces(["1\tone\n"])
+        await #expect(throws: CancellationError.self) {
+            _ = try await connection.copyFromStandardInput(Self.statement, rows: pieces.data, readOnly: nil)
+        }
+
+        #expect(pieces.piecesRead == 0)
+        #expect(server.cancelRequests == 1)
+        _ = try await connection.executeQuery("SELECT 1")
+    }
+
+    private final class StopBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private weak var _connection: LibPQPluginConnection?
+
+        var connection: LibPQPluginConnection? {
+            get { lock.withLock { _connection } }
+            set { lock.withLock { _connection = newValue } }
+        }
+
+        func press() {
+            connection?.cancelCurrentQuery()
+        }
     }
 
     @Test("A binary COPY is refused with CopyFail before any piece is read")

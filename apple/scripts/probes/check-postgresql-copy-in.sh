@@ -8,6 +8,11 @@
 # 25006; a cancel request mid-stream fails it with 57014. It also prints what a sent `\.` line does,
 # which PostgreSQL 18 reads as data in CSV.
 #
+# Stop, sent the way LibPQCopyIn sends rows (nonblocking, waiting for write-ready in 100 ms slices): a Stop
+# while the server takes rows ends the COPY with its CopyFail at once; a Stop while the server waits on a row
+# lock takes no data, so CopyFail alone waits for the lock, and one cancel request ends it at once. Either way
+# the session runs the next statement, an open block is left aborted and no row stays.
+#
 # Usage:
 #   apple/scripts/probes/check-postgresql-copy-in.sh "host=127.0.0.1 port=5432 user=postgres dbname=postgres"
 #
@@ -27,7 +32,9 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 cat > "$WORK_DIR/probe.c" << 'C_SOURCE'
 #include <libpq-fe.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -122,7 +129,122 @@ static void *cancel_after(void *arg) {
     return NULL;
 }
 
+static atomic_int stop_requested;
+static double stop_time;
+
+static double now_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
+}
+
+static void *stop_after(void *arg) {
+    usleep((useconds_t)(*(int *)arg) * 1000);
+    stop_time = now_ms();
+    atomic_store(&stop_requested, 1);
+    return NULL;
+}
+
+typedef struct {
+    Outcome outcome;
+    double stop_to_end_ms;
+    int sent_cancel;
+    int gave_up;
+} Stopped;
+
+// One 100 ms slice of waiting for the queued bytes to go out: 0 once they all went, -1 on a lost connection.
+static int flush_slice(PGconn *c) {
+    int flushed = PQflush(c);
+    if (flushed <= 0) return flushed;
+    if (PQsocketPoll(PQsocket(c), 1, 1, PQgetCurrentTimeUSec() + 100000) > 0) PQconsumeInput(c);
+    return 1;
+}
+
+// One slice of waiting for the COPY's result once it ended: 0 once the result is in, -1 on a lost connection. A
+// proxy can take every byte while the server reads none, so a flushed CopyFail is not an answered one.
+static int answer_slice(PGconn *c) {
+    int flushed = PQflush(c);
+    if (flushed < 0) return -1;
+    if (flushed == 0 && !PQisBusy(c)) return 0;
+    if (PQsocketPoll(PQsocket(c), 1, flushed, PQgetCurrentTimeUSec() + 100000) > 0 && !PQconsumeInput(c)) return -1;
+    return flushed == 0 && !PQisBusy(c) ? 0 : 1;
+}
+
+// LibPQCopyIn's loop: pieces queued in nonblocking mode and flushed in slices, so a Stop is seen while the server
+// takes no data. A Stop while rows go out ends the copy with CopyFail, and with `cancels` one cancel request follows
+// once a slice passes with no answer; a Stop after CopyDone sends the cancel request at once. Without `cancels` the
+// wait gives up after `give_up_ms` and the copy stays open for the caller to finish.
+static Stopped copy_in_stoppable(PGconn *c, const char *header, const char *data, size_t length, size_t piece,
+                                 int stop_delay_ms, int cancels, double give_up_ms) {
+    Stopped s;
+    memset(&s, 0, sizeof s);
+    atomic_store(&stop_requested, 0);
+    PGresult *start = PQexec(c, header);
+    if (PQresultStatus(start) != PGRES_COPY_IN) {
+        s.outcome.status = PQresultStatus(start);
+        PQclear(start);
+        while ((start = PQgetResult(c))) PQclear(start);
+        return s;
+    }
+    PQclear(start);
+    pthread_t timer;
+    pthread_create(&timer, NULL, stop_after, &stop_delay_ms);
+    PQsetnonblocking(c, 1);
+    int failed_copy = 0;
+    for (size_t at = 0; at < length && !failed_copy; at += piece) {
+        size_t n = length - at < piece ? length - at : piece;
+        if (atomic_load(&stop_requested)) { failed_copy = 1; break; }
+        if (PQputCopyData(c, data + at, (int)n) != 1) { snprintf(s.outcome.message, sizeof s.outcome.message, "put failed"); break; }
+        int flushing;
+        while ((flushing = flush_slice(c)) == 1) {
+            if (atomic_load(&stop_requested)) { failed_copy = 1; break; }
+        }
+        if (flushing < 0) break;
+    }
+    PQputCopyEnd(c, failed_copy ? "canceled by user" : NULL);
+    int waited = 0;
+    while (answer_slice(c) == 1) {
+        if (!atomic_load(&stop_requested)) continue;
+        if (cancels && !s.sent_cancel && (!failed_copy || waited >= 1)) {
+            PGcancel *cancel = PQgetCancel(c);
+            char err[256];
+            PQcancel(cancel, err, sizeof err);
+            PQfreeCancel(cancel);
+            s.sent_cancel = 1;
+        }
+        waited++;
+        if (!cancels && now_ms() - stop_time > give_up_ms) { s.gave_up = 1; break; }
+    }
+    pthread_join(timer, NULL);
+    if (s.gave_up) return s;
+    PQsetnonblocking(c, 0);
+    PGresult *r = PQgetResult(c);
+    s.stop_to_end_ms = now_ms() - stop_time;
+    s.outcome.status = PQresultStatus(r);
+    snprintf(s.outcome.tuples, sizeof s.outcome.tuples, "%s", PQcmdTuples(r));
+    const char *st = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    snprintf(s.outcome.state, sizeof s.outcome.state, "%s", st ? st : "");
+    const char *msg = PQresultErrorField(r, PG_DIAG_MESSAGE_PRIMARY);
+    if (msg) snprintf(s.outcome.message, sizeof s.outcome.message, "%s", msg);
+    PQclear(r);
+    while ((r = PQgetResult(c))) { s.outcome.extra++; PQclear(r); }
+    return s;
+}
+
+static void describe_stop(char *out, size_t size, Stopped s) {
+    char d[700];
+    describe(d, sizeof d, s.outcome);
+    snprintf(out, size, "%s, %.0f ms from Stop to the result, cancel request %s", d, s.stop_to_end_ms,
+             s.sent_cancel ? "sent" : "not sent");
+}
+
+// The rest of the block after a Stop: what a session that takes the next statement answers.
+static int runs_next_statement(PGconn *c) {
+    return strcmp(scalar(c, "SELECT 1"), "1") == 0;
+}
+
 int main(int argc, char **argv) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     PGconn *c = PQconnectdb(argv[1]);
     if (PQstatus(c) != CONNECTION_OK) { fprintf(stderr, "no server: %s", PQerrorMessage(c)); return 3; }
     printf("libpq %d, server %d\n", PQlibVersion(), PQserverVersion(c));
@@ -223,6 +345,69 @@ int main(int argc, char **argv) {
     describe(d, sizeof d, o);
     check("a cancel request mid-stream fails the COPY with 57014", o.status == PGRES_FATAL_ERROR && strcmp(o.state, "57014") == 0, d);
     free(lots);
+
+    // Stop while the server takes rows: CopyFail goes out behind the piece being sent.
+    size_t streamed = 128u * 1024u * 1024u;
+    char *stream = malloc(streamed);
+    size_t streamable = streamed - (streamed % 7);
+    for (size_t i = 0; i + 7 <= streamable; i += 7) memcpy(stream + i, "1\tabcd\n", 7);
+    run(c, "TRUNCATE copy_probe");
+    Stopped s = copy_in_stoppable(c, "COPY copy_probe (a, b) FROM STDIN", stream, streamable, 1 << 20, 300, 1, 0);
+    describe_stop(d, sizeof d, s);
+    check("a Stop mid-stream ends the COPY within a second",
+          s.outcome.status == PGRES_FATAL_ERROR && strcmp(s.outcome.state, "57014") == 0 && s.stop_to_end_ms < 1000, d);
+    check("after the Stop an autocommit session is idle and runs the next statement",
+          PQtransactionStatus(c) == PQTRANS_IDLE && runs_next_statement(c), NULL);
+    check("no row of the stopped COPY stays", strcmp(scalar(c, "SELECT count(*) FROM copy_probe"), "0") == 0, NULL);
+    s = copy_in_stoppable(c, "COPY copy_probe (a, b) FROM STDIN", stream, streamable, 1 << 20, 300, 0, 10000);
+    describe_stop(d, sizeof d, s);
+    printf("info  the same Stop with CopyFail alone: %s\n", s.gave_up ? "no answer in 10 s" : d);
+
+    run(c, "BEGIN");
+    s = copy_in_stoppable(c, "COPY copy_probe (a, b) FROM STDIN", stream, streamable, 1 << 20, 300, 1, 0);
+    describe_stop(d, sizeof d, s);
+    check("a Stop mid-stream inside a block fails the COPY", s.outcome.status == PGRES_FATAL_ERROR && strcmp(s.outcome.state, "57014") == 0, d);
+    check("the stopped COPY leaves the block aborted", PQtransactionStatus(c) == PQTRANS_INERROR, NULL);
+    run(c, "ROLLBACK");
+    check("after ROLLBACK the session runs the next statement", runs_next_statement(c), NULL);
+    free(stream);
+
+    // Stop while the server waits on a row lock another session holds: it takes no data until the lock goes.
+    PGconn *holder = PQconnectdb(argv[1]);
+    if (PQstatus(holder) != CONNECTION_OK) { fprintf(stderr, "no second session: %s", PQerrorMessage(holder)); return 3; }
+    run(c, "DROP TABLE IF EXISTS copy_lock; CREATE TABLE copy_lock (a int PRIMARY KEY)");
+    size_t keys = 20000000;
+    char *numbers = malloc(keys * 10);
+    size_t numbers_length = 0;
+    for (size_t k = 1; k <= keys; k++) numbers_length += (size_t)sprintf(numbers + numbers_length, "%zu\n", k);
+
+    run(holder, "BEGIN; INSERT INTO copy_lock VALUES (400000)");
+    s = copy_in_stoppable(c, "COPY copy_lock FROM STDIN", numbers, numbers_length, 1 << 20, 1500, 0, 2000);
+    check("on a server waiting for a row lock, CopyFail alone is still unsent 2 s after the Stop", s.gave_up, NULL);
+    run(holder, "ROLLBACK");
+    while (PQflush(c) == 1) PQsocketPoll(PQsocket(c), 1, 1, PQgetCurrentTimeUSec() + 100000);
+    PQsetnonblocking(c, 0);
+    PGresult *late = PQgetResult(c);
+    const char *late_state = PQresultErrorField(late, PG_DIAG_SQLSTATE);
+    check("once the lock goes, the CopyFail fails the COPY", PQresultStatus(late) == PGRES_FATAL_ERROR && late_state && strcmp(late_state, "57014") == 0,
+          PQresultErrorField(late, PG_DIAG_MESSAGE_PRIMARY));
+    PQclear(late);
+    while ((late = PQgetResult(c))) PQclear(late);
+
+    run(holder, "BEGIN; INSERT INTO copy_lock VALUES (400000)");
+    run(c, "BEGIN");
+    s = copy_in_stoppable(c, "COPY copy_lock FROM STDIN", numbers, numbers_length, 1 << 20, 1500, 1, 0);
+    describe_stop(d, sizeof d, s);
+    check("on a server waiting for a row lock, a Stop with one cancel request ends the COPY within a second",
+          s.sent_cancel && s.outcome.status == PGRES_FATAL_ERROR && strcmp(s.outcome.state, "57014") == 0 && s.stop_to_end_ms < 1000, d);
+    check("the COPY stopped in a lock wait leaves the block aborted", PQtransactionStatus(c) == PQTRANS_INERROR, NULL);
+    run(c, "ROLLBACK");
+    check("after the cancel request the session runs the next statement", runs_next_statement(c), NULL);
+    check("no row of the COPY stopped in a lock wait stays", strcmp(scalar(c, "SELECT count(*) FROM copy_lock"), "0") == 0, NULL);
+    run(holder, "ROLLBACK");
+    PQfinish(holder);
+    free(numbers);
+    run(c, "DROP TABLE copy_lock");
 
     run(c, "DROP TABLE copy_probe");
     PQfinish(c);

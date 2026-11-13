@@ -7,6 +7,7 @@ import Foundation
 import os
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 private final class CopyingDriver: PluginDriverStub, @unchecked Sendable {
@@ -37,6 +38,34 @@ private final class CopyingDriver: PluginDriverStub, @unchecked Sendable {
         }
         lock.withLock { copies.append((statement, data)) }
         return .empty
+    }
+}
+
+// Reads the first piece, then holds the copy until a Stop cancels the query, as a copy waiting on its server does.
+private final class StoppableCopyDriver: PluginDriverStub, @unchecked Sendable {
+    let started = AsyncGate()
+    private let stopped = AsyncGate()
+    private let lock = NSLock()
+    private var cancels = 0
+
+    var capabilities: PluginCapabilities { [.transactions, .copyFromStandardInput] }
+
+    var cancelCount: Int { lock.withLock { cancels } }
+
+    func cancelQuery() throws {
+        lock.withLock { cancels += 1 }
+        Task { await stopped.open() }
+    }
+
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        _ = try rows.nextPiece()
+        await started.open()
+        await stopped.wait()
+        throw CancellationError()
     }
 }
 
@@ -78,5 +107,28 @@ struct ImportDataSinkAdapterCopyTests {
             try await sink.copyFromStandardInput(statement: "COPY t (a) FROM stdin", line: 4, rows: Self.rows("1\n"))
         }
         #expect(driver.received.isEmpty)
+    }
+
+    @Test("Stop during an import's COPY cancels the driver's copy at once and stops the run with rollback")
+    func stopCancelsTheCopy() async throws {
+        let driver = StoppableCopyDriver()
+        let run = ImportRun()
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let sink = ImportDataSinkAdapter(
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: driver),
+            databaseType: .postgresql,
+            importRun: run
+        )
+        let copy = Task {
+            try await sink.copyFromStandardInput(statement: "COPY t (a) FROM stdin", line: 1, rows: Self.rows("1\n"))
+        }
+        await driver.started.wait()
+
+        run.requestPause()
+
+        #expect(driver.cancelCount == 1)
+        #expect(run.stopChoice == .rollBack)
+        await #expect(throws: CancellationError.self) { try await copy.value }
+        #expect(run.questionIfPaused() == nil)
     }
 }

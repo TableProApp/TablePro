@@ -15,6 +15,7 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     private let url: URL
     private let encoding: String.Encoding
     private let grammar: OSAllocatedUnfairLock<@Sendable () -> SQLLexicalGrammar>
+    private let readReporter = OSAllocatedUnfairLock<(@Sendable (Int64, Int64) -> Void)?>(initialState: nil)
     private let family: TransactionEngineFamily
     private let parser = SQLFileParser()
 
@@ -58,10 +59,16 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
         grammar.withLock { $0 = provider }
     }
 
+    // Bytes read from the file the parser opens, which for a `.gz` is the decompressed copy.
+    func reportsReading(to handler: @escaping @Sendable (_ bytesRead: Int64, _ fileSize: Int64) -> Void) {
+        readReporter.withLock { $0 = handler }
+    }
+
     func statements() async throws -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
         let fileURL = try await resolveURL()
         let grammar = self.grammar.withLock { $0 }
-        let parsed = parser.parseFile(url: fileURL, encoding: encoding, grammar: grammar)
+        let onRead = readReporter.withLock { $0 }
+        let parsed = parser.parseFile(url: fileURL, encoding: encoding, grammar: grammar, onRead: onRead)
         guard !sendsFileBytesUnchanged else { return parsed }
         let rewriting = TranscodedDumpStatements(parsed, rewriter: rewriter(grammar: grammar))
         return AsyncThrowingStream(unfolding: {
@@ -72,7 +79,8 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     func elements() async throws -> AsyncThrowingStream<PluginImportElement, Error> {
         let fileURL = try await resolveURL()
         let grammar = self.grammar.withLock { $0 }
-        let parsed = parser.parseElements(url: fileURL, encoding: encoding, grammar: grammar)
+        let onRead = readReporter.withLock { $0 }
+        let parsed = parser.parseElements(url: fileURL, encoding: encoding, grammar: grammar, onRead: onRead)
         guard !sendsFileBytesUnchanged else { return parsed }
         let rewriting = TranscodedDumpElements(parsed, rewriter: rewriter(grammar: grammar))
         return AsyncThrowingStream(unfolding: {

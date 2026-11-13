@@ -234,10 +234,12 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
     }
 
+    // The driver's Stop ends a copy at once (a CopyFail, and a cancel request when the server takes no data).
     func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws {
         guard driver.supportsCopyFromStandardInput else { throw SQLFileParseError.copyFromStandardInput(line: line) }
-        try await importedData(writes: true, statement: statement) {
-            _ = try await self.driver.copyFromStandardInput(statement: statement, rows: rows, context: nil)
+        let driver = self.driver
+        try await importedData(writes: true, statement: statement, interrupt: { try? driver.cancelQuery() }) {
+            _ = try await driver.copyFromStandardInput(statement: statement, rows: rows, context: nil)
         }
     }
 
@@ -767,11 +769,13 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         writes: Bool = false,
         deletes: Bool = false,
         statement: String? = nil,
+        interrupt: (@Sendable () -> Void)? = nil,
         operation: () async throws -> T
     ) async throws -> T {
         if let importControl {
             return try await importControl.data(
-                rows: rows, writes: writes, deletes: deletes, statement: statement, operation: operation
+                rows: rows, writes: writes, deletes: deletes, statement: statement, interrupt: interrupt,
+                operation: operation
             )
         }
         return try await operation()
