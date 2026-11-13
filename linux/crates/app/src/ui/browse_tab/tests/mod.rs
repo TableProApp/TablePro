@@ -1,6 +1,7 @@
 mod default_sort;
 mod json;
 mod load;
+mod masking;
 mod references;
 mod rows;
 mod save;
@@ -2102,4 +2103,31 @@ fn the_view_switch_keeps_its_names_in_a_1200_px_window() {
         bar_shortfall(tab)
     );
     structure.shutdown();
+}
+
+// The view goes out whole, filter and sort included, for the sheet to read up to the plan's rows.
+#[gtk4::test]
+fn share_result_hands_over_the_tables_view_with_its_sql() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let subjects = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = subjects.clone();
+    harness
+        .tab()
+        .connect_share_requested(move |_, subject| sink.borrow_mut().push(subject));
+
+    harness.activate_grid("share");
+
+    let subjects = subjects.borrow();
+    let [subject] = subjects.as_slice() else {
+        panic!("one share, not {}", subjects.len());
+    };
+    let table = subject.table.as_ref().expect("the table's view");
+    assert_eq!(table.table.name, "users");
+    assert!(subject.rows.is_none(), "the rows are read once the plan is known");
+    assert!(subject.sql.contains("users"), "{}", subject.sql);
+    assert_eq!(subject.no_sql, None);
+    assert_eq!(subject.kind(), tablepro_account::ShareKind::Result);
 }

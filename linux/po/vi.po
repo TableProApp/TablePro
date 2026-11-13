@@ -12208,3 +12208,1595 @@ msgstr "Chưa liệt kê hết các khóa. Hãy tìm kiếm để thu hẹp danh
 
 #~ msgid "Filter tables…"
 #~ msgstr "Lọc bảng…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "1 day"
+msgstr "1 ngày"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "7 days"
+msgstr "7 ngày"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "30 days"
+msgstr "30 ngày"
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "A team link needs a seat on the team."
+msgstr "Liên kết của nhóm cần một chỗ trong nhóm."
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Allow viewers to download"
+msgstr "Cho phép người xem tải xuống"
+
+#: crates/app/src/ui/session_window/mod.rs
+msgid "Choose a connection to open the shared query"
+msgstr "Chọn kết nối để mở truy vấn được chia sẻ"
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "Choose a connection to open {n} query"
+msgid_plural "Choose a connection to open {n} queries"
+msgstr[0] "Chọn kết nối để mở {n} truy vấn"
+
+#: crates/app/src/ui/share_dialog/mod.rs
+msgid "Create Link"
+msgstr "Tạo liên kết"
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Expires"
+msgstr "Hết hạn"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Expires {date}"
+msgstr "Hết hạn {date}"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Free · {live} of {limit} link · first {max_rows} rows"
+msgid_plural "Free · {live} of {limit} links · first {max_rows} rows"
+msgstr[0] "Miễn phí · {live}/{limit} liên kết · {max_rows} dòng đầu"
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Hide SQL"
+msgstr "Ẩn SQL"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Link copied"
+msgstr "Đã sao chép liên kết"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Link created"
+msgstr "Đã tạo liên kết"
+
+#: data/resources/gtk/menus.ui
+msgid "Manage Shared _Links…"
+msgstr "Quản lý _liên kết chia sẻ…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Never expires"
+msgstr "Không hết hạn"
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Note"
+msgstr "Ghi chú"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Open Account"
+msgstr "Mở tài khoản"
+
+#: crates/app/src/application/open_share_link.rs
+msgid "Open Shared Link"
+msgstr "Mở liên kết chia sẻ"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Open in Browser"
+msgstr "Mở trong trình duyệt"
+
+#: crates/app/src/ui/preferences_dialog/account_view.rs
+msgid "Pro Options for Shared Links"
+msgstr "Tùy chọn Pro cho liên kết chia sẻ"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Pro allows up to 1,000."
+msgstr "Gói Pro cho phép tối đa 1.000 liên kết."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Pro · {live} link"
+msgid_plural "Pro · {live} links"
+msgstr[0] "Pro · {live} liên kết"
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "Public links are turned off for this team."
+msgstr "Nhóm này đã tắt liên kết công khai."
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "Revoke"
+msgstr "Thu hồi"
+
+#: crates/app/src/ui/share_dialog/pages.rs
+#, rust-format
+msgid "Revoke {title}"
+msgstr "Thu hồi {title}"
+
+#: crates/app/src/ui/share_dialog/form.rs crates/app/src/ui/share_dialog/preview.rs
+msgid "Rows that will be shared"
+msgstr "Các dòng sẽ được chia sẻ"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Run a query that returns rows to share its result."
+msgstr "Hãy chạy một truy vấn trả về dòng để chia sẻ kết quả của nó."
+
+#: data/resources/ui/sql-editor.ui
+msgid "S_hare Query…"
+msgstr "Chi_a sẻ truy vấn…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Share Query"
+msgstr "Chia sẻ truy vấn"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Share Res_ult…"
+msgstr "Chia sẻ _kết quả…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Share Result"
+msgstr "Chia sẻ kết quả"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Shared query"
+msgstr "Truy vấn được chia sẻ"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Shared result"
+msgstr "Kết quả được chia sẻ"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Shared {date}"
+msgstr "Chia sẻ ngày {date}"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Shares the first {shared} of {total} rows."
+msgstr "Chia sẻ {shared} dòng đầu trong số {total} dòng."
+
+#: crates/app/src/ui/error_text/account.rs crates/app/src/ui/share_dialog/pages.rs
+msgid "Sharing is turned off for this account."
+msgstr "Tài khoản này đã tắt tính năng chia sẻ."
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Show the Pro plan in your browser"
+msgstr "Xem gói Pro trong trình duyệt"
+
+#: crates/app/src/ui/error_text/account.rs crates/app/src/ui/share_dialog/pages.rs
+msgid "Sign in to your TablePro account to share links."
+msgstr "Đăng nhập tài khoản TablePro để chia sẻ liên kết."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Some columns may hold secrets: {names}."
+msgstr "Một số cột có thể chứa thông tin bí mật: {names}."
+
+#: crates/app/src/ui/share_dialog/mod.rs
+msgid "TablePro could not open the page in a web browser."
+msgstr "TablePro không mở được trang trong trình duyệt web."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "TablePro removed this link."
+msgstr "TablePro đã gỡ liên kết này."
+
+#: crates/app/src/application/open_share_link.rs crates/app/src/ui/error_text/account.rs
+msgid "That password is not correct."
+msgstr "Mật khẩu không đúng."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "The account service did not accept what was sent. Check the fields and try again."
+msgstr "Dịch vụ tài khoản không chấp nhận dữ liệu đã gửi. Hãy kiểm tra các trường rồi thử lại."
+
+#: crates/app/src/ui/share_dialog/pages.rs
+msgid "The link could not be copied to the clipboard. Copy it with the button below."
+msgstr "Không sao chép được liên kết vào bảng nhớ tạm. Hãy sao chép bằng nút bên dưới."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "The link couldn’t be created. Try again."
+msgstr "Không tạo được liên kết. Hãy thử lại."
+
+#: crates/app/src/ui/share_dialog/mod.rs
+msgid "The link is on its way. Wait for it before closing."
+msgstr "Liên kết đang được tạo. Hãy chờ trước khi đóng."
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "There is nothing in the editor to share."
+msgstr "Trình soạn thảo không có gì để chia sẻ."
+
+#: crates/app/src/application/open_share_link.rs crates/app/src/ui/error_text/account.rs
+msgid "This link is password protected."
+msgstr "Liên kết này được bảo vệ bằng mật khẩu."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "This link was revoked."
+msgstr "Liên kết này đã bị thu hồi."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "This option needs TablePro Pro."
+msgstr "Tùy chọn này cần TablePro Pro."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "This query may contain a secret ({kind}). Anyone with the link can read it."
+msgstr "Truy vấn này có thể chứa thông tin bí mật ({kind}). Ai có liên kết cũng đọc được."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "This result is too large to share."
+msgstr "Kết quả này quá lớn để chia sẻ."
+
+#: crates/app/src/application/open_share_link.rs crates/app/src/ui/error_text/account.rs
+msgid "This shared link is no longer available."
+msgstr "Liên kết chia sẻ này không còn khả dụng."
+
+#: crates/app/src/application/open_share_link.rs
+msgid "This shared result hides its SQL, so there is nothing to open."
+msgstr "Kết quả được chia sẻ này ẩn SQL, nên không có gì để mở."
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Title"
+msgstr "Tiêu đề"
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "Too many links just now. Try again in a moment."
+msgstr "Vừa tạo quá nhiều liên kết. Hãy thử lại sau giây lát."
+
+#: crates/app/src/ui/error_text/account.rs crates/app/src/ui/share_dialog/pages.rs
+msgid "Verify your email address to share links."
+msgstr "Hãy xác minh địa chỉ email để chia sẻ liên kết."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "You appear to be offline. Try again once you’re connected."
+msgstr "Có vẻ bạn đang ngoại tuyến. Hãy thử lại khi đã có kết nối."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "You have reached your plan’s limit of live links. Revoke one to share another."
+msgstr "Bạn đã đạt giới hạn liên kết đang hoạt động của gói. Hãy thu hồi một liên kết để chia sẻ liên kết khác."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "You have {live} live link. Free allows {limit}. Revoke one to share another."
+msgid_plural "You have {live} live links. Free allows {limit}. Revoke one to share another."
+msgstr[0] "Bạn có {live} liên kết đang hoạt động. Gói Miễn phí cho phép {limit}. Hãy thu hồi một liên kết để chia sẻ liên kết khác."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "You have {live} live link. Pro allows {limit}. Revoke one to share another."
+msgid_plural "You have {live} live links. Pro allows {limit}. Revoke one to share another."
+msgstr[0] "Bạn có {live} liên kết đang hoạt động. Gói Pro cho phép {limit}. Hãy thu hồi một liên kết để chia sẻ liên kết khác."
+
+#: crates/app/src/application/open_links.rs crates/app/src/application/open_share_link.rs
+msgid "_Open"
+msgstr "_Mở"
+
+#: crates/app/src/ui/data_grid/grid_menu.rs
+msgid "_Share Result…"
+msgstr "Chia sẻ kết _quả…"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+msgid "_Share…"
+msgstr "Chia _sẻ…"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a GitHub token"
+msgstr "token GitHub"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a Google API key"
+msgstr "khóa API của Google"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a JSON Web Token"
+msgstr "JSON Web Token"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a Slack token"
+msgstr "token Slack"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a Stripe key"
+msgstr "khóa Stripe"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a password in a URL"
+msgstr "mật khẩu trong URL"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a password or token"
+msgstr "mật khẩu hoặc token"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "a private key"
+msgstr "khóa riêng tư"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "an AWS access key"
+msgstr "khóa truy cập AWS"
+
+#: crates/app/src/ui/share_dialog/form.rs
+#, rust-format
+msgid "{option} needs TablePro Pro."
+msgstr "{option} cần TablePro Pro."
+
+#: crates/app/src/application/imp.rs
+msgid "[FILE or URL…]"
+msgstr "[TỆP hoặc URL…]"
+
+#: crates/app/src/application/open_links.rs
+#, rust-format
+msgid "Open “{connection}”?"
+msgstr "Mở “{connection}”?"
+
+#: crates/app/src/application/open_links.rs
+msgid "A link asks TablePro to open this saved connection. Open it only if you trust where the link came from."
+msgstr "Một liên kết yêu cầu TablePro mở kết nối đã lưu này. Chỉ mở nếu bạn tin cậy nguồn của liên kết."
+
+#: crates/app/src/ui/assistant/error_text.rs
+msgid "The keyring is locked, so the API key cannot be read."
+msgstr "Chùm khóa đang bị khóa, nên không đọc được khóa API."
+
+#: crates/app/src/ui/browse_tab/grid_handlers.rs
+msgid "Nothing to share"
+msgstr "Không có gì để chia sẻ"
+
+#: crates/app/src/ui/browse_tab/grid_handlers.rs
+msgid "This view has no SQL of its own, so the link shares its rows without it."
+msgstr "Chế độ xem này không có SQL riêng, nên liên kết chỉ chia sẻ các dòng."
+
+#: crates/app/src/ui/browse_tab/json_view.rs
+msgid "Rows as JSON"
+msgstr "Các dòng dạng JSON"
+
+#: crates/app/src/ui/browse_tab/json_view.rs
+msgid "Can't Show Rows as JSON"
+msgstr "Không hiện được các dòng dạng JSON"
+
+#: crates/app/src/ui/browse_tab/json_view.rs
+msgid "The JSON preview could not be created. Try refreshing the rows."
+msgstr "Không tạo được bản xem trước JSON. Hãy thử làm mới các dòng."
+
+#: crates/app/src/ui/browse_tab/json_view.rs
+#, rust-format
+msgid "The column “{column}” holds a value TablePro couldn't read, so these rows have no JSON to show."
+msgstr "Cột “{column}” chứa một giá trị TablePro không đọc được, nên các dòng này không có JSON để hiển thị."
+
+#: crates/app/src/ui/browse_tab/json_view.rs
+#, rust-format
+msgid "{shown} of {total} rows shown. This is a limited preview. Export Rows includes the full page."
+msgstr "Đang hiện {shown} trên {total} dòng. Đây là bản xem trước có giới hạn. Xuất các dòng sẽ gồm toàn bộ trang."
+
+#: crates/app/src/ui/browse_tab/json_view.rs
+#, rust-format
+msgid "{count} row marked for deletion is not shown."
+msgid_plural "{count} rows marked for deletion are not shown."
+msgstr[0] "Không hiện {count} dòng đã đánh dấu để xóa."
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "_Highlight Rules…"
+msgstr "_Quy tắc tô sáng…"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "_Delete Selected Rows"
+msgstr "_Xóa các dòng đã chọn"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "First _Page"
+msgstr "_Trang đầu"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "_Last Page"
+msgstr "Trang _cuối"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "_Filter Rows…"
+msgstr "_Lọc dòng…"
+
+#. Translators: the visible row range and elapsed page fetch time, including network time.
+#: crates/app/src/ui/browse_tab/page_label.rs
+#, rust-format
+msgid "{range} · {time}"
+msgstr "{range} · {time}"
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "<1 ms"
+msgstr "<1 ms"
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+#, rust-format
+msgid "{n} ms"
+msgstr "{n} ms"
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+#, rust-format
+msgid "{n} s"
+msgstr "{n} giây"
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+#, rust-format
+msgid "{minutes}m {seconds}s"
+msgstr "{minutes} phút {seconds} giây"
+
+#: crates/app/src/ui/data_grid/edit/row_edits.rs
+#, rust-format
+msgid "{count} row can't take this value and was left as it was"
+msgid_plural "{count} rows can't take this value and were left as they were"
+msgstr[0] "{count} dòng không nhận được giá trị này nên được giữ nguyên"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+#, rust-format
+msgid "{state}. {highlight}"
+msgstr "{state}. {highlight}"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+msgid "Highlighted red"
+msgstr "Tô sáng màu đỏ"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+msgid "Highlighted orange"
+msgstr "Tô sáng màu cam"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+msgid "Highlighted yellow"
+msgstr "Tô sáng màu vàng"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+msgid "Highlighted green"
+msgstr "Tô sáng màu xanh lá"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+msgid "Highlighted blue"
+msgstr "Tô sáng màu xanh dương"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+msgid "Highlighted purple"
+msgstr "Tô sáng màu tím"
+
+#: crates/app/src/ui/data_grid/grid_cell.rs
+msgid "Highlighted gray"
+msgstr "Tô sáng màu xám"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "equals"
+msgstr "bằng"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "doesn't equal"
+msgstr "khác"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "greater than"
+msgstr "lớn hơn"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "at least"
+msgstr "tối thiểu"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "less than"
+msgstr "nhỏ hơn"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "at most"
+msgstr "tối đa"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "contains"
+msgstr "chứa"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "starts with"
+msgstr "bắt đầu bằng"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "ends with"
+msgstr "kết thúc bằng"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "matches pattern"
+msgstr "khớp mẫu"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "doesn't match pattern"
+msgstr "không khớp mẫu"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "matches pattern, ignoring case"
+msgstr "khớp mẫu, không phân biệt hoa thường"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "is NULL"
+msgstr "là NULL"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "is not NULL"
+msgstr "không phải NULL"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "is one of"
+msgstr "là một trong"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "is none of"
+msgstr "không là một trong"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "between"
+msgstr "trong khoảng"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Gray"
+msgstr "Xám"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+#, rust-format
+msgid "{from} to {to}"
+msgstr "{from} đến {to}"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+#: data/resources/ui/browse-tab.ui data/resources/ui/results-pane.ui
+msgid "Highlight Rules"
+msgstr "Quy tắc tô sáng"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "The first matching rule sets the colour. A cell rule takes priority over a row rule."
+msgstr "Quy tắc khớp đầu tiên quyết định màu. Quy tắc cho ô được ưu tiên hơn quy tắc cho dòng."
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Column unavailable. Choose another column to use this rule."
+msgstr "Cột không khả dụng. Hãy chọn cột khác để dùng quy tắc này."
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Enter a value to use this rule."
+msgstr "Nhập giá trị để dùng quy tắc này."
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Row"
+msgstr "Dòng"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Cell"
+msgstr "Ô"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+#, rust-format
+msgid "{column} {condition} {value}; {target}, {colour}"
+msgstr "{column} {condition} {value}; {target}, {colour}"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "No Highlight Rules"
+msgstr "Chưa có quy tắc tô sáng"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Add a rule to colour matching rows or cells."
+msgstr "Thêm quy tắc để tô màu các dòng hoặc ô khớp điều kiện."
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+#, rust-format
+msgid "Rule {number}"
+msgstr "Quy tắc {number}"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Enabled"
+msgstr "Bật"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Condition"
+msgstr "Điều kiện"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Apply to"
+msgstr "Áp dụng cho"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Match Case"
+msgstr "Phân biệt hoa thường"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+#, rust-format
+msgid "{column} ({number})"
+msgstr "{column} ({number})"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+#, rust-format
+msgid "{column} (unavailable)"
+msgstr "{column} (không khả dụng)"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+#, rust-format
+msgid "Value {number}"
+msgstr "Giá trị {number}"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Remove Value"
+msgstr "Gỡ giá trị"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Add Value"
+msgstr "Thêm giá trị"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Move Up"
+msgstr "Chuyển lên"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Move Down"
+msgstr "Chuyển xuống"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Rule Actions"
+msgstr "Thao tác quy tắc"
+
+#: crates/app/src/ui/data_grid/highlight_dialog.rs
+msgid "Drag to Reorder"
+msgstr "Kéo để sắp xếp lại"
+
+#: crates/app/src/ui/data_grid/row_detail/fields.rs
+msgid "primary key"
+msgstr "khóa chính"
+
+#: crates/app/src/ui/data_grid/row_detail/fields.rs
+msgid "foreign key"
+msgstr "khóa ngoại"
+
+#: crates/app/src/ui/data_grid/row_detail/fields.rs
+msgid "Copy Value"
+msgstr "Sao chép giá trị"
+
+#: crates/app/src/ui/data_grid/row_detail/fields.rs
+msgid "Primary and foreign key"
+msgstr "Khóa chính và khóa ngoại"
+
+#: crates/app/src/ui/data_grid/row_detail/fields.rs
+msgid "Foreign key"
+msgstr "Khóa ngoại"
+
+#: crates/app/src/ui/discard_alert.rs
+msgid "The last save may have changed the database. Discarding this draft does not undo changes already saved."
+msgstr "Lần lưu gần nhất có thể đã thay đổi cơ sở dữ liệu. Loại bỏ bản nháp này không hoàn tác các thay đổi đã lưu."
+
+#: crates/app/src/ui/preferences_dialog/mcp_page.rs
+msgid "The keyring is locked, so the access token cannot be read."
+msgstr "Chùm khóa đang bị khóa, nên không đọc được Access Token."
+
+#: crates/app/src/ui/quick_open/mod.rs data/resources/shortcuts-dialog.ui
+msgid "Open Quickly"
+msgstr "Mở nhanh"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Tables and views"
+msgstr "Bảng và view"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Loading Tables and Views"
+msgstr "Đang tải bảng và view"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Search tables and views"
+msgstr "Tìm bảng và view"
+
+#: crates/app/src/ui/quick_open/mod.rs
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "Could not load tables and views."
+msgstr "Không tải được bảng và view."
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Could Not Load Tables and Views"
+msgstr "Không tải được bảng và view"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Use Retry to try again."
+msgstr "Bấm Thử lại để thử lần nữa."
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Loading Results"
+msgstr "Đang tải kết quả"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "No results match what you typed."
+msgstr "Không có kết quả nào khớp với nội dung bạn nhập."
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "View"
+msgstr "View"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Table"
+msgstr "Bảng"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Saved Query"
+msgstr "Truy vấn đã lưu"
+
+#: crates/app/src/ui/quick_open/mod.rs
+msgid "Past Query"
+msgstr "Truy vấn đã chạy"
+
+#: crates/app/src/ui/quick_open/mod.rs
+#, rust-format
+msgid "{name}, {kind}, {scope}"
+msgstr "{name}, {kind}, {scope}"
+
+#: crates/app/src/ui/quick_open/past_source.rs
+msgid "Could not load past queries."
+msgstr "Không tải được các truy vấn đã chạy."
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "Search tables, views and queries"
+msgstr "Tìm bảng, view và truy vấn"
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "Tables, views and queries"
+msgstr "Bảng, view và truy vấn"
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "Could not load saved queries."
+msgstr "Không tải được các truy vấn đã lưu."
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "This saved query is no longer available."
+msgstr "Truy vấn đã lưu này không còn khả dụng."
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "Could not open this saved query."
+msgstr "Không mở được truy vấn đã lưu này."
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "This past query is no longer available."
+msgstr "Truy vấn đã chạy này không còn khả dụng."
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "Could not open this past query."
+msgstr "Không mở được truy vấn đã chạy này."
+
+#: crates/app/src/ui/quick_open/query_source.rs
+msgid "Saved queries and query history are unavailable."
+msgstr "Truy vấn đã lưu và lịch sử truy vấn không khả dụng."
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "No rows kept; a run stops keeping rows past {size}, and the server stopped the statement at the row limit, before its end"
+msgstr "Không giữ dòng nào; mỗi lượt chạy ngừng giữ dòng khi vượt quá {size}, và máy chủ đã dừng câu lệnh ở giới hạn số dòng, trước khi chạy hết"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "No rows kept; a run stops keeping rows past {size}"
+msgstr "Không giữ dòng nào; mỗi lượt chạy ngừng giữ dòng khi vượt quá {size}"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Showing the first {shown} row; a run stops keeping rows past {size}, and the server stopped the statement at the row limit, before its end"
+msgid_plural "Showing the first {shown} rows; a run stops keeping rows past {size}, and the server stopped the statement at the row limit, before its end"
+msgstr[0] "Đang hiện {shown} dòng đầu tiên; mỗi lượt chạy ngừng giữ dòng khi vượt quá {size}, và máy chủ đã dừng câu lệnh ở giới hạn số dòng, trước khi chạy hết"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Showing {shown} of {total} row; a run stops keeping rows past {size}"
+msgid_plural "Showing {shown} of {total} rows; a run stops keeping rows past {size}"
+msgstr[0] "Đang hiện {shown} trên {total} dòng; mỗi lượt chạy ngừng giữ dòng khi vượt quá {size}"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Showing the first {shown} row; a run stops keeping rows past {size}"
+msgid_plural "Showing the first {shown} rows; a run stops keeping rows past {size}"
+msgstr[0] "Đang hiện {shown} dòng đầu tiên; mỗi lượt chạy ngừng giữ dòng khi vượt quá {size}"
+
+#: crates/app/src/ui/saved_queries_dialog/mod.rs
+msgid "Loading Saved Queries"
+msgstr "Đang tải truy vấn đã lưu"
+
+#: crates/app/src/ui/session_window/import_from_app.rs
+msgid "Saved query import was interrupted because a connection was deleted."
+msgstr "Việc nhập truy vấn đã lưu bị gián đoạn vì một kết nối đã bị xóa."
+
+#: crates/app/src/ui/session_window/import_from_app.rs
+msgid "Saved query import could not finish. Some queries may have been saved."
+msgstr "Không hoàn tất được việc nhập truy vấn đã lưu. Một số truy vấn có thể đã được lưu."
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Column layouts could not be saved"
+msgstr "Không lưu được bố cục cột"
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Table filters could not be saved"
+msgstr "Không lưu được bộ lọc bảng"
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Highlight rules could not be saved"
+msgstr "Không lưu được quy tắc tô sáng"
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Saved column layouts are unavailable. Their file has been kept unchanged."
+msgstr "Bố cục cột đã lưu không khả dụng. Tệp của chúng vẫn được giữ nguyên."
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Saved table filters are unavailable. Their file has been kept unchanged."
+msgstr "Bộ lọc bảng đã lưu không khả dụng. Tệp của chúng vẫn được giữ nguyên."
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Saved highlight rules are unavailable. Their file has been kept unchanged."
+msgstr "Quy tắc tô sáng đã lưu không khả dụng. Tệp của chúng vẫn được giữ nguyên."
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Table Settings Could Not Be Saved"
+msgstr "Không lưu được cài đặt bảng"
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Closing now will lose changes to highlight rules, filters or column layouts."
+msgstr "Đóng bây giờ sẽ mất các thay đổi về quy tắc tô sáng, bộ lọc hoặc bố cục cột."
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Keep Open"
+msgstr "Giữ mở"
+
+#: crates/app/src/ui/session_window/state_file_status.rs
+msgid "Close Without Saving"
+msgstr "Đóng mà không lưu"
+
+#: crates/app/src/ui/share_dialog/form.rs
+msgid "Share As"
+msgstr "Chia sẻ với tư cách"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Public links are off for this team."
+msgstr "Nhóm này đã tắt liên kết công khai."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "{live} of {limit} link"
+msgid_plural "{live} of {limit} links"
+msgstr[0] "{live}/{limit} liên kết"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "{team} · {links}"
+msgstr "{team} · {links}"
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "{team} has {live} live link. The team allows {limit}. Revoke one to share another."
+msgid_plural "{team} has {live} live links. The team allows {limit}. Revoke one to share another."
+msgstr[0] "{team} có {live} liên kết đang hoạt động. Nhóm cho phép {limit}. Hãy thu hồi một liên kết để chia sẻ liên kết khác."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "Shares the first {count} column."
+msgid_plural "Shares the first {count} columns."
+msgstr[0] "Chia sẻ {count} cột đầu tiên."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+#, rust-format
+msgid "The link shares the first {count} column."
+msgid_plural "The link shares the first {count} columns."
+msgstr[0] "Liên kết chia sẻ {count} cột đầu tiên."
+
+#: crates/app/src/ui/share_dialog/sheet_view.rs
+msgid "Suspended"
+msgstr "Đã tạm ngưng"
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "The last save may have changed the database. Reload to read its current structure and discard this draft."
+msgstr "Lần lưu gần nhất có thể đã thay đổi cơ sở dữ liệu. Hãy tải lại để đọc cấu trúc hiện tại và loại bỏ bản nháp này."
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Refreshing reloads the table structure from the database and discards its unsaved changes."
+msgstr "Làm mới sẽ tải lại cấu trúc bảng từ cơ sở dữ liệu và loại bỏ các thay đổi chưa lưu."
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Discard Structure Changes?"
+msgstr "Loại bỏ thay đổi cấu trúc?"
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Wait for the table structure to load, then make the change again."
+msgstr "Hãy chờ cấu trúc bảng tải xong rồi thực hiện lại thay đổi."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Could not move that saved query."
+msgstr "Không chuyển được truy vấn đã lưu đó."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Could not create that folder."
+msgstr "Không tạo được thư mục đó."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Could not rename that folder."
+msgstr "Không đổi tên được thư mục đó."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Could not delete that folder."
+msgstr "Không xóa được thư mục đó."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Rename Folder"
+msgstr "Đổi tên thư mục"
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "New Subfolder"
+msgstr "Thư mục con mới"
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "New Folder"
+msgstr "Thư mục mới"
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "This folder and its subfolders will be deleted. Their saved queries will move to the top level."
+msgstr "Thư mục này và các thư mục con sẽ bị xóa. Các truy vấn đã lưu trong đó sẽ được chuyển lên cấp cao nhất."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "No Folder"
+msgstr "Không có thư mục"
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+#, rust-format
+msgid "Move “{name}”"
+msgstr "Chuyển “{name}”"
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Move"
+msgstr "Chuyển"
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "That name is already used by another folder in the same place."
+msgstr "Tên đó đã được một thư mục khác ở cùng vị trí dùng."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Folder names cannot contain control characters."
+msgstr "Tên thư mục không được chứa ký tự điều khiển."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "That folder name is too long."
+msgstr "Tên thư mục đó quá dài."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Enter a name for the folder."
+msgstr "Nhập tên cho thư mục."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "A folder cannot be moved inside itself or one of its subfolders."
+msgstr "Không thể chuyển thư mục vào chính nó hoặc một thư mục con của nó."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "That folder was deleted elsewhere."
+msgstr "Thư mục đó đã bị xóa ở nơi khác."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "Favorites are unavailable. Restart TablePro to try again."
+msgstr "Mục yêu thích không khả dụng. Hãy khởi động lại TablePro để thử lại."
+
+#: crates/app/src/ui/workspace/favorite_folders.rs
+msgid "The saved query or destination folder was deleted elsewhere."
+msgstr "Truy vấn đã lưu hoặc thư mục đích đã bị xóa ở nơi khác."
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+msgid "Showing all databases"
+msgstr "Đang hiện tất cả cơ sở dữ liệu"
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+msgid "Showing all schemas"
+msgstr "Đang hiện tất cả schema"
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+#, rust-format
+msgid "Showing {shown} of {total} database"
+msgid_plural "Showing {shown} of {total} databases"
+msgstr[0] "Đang hiện {shown} trên {total} cơ sở dữ liệu"
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+#, rust-format
+msgid "Showing {shown} of {total} schema"
+msgid_plural "Showing {shown} of {total} schemas"
+msgstr[0] "Đang hiện {shown} trên {total} schema"
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+msgid "Databases"
+msgstr "Cơ sở dữ liệu"
+
+#. The front's own word replaces it; a template button needs a name before then.
+#: crates/app/src/ui/workspace/schema_chooser.rs
+#: data/resources/ui/workspace-shell.ui
+msgid "Schemas"
+msgstr "Schema"
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+msgid "Show _All"
+msgstr "Hiển thị _tất cả"
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+msgid "Search databases"
+msgstr "Tìm cơ sở dữ liệu"
+
+#: crates/app/src/ui/workspace/schema_chooser.rs
+msgid "Search schemas"
+msgstr "Tìm schema"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+#: data/resources/ui/workspace-shell.ui
+msgid "Favorites"
+msgstr "Yêu thích"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "The query history file could not be opened. Check the file and restart TablePro."
+msgstr "Không mở được tệp lịch sử truy vấn. Hãy kiểm tra tệp rồi khởi động lại TablePro."
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "Saved queries could not be read. Try again."
+msgstr "Không đọc được các truy vấn đã lưu. Hãy thử lại."
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "Favorites Unavailable"
+msgstr "Mục yêu thích không khả dụng"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "Favorites could not be refreshed."
+msgstr "Không làm mới được mục yêu thích."
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "No Favorites"
+msgstr "Chưa có mục yêu thích"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "Save a query from the SQL editor or create a folder to organize favorites."
+msgstr "Lưu một truy vấn từ trình soạn thảo SQL hoặc tạo thư mục để sắp xếp mục yêu thích."
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "Loading Favorites"
+msgstr "Đang tải mục yêu thích"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "No Connection Selected"
+msgstr "Chưa chọn kết nối"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_pane.rs
+msgid "Open a connection to see its saved queries."
+msgstr "Mở một kết nối để xem các truy vấn đã lưu của kết nối đó."
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+#, rust-format
+msgid "Options for “{name}”"
+msgstr "Tùy chọn cho “{name}”"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+#, rust-format
+msgid "Folder “{name}”"
+msgstr "Thư mục “{name}”"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+#, rust-format
+msgid "Saved query “{name}”"
+msgstr "Truy vấn đã lưu “{name}”"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+#, rust-format
+msgid "{item} in {folder}"
+msgstr "{item} trong {folder}"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+msgid "_Move to Folder…"
+msgstr "_Chuyển vào thư mục…"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+msgid "_Delete…"
+msgstr "_Xóa…"
+
+#: crates/app/src/ui/workspace/sidebar/favorites_rows.rs
+msgid "New _Subfolder…"
+msgstr "_Thư mục con mới…"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+msgctxt "sidebar group"
+msgid "Views"
+msgstr "View"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+msgctxt "sidebar group"
+msgid "Materialized Views"
+msgstr "Materialized View"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+msgctxt "sidebar group"
+msgid "Foreign Tables"
+msgstr "Bảng ngoại"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+msgctxt "sidebar group"
+msgid "Sequences"
+msgstr "Sequence"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+msgctxt "sidebar group"
+msgid "Procedures"
+msgstr "Procedure"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+msgctxt "sidebar group"
+msgid "Functions"
+msgstr "Hàm"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+msgctxt "sidebar group"
+msgid "Triggers"
+msgstr "Trigger"
+
+#: crates/app/src/ui/workspace/sidebar/tree_menu.rs
+msgid "New _Table…"
+msgstr "_Bảng mới…"
+
+#: crates/app/src/ui/workspace/sidebar/tree_menu.rs
+msgid "New _Database…"
+msgstr "_Cơ sở dữ liệu mới…"
+
+#: crates/app/src/ui/workspace/sidebar/tree_menu.rs
+msgid "New _Keyspace…"
+msgstr "_Keyspace mới…"
+
+#: crates/app/src/ui/workspace/sidebar/tree_row.rs
+#, rust-format
+msgid "{count} object"
+msgid_plural "{count} objects"
+msgstr[0] "{count} đối tượng"
+
+#: crates/app/src/ui/workspace/status_pages.rs
+#, rust-format
+msgid "Replace “{name}”?"
+msgstr "Thay thế “{name}”?"
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "A saved query already uses this name. Replacing it will overwrite its SQL."
+msgstr "Đã có một truy vấn đã lưu dùng tên này. Thay thế sẽ ghi đè SQL của truy vấn đó."
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+#: data/resources/shortcuts-dialog.ui
+msgid "Refresh Tab"
+msgstr "Làm mới tab"
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "Session Menu"
+msgstr "Menu phiên làm việc"
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+#, rust-format
+msgid "Safe Mode: {level}"
+msgstr "Chế độ an toàn: {level}"
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "Rename Favorite"
+msgstr "Đổi tên mục yêu thích"
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "The saved query is deleted. This cannot be undone."
+msgstr "Truy vấn đã lưu sẽ bị xóa. Không thể hoàn tác."
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "Could not rename that saved query."
+msgstr "Không đổi tên được truy vấn đã lưu đó."
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "Enter a name for the saved query."
+msgstr "Nhập tên cho truy vấn đã lưu."
+
+#: crates/app/src/ui/workspace/workspace_shell.rs
+msgid "Saved queries are unavailable. Restart TablePro to try again."
+msgstr "Truy vấn đã lưu không khả dụng. Hãy khởi động lại TablePro để thử lại."
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "The last save may have changed the database. Reload to read its current rows and discard these changes."
+msgstr "Lần lưu gần nhất có thể đã thay đổi cơ sở dữ liệu. Hãy tải lại để đọc các dòng hiện tại và loại bỏ các thay đổi này."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Sidebar width"
+msgstr "Độ rộng thanh bên"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "The most the sidebar takes, in scale-independent pixels; the content always keeps half the window."
+msgstr "Độ rộng tối đa của thanh bên, tính bằng pixel không phụ thuộc tỷ lệ; phần nội dung luôn giữ một nửa cửa sổ."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Show row numbers"
+msgstr "Hiện số thứ tự dòng"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Show each row's number in the first column of a data grid."
+msgstr "Hiện số thứ tự của từng dòng ở cột đầu tiên của lưới dữ liệu."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Data grid row height"
+msgstr "Chiều cao dòng của lưới dữ liệu"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "How much room a data grid row takes around its text."
+msgstr "Khoảng trống quanh văn bản trong mỗi dòng của lưới dữ liệu."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Format of copied rows"
+msgstr "Định dạng của dòng được sao chép"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "The format Copy writes when several rows are selected."
+msgstr "Định dạng mà lệnh Sao chép ghi ra khi chọn nhiều dòng."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Open row details when a row is selected"
+msgstr "Mở chi tiết dòng khi chọn một dòng"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Whether selecting a row in a data grid opens its row details pane."
+msgstr "Chọn một dòng trong lưới dữ liệu có mở khung chi tiết dòng hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Default sort of a table"
+msgstr "Sắp xếp mặc định của bảng"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "The column a table tab sorts by when it opens, until the user picks another."
+msgstr "Cột mà tab bảng dùng để sắp xếp khi mở, cho tới khi người dùng chọn cột khác."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Direction of the default sort"
+msgstr "Chiều của sắp xếp mặc định"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Which way a table tab sorts by its default column."
+msgstr "Chiều sắp xếp của tab bảng theo cột mặc định."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Show invisible characters"
+msgstr "Hiện ký tự ẩn"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Whether cells and value fields mark zero-width, control and special space characters."
+msgstr "Các ô và trường giá trị có đánh dấu ký tự độ rộng bằng không, ký tự điều khiển và ký tự khoảng trắng đặc biệt hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Date format of cells"
+msgstr "Định dạng ngày của ô"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "How the data grid spells dates and timestamps. A copy and an export keep the database's own spelling."
+msgstr "Cách lưới dữ liệu hiển thị ngày và dấu thời gian. Bản sao chép và bản xuất giữ nguyên cách ghi của cơ sở dữ liệu."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Text for a NULL value"
+msgstr "Văn bản cho giá trị NULL"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "What a data grid cell shows for a value that is NULL."
+msgstr "Nội dung mà ô của lưới dữ liệu hiển thị cho giá trị NULL."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Use the system monospace font in the data grid"
+msgstr "Dùng phông chữ đơn cách của hệ thống trong lưới dữ liệu"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Whether the data grid follows the desktop monospace font instead of a custom one."
+msgstr "Lưới dữ liệu có dùng phông chữ đơn cách của màn hình nền thay vì một phông chữ tùy chọn hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Custom data grid font"
+msgstr "Phông chữ lưới dữ liệu tùy chọn"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Pango font description the data grid uses when the system font is turned off."
+msgstr "Mô tả phông chữ Pango mà lưới dữ liệu dùng khi tắt phông chữ hệ thống."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "GtkSourceView style scheme id for the SQL editor. Empty follows the system light or dark style."
+msgstr "Mã bộ màu GtkSourceView cho trình soạn thảo SQL. Để trống thì theo kiểu sáng hoặc tối của hệ thống."
+
+#: data/resources/gtk/menus.ui
+msgid "_Open Quickly…"
+msgstr "_Mở nhanh…"
+
+#: data/resources/ui/browse-tab.ui
+msgid "_Discard Changes…"
+msgstr "_Loại bỏ thay đổi…"
+
+#: data/resources/ui/browse-tab.ui
+msgid "Data"
+msgstr "Dữ liệu"
+
+#: data/resources/ui/browse-tab.ui
+msgid "Structure"
+msgstr "Cấu trúc"
+
+#: data/resources/ui/browse-tab.ui
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "JSON"
+msgstr "JSON"
+
+#: data/resources/ui/browse-tab.ui
+msgid "Copy JSON Preview"
+msgstr "Sao chép bản xem trước JSON"
+
+#: data/resources/ui/browse-tab.ui
+msgid "More JSON Actions"
+msgstr "Thao tác JSON khác"
+
+#: data/resources/ui/browse-tab.ui
+msgid "More Structure Actions"
+msgstr "Thao tác cấu trúc khác"
+
+#: data/resources/ui/browse-tab.ui data/resources/ui/results-pane.ui
+msgid "Choose which columns the grid shows"
+msgstr "Chọn các cột hiển thị trong lưới"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Show Row Numbers"
+msgstr "Hiện số thứ tự dòng"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Row Height"
+msgstr "Chiều cao dòng"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Compact"
+msgstr "Gọn"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Normal"
+msgstr "Bình thường"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Comfortable"
+msgstr "Thoải mái"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Spacious"
+msgstr "Rộng rãi"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Open Row Details on Selection"
+msgstr "Mở chi tiết dòng khi chọn"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Selecting a row opens its details pane"
+msgstr "Chọn một dòng sẽ mở khung chi tiết của dòng đó"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Show Invisible Characters"
+msgstr "Hiện ký tự ẩn"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Mark zero-width, control and special space characters in cells and value fields"
+msgstr "Đánh dấu ký tự độ rộng bằng không, ký tự điều khiển và ký tự khoảng trắng đặc biệt trong ô và trường giá trị"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Date Format"
+msgstr "Định dạng ngày"
+
+#. No subtitle: its width would squeeze the chosen example.
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "How cells show dates and timestamps. Copy and export use the original values."
+msgstr "Cách ô hiển thị ngày và dấu thời gian. Sao chép và xuất dùng giá trị gốc."
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Default Sort"
+msgstr "Sắp xếp mặc định"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "How a table is ordered when it opens"
+msgstr "Thứ tự của bảng khi mở"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "No sorting (server order)"
+msgstr "Không sắp xếp (thứ tự của máy chủ)"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "First column"
+msgstr "Cột đầu tiên"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Default Sort Direction"
+msgstr "Chiều sắp xếp mặc định"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Ascending"
+msgstr "Tăng dần"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Copy Rows As"
+msgstr "Sao chép dòng dưới dạng"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "The format Copy writes when several rows are selected"
+msgstr "Định dạng mà Sao chép ghi ra khi chọn nhiều dòng"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "TSV"
+msgstr "TSV"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "TSV with Headers"
+msgstr "TSV kèm tiêu đề"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "CSV"
+msgstr "CSV"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "CSV with Headers"
+msgstr "CSV kèm tiêu đề"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Markdown"
+msgstr "Markdown"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Text for NULL"
+msgstr "Văn bản cho NULL"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Up to 20 characters. Empty text uses NULL."
+msgstr "Tối đa 20 ký tự. Để trống thì dùng NULL."
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Use the System Monospace Font for Cells"
+msgstr "Dùng phông chữ đơn cách của hệ thống cho ô"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Cell Font"
+msgstr "Phông chữ của ô"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Follow System Style"
+msgstr "Theo kiểu của hệ thống"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Use Adwaita in the desktop’s light or dark style"
+msgstr "Dùng Adwaita theo kiểu sáng hoặc tối của màn hình nền"
+
+#: data/resources/ui/row-detail-pane.ui
+msgid "Search fields"
+msgstr "Tìm trường"
+
+#: data/resources/ui/row-detail-pane.ui
+msgid "Show edited fields only"
+msgstr "Chỉ hiện trường đã sửa"
+
+#: data/resources/ui/row-detail-pane.ui
+msgid "No Matching Fields"
+msgstr "Không có trường nào khớp"
+
+#: data/resources/ui/workspace-shell.ui
+msgid "Sidebar Width"
+msgstr "Độ rộng thanh bên"
+
+msgid "Data Masking"
+msgstr "Che giấu dữ liệu"
+
+msgid "Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values."
+msgstr "Che giấu ẩn giá trị trên màn hình và trong mọi thứ TablePro gửi đi. Nó không thay cho quyền trong cơ sở dữ liệu: bộ lọc và sắp xếp vẫn chạy trên giá trị đã lưu."
+
+msgid "Applies To"
+msgstr "Áp dụng cho"
+
+msgid "Column, such as *.email"
+msgstr "Cột, ví dụ *.email"
+
+msgid "Type, such as uuid"
+msgstr "Kiểu, ví dụ uuid"
+
+msgid "Style"
+msgstr "Kiểu che"
+
+msgid "New Rule"
+msgstr "Quy tắc mới"
+
+msgid "{target} · {style}"
+msgstr "{target} · {style}"
+
+msgid "Full"
+msgstr "Toàn bộ"
+
+msgid "Last 4 Characters"
+msgstr "4 ký tự cuối"
+
+msgid "Email"
+msgstr "Email"
+
+msgid "Stable Hash"
+msgstr "Băm ổn định"
+
+msgid "{column} (masked)"
+msgstr "{column} (đã che)"
+
+msgid "Reveal Mas_ked Values…"
+msgstr "Hiện giá trị đã _che…"
+
+msgid "Reveal Masked Values?"
+msgstr "Hiện giá trị đã che?"
+
+msgid "This tab shows the values the connection's masking rules hide. Exports, shares and the assistant stay masked."
+msgstr "Thẻ này sẽ hiện các giá trị mà quy tắc che giấu của kết nối ẩn đi. Bản xuất, liên kết chia sẻ và trợ lý vẫn được che."
+
+msgid "Reveal"
+msgstr "Hiện"
+
+msgid "This column is masked, so its values can't be edited here"
+msgstr "Cột này đã được che nên không thể sửa giá trị ở đây"
+
+msgid "The table's key is masked, so its rows can't be edited here"
+msgstr "Khóa của bảng đã được che nên không thể sửa các dòng ở đây"
+
+msgid "The table's key is masked, so these rows can't be edited"
+msgstr "Khóa của bảng đã được che nên không thể sửa các dòng này"
+
+msgid "Rows with masked values can't be duplicated"
+msgstr "Không thể nhân bản các dòng có giá trị đã che"
+
+msgid "Run the query again to see its masked values."
+msgstr "Chạy lại truy vấn để xem các giá trị đã che."
+
+msgid "Keep"
+msgstr "Giữ"
+
+msgid "A masking rule hides this column"
+msgstr "Một quy tắc che giấu ẩn cột này"
+
+msgid "Masked because TablePro cannot tell which table column this comes from."
+msgstr "Được che vì TablePro không biết cột này lấy từ cột nào của bảng."
+
+msgid "The name looks like personal data"
+msgstr "Tên cột giống dữ liệu cá nhân"
+
+msgid "Values look like card numbers"
+msgstr "Giá trị giống số thẻ"
+
+msgid "Values look like IBANs"
+msgstr "Giá trị giống số IBAN"
+
+msgid "Values look like access tokens"
+msgstr "Giá trị giống mã truy cập"
+
+msgid "Values look like API keys"
+msgstr "Giá trị giống khóa API"
+
+msgid "Values look like email addresses"
+msgstr "Giá trị giống địa chỉ email"
+
+msgid "Values look like phone numbers"
+msgstr "Giá trị giống số điện thoại"
+
+msgid "Values look like IP addresses"
+msgstr "Giá trị giống địa chỉ IP"
+
+msgid "TablePro masked columns that look sensitive. Check them before sharing."
+msgstr "TablePro đã che các cột có vẻ nhạy cảm. Hãy kiểm tra trước khi chia sẻ."
+
+msgid "This query contains what looks like personal data ({kind}). Turn on Hide SQL to keep the query private."
+msgstr "Truy vấn này chứa thứ có vẻ là dữ liệu cá nhân ({kind}). Bật Ẩn SQL để giữ truy vấn riêng tư."
+
+msgid "a card number"
+msgstr "số thẻ"
+
+msgid "an IBAN"
+msgstr "số IBAN"
+
+msgid "an access token"
+msgstr "mã truy cập"
+
+msgid "an API key"
+msgstr "khóa API"
+
+msgid "an email address"
+msgstr "địa chỉ email"
+
+msgid "a phone number"
+msgstr "số điện thoại"
+
+msgid "an IP address"
+msgstr "địa chỉ IP"
+
+msgid "{n} column masked, {m} removed."
+msgid_plural "{n} columns masked, {m} removed."
+msgstr[0] "Đã che {n} cột, đã gỡ {m} cột."
+
+msgid "Mask as {style}"
+msgstr "Che kiểu {style}"

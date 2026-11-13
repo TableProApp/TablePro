@@ -239,14 +239,19 @@ impl DataGrid {
             }
         });
         let column = &paint.column;
+        let title = super::masking::header_title(column, &self.imp().masks.borrow());
         let view_column = gtk::ColumnViewColumn::builder()
-            .title(&column.name)
+            .title(&title)
             .factory(&factory)
             .resizable(true)
             .build();
         view_column.set_id(Some(&format!("column-{}", column.index)));
         view_column.set_sorter(self.sorter_for(column, sorting).as_ref());
-        view_column.set_header_menu(Some(&grid_menu::header_menu(column, sorting)));
+        view_column.set_header_menu(Some(&grid_menu::header_menu(
+            column,
+            sorting,
+            self.offers_reveal(column.index),
+        )));
         view_column
     }
 

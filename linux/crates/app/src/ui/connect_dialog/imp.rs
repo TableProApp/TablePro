@@ -90,6 +90,10 @@ pub struct ConnectDialog {
     #[template_child]
     pub query_timeout_seconds_row: TemplateChild<adw::SpinRow>,
     #[template_child]
+    pub masking_group: TemplateChild<adw::PreferencesGroup>,
+    #[template_child]
+    pub add_masking_rule_row: TemplateChild<adw::ButtonRow>,
+    #[template_child]
     pub icon_row: TemplateChild<adw::ComboRow>,
     #[template_child]
     pub tags_row: TemplateChild<adw::ExpanderRow>,
@@ -134,6 +138,8 @@ pub struct ConnectDialog {
     pub new_tag_row: RefCell<Option<adw::ButtonRow>>,
     /// A tag made from the dialog is being written.
     pub creating_tag: Cell<bool>,
+    // The Data Masking group's rules, in order.
+    pub masking_rules: RefCell<Vec<super::masking_section::RuleRow>>,
     #[cfg(test)]
     pub toasts: RefCell<Vec<String>>,
 }

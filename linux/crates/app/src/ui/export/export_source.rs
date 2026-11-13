@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use tablepro_core::column::ResultColumn;
+use tablepro_core::masking::ColumnMasks;
 use tablepro_session::Session;
 
 use super::ExportQuery;
@@ -15,6 +16,8 @@ pub enum ExportSource {
     Rows {
         columns: Arc<[ResultColumn]>,
         rows: Vec<RowSnapshot>,
+        // What the rules still hide in these cells, also where the tab revealed its values.
+        masks: ColumnMasks,
     },
     /// A read streamed from the server through `session`, every row of
     /// it.

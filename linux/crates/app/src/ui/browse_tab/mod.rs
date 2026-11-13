@@ -88,6 +88,7 @@ use super::data_grid::{DataGrid, GridSorting, KeysHandle};
 use super::filter_strip::FilterStrip;
 use super::tab_load::{ContentLoad, FirstLoad, start_first_load};
 use crate::runtime::{FailedRequests, RequestSequencer};
+use crate::services::share_subject::ShareSubject;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::export::ExportOffer;
 
@@ -219,6 +220,7 @@ impl BrowseTab {
             actions,
             saving: Cell::new(false),
             suppress_combo_emit: Cell::new(true),
+            revealed: false,
             widgets,
         };
         tab.imp().model.replace(Some(model));
@@ -342,6 +344,11 @@ impl BrowseTab {
         self.send(DataInput::Renamed(name.to_owned()));
     }
 
+    // The connection's masking rules changed: the rows on screen take every new mask.
+    pub fn masking_changed(&self) {
+        self.send(DataInput::MaskingChanged);
+    }
+
     pub fn table(&self) -> String {
         self.read(|model| model.table.clone()).unwrap_or_default()
     }
@@ -379,6 +386,16 @@ impl BrowseTab {
             false,
             glib::closure_local!(move |tab: &Self, payload: glib::BoxedAnyObject| {
                 f(tab, payload.borrow::<ExportOffer>().clone());
+            }),
+        )
+    }
+
+    pub(crate) fn connect_share_requested<F: Fn(&Self, ShareSubject) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "share-requested",
+            false,
+            glib::closure_local!(move |tab: &Self, payload: glib::BoxedAnyObject| {
+                f(tab, payload.borrow::<ShareSubject>().clone());
             }),
         )
     }
@@ -588,6 +605,9 @@ impl BrowseTab {
             BrowseTabOutput::Export(offer) => {
                 self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(*offer)]);
             }
+            BrowseTabOutput::Share(subject) => {
+                self.emit_by_name::<()>("share-requested", &[&glib::BoxedAnyObject::new(*subject)]);
+            }
             BrowseTabOutput::ShowAlert { title, body } => self.emit_by_name::<()>("alert", &[&title, &body]),
             BrowseTabOutput::ShowToast(text) => self.emit_by_name::<()>("toast", &[&text]),
             BrowseTabOutput::DirtyChanged(dirty) => self.emit_by_name::<()>("dirty-changed", &[&dirty]),
@@ -695,6 +715,8 @@ pub(crate) struct BrowseModel {
     /// Set until the first page lands, so the page-size dropdown being
     /// set from a restored state does not count as the user choosing.
     suppress_combo_emit: Cell<bool>,
+    // The user revealed the table's masked values, until the tab moves to another table.
+    revealed: bool,
     widgets: BrowseTabWidgets,
 }
 
@@ -704,6 +726,7 @@ pub(crate) enum BrowseTabOutput {
     /// sort, the page size.
     StateChanged,
     Export(Box<ExportOffer>),
+    Share(Box<ShareSubject>),
     /// What a toast is too short to say, as why a save failed.
     ShowAlert {
         title: String,

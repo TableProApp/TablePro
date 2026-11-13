@@ -13,6 +13,8 @@ pub enum EditRefusal {
     Saving,
     // A query result holds a value read as the server's text, which a copied row would write as text.
     NotCopyable,
+    // A copied row would write the masked text in place of the values the rules hide.
+    Masked,
 }
 
 impl EditRefusal {
@@ -26,6 +28,7 @@ impl EditRefusal {
             Self::NotCopyable => Some(gettext(
                 "Rows of this result can't be duplicated, since some values were read as text",
             )),
+            Self::Masked => Some(gettext("Rows with masked values can't be duplicated")),
         }
     }
 }

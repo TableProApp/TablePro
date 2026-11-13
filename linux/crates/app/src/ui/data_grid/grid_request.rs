@@ -16,4 +16,6 @@ pub enum GridRequest {
     Toast(String),
     /// The tracker's pending changes changed: count, undo or redo.
     PendingChanged,
+    // The user confirmed showing the tab's masked values.
+    RevealMasked,
 }

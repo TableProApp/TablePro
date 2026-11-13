@@ -1,17 +1,19 @@
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_account::ShareLimits;
+use tablepro_account::{ShareLimits, ShareTeam};
 
 use super::ShareDialog;
 use super::sheet_view::{self, SheetPage};
 use crate::i18n::{gettext, gettext_f};
 use crate::ui::icons;
 
-pub(super) fn page_widget(dialog: &ShareDialog, page: &SheetPage) -> gtk::Widget {
-    match page {
+// The page, and what takes the focus when it shows.
+pub(super) fn page_widget(dialog: &ShareDialog, page: &SheetPage) -> (gtk::Widget, Option<gtk::Widget>) {
+    let widget = match page {
         SheetPage::Unavailable(reason) => status(icons::DIALOG_WARNING, &gettext("Accounts Unavailable"), reason, None),
         SheetPage::SignedOut => status(
             icons::ACCOUNT,
@@ -66,8 +68,24 @@ pub(super) fn page_widget(dialog: &ShareDialog, page: &SheetPage) -> gtk::Widget
             None,
         ),
         SheetPage::AtLimit => at_limit(dialog),
-        SheetPage::Created(url) => created(dialog, url),
-    }
+        SheetPage::Created {
+            url,
+            copied,
+            columns_truncated,
+        } => {
+            let columns = columns_truncated.then(|| {
+                let max = dialog
+                    .imp()
+                    .limits
+                    .borrow()
+                    .as_ref()
+                    .map_or(100, |limits| limits.max_columns);
+                sheet_view::columns_left_out(max)
+            });
+            return created(dialog, url, *copied, columns);
+        }
+    };
+    (widget, None)
 }
 
 fn status(icon: &str, title: &str, body: &str, child: Option<gtk::Widget>) -> gtk::Widget {
@@ -121,8 +139,10 @@ fn at_limit(dialog: &ShareDialog) -> gtk::Widget {
     let Some(limits) = limits.as_ref() else {
         return page.upcast();
     };
+    let target = imp.target.borrow().clone();
+    let team = sheet_view::chosen_team(limits, target.as_deref());
     let group = adw::PreferencesGroup::builder()
-        .description(description(limits))
+        .description(description(limits, team))
         .build();
     let busy = imp.busy.get();
     for row in sheet_view::live_link_rows(&imp.live.borrow()) {
@@ -154,15 +174,20 @@ fn at_limit(dialog: &ShareDialog) -> gtk::Widget {
     page.upcast()
 }
 
-fn description(limits: &ShareLimits) -> String {
-    let message = sheet_view::at_limit_message(limits);
-    match sheet_view::at_limit_upsell(limits) {
+fn description(limits: &ShareLimits, team: Option<&ShareTeam>) -> String {
+    let message = sheet_view::at_limit_message(limits, team);
+    match sheet_view::at_limit_upsell(limits, team) {
         Some(upsell) => format!("{message} {upsell}"),
         None => message,
     }
 }
 
-fn created(dialog: &ShareDialog, url: &str) -> gtk::Widget {
+fn created(
+    dialog: &ShareDialog,
+    url: &str,
+    copied: bool,
+    columns: Option<String>,
+) -> (gtk::Widget, Option<gtk::Widget>) {
     let link = gtk::Label::builder()
         .label(url)
         .selectable(true)
@@ -204,12 +229,26 @@ fn created(dialog: &ShareDialog, url: &str) -> gtk::Widget {
         .build();
     content.append(&link);
     content.append(&buttons);
+    let (title, icon) = match copied {
+        true => (gettext("Link copied"), icons::SUCCESS),
+        false => (gettext("Link created"), icons::DIALOG_WARNING),
+    };
     let page = adw::StatusPage::builder()
-        .icon_name(icons::SUCCESS)
-        .title(gettext("Link copied"))
+        .icon_name(icon)
+        .title(title)
         .child(&content)
         .vexpand(true)
         .build();
+    let notes: Vec<String> = [
+        (!copied).then(|| gettext("The link could not be copied to the clipboard. Copy it with the button below.")),
+        columns,
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !notes.is_empty() {
+        page.set_description(Some(&glib::markup_escape_text(&notes.join(" "))));
+    }
     page.add_css_class("compact");
-    page.upcast()
+    (page.upcast(), Some(copy.upcast()))
 }

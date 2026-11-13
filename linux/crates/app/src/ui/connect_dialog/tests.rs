@@ -1196,6 +1196,77 @@ fn edit_dialog_prefills_and_saves_same_id() {
 }
 
 #[gtk4::test]
+fn an_edit_opens_on_its_masking_rules_and_saves_them_without_blank_patterns() {
+    use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
+
+    let rule = MaskingRule::new("*.email", MaskingTarget::Column, MaskingStyle::Email);
+    let saved = SavedConnection {
+        masking_rules: vec![rule.clone()],
+        ..shop()
+    };
+    let harness = editing(&saved, FakeConnector::new([]));
+    let _window = present(&harness.dialog);
+    let imp = harness.dialog.imp();
+    {
+        let rows = imp.masking_rules.borrow();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].expander().title(), "*.email");
+        assert_eq!(rows[0].pattern().title(), "Column, such as *.email");
+        assert_eq!(rows[0].style().selected(), 2, "Email is the third style");
+    }
+    imp.add_masking_rule_row.emit_by_name::<()>("activated", &[]);
+    imp.add_masking_rule_row.emit_by_name::<()>("activated", &[]);
+    {
+        let rows = imp.masking_rules.borrow();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[1].expander().title(), "New Rule");
+        rows[1].target().set_selected(1);
+        rows[1].pattern().set_text("  uuid ");
+        rows[1].style().set_selected(3);
+        assert_eq!(rows[1].pattern().title(), "Type, such as uuid");
+        assert_eq!(rows[1].expander().title(), "uuid");
+        rows[2].pattern().set_text("   ");
+    }
+    let log = SignalLog::connect(&harness.dialog, "saved", |_| ());
+
+    without_criticals(|| {
+        imp.connect_button.emit_clicked();
+        wait_until(WAIT, || log.count() == 1).expect("the save");
+    });
+
+    let stored = harness.store.load_blocking().expect("the list");
+    let rules = &stored[0].masking_rules;
+    assert_eq!(rules.len(), 2, "a blank pattern was kept: {rules:?}");
+    assert_eq!(rules[0], rule);
+    assert_eq!(
+        (rules[1].pattern.as_str(), rules[1].target, rules[1].style),
+        ("uuid", MaskingTarget::Type, MaskingStyle::Hash)
+    );
+}
+
+#[gtk4::test]
+fn a_removed_rule_is_not_saved() {
+    use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
+
+    let saved = SavedConnection {
+        masking_rules: vec![MaskingRule::new("ssn", MaskingTarget::Column, MaskingStyle::LastFour)],
+        ..shop()
+    };
+    let harness = editing(&saved, FakeConnector::new([]));
+    let imp = harness.dialog.imp();
+    let remove = crate::test_support::descendants(imp.masking_rules.borrow()[0].expander())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+        .find(|button| button.tooltip_text().as_deref() == Some("Remove Rule"))
+        .expect("the remove button");
+
+    remove.emit_clicked();
+
+    assert!(imp.masking_rules.borrow().is_empty());
+    assert!(harness.dialog.form().masking_rules.is_empty());
+}
+
+#[gtk4::test]
 fn a_refused_save_keeps_the_dialog_open_with_the_reason() {
     let saved = shop();
     let harness = editing(&saved, FakeConnector::new([]));

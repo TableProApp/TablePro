@@ -3518,8 +3518,105 @@ fn share_result_shares_the_rows_and_the_statement_in_front() {
         panic!("one share asked for: {}", heard.len());
     };
     assert_eq!(subject.sql, "SELECT n FROM numbers");
-    assert_eq!(subject.title, "SELECT n FROM numbers");
+    assert_eq!(subject.title, "Result 1 (3)");
+    assert!(
+        !subject.title.contains("SELECT"),
+        "the title carries the SQL Hide SQL keeps back"
+    );
     let rows = subject.rows.as_ref().expect("the result's rows");
-    assert_eq!(rows.row_count, 3);
+    assert_eq!(rows.total(), 3);
     assert_eq!(rows.columns[0].name, "n");
+}
+
+fn email_rule() -> tablepro_core::masking::MaskingPolicy {
+    use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget};
+    MaskingPolicy::new([MaskingRule::new(
+        "users.email",
+        MaskingTarget::Column,
+        MaskingStyle::Email,
+    )])
+}
+
+fn people_run() -> Replies<FakeRun> {
+    let columns: Arc<[ResultColumn]> = vec![
+        ResultColumn::new("id", ColumnType::untyped_text("text")),
+        ResultColumn::new("email", ColumnType::untyped_text("text")),
+    ]
+    .into();
+    let mut runs = Replies::default();
+    runs.always(FakeRun::completed(vec![
+        ResultEvent::ResultSetStarted { columns },
+        ResultEvent::Rows(vec![vec![Value::Int(1), Value::Text("ann@example.com".to_owned())]]),
+        ResultEvent::ResultSetFinished {
+            retained: 1,
+            total_rows: None,
+            truncation: Truncation::Complete,
+        },
+    ]));
+    runs
+}
+
+fn shown_email(harness: &Harness) -> Value {
+    let grid = shown_grid(harness);
+    let row = grid.store().row(0).expect("a row");
+    row.cells().expect("cells")[1].clone()
+}
+
+fn masked_email() -> Value {
+    Value::Text("a•••@example.com".to_owned())
+}
+
+#[gtk4::test]
+fn a_result_is_masked_until_the_tab_reveals_it_and_a_read_runs_again() {
+    let harness = editor_with(people_run(), "SELECT id, email FROM users");
+    harness
+        .active
+        .get()
+        .expect("a session")
+        .set_masking_policy(email_rule());
+    run_and_wait(&harness);
+    assert_eq!(shown_email(&harness), masked_email());
+    assert!(shown_grid(&harness).masks().is_masked(1));
+
+    shown_grid(&harness).request(GridRequest::RevealMasked);
+    wait_until(WAIT, || harness.fake.texts().len() == 2 && !harness.editor.is_running()).expect("the read again");
+
+    assert_eq!(shown_email(&harness), Value::Text("ann@example.com".to_owned()));
+    assert!(shown_grid(&harness).masks().revealed);
+}
+
+#[gtk4::test]
+fn a_reveal_after_a_write_waits_for_the_next_run() {
+    let harness = editor_with(answering(), "UPDATE users SET email = 'x' WHERE id = 1");
+    harness
+        .active
+        .get()
+        .expect("a session")
+        .set_masking_policy(email_rule());
+    let toasts = SignalLog::connect(&harness.editor, "toast", |values| {
+        values[1].get::<String>().expect("a toast's text")
+    });
+    run_and_wait(&harness);
+
+    harness.editor.reveal_masked();
+
+    assert_eq!(harness.fake.texts().len(), 1, "a write ran again");
+    assert_eq!(toasts.take(), ["Run the query again to see its masked values."]);
+}
+
+#[gtk4::test]
+fn a_saved_rule_masks_the_result_on_screen() {
+    let harness = editor_with(people_run(), "SELECT id, email FROM users");
+    run_and_wait(&harness);
+    assert_eq!(shown_email(&harness), Value::Text("ann@example.com".to_owned()));
+
+    harness
+        .active
+        .get()
+        .expect("a session")
+        .set_masking_policy(email_rule());
+    harness.editor.masking_changed();
+
+    wait_until(WAIT, || shown_email(&harness) == masked_email()).expect("the result masked off the main loop");
+    assert!(shown_grid(&harness).masks().is_masked(1));
 }

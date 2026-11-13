@@ -25,7 +25,24 @@ pub(crate) struct AssistantRequest {
     pub action: Action,
     pub statement: String,
     /// The server's error, for a Fix.
-    pub error: Option<String>,
+    pub error: Option<FixError>,
+}
+
+// What a Fix tells the assistant of the server's error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FixError {
+    Text(String),
+    // The connection masks values and the server's message can repeat one, so only its code goes.
+    Withheld { code: Option<String> },
+}
+
+impl FixError {
+    pub(crate) fn server_error(&self) -> tablepro_ai::ServerError<'_> {
+        match self {
+            Self::Text(text) => tablepro_ai::ServerError::Text(text),
+            Self::Withheld { code } => tablepro_ai::ServerError::Withheld { code: code.as_deref() },
+        }
+    }
 }
 
 /// The provider as the user knows it.

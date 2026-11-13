@@ -4,6 +4,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use tablepro_core::column::ResultColumn;
+use tablepro_core::masking::table_name;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::mongo::is_addressable_field;
 use tablepro_core::{ColumnInfo, QueryResult};
@@ -12,7 +13,7 @@ use tablepro_session::LinkGeneration;
 use super::columns_fetch::ColumnFreshness;
 use super::{BrowseModel, BrowseTabOutput, DataInput, Effects, PageReply, PageState, PageView, loading_description};
 use crate::services::change_tracker::pk_identity;
-use crate::services::grid::{GridColumn, RowKeyBuilder, grid_columns};
+use crate::services::grid::{GridColumn, GridMasks, MaskSource, RowKeyBuilder, grid_columns};
 use crate::services::save_batch::SaveTarget;
 use crate::ui::data_grid::{EditRules, RowData};
 use crate::ui::tab_load::{ContentPage, LoadFailure, LoadPresentation};
@@ -35,6 +36,7 @@ impl BrowseModel {
                 self.grid.commit_edit();
                 self.sequencer.cancel_all();
                 self.table = name;
+                self.revealed = false;
                 if let Some(state_key) = self.state_key.as_ref() {
                     self.filter_settings.set_filters(
                         state_key,
@@ -65,7 +67,30 @@ impl BrowseModel {
                 self.stop_count(true);
                 self.reload_from_columns(ColumnFreshness::Cached);
             }
+            DataInput::MaskingChanged => {
+                let columns: Vec<ResultColumn> =
+                    self.grid.grid_columns().iter().map(GridColumn::result_column).collect();
+                self.grid.remask(self.page_masks(&columns));
+            }
         }
+    }
+
+    fn page_masks(&self, columns: &[ResultColumn]) -> GridMasks {
+        let source = MaskSource::Table(table_name(&self.table_ref()));
+        let mut masks = source.masks(&self.session.masking_policy(), columns, self.revealed);
+        masks.masked_key = self
+            .current_columns
+            .iter()
+            .filter(|column| column.primary_key)
+            .filter_map(|key| columns.iter().position(|column| column.name == key.name))
+            .any(|index| masks.shown.is_masked(index));
+        masks
+    }
+
+    // The values under a mask are gone from the rows held, so the page is read again.
+    pub(super) fn reveal_masked(&mut self, fx: &mut Effects) {
+        self.revealed = true;
+        self.fetch(super::BrowseRequestKind::Page, fx);
     }
 
     /// The session reconnected. Reads that failed are asked again on the
@@ -229,16 +254,21 @@ impl BrowseModel {
         let keys = RowKeyBuilder::for_page(&pk_identity(&self.current_columns), &self.current_columns, &layout);
         let row_count = rows.len();
         let visible_end = layout.visible.end;
+        let visible = columns.get(layout.visible.clone()).unwrap_or_default();
+        let masks = self.page_masks(visible);
+        // A masked key names no row, so the page's rows take none.
+        let keys = keys.filter(|_| !masks.masked_key);
         let rows: Vec<RowData> = rows
             .into_iter()
             .map(|mut cells| {
                 let identity = cells.split_off(visible_end.min(cells.len()));
                 let key = keys.as_ref().and_then(|keys| keys.key_for(&cells, &identity));
+                masks.shown.apply(visible, &mut cells);
                 RowData::persisted(key, cells.into())
             })
             .collect();
-        let visible = columns.get(layout.visible.clone()).unwrap_or_default();
         self.show_columns(self.grid_columns_for(visible));
+        self.grid.set_masks(masks);
         self.page = Some(PageState {
             row_count,
             start_ordinal: offset,

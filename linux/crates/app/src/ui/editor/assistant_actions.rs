@@ -9,8 +9,8 @@ use gtk4::{gio, glib};
 use tablepro_ai::Action;
 
 use super::SqlEditor;
-use super::run_log::EntryKind;
-use crate::ui::assistant::{AssistantAccess, AssistantRequest, Availability};
+use super::run_log::{EntryKind, ServerWords};
+use crate::ui::assistant::{AssistantAccess, AssistantRequest, Availability, FixError};
 
 /// The editor's actions that send a statement to the assistant.
 pub(super) const ASSISTANT_ACTIONS: [(&str, Action); 3] = [
@@ -118,7 +118,7 @@ impl SqlEditor {
             let Some(entry) = usize::try_from(index).ok().and_then(|index| log.entries().get(index)) else {
                 return;
             };
-            let EntryKind::Failed { message, .. } = &entry.kind else {
+            let EntryKind::Failed { message, server, .. } = &entry.kind else {
                 return;
             };
             let Some(statement) = entry.batch.and_then(|batch| log.statement(batch)) else {
@@ -127,12 +127,19 @@ impl SqlEditor {
             AssistantRequest {
                 action: Action::Fix,
                 statement: statement.trim().to_owned(),
-                error: Some(message.clone()),
+                error: Some(fix_error(message, server.as_ref(), self.masks_values())),
             }
         };
         if self.assistant_ready() {
             self.request_assistant(request);
         }
+    }
+
+    // The rules as the run's session holds them now, which a save since the run may have changed.
+    fn masks_values(&self) -> bool {
+        self.deps()
+            .and_then(|deps| deps.session.get())
+            .is_some_and(|session| !session.masking_policy().is_empty())
     }
 
     fn request_assistant(&self, request: AssistantRequest) {
@@ -163,6 +170,16 @@ impl SqlEditor {
         let view = self.imp().source_view.get();
         view.scroll_mark_onscreen(&buffer.get_insert());
         view.grab_focus();
+    }
+}
+
+// A connection with masking rules sends a server's words nowhere outside the grid (core ADR 0027).
+fn fix_error(message: &str, server: Option<&ServerWords>, masks_values: bool) -> FixError {
+    match (server, masks_values) {
+        (Some(server), true) => FixError::Withheld {
+            code: server.code.clone(),
+        },
+        _ => FixError::Text(message.to_owned()),
     }
 }
 
@@ -253,6 +270,28 @@ pub(super) mod tests {
             }
         }
         labels
+    }
+
+    #[test]
+    fn a_fix_withholds_the_server_s_words_only_where_values_are_masked() {
+        let words = ServerWords {
+            code: Some("22P02".to_owned()),
+        };
+
+        assert_eq!(
+            fix_error("invalid input: \"ann@example.com\"", Some(&words), true),
+            FixError::Withheld {
+                code: Some("22P02".to_owned())
+            }
+        );
+        assert_eq!(
+            fix_error("invalid input", Some(&words), false),
+            FixError::Text("invalid input".to_owned())
+        );
+        assert_eq!(
+            fix_error("the connection was lost", None, true),
+            FixError::Text("the connection was lost".to_owned())
+        );
     }
 
     #[gtk4::test]

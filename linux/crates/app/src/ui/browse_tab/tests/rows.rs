@@ -163,7 +163,7 @@ fn page_export_contains_no_hidden_columns() {
     harness.tab().send(GridInput::Export);
 
     let exported = exported.borrow();
-    let [crate::ui::export::ExportSource::Rows { columns, rows }] = exported.as_slice() else {
+    let [crate::ui::export::ExportSource::Rows { columns, rows, .. }] = exported.as_slice() else {
         panic!("one export, not {}", exported.len());
     };
     let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();

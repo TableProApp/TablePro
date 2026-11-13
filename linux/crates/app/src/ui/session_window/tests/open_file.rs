@@ -380,3 +380,19 @@ fn a_shared_query_on_the_picker_waits_for_a_connection() {
 
     assert!(!banner.is_revealed(), "the banner stayed once the queries opened");
 }
+
+#[gtk4::test]
+fn a_share_link_that_cannot_open_says_so_in_the_window_in_front() {
+    let test = TestWindow::connected("ShareLinkToast");
+    crate::services::connection_link::register_link_schemes().expect("register the links");
+
+    open(&test, &[gio::File::for_uri("tablepro://share?token=short")]);
+
+    wait_until(WAIT, || {
+        test.window
+            .toast_titles()
+            .contains(&"This shared link is no longer available.".to_owned())
+    })
+    .expect("the toast in the window in front");
+    assert_eq!(test.app.windows().len(), 1, "a picker opened only to say it");
+}

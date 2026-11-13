@@ -1,10 +1,13 @@
 use gtk4::prelude::*;
+use tablepro_core::browse::{ExportFields, ExportRequest, build_view_sql};
 
 use super::{BrowseModel, BrowseTabOutput, Effects, GridInput, qualified};
 use crate::i18n::gettext;
 use crate::services::grid::{
     DeleteAvailability, EditPolicy, EditRefusal, GridRowId, delete_availability, edit_policy, selection_hint,
 };
+use crate::services::share_subject::ShareSubject;
+use crate::services::share_table::TableShare;
 use crate::ui::data_grid::{GridRequest, GridRow};
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 
@@ -28,12 +31,12 @@ impl BrowseModel {
             GridRequest::FollowReference(reference) => fx.output(BrowseTabOutput::FollowReference(reference)),
             GridRequest::FilterByValue(rule) => self.filter_strip.add_and_apply(rule),
             GridRequest::Toast(text) => fx.output(BrowseTabOutput::ShowToast(text)),
-            // A table tab's grid offers no Share Result.
-            GridRequest::Share(_) => {}
+            GridRequest::Share(_) => self.offer_share(fx),
             GridRequest::PendingChanged => {
                 self.sync_pending_chrome(self.tracker.pending_count(), fx);
                 self.sync_selection();
             }
+            GridRequest::RevealMasked => self.reveal_masked(fx),
         }
     }
 
@@ -127,6 +130,48 @@ impl BrowseModel {
             session: Some(self.session.clone()),
             name: qualified(self.schema.as_deref(), &self.table),
             target: Some(self.sql_target()),
+        })));
+    }
+
+    // From the first row, as the tab filters and sorts it, read up to the plan's rows once the sheet knows them.
+    pub(super) fn offer_share(&self, fx: &mut Effects) {
+        let Some(export) = self.table_export() else {
+            fx.output(BrowseTabOutput::ShowToast(gettext("Nothing to share")));
+            return;
+        };
+        let view = ExportRequest {
+            table: &export.table,
+            columns: &export.columns,
+            filter: &export.filter,
+            sort: &export.sort,
+            identity: &export.identity,
+            fields: ExportFields::Listed,
+        };
+        let sql = self.dialect.as_deref().and_then(|dialect| {
+            build_view_sql(dialect, &view)
+                .inspect_err(|error| tracing::debug!(%error, "the table view has no SQL of its own"))
+                .ok()
+        });
+        let no_sql = sql
+            .is_none()
+            .then(|| gettext("This view has no SQL of its own, so the link shares its rows without it."));
+        let table = TableShare {
+            session: self.session.clone(),
+            table: export.table,
+            columns: export.columns,
+            shown: self.grid.shown_columns(),
+            filter: export.filter,
+            sort: export.sort,
+            identity: export.identity,
+            total: self.total.known(),
+        };
+        fx.output(BrowseTabOutput::Share(Box::new(ShareSubject {
+            title: String::new(),
+            sql: sql.unwrap_or_default(),
+            dialect: Some(self.session.metadata().driver_id.clone()),
+            rows: None,
+            table: Some(table),
+            no_sql,
         })));
     }
 }

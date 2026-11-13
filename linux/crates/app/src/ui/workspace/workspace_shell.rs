@@ -856,12 +856,11 @@ impl WorkspaceShell {
                 if let Some(sender) = self.front().and_then(|front| front.sender()) {
                     sender.deliver(super::WorkspaceInput::Share {
                         tab: None,
-                        subject: Box::new(crate::services::share_subject::ShareSubject {
-                            title: favorite.name,
-                            sql: favorite.query,
-                            dialect: None,
-                            rows: None,
-                        }),
+                        subject: Box::new(crate::services::share_subject::ShareSubject::query(
+                            favorite.name,
+                            favorite.query,
+                            None,
+                        )),
                     });
                 }
             }

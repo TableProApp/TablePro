@@ -17,12 +17,13 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyWindow};
+use tablepro_core::masking::ColumnMasks;
 use tablepro_core::meta::KeyKind;
 use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
 
-use crate::services::grid::grid_columns;
+use crate::services::grid::{MaskSource, grid_columns};
 use crate::ui::data_grid::{DataGrid, GridConfig, GridRequest, GridSorting, RowData};
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportSource};
 use crate::ui::tab_load::{ContentLoad, ContentPage, FirstLoad, LoadFailure, LoadPresentation, StaleBanner};
@@ -227,6 +228,19 @@ impl KeyTab {
         &self.inner.key
     }
 
+    // The connection's masking rules changed: the entries on screen take every new mask.
+    pub(crate) fn masking_changed(&self) {
+        let columns: Vec<ResultColumn> = self
+            .inner
+            .grid
+            .grid_columns()
+            .iter()
+            .map(crate::services::grid::GridColumn::result_column)
+            .collect();
+        let masks = MaskSource::Key.masks(&self.inner.session.masking_policy(), &columns, false);
+        self.inner.grid.remask(masks);
+    }
+
     pub(crate) fn is_loading(&self) -> bool {
         self.inner.state.borrow().tab_loading
     }
@@ -276,6 +290,7 @@ fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
         find: true,
         filter_by_value: false,
         share: false,
+        reveal: false,
         tasks,
         label: key.to_owned(),
     });
@@ -549,12 +564,14 @@ impl Inner {
         let cut = (page.kind == KeyKind::String && page.rows.truncated)
             .then(|| (cell_bytes(page.rows.cell(0, 0)), page.length.unwrap_or_default()));
         let mut seen = matches!(page.kind, KeyKind::Hash | KeyKind::Set).then(HashSet::new);
-        let rows = new_rows(page.rows.rows, seen.as_mut());
+        let masks = MaskSource::Key.masks(&self.session.masking_policy(), &columns, false);
+        let rows = new_rows(page.rows.rows, seen.as_mut(), &columns, &masks.shown);
         let count = rows.len() as u64;
         if !shows_columns(&self.grid, &columns) {
             self.grid
                 .set_columns(grid_columns(&columns, &[], |_| true), GridSorting::Client, None);
         }
+        self.grid.set_masks(masks);
         self.grid.replace_rows(rows, 0);
         self.body.set_visible_child_name(ROWS);
         self.state.borrow_mut().shown = Some(Shown {
@@ -594,7 +611,8 @@ impl Inner {
             let Some(shown) = state.shown.as_mut() else {
                 return false;
             };
-            let rows = new_rows(page.rows.rows, shown.seen.as_mut());
+            let masks = self.grid.masks().shown;
+            let rows = new_rows(page.rows.rows, shown.seen.as_mut(), &page.rows.columns, &masks);
             shown.rows += rows.len() as u64;
             shown.length = page.length;
             shown.next = page.next;
@@ -668,6 +686,7 @@ impl Inner {
             | GridRequest::FollowReference(_)
             | GridRequest::FilterByValue(_)
             | GridRequest::Share(_)
+            | GridRequest::RevealMasked
             | GridRequest::PendingChanged => {}
         }
     }
@@ -721,13 +740,21 @@ impl Inner {
 
 /// The grid's rows for a window, leaving out an entry `seen` already
 /// holds. A list keeps every element, equal ones too.
-fn new_rows(rows: Vec<Vec<tablepro_core::Value>>, mut seen: Option<&mut HashSet<Vec<u8>>>) -> Vec<RowData> {
+fn new_rows(
+    rows: Vec<Vec<tablepro_core::Value>>,
+    mut seen: Option<&mut HashSet<Vec<u8>>>,
+    columns: &[ResultColumn],
+    masks: &ColumnMasks,
+) -> Vec<RowData> {
     rows.into_iter()
         .filter(|cells| match (seen.as_deref_mut(), entry_name(cells.first())) {
             (Some(seen), Some(name)) => seen.insert(name),
             _ => true,
         })
-        .map(|cells| RowData::result(cells.into()))
+        .map(|mut cells| {
+            masks.apply(columns, &mut cells);
+            RowData::result(cells.into())
+        })
         .collect()
 }
 

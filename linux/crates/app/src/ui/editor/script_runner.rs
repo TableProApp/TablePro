@@ -3,9 +3,10 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::masking::{SharedMaskingPolicy, table_name};
 use tablepro_core::sql_syntax::script::text_offsets::CharCounter;
 use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan};
+use tablepro_core::sql_syntax::{SqlGrammar, source_table};
 use tablepro_core::{
     ByteLimit, DriverError, EditorSession, EditorSessionState, ReadOnlyRefusal, ResultEvent, ResultSink, RowLimit,
     RunOptions, SinkFlow, TransactionState, UserSql,
@@ -15,8 +16,9 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::editor_session_slot::{AcquireError, EditorSessionSlot, close_quietly, transaction_open};
-use super::run_log::{BatchCollector, BatchReport, EntryKind, RowRoom, RunEvent, Verdict, continues};
+use super::run_log::{BatchCollector, BatchReport, EntryKind, RowRoom, RunEvent, StatementMasking, Verdict, continues};
 use super::run_scope::ScopedText;
+use crate::services::grid::MaskSource;
 
 /// One unit the server is sent: a statement on most engines, a whole
 /// `GO` batch on SQL Server.
@@ -45,6 +47,35 @@ pub struct ScriptRun {
     pub row_limit: RowLimit,
     pub run_row_limit: u64,
     pub byte_limit: ByteLimit,
+    pub masking: RunMasking,
+}
+
+// How a run's rows meet the connection's masking rules.
+#[derive(Debug, Clone, Default)]
+pub struct RunMasking {
+    // The session's live rules, which a save during the run changes.
+    pub rules: SharedMaskingPolicy,
+    // The grammar a statement's table is read with; `None` reads none.
+    pub grammar: Option<SqlGrammar>,
+    // The tab shows its values unmasked.
+    pub revealed: bool,
+}
+
+impl RunMasking {
+    // The grid matches a `table.column` rule against the one table the statement reads; with no rule there is nothing
+    // to parse it for, and a rule saved later matches by column alone.
+    fn for_statement(&self, sql: &str) -> StatementMasking {
+        let table = self
+            .grammar
+            .filter(|_| !self.rules.get().is_empty())
+            .and_then(|grammar| source_table(sql, grammar).ok())
+            .map(|source| table_name(&source.table));
+        StatementMasking {
+            rules: self.rules.clone(),
+            source: MaskSource::Query { table },
+            revealed: self.revealed,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -186,7 +217,11 @@ pub async fn run_batches(
             }
             let sql = UserSql::new(batch.text.as_str());
             let (room, row_limit, byte_limit) = room_after(run, kept);
-            let collector = Arc::new(Mutex::new(BatchCollector::new(sql.clone()).within(room)));
+            let collector = Arc::new(Mutex::new(
+                BatchCollector::new(sql.clone())
+                    .within(room)
+                    .masked(Some(run.masking.for_statement(&batch.text))),
+            ));
             let options = RunOptions::new(cancel.child_token())
                 .with_deadline(run.statement_timeout)
                 .with_row_limit(row_limit)
@@ -307,6 +342,7 @@ fn refusal(batch: usize) -> BatchReport {
         entries: vec![EntryKind::Failed {
             message: crate::ui::error_text::driver_message(&DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)),
             error_char: None,
+            server: None,
         }],
         verdict: Verdict::Failed,
         transaction: None,
@@ -322,6 +358,7 @@ async fn refuse(events: &mpsc::Sender<RunEvent>, message: String, lost: bool) {
         entries: vec![EntryKind::Failed {
             message,
             error_char: None,
+            server: None,
         }],
         verdict: Verdict::Stopped,
         transaction: None,
@@ -382,6 +419,7 @@ mod tests {
                 row_limit: RowLimit::EDITOR_DEFAULT,
                 run_row_limit: RUN_ROW_LIMIT,
                 byte_limit: ByteLimit::EDITOR_DEFAULT,
+                masking: RunMasking::default(),
             },
             statements,
             warnings,
@@ -439,6 +477,32 @@ mod tests {
 
     fn texts(editor: &FakeEditorSession) -> Vec<String> {
         editor.texts().iter().map(|sql| sql.as_str().to_owned()).collect()
+    }
+
+    #[test]
+    fn a_statement_s_rows_meet_the_rules_by_the_one_table_it_reads() {
+        use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget};
+
+        let masking = RunMasking {
+            rules: SharedMaskingPolicy::new(MaskingPolicy::new([MaskingRule::new(
+                "users.email",
+                MaskingTarget::Column,
+                MaskingStyle::Email,
+            )])),
+            grammar: Some(SqlGrammar::PostgreSql),
+            revealed: false,
+        };
+
+        let read = masking.for_statement("SELECT email FROM public.users");
+        let joined = masking.for_statement("SELECT u.email FROM users u JOIN orders o ON o.user_id = u.id");
+
+        assert_eq!(
+            read.source,
+            MaskSource::Query {
+                table: Some("public.users".to_owned())
+            }
+        );
+        assert_eq!(joined.source, MaskSource::Query { table: None });
     }
 
     #[tokio::test]
