@@ -2034,7 +2034,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     sbyte uniffi_tablepro_ffi_fn_method_resultset_remask(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+     ulong uniffi_tablepro_ffi_fn_method_resultset_remask(ulong @ptr
     );
 
     #if NET8_0_OR_GREATER
@@ -5188,8 +5188,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_remask();
-            if (checksum != 53039) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_remask` checksum `53039`, library returned `{checksum}`");
+            if (checksum != 17212) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_remask` checksum `17212`, library returned `{checksum}`");
             }
         }
         {
@@ -8422,7 +8422,8 @@ internal interface IResultSet {
     /// </summary>
     bool IsFinished();
     ulong OpenCursor();
-    bool Remask();
+    /// <exception cref="CoreException"></exception>
+    Task<bool> Remask();
     ulong RowCount();
     /// <exception cref="CoreException"></exception>
     ResultSet Sorted(uint @column, bool @ascending);
@@ -8629,13 +8630,27 @@ internal class ResultSet : IResultSet, IDisposable {
     }
     
     
-    public bool Remask() {
-        return CallWithPointer(thisPtr => FfiConverterBoolean.INSTANCE.Lift(
-    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_remask(thisPtr,  ref _status)
-)));
+    /// <exception cref="CoreException"></exception>
+    public async Task<bool> Remask() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_remask(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_i8(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_i8(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_i8(future),
+        // Lift
+        (result) => FfiConverterBoolean.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
     }
-    
     
     public ulong RowCount() {
         return CallWithPointer(thisPtr => FfiConverterUInt64.INSTANCE.Lift(
