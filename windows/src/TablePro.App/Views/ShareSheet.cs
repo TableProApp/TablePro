@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.App.Services;
@@ -92,15 +93,13 @@ internal sealed class ShareSheet
 
     // The set the preview grid reads, which the core masked and cut as the link will be.
     private ResultSet? _previewRows;
-    private int _previewGeneration;
 
     // Read once per content: the rules' styles and what the detectors saw, then the user's choices.
     private ShareColumns? _columns;
     private SharedContent? _columnsFor;
 
-    // What the link sends with the choices as they are now; null while a newer read is under way.
-    private ShareSummary? _summary;
-    private int _summaryGeneration;
+    // What the link sends with the choices as they are now, and whether the preview shows it yet.
+    private readonly ShareRounds _rounds = new();
     private SharedContent _content;
     private TableShareRead? _tableRead;
     private long _tableReadFor = -1;
@@ -201,7 +200,12 @@ internal sealed class ShareSheet
             _form.Children.Add(_hideSql);
             var hide = new Button { Content = Strings.Get("ShareHideSql") };
             AutomationProperties.SetAutomationId(hide, "ShareHideSqlButton");
-            hide.Click += (_, _) => _hideSql.IsChecked = true;
+            // The notice closes as Hide SQL turns on, so focus moves to the box that now says so.
+            hide.Click += (_, _) =>
+            {
+                _hideSql.IsChecked = true;
+                _hideSql.Focus(FocusState.Programmatic);
+            };
             _personalData.ActionButton = hide;
             _personalData.Visibility = Visibility.Collapsed;
             AutomationProperties.SetAutomationId(_personalData, "ShareHideSqlSuggestion");
@@ -587,7 +591,7 @@ internal sealed class ShareSheet
             _hideSql.IsChecked = false;
         }
 
-        if (_summary is null)
+        if (_rounds.Summary is null)
         {
             _capNote.Visibility = Visibility.Collapsed;
             _columnsNote.Visibility = Visibility.Collapsed;
@@ -669,7 +673,8 @@ internal sealed class ShareSheet
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         label.Children.Add(new TextBlock { Text = column.Name, TextTrimming = TextTrimming.CharacterEllipsis });
-        if (Reason(column) is { } reason)
+        var reason = Reason(column);
+        if (reason is not null)
         {
             label.Children.Add(new TextBlock { Text = reason, Style = Caption, TextWrapping = TextWrapping.Wrap });
         }
@@ -677,16 +682,28 @@ internal sealed class ShareSheet
         var action = new ComboBox { MinWidth = 110, VerticalAlignment = VerticalAlignment.Center };
         foreach (var each in new[] { ShareColumnAction.Keep, ShareColumnAction.Mask, ShareColumnAction.Remove })
         {
-            action.Items.Add(new ComboBoxItem
+            var item = new ComboBoxItem
             {
                 Content = Strings.Get("ShareColumn_" + each),
                 Tag = each,
                 IsEnabled = each != ShareColumnAction.Keep || column.AllowsKeep,
-            });
+            };
+            // A screen reader on the disabled Keep hears why it is off, which the caption says on screen.
+            if (!item.IsEnabled && reason is not null)
+            {
+                AutomationProperties.SetHelpText(item, reason);
+            }
+
+            action.Items.Add(item);
         }
 
         action.SelectedIndex = (int)column.Action;
         AutomationProperties.SetName(action, Strings.Format("ShareColumnActionName", column.Name));
+        if (reason is not null)
+        {
+            AutomationProperties.SetHelpText(action, reason);
+        }
+
         var style = new ComboBox
         {
             MinWidth = 150,
@@ -751,7 +768,7 @@ internal sealed class ShareSheet
 
         var columns = _columns;
         _columnsSection.Visibility = columns is { Columns.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
-        _columnsSummary.Text = columns is null ? string.Empty : Strings.Format("ShareColumnsSummary", columns.Masked, columns.Removed);
+        ShowColumnsSummary(columns is null ? string.Empty : Strings.Format(columns.SummaryKey, columns.Masked, columns.Removed));
         _detectionNote.Visibility = columns is { HasDetections: true } ? Visibility.Visible : Visibility.Collapsed;
         var noColumns = columns is { RemovesEveryColumn: true };
         _noColumns.IsOpen = noColumns;
@@ -760,11 +777,27 @@ internal sealed class ShareSheet
         _ = RefreshSummaryAsync();
     }
 
-    // A result is shared only once its columns and what they send are read, so a detected column never leaves
-    // unmasked by a quick click and a result too large never reaches the server.
+    // A TextBlock that changes text is not read out by itself, so its live region is raised.
+    private void ShowColumnsSummary(string text)
+    {
+        if (string.Equals(_columnsSummary.Text, text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _columnsSummary.Text = text;
+        if (text.Length > 0 && AutomationPeer.ListenerExists(AutomationEvents.LiveRegionChanged))
+        {
+            FrameworkElementAutomationPeer.CreatePeerForElement(_columnsSummary)
+                .RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
+    }
+
+    // A result is shared only once this round's columns, summary and preview are in, so a detected column never
+    // leaves unmasked by a quick click, a result too large never reaches the server, and the preview shows what goes.
     private void UpdateShareButton() =>
         _dialog.IsPrimaryButtonEnabled = _plan is { Stage: ShareStage.Form } plan && !_creating && !_created
-            && plan.Readiness(_columns, _summary) == ShareReadiness.Ready;
+            && _rounds.Readiness(plan, _columns) == ShareReadiness.Ready;
 
     // Read again for each choice, off the UI thread; an older read that lands late is dropped, so Share waits.
     private async Task RefreshSummaryAsync()
@@ -775,8 +808,7 @@ internal sealed class ShareSheet
             return;
         }
 
-        var generation = ++_summaryGeneration;
-        _summary = null;
+        var round = _rounds.Begin();
         UpdateShareButton();
         if (columns.RemovesEveryColumn)
         {
@@ -792,7 +824,7 @@ internal sealed class ShareSheet
         }
         catch (TableProException exception)
         {
-            if (!_closed && generation == _summaryGeneration)
+            if (!_closed && _rounds.IsCurrent(round))
             {
                 ShowError(Strings.Error(exception.Error));
             }
@@ -809,17 +841,16 @@ internal sealed class ShareSheet
             return;
         }
 
-        if (_closed || generation != _summaryGeneration || !ReferenceEquals(_plan, plan))
+        if (_closed || !ReferenceEquals(_plan, plan) || !_rounds.TakeSummary(round, summary))
         {
             return;
         }
 
-        _summary = summary;
         ShowSummary(plan, summary);
         UpdateShareButton();
         if (summary.TooLarge is null)
         {
-            await RefreshPreviewAsync(summary).ConfigureAwait(true);
+            await RefreshPreviewAsync(round, summary).ConfigureAwait(true);
         }
     }
 
@@ -846,46 +877,53 @@ internal sealed class ShareSheet
         }
     }
 
-    // The core masks and cuts the preview as the link will be, so a Stable Hash shows as it will be sent.
-    private async Task RefreshPreviewAsync(ShareSummary summary)
+    // The core masks and cuts the preview as the link will be, so a Stable Hash shows as it will be sent. Only the
+    // current round's preview is shown; one that fails clears the grid, so it never shows older choices' values.
+    private async Task RefreshPreviewAsync(int round, ShareSummary summary)
     {
-        if (_previewGrid is not { } grid || _plan is not { } plan || _content.Rows is not { } rows
+        if (_previewGrid is not { } grid || _content.Rows is not { } rows
             || _columns is not { RemovesEveryColumn: false } columns)
         {
             return;
         }
 
-        var generation = ++_previewGeneration;
         var count = SharePlan.PreviewRowsOf(summary);
         ResultSet preview;
         try
         {
             preview = await rows.GetSharePreviewAsync(_content.Columns.Count, count, columns.Choices).ConfigureAwait(true);
         }
-        catch (TableProException exception)
+        catch (Exception exception) when (exception is TableProException or ObjectDisposedException)
         {
-            if (!_closed && generation == _previewGeneration)
+            if (!_closed && _rounds.IsCurrent(round))
             {
-                ShowError(Strings.Error(exception.Error));
+                ShowPreview(null, 0);
+                ShowError(exception is TableProException failed ? Strings.Error(failed.Error) : Strings.Get("ShareRowsGone"));
             }
 
             return;
         }
-        catch (ObjectDisposedException)
-        {
-            return;
-        }
 
-        if (_closed || generation != _previewGeneration)
+        if (_closed || !_rounds.TakePreview(round))
         {
             preview.Dispose();
             return;
         }
 
+        ShowPreview(preview, count);
+        UpdateShareButton();
+    }
+
+    private void ShowPreview(ResultSet? preview, int count)
+    {
         var previous = _previewRows;
         _previewRows = preview;
-        grid.Height = (count + 1) * 32 + 2;
-        grid.SetData(new ResultSetData(preview, preview.GetColumns()));
+        if (_previewGrid is { } grid)
+        {
+            grid.Height = (count + 1) * 32 + 2;
+            grid.SetData(preview is null ? null : new ResultSetData(preview, preview.GetColumns()));
+        }
+
         // The grid gave the old set's cursor back in SetData.
         previous?.Dispose();
     }
@@ -1060,7 +1098,7 @@ internal sealed class ShareSheet
         }
 
         var choices = _columns?.Choices ?? [];
-        if (plan.Readiness(_columns, _summary) != ShareReadiness.Ready)
+        if (_rounds.Readiness(plan, _columns) != ShareReadiness.Ready)
         {
             return;
         }

@@ -534,6 +534,25 @@ public sealed partial class ConnectionFormWindow : Window
         }
 
         MaskingRulesPanel.Visibility = draft.MaskingRules.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NameMaskingRows();
+    }
+
+    // Each row's controls name their rule's place, so a screen reader tells the rows apart.
+    private void NameMaskingRows()
+    {
+        for (var index = 0; index < MaskingRulesPanel.Children.Count; index++)
+        {
+            if (MaskingRulesPanel.Children[index] is not Grid row || row.Children.Count < 4)
+            {
+                continue;
+            }
+
+            var number = index + 1;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row.Children[0], Strings.Format("MaskingTargetName", number));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row.Children[1], Strings.Format("MaskingPatternName", number));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row.Children[2], Strings.Format("MaskingStyleName", number));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row.Children[3], Strings.Format("RemoveMaskingRuleName", number));
+        }
     }
 
     private Grid MaskingRow(ConnectionDraft draft, MaskingRuleDraft rule)
@@ -550,7 +569,6 @@ public sealed partial class ConnectionFormWindow : Window
             MinWidth = 160,
             PlaceholderText = Placeholder(rule.Target),
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pattern, Strings.Get("MaskingPatternName"));
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pattern, "MaskingPattern");
         pattern.TextChanged += (_, _) => rule.Pattern = pattern.Text;
 
@@ -561,7 +579,6 @@ public sealed partial class ConnectionFormWindow : Window
         }
 
         target.SelectedIndex = rule.Target == MaskTarget.Type ? 1 : 0;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(target, Strings.Get("MaskingTargetName"));
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(target, "MaskingTarget");
         target.SelectionChanged += (_, _) =>
         {
@@ -576,22 +593,20 @@ public sealed partial class ConnectionFormWindow : Window
         }
 
         style.SelectedIndex = Math.Max(0, Array.IndexOf(MaskStyles, rule.Style));
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(style, Strings.Get("MaskingStyleName"));
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(style, "MaskingStyle");
         style.SelectionChanged += (_, _) =>
             rule.Style = style.SelectedItem is ComboBoxItem { Tag: MaskStyle picked } ? picked : MaskStyle.Full;
 
         var remove = new Button { Content = new SymbolIcon(Symbol.Delete) };
-        var removeName = Strings.Get("RemoveMaskingRule");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(remove, removeName);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(remove, "RemoveMaskingRule");
-        ToolTipService.SetToolTip(remove, removeName);
+        ToolTipService.SetToolTip(remove, Strings.Get("RemoveMaskingRule"));
         remove.Click += (_, _) =>
         {
             var index = MaskingRulesPanel.Children.IndexOf(row);
             draft.MaskingRules.Remove(rule);
             MaskingRulesPanel.Children.Remove(row);
             MaskingRulesPanel.Visibility = draft.MaskingRules.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            NameMaskingRows();
             UpdateSummaries();
             // Focus stays in the list, on the row that took this one's place, else on Add rule.
             var next = MaskingRulesPanel.Children.Count > 0
@@ -624,6 +639,7 @@ public sealed partial class ConnectionFormWindow : Window
         var row = MaskingRow(draft, rule);
         MaskingRulesPanel.Children.Add(row);
         MaskingRulesPanel.Visibility = Visibility.Visible;
+        NameMaskingRows();
         UpdateSummaries();
         ((Control)row.Children[1]).Focus(FocusState.Programmatic);
     }

@@ -104,6 +104,9 @@ public sealed class ShareColumns
 
     public int Kept => Columns.Count - Removed;
 
+    // "1 column masked, 2 removed." or "3 columns masked, 0 removed."; the removed count shares the noun.
+    public string SummaryKey => Masked == 1 ? "ShareColumnsSummaryOne" : "ShareColumnsSummaryMany";
+
     // The sheet says so under the list, so the user checks the columns before sharing.
     public bool HasDetections => Columns.Any(column => column.Suggestion is not null);
 

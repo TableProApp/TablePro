@@ -673,16 +673,19 @@
     <value>Add rule</value>
   </data>
   <data name="MaskingTargetName" xml:space="preserve">
-    <value>Match</value>
+    <value>Match, rule {0}</value>
   </data>
   <data name="MaskingPatternName" xml:space="preserve">
-    <value>Pattern</value>
+    <value>Pattern, rule {0}</value>
   </data>
   <data name="MaskingStyleName" xml:space="preserve">
-    <value>Mask</value>
+    <value>Mask, rule {0}</value>
   </data>
   <data name="RemoveMaskingRule" xml:space="preserve">
     <value>Remove rule</value>
+  </data>
+  <data name="RemoveMaskingRuleName" xml:space="preserve">
+    <value>Remove rule {0}</value>
   </data>
   <data name="MaskTarget_Column" xml:space="preserve">
     <value>Column</value>
@@ -2901,7 +2904,10 @@ New fingerprint: {2}</value>
   <data name="ShareColumnsHeader" xml:space="preserve">
     <value>Columns</value>
   </data>
-  <data name="ShareColumnsSummary" xml:space="preserve">
+  <data name="ShareColumnsSummaryOne" xml:space="preserve">
+    <value>1 column masked, {1} removed.</value>
+  </data>
+  <data name="ShareColumnsSummaryMany" xml:space="preserve">
     <value>{0} columns masked, {1} removed.</value>
   </data>
   <data name="ShareColumnsDetected" xml:space="preserve">
