@@ -85,7 +85,7 @@ fn request(path: &Path, create: bool) -> FileOpenRequest {
 
 async fn run(editor: &QueryEditor, sql: &str, settings: RunSettings) -> (RunOutcome, Vec<RunEvent>, Wakes) {
     let wakes = Wakes::default();
-    let run = editor.run(sql.to_owned(), settings, false, Box::new(wakes.clone()));
+    let run = editor.run(sql.to_owned(), settings, Box::new(wakes.clone()));
     let outcome = run.outcome().await.unwrap();
     (outcome, run.drain_events(), wakes)
 }
@@ -201,7 +201,6 @@ async fn a_query_streams_into_a_result_set_a_window_reads() {
     let query = editor.run(
         "SELECT id, name, note FROM people ORDER BY id".to_owned(),
         RunSettings::default(),
-        false,
         Box::new(wakes.clone()),
     );
     let outcome = query.outcome().await.unwrap();
@@ -249,12 +248,7 @@ async fn a_cancel_stops_the_statement_on_the_engine() {
     let (_core, _session, editor) = fixture(dir.path()).await;
     let endless = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c";
 
-    let query = editor.run(
-        endless.to_owned(),
-        RunSettings::default(),
-        false,
-        Box::new(Wakes::default()),
-    );
+    let query = editor.run(endless.to_owned(), RunSettings::default(), Box::new(Wakes::default()));
     tokio::time::sleep(Duration::from_millis(200)).await;
     let asked = Instant::now();
     query.cancel();
@@ -325,7 +319,6 @@ async fn a_million_rows_stream_in_and_any_window_reads_back() {
             timeout_ms: None,
             byte_limit: None,
         },
-        false,
         Box::new(wakes.clone()),
     );
     let outcome = query.outcome().await.unwrap();
@@ -359,12 +352,7 @@ async fn a_million_rows_stream_in_and_any_window_reads_back() {
 }
 
 async fn column_texts(editor: &QueryEditor, sql: &str, column: u32) -> (u32, Vec<Option<String>>) {
-    let query = editor.run(
-        sql.to_owned(),
-        RunSettings::default(),
-        false,
-        Box::new(Wakes::default()),
-    );
+    let query = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Wakes::default()));
     let outcome = query.outcome().await.unwrap();
     assert!(matches!(outcome, RunOutcome::Completed { .. }), "{sql}: {outcome:?}");
     let set = query.result_set(0).unwrap();
@@ -389,16 +377,7 @@ async fn page_texts(
     column: u32,
 ) -> (u32, bool, u32, Vec<Option<String>>) {
     let page = session
-        .read_table_page(
-            table,
-            sort,
-            None,
-            limit,
-            offset,
-            false,
-            Box::new(Wakes::default()),
-            None,
-        )
+        .read_table_page(table, sort, None, limit, offset, Box::new(Wakes::default()), None)
         .await
         .unwrap();
     let run = page.run();
@@ -502,7 +481,6 @@ async fn a_result_that_cannot_run_again_sorts_the_rows_it_holds() {
     let run = editor.run(
         "SELECT name, note, id * 10 FROM people".to_owned(),
         RunSettings::default(),
-        false,
         Box::new(Wakes::default()),
     );
     assert!(matches!(run.outcome().await.unwrap(), RunOutcome::Completed { .. }));

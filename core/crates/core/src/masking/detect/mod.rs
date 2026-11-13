@@ -14,7 +14,7 @@ pub(crate) use names::{Term, longest_term};
 pub use sql::{PersonalDataHit, scan_sql_personal_data};
 pub use values::{SensitiveKind, column_value_kind, is_text_like};
 
-use super::{ColumnMasks, MaskingStyle};
+use super::MaskingStyle;
 use crate::column::ResultColumn;
 use crate::value::Value;
 
@@ -31,19 +31,12 @@ pub enum SuggestionReason {
     Values { kind: SensitiveKind },
 }
 
-// One per column, from the rows to be shared. A column `ruled` masks gets none, and a name beats what the values show.
-pub fn suggest_masks<R: AsRef<[Value]>>(
-    columns: &[ResultColumn],
-    rows: &[R],
-    ruled: &ColumnMasks,
-) -> Vec<Option<MaskSuggestion>> {
+// One per column, from the rows to be shared. A name beats what the values show.
+pub fn suggest_masks<R: AsRef<[Value]>>(columns: &[ResultColumn], rows: &[R]) -> Vec<Option<MaskSuggestion>> {
     columns
         .iter()
         .enumerate()
         .map(|(index, column)| {
-            if ruled.is_masked(index) {
-                return None;
-            }
             if let Some(hit) = column_name_hit(&column.name) {
                 return Some(MaskSuggestion {
                     style: hit.style,
@@ -69,22 +62,19 @@ mod tests {
     }
 
     #[test]
-    fn a_name_beats_the_values_and_a_ruled_column_gets_nothing() {
+    fn a_name_beats_the_values() {
         let columns = [
             ResultColumn::new("phone", ColumnType::untyped_text("text")),
             ResultColumn::new("notes", ColumnType::untyped_text("text")),
-            ResultColumn::new("email", ColumnType::untyped_text("text")),
             ResultColumn::new("id", ColumnType::untyped_text("int")),
         ];
         let rows = vec![vec![
             text("ann@example.com"),
             text("4111 1111 1111 1111"),
-            text("x"),
             Value::Int(1),
         ]];
-        let ruled = ColumnMasks::new(vec![None, None, Some(MaskingStyle::Full), None]);
 
-        let suggested = suggest_masks(&columns, &rows, &ruled);
+        let suggested = suggest_masks(&columns, &rows);
 
         assert_eq!(
             suggested,
@@ -99,7 +89,6 @@ mod tests {
                         kind: SensitiveKind::Card
                     },
                 }),
-                None,
                 None,
             ]
         );

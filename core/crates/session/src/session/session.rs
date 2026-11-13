@@ -4,14 +4,13 @@ use std::time::Duration;
 
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::masking::{MaskingPolicy, SharedMaskingPolicy};
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::{
     CallOptions, ColumnInfo, DriverError, EditorSession, EditorSessionOptions, SafeModeLevel, TableRef,
     UnsupportedFeature, WorkspaceSettings,
 };
-use tablepro_storage::{ConnectionStore, CredentialDemand};
+use tablepro_storage::CredentialDemand;
 use tokio::sync::watch;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tokio_util::task::AbortOnDropHandle;
@@ -38,8 +37,6 @@ pub struct Session {
     metadata: ConnectionMetadata,
     workspace_settings: WorkspaceSettings,
     safe_mode: Mutex<SafeModeLevel>,
-    // Shared with the sessions it opens in the server's other databases, which mask by the same rules.
-    masking: SharedMaskingPolicy,
     // The engine's own, from the connection the session opened on, for SQL read while no connection is current.
     grammar: SqlGrammar,
     reachability: Arc<Mutex<ReachabilityTarget>>,
@@ -75,12 +72,7 @@ struct SessionOrigin {
 
 impl Session {
     pub fn start(pending: PendingSession, deps: SessionDeps) -> Arc<Session> {
-        Self::start_masking(pending, deps, None)
-    }
-
-    fn start_masking(pending: PendingSession, deps: SessionDeps, masking: Option<SharedMaskingPolicy>) -> Arc<Session> {
         let parts = pending.into_parts();
-        let masking = masking.unwrap_or_else(|| SharedMaskingPolicy::new(parts.request.masking.clone()));
         let origin = SessionOrigin {
             request: parts.request.for_reconnect(),
             deps: deps.clone(),
@@ -141,7 +133,6 @@ impl Session {
             metadata: parts.request.metadata,
             workspace_settings: parts.request.workspace_settings,
             safe_mode: Mutex::new(parts.request.safe_mode),
-            masking,
             grammar,
             reachability,
             last_rejection,
@@ -199,26 +190,6 @@ impl Session {
         }
         *self.safe_mode.lock().unwrap_or_else(PoisonError::into_inner) = level;
         true
-    }
-
-    // The rules the grid, exports and shares mask by now.
-    pub fn masking_policy(&self) -> MaskingPolicy {
-        self.masking.get()
-    }
-
-    // The live cell, for a result that reads the rules again after a save.
-    pub fn masking(&self) -> SharedMaskingPolicy {
-        self.masking.clone()
-    }
-
-    pub fn set_masking_policy(&self, policy: MaskingPolicy) {
-        self.masking.set(policy);
-    }
-
-    // Keeps the rules those of the saved connection: a save, an import or a sync that changes them has set them on this
-    // session and its siblings by the time the write returns.
-    pub fn follow_saved_masking(&self, store: &ConnectionStore) {
-        store.follow_masking(self.id(), &self.masking);
     }
 
     /// What the network must reach for this session, recomputed when a
@@ -354,7 +325,7 @@ impl Session {
             .connector
             .establish(refreshed.request, CredentialInteraction::Unattended, cancel)
             .await?;
-        let sibling = Session::start_masking(pending, self.origin.deps.clone(), Some(self.masking.clone()));
+        let sibling = Session::start(pending, self.origin.deps.clone());
         // The level the user chose since the connection opened, which a
         // read-only connection's sibling shares by opening read-only too.
         sibling.set_safe_mode(self.safe_mode());
@@ -609,67 +580,6 @@ mod tests {
         let call = connector.calls().pop().expect("an attempt");
         assert!(!call.attended, "the sibling asked for a secret");
         assert_eq!(call.request.metadata.id, session.id(), "another connection's request");
-    }
-
-    fn email_rules() -> tablepro_core::masking::MaskingPolicy {
-        use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget};
-
-        MaskingPolicy::new([MaskingRule::new("email", MaskingTarget::Column, MaskingStyle::Email)])
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_session_starts_with_the_request_s_rules_and_shares_them_with_its_siblings() {
-        let connector = FakeConnector::new([]).always(FakeEstablish::Connect(ConnectionScript::default()));
-        let rules = email_rules();
-        let mut request = FakeConnector::network_request("db.example", 5432).unwrap();
-        request.masking = rules.clone();
-        let (pending, _) = FakeConnector::pending_session(request, ConnectionScript::default());
-        let session = Session::start(
-            pending,
-            SessionDeps {
-                connector: Arc::new(connector),
-                ..deps(Arc::new(FakeCredentialSource::new()))
-            },
-        );
-        assert_eq!(session.masking_policy(), rules);
-        let sibling = session
-            .open_in_database("analytics", CancellationToken::new())
-            .await
-            .expect("a session in analytics");
-
-        session.set_masking_policy(tablepro_core::masking::MaskingPolicy::none());
-
-        assert!(
-            sibling.masking_policy().is_empty(),
-            "the sibling kept rules the user removed"
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_saved_change_to_the_rules_reaches_the_live_session() {
-        let root = tempfile::TempDir::new().unwrap();
-        let store = ConnectionStore::new(&tablepro_storage::StoragePaths::under(
-            root.path(),
-            "tablepro",
-            "app.tablepro.TablePro",
-        ));
-        let (pending, _) =
-            FakeConnector::pending_session(FakeConnector::request().unwrap(), ConnectionScript::default());
-        let session = Session::start(pending, deps(Arc::new(FakeCredentialSource::new())));
-        let mut saved = crate::test_support::saved_connection(session.id());
-        store.upsert_blocking(saved.clone()).unwrap();
-        session.follow_saved_masking(&store);
-        assert!(session.masking_policy().is_empty());
-
-        let rules = email_rules();
-        saved.masking_rules = rules.rules().to_vec();
-        store.upsert_blocking(saved).unwrap();
-
-        assert_eq!(
-            session.masking_policy(),
-            rules,
-            "the write returned before the session held its rules"
-        );
     }
 
     #[tokio::test(start_paused = true)]

@@ -333,7 +333,6 @@ mod tests {
             target,
             workspace_settings: WorkspaceSettings::workspace(false),
             safe_mode: tablepro_core::SafeModeLevel::Off,
-            masking: Default::default(),
         }
     }
 

@@ -106,7 +106,6 @@ fn connection(name: &str) -> SavedConnection {
         external_access: ExternalAccess::ReadOnly,
         ai_policy: AiPolicy::Ask,
         query_timeout_secs: None,
-        masking_rules: Vec::new(),
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
