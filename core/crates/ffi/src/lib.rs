@@ -36,7 +36,8 @@ pub use account::{
     AccountConfig, AccountListener, AccountService, AccountStateTag, AccountStatusInfo, CreatedShareInfo, DeviceInfo,
     EntitlementProblemTag, FeatureAccessTag, HostBrowser, HostBrowserError, LicenseInfo, MembershipInfo, ProfileInfo,
     SecretHitInfo, SecretHitKindTag, ShareExpiryTag, ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo,
-    ShareRequestArg, SharedLinkInfo, TeamInfo, scan_columns_for_secrets, scan_sql_for_secrets, share_token_from_link,
+    ShareRequestArg, ShareTeamInfo, SharedLinkInfo, TeamInfo, scan_columns_for_secrets, scan_sql_for_secrets,
+    share_token_from_link,
 };
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};

@@ -339,9 +339,11 @@ async fn a_shared_link_opens_signed_out_and_the_owner_s_calls_do_not() {
 
 #[cfg(feature = "engines")]
 mod shares {
+    use std::path::Path;
+
     use tablepro_ffi::{
         DatabaseSession, FileOpenRequest, ResultSet, RunListener, RunOutcome, RunSettings, ShareKindTag,
-        ShareRequestArg,
+        ShareRequestArg, TableName,
     };
 
     use super::*;
@@ -352,21 +354,64 @@ mod shares {
         fn events_pending(&self) {}
     }
 
-    async fn run(session: &DatabaseSession, sql: &str) -> Arc<ResultSet> {
+    async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
         let editor = session.open_editor(None).await.unwrap();
         let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
         let outcome = run.outcome().await.unwrap();
         assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
-        let set = run.result_set(0).unwrap();
+        let set = run.result_set(0);
         editor.close().await.unwrap();
         set
+    }
+
+    // Signed in against a stub cloud that keeps every create's body.
+    async fn signed_in(bodies: &Arc<Mutex<Vec<String>>>) -> Opened {
+        let base = cloud({
+            let bodies = bodies.clone();
+            let device = device_answer();
+            let entitlement = entitlement_answer();
+            let created = created();
+            move |method, path, body| match (method, path) {
+                ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+                ("POST", "/v2/devices") => (201, device.clone()),
+                ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement.clone()),
+                ("POST", "/v2/shares") => {
+                    bodies.lock().unwrap().push(body.to_owned());
+                    (201, created.clone())
+                }
+                _ => (404, String::new()),
+            }
+        });
+        let opened = open(&base).await;
+        let (signed_in, ()) = tokio::join!(opened.service.sign_in(None), approve(&opened.browser));
+        signed_in.unwrap();
+        opened
+    }
+
+    async fn sqlite(dir: &Path) -> (Arc<Core>, Arc<DatabaseSession>) {
+        let core = Core::new(
+            HostConfig {
+                client_version: "test".to_owned(),
+                storage_dir: None,
+            },
+            Box::new(MemorySecrets::default()),
+        )
+        .unwrap();
+        let file = FileOpenRequest {
+            path: dir.join("shop.sqlite").display().to_string(),
+            driver_id: None,
+            read_only: false,
+            create: true,
+        };
+        let session = core.open_file(file, None).await.unwrap();
+        (core, session)
     }
 
     fn created() -> String {
         format!(
             r#"{{"share":{{"id":"shr_01","kind":"result","scope":"account","title":"Orders","note":"","dialect":"sqlite",
             "has_snapshot":true,"row_count":2,"truncated":true,"hide_sql":true,"allow_download":true,"has_password":false,
-            "state":"live","view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z",
+            "state":"live","suspended":false,"view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z",
             "expires_at":"2026-12-13T00:00:00Z","url":"https://s.tablepro.app/{TOKEN}"}},
             "token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#
         )
@@ -390,60 +435,29 @@ mod shares {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_result_share_sends_the_visible_columns_and_the_plan_s_rows() {
         let bodies = Arc::new(Mutex::new(Vec::new()));
-        let base = cloud({
-            let bodies = bodies.clone();
-            let device = device_answer();
-            let entitlement = entitlement_answer();
-            let created = created();
-            move |method, path, body| match (method, path) {
-                ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
-                ("POST", "/v2/devices") => (201, device.clone()),
-                ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement.clone()),
-                ("POST", "/v2/shares") => {
-                    bodies.lock().unwrap().push(body.to_owned());
-                    (201, created.clone())
-                }
-                _ => (404, String::new()),
-            }
-        });
-        let opened = open(&base).await;
-        let (signed_in, ()) = tokio::join!(opened.service.sign_in(None), approve(&opened.browser));
-        signed_in.unwrap();
+        let opened = signed_in(&bodies).await;
         let dir = tempfile::tempdir().unwrap();
-        let file = FileOpenRequest {
-            path: dir.path().join("shop.sqlite").display().to_string(),
-            driver_id: None,
-            read_only: false,
-            create: true,
-        };
-        let core = Core::new(
-            HostConfig {
-                client_version: "test".to_owned(),
-                storage_dir: None,
-            },
-            Box::new(MemorySecrets::default()),
-        )
-        .unwrap();
-        let session = core.open_file(file, None).await.unwrap();
+        let (_core, session) = sqlite(dir.path()).await;
         let set = run(
             &session,
             "SELECT 9007199254740993 AS big, 'a' AS name, x'cafe' AS hidden UNION ALL SELECT 2, 'b', NULL",
         )
-        .await;
+        .await
+        .unwrap();
 
         let shared = opened
             .service
-            .create_share(request(ShareKindTag::Result), Some(set), 2, 1)
+            .create_share(request(ShareKindTag::Result), Some(set), 2, 1, None)
             .await
             .unwrap();
-        let query = opened
-            .service
-            .create_share(request(ShareKindTag::Query), None, 0, 0)
-            .await
-            .unwrap();
+        let team_query = ShareRequestArg {
+            team_id: Some("team_01".to_owned()),
+            ..request(ShareKindTag::Query)
+        };
+        let query = opened.service.create_share(team_query, None, 0, 0, None).await.unwrap();
         let needs_set = opened
             .service
-            .create_share(request(ShareKindTag::Result), None, 0, 1_000)
+            .create_share(request(ShareKindTag::Result), None, 0, 1_000, None)
             .await;
 
         assert_eq!(shared.url, format!("https://s.tablepro.app/{TOKEN}"));
@@ -461,5 +475,72 @@ mod shares {
         assert!(!bodies[0].contains("hidden"), "{}", bodies[0]);
         assert!(bodies[0].contains(r#""hide_sql":true"#), "{}", bodies[0]);
         assert!(!bodies[1].contains("snapshot"), "{}", bodies[1]);
+        assert!(bodies[1].contains(r#""team_id":"team_01""#), "{}", bodies[1]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_table_page_shares_its_view_sql_its_visible_columns_and_the_view_s_count() {
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let opened = signed_in(&bodies).await;
+        let dir = tempfile::tempdir().unwrap();
+        let (_core, session) = sqlite(dir.path()).await;
+        run(
+            &session,
+            "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('first'), ('second'), ('third')",
+        )
+        .await;
+        let notes = TableName {
+            schema: None,
+            name: "notes".to_owned(),
+        };
+        let page = session
+            .read_table_page(notes.clone(), None, None, 2, 0, Box::new(Quiet), None)
+            .await
+            .unwrap();
+        let outcome = page.run().outcome().await.unwrap();
+        let total = session.table_row_count(notes, None, None).await.unwrap();
+        let set = page.run().result_set(0).unwrap();
+
+        let shared = ShareRequestArg {
+            sql: page.view_sql().unwrap(),
+            ..request(ShareKindTag::Result)
+        };
+        opened
+            .service
+            .create_share(shared, Some(set), page.visible_columns(), 1_000, Some(total))
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+        assert_eq!(page.visible_columns(), 1, "the page also reads each row's rowid");
+        let body = bodies.lock().unwrap()[0].clone();
+        assert!(
+            body.contains(r#""sql":"SELECT \"body\" FROM \"notes\" ORDER BY \"rowid\" ASC""#),
+            "{body}"
+        );
+        assert!(body.contains(r#""columns":[{"name":"body","type":"TEXT"}]"#), "{body}");
+        assert!(body.contains(r#""rows":[["first"],["second"]]"#), "{body}");
+        assert!(body.contains(r#""row_count":3"#), "{body}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_result_past_the_column_cap_shares_its_first_columns_and_says_so() {
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let opened = signed_in(&bodies).await;
+        let dir = tempfile::tempdir().unwrap();
+        let (_core, session) = sqlite(dir.path()).await;
+        let wide: Vec<String> = (0..101).map(|index| format!("{index} AS c{index}")).collect();
+        let set = run(&session, &format!("SELECT {}", wide.join(", "))).await.unwrap();
+
+        let created = opened
+            .service
+            .create_share(request(ShareKindTag::Result), Some(set), 101, 1_000, None)
+            .await
+            .unwrap();
+
+        assert!(created.columns_truncated);
+        let body = bodies.lock().unwrap()[0].clone();
+        assert!(body.contains(r#""name":"c99""#), "{body}");
+        assert!(!body.contains(r#""c100""#), "{body}");
     }
 }

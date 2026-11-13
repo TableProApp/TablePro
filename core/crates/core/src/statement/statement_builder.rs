@@ -1,4 +1,7 @@
-use crate::dialect::{BindError, BindTarget, SqlDialect};
+use std::borrow::Cow;
+
+use crate::column::ColumnType;
+use crate::dialect::{BindError, BindTarget, LiteralError, SqlDialect};
 use crate::value::Value;
 
 use super::{BoundParam, Statement};
@@ -13,11 +16,25 @@ use super::{BoundParam, Statement};
 pub struct StatementBuilder {
     sql: String,
     params: Vec<BoundParam>,
+    inline: bool,
 }
 
 impl StatementBuilder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    // Writes each value as the dialect's literal and binds none, for SQL a person reads or a share link carries.
+    // Never for a statement the app runs with values from outside.
+    pub fn inlining() -> Self {
+        Self {
+            inline: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn is_inlining(&self) -> bool {
+        self.inline
     }
 
     /// Append SQL the app itself wrote. Nothing from the user reaches
@@ -49,6 +66,9 @@ impl StatementBuilder {
         value: Value,
         target: BindTarget<'_>,
     ) -> Result<String, BindError> {
+        if self.inline {
+            return inline_literal(dialect, &value, target);
+        }
         let placeholder = dialect.placeholder(self.params.len(), value, target)?;
         if let Some(param) = placeholder.param {
             self.params.push(param);
@@ -76,6 +96,27 @@ impl StatementBuilder {
     pub fn finish(self) -> Statement {
         Statement::new(self.sql, self.params)
     }
+}
+
+// A LIKE pattern is text whatever its column holds.
+fn inline_literal(dialect: &dyn SqlDialect, value: &Value, target: BindTarget<'_>) -> Result<String, BindError> {
+    let column_type = match target {
+        BindTarget::Column(column) => Cow::Borrowed(&column.column_type),
+        BindTarget::Pattern => Cow::Owned(ColumnType::untyped_text("")),
+        BindTarget::EngineRowId(_) => {
+            return Err(BindError::Unrepresentable {
+                expected: "a literal",
+                found: "an engine row address",
+            });
+        }
+    };
+    dialect.literal(value, &column_type).map_err(|error| match error {
+        LiteralError::Undecodable { reason } => BindError::Undecodable { reason },
+        LiteralError::Unrepresentable { found } => BindError::Unrepresentable {
+            expected: "a literal",
+            found,
+        },
+    })
 }
 
 #[cfg(test)]

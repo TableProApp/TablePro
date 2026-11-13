@@ -1,4 +1,6 @@
 use std::num::NonZeroU64;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use progenitor_client::{Error, ResponseValue};
 use secrecy::{ExposeSecret as _, SecretString};
@@ -6,10 +8,14 @@ use secrecy::{ExposeSecret as _, SecretString};
 use super::{Account, Call, Session};
 use crate::account_error::AccountError;
 use crate::cloud_api::{Bearer, answer_error, v2};
-use crate::share::{CreatedShare, Share, ShareExpiry, ShareLimits, SharePage, ShareRequest, SharedLink, SnapshotBody};
+use crate::share::{
+    CreatedShare, MAX_SHARE_COLUMNS, Share, ShareExpiry, ShareLimits, SharePage, ShareRequest, SharedLink, SnapshotBody,
+};
 use crate::share_link::is_share_token;
 
 const SHARE_PAGE: NonZeroU64 = NonZeroU64::MIN.saturating_add(99);
+// A body of up to 8 MiB on a slow link outlasts the client's 30 seconds.
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 // The document's maxLength for each, in characters; a longer title, note or dialect is cut rather than refused.
 const TITLE_CHARACTERS: usize = 200;
 const NOTE_CHARACTERS: usize = 2_000;
@@ -24,31 +30,61 @@ impl Account {
         .await
     }
 
-    // The URL is the link to copy. A result's snapshot must already be cut to the plan's `max_rows`.
+    // The URL is the link to copy. A result's snapshot must already be cut to the plan's `max_rows`. The session is
+    // held for the token only, so no other call waits out the upload.
     pub async fn create_share(&self, request: ShareRequest) -> Result<CreatedShare, AccountError> {
+        let columns_truncated = request
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.columns.len() > MAX_SHARE_COLUMNS);
         let body = create_body(request)?;
-        let created = self
-            .share_call(Call::ShareCreate, async |api| {
-                answer(api.create_share(&body).await).await.map(CreatedShare::from)
-            })
-            .await?;
+        let (bearer, attempt) = {
+            let mut session = self.inner.session.lock().await;
+            let taken = match session.waited(Call::ShareCreate) {
+                Ok(()) => self.bearer(&mut session, false).await,
+                Err(error) => Err(error),
+            };
+            let bearer = self.ended_by(&mut session, taken).await?;
+            (bearer, self.inner.attempts.load(Ordering::SeqCst))
+        };
+        let api = self.api(bearer.lasting(UPLOAD_TIMEOUT));
+        let sent = answer(api.create_share(&body).await).await;
+        let mut session = self.inner.session.lock().await;
+        // A sign-in or sign-out since the token was taken owns the session now.
+        let answered = match self.inner.attempts.load(Ordering::SeqCst) == attempt {
+            true => {
+                let answered = session.answered(Call::ShareCreate, sent);
+                self.ended_by(&mut session, answered).await
+            }
+            false => sent,
+        };
+        drop(session);
+        let created = CreatedShare {
+            columns_truncated,
+            ..answered?.into()
+        };
         tracing::info!(kind = %created.share.kind, "created a shared link");
         Ok(created)
     }
 
-    // The account's own links, newest first, without their SQL. `live_only` leaves out expired, revoked and removed.
-    pub async fn list_shares(&self, live_only: bool, cursor: Option<&str>) -> Result<SharePage, AccountError> {
+    // The account's own links, or a team's, newest first, without their SQL: every one of the team's for its owner
+    // and admins, a member's own otherwise. `live_only` leaves out expired, revoked and removed links.
+    pub async fn list_shares(
+        &self,
+        live_only: bool,
+        team_id: Option<&str>,
+        cursor: Option<&str>,
+    ) -> Result<SharePage, AccountError> {
         let state = list_state(live_only)?;
+        let team: Option<v2::types::ListSharesTeam> = team_id.map(known).transpose()?;
         let cursor: Option<v2::types::ListSharesCursor> = cursor
             .map(|cursor| limited(cursor.to_owned(), "not a cursor the server gave"))
             .transpose()?;
         self.share_call(Call::Share, async |api| {
-            answer(
-                api.list_shares(cursor.as_ref(), Some(SHARE_PAGE), Some(state), None)
-                    .await,
-            )
-            .await
-            .map(SharePage::from)
+            let sent = api
+                .list_shares(cursor.as_ref(), Some(SHARE_PAGE), Some(state), team.as_ref())
+                .await;
+            answer(sent).await.map(SharePage::from)
         })
         .await
     }
@@ -80,7 +116,7 @@ impl Account {
         if !is_share_token(token) {
             return Err(not_found("not a share token"));
         }
-        let api = self.api(Bearer(None));
+        let api = self.api(Bearer::public());
         let password = password.map(|password| password.expose_secret());
         answer(api.get_shared(token, password).await)
             .await
@@ -162,9 +198,9 @@ fn cut<T: TryFrom<String>>(text: Option<String>, characters: usize) -> Result<Op
     limited(text, "a field is longer than the server takes").map(Some)
 }
 
-// An ID longer than the document allows names no share the server holds.
-fn known<T: TryFrom<String>>(share_id: &str) -> Result<T, AccountError> {
-    T::try_from(share_id.to_owned()).map_err(|_| not_found("not a share ID"))
+// An ID longer than the document allows names no share or team the server holds.
+fn known<T: TryFrom<String>>(id: &str) -> Result<T, AccountError> {
+    T::try_from(id.to_owned()).map_err(|_| not_found("not an ID the server gave"))
 }
 
 fn not_found(detail: &str) -> AccountError {
@@ -208,7 +244,7 @@ mod tests {
     const TOKENS: &str =
         r#"{"access_token":"stub-access","token_type":"Bearer","expires_in":900,"refresh_token":"stub-refresh"}"#;
     const VIEW: &str = r#"{"id":"shr_01","kind":"query","scope":"account","title":"Orders","note":"","dialect":"postgres",
-        "has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live","view_count":3,
+        "has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live","suspended":false,"view_count":3,
         "created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z","expires_at":"2026-12-13T00:00:00Z",
         "url":"https://s.tablepro.app/Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0hIjK"}"#;
 
@@ -221,16 +257,19 @@ mod tests {
     }
 
     type Log = Arc<Mutex<Vec<Sent>>>;
-    type Answer = dyn Fn(&Sent) -> (u16, &'static str, String) + Send;
+    type Answer = dyn Fn(&Sent) -> (u16, &'static str, String) + Send + Sync;
 
-    fn cloud(answer: impl Fn(&Sent) -> (u16, &'static str, String) + Send + 'static) -> (Endpoints, Log) {
+    // Each connection on a thread of its own, so one slow answer holds back no other.
+    fn cloud(answer: impl Fn(&Sent) -> (u16, &'static str, String) + Send + Sync + 'static) -> (Endpoints, Log) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
         let base = format!("http://{}", listener.local_addr().expect("its address"));
         let log = Log::default();
         let kept = log.clone();
+        let answer: Arc<Answer> = Arc::new(answer);
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                serve(stream, &answer, &kept);
+                let (answer, kept) = (answer.clone(), kept.clone());
+                std::thread::spawn(move || serve(stream, &*answer, &kept));
             }
         });
         let endpoints = Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints");
@@ -379,7 +418,7 @@ mod tests {
                 "",
                 r#"{"plan":"free","live":5,"live_limit":5,"max_rows":1000,"expiries":["1d","7d","30d","2w"],
                 "default_expiry":"30d","password":false,"disable_download":false,"team":false,
-                "email_verified":true,"sharing_disabled":false}"#
+                "email_verified":true,"sharing_disabled":false,"teams":[]}"#
                     .to_owned(),
             ),
             _ => (404, "", String::new()),
@@ -536,7 +575,7 @@ mod tests {
 
         let limited = account.create_share(query("Orders")).await;
         let held = account.create_share(query("Orders")).await;
-        let listed = account.list_shares(true, None).await.expect("the list");
+        let listed = account.list_shares(true, None, None).await.expect("the list");
 
         assert!(
             matches!(limited, Err(AccountError::RateLimited { retry_after: Some(wait) }) if wait.as_secs() == 60),
@@ -618,5 +657,163 @@ mod tests {
             "{log:?}"
         );
         assert!(opened.created_at <= Utc::now());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_upload_holds_the_session_only_for_its_token() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let limits_answered = Arc::new(AtomicBool::new(false));
+        let upload_started = Arc::new(AtomicBool::new(false));
+        let (answered, started) = (limits_answered.clone(), upload_started.clone());
+        let (endpoints, log) = cloud(move |sent| match sent.request.as_str() {
+            "POST /oauth/token" => (200, "", TOKENS.to_owned()),
+            "GET /v2/share-limits" => {
+                answered.store(true, Ordering::SeqCst);
+                (
+                    200,
+                    "",
+                    r#"{"plan":"pro","live":1,"live_limit":1000,"max_rows":10000,"expiries":["never"],
+                    "default_expiry":"never","password":true,"disable_download":true,"team":true,
+                    "email_verified":true,"sharing_disabled":false,"teams":[]}"#
+                        .to_owned(),
+                )
+            }
+            "POST /v2/shares" => {
+                started.store(true, Ordering::SeqCst);
+                // The upload answers only once the limits are read, which a held session would never let happen.
+                for _ in 0..500 {
+                    if answered.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                (
+                    201,
+                    "",
+                    format!(r#"{{"share":{VIEW},"token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#),
+                )
+            }
+            _ => (404, "", String::new()),
+        });
+        let account = signed_in(dir.path(), endpoints).await;
+        account.share_limits().await.expect("a token first");
+        limits_answered.store(false, Ordering::SeqCst);
+
+        let read_meanwhile = async {
+            while !upload_started.load(Ordering::SeqCst) {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            account.share_limits().await
+        };
+        let (created, limits) = tokio::join!(account.create_share(query("Orders")), read_meanwhile);
+
+        created.expect("created");
+        assert_eq!(limits.expect("the limits").plan, "pro");
+        let order: Vec<String> = log
+            .lock()
+            .expect("the log")
+            .iter()
+            .map(|sent| sent.request.clone())
+            .collect();
+        let limits_at = order.iter().rposition(|request| request == "GET /v2/share-limits");
+        let created_at = order.iter().position(|request| request == "POST /v2/shares");
+        assert!(
+            matches!((limits_at, created_at), (Some(limits), Some(created)) if limits < created),
+            "{order:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_result_past_100_columns_shares_the_first_ones_and_says_so() {
+        use tablepro_core::column::{ColumnType, ResultColumn};
+        use tablepro_core::export::build_snapshot;
+        use tablepro_core::value::Value;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (endpoints, log) = cloud(|sent| match sent.request.as_str() {
+            "POST /oauth/token" => (200, "", TOKENS.to_owned()),
+            "POST /v2/shares" => (
+                201,
+                "",
+                format!(r#"{{"share":{VIEW},"token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#),
+            ),
+            _ => (404, "", String::new()),
+        });
+        let account = signed_in(dir.path(), endpoints).await;
+        let columns: Vec<ResultColumn> = (0..120)
+            .map(|index| ResultColumn::new(format!("c{index}"), ColumnType::untyped_text("int")))
+            .collect();
+        let row: Vec<Value> = (0..120).map(Value::Int).collect();
+        let request = ShareRequest {
+            kind: ShareKind::Result,
+            snapshot: Some(build_snapshot(&columns, [row], 1, 10)),
+            ..query("Wide")
+        };
+
+        let created = account.create_share(request).await.expect("created");
+
+        assert!(created.columns_truncated);
+        let body = sent(&log, "POST /v2/shares")[0].body.clone();
+        assert!(body.contains(r#"{"name":"c99","type":"int"}]"#), "{body}");
+        assert!(!body.contains(r#""c100""#), "{body}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_team_link_goes_to_its_team_and_its_refusals_read_as_their_codes() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (endpoints, log) = cloud(|sent| match sent.request.as_str() {
+            "POST /oauth/token" => (200, "", TOKENS.to_owned()),
+            "GET /v2/share-limits" => (
+                200,
+                "",
+                r#"{"plan":"pro","live":2,"live_limit":1000,"max_rows":10000,"expiries":["1d","never"],
+                "default_expiry":"never","password":true,"disable_download":true,"team":true,
+                "email_verified":true,"sharing_disabled":false,"teams":[
+                {"id":"team_01","name":"Acme","live":1000,"live_limit":1000,"public_links":true},
+                {"id":"team_02","name":"Lab","live":0,"live_limit":1000,"public_links":false}]}"#
+                    .to_owned(),
+            ),
+            "POST /v2/shares" if sent.body.contains(r#""team_id":"team_02""#) => {
+                (403, "", problem(403, "team_sharing_disabled"))
+            }
+            "POST /v2/shares" if sent.body.contains(r#""team_id":"team_03""#) => {
+                (403, "", problem(403, "seat_required"))
+            }
+            "POST /v2/shares" => (
+                201,
+                "",
+                format!(r#"{{"share":{VIEW},"token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#),
+            ),
+            request if request.starts_with("GET /v2/shares") => (200, "", format!(r#"{{"data":[{VIEW}]}}"#)),
+            _ => (404, "", String::new()),
+        });
+        let account = signed_in(dir.path(), endpoints).await;
+        let team = |id: &str| ShareRequest {
+            team_id: Some(id.to_owned()),
+            ..query("Orders")
+        };
+
+        let limits = account.share_limits().await.expect("the limits");
+        account.create_share(team("team_01")).await.expect("a team link");
+        let off = account.create_share(team("team_02")).await;
+        let seatless = account.create_share(team("team_03")).await;
+        account
+            .list_shares(true, Some("team_01"), None)
+            .await
+            .expect("the team's links");
+
+        assert_eq!(
+            limits.teams.iter().map(|team| team.name.as_str()).collect::<Vec<_>>(),
+            ["Acme", "Lab"]
+        );
+        assert!(limits.teams[0].at_limit() && limits.teams[0].public_links);
+        assert!(!limits.teams[1].public_links);
+        assert_eq!(off.expect_err("refused").code(), "account.team_sharing_disabled");
+        assert_eq!(seatless.expect_err("refused").code(), "account.seat_required");
+        assert!(sent(&log, "POST /v2/shares")[0].body.contains(r#""team_id":"team_01""#));
+        let list = &sent(&log, "GET /v2/shares")[0].request;
+        assert!(list.contains("team=team_01") && list.contains("state=live"), "{list}");
     }
 }
