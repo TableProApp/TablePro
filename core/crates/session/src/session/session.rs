@@ -11,7 +11,7 @@ use tablepro_core::{
     CallOptions, ColumnInfo, DriverError, EditorSession, EditorSessionOptions, SafeModeLevel, TableRef,
     UnsupportedFeature, WorkspaceSettings,
 };
-use tablepro_storage::{ConnectionListState, ConnectionStore, CredentialDemand};
+use tablepro_storage::{ConnectionStore, CredentialDemand};
 use tokio::sync::watch;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tokio_util::task::AbortOnDropHandle;
@@ -215,35 +215,10 @@ impl Session {
         self.masking.set(policy);
     }
 
-    // Keeps the rules those of the saved connection: a save, an import or a sync that changes them reaches this
-    // session and its siblings at once. Ends with the session.
+    // Keeps the rules those of the saved connection: a save, an import or a sync that changes them has set them on this
+    // session and its siblings by the time the write returns.
     pub fn follow_saved_masking(&self, store: &ConnectionStore) {
-        let id = self.id();
-        let masking = self.masking.clone();
-        let cancel = self.cancel.clone();
-        let mut changes = store.subscribe();
-        let adopt = move |state: &ConnectionListState| {
-            if let ConnectionListState::Ready(list) = state
-                && let Some(saved) = list.connections.iter().find(|saved| saved.id == id)
-            {
-                masking.set(saved.masking_policy());
-            }
-        };
-        adopt(&changes.borrow_and_update().state);
-        drop(self.tasks.spawn_task(async move {
-            loop {
-                tokio::select! {
-                    biased;
-                    () = cancel.cancelled() => break,
-                    changed = changes.changed() => {
-                        if changed.is_err() {
-                            break;
-                        }
-                        adopt(&changes.borrow_and_update().state);
-                    }
-                }
-            }
-        }));
+        store.follow_masking(self.id(), &self.masking);
     }
 
     /// What the network must reach for this session, recomputed when a
@@ -689,11 +664,12 @@ mod tests {
         let rules = email_rules();
         saved.masking_rules = rules.rules().to_vec();
         store.upsert_blocking(saved).unwrap();
-        for _ in 0..10 {
-            tokio::task::yield_now().await;
-        }
 
-        assert_eq!(session.masking_policy(), rules);
+        assert_eq!(
+            session.masking_policy(),
+            rules,
+            "the write returned before the session held its rules"
+        );
     }
 
     #[tokio::test(start_paused = true)]

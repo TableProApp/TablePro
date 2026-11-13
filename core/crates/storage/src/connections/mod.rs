@@ -2,12 +2,12 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::credentials::SecretKind;
-use tablepro_core::masking::{MaskingPolicy, MaskingRule};
+use tablepro_core::masking::{MaskingPolicy, MaskingRule, SharedMaskingPolicy, WeakMaskingPolicy};
 use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -451,6 +451,9 @@ struct StoreInner {
     path: PathBuf,
     state: Mutex<StoreState>,
     snapshot: watch::Sender<ConnectionListSnapshot>,
+    // Live sessions' masking rules, by connection. Each publish sets them before it is heard of, so a write that
+    // returns has already reached every session.
+    masking: Mutex<Vec<(Uuid, WeakMaskingPolicy)>>,
 }
 
 struct WriteGuard<'a> {
@@ -483,6 +486,7 @@ impl ConnectionStore {
                 path: paths.connections_file(),
                 state: Mutex::new(StoreState::Unloaded),
                 snapshot,
+                masking: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -497,6 +501,21 @@ impl ConnectionStore {
 
     pub fn snapshot(&self) -> ConnectionListSnapshot {
         self.inner.snapshot.borrow().clone()
+    }
+
+    // Keeps `rules` those of the saved connection `id`: every write and every read of the file that publishes a list
+    // sets them before it returns, until the last holder of `rules` is gone.
+    pub fn follow_masking(&self, id: Uuid, rules: &SharedMaskingPolicy) {
+        self.inner
+            .masking
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((id, rules.downgrade()));
+        if let ConnectionListState::Ready(list) = &self.inner.snapshot.borrow().state
+            && let Some(saved) = list.connections.iter().find(|saved| saved.id == id)
+        {
+            rules.set(saved.masking_policy());
+        }
     }
 
     pub fn load_blocking(&self) -> Result<Arc<[SavedConnection]>, StorageError> {
@@ -904,6 +923,18 @@ impl ConnectionStore {
     }
 
     fn publish(&self, state: &StoreState) {
+        if let StoreState::Ready(document, _) = state {
+            let mut followers = self.inner.masking.lock().unwrap_or_else(PoisonError::into_inner);
+            followers.retain(|(id, weak)| {
+                let Some(rules) = weak.upgrade() else {
+                    return false;
+                };
+                if let Some(saved) = document.connections.iter().find(|saved| saved.id == *id) {
+                    rules.set(saved.masking_policy());
+                }
+                true
+            });
+        }
         let next = match state {
             StoreState::Unloaded => ConnectionListState::Loading,
             StoreState::Ready(document, _) => ConnectionListState::Ready(document.list()),
@@ -1209,6 +1240,38 @@ mod tests {
         ));
         assert_eq!(reopened.load_blocking().expect("load")[0], connection);
         assert!(!connection.masking_policy().is_empty());
+    }
+
+    #[test]
+    fn a_write_sets_the_rules_of_every_follower_before_it_returns() {
+        use tablepro_core::masking::{MaskingStyle, MaskingTarget};
+
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut connection = sample_connection();
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        let live = SharedMaskingPolicy::default();
+        let gone = SharedMaskingPolicy::default();
+        store.follow_masking(connection.id, &live);
+        store.follow_masking(connection.id, &gone);
+        drop(gone);
+
+        connection.masking_rules = vec![MaskingRule::new("*", MaskingTarget::Column, MaskingStyle::Full)];
+        store.upsert_blocking(connection.clone()).expect("upsert");
+
+        assert_eq!(live.get(), connection.masking_policy());
+        assert_eq!(
+            store.inner.masking.lock().expect("followers").len(),
+            1,
+            "a dropped follower was kept"
+        );
+        let late = SharedMaskingPolicy::default();
+        store.follow_masking(connection.id, &late);
+        assert_eq!(
+            late.get(),
+            connection.masking_policy(),
+            "a follower started with stale rules"
+        );
     }
 
     #[test]

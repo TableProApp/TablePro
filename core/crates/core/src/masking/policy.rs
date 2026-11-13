@@ -1,4 +1,4 @@
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock, Weak};
 
 use super::glob::glob_matches;
 use super::{ColumnMasks, MaskingRule, MaskingStyle, MaskingTarget};
@@ -199,6 +199,25 @@ impl SharedMaskingPolicy {
     pub fn set(&self, policy: MaskingPolicy) {
         *self.policy.write().unwrap_or_else(PoisonError::into_inner) = policy;
     }
+
+    // A handle that does not keep the session's rules alive, for the connection store to set on each save.
+    pub fn downgrade(&self) -> WeakMaskingPolicy {
+        WeakMaskingPolicy {
+            policy: Arc::downgrade(&self.policy),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WeakMaskingPolicy {
+    policy: Weak<RwLock<MaskingPolicy>>,
+}
+
+impl WeakMaskingPolicy {
+    // None once every session holding the rules is gone.
+    pub fn upgrade(&self) -> Option<SharedMaskingPolicy> {
+        self.policy.upgrade().map(|policy| SharedMaskingPolicy { policy })
+    }
 }
 
 #[cfg(test)]
@@ -365,6 +384,18 @@ mod tests {
             policy.external_column_masks(Some("users"), &columns).styles(),
             [None, Some(Full)]
         );
+    }
+
+    #[test]
+    fn a_weak_handle_sets_the_rules_until_the_last_holder_goes() {
+        let shared = SharedMaskingPolicy::default();
+        let weak = shared.downgrade();
+
+        weak.upgrade().expect("held").set(policy(vec![column_rule("*", Full)]));
+
+        assert!(!shared.get().is_empty());
+        drop(shared);
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]

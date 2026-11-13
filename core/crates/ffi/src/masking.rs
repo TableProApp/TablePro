@@ -3,16 +3,18 @@
 
 use std::sync::Arc;
 
+use tablepro_core::Truncation;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::masking::detect::{
     MaskSuggestion, PersonalDataHit, SensitiveKind, SuggestionReason, scan_sql_personal_data, suggest_masks,
 };
-use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
+use tablepro_core::masking::{ColumnMasks, MaskingRule, MaskingStyle, MaskingTarget, ShareChoice};
 use uuid::Uuid;
 
+use crate::account::share::share_plan;
 use crate::error::CoreError;
-use crate::export::held_row;
-use crate::results::ResultSet;
+use crate::export::{held_row, held_value};
+use crate::results::{ResultSet, ResultStore};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -116,6 +118,55 @@ impl ResultSet {
         })
         .await
     }
+}
+
+#[uniffi::export]
+impl ResultSet {
+    // The rows a share of `max_rows` with the sheet's `columns` would send, as a finished set: removed columns left out,
+    // every value masked as the snapshot masks it, each column's `masked` the style the snapshot names. The sheet
+    // previews from it, since a Stable Hash is the core's to compute.
+    pub async fn share_preview(
+        self: Arc<Self>,
+        visible_columns: u32,
+        max_rows: u32,
+        columns: Vec<ShareColumnChoice>,
+    ) -> Result<Arc<ResultSet>, CoreError> {
+        let tasks = crate::runtime::tasks()?;
+        let blocking = tasks.clone();
+        on_runtime(&tasks, async move {
+            blocking
+                .spawn_blocking_task(move || share_preview(&self, visible_columns, max_rows, &columns))
+                .await
+                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))?
+        })
+        .await
+    }
+}
+
+fn share_preview(
+    set: &ResultSet,
+    visible_columns: u32,
+    max_rows: u32,
+    choices: &[ShareColumnChoice],
+) -> Result<Arc<ResultSet>, CoreError> {
+    if !set.is_finished() {
+        return Err(CoreError::failed("ffi.share_unfinished", "the rows are still arriving"));
+    }
+    let (visible, plan) = share_plan(set, visible_columns, choices);
+    let ended = set.extent();
+    let taken = ended.held.min(u64::from(max_rows));
+    let rows: Vec<Vec<tablepro_core::Value>> = (0..taken)
+        .map(|row| plan.row(&visible, |index| held_value(set, row, index, &visible[index])))
+        .collect();
+    let store = ResultStore::with_masking(plan.columns(&visible).into(), None);
+    store.append(&rows);
+    store.mark_masked(ColumnMasks::new(plan.masked()));
+    let truncation = match taken < ended.held || ended.cut {
+        true => Truncation::ReadPastLimit,
+        false => Truncation::Complete,
+    };
+    store.finish_as(ended.total, truncation);
+    Ok(Arc::new(ResultSet::new(0, Arc::new(store))))
 }
 
 fn share_masking(set: &ResultSet, visible_columns: u32, max_rows: u32) -> Vec<ShareColumnMasking> {
@@ -228,13 +279,14 @@ pub(crate) fn saved_rules(records: &[MaskingRuleRecord]) -> Vec<MaskingRule> {
         .collect()
 }
 
-// The style a shared column leaves with: never less than the rule's, and Remove is not a style.
-pub(crate) fn chosen_style(choice: ShareColumnChoice, rule: Option<MaskingStyle>) -> Option<MaskingStyle> {
-    let wanted = match choice {
-        ShareColumnChoice::Keep | ShareColumnChoice::Remove => None,
-        ShareColumnChoice::Mask { style } => Some(style.into()),
-    };
-    MaskingStyle::strictest(rule, wanted)
+impl From<ShareColumnChoice> for ShareChoice {
+    fn from(choice: ShareColumnChoice) -> Self {
+        match choice {
+            ShareColumnChoice::Keep => Self::Keep,
+            ShareColumnChoice::Mask { style } => Self::Mask(style.into()),
+            ShareColumnChoice::Remove => Self::Remove,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -266,22 +318,6 @@ mod tests {
             (MaskingTarget::Type, MaskingStyle::Hash)
         );
         assert!(!saved[1].id.is_nil());
-    }
-
-    #[test]
-    fn a_rule_masked_column_never_leaves_weaker_than_its_rule() {
-        let email = Some(MaskingStyle::Email);
-        let mask = |style| ShareColumnChoice::Mask { style };
-
-        assert_eq!(chosen_style(ShareColumnChoice::Keep, email), email);
-        assert_eq!(chosen_style(mask(MaskStyleTag::Email), email), email);
-        assert_eq!(
-            chosen_style(mask(MaskStyleTag::LastFour), email),
-            Some(MaskingStyle::Full)
-        );
-        assert_eq!(chosen_style(mask(MaskStyleTag::Null), email), Some(MaskingStyle::Null));
-        assert_eq!(chosen_style(ShareColumnChoice::Keep, None), None);
-        assert_eq!(chosen_style(mask(MaskStyleTag::Hash), None), Some(MaskingStyle::Hash));
     }
 
     #[test]
@@ -351,5 +387,71 @@ mod tests {
                 },
             })
         );
+    }
+
+    #[test]
+    fn the_preview_shows_what_the_snapshot_sends() {
+        use tablepro_core::column::{ColumnOrigin, ColumnType};
+        use tablepro_core::masking::{MaskingPolicy, SharedMaskingPolicy, stable_hash};
+        use tablepro_core::meta::TableRef;
+
+        use crate::results::GridMasking;
+
+        let traced = |name: &str| {
+            ResultColumn::new(name, ColumnType::untyped_text("text"))
+                .with_origin(Some(ColumnOrigin::new(TableRef::unqualified("users"), name)))
+        };
+        let columns: Arc<[ResultColumn]> = vec![traced("id"), traced("email"), traced("phone"), traced("note")].into();
+        let policy = MaskingPolicy::new([MaskingRule::new(
+            "users.email",
+            MaskingTarget::Column,
+            MaskingStyle::Email,
+        )]);
+        let store = Arc::new(ResultStore::with_masking(
+            columns,
+            Some(GridMasking {
+                policy: SharedMaskingPolicy::new(policy),
+                named_table: None,
+                own_table: None,
+                visible: None,
+                revealed: true,
+            }),
+        ));
+        let text = |value: &str| tablepro_core::Value::Text(value.to_owned());
+        store.append(&[
+            vec![text("1"), text("ann@example.com"), text("+1 555 0100"), text("vip")],
+            vec![text("2"), text("bob@example.com"), text("+1 555 0199"), text("new")],
+        ]);
+        store.finish();
+        let set = ResultSet::new(0, store);
+        let choices = [
+            ShareColumnChoice::Remove,
+            ShareColumnChoice::Keep,
+            ShareColumnChoice::Mask {
+                style: MaskStyleTag::Hash,
+            },
+        ];
+
+        let preview = share_preview(&set, 4, 1, &choices).unwrap();
+
+        let marks: Vec<(String, Option<MaskStyleTag>)> = preview
+            .columns()
+            .into_iter()
+            .map(|column| (column.name, column.masked))
+            .collect();
+        assert_eq!(
+            marks,
+            [
+                ("email".to_owned(), Some(MaskStyleTag::Email)),
+                ("phone".to_owned(), Some(MaskStyleTag::Hash)),
+                ("note".to_owned(), None),
+            ]
+        );
+        assert_eq!(preview.row_count(), 1);
+        assert!(preview.is_finished());
+        assert_eq!(preview.cell_text(0, 0).unwrap().as_deref(), Some("a•••@example.com"));
+        assert_eq!(preview.cell_text(0, 1).unwrap(), Some(stable_hash(b"+1 555 0100")));
+        assert_eq!(preview.cell_text(0, 2).unwrap().as_deref(), Some("vip"));
+        assert!(!preview.remask(), "a preview was masked again");
     }
 }
