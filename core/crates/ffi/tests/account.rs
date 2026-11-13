@@ -19,6 +19,7 @@ use tablepro_ffi::{
 };
 
 const GUID: &str = "d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a";
+const TOKEN: &str = "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0hIjK";
 const DEVICE: &str = "dev_01k8d6wpggfd68tbhz818p4ww4";
 const TOKENS: &str =
     r#"{"access_token":"stub-access","token_type":"Bearer","expires_in":900,"refresh_token":"stub-refresh"}"#;
@@ -310,4 +311,155 @@ async fn a_cancel_ends_the_wait_for_the_browser() {
 
     assert_eq!(ended, Err(CoreError::Cancelled));
     assert_eq!(opened.service.status().state, AccountStateTag::SignedOut);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_shared_link_opens_signed_out_and_the_owner_s_calls_do_not() {
+    let path = format!("/v2/shared/{TOKEN}");
+    let base = cloud(move |method, requested, _| match (method, requested) {
+        ("GET", p) if p == path => (
+            200,
+            r#"{"kind":"query","title":"Orders","note":"","dialect":"postgres","sql":"SELECT 1",
+            "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro"}"#
+                .to_owned(),
+        ),
+        _ => (404, String::new()),
+    });
+    let opened = open(&base).await;
+
+    let shared = opened.service.fetch_shared(TOKEN.to_owned(), None).await.unwrap();
+    let limits = opened.service.share_limits().await;
+    let malformed = opened.service.fetch_shared("short".to_owned(), None).await;
+
+    assert_eq!(shared.sql.as_deref(), Some("SELECT 1"));
+    assert_eq!((shared.row_count, shared.expires_at_secs), (None, None));
+    assert_eq!(limits.unwrap_err().code(), "account.signed_out");
+    assert_eq!(malformed.unwrap_err().code(), "account.not_found");
+}
+
+#[cfg(feature = "engines")]
+mod shares {
+    use tablepro_ffi::{
+        DatabaseSession, FileOpenRequest, ResultSet, RunListener, RunOutcome, RunSettings, ShareKindTag,
+        ShareRequestArg,
+    };
+
+    use super::*;
+
+    struct Quiet;
+
+    impl RunListener for Quiet {
+        fn events_pending(&self) {}
+    }
+
+    async fn run(session: &DatabaseSession, sql: &str) -> Arc<ResultSet> {
+        let editor = session.open_editor(None).await.unwrap();
+        let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
+        let outcome = run.outcome().await.unwrap();
+        assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+        let set = run.result_set(0).unwrap();
+        editor.close().await.unwrap();
+        set
+    }
+
+    fn created() -> String {
+        format!(
+            r#"{{"share":{{"id":"shr_01","kind":"result","scope":"account","title":"Orders","note":"","dialect":"sqlite",
+            "has_snapshot":true,"row_count":2,"truncated":true,"hide_sql":true,"allow_download":true,"has_password":false,
+            "state":"live","view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z",
+            "expires_at":"2026-12-13T00:00:00Z","url":"https://s.tablepro.app/{TOKEN}"}},
+            "token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#
+        )
+    }
+
+    fn request(kind: ShareKindTag) -> ShareRequestArg {
+        ShareRequestArg {
+            kind,
+            sql: "SELECT * FROM orders".to_owned(),
+            title: Some("Orders".to_owned()),
+            note: None,
+            dialect: Some("sqlite".to_owned()),
+            expiry: None,
+            hide_sql: kind == ShareKindTag::Result,
+            allow_download: None,
+            password: None,
+            team_id: None,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_result_share_sends_the_visible_columns_and_the_plan_s_rows() {
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let base = cloud({
+            let bodies = bodies.clone();
+            let device = device_answer();
+            let entitlement = entitlement_answer();
+            let created = created();
+            move |method, path, body| match (method, path) {
+                ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+                ("POST", "/v2/devices") => (201, device.clone()),
+                ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement.clone()),
+                ("POST", "/v2/shares") => {
+                    bodies.lock().unwrap().push(body.to_owned());
+                    (201, created.clone())
+                }
+                _ => (404, String::new()),
+            }
+        });
+        let opened = open(&base).await;
+        let (signed_in, ()) = tokio::join!(opened.service.sign_in(None), approve(&opened.browser));
+        signed_in.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = FileOpenRequest {
+            path: dir.path().join("shop.sqlite").display().to_string(),
+            driver_id: None,
+            read_only: false,
+            create: true,
+        };
+        let core = Core::new(
+            HostConfig {
+                client_version: "test".to_owned(),
+                storage_dir: None,
+            },
+            Box::new(MemorySecrets::default()),
+        )
+        .unwrap();
+        let session = core.open_file(file, None).await.unwrap();
+        let set = run(
+            &session,
+            "SELECT 9007199254740993 AS big, 'a' AS name, x'cafe' AS hidden UNION ALL SELECT 2, 'b', NULL",
+        )
+        .await;
+
+        let shared = opened
+            .service
+            .create_share(request(ShareKindTag::Result), Some(set), 2, 1)
+            .await
+            .unwrap();
+        let query = opened
+            .service
+            .create_share(request(ShareKindTag::Query), None, 0, 0)
+            .await
+            .unwrap();
+        let needs_set = opened
+            .service
+            .create_share(request(ShareKindTag::Result), None, 0, 1_000)
+            .await;
+
+        assert_eq!(shared.url, format!("https://s.tablepro.app/{TOKEN}"));
+        assert_eq!(shared.share.row_count, Some(2));
+        assert_eq!(shared.share.expires_at_secs, Some(1_797_120_000));
+        assert_eq!(query.share.id, "shr_01");
+        assert_eq!(needs_set.unwrap_err().code(), "ffi.share_needs_result");
+        let bodies = bodies.lock().unwrap();
+        assert!(
+            bodies[0].contains(r#""rows":[[9007199254740993,"a"]]"#),
+            "{}",
+            bodies[0]
+        );
+        assert!(bodies[0].contains(r#""row_count":2"#), "{}", bodies[0]);
+        assert!(!bodies[0].contains("hidden"), "{}", bodies[0]);
+        assert!(bodies[0].contains(r#""hide_sql":true"#), "{}", bodies[0]);
+        assert!(!bodies[1].contains("snapshot"), "{}", bodies[1]);
+    }
 }

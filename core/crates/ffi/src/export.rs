@@ -473,7 +473,7 @@ async fn feed(
     Ok(())
 }
 
-fn held_row(set: &ResultSet, row: u64, columns: &[ResultColumn]) -> Vec<Value> {
+pub(crate) fn held_row(set: &ResultSet, row: u64, columns: &[ResultColumn]) -> Vec<Value> {
     columns
         .iter()
         .enumerate()
