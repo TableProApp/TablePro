@@ -130,6 +130,8 @@ internal struct CloudShareService: ShareService {
                 throw Self.failure(try answer.body.applicationProblemJson)
             case .internalServerError(let answer):
                 throw Self.failure(try answer.body.applicationProblemJson)
+            case .serviceUnavailable(let answer):
+                throw Self.failure(try answer.body.applicationProblemJson)
             case .undocumented(let status, _):
                 throw ShareFailure.httpStatus(status)
             }

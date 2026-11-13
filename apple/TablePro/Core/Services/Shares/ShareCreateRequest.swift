@@ -78,9 +78,13 @@ internal enum ShareBodyWriter {
         }
         let rows = snapshot.rows.map { row in "[" + row.map(cell).joined(separator: ",") + "]" }
         var json = "{\"columns\":[" + columns.joined(separator: ",") + "],\"rows\":[" + rows.joined(separator: ",") + "]"
-        // Sent only when more rows exist than were sent, and only when they were counted.
-        if let total = snapshot.rowCount, total > snapshot.rows.count {
-            json += ",\"row_count\":\(total)"
+        // The count when more rows exist than were sent; more_rows when they exist and nobody counted them.
+        if let total = snapshot.rowCount {
+            if total > snapshot.rows.count {
+                json += ",\"row_count\":\(total)"
+            }
+        } else {
+            json += ",\"more_rows\":true"
         }
         return json + "}"
     }

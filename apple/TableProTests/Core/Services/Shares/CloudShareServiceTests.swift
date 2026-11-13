@@ -145,6 +145,18 @@ struct CloudShareServiceTests {
         #expect(!text.contains("row_count"))
     }
 
+    @Test("A result with more rows and no count says so with more_rows; a counted one does not")
+    func moreRowsWhenUncounted() {
+        let columns = [ShareSnapshot.Column(name: "a", type: nil)]
+        let uncounted = ShareBodyWriter.snapshot(ShareSnapshot(columns: columns, rows: [[.number("1")]], rowCount: nil))
+        #expect(uncounted.contains("\"more_rows\":true"))
+        let counted = ShareBodyWriter.snapshot(ShareSnapshot(columns: columns, rows: [[.number("1")]], rowCount: 40))
+        #expect(!counted.contains("more_rows"))
+        #expect(counted.contains("\"row_count\":40"))
+        let whole = ShareBodyWriter.snapshot(ShareSnapshot(columns: columns, rows: [[.number("1")]], rowCount: 1))
+        #expect(!whole.contains("more_rows"))
+    }
+
     @Test("A column's name and type are cut to the contract's 256 characters")
     func columnTextIsCut() throws {
         let column = ShareSnapshot.Column(name: String(repeating: "é", count: 300), type: String(repeating: "t", count: 300))

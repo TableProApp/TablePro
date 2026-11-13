@@ -1465,9 +1465,12 @@
             "type": "array"
           },
           "row_count": {
-            "description": "The rows the query returned, which may be more than those shown",
+            "description": "The rows the query returned, which may be more than those shown; null when the app cut the result without knowing its total",
             "format": "int64",
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "rows": {
             "description": "An integer outside plus or minus 2^53-1 arrives as a string of its digits",
@@ -1815,9 +1818,12 @@
             "type": "string"
           },
           "row_count": {
-            "description": "With a snapshot: the rows the query returned, which may be more than those shared",
+            "description": "With a snapshot: the rows the query returned, which may be more than those shared; null when the app cut the result without knowing its total",
             "format": "int64",
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "scope": {
             "description": "Extensible enum: account, team. account: a personal link; team: a team link",
@@ -1922,6 +1928,10 @@
             "maxItems": 100,
             "minItems": 1,
             "type": "array"
+          },
+          "more_rows": {
+            "description": "The app holds rows past those sent; with no row_count above them, the total is stored as unknown",
+            "type": "boolean"
           },
           "row_count": {
             "description": "The rows the query returned, when more than those sent",
@@ -3939,6 +3949,28 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "service_unavailable": {
+                    "summary": "Service unavailable",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/service-unavailable",
+                      "title": "Service unavailable",
+                      "status": 503,
+                      "code": "service_unavailable",
+                      "detail": "This shared result is busy. Try again in a moment."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Read a shared link",
@@ -4995,6 +5027,16 @@
             "content": {
               "application/problem+json": {
                 "examples": {
+                  "email_unverified": {
+                    "summary": "Email unverified",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/email-unverified",
+                      "title": "Email unverified",
+                      "status": 403,
+                      "code": "email_unverified",
+                      "detail": "Verify your email address to share links."
+                    }
+                  },
                   "forbidden": {
                     "summary": "Forbidden",
                     "value": {
@@ -5013,6 +5055,36 @@
                       "status": 403,
                       "code": "pro_required",
                       "detail": "This option needs TablePro Pro."
+                    }
+                  },
+                  "seat_required": {
+                    "summary": "Seat required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/seat-required",
+                      "title": "Seat required",
+                      "status": 403,
+                      "code": "seat_required",
+                      "detail": "A team link needs a seat in the team."
+                    }
+                  },
+                  "sharing_disabled": {
+                    "summary": "Sharing disabled",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/sharing-disabled",
+                      "title": "Sharing disabled",
+                      "status": 403,
+                      "code": "sharing_disabled",
+                      "detail": "Sharing is turned off for this account."
+                    }
+                  },
+                  "team_sharing_disabled": {
+                    "summary": "Team sharing disabled",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/team-sharing-disabled",
+                      "title": "Team sharing disabled",
+                      "status": 403,
+                      "code": "team_sharing_disabled",
+                      "detail": "Public links are turned off for this team."
                     }
                   }
                 },
