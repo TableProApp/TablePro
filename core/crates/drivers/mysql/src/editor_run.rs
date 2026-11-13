@@ -5,7 +5,7 @@ use futures_util::{Stream, TryStreamExt};
 use sqlx::mysql::{MySqlColumn, MySqlConnection, MySqlQueryResult, MySqlRow};
 use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, SqlSafeStr as _, Statement as _};
 use tablepro_core::column::ResultColumn;
-use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken, ScriptTokenKind};
 use tablepro_core::sql_syntax::{
     SourceTable, SqlGrammar, StatementAccess, source_table, statement_access, turns_read_write,
 };
@@ -113,7 +113,8 @@ pub(crate) async fn run_script(
     let stopping = || stopped.is_cancelled() || halt();
     let mut halted = false;
     // A function a read calls can turn the session's read-only default off, measured on MySQL 8.4.13 and MariaDB
-    // 11.4.13, so at read-only each text runs in a read-only transaction of its own. Each START commits the one before.
+    // 11.4.13, so at read-only every text but a diagnostics one opens a read-only transaction. Each START commits the
+    // one before.
     let mut in_read_only = false;
     let ran: Result<(), DriverError> = async {
         for (text, kind) in texts.into_iter().zip(kinds) {
@@ -179,27 +180,33 @@ async fn execute(
 }
 
 // SHOW WARNINGS, SHOW ERRORS and GET DIAGNOSTICS read what the text before them left, which a ROLLBACK clears on MySQL
-// 8.4 (measured), and call no function, so they run in the transaction that text opened.
+// 8.4 (measured), and call no function, so they run in the transaction that text opened. Every way the server may read
+// the text has to say so, since a `/*!99999 ... */` or `/*M! ... */` can hide the words it is read by.
 fn reads_diagnostics(text: &str) -> bool {
-    [true, false].into_iter().all(|backslash_escapes| {
-        let plan = ScriptPlan::build(text, SqlGrammar::MySql, LexicalSettings { backslash_escapes });
+    let Some(mut readings) = ScriptPlan::server_readings(text, SqlGrammar::MySql) else {
+        return false;
+    };
+    readings.all(|plan| {
         let [statement] = plan.statements() else {
             return false;
         };
-        let mut words = plan
+        let code: Vec<ScriptToken> = plan
             .tokens(statement.range.clone())
-            .filter(|token| token.kind == ScriptTokenKind::Word)
-            .filter_map(|token| text.get(token.range));
-        let named = |word: Option<&str>, names: &[&str]| {
-            word.is_some_and(|word| names.iter().any(|name| word.eq_ignore_ascii_case(name)))
+            .filter(|token| !token.kind.is_trivia())
+            .collect();
+        let named = |index: usize, names: &[&str]| {
+            code.get(index)
+                .filter(|token| token.kind == ScriptTokenKind::Word)
+                .and_then(|token| text.get(token.range.clone()))
+                .is_some_and(|word| names.iter().any(|name| word.eq_ignore_ascii_case(name)))
         };
-        match words.next() {
-            Some(first) if first.eq_ignore_ascii_case("SHOW") => named(words.next(), &["WARNINGS", "ERRORS", "COUNT"]),
-            Some(first) if first.eq_ignore_ascii_case("GET") => {
-                named(words.next(), &["DIAGNOSTICS", "CURRENT", "STACKED"])
-            }
-            _ => false,
-        }
+        // `COUNT(*)` is the one call either statement takes.
+        let calls_nothing = code.iter().enumerate().all(|(index, token)| {
+            token.kind != ScriptTokenKind::OpenParen || (index > 0 && named(index - 1, &["COUNT"]))
+        });
+        let shows = named(0, &["SHOW"]) && named(1, &["WARNINGS", "ERRORS", "COUNT"]);
+        let gets = named(0, &["GET"]) && named(1, &["DIAGNOSTICS", "CURRENT", "STACKED"]);
+        calls_nothing && (shows || gets)
     })
 }
 
@@ -629,6 +636,9 @@ mod tests {
             "SHOW WARNINGS /*!99999 ; SELECT wr() */",
             "SELECT @@warning_count",
             "SHOW 'x\\'; SELECT wr(); -- '",
+            "SHOW /*M! WARNINGS */ TABLES WHERE wr() = 1",
+            "SHOW /*!99999 WARNINGS */ TABLES WHERE wr() = 1",
+            "GET DIAGNOSTICS CONDITION wr() @m = MESSAGE_TEXT",
         ] {
             assert!(!reads_diagnostics(text), "{text}");
         }

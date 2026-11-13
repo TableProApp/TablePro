@@ -177,8 +177,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if listsTemporaryTables {
             capabilities.insert(.temporaryTables)
         }
+        if flavor.enforcesReadOnlyTransactions {
+            capabilities.insert(.readOnlyStatements)
+        }
         if holdsForServer(MySQLReadOnlyTransaction.isAvailable(banner:flavor:)) {
-            capabilities.formUnion([.readOnlyStatements, .enforcesReadOnlyMode])
+            capabilities.insert(.enforcesReadOnlyMode)
         }
         return capabilities
     }

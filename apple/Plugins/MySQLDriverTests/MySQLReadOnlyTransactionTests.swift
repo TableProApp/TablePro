@@ -217,8 +217,9 @@ struct MySQLReadOnlyTransactionTests {
         #expect(wire.sent == ["START TRANSACTION READ ONLY", Self.statement, "ROLLBACK"])
     }
 
-    // Measured on MySQL 5.5.62 and MariaDB 5.5.64: `START TRANSACTION READ ONLY` is error 1064 there.
-    @Test("A server before the READ ONLY characteristic is not wrapped", arguments: [
+    // Measured on MySQL 5.5.62 and MariaDB 5.5.64: `START TRANSACTION READ ONLY` is error 1064 there. Read-Only falls
+    // to Safe Mode's function check; an external read keeps failing at the begin, as nothing else checks it.
+    @Test("A server before the READ ONLY characteristic runs a Read-Only read as it is", arguments: [
         ("5.5.62", MySQLServerFlavor.mysql, false),
         ("5.6.4-m7", .mysql, false),
         ("5.6.5", .mysql, true),
@@ -230,7 +231,7 @@ struct MySQLReadOnlyTransactionTests {
     func olderServerIsNotWrapped(banner: String, flavor: MySQLServerFlavor, wraps: Bool) {
         #expect(MySQLReadOnlyTransaction.isAvailable(banner: banner, flavor: flavor) == wraps)
         #expect((MySQLReadOnlyTransaction.reason(for: Self.safeModeRead, flavor: flavor, banner: banner) != nil) == wraps)
-        #expect((MySQLReadOnlyTransaction.reason(for: Self.externalRead, flavor: flavor, banner: banner) != nil) == wraps)
+        #expect(MySQLReadOnlyTransaction.reason(for: Self.externalRead, flavor: flavor, banner: banner) == .externalClients)
     }
 
     @Test("Only an external read or a Read-Only statement on MySQL or MariaDB is wrapped", arguments: [

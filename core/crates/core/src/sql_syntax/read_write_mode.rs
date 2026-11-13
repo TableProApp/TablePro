@@ -64,13 +64,28 @@ fn says_read_write(part: &[Code<'_>]) -> bool {
         .any(|pair| pair[0].is_word(&["READ"]) && pair[1].is_word(&["WRITE"]))
 }
 
-// MySQL names a variable `@@session.transaction_read_only`, `SESSION transaction_read_only` or in backquotes.
+// MySQL names a variable `@@session.transaction_read_only`, `SESSION transaction_read_only`, in backquotes, or in
+// double quotes under ANSI_QUOTES, which an editor session takes from the server's global sql_mode.
 fn names_read_only_setting(token: &Code<'_>) -> bool {
-    if !matches!(token.kind, Kind::Word | Kind::Quoted) {
-        return false;
-    }
-    let name = token.text.rsplit('.').next().unwrap_or(token.text);
-    is(name.trim_start_matches('@'), &READ_ONLY_SETTINGS)
+    let text = match token.kind {
+        Kind::Word | Kind::Quoted => token.text,
+        Kind::Literal => match token.text.strip_prefix('"').and_then(|text| text.strip_suffix('"')) {
+            Some(text) => text,
+            None => return false,
+        },
+        _ => return false,
+    };
+    let name = text.rsplit('.').next().unwrap_or(text).trim_start_matches('@');
+    READ_ONLY_SETTINGS.iter().any(|setting| spells(name, setting))
+}
+
+// MySQL looks a variable up under utf8mb3_general_ci, which folds accents: 8.4.13 took `SET SESSION
+// tránsaction_read_only = 0` (measured). So a non-ASCII letter may stand for any letter of the name.
+fn spells(word: &str, name: &str) -> bool {
+    word.chars().count() == name.len()
+        && word.chars().zip(name.chars()).all(|(written, letter)| {
+            written.eq_ignore_ascii_case(&letter) || (!written.is_ascii() && written.is_alphabetic())
+        })
 }
 
 #[cfg(test)]
@@ -120,6 +135,8 @@ mod tests {
             "SET STATEMENT transaction_read_only = 0 FOR SELECT 1",
             "/*!50000 SET SESSION TRANSACTION READ WRITE */",
             "SET\u{3000}TRANSACTION READ WRITE",
+            "SET SESSION tr\u{e1}nsaction_read_only = 0",
+            "SET SESSION \"transaction_read_only\" = 0",
         ] {
             assert!(turns_read_write(sql, SqlGrammar::MySql), "{sql}");
         }

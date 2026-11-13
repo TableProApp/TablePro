@@ -59,6 +59,13 @@ private final class CopyDriver: PluginDriverStub, @unchecked Sendable {
         }
     }
 
+    var streamContexts: [PluginStatementContext] = []
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamContexts.append(context)
+        return streamRows(query: query)
+    }
+
     func quoteIdentifier(_ name: String) -> String { quote(name) }
 
     func beginTransaction() async throws { transactionEvents.append("begin") }
@@ -112,6 +119,19 @@ struct ObjectCopyRowCopierTests {
         #expect(outcome.inserted == 5)
         #expect(!outcome.cancelled)
         #expect(target.executedParameters.flatMap { $0 }.count == 10)
+    }
+
+    // A source session holding a transaction runs the copy's SELECT in it at Read-Only, which needs the call check.
+    @Test
+    func aReadOnlySourceReadSaysItCallsNoUnlistedFunction() async throws {
+        let source = CopyDriver()
+        source.streamed = rows(1)
+
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
+            .copy(from: source, to: CopyDriver(), readContext: PluginStatementContext(enforcesReadOnly: true)) { _ in }
+
+        #expect(source.streamContexts.map { $0.enforcesReadOnly } == [true])
+        #expect(source.streamContexts.map { $0.callsUnlistedFunction } == [false])
     }
 
     /// One multi-row INSERT per batch, not one per row: that is the whole reason the copy is
