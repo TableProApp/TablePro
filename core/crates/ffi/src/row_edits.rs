@@ -60,6 +60,8 @@ pub enum EditLock {
     KeyUnreadable { column: String },
     // The page was read with other columns than the editor's catalog.
     ColumnsChanged,
+    // A key column is masked, so no row of the page can be named to the server.
+    MaskedKey { column: String },
 }
 
 // The Linux grid's rules: a saved row's key and a column the server fills are locked, a new row may set its key.
@@ -209,6 +211,15 @@ impl TableEditor {
         Ok(key)
     }
 
+    fn masked_key(&self, rows: &ResultSet) -> Option<String> {
+        let masks = rows.shown_masks();
+        self.columns
+            .iter()
+            .enumerate()
+            .find(|(index, column)| column.primary_key && masks.is_masked(*index))
+            .map(|(_, column)| column.name.clone())
+    }
+
     fn unreadable_key(&self, rows: &ResultSet, read: &[ResultColumn], row: u64) -> Option<String> {
         self.columns
             .iter()
@@ -247,6 +258,24 @@ impl TableEditor {
         let reads_rows = edits.iter().any(|edit| !matches!(edit, RowEdit::Insert { .. }));
         if reads_rows {
             self.check_layout(&read)?;
+            if let Some(column) = self.masked_key(rows) {
+                return Err(lock_error(&EditLock::MaskedKey { column }));
+            }
+        }
+        let masks = rows.shown_masks();
+        if let Some(cell) = edits
+            .iter()
+            .filter_map(|edit| match edit {
+                RowEdit::Update { cells, .. } => Some(cells),
+                _ => None,
+            })
+            .flatten()
+            .find(|cell| masks.is_masked(cell.column as usize))
+        {
+            return Err(CoreError::failed(
+                "edit.masked_column",
+                format!("column {} is masked, so its cells cannot be edited", cell.column),
+            ));
         }
         let deleted: HashSet<u64> = edits
             .iter()
@@ -404,6 +433,9 @@ impl TableEditor {
         if self.check_layout(&read).is_err() {
             return Some(EditLock::ColumnsChanged);
         }
+        if let Some(column) = self.masked_key(&rows) {
+            return Some(EditLock::MaskedKey { column });
+        }
         if rows.row_count() == 0 {
             return None;
         }
@@ -434,10 +466,11 @@ impl TableEditor {
     // The text a cell's editor starts from: the whole value, which the grid shows cut.
     pub fn edit_start(&self, rows: Arc<ResultSet>, row: u64, column: u32) -> Result<EditStart, CoreError> {
         let info = self.column(column)?;
-        if !editable(info) {
+        let index = column as usize;
+        // The value under a mask is not in the set, so there is nothing to start from or compare with.
+        if !editable(info) || rows.shown_masks().is_masked(index) {
             return Ok(EditStart::ReadOnly);
         }
-        let index = column as usize;
         let kind = rows
             .cell_kind(row, index)
             .ok_or_else(|| CoreError::failed("edit.out_of_range", format!("no cell at row {row}, column {column}")))?;
@@ -792,6 +825,10 @@ fn lock_error(lock: &EditLock) -> CoreError {
         EditLock::ColumnsChanged => CoreError::failed(
             "edit.columns_changed",
             "the rows were read with other columns than the table has now",
+        ),
+        EditLock::MaskedKey { column } => CoreError::failed(
+            "edit.masked_key",
+            format!("the key column {column} is masked, so no row can be named"),
         ),
     }
 }

@@ -1,11 +1,14 @@
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
 
-use tablepro_core::Value;
-use tablepro_core::column::ResultColumn;
+use tablepro_core::column::{ColumnType, ResultColumn};
+use tablepro_core::export::ResultExtent;
+use tablepro_core::masking::{ColumnMasks, MaskingStyle, SharedMaskingPolicy, mask_text, mask_value};
 use tablepro_core::value::order::{row_order, sorts_as_text};
+use tablepro_core::value::{UndecodableReason, UndecodedValue};
+use tablepro_core::{Truncation, Value};
 
 use super::column_cells::{Cell, ColumnCells, cell_value, stored_value};
-use super::{ValueKind, cell_text};
+use super::{ResultColumnInfo, ValueKind, cell_text};
 
 // A full chunk is never written again, so an append copies at most one chunk's arrays when they grow.
 const CHUNK_ROWS: usize = 65_536;
@@ -16,6 +19,34 @@ pub(crate) struct ResultStore {
     state: RwLock<StoreState>,
 }
 
+// How a set's rows meet its connection's rules. The policy is the session's live one, so a saved change reaches a
+// set already on screen through `remask`.
+#[derive(Debug, Clone)]
+pub(crate) struct GridMasking {
+    pub policy: SharedMaskingPolicy,
+    // What the grid's names match a `table.column` rule against: a page's table, or the one a query reads.
+    pub named_table: Option<String>,
+    // A page's table, whose own columns the app selected by name; None for the user's statement, matched by origin.
+    pub own_table: Option<String>,
+    // A page's row addresses follow its visible columns and are never masked.
+    pub visible: Option<usize>,
+    // The tab showed this run unmasked, which only its grid ever sees.
+    pub revealed: bool,
+}
+
+impl GridMasking {
+    fn grid_masks(&self, columns: &[ResultColumn]) -> ColumnMasks {
+        if self.revealed {
+            return ColumnMasks::none();
+        }
+        let masks = self.policy.get().column_masks(self.named_table.as_deref(), columns);
+        match self.visible {
+            Some(visible) => masks.first(visible),
+            None => masks,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct StoreState {
     pub(super) columns: Arc<[ResultColumn]>,
@@ -23,6 +54,12 @@ pub(super) struct StoreState {
     pub(super) chunks: Vec<Chunk>,
     pub(super) rows: u64,
     pub(super) finished: bool,
+    // As the set's end reported them: every row when counted, and whether rows may follow those held.
+    pub(super) total: Option<u64>,
+    pub(super) cut: bool,
+    pub(super) masking: Option<GridMasking>,
+    // How the held cells are masked: a value under a mask is gone from the store.
+    pub(super) shown: ColumnMasks,
 }
 
 #[derive(Debug)]
@@ -33,7 +70,15 @@ pub(super) struct Chunk {
 }
 
 impl ResultStore {
+    #[cfg(test)]
     pub(crate) fn new(columns: Arc<[ResultColumn]>) -> Self {
+        Self::with_masking(columns, None)
+    }
+
+    pub(crate) fn with_masking(columns: Arc<[ResultColumn]>, masking: Option<GridMasking>) -> Self {
+        let shown = masking
+            .as_ref()
+            .map_or_else(ColumnMasks::none, |masking| masking.grid_masks(&columns));
         Self {
             state: RwLock::new(StoreState {
                 kinds: kinds_of(&columns),
@@ -41,6 +86,10 @@ impl ResultStore {
                 chunks: Vec::new(),
                 rows: 0,
                 finished: false,
+                total: None,
+                cut: false,
+                masking,
+                shown,
             }),
         }
     }
@@ -74,21 +123,33 @@ impl ResultStore {
         }
         state.kinds = kinds_of(&columns);
         state.columns = columns;
-    }
-
-    // Values are formatted before the lock is taken, so a window never waits on that.
-    pub(crate) fn append(&self, rows: &[Vec<Value>]) -> u64 {
-        let columns = self.columns();
-        let mut staged = vec![ColumnCells::default(); columns.len()];
-        for row in rows {
-            for (index, (cells, column)) in staged.iter_mut().zip(columns.iter()).enumerate() {
-                cells.push(row.get(index).unwrap_or(&Value::Null), &column.column_type);
+        // Types the driver resolved late can bring a type rule into play, also for rows already held.
+        if let Some(masking) = state.masking.clone() {
+            let fresh = masking.grid_masks(&state.columns);
+            match state.rows {
+                0 => state.shown = fresh,
+                _ => {
+                    state.add_masks(&fresh);
+                }
             }
         }
+    }
+
+    // Values are formatted, and masked, before the lock is taken, so a window never waits on that.
+    pub(crate) fn append(&self, rows: &[Vec<Value>]) -> u64 {
+        let (columns, shown) = {
+            let state = self.read();
+            (state.columns.clone(), state.shown.clone())
+        };
+        let mut staged = stage(&columns, &shown, rows);
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         if state.columns.len() != staged.len() {
             tracing::warn!("rows arrived for columns the set no longer has");
             return state.rows;
+        }
+        // The rules changed while these rows were staged.
+        if state.shown != shown {
+            staged = stage(&state.columns, &state.shown, rows);
         }
         let mut taken = 0;
         while taken < rows.len() {
@@ -118,13 +179,80 @@ impl ResultStore {
         state.rows
     }
 
-    // A set the last chunk holds would otherwise keep the slack its arrays grew by.
+    #[cfg(test)]
     pub(crate) fn finish(&self) {
+        self.finish_as(None, Truncation::Complete);
+    }
+
+    // A set the last chunk holds would otherwise keep the slack its arrays grew by.
+    pub(crate) fn finish_as(&self, total_rows: Option<u64>, truncation: Truncation) {
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         state.finished = true;
+        state.total = total_rows;
+        state.cut = truncation != Truncation::Complete;
         if let Some(chunk) = state.chunks.last_mut() {
             chunk.columns.iter_mut().for_each(ColumnCells::shrink);
         }
+    }
+
+    // The run ended, as a cancel or an error ends it, before the set said it was finished: rows may follow.
+    pub(crate) fn finish_with_run(&self) {
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        if !state.finished {
+            state.finished = true;
+            state.cut = true;
+        }
+        if let Some(chunk) = state.chunks.last_mut() {
+            chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
+    }
+
+    pub(crate) fn extent(&self) -> ResultExtent {
+        let state = self.read();
+        ResultExtent {
+            held: state.rows,
+            total: state.total,
+            cut: state.cut,
+        }
+    }
+
+    // Each column with the mask its grid shows.
+    pub(crate) fn column_infos(&self) -> Vec<ResultColumnInfo> {
+        let state = self.read();
+        state
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(index, column)| ResultColumnInfo::of(column, state.shown.style(index)))
+            .collect()
+    }
+
+    pub(crate) fn shown(&self) -> ColumnMasks {
+        self.read().shown.clone()
+    }
+
+    // What every path out of the app masks `columns` of this set with: by origin, or by name for a page's table.
+    pub(crate) fn external_masks(&self, columns: &[ResultColumn]) -> ColumnMasks {
+        let state = self.read();
+        match &state.masking {
+            Some(masking) => masking
+                .policy
+                .get()
+                .external_column_masks(masking.own_table.as_deref(), columns),
+            None => ColumnMasks::none(),
+        }
+    }
+
+    // Masks the held cells of every column the connection's rules now mask and the grid did not, as after a saved
+    // change to the rules. A column already masked keeps its mask, since the value under it is gone. False when nothing
+    // changed or the tab revealed the set.
+    pub(crate) fn remask(&self) -> bool {
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        let Some(masking) = state.masking.clone() else {
+            return false;
+        };
+        let fresh = masking.grid_masks(&state.columns);
+        state.add_masks(&fresh)
     }
 
     // `Some(None)` for null, and every byte of a binary value as hex.
@@ -136,9 +264,12 @@ impl ResultStore {
 }
 
 impl ResultStore {
-    // `None` when the cell is not there or its value cannot be named exactly (`stored_value`).
+    // `None` when the cell is not there, its value cannot be named exactly (`stored_value`) or it is masked.
     pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<Value> {
         let state = self.read();
+        if state.shown.is_masked(column) {
+            return None;
+        }
         let read = &state.columns.get(column)?.column_type;
         stored_value(state.cell(row, column)?, read)
     }
@@ -186,6 +317,68 @@ impl StoreState {
         let (chunk, local) = self.locate(row)?;
         Some(chunk.columns.get(column)?.cell(local))
     }
+
+    // The held cells of each column `fresh` masks and `shown` does not, masked from the text they hold.
+    fn add_masks(&mut self, fresh: &ColumnMasks) -> bool {
+        let added: Vec<(usize, MaskingStyle)> = fresh
+            .masked_columns()
+            .filter(|(index, _)| *index < self.columns.len() && !self.shown.is_masked(*index))
+            .collect();
+        if added.is_empty() {
+            return false;
+        }
+        let mut styles = self.shown.styles().to_vec();
+        styles.resize(self.columns.len(), None);
+        for (index, style) in added {
+            let column = self.columns[index].column_type.clone();
+            for chunk in &mut self.chunks {
+                let Some(cells) = chunk.columns.get(index) else {
+                    continue;
+                };
+                let mut masked = ColumnCells::default();
+                for row in 0..chunk.rows {
+                    masked.push(&masked_cell(cells.cell(row), &column, style), &column);
+                }
+                masked.shrink();
+                chunk.columns[index] = masked;
+            }
+            styles[index] = Some(style);
+        }
+        self.shown = ColumnMasks::new(styles);
+        true
+    }
+}
+
+fn stage(columns: &[ResultColumn], shown: &ColumnMasks, rows: &[Vec<Value>]) -> Vec<ColumnCells> {
+    let mut staged = vec![ColumnCells::default(); columns.len()];
+    for row in rows {
+        for (index, (cells, column)) in staged.iter_mut().zip(columns.iter()).enumerate() {
+            let value = row.get(index).unwrap_or(&Value::Null);
+            match shown.style(index) {
+                Some(style) => cells.push(&mask_value(value, &column.column_type, style), &column.column_type),
+                None => cells.push(value, &column.column_type),
+            }
+        }
+    }
+    staged
+}
+
+// A held cell keeps the text `value_text` wrote for its value, and a binary value its bytes, so it masks as the value
+// would have.
+fn masked_cell(cell: Cell<'_>, column: &ColumnType, style: MaskingStyle) -> Value {
+    match cell.kind {
+        None => Value::Null,
+        Some(ValueKind::Bytes) => mask_value(&Value::Bytes(cell.bytes.to_vec()), column, style),
+        Some(ValueKind::Undecodable) => mask_value(
+            &Value::Undecodable(Box::new(UndecodedValue {
+                type_name: column.name.clone(),
+                reason: UndecodableReason::UnsupportedType,
+            })),
+            column,
+            style,
+        ),
+        Some(kind) => mask_text(&cell_text::full(kind, cell.bytes), style).map_or(Value::Null, Value::Text),
+    }
 }
 
 // The core orders text by its first 4,096 characters (`value::order`), which fit in four bytes each.
@@ -232,6 +425,7 @@ mod tests {
     use tablepro_core::column::ColumnType;
 
     use super::*;
+    use crate::masking::MaskStyleTag;
 
     fn store(width: usize) -> ResultStore {
         let columns: Vec<ResultColumn> = (0..width)
@@ -329,6 +523,60 @@ mod tests {
 
         assert!(store.is_finished());
         assert_eq!(store.full_text(2, 1), Some(Some("row 2".to_owned())));
+    }
+
+    fn masked_store(revealed: bool) -> ResultStore {
+        use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingTarget};
+
+        let columns: Arc<[ResultColumn]> = vec![
+            ResultColumn::new("id", ColumnType::untyped_text("int")),
+            ResultColumn::new("token", ColumnType::untyped_text("bytea")),
+        ]
+        .into();
+        let masking = GridMasking {
+            policy: SharedMaskingPolicy::default(),
+            named_table: None,
+            own_table: None,
+            visible: None,
+            revealed,
+        };
+        let store = ResultStore::with_masking(columns, Some(masking.clone()));
+        store.append(&[
+            vec![Value::Int(1234567), Value::Bytes(vec![0xca, 0xfe])],
+            vec![Value::Null, Value::Null],
+        ]);
+        masking.policy.set(MaskingPolicy::new([
+            MaskingRule::new("id", MaskingTarget::Column, MaskingStyle::LastFour),
+            MaskingRule::new("token", MaskingTarget::Column, MaskingStyle::Full),
+        ]));
+        store
+    }
+
+    #[test]
+    fn a_rule_saved_later_masks_the_held_cells_and_null_stays_null() {
+        let store = masked_store(false);
+
+        assert!(store.remask());
+
+        assert_eq!(store.full_text(0, 0), Some(Some("••••4567".to_owned())));
+        assert_eq!(store.full_text(0, 1), Some(Some("••••".to_owned())));
+        assert_eq!(store.full_text(1, 0), Some(None));
+        assert_eq!(store.stored_value(0, 0), None, "a masked cell named a stored value");
+        let marks: Vec<Option<_>> = store.column_infos().into_iter().map(|info| info.masked).collect();
+        assert_eq!(marks, [Some(MaskStyleTag::LastFour), Some(MaskStyleTag::Full)]);
+        assert!(!store.remask(), "a column already masked was masked again");
+        store.append(&[vec![Value::Int(7654321), Value::Bytes(vec![1])]]);
+        assert_eq!(store.full_text(2, 0), Some(Some("••••4321".to_owned())));
+    }
+
+    #[test]
+    fn a_revealed_set_is_never_masked_on_screen() {
+        let store = masked_store(true);
+
+        assert!(!store.remask());
+
+        assert_eq!(store.full_text(0, 0), Some(Some("1234567".to_owned())));
+        assert_eq!(store.stored_value(0, 0), Some(Value::Int(1234567)));
     }
 
     #[test]

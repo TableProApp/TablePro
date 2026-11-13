@@ -19,7 +19,7 @@ use tablepro_account::{
 };
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::credentials::SecretError;
-use tablepro_core::export::build_snapshot;
+use tablepro_core::export::{ResultExtent, build_snapshot};
 use tablepro_core::value::Value;
 use tokio::process::{Child, Command};
 use url::Url;
@@ -303,8 +303,21 @@ fn signed_in(account: &Account) -> SignedIn {
     }
 }
 
-// Fails when the browser step does, not 10 minutes later when the sign-in times out.
+// The stack takes 30 token requests a minute per client, which the whole suite passes; a sign-in it refuses for that
+// waits out the Retry-After and starts again.
 async fn sign_in(account: &Account, browser: &Browser) -> Result<(), AccountError> {
+    loop {
+        match sign_in_once(account, browser).await {
+            Err(AccountError::RateLimited { retry_after }) => {
+                tokio::time::sleep(retry_after.unwrap_or(std::time::Duration::from_secs(60))).await;
+            }
+            answered => return answered,
+        }
+    }
+}
+
+// Fails when the browser step does, not 10 minutes later when the sign-in times out.
+async fn sign_in_once(account: &Account, browser: &Browser) -> Result<(), AccountError> {
     let signing_in = account.sign_in(std::future::pending());
     tokio::pin!(signing_in);
     loop {
@@ -689,7 +702,7 @@ fn result_share(title: &str, rows: usize, row_count: u64, kept: usize) -> ShareR
         .collect();
     ShareRequest {
         kind: ShareKind::Result,
-        snapshot: Some(build_snapshot(&columns, &rows, row_count, kept)),
+        snapshot: Some(build_snapshot(&columns, &rows, ResultExtent::complete(row_count), kept)),
         ..query_share(title)
     }
 }
@@ -935,7 +948,12 @@ async fn a_pro_link_behind_a_password_opens_with_it_keeps_every_digit_and_takes_
             kind: ShareKind::Result,
             password: Some(SecretString::from(PASSWORD)),
             allow_download: Some(false),
-            snapshot: Some(build_snapshot(&columns, &rows_shared, 2, max_rows)),
+            snapshot: Some(build_snapshot(
+                &columns,
+                &rows_shared,
+                ResultExtent::complete(2),
+                max_rows,
+            )),
             ..query_share("Ledger")
         })
         .await

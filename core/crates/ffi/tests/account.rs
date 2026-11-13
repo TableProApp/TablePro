@@ -356,7 +356,7 @@ mod shares {
 
     async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
         let editor = session.open_editor(None).await.unwrap();
-        let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
+        let run = editor.run(sql.to_owned(), RunSettings::default(), false, Box::new(Quiet));
         let outcome = run.outcome().await.unwrap();
         assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
         let set = run.result_set(0);
@@ -447,17 +447,21 @@ mod shares {
 
         let shared = opened
             .service
-            .create_share(request(ShareKindTag::Result), Some(set), 2, 1, None)
+            .create_share(request(ShareKindTag::Result), Some(set), 2, 1, None, Vec::new())
             .await
             .unwrap();
         let team_query = ShareRequestArg {
             team_id: Some("team_01".to_owned()),
             ..request(ShareKindTag::Query)
         };
-        let query = opened.service.create_share(team_query, None, 0, 0, None).await.unwrap();
+        let query = opened
+            .service
+            .create_share(team_query, None, 0, 0, None, Vec::new())
+            .await
+            .unwrap();
         let needs_set = opened
             .service
-            .create_share(request(ShareKindTag::Result), None, 0, 1_000, None)
+            .create_share(request(ShareKindTag::Result), None, 0, 1_000, None, Vec::new())
             .await;
 
         assert_eq!(shared.url, format!("https://s.tablepro.app/{TOKEN}"));
@@ -494,7 +498,7 @@ mod shares {
             name: "notes".to_owned(),
         };
         let page = session
-            .read_table_page(notes.clone(), None, None, 2, 0, Box::new(Quiet), None)
+            .read_table_page(notes.clone(), None, None, 2, 0, false, Box::new(Quiet), None)
             .await
             .unwrap();
         let outcome = page.run().outcome().await.unwrap();
@@ -507,7 +511,14 @@ mod shares {
         };
         opened
             .service
-            .create_share(shared, Some(set), page.visible_columns(), 1_000, Some(total))
+            .create_share(
+                shared,
+                Some(set),
+                page.visible_columns(),
+                1_000,
+                Some(total),
+                Vec::new(),
+            )
             .await
             .unwrap();
 
@@ -534,7 +545,7 @@ mod shares {
 
         let created = opened
             .service
-            .create_share(request(ShareKindTag::Result), Some(set), 101, 1_000, None)
+            .create_share(request(ShareKindTag::Result), Some(set), 101, 1_000, None, Vec::new())
             .await
             .unwrap();
 

@@ -122,7 +122,7 @@ impl RunState {
                 Slot::Released(store) => store.upgrade(),
             })
             .collect();
-        sets.iter().for_each(|store| store.finish());
+        sets.iter().for_each(|store| store.finish_with_run());
         self.enqueue(RunEvent::Finished {
             outcome: outcome.clone(),
             transaction,

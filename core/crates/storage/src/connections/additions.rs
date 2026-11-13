@@ -143,6 +143,7 @@ mod tests {
             external_access: Default::default(),
             ai_policy: Default::default(),
             query_timeout_secs: None,
+            masking_rules: Vec::new(),
             auth_mode: Default::default(),
             ssh: None,
             last_opened_at: None,

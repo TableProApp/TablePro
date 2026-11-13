@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use tablepro_core::masking::MaskingPolicy;
 use tablepro_core::{DatabaseDriver, SafeModeLevel, WorkspaceSettings};
 
 use super::{ConnectionMetadata, RequestTarget};
@@ -15,6 +16,8 @@ pub struct ConnectRequest {
     /// The level the session starts at. Read-Only also opens the
     /// connection read-only, through `workspace_settings`.
     pub safe_mode: SafeModeLevel,
+    // The saved connection's masking rules, which the session starts with.
+    pub masking: MaskingPolicy,
 }
 
 impl ConnectRequest {

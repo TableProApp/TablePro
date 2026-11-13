@@ -20,6 +20,7 @@ mod history;
 mod host;
 mod host_key;
 mod library;
+mod masking;
 mod prompter;
 mod results;
 mod row_edits;
@@ -59,6 +60,10 @@ pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, Secret
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
     SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
+};
+pub use masking::{
+    MaskReason, MaskStyleTag, MaskSuggestionInfo, MaskTargetTag, MaskingRuleRecord, PersonalDataHitInfo,
+    SensitiveKindTag, ShareColumnChoice, ShareColumnMasking,
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
