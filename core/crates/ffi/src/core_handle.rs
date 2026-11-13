@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
 use secrecy::SecretString;
+use tablepro_account::RefreshTokenVault;
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
@@ -40,6 +41,8 @@ pub struct Core {
     deadlines: Arc<DefaultDeadlines>,
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
+    // The TablePro account's, in the same store as every other secret.
+    refresh_tokens: Arc<dyn RefreshTokenVault>,
     paths: Option<StoragePaths>,
     store: Option<ConnectionStore>,
     writes: LibraryWrites,
@@ -66,15 +69,23 @@ impl Core {
     pub fn new(config: HostConfig, secrets: Box<dyn HostSecrets>) -> Result<Arc<Self>, CoreError> {
         let tasks = runtime::tasks()?;
         let host = Arc::new(HostSecretStore::new(secrets, tasks.clone()));
-        Ok(Self::build(config, host.clone(), host, tasks))
+        Ok(Self::build(
+            config,
+            SystemSecrets {
+                vault: host.clone(),
+                items: host.clone(),
+                refresh_tokens: host,
+            },
+            tasks,
+        ))
     }
 
     // Secrets go to the platform's own store: Credential Manager on Windows.
     #[uniffi::constructor]
     pub fn with_system_secrets(config: HostConfig) -> Result<Arc<Self>, CoreError> {
         let tasks = runtime::tasks()?;
-        let (vault, items) = system_secrets(&tasks)?;
-        Ok(Self::build(config, vault, items, tasks))
+        let secrets = system_secrets(&tasks)?;
+        Ok(Self::build(config, secrets, tasks))
     }
 
     pub fn drivers(&self) -> Vec<DriverInfo> {
@@ -291,7 +302,7 @@ impl Core {
 }
 
 impl Core {
-    fn build(config: HostConfig, vault: Arc<dyn SecretVault>, items: Arc<dyn SecretItems>, tasks: Tasks) -> Arc<Self> {
+    fn build(config: HostConfig, secrets: SystemSecrets, tasks: Tasks) -> Arc<Self> {
         let liveness = LivenessPolicy::DESKTOP;
         let deadlines = Arc::new(DefaultDeadlines::new(liveness));
         let ssh = Arc::new(InProcessSsh::system());
@@ -309,8 +320,9 @@ impl Core {
             registry: Arc::new(drivers::registry()),
             connector: Arc::new(DriverConnector::new(services, deadlines.clone())),
             deadlines,
-            vault,
-            items,
+            vault: secrets.vault,
+            items: secrets.items,
+            refresh_tokens: secrets.refresh_tokens,
             paths,
             store,
             writes: LibraryWrites::default(),
@@ -330,6 +342,10 @@ impl Core {
 
     pub fn secret_items(&self) -> Arc<dyn SecretItems> {
         self.items.clone()
+    }
+
+    pub(crate) fn refresh_tokens(&self) -> Arc<dyn RefreshTokenVault> {
+        self.refresh_tokens.clone()
     }
 }
 
@@ -356,7 +372,11 @@ fn no_storage() -> CoreError {
     CoreError::failed("ffi.no_storage", "the core was started without a storage folder")
 }
 
-type SystemSecrets = (Arc<dyn SecretVault>, Arc<dyn SecretItems>);
+struct SystemSecrets {
+    vault: Arc<dyn SecretVault>,
+    items: Arc<dyn SecretItems>,
+    refresh_tokens: Arc<dyn RefreshTokenVault>,
+}
 
 #[cfg(windows)]
 fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
@@ -364,7 +384,11 @@ fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
         "TablePro",
         tasks.clone(),
     ));
-    Ok((manager.clone(), manager))
+    Ok(SystemSecrets {
+        vault: manager.clone(),
+        items: manager.clone(),
+        refresh_tokens: manager,
+    })
 }
 
 #[cfg(not(windows))]
@@ -565,6 +589,21 @@ mod tests {
     struct NoItems;
 
     #[async_trait]
+    impl RefreshTokenVault for NoItems {
+        async fn load_refresh_token(&self) -> Result<Option<SecretString>, SecretError> {
+            Ok(None)
+        }
+
+        async fn store_refresh_token(&self, _: &SecretString) -> Result<(), SecretError> {
+            Ok(())
+        }
+
+        async fn delete_refresh_token(&self) -> Result<(), SecretError> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
     impl SecretItems for NoItems {
         async fn load_item(&self, _: SecretItem) -> Result<Option<SecretString>, SecretError> {
             Ok(None)
@@ -587,8 +626,11 @@ mod tests {
                 client_version: "test".to_owned(),
                 storage_dir: Some(dir.path().display().to_string()),
             },
-            Arc::new(Vault::default()),
-            Arc::new(NoItems),
+            SystemSecrets {
+                vault: Arc::new(Vault::default()),
+                items: Arc::new(NoItems),
+                refresh_tokens: Arc::new(NoItems),
+            },
             runtime::tasks().unwrap(),
         );
         let mut stored = blank(Uuid::new_v4());

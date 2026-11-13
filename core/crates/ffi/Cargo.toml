@@ -26,6 +26,7 @@ engines = [
 ]
 
 [dependencies]
+tablepro-account.workspace = true
 tablepro-core.workspace = true
 tablepro-driver-cassandra = { workspace = true, optional = true }
 tablepro-driver-clickhouse = { workspace = true, optional = true }
@@ -54,6 +55,7 @@ uuid.workspace = true
 windows-sys.workspace = true
 
 [dev-dependencies]
+tablepro-account = { workspace = true, features = ["fakes"] }
 csbindgen.workspace = true
 russh.workspace = true
 tempfile.workspace = true

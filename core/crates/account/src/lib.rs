@@ -16,6 +16,8 @@ mod machine_id;
 mod oauth;
 mod offline_file;
 mod profile;
+mod share;
+mod share_link;
 mod token_vault;
 
 pub use account::{Account, REFRESH_INTERVAL, RETRY_INTERVAL};
@@ -32,5 +34,10 @@ pub use entitlement_keys::{EntitlementKeys, KeyError};
 pub use machine_id::MachineId;
 pub use offline_file::{OfflineFileError, read_offline_file_blocking};
 pub use profile::{Device, Membership, Profile};
+pub use share::{
+    CreatedShare, Share, ShareExpiry, ShareKind, ShareLimits, SharePage, ShareRequest, SharedLink, SnapshotBody,
+    SnapshotColumnBody,
+};
+pub use share_link::{is_share_token, share_token_from_link};
 pub use token_vault::RefreshTokenVault;
 pub use url::Url;

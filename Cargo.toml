@@ -61,6 +61,7 @@ async-trait = "0.1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
+regex = "1"
 # Edits a TOML config file and keeps its comments and layout.
 toml_edit = "0.25.15"
 sqlparser = { version = "0.63", default-features = false, features = ["std"] }
@@ -168,13 +169,15 @@ glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 url = "2"
 percent-encoding = "2"
-# The Windows Credential Manager, where the core keeps secrets on Windows, and the
-# owning process of a loopback connection, from GetExtendedTcpTable.
+# The Windows Credential Manager, where the core keeps secrets on Windows, the
+# owning process of a loopback connection, from GetExtendedTcpTable, and the
+# MachineGuid the TablePro account derives the machine ID from.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_NetworkManagement_IpHelper",
     "Win32_Networking_WinSock",
     "Win32_Security_Credentials",
+    "Win32_System_Registry",
 ] }
 # What other apps' saved connections are kept in: binary and XML property
 # lists, XML, and the fixed-key ciphers those apps use for passwords.

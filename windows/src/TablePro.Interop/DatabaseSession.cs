@@ -108,7 +108,8 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         return new TablePageRun(
             new QueryRun(page.Run(), wake, cancellationToken),
             checked((int)page.VisibleColumns()),
-            page.CanSeek());
+            page.CanSeek(),
+            page.ViewSql());
     }
 
     // Every row the filter selects, counted by the server.

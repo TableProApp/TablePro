@@ -33,14 +33,31 @@ internal static class Program
         GC.KeepAlive(current);
     }
 
-    // Raised off the UI thread, when another launch on this data folder hands over.
+    // Raised off the UI thread, when another launch on this data folder hands over, a tablepro:// link with it.
     private static AppInstance? Listen(App app, DispatcherQueue queue)
     {
         try
         {
             var current = AppInstance.GetCurrent();
-            current.Activated += (_, _) => queue.TryEnqueue(app.BringToFront);
+            current.Activated += (_, activation) =>
+            {
+                var link = LinkOf(activation);
+                queue.TryEnqueue(() => app.Activate(link));
+            };
             return current;
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+            return null;
+        }
+    }
+
+    private static string? LinkOf(AppActivationArguments activation)
+    {
+        try
+        {
+            return ActivationLink.Of(activation);
         }
         catch (Exception exception)
         {

@@ -22,6 +22,8 @@ use crate::oauth::{OAuth, Tokens};
 use crate::profile::{Device, Profile};
 use crate::token_vault::RefreshTokenVault;
 
+mod share_calls;
+
 // The server forgets an unanswered sign-in after 10 minutes.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const ACCESS_TOKEN_MARGIN: TimeDelta = TimeDelta::seconds(60);
@@ -77,6 +79,9 @@ enum Call {
     Profile,
     Devices,
     RemoveDevice,
+    Share,
+    // Rate limited apart from the other share calls on the server, so its 429 holds only further creates.
+    ShareCreate,
 }
 
 impl Session {
@@ -517,7 +522,7 @@ impl Account {
             && let Some((access, until)) = &session.access
             && *until > Utc::now() + ACCESS_TOKEN_MARGIN
         {
-            return Ok(Bearer(access.clone()));
+            return Ok(Bearer(Some(access.clone())));
         }
         let refresh = session.refresh.clone().ok_or(AccountError::SignedOut)?;
         session.waited(Call::Token)?;
@@ -525,7 +530,7 @@ impl Account {
         let tokens = session.answered(Call::Token, tokens)?;
         let access = tokens.access.clone();
         self.adopt(session, tokens).await;
-        Ok(Bearer(access))
+        Ok(Bearer(Some(access)))
     }
 
     async fn adopt(&self, session: &mut Session, tokens: Tokens) {

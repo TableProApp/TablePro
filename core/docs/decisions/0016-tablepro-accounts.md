@@ -1,6 +1,6 @@
 # 0016: TablePro accounts live in the core, with features gated by the entitlement
 
-- **Status**: Accepted
+- **Status**: Accepted; the Windows app amended by [0025](0025-the-windows-app-signs-in-through-the-ffi.md), share links amended by [0026](0026-share-links.md)
 - **Date**: 2026-11-05
 
 ## Context

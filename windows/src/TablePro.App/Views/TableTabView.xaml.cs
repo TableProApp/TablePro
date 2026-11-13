@@ -12,7 +12,7 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // Data and Structure over one table; the page, its count and filter, every reload and every save are TableTab's.
-public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView
+public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView, IShareSource
 {
     private readonly TableTab _model;
     private bool _messagesIsTarget;
@@ -70,6 +70,9 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     }
 
     public event EventHandler? StateChanged;
+
+    // Share... on the grid's menu shares the page shown; the workspace opens the sheet.
+    public event EventHandler<ShareKind>? ShareRequested;
 
     public string Title => _model.Title;
 
@@ -584,6 +587,15 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         var copy = new MenuFlyoutItem { Text = Strings.Get("GridMenuCopy"), IsEnabled = grid.RowCount > 0 };
         copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
         menu.Items.Add(copy);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var share = new MenuFlyoutItem
+        {
+            Text = Strings.Get("ShareCommand"),
+            Icon = new SymbolIcon(Symbol.Share),
+            IsEnabled = !IsRunning && !_model.HasUnsavedChanges && Results.ShownSet is { IsFinished: true },
+        };
+        share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Result);
+        menu.Items.Add(share);
         if (args.TryGetPosition(grid, out var point))
         {
             menu.ShowAt(grid, new FlyoutShowOptions { Position = point });

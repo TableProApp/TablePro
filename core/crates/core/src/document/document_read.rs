@@ -7,7 +7,7 @@ use crate::dml::BuildSqlError;
 use crate::filter::FilterSet;
 use crate::meta::{PageCost, PagePosition, PageStability, RowIdentity, TableRef};
 use crate::sql_syntax::mongo::{CallRoot, ShellCall, ShellMethod, ShellValue, is_addressable_field};
-use crate::statement::Statement;
+use crate::statement::{Statement, StatementBuilder};
 use crate::value::Value;
 
 use super::document_filter::{field, filter_document};
@@ -102,9 +102,9 @@ pub(crate) fn count(table: &TableRef, columns: &[ColumnInfo], filter: &FilterSet
 /// Every document the filter matches, in the page's order, for an export.
 /// `ExportFields::Every` writes no `$project`, so the server sends each
 /// whole document and the driver finds the columns in them.
-pub(crate) fn export(request: &ExportRequest<'_>) -> Result<Statement, BrowseSqlError> {
+pub(crate) fn export(request: &ExportRequest<'_>, builder: &StatementBuilder) -> Result<Statement, BrowseSqlError> {
     let key = key_column(request.identity, request.columns)?;
-    let mut params = ShellParams::new();
+    let mut params = ShellParams::like(builder);
     let mut stages = Vec::new();
     if let Some(filter) = filter_document(request.columns, request.filter, &mut params)? {
         stages.push(field("$match", filter));

@@ -1251,6 +1251,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuShowHistory.IsEnabled = workspace is not null;
         MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
         MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
+        MenuShareResult.IsEnabled = workspace?.CanShareResult ?? false;
+        MenuShareQuery.IsEnabled = workspace?.CanShareQuery ?? false;
         MenuRefresh.IsEnabled = workspace is not null;
         MenuEditConnection.IsEnabled = front?.ConnectionId is not null;
         MenuReconnect.IsEnabled = front is { State: ConnectionState.Connected or ConnectionState.Failed };
