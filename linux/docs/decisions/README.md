@@ -49,7 +49,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 
 | # | Title | Status | Summary |
 |---|---|---|---|
-| [0001](0001-no-plugin-system.md) | No plugin system; drivers are statically linked | Superseded by core 0004 | Drivers are crates, registered at compile time. No `.tableplugin`-equivalent on Linux. |
+| [0001](0001-no-plugin-system.md) | No plugin system; drivers are statically linked | Accepted; superseded by core 0004 until core 0025 put it back in force | Drivers are crates, registered at compile time. No `.tableplugin`-equivalent on Linux. |
 | [0002](0002-rust-gtk4-libadwaita.md) | Rust + GTK4 + libadwaita | Accepted; version floor superseded by 0015, the Relm4 consequence by 0012 | Validated by spike. Only stack with a production virtualized data grid (GtkColumnView). |
 | [0003](0003-relm4-architecture.md) | Relm4 for app architecture | Superseded by 0012 | Elm-style components scale to TablePro's view count. |
 | [0004](0004-libsecret-secret-storage.md) | Secret storage through oo7 | Accepted; store API and Flatpak path amended 2026-09-15, the rules for edits 2026-10-15 | The Secret Service on the host, and oo7's own keyring file with a key from the Secret portal inside Flatpak; never a plain-text file. |
