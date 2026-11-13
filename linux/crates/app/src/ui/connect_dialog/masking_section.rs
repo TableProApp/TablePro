@@ -1,5 +1,5 @@
 //! The Data Masking group: the rules that hide this connection's values
-//! on screen and on every path out of the app (core ADR 0027).
+//! on screen and on every path out of the app (core ADR 0028).
 
 use gtk4 as gtk;
 use gtk4::prelude::*;

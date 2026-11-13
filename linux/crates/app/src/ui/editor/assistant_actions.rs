@@ -173,7 +173,7 @@ impl SqlEditor {
     }
 }
 
-// A connection with masking rules sends a server's words nowhere outside the grid (core ADR 0027).
+// A connection with masking rules sends a server's words nowhere outside the grid (core ADR 0028).
 fn fix_error(message: &str, server: Option<&ServerWords>, masks_values: bool) -> FixError {
     match (server, masks_values) {
         (Some(server), true) => FixError::Withheld {

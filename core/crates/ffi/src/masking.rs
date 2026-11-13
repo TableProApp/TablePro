@@ -1,5 +1,5 @@
 // Masking for the Windows app: a connection's rules, the grid's masked columns, the share sheet's column choices and
-// what the detectors suggest. The engine is `tablepro_core::masking` (core ADR 0027).
+// what the detectors suggest. The engine is `tablepro_core::masking` (core ADR 0028).
 
 use std::sync::Arc;
 

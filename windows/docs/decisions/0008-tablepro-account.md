@@ -5,7 +5,7 @@
 
 ## Context
 
-The Windows app had no TablePro account. On 2026-11-13 the maintainer decided that Windows gets account sign-in in the share-links round, since a share link needs a signed-in account with a verified email. The core builds the account from `tablepro-account` for Windows and gives it to the app through the FFI's `AccountService` ([core 0025](../../../core/docs/decisions/0025-the-windows-app-signs-in-through-the-ffi.md)); tablepro-cloud registers the public client `tablepro-windows` with a loopback redirect on any port.
+The Windows app had no TablePro account. On 2026-11-13 the maintainer decided that Windows gets account sign-in in the share-links round, since a share link needs a signed-in account with a verified email. The core builds the account from `tablepro-account` for Windows and gives it to the app through the FFI's `AccountService` ([core 0026](../../../core/docs/decisions/0026-the-windows-app-signs-in-through-the-ffi.md)); tablepro-cloud registers the public client `tablepro-windows` with a loopback redirect on any port.
 
 ## Decision
 
@@ -16,7 +16,7 @@ The app opens one account at launch and shows it on the Settings page, with the 
 - `TableProCore.OpenAccountAsync(AccountConfiguration, IAccountBrowser)` returns a `TableProAccount`, which restores the last sign-in and keeps the entitlement fresh until it is disposed. Its calls run on the thread pool as every other call does, and throw `TableProException` with the core's `account.*` code.
 - The core's status callback only signals. `AccountWake` holds one slot in a bounded channel, as `RunWake` does for a run, and `ReadStatusChangesAsync` reads `Status` again on the UI thread for every wake, so changes that come while the UI is busy are read as one.
 - `IAccountBrowser.OpenAsync` opens the sign-in page. The core calls it on a thread it lets block; the app's `SystemBrowser` hands the URL to the UI thread's dispatcher and opens it with `Launcher.LaunchUriAsync`, which needs the thread its window lives on.
-- The refresh token stays in the core's own store: `TablePro/account/<key>/refresh-token` in Credential Manager under `CreateWithSystemSecrets`, the key named for the account service and the account file, or `SecretItem.AccountRefreshToken` of a host's `ISecretStore` (core 0025). The account's device and entitlement are in `account.json` in the data folder.
+- The refresh token stays in the core's own store: `TablePro/account/<key>/refresh-token` in Credential Manager under `CreateWithSystemSecrets`, the key named for the account service and the account file, or `SecretItem.AccountRefreshToken` of a host's `ISecretStore` (core 0026). The account's device and entitlement are in `account.json` in the data folder.
 - The core reads `MachineGuid` itself. `AccountConfiguration.MachineGuid` is for a host off Windows, as the interop tests.
 
 ### App

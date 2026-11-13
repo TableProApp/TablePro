@@ -5,7 +5,7 @@
 
 ## Context
 
-On 2026-11-13 the maintainer decided that every app shares a query or a result as a public link on tablepro-cloud, from a signed-in account with a verified email: Free with 5 live links, 1,000 rows and an expiry of 1, 7 or 30 days, Pro with 1,000 links, 10,000 rows, no expiry, a password and viewer downloads off. A link's deep link `tablepro://share?token=<token>` opens its SQL in the app. The core holds the calls, the snapshot, the secret scan and the deep link rule ([core 0026](../../../core/docs/decisions/0026-share-links.md)), and the account they go through ([0008](0008-tablepro-account.md)).
+On 2026-11-13 the maintainer decided that every app shares a query or a result as a public link on tablepro-cloud, from a signed-in account with a verified email: Free with 5 live links, 1,000 rows and an expiry of 1, 7 or 30 days, Pro with 1,000 links, 10,000 rows, no expiry, a password and viewer downloads off. A link's deep link `tablepro://share?token=<token>` opens its SQL in the app. The core holds the calls, the snapshot, the secret scan and the deep link rule ([core 0027](../../../core/docs/decisions/0027-share-links.md)), and the account they go through ([0008](0008-tablepro-account.md)).
 
 ## Decision
 
@@ -14,7 +14,7 @@ The sheet and the menus work as the macOS and Linux apps' do, in Windows sentenc
 ### Entry points
 
 - The query results grid gets its first context menu: Copy, then Share result.... A table tab's grid menu adds Share..., which shares the table's whole view and is off while edits are pending, since the snapshot holds the server's values.
-- A table share reads the view again from its first row, whichever page shows, stopped if the sheet closes first, with the filter and sort the rows shown were read with and the plan's rows as its limit (`TableTab.ReadForShareAsync`), counts what the filter picks, and sends the page's `ViewSql`: the query the view stands for, with its filter values written in and no row window ([core 0026](../../../core/docs/decisions/0026-share-links.md)). So "first N of M" holds, Hide SQL is offered and the link opens in TablePro. Where the engine cannot write that query, the sheet says so and shares the rows without SQL.
+- A table share reads the view again from its first row, whichever page shows, stopped if the sheet closes first, with the filter and sort the rows shown were read with and the plan's rows as its limit (`TableTab.ReadForShareAsync`), counts what the filter picks, and sends the page's `ViewSql`: the query the view stands for, with its filter values written in and no row window ([core 0027](../../../core/docs/decisions/0027-share-links.md)). So "first N of M" holds, Hide SQL is offered and the link opens in TablePro. Where the engine cannot write that query, the sheet says so and shares the rows without SQL.
 - The SQL editor's own menu gets Share query..., with the selection, else the whole text. `SqlEditor.ContextMenuOpening` lets the host add its items each time the menu opens, since the editor builds a new menu for each window it moves to.
 - The File menu has Share result..., Share query... and Manage shared links..., which opens `https://account.tablepro.app/shared-links`. The Windows app has no saved queries or favorite queries yet, so none of them offer Share....
 

@@ -1,6 +1,6 @@
 namespace TablePro.Interop;
 
-// The styles of the macOS engine, which the core runs for every app (core ADR 0027).
+// The styles of the macOS engine, which the core runs for every app (core ADR 0028).
 public enum MaskStyle
 {
     Full,

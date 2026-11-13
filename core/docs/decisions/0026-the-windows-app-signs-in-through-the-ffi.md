@@ -1,4 +1,4 @@
-# 0025: The Windows app signs in to its TablePro account through the FFI
+# 0026: The Windows app signs in to its TablePro account through the FFI
 
 - **Status**: Accepted
 - **Date**: 2026-11-13

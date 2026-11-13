@@ -1,6 +1,6 @@
-# 0026: Share links go through the account, with the snapshot and the secret scan in the core
+# 0027: Share links go through the account, with the snapshot and the secret scan in the core
 
-- **Status**: Accepted; masked columns and the secret scan's definition amended by [0027](0027-data-masking.md)
+- **Status**: Accepted; masked columns and the secret scan's definition amended by [0028](0028-data-masking.md)
 - **Date**: 2026-11-13
 
 ## Context

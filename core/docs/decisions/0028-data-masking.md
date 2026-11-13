@@ -1,4 +1,4 @@
-# 0027: Masking hides values by a connection's rules, with the macOS engine's output, on every path out of the app
+# 0028: Masking hides values by a connection's rules, with the macOS engine's output, on every path out of the app
 
 - **Status**: Accepted
 - **Date**: 2026-11-13

@@ -4,7 +4,7 @@ use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::masking::{ColumnMasks, MaskingPolicy, MaskingStyle, mask_value};
 
-// How a grid's columns meet the connection's masking rules, by column index (core ADR 0027).
+// How a grid's columns meet the connection's masking rules, by column index (core ADR 0028).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GridMasks {
     // How the held cells are masked: a value under a mask is gone.

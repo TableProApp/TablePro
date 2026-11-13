@@ -5,7 +5,7 @@
 
 ## Context
 
-On 2026-11-13 the maintainer decided that the Windows app masks a connection's values as the macOS app does: rules per connection, masked grids with Reveal, and every export and share masked. The core holds the engine, the rules, the detectors and every masked path out ([core 0027](../../../core/docs/decisions/0027-data-masking.md)). Reveal asks the device's owner first: Windows Hello where it is set up, a confirmation where it is not.
+On 2026-11-13 the maintainer decided that the Windows app masks a connection's values as the macOS app does: rules per connection, masked grids with Reveal, and every export and share masked. The core holds the engine, the rules, the detectors and every masked path out ([core 0028](../../../core/docs/decisions/0028-data-masking.md)). Reveal asks the device's owner first: Windows Hello where it is set up, a confirmation where it is not.
 
 ## Decision
 

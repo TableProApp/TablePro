@@ -5,7 +5,7 @@
 
 ## Context
 
-On 2026-11-13 the maintainer decided that every app shares a query or a result as a public link on the TablePro account, the same way on macOS, Linux and Windows: Free with 5 live links, 1,000 rows and an expiry of 1, 7 or 30 days, Pro without those limits. The calls, the snapshot of a result's rows, the secret scan and the deep link's parser are the core's ([core ADR 0026](../../../core/docs/decisions/0026-share-links.md)). A link's viewer page opens the app with `tablepro://share?token=<token>`. The Linux app had no share feature and no handler for that scheme, and [ADR 0042](0042-account-page-lists-this-platforms-features.md) kept every paid feature off its account page.
+On 2026-11-13 the maintainer decided that every app shares a query or a result as a public link on the TablePro account, the same way on macOS, Linux and Windows: Free with 5 live links, 1,000 rows and an expiry of 1, 7 or 30 days, Pro without those limits. The calls, the snapshot of a result's rows, the secret scan and the deep link's parser are the core's ([core ADR 0027](../../../core/docs/decisions/0027-share-links.md)). A link's viewer page opens the app with `tablepro://share?token=<token>`. The Linux app had no share feature and no handler for that scheme, and [ADR 0042](0042-account-page-lists-this-platforms-features.md) kept every paid feature off its account page.
 
 ## Decision
 

@@ -26,7 +26,7 @@ pub(super) struct SessionWatches {
 
 impl SessionWatches {
     pub(super) fn new(session: &Arc<Session>, services: &AppServices, input: &WorkspaceSender) -> Self {
-        // Every save of the connection sets its rules on the session before it returns (core ADR 0027).
+        // Every save of the connection sets its rules on the session before it returns (core ADR 0028).
         session.follow_saved_masking(services.storage.connections());
         let saved = &services.saved_connections;
         let health_input = input.clone();

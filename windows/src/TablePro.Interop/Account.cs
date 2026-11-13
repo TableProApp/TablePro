@@ -4,7 +4,7 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-// The callback texts are the browser's page once the sign-in comes back, in the app's language (core ADR 0025).
+// The callback texts are the browser's page once the sign-in comes back, in the app's language (core ADR 0026).
 public sealed record AccountConfiguration(
     string DeviceName,
     string AppVersion,

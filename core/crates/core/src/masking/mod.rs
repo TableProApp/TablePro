@@ -1,6 +1,6 @@
 // Masking hides a column's values on screen and on every path out of the app, by a connection's rules. The macOS
 // engine (apple/TablePro/Core/Services/Masking) is the reference; this one gives the same output for the same text.
-// The decision: core/docs/decisions/0027-data-masking.md.
+// The decision: core/docs/decisions/0028-data-masking.md.
 
 mod column_masks;
 pub mod detect;

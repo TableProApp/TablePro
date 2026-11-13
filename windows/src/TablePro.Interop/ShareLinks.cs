@@ -19,7 +19,7 @@ public enum ShareExpiry
     Never,
 }
 
-// What the plan allows now (core ADR 0026). Plan is the server's code, "free" or "pro"; Teams, the seated ones.
+// What the plan allows now (core ADR 0027). Plan is the server's code, "free" or "pro"; Teams, the seated ones.
 public sealed record ShareLimits(
     string Plan,
     long Live,

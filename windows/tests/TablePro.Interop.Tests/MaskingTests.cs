@@ -1,6 +1,6 @@
 namespace TablePro.Interop.Tests;
 
-// A saved SQLite connection's masking rules, as the core applies them (core ADR 0027).
+// A saved SQLite connection's masking rules, as the core applies them (core ADR 0028).
 public sealed class MaskingTests : IAsyncLifetime
 {
     private const string Bullets = "••••";
