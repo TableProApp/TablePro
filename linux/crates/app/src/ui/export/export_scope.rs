@@ -200,6 +200,7 @@ mod tests {
             rows: (0..rows)
                 .map(|_| crate::services::grid::RowSnapshot::new(Vec::new().into(), Vec::new()))
                 .collect(),
+            masks: tablepro_core::masking::ColumnMasks::none(),
         }
     }
 

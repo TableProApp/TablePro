@@ -148,7 +148,11 @@ fn job(path: &Path, count: usize) -> ExportJob {
     ExportJob {
         destination: gio::File::for_path(path),
         format: ExportFormat::Rows(RowFormat::Csv(CsvOptions::default())),
-        source: ExportSource::Rows { columns, rows },
+        source: ExportSource::Rows {
+            columns,
+            rows,
+            masks: Default::default(),
+        },
         expected_rows: Some(ExpectedRows::Exact(count as u64)),
         tab: None,
     }
