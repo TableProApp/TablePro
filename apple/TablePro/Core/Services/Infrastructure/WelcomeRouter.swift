@@ -50,14 +50,41 @@ internal final class WelcomeRouter: ObservableObject {
     @Published private(set) var pendingPluginInstall: DatabaseConnection?
 
     private var databaseDidConnectCancellable: AnyCancellable?
+    private var connectionPhaseCancellable: AnyCancellable?
+    private let workspacePhases: @MainActor (UUID) -> [ConnectionWindowPhase]
 
-    internal init(appEvents: AppEvents = .shared) {
+    internal init(
+        appEvents: AppEvents = .shared,
+        workspacePhases: @escaping @MainActor (UUID) -> [ConnectionWindowPhase] = { id in
+            WindowManager.shared.workspaces(for: id).map(\.phase)
+        }
+    ) {
+        self.workspacePhases = workspacePhases
         databaseDidConnectCancellable = appEvents.databaseDidConnect
             .receive(on: RunLoop.main)
             .sink { [weak self] event in
                 self?.drainPendingSQLFiles()
                 self?.drainSharedQueries(connectedTo: event.connectionId)
             }
+        connectionPhaseCancellable = appEvents.connectionPhaseChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connectionId in
+                self?.releaseSharedQueriesIfConnectEnded(connectionId)
+            }
+    }
+
+    // A connect that failed, was cancelled or lost its window hands its shared queries back, so they open in the next
+    // connection to come up rather than when this one is reconnected much later.
+    private func releaseSharedQueriesIfConnectEnded(_ connectionId: UUID) {
+        guard claimedSharedQueries[connectionId] != nil else { return }
+        let ended = workspacePhases(connectionId).allSatisfy { phase in
+            switch phase {
+            case .unavailable, .closing: true
+            case .idle, .connecting, .connected: false
+            }
+        }
+        guard ended, let released = claimedSharedQueries.removeValue(forKey: connectionId) else { return }
+        pendingSharedQueries += released
     }
 
     private func drainPendingSQLFiles() {
