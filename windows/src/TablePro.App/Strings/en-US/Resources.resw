@@ -667,7 +667,7 @@
     <value>Data masking</value>
   </data>
   <data name="MaskingCard.Description" xml:space="preserve">
-    <value>Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values.</value>
+    <value>Hides matching values in the grid, copies, exports and shared links. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions.</value>
   </data>
   <data name="AddMaskingRuleButton.Content" xml:space="preserve">
     <value>Add rule</value>
