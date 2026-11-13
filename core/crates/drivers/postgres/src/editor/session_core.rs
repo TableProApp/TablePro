@@ -3,12 +3,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::Poll;
 use std::time::Duration;
 
-use tablepro_core::{ResultSink, RunOptions, RunSummary, ServerCode, ServerNotice, UserSql};
+use tablepro_core::{CopyInRows, CopyInSummary, ResultSink, RunOptions, RunSummary, ServerCode, ServerNotice, UserSql};
 use tokio::time::Instant;
 use tokio_postgres::error::DbError;
 use tokio_postgres::{AsyncMessage, CancelToken, Client};
 use tokio_util::sync::CancellationToken;
 
+use super::copy_flight::NoRows;
 use super::notice_queue::{NoticeQueue, NoticeSender};
 use super::run::Run;
 use super::stop_watch::StopWatch;
@@ -94,6 +95,31 @@ impl SessionCore {
         Ok(RunSummary {
             elapsed: started.elapsed(),
             end,
+            transaction_state: self.tracker.state().into(),
+        })
+    }
+
+    /// Run a `COPY ... FROM STDIN` with `rows` as its data.
+    pub(crate) async fn copy_in(
+        &mut self,
+        statement: &UserSql,
+        mut rows: CopyInRows,
+        options: RunOptions,
+        shutdown: &CancellationToken,
+    ) -> Result<CopyInSummary, Lost> {
+        self.notices.start_run();
+        let deadline = options.deadline.map(|deadline| Instant::now() + deadline);
+        let watch = StopWatch::new(options.cancel, shutdown.clone(), deadline, self.grace);
+        let mut sink = NoRows;
+        let mut run = Run::new(self, &mut sink, watch, options.row_limit);
+        let copied = run.copy_in(statement.as_str(), &mut rows).await?;
+        if run.stopped() {
+            run.probe().await?;
+        }
+        self.notices.discard();
+        Ok(CopyInSummary {
+            end: copied.end,
+            rows: copied.rows,
             transaction_state: self.tracker.state().into(),
         })
     }
