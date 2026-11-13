@@ -1114,6 +1114,37 @@ fn a_form_built_again_for_the_same_rows_reads_what_the_detectors_and_the_summary
 }
 
 #[gtk4::test]
+fn the_columns_chosen_are_what_the_create_uploads() {
+    let harness = Harness::new(Cloud::free(0), people(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    choose(&column_row(&harness, "id"), "Remove");
+    choose(&column_row(&harness, "notes"), "Mask as Stable Hash");
+    harness.summarized();
+    harness.chrome().create.emit_clicked();
+    harness.wait_for(|page| matches!(page, SheetPage::Created { .. }));
+
+    let [body] = harness.stub.bodies("POST /v2/shares").try_into().expect("one create");
+    let body: serde_json::Value = serde_json::from_str(&body).expect("a JSON body");
+    let snapshot = &body["snapshot"];
+    let column = |at: usize, key: &str| snapshot["columns"][at][key].as_str().map(str::to_owned);
+    assert_eq!(snapshot["columns"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        [
+            column(0, "name"),
+            column(0, "masked"),
+            column(1, "name"),
+            column(1, "masked")
+        ],
+        [Some("email"), Some("email"), Some("notes"), Some("hash")].map(|text| text.map(str::to_owned))
+    );
+    assert_eq!(
+        snapshot["rows"],
+        serde_json::json!([["a•••@example.com", tablepro_core::masking::stable_hash(b"+1 555 0100")]])
+    );
+}
+
+#[gtk4::test]
 fn removing_every_column_says_so_and_cannot_be_created() {
     let harness = Harness::new(Cloud::free(0), people(), true);
     harness.wait_for(|page| *page == SheetPage::Form);
@@ -1136,4 +1167,46 @@ fn removing_every_column_says_so_and_cannot_be_created() {
     harness.settle();
 
     assert_eq!(harness.posts(), 0, "a share with no column was sent");
+}
+
+const TEAM_AT_CAP: &str = r#"[{"id":"team_01","name":"R&D","live":1000,"live_limit":1000,"public_links":true}]"#;
+
+#[gtk4::test]
+fn a_team_at_its_cap_names_the_team_as_written_and_offers_another_owner() {
+    let mut cloud = Cloud::free(12);
+    cloud.pro = true;
+    *cloud.teams.lock().expect("the teams") = TEAM_AT_CAP.to_owned();
+    let harness = Harness::new(cloud, query(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+    harness.dialog.choose_target(Some("team_01".to_owned()));
+    harness.wait_for(|page| *page == SheetPage::AtLimit);
+
+    // As shown, past the markup the description is parsed as.
+    let shown: Vec<String> = descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .map(|label| label.text().to_string())
+        .collect();
+    assert!(
+        shown
+            .iter()
+            .any(|text| text == "R&D has 1,000 live links. The team allows 1,000. Revoke one to share another."),
+        "{shown:?}"
+    );
+    let personal = descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+        .find(|row| {
+            row.title() == "Personal"
+                && row
+                    .activatable_widget()
+                    .is_some_and(|widget| widget.is::<gtk::CheckButton>())
+        })
+        .expect("Share As on the page at the cap");
+    harness.audit();
+
+    assert!(WidgetExt::activate(&personal), "the Personal row did not activate");
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    assert_eq!(harness.chrome().footer.label(), "Pro · 12 links");
 }

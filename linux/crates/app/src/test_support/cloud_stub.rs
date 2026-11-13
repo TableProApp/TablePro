@@ -9,7 +9,8 @@ type Answer = dyn Fn(&str, &str) -> (u16, String) + Send + Sync;
 // Stands in for tablepro-cloud: `answer` gives the status and JSON body for a method and path.
 pub(crate) struct CloudStub {
     pub(crate) url: String,
-    requests: Arc<Mutex<Vec<String>>>,
+    // "METHOD /path" and the body sent with it.
+    requests: Arc<Mutex<Vec<(String, String)>>>,
     _accepting: AcceptLoop,
 }
 
@@ -32,11 +33,27 @@ impl CloudStub {
 
     // "METHOD /path" for each request, in the order they came.
     pub(crate) fn requests(&self) -> Vec<String> {
-        self.requests.lock().expect("the requests").clone()
+        self.requests
+            .lock()
+            .expect("the requests")
+            .iter()
+            .map(|(request, _)| request.clone())
+            .collect()
+    }
+
+    // The bodies sent with `wanted`, such as "POST /v2/shares", in the order they came.
+    pub(crate) fn bodies(&self, wanted: &str) -> Vec<String> {
+        self.requests
+            .lock()
+            .expect("the requests")
+            .iter()
+            .filter(|(request, _)| request == wanted)
+            .map(|(_, body)| body.clone())
+            .collect()
     }
 }
 
-fn serve(stream: TcpStream, kept: &Mutex<Vec<String>>, answer: &Answer) {
+fn serve(stream: TcpStream, kept: &Mutex<Vec<(String, String)>>, answer: &Answer) {
     let mut reader = BufReader::new(stream.try_clone().expect("a second handle"));
     let mut line = String::new();
     if reader.read_line(&mut line).unwrap_or(0) == 0 {
@@ -68,7 +85,9 @@ fn serve(stream: TcpStream, kept: &Mutex<Vec<String>>, answer: &Answer) {
     if reader.read_exact(&mut body).is_err() {
         return;
     }
-    kept.lock().expect("the requests").push(format!("{method} {path}"));
+    kept.lock()
+        .expect("the requests")
+        .push((format!("{method} {path}"), String::from_utf8_lossy(&body).into_owned()));
     let (status, body) = answer(&method, &path);
     let reply = format!(
         "HTTP/1.1 {status} Stub\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",

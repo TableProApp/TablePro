@@ -162,7 +162,8 @@ impl BrowseModel {
             filter: export.filter,
             sort: export.sort,
             identity: export.identity,
-            total: self.total.known(),
+            // An estimate would name a count no one made as the link's whole.
+            total: self.total.exact(),
         };
         fx.output(BrowseTabOutput::Share(Box::new(ShareSubject {
             title: String::new(),

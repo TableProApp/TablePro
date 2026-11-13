@@ -17,22 +17,6 @@ pub(crate) enum RowTotal {
 }
 
 impl RowTotal {
-    // The exact count, else the server's estimate.
-    pub(crate) fn known(&self) -> Option<u64> {
-        match self {
-            Self::Exact(total) => Some(*total),
-            Self::Estimated(estimate)
-            | Self::Counting {
-                estimate: Some(estimate),
-            }
-            | Self::Unavailable {
-                estimate: Some(estimate),
-                ..
-            } => Some(*estimate),
-            Self::Unknown | Self::Counting { estimate: None } | Self::Unavailable { estimate: None, .. } => None,
-        }
-    }
-
     pub(super) fn label_with(&self, start: u64, end: u64, format: impl Fn(u64) -> String) -> String {
         let last = end;
         let (start, end) = (format(start), format(end));

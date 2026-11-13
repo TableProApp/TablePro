@@ -7,6 +7,7 @@ use libadwaita::prelude::*;
 use tablepro_account::{ShareLimits, ShareTeam};
 
 use super::ShareDialog;
+use super::form::add_targets;
 use super::sheet_view::{self, SheetPage};
 use crate::i18n::{gettext, gettext_f};
 use crate::ui::icons;
@@ -141,8 +142,11 @@ fn at_limit(dialog: &ShareDialog) -> gtk::Widget {
     };
     let target = imp.target.borrow().clone();
     let team = sheet_view::chosen_team(limits, target.as_deref());
+    // Another owner may have a free slot, so the picker stays where the form has it.
+    add_targets(dialog, &page, limits, target.as_deref());
+    // The description is markup, and a team's name is the server's text.
     let group = adw::PreferencesGroup::builder()
-        .description(description(limits, team))
+        .description(glib::markup_escape_text(&description(limits, team)))
         .build();
     let busy = imp.busy.get();
     for row in sheet_view::live_link_rows(&imp.live.borrow()) {

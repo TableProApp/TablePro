@@ -439,7 +439,7 @@ fn add_hide_sql_notice(page: &adw::PreferencesPage, subject: &ShareSubject, hide
 }
 
 // Personal first, then each team the account holds a seat in; a team without public links shows but cannot be picked.
-fn add_targets(
+pub(super) fn add_targets(
     dialog: &ShareDialog,
     page: &adw::PreferencesPage,
     limits: &ShareLimits,
