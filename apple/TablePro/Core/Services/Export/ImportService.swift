@@ -27,6 +27,8 @@ struct ImportState {
     // A row import counts rows through the statement counter.
     var countsRows = false
     var totalIsEstimate = true
+    var fileBytesRead: Int64 = 0
+    var fileBytes: Int64 = 0
 }
 
 // MARK: - Import Service
@@ -85,6 +87,8 @@ final class ImportService: ObservableObject {
 
     func requestStop() {
         run.requestPause()
+        // A Stop during a COPY stops the run at once, and the file's reader has to see it too.
+        if run.stopChoice != nil { currentProgress?.cancel() }
         syncStopState()
     }
 
@@ -183,6 +187,7 @@ final class ImportService: ObservableObject {
             decompressedURL: decompressedURL,
             ownsDecompressedFile: ownsDecompressedFile
         )
+        sqlSource?.reportsReading(to: fileReadingReporter())
         let source: any PluginImportSource
         if let sqlSource {
             source = sqlSource
@@ -302,6 +307,26 @@ final class ImportService: ObservableObject {
             }
         }
         return [counts, status]
+    }
+
+    // The parser reads a chunk every 64 KiB, so the main actor hears only of a move of a whole permille.
+    private func fileReadingReporter() -> @Sendable (Int64, Int64) -> Void {
+        let lastPermille = OSAllocatedUnfairLock<Int64>(initialState: -1)
+        return { [weak self] read, size in
+            let permille = size > 0 ? min(1_000, read * 1_000 / size) : 0
+            let moved = lastPermille.withLock { last in
+                guard last != permille else { return false }
+                last = permille
+                return true
+            }
+            guard moved else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.state.fileBytes = size
+                // Hops can land out of order, and the bar never moves back.
+                self.state.fileBytesRead = max(self.state.fileBytesRead, read)
+            }
+        }
     }
 
     // MARK: - Several files
