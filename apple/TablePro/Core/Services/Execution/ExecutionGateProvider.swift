@@ -60,6 +60,28 @@ internal enum ExecutionGateProvider {
         )
     }
 
+    // A session holding a transaction or a table lock runs a read as it is, since the read-only mode would end what it
+    // holds, so a function the read calls is checked as on a driver without the mode.
+    static func liveReadOnlyFunctionPolicy(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        in manager: DatabaseManager? = nil
+    ) async -> ReadOnlyFunctionPolicy {
+        let (policy, driver): (ReadOnlyFunctionPolicy, DatabaseDriver?) = await MainActor.run {
+            let policy = readOnlyFunctionPolicy(connectionId: connectionId, databaseType: databaseType, in: manager)
+            guard case .live(let driver, _) = (manager ?? .shared).connectionState(connectionId) else {
+                return (policy, nil)
+            }
+            return (policy, driver)
+        }
+        guard !policy.functionsCanWrite, PluginMetadataRegistry.queryFunctionsCanWrite.contains(databaseType),
+              let driver
+        else { return policy }
+        var live = policy
+        live.functionsCanWrite = await driver.heldSessionTransactionState() != .idle
+        return live
+    }
+
     static let shared: ExecutionGate = DefaultExecutionGate(
         confirming: AlertOperationConfirming(),
         authenticating: BiometricOperationAuthenticating(),
@@ -85,7 +107,7 @@ internal enum ExecutionGateProvider {
             }
         },
         readOnlyFunctionPolicyResolver: { connectionId, databaseType in
-            await readOnlyFunctionPolicy(connectionId: connectionId, databaseType: databaseType)
+            await liveReadOnlyFunctionPolicy(connectionId: connectionId, databaseType: databaseType)
         }
     )
 }

@@ -436,6 +436,25 @@ struct PluginDriverAdapterReadOnlyModeTests {
         #expect(driver.contexts.allSatisfy { $0.origin == .app && !$0.readOnly })
     }
 
+    @Test("At Read-Only every entry point says whether the statement calls a function off the built-in list")
+    func everyEntryPointReadsTheFunctionCalls() async throws {
+        let driver = ContextRecordingDriver(capabilities: .enforcesReadOnlyMode)
+        let adapter = adapter(driver)
+        let bounding = BoundingContextDriver()
+        let boundingAdapter = self.adapter(bounding)
+
+        for query in ["SELECT purge_orders()", "SELECT count(*) FROM orders"] {
+            _ = try await adapter.executeUserQuery(query: query, rowCap: 100, parameters: nil, context: Self.readOnly)
+            _ = try await adapter.execute(query: query, context: Self.readOnly)
+            for try await _ in adapter.streamRows(query: query, safeModeIsReadOnly: true) {}
+            _ = try await boundingAdapter.executeBoundedQuery(query: query, rowCap: 10, context: Self.readOnly)
+        }
+        _ = try await adapter.executeUserQuery(query: "SELECT count(*) FROM orders", rowCap: nil, parameters: nil)
+
+        #expect(driver.contexts.map { $0.callsUnlistedFunction } == [true, true, true, false, false, false, true])
+        #expect(bounding.boundedContexts.map { $0?.callsUnlistedFunction } == [true, false])
+    }
+
     @Test("The bounded read takes the context")
     func boundedReadForwardsTheField() async throws {
         let driver = BoundingContextDriver()
