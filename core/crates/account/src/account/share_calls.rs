@@ -20,6 +20,8 @@ const UPLOAD_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const TITLE_CHARACTERS: usize = 200;
 const NOTE_CHARACTERS: usize = 2_000;
 const DIALECT_CHARACTERS: usize = 40;
+// The server counts the SQL in UTF-8 bytes, which the document's maxLength in characters does not.
+const SQL_BYTES: usize = 256 * 1_024;
 
 impl Account {
     // What the plan allows and how many live links the account holds, for the share sheet.
@@ -117,7 +119,7 @@ impl Account {
             return Err(not_found("not a share token"));
         }
         let api = self.api(Bearer::public());
-        let password = password.map(|password| password.expose_secret());
+        let password = password.map(share_password).filter(|password| !password.is_empty());
         answer(api.get_shared(token, password).await)
             .await
             .map(SharedLink::from)
@@ -154,7 +156,15 @@ async fn answer<T>(sent: Result<ResponseValue<T>, Error<v2::types::Problem>>) ->
     }
 }
 
+// A reader sends it in X-Share-Password, whose value HTTP strips of outer spaces and tabs.
+fn share_password(password: &SecretString) -> &str {
+    password.expose_secret().trim_matches([' ', '\t'])
+}
+
 fn create_body(request: ShareRequest) -> Result<v2::types::CreateShareBody, AccountError> {
+    if request.sql.len() > SQL_BYTES {
+        return Err(invalid("the SQL is longer than the server takes"));
+    }
     Ok(v2::types::CreateShareBody {
         kind: wire(request.kind.code())?,
         sql: limited(request.sql, "the SQL is longer than the server takes")?,
@@ -166,7 +176,11 @@ fn create_body(request: ShareRequest) -> Result<v2::types::CreateShareBody, Acco
         allow_download: request.allow_download,
         password: request
             .password
-            .map(|password| limited(password.expose_secret().to_owned(), "the password is too long"))
+            .as_ref()
+            .map(|password| match share_password(password) {
+                "" => Err(invalid("the password is only spaces")),
+                kept => limited(kept.to_owned(), "the password is too long"),
+            })
             .transpose()?,
         team_id: request.team_id.map(|team| limited(team, "not a team ID")).transpose()?,
         snapshot: request.snapshot.map(SnapshotBody::from),
@@ -823,5 +837,88 @@ mod tests {
         assert!(sent(&log, "POST /v2/shares")[0].body.contains(r#""team_id":"team_01""#));
         let list = &sent(&log, "GET /v2/shares")[0].request;
         assert!(list.contains("team=team_01") && list.contains("state=live"), "{list}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_password_goes_without_its_outer_spaces_and_one_of_only_spaces_is_refused() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = format!("GET /v2/shared/{TOKEN}");
+        let (endpoints, log) = cloud(move |sent| match sent.request.as_str() {
+            "POST /oauth/token" => (200, "", TOKENS.to_owned()),
+            "POST /v2/shares" => (
+                201,
+                "",
+                format!(r#"{{"share":{VIEW},"token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#),
+            ),
+            request if request == path && sent.headers.contains("x-share-password: hunter2\r\n") => (
+                200,
+                "",
+                r#"{"kind":"query","title":"Orders","note":"","dialect":"postgres","sql":"SELECT 1",
+                "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro"}"#
+                    .to_owned(),
+            ),
+            request if request == path => (401, "", problem(401, "share_password_wrong")),
+            _ => (404, "", String::new()),
+        });
+        let account = signed_in(dir.path(), endpoints).await;
+        let with = |password: &str| ShareRequest {
+            password: Some(SecretString::from(password.to_owned())),
+            ..query("Orders")
+        };
+
+        account.create_share(with(" \thunter2\t ")).await.expect("created");
+        let blank = account.create_share(with(" \t ")).await;
+        let opened = account
+            .fetch_shared(TOKEN, Some(&SecretString::from(" hunter2\t")))
+            .await;
+
+        let posts = sent(&log, "POST /v2/shares");
+        assert_eq!(posts.len(), 1, "a password of only spaces was sent");
+        let body: serde_json::Value = serde_json::from_str(&posts[0].body).expect("a JSON body");
+        assert_eq!(body["password"], "hunter2");
+        assert_eq!(blank.expect_err("refused").code(), "account.validation_failed");
+        assert_eq!(opened.expect("the link").sql.as_deref(), Some("SELECT 1"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sql_is_measured_in_bytes_as_the_server_measures_it() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (endpoints, log) = cloud(|sent| match sent.request.as_str() {
+            "POST /oauth/token" => (200, "", TOKENS.to_owned()),
+            "POST /v2/shares" => (
+                201,
+                "",
+                format!(r#"{{"share":{VIEW},"token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#),
+            ),
+            _ => (404, "", String::new()),
+        });
+        let account = signed_in(dir.path(), endpoints).await;
+        let with = |sql: String| ShareRequest { sql, ..query("Orders") };
+
+        // Two bytes a character: half the server's 262,144 characters already fill its 256 KiB.
+        let over = account.create_share(with("é".repeat(131_073))).await;
+        account
+            .create_share(with("é".repeat(131_072)))
+            .await
+            .expect("256 KiB goes");
+
+        assert_eq!(over.expect_err("refused").code(), "account.validation_failed");
+        assert_eq!(sent(&log, "POST /v2/shares").len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_network_failure_never_words_the_share_token() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        let base = format!("http://{}", listener.local_addr().expect("its address"));
+        drop(listener);
+        let endpoints = Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints");
+        let account = signed_in(dir.path(), endpoints).await;
+
+        let failed = account.fetch_shared(TOKEN, None).await.expect_err("nothing listens");
+
+        assert_eq!(failed.code(), "account.unreachable");
+        assert!(!failed.to_string().contains(TOKEN), "{failed}");
+        assert!(!format!("{failed:?}").contains(TOKEN), "{failed:?}");
     }
 }

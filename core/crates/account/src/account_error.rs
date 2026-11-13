@@ -77,17 +77,22 @@ impl AccountError {
         }
     }
 
-    // reqwest keeps the cause, such as a refused connection, a level down.
-    pub(crate) fn unreachable(error: &dyn std::error::Error) -> Self {
-        let mut detail = error.to_string();
-        let mut source = error.source();
-        while let Some(cause) = source {
-            detail.push_str(": ");
-            detail.push_str(&cause.to_string());
-            source = cause.source();
-        }
-        Self::Unreachable(detail)
+    pub(crate) fn unreachable(error: reqwest::Error) -> Self {
+        Self::Unreachable(http_text(error))
     }
+}
+
+// Without the URL, whose path can hold a share token. reqwest keeps the cause, such as a refused connection, below.
+pub(crate) fn http_text(error: reqwest::Error) -> String {
+    let error = error.without_url();
+    let mut detail = error.to_string();
+    let mut source = std::error::Error::source(&error);
+    while let Some(cause) = source {
+        detail.push_str(": ");
+        detail.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    detail
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 use tokio::sync::{Mutex, watch};
 use tokio::time::Instant;
 
-use crate::account_error::AccountError;
+use crate::account_error::{AccountError, http_text};
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::AccountSettings;
 use crate::account_status::{AccountStatus, EntitlementProblem, SignedIn};
@@ -133,7 +133,7 @@ impl Account {
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(REQUEST_TIMEOUT)
             .build()
-            .map_err(|error| AccountError::Protocol(error.to_string()))?;
+            .map_err(|error| AccountError::Protocol(http_text(error)))?;
         let oauth = OAuth::new(settings.client, &settings.endpoints, http.clone())?;
         Ok(Self {
             inner: Arc::new(Inner {

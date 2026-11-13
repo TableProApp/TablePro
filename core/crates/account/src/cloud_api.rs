@@ -5,7 +5,7 @@ use reqwest::StatusCode;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, RETRY_AFTER};
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::account_error::AccountError;
+use crate::account_error::{AccountError, http_text};
 
 #[expect(
     clippy::unwrap_used,
@@ -80,14 +80,15 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
             let status = response.status().as_u16();
             let body = match response.bytes().await {
                 Ok(body) => body,
-                Err(error) => return AccountError::unreachable(&error),
+                Err(error) => return AccountError::unreachable(error),
             };
             match serde_json::from_slice::<v2::types::Problem>(&body) {
                 Ok(problem) => problem_error(status, problem),
                 Err(_) => AccountError::Protocol(format!("HTTP {status} without a problem")),
             }
         }
-        Error::CommunicationError(error) => AccountError::unreachable(&error),
+        Error::CommunicationError(error) | Error::ResponseBodyError(error) => AccountError::unreachable(error),
+        Error::InvalidUpgrade(error) => AccountError::Protocol(http_text(error)),
         // Its text carries the whole answer, an entitlement or the account's details among them.
         Error::InvalidResponsePayload(_, error) => AccountError::Protocol(schema_mismatch(&error)),
         other => AccountError::Protocol(other.to_string()),
