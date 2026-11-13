@@ -157,7 +157,8 @@ final class TableTransferService: ObservableObject {
             connectionId: source.connectionId,
             databaseType: request.sourceType,
             gate: gate,
-            manager: manager
+            manager: manager,
+            runsIn: source
         )
 
         var capabilities = CallerCapabilities.interactiveUser

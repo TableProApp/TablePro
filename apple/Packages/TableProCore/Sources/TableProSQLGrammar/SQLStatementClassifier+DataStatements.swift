@@ -6,15 +6,19 @@ public extension SQLStatementClassifier {
 
     // Whether every statement `sql` runs, under every way the engine could lex it, only reads or changes rows. A
     // request form `requestIsData` cannot read, but `request` tiers, is refused.
+    // `rowChanges` replaces the SQL words that change rows on an engine whose language reads as SQL but differs there:
+    // SurrealQL's CREATE and RELATE make records.
     static func isDataStatement(
         _ sql: String,
         databaseTypeId: String,
         readings: SQLLexicalReadings,
         request: RequestClassification? = nil,
-        requestIsData: RequestDataStatement? = nil
+        requestIsData: RequestDataStatement? = nil,
+        rowChanges: Set<String>? = nil
     ) -> Bool {
         guard let lexings = readings.lexings(of: sql) else { return false }
-        let tiering = SQLStatementTiering(databaseTypeId: databaseTypeId, readings: readings, request: request)
+        var tiering = SQLStatementTiering(databaseTypeId: databaseTypeId, readings: readings, request: request)
+        tiering.rowChanges = rowChanges
         var seen: Set<SQLLexing> = []
         return lexings.allSatisfy { lexing in
             runnableStatements(of: lexing.text, grammar: lexing.grammar).allSatisfy { statement in
@@ -64,9 +68,17 @@ extension SQLStatementTiering {
         case "Oracle": return ["SYS", "SYSTEM"]
         case "Dameng": return ["SYS"]
         case "ClickHouse": return ["SYSTEM"]
+        // A row change there passes the server's MODIFY check: `UPDATE system_auth.roles SET is_superuser = true`,
+        // ScyllaDB's `system.roles` and its live `system.config`, Cassandra's writable `system_views` cache tables.
+        case "Cassandra", "ScyllaDB": return cassandraSystemKeyspaces
         default: return []
         }
     }
+
+    static let cassandraSystemKeyspaces: Set<String> = [
+        "SYSTEM", "SYSTEM_SCHEMA", "SYSTEM_AUTH", "SYSTEM_DISTRIBUTED", "SYSTEM_DISTRIBUTED_EVERYWHERE",
+        "SYSTEM_TRACES", "SYSTEM_VIEWS", "SYSTEM_VIRTUAL_SCHEMA", "SYSTEM_REPLICATED_KEYS",
+    ]
 
     // A ClickHouse ALTER action that is not a row change, after a comma at the statement's depth.
     static let clickHouseAlterActions: Set<String> = [
@@ -75,6 +87,8 @@ extension SQLStatementTiering {
     ]
 
     func isDataStatement(_ statement: String, grammar: SQLLexicalGrammar) -> Bool {
+        // A SurrealQL stored body tiers as a read, as any unlisted call does, but what it runs is not read.
+        if callsSurrealStoredCode(StatementCode(statement, grammar: grammar)) { return false }
         if statementClassification(statement, grammar: grammar).tier == .safe { return true }
         if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
             return batch.allSatisfy { isDataStatement($0, grammar: grammar) }
@@ -138,7 +152,7 @@ extension SQLStatementTiering {
         } else if keyword == "ALTER" {
             changesRows = databaseTypeId == Self.clickHouse && Self.changesClickHouseRows(code)
         } else {
-            changesRows = Self.rowChangeKeywords.contains(keyword)
+            changesRows = (rowChanges ?? Self.rowChangeKeywords).contains(keyword)
                 && !Self.updatesStatistics(code) && !Self.insertsProcedureResults(code)
         }
         return changesRows && !namesSystemRelation(code, grammar: grammar)

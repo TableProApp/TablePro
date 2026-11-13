@@ -322,6 +322,9 @@ targets:
       # The etcd plugin's own command parser, so the app tiers an etcd statement by the operation
       # the driver parses it into.
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
+      # The Kafka plugin's KafkaQL parser, so the app reads a KafkaQL statement as the driver does.
+      - Packages/TableProCore/Sources/TableProKafkaCore/KafkaQL.swift
+      - Packages/TableProCore/Sources/TableProKafkaCore/KafkaStatement.swift
       # The MySQL plugin's socket key and path rules, so the app writes and checks the socket path
       # exactly as the driver reads it.
       - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
@@ -416,7 +419,7 @@ targets:
       - package: Yams
       - package: PostHog
       - package: TableProCore
-        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
+        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProMemcachedCore, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProMCPClients, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.

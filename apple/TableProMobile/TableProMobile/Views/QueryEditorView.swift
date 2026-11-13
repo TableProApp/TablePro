@@ -863,9 +863,28 @@ struct QueryEditorView: View {
         } else if ReadOnlyFunctionGuard.refuses(trimmed, databaseType: databaseType, level: safeModeLevel) {
             showFunctionBlockedAlert = true
             return
+        } else if await refusesBareFunctionName(trimmed, on: session) {
+            showFunctionBlockedAlert = true
+            return
         }
 
         await executeQueryDirect(trimmed)
+    }
+
+    // Read on the session itself, whose current schema the query resolves its names in.
+    private func refusesBareFunctionName(_ sql: String, on session: ConnectionSession) async -> Bool {
+        let transactions = appState.sessionTransactions
+        let connectionId = connectionId
+        let driver = session.driver
+        return await ReadOnlyFunctionGuard.refusesBareName(
+            sql,
+            databaseType: databaseType,
+            level: safeModeLevel,
+            connectionId: connectionId,
+            schema: activeSchema
+        ) { query in
+            try await transactions.track(connectionId, reading: true) { try await driver.execute(query: query).rows }
+        }
     }
 
     // Claimed before the first await, so a second Run while the session reports how it reads literals starts nothing.

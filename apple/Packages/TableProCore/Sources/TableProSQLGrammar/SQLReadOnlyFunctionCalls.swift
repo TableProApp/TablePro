@@ -7,13 +7,14 @@ import Foundation
 // which Oracle and Dameng accept for a function with no arguments, cannot be told from a column and is not seen.
 public enum SQLReadOnlyFunctionCalls {
     // An autonomous-transaction function on Oracle and Dameng, a stored function on MySQL, MariaDB and OceanBase, PL/pgSQL
-    // on the PostgreSQL family. TiDB, StarRocks and Databend have no stored function or UDF that writes; SQL Server,
+    // on the PostgreSQL family, a `fn::` body on SurrealDB. TiDB, StarRocks and Databend have no stored function or UDF that writes; SQL Server,
     // Snowflake, BigQuery, Trino and Redshift refuse a write from a function a query calls; ClickHouse, the SQLite engines
     // and Cassandra have none.
     public static let queryFunctionsCanWrite: Set<String> = [
         "Oracle", "Dameng",
         "MySQL", "MariaDB", "OceanBase",
         "PostgreSQL", "CockroachDB", "PGlite", "KingbaseES",
+        "SurrealDB",
     ]
 
     static let commonBuiltins: Set<String> = [
@@ -179,9 +180,14 @@ public enum SQLReadOnlyFunctionCalls {
     ) -> Bool {
         let typeNames = Set(typeNames.map { $0.uppercased() })
         let known = builtins(forDatabaseTypeId: databaseTypeId)
+        let tiering = SQLStatementTiering(databaseTypeId: databaseTypeId, readings: readings, request: nil)
         return readings.all.contains { grammar in
             SQLStatementClassifier.statements(of: sql, grammar: grammar).contains { statement in
-                statementCallsUnlistedFunction(statement, grammar: grammar, builtins: known, typeNames: typeNames)
+                // SurrealQL's built-ins are namespaced, `time::now()`; only a stored body can write.
+                if databaseTypeId == SQLStatementTiering.surrealDB {
+                    return tiering.callsSurrealStoredCode(StatementCode(statement, grammar: grammar))
+                }
+                return statementCallsUnlistedFunction(statement, grammar: grammar, builtins: known, typeNames: typeNames)
             }
         }
     }

@@ -954,6 +954,61 @@ struct ExecutionGateTests {
         }
     }
 
+    // Oracle and Dameng call a function named bare; the session's catalog tells it from a column.
+    private actor ResolverCalls {
+        private(set) var count = 0
+        func record() { count += 1 }
+    }
+
+    private func makeBareNameGate(calls: ResolverCalls, answer: Bool) -> DefaultExecutionGate {
+        let policy = Self.writableFunctions
+        return DefaultExecutionGate(
+            confirming: StubConfirming(answer: true),
+            authenticating: StubAuthenticating(answer: true),
+            safeModeLevelResolver: { _ in .readOnly },
+            forcesWriteResolver: { _ in false },
+            readOnlyFunctionPolicyResolver: { _, _ in policy },
+            bareNameCallResolver: { _, _ in
+                await calls.record()
+                return answer
+            }
+        )
+    }
+
+    @Test("Read-Only on Oracle and Dameng refuses a name the catalog resolves to a function", arguments: [
+        DatabaseType.oracle, .dameng,
+    ])
+    func readOnlyRefusesABareFunctionName(type: DatabaseType) async {
+        let calls = ResolverCalls()
+        let gate = makeBareNameGate(calls: calls, answer: true)
+
+        let decision = await gate.authorize(makeRequest(sql: "SELECT purge_orders FROM dual", kind: .readQuery, databaseType: type))
+
+        #expect(decision.deniedReason?.contains("calls a function that can change data") == true)
+        #expect(await calls.count == 1)
+    }
+
+    @Test("A name the catalog reads as a column runs, and a query naming nothing never asks the catalog")
+    func bareNameAsksOnlyWhenItMust() async {
+        let calls = ResolverCalls()
+        let gate = makeBareNameGate(calls: calls, answer: false)
+
+        #expect(await gate.authorize(makeRequest(sql: "SELECT id FROM orders", kind: .readQuery, databaseType: .oracle)).isAuthorized)
+        #expect(await calls.count == 1)
+        #expect(await gate.authorize(makeRequest(sql: "SELECT 1 FROM dual", kind: .readQuery, databaseType: .oracle)).isAuthorized)
+        #expect(await gate.authorize(makeRequest(sql: "SELECT id FROM orders", kind: .readQuery, databaseType: .mysql)).isAuthorized)
+        #expect(await calls.count == 1)
+    }
+
+    @Test("A package function named bare is refused without the catalog")
+    func dottedBareCallRefusedByDefault() async {
+        let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: StubConfirming(answer: true))
+
+        let decision = await gate.authorize(makeRequest(sql: "SELECT pkg.purge FROM dual", kind: .readQuery, databaseType: .oracle))
+
+        #expect(!decision.isAuthorized)
+    }
+
     @Test("A caller that cannot prompt gets the same refusal")
     func readOnlyFunctionCallDeniedWithoutPrompt() async {
         let confirm = StubConfirming(answer: true)

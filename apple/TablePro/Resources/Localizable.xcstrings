@@ -71157,6 +71157,9 @@
     "Edit: read-only tools plus queries and data changes. On SQL databases, schema, privilege and session statements need Agent mode." : {
 
     },
+    "Edit: read-only tools plus queries and data changes. Schema, privilege and session commands need Agent mode." : {
+
+    },
     "Edit: read-only tools plus running queries. Destructive DDL stays blocked." : {
       "localizations" : {
         "fr" : {

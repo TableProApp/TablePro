@@ -30,7 +30,8 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    dataCommands: typesenseDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -60,6 +61,16 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// The document routes of the Typesense server, v26.0 to v30.2.
+private let typesenseDataCommands: Set<String> = [
+    "POST /collections/{collection}/documents",
+    "POST /collections/{collection}/documents/import",
+    "PATCH /collections/{collection}/documents/{id}",
+    "PATCH /collections/{collection}/documents",
+    "DELETE /collections/{collection}/documents/{id}",
+    "DELETE /collections/{collection}/documents",
+]
 
 private let typesenseCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET /collections", insertText: "GET /collections"),

@@ -106,7 +106,7 @@ internal enum ExternalStatementGate {
         }
 
         if statement.allowsOnlyDataStatements,
-           QueryClassifier.isSQLDataStatement(statement.sql, databaseType: statement.databaseType) == false {
+           !QueryClassifier.isDataStatement(statement.sql, databaseType: statement.databaseType) {
             throw ExternalStatementGateError.denied(dataStatementRefusal)
         }
 

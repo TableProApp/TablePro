@@ -4,6 +4,8 @@
 //
 
 import Foundation
+import TableProPluginKit
+import TableProSQLGrammar
 
 internal enum ExecutionGateProvider {
     /// A driver that declares no read-only mode gets every statement treated as a write, unless the
@@ -86,6 +88,42 @@ internal enum ExecutionGateProvider {
         },
         readOnlyFunctionPolicyResolver: { connectionId, databaseType in
             await readOnlyFunctionPolicy(connectionId: connectionId, databaseType: databaseType)
+        },
+        bareNameCallResolver: { request, reading in
+            await callsBareFunction(request, reading: reading)
         }
     )
+
+    static let callableCatalog = SQLCallableCatalogCache()
+
+    // Asks the session's catalog. A catalog that cannot be read leaves the name unexplained, so it counts as a call.
+    static func callsBareFunction(
+        _ request: OperationRequest,
+        reading: SQLBareNameReading,
+        catalog: SQLCallableCatalogCache = callableCatalog,
+        metadata: (any ScopedMetadataProviding)? = nil
+    ) async -> Bool {
+        let (provider, resolved) = await MainActor.run {
+            let provider: any ScopedMetadataProviding = metadata ?? DatabaseManager.shared
+            return (provider, request.scope ?? request.runsIn ?? provider.browseScope(for: request.connectionId))
+        }
+        guard let scope = resolved else { return true }
+        do {
+            return try await catalog.callsFunction(reading, connectionId: scope.connectionId, schema: scope.schema) { query in
+                try await provider.withMetadataRead(scope: scope, workload: .interactive) { driver in
+                    try await driver.executeCatalogRead(query: query).rows.map { row in
+                        row.map { cell -> String? in
+                            switch cell {
+                            case .null: return nil
+                            case .text(let text): return text
+                            case .bytes(let data): return String(bytes: data, encoding: .utf8)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            return true
+        }
+    }
 }

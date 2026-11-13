@@ -174,7 +174,7 @@ final class PaginationCoordinator: ObservableObject {
         )
         let safeModeIsReadOnly = parent.runsAtReadOnly
         let gate = browseFilters == nil && parent.rawFilterNeedsReadOnlyGate(filters)
-            ? countSQL.map { parent.rawFilterRequest(sql: $0, canPrompt: true) }
+            ? countSQL.map { parent.rawFilterRequest(sql: $0, canPrompt: true, scope: scope) }
             : nil
 
         // Claims the superseded automatic count's flag too: its task finds the token changed and won't clear a successor's state.
