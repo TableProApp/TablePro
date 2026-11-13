@@ -973,12 +973,7 @@ impl SqlEditor {
             self.emit_by_name::<()>("toast", &[&message]);
             return;
         };
-        self.request_share(ShareSubject {
-            title: String::new(),
-            sql: scoped.text,
-            dialect: self.driver_id(),
-            rows: None,
-        });
+        self.request_share(ShareSubject::query(String::new(), scoped.text, self.driver_id()));
     }
 
     pub(crate) fn share_shown_result(&self) {
@@ -1014,6 +1009,8 @@ impl SqlEditor {
                 sql: result.statement.as_str().to_owned(),
                 dialect: self.driver_id(),
                 rows: Some(rows),
+                table: None,
+                no_sql: None,
             }
         };
         self.request_share(subject);

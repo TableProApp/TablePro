@@ -3,6 +3,7 @@ mod imp;
 mod pages;
 mod preview;
 mod sheet_view;
+mod table_read;
 #[cfg(test)]
 mod tests;
 
@@ -69,7 +70,7 @@ impl ShareDialog {
             .build();
         let imp = dialog.imp();
         let _ = imp.chrome.set(dialog.build_chrome());
-        let _ = imp.subject.set(Arc::new(init.subject));
+        imp.subject.replace(Some(Arc::new(init.subject)));
         let _ = imp.deps.set(Deps {
             account: init.account,
             tasks: init.tasks,
@@ -82,7 +83,7 @@ impl ShareDialog {
 
     #[cfg(test)]
     pub(crate) fn subject(&self) -> Option<Arc<ShareSubject>> {
-        self.imp().subject.get().cloned()
+        self.current_subject()
     }
 
     fn build_chrome(&self) -> Chrome {
@@ -222,8 +223,9 @@ impl ShareDialog {
         let read = imp.read.get() + 1;
         imp.read.set(read);
         self.show(SheetPage::Loading);
+        let team = imp.target.borrow().clone();
         let dialog = self.downgrade();
-        spawn_and_deliver(&deps.tasks, read_limits(account), move |result| {
+        spawn_and_deliver(&deps.tasks, read_limits(account, team), move |result| {
             if let Some(dialog) = dialog.upgrade() {
                 dialog.limits_read(read, result);
             }
@@ -237,13 +239,19 @@ impl ShareDialog {
         }
         match result {
             Ok(Ok((limits, live))) => {
-                let page = sheet_view::page_for(&limits);
+                let target = imp.target.borrow().clone();
+                let team = sheet_view::chosen_team(&limits, target.as_deref());
+                let page = sheet_view::page_for(&limits, team);
                 if let Some(chrome) = imp.chrome.get() {
-                    chrome.footer.set_label(&sheet_view::footer(&limits));
+                    chrome.footer.set_label(&sheet_view::footer(&limits, team));
                 }
+                let max_rows = limits.max_rows;
                 imp.limits.replace(Some(limits));
                 imp.live.replace(live);
-                self.show(page);
+                match page == SheetPage::Form && self.rows_to_read() {
+                    true => self.read_table(max_rows),
+                    false => self.show(page),
+                }
             }
             Ok(Err(AccountError::SignedOut)) => self.show(SheetPage::SignedOut),
             Ok(Err(error)) => self.show(SheetPage::Failed(load_error_message(&error))),
@@ -276,9 +284,19 @@ impl ShareDialog {
         chrome
             .toolbar
             .set_reveal_bottom_bars(matches!(page, SheetPage::Form | SheetPage::AtLimit));
-        let (content, focus) = match (&page, imp.limits.borrow().as_ref(), imp.subject.get()) {
+        let subject = self.current_subject();
+        let (content, focus) = match (&page, imp.limits.borrow().as_ref(), subject) {
             (SheetPage::Form, Some(limits), Some(subject)) => {
-                let fields = build_form(self, subject, limits, imp.draft.borrow().as_ref());
+                let target = imp.target.borrow().clone();
+                let fields = build_form(
+                    self,
+                    &subject,
+                    limits,
+                    form::Kept {
+                        draft: imp.draft.borrow().as_ref(),
+                        team: target.as_deref(),
+                    },
+                );
                 let page = fields.page.clone().upcast::<gtk::Widget>();
                 imp.form.replace(Some(fields));
                 (page, None)
@@ -325,7 +343,7 @@ impl ShareDialog {
         if imp.busy.get() {
             return;
         }
-        let (Some(deps), Some(account), Some(subject)) = (imp.deps.get(), self.account(), imp.subject.get().cloned())
+        let (Some(deps), Some(account), Some(subject)) = (imp.deps.get(), self.account(), self.current_subject())
         else {
             return;
         };
@@ -367,6 +385,7 @@ impl ShareDialog {
                 return self.show(SheetPage::Created {
                     url: created.url,
                     copied,
+                    columns_truncated: created.columns_truncated,
                 });
             }
             Ok(Err(error)) => error,
@@ -515,15 +534,17 @@ impl ShareDialog {
     }
 }
 
-async fn read_limits(account: Account) -> LimitsRead {
+// At the limit, the live links the sheet offers to revoke: the team's for a team link.
+async fn read_limits(account: Account, team: Option<String>) -> LimitsRead {
     let limits = account.share_limits().await?;
-    if sheet_view::page_for(&limits) != SheetPage::AtLimit {
+    let team = sheet_view::chosen_team(&limits, team.as_deref()).map(|team| team.id.clone());
+    if sheet_view::page_for(&limits, sheet_view::chosen_team(&limits, team.as_deref())) != SheetPage::AtLimit {
         return Ok((limits, Vec::new()));
     }
     let mut live = Vec::new();
     let mut cursor: Option<String> = None;
     for _ in 0..LIST_PAGES {
-        let page = account.list_shares(true, cursor.as_deref()).await?;
+        let page = account.list_shares(true, team.as_deref(), cursor.as_deref()).await?;
         live.extend(page.shares);
         match page.next_cursor {
             Some(next) => cursor = Some(next),

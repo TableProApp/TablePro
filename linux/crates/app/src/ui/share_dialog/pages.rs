@@ -1,9 +1,10 @@
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_account::ShareLimits;
+use tablepro_account::{ShareLimits, ShareTeam};
 
 use super::ShareDialog;
 use super::sheet_view::{self, SheetPage};
@@ -67,7 +68,22 @@ pub(super) fn page_widget(dialog: &ShareDialog, page: &SheetPage) -> (gtk::Widge
             None,
         ),
         SheetPage::AtLimit => at_limit(dialog),
-        SheetPage::Created { url, copied } => return created(dialog, url, *copied),
+        SheetPage::Created {
+            url,
+            copied,
+            columns_truncated,
+        } => {
+            let columns = columns_truncated.then(|| {
+                let max = dialog
+                    .imp()
+                    .limits
+                    .borrow()
+                    .as_ref()
+                    .map_or(100, |limits| limits.max_columns);
+                sheet_view::columns_left_out(max)
+            });
+            return created(dialog, url, *copied, columns);
+        }
     };
     (widget, None)
 }
@@ -123,8 +139,10 @@ fn at_limit(dialog: &ShareDialog) -> gtk::Widget {
     let Some(limits) = limits.as_ref() else {
         return page.upcast();
     };
+    let target = imp.target.borrow().clone();
+    let team = sheet_view::chosen_team(limits, target.as_deref());
     let group = adw::PreferencesGroup::builder()
-        .description(description(limits))
+        .description(description(limits, team))
         .build();
     let busy = imp.busy.get();
     for row in sheet_view::live_link_rows(&imp.live.borrow()) {
@@ -156,15 +174,20 @@ fn at_limit(dialog: &ShareDialog) -> gtk::Widget {
     page.upcast()
 }
 
-fn description(limits: &ShareLimits) -> String {
-    let message = sheet_view::at_limit_message(limits);
-    match sheet_view::at_limit_upsell(limits) {
+fn description(limits: &ShareLimits, team: Option<&ShareTeam>) -> String {
+    let message = sheet_view::at_limit_message(limits, team);
+    match sheet_view::at_limit_upsell(limits, team) {
         Some(upsell) => format!("{message} {upsell}"),
         None => message,
     }
 }
 
-fn created(dialog: &ShareDialog, url: &str, copied: bool) -> (gtk::Widget, Option<gtk::Widget>) {
+fn created(
+    dialog: &ShareDialog,
+    url: &str,
+    copied: bool,
+    columns: Option<String>,
+) -> (gtk::Widget, Option<gtk::Widget>) {
     let link = gtk::Label::builder()
         .label(url)
         .selectable(true)
@@ -216,10 +239,15 @@ fn created(dialog: &ShareDialog, url: &str, copied: bool) -> (gtk::Widget, Optio
         .child(&content)
         .vexpand(true)
         .build();
-    if !copied {
-        page.set_description(Some(&gettext(
-            "The link could not be copied to the clipboard. Copy it with the button below.",
-        )));
+    let notes: Vec<String> = [
+        (!copied).then(|| gettext("The link could not be copied to the clipboard. Copy it with the button below.")),
+        columns,
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !notes.is_empty() {
+        page.set_description(Some(&glib::markup_escape_text(&notes.join(" "))));
     }
     page.add_css_class("compact");
     (page.upcast(), Some(copy.upcast()))

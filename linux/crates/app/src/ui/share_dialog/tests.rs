@@ -39,6 +39,8 @@ struct Cloud {
     create: Mutex<(u16, String)>,
     // What a create changes on the server before it answers.
     after_create: Mutex<Option<fn(&Cloud)>>,
+    teams: Mutex<String>,
+    suspended: AtomicBool,
 }
 
 impl Cloud {
@@ -54,6 +56,8 @@ impl Cloud {
             hold_create: AtomicBool::new(false),
             create: Mutex::new((201, created(URL))),
             after_create: Mutex::new(None),
+            teams: Mutex::new("[]".to_owned()),
+            suspended: AtomicBool::new(false),
         }
     }
 
@@ -63,11 +67,12 @@ impl Cloud {
             false => ("free", 5, r#"["1d","7d","30d"]"#, "30d"),
         };
         format!(
-            r#"{{"plan":"{plan}","live":{},"live_limit":{limit},"max_rows":{},"expiries":{expiries},"default_expiry":"{default}","password":{pro},"disable_download":{pro},"team":{pro},"email_verified":{},"sharing_disabled":{}}}"#,
+            r#"{{"plan":"{plan}","live":{},"live_limit":{limit},"max_rows":{},"expiries":{expiries},"default_expiry":"{default}","password":{pro},"disable_download":{pro},"team":{pro},"email_verified":{},"sharing_disabled":{},"teams":{}}}"#,
             self.live.load(Ordering::SeqCst),
             self.max_rows,
             self.verified.load(Ordering::SeqCst),
             self.disabled.load(Ordering::SeqCst),
+            self.teams.lock().expect("the teams"),
             pro = self.pro,
         )
     }
@@ -86,7 +91,7 @@ impl Cloud {
                 200,
                 format!(
                     r#"{{"data":[{},{}]}}"#,
-                    view("shr_new", "Newest", 1),
+                    view_of("shr_new", "Newest", 1, self.suspended.load(Ordering::SeqCst)),
                     view("shr_old", "Oldest", 9)
                 ),
             )),
@@ -114,9 +119,13 @@ fn wait_out(hold: &AtomicBool) {
 }
 
 fn view(id: &str, title: &str, days_ago: i64) -> String {
+    view_of(id, title, days_ago, false)
+}
+
+fn view_of(id: &str, title: &str, days_ago: i64, suspended: bool) -> String {
     let at = (Utc::now() - TimeDelta::days(days_ago)).to_rfc3339();
     format!(
-        r#"{{"id":"{id}","kind":"query","scope":"account","title":"{title}","note":"","dialect":"postgres","has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live","view_count":0,"created_at":"{at}","updated_at":"{at}"}}"#
+        r#"{{"id":"{id}","kind":"query","scope":"account","title":"{title}","note":"","dialect":"postgres","has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live","suspended":{suspended},"view_count":0,"created_at":"{at}","updated_at":"{at}"}}"#
     )
 }
 
@@ -340,12 +349,11 @@ fn settings(stub: &CloudStub, machine: MachineId, dir: &tempfile::TempDir) -> Ac
 }
 
 fn query() -> ShareSubject {
-    ShareSubject {
-        title: "Orders".to_owned(),
-        sql: "SELECT * FROM orders".to_owned(),
-        dialect: Some("postgres".to_owned()),
-        rows: None,
-    }
+    ShareSubject::query(
+        "Orders".to_owned(),
+        "SELECT * FROM orders".to_owned(),
+        Some("postgres".to_owned()),
+    )
 }
 
 fn result(rows: usize) -> ShareSubject {
@@ -450,7 +458,8 @@ fn create_copies_the_link_once_however_often_it_is_pressed() {
         harness.page(),
         Some(SheetPage::Created {
             url: URL.to_owned(),
-            copied: true
+            copied: true,
+            columns_truncated: false,
         })
     );
     assert_eq!(harness.posts(), 1);
@@ -696,6 +705,7 @@ fn a_link_the_clipboard_did_not_take_is_shown_as_created_not_copied() {
     harness.dialog.show(SheetPage::Created {
         url: URL.to_owned(),
         copied: false,
+        columns_truncated: false,
     });
 
     let status = harness
@@ -708,4 +718,178 @@ fn a_link_the_clipboard_did_not_take_is_shown_as_created_not_copied() {
         Some("The link could not be copied to the clipboard. Copy it with the button below.")
     );
     assert_eq!(harness.buttons("Copy").len(), 1);
+}
+
+fn wide_result(columns: usize) -> ShareSubject {
+    let names: Arc<[ResultColumn]> = (0..columns)
+        .map(|index| ResultColumn::new(format!("c{index}"), ColumnType::untyped_text("text")))
+        .collect();
+    ShareSubject {
+        rows: Some(SharedRows {
+            columns: names,
+            rows: vec![RowSnapshot::new(
+                (0..columns)
+                    .map(|index| Value::Text(index.to_string()))
+                    .collect::<Vec<_>>()
+                    .into(),
+                Vec::new(),
+            )],
+            row_count: 1,
+        }),
+        ..query()
+    }
+}
+
+const TEAMS: &str = r#"[{"id":"team_01","name":"Data","live":3,"live_limit":1000,"public_links":true},
+    {"id":"team_02","name":"Ops","live":0,"live_limit":1000,"public_links":false}]"#;
+
+#[gtk4::test]
+fn share_as_lists_personal_then_each_team_and_a_team_choice_reads_that_teams_limits() {
+    let mut cloud = Cloud::free(12);
+    cloud.pro = true;
+    *cloud.teams.lock().expect("the teams") = TEAMS.to_owned();
+    let harness = Harness::new(cloud, query(), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+    let rows: Vec<adw::ActionRow> = descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+        .filter(|row| {
+            row.activatable_widget()
+                .is_some_and(|widget| widget.is::<gtk::CheckButton>())
+        })
+        .collect();
+
+    assert_eq!(
+        rows.iter().map(|row| row.title().to_string()).collect::<Vec<_>>(),
+        ["Personal", "Data", "Ops"]
+    );
+    assert!(!rows[2].is_sensitive());
+    assert_eq!(
+        rows[2].subtitle().as_deref(),
+        Some("Public links are off for this team.")
+    );
+    assert_eq!(harness.chrome().footer.label(), "Pro · 12 links");
+    harness.audit();
+
+    assert!(WidgetExt::activate(&rows[1]), "the Data row did not activate");
+    wait_until(WAIT, || harness.requested("GET /v2/share-limits") == 2).expect("the limits read again");
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    assert_eq!(harness.chrome().footer.label(), "Data · 3 of 1,000 links");
+    let form = harness.dialog.imp().form.borrow();
+    assert_eq!(
+        form.as_ref().map(|form| form.values().team),
+        Some(Some("team_01".to_owned()))
+    );
+}
+
+#[gtk4::test]
+fn a_result_past_the_column_cap_says_so_before_and_after_the_link_is_made() {
+    let harness = Harness::new(Cloud::free(0), wide_result(101), true);
+    harness.wait_for(|page| *page == SheetPage::Form);
+    let preview = descendants(&harness.content())
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk::ColumnView>().ok())
+        .expect("the preview");
+    let described = descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+        .any(|group| group.description().as_deref() == Some("Shares the first 100 columns."));
+
+    assert!(described, "the preview does not say the columns are cut");
+    assert_eq!(preview.columns().n_items(), 100);
+
+    harness.chrome().create.emit_clicked();
+    harness.wait_for(|page| matches!(page, SheetPage::Created { .. }));
+
+    assert!(matches!(
+        harness.page(),
+        Some(SheetPage::Created {
+            columns_truncated: true,
+            ..
+        })
+    ));
+    let status = harness
+        .content()
+        .downcast::<adw::StatusPage>()
+        .expect("the created page");
+    assert_eq!(
+        status.description().as_deref(),
+        Some("The link holds the first 100 columns of the result.")
+    );
+}
+
+#[gtk4::test]
+fn a_suspended_link_says_so_in_the_list_at_the_limit() {
+    let cloud = Cloud::free(5);
+    cloud.suspended.store(true, Ordering::SeqCst);
+    let harness = Harness::new(cloud, query(), true);
+    harness.wait_for(|page| *page == SheetPage::AtLimit);
+
+    let newest = descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+        .find(|row| row.title() == "Newest")
+        .expect("the newest link");
+
+    assert!(
+        newest
+            .subtitle()
+            .is_some_and(|subtitle| subtitle.starts_with("Suspended · ")),
+        "{:?}",
+        newest.subtitle()
+    );
+}
+
+#[gtk4::test]
+fn a_table_view_is_read_up_to_the_plans_rows_before_the_form_shows() {
+    use tablepro_core::Truncation;
+    use tablepro_test_support::{ConnectionScript, FakeReply};
+
+    let runtime = test_runtime();
+    let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("name", ColumnType::untyped_text("text"))].into();
+    let mut script = ConnectionScript::default();
+    script.stream_read.always(FakeReply::ok(vec![
+        tablepro_core::ResultEvent::ResultSetStarted { columns },
+        tablepro_core::ResultEvent::Rows((0..7).map(|row| vec![Value::Text(format!("n{row}"))]).collect()),
+        tablepro_core::ResultEvent::ResultSetFinished {
+            retained: 7,
+            total_rows: Some(7),
+            truncation: Truncation::Complete,
+        },
+    ]));
+    let fake = crate::test_support::FakeSession::start(script, [], runtime.tasks());
+    let mut cloud = Cloud::free(0);
+    cloud.max_rows = 3;
+    let subject = ShareSubject {
+        table: Some(crate::services::share_table::TableShare {
+            session: fake.session.clone(),
+            table: tablepro_core::meta::TableRef::new(None, "people"),
+            columns: vec![crate::services::grid::test_columns::info("name", "text")].into(),
+            shown: vec![0],
+            filter: tablepro_core::FilterSet::default(),
+            sort: Vec::new(),
+            identity: tablepro_core::meta::RowIdentity::UniqueKey {
+                columns: vec!["name".to_owned()],
+            },
+            total: Some(40),
+        }),
+        ..query()
+    };
+    let harness = Harness::new(cloud, subject, true);
+
+    harness.wait_for(|page| *page == SheetPage::Form);
+
+    let read = harness
+        .dialog
+        .subject()
+        .and_then(|subject| subject.rows.clone())
+        .expect("the rows read");
+    assert_eq!(read.rows.len(), 3);
+    assert_eq!(read.row_count, 40);
+    let described = descendants(&harness.content())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+        .any(|group| group.description().as_deref() == Some("Shares the first 3 of 40 rows."));
+    assert!(described, "the cap note is missing");
 }

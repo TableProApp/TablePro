@@ -17,7 +17,10 @@ use crate::services::share_subject::{ShareForm, ShareSubject};
 pub struct ShareDialog {
     pub(super) chrome: OnceCell<Chrome>,
     pub(super) deps: OnceCell<Deps>,
-    pub(super) subject: OnceCell<Arc<ShareSubject>>,
+    // Replaced once a table tab's rows are read.
+    pub(super) subject: RefCell<Option<Arc<ShareSubject>>>,
+    // The team a link goes to; None is a personal link.
+    pub(super) target: RefCell<Option<String>>,
     pub(super) page: RefCell<Option<SheetPage>>,
     pub(super) limits: RefCell<Option<ShareLimits>>,
     pub(super) live: RefCell<Vec<Share>>,

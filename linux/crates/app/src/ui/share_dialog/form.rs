@@ -19,6 +19,8 @@ pub(super) const PRICING: &str = "https://tablepro.app/?ref=app-share#pricing";
 
 pub(super) struct FormFields {
     pub(super) page: adw::PreferencesPage,
+    // Each choice of Share As and its button; empty without a team.
+    targets: Vec<(Option<String>, gtk::CheckButton)>,
     title: adw::EntryRow,
     note: adw::EntryRow,
     expiry: adw::ToggleGroup,
@@ -47,8 +49,19 @@ impl FormFields {
                     .unwrap_or_default(),
             ),
             allow_download: self.allow_download.as_ref().is_none_or(adw::SwitchRow::is_active),
+            team: self
+                .targets
+                .iter()
+                .find(|(_, button)| button.is_active())
+                .and_then(|(team, _)| team.clone()),
         }
     }
+}
+
+// What the form keeps across a re-read: the fields as typed and the team chosen.
+pub(super) struct Kept<'a> {
+    pub(super) draft: Option<&'a ShareForm>,
+    pub(super) team: Option<&'a str>,
 }
 
 // A draft is the form as the user left it, which a re-read of the limits brings back.
@@ -56,9 +69,11 @@ pub(super) fn build_form(
     dialog: &ShareDialog,
     subject: &ShareSubject,
     limits: &ShareLimits,
-    draft: Option<&ShareForm>,
+    kept: Kept<'_>,
 ) -> FormFields {
+    let draft = kept.draft;
     let page = adw::PreferencesPage::new();
+    let targets = add_targets(dialog, &page, limits, kept.team);
     let title = adw::EntryRow::builder()
         .title(gettext("Title"))
         .text(draft.map_or(subject.title.as_str(), |draft| draft.title.as_str()))
@@ -73,9 +88,13 @@ pub(super) fn build_form(
     page.add(&about);
 
     let options = adw::PreferencesGroup::new();
+    if let Some(reason) = &subject.no_sql {
+        options.set_description(Some(reason));
+    }
     let (expiry_row, expiry) = expiry_row(dialog, limits, draft.map(|draft| draft.expiry));
     options.add(&expiry_row);
-    let hide_sql = subject.rows.is_some().then(|| {
+    let result = subject.kind() == tablepro_account::ShareKind::Result;
+    let hide_sql = (result && subject.has_sql()).then(|| {
         let row = adw::SwitchRow::builder()
             .title(gettext("Hide SQL"))
             .active(draft.is_some_and(|draft| draft.hide_sql))
@@ -88,18 +107,12 @@ pub(super) fn build_form(
     page.add(&options);
 
     if let Some(rows) = &subject.rows {
-        let preview = adw::PreferencesGroup::builder()
-            .title(gettext("Rows that will be shared"))
-            .build();
-        if let Some(note) = sheet_view::cap_note(rows.total(), limits.max_rows) {
-            preview.set_description(Some(&note));
-        }
-        preview.add(&preview_table(&rows.columns, &rows.rows));
-        page.add(&preview);
+        page.add(&preview_group(rows, limits));
     }
     add_warnings(&page, subject, hide_sql.as_ref());
     FormFields {
         page,
+        targets,
         title,
         note,
         expiry,
@@ -108,6 +121,75 @@ pub(super) fn build_form(
         password,
         allow_download,
     }
+}
+
+// The first rows under the columns the server keeps, with what the plan's caps leave out.
+fn preview_group(rows: &crate::services::share_subject::SharedRows, limits: &ShareLimits) -> adw::PreferencesGroup {
+    let preview = adw::PreferencesGroup::builder()
+        .title(gettext("Rows that will be shared"))
+        .build();
+    let notes: Vec<String> = [
+        sheet_view::cap_note(rows.total(), limits.max_rows),
+        sheet_view::column_note(rows.columns.len(), limits.max_columns),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !notes.is_empty() {
+        preview.set_description(Some(&notes.join(" ")));
+    }
+    let kept = usize::try_from(limits.max_columns)
+        .unwrap_or(usize::MAX)
+        .min(rows.columns.len());
+    preview.add(&preview_table(&rows.columns[..kept], &rows.rows));
+    preview
+}
+
+// Personal first, then each team the account holds a seat in; a team without public links shows but cannot be picked.
+fn add_targets(
+    dialog: &ShareDialog,
+    page: &adw::PreferencesPage,
+    limits: &ShareLimits,
+    chosen: Option<&str>,
+) -> Vec<(Option<String>, gtk::CheckButton)> {
+    let targets = sheet_view::share_targets(limits);
+    if targets.len() < 2 {
+        return Vec::new();
+    }
+    let group = adw::PreferencesGroup::builder().title(gettext("Share As")).build();
+    let chosen = sheet_view::chosen_team(limits, chosen).map(|team| team.id.as_str());
+    let mut buttons: Vec<(Option<String>, gtk::CheckButton)> = Vec::new();
+    for target in targets {
+        let button = gtk::CheckButton::builder()
+            .active(target.team.as_deref() == chosen)
+            .valign(gtk::Align::Center)
+            .build();
+        if let Some((_, first)) = buttons.first() {
+            button.set_group(Some(first));
+        }
+        let row = adw::ActionRow::builder()
+            .title(&target.name)
+            .use_markup(false)
+            .activatable_widget(&button)
+            .sensitive(target.enabled)
+            .build();
+        if !target.subtitle.is_empty() {
+            row.set_subtitle(&target.subtitle);
+        }
+        row.add_prefix(&button);
+        group.add(&row);
+        buttons.push((target.team, button));
+    }
+    for (team, button) in &buttons {
+        let (team, dialog) = (team.clone(), dialog.downgrade());
+        button.connect_toggled(move |button| {
+            if let (true, Some(dialog)) = (button.is_active(), dialog.upgrade()) {
+                dialog.choose_target(team.clone());
+            }
+        });
+    }
+    page.add(&group);
+    buttons
 }
 
 fn password_row(

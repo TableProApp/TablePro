@@ -134,6 +134,7 @@ crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
 crates/app/src/services/share_link.rs
 crates/app/src/services/share_subject.rs
+crates/app/src/services/share_table.rs
 crates/app/src/services/snippet_library.rs
 crates/app/src/services/ssh_environment.rs
 crates/app/src/services/structure_tracker.rs
@@ -583,6 +584,7 @@ crates/app/src/ui/share_dialog/mod.rs
 crates/app/src/ui/share_dialog/pages.rs
 crates/app/src/ui/share_dialog/preview.rs
 crates/app/src/ui/share_dialog/sheet_view.rs
+crates/app/src/ui/share_dialog/table_read.rs
 crates/app/src/ui/share_dialog/tests.rs
 crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs

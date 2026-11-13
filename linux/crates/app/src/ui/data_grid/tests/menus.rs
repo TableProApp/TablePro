@@ -405,7 +405,7 @@ fn the_grid_takes_its_menus_with_it() {
 }
 
 #[gtk4::test]
-fn only_a_result_grid_shares_and_it_shares_the_columns_on_screen_in_their_order() {
+fn a_grid_whose_host_shares_offers_share_result_with_the_columns_on_screen_in_their_order() {
     let table = two_text_rows();
     let shown = Grid::build(GridSpec::results(two_text_columns()), results(&two_text_values()));
     shown.grid.set_column_visible(0, false);

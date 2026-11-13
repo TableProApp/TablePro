@@ -141,6 +141,9 @@ impl ObjectImpl for BrowseTab {
                 Signal::builder("export-results")
                     .param_types([glib::BoxedAnyObject::static_type()])
                     .build(),
+                Signal::builder("share-requested")
+                    .param_types([glib::BoxedAnyObject::static_type()])
+                    .build(),
                 Signal::builder("alert")
                     .param_types([String::static_type(), String::static_type()])
                     .build(),

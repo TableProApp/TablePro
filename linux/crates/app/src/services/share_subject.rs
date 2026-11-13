@@ -7,6 +7,7 @@ use tablepro_core::export::{Snapshot, build_snapshot};
 use tablepro_core::secret_scan::{self, SecretHitKind};
 
 use crate::services::grid::RowSnapshot;
+use crate::services::share_table::TableShare;
 
 #[derive(Debug, Clone)]
 pub struct ShareSubject {
@@ -14,6 +15,9 @@ pub struct ShareSubject {
     pub sql: String,
     pub dialect: Option<String>,
     pub rows: Option<SharedRows>,
+    pub table: Option<TableShare>,
+    // Why a result goes without SQL, which the sheet says.
+    pub no_sql: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -32,19 +36,36 @@ pub struct ShareForm {
     pub hide_sql: bool,
     pub password: SecretString,
     pub allow_download: bool,
+    // None shares a personal link.
+    pub team: Option<String>,
 }
 
 impl ShareSubject {
-    pub(crate) fn kind(&self) -> ShareKind {
-        match self.rows {
-            Some(_) => ShareKind::Result,
-            None => ShareKind::Query,
+    pub(crate) fn query(title: String, sql: String, dialect: Option<String>) -> Self {
+        Self {
+            title,
+            sql,
+            dialect,
+            rows: None,
+            table: None,
+            no_sql: None,
         }
+    }
+
+    pub(crate) fn kind(&self) -> ShareKind {
+        match self.rows.is_some() || self.table.is_some() {
+            true => ShareKind::Result,
+            false => ShareKind::Query,
+        }
+    }
+
+    pub(crate) fn has_sql(&self) -> bool {
+        !self.sql.trim().is_empty()
     }
 
     // A plan's options it lacks are left out rather than refused by the server.
     pub(crate) fn request(&self, form: &ShareForm, limits: &ShareLimits, snapshot: Option<Snapshot>) -> ShareRequest {
-        let result = self.rows.is_some();
+        let result = self.kind() == ShareKind::Result;
         let password = form.password.expose_secret();
         ShareRequest {
             kind: self.kind(),
@@ -53,10 +74,13 @@ impl ShareSubject {
             note: Some(form.note.trim().to_owned()).filter(|note| !note.is_empty()),
             dialect: self.dialect.clone().filter(|dialect| !dialect.is_empty()),
             expiry: Some(form.expiry).filter(|expiry| limits.expiries.contains(expiry)),
-            hide_sql: result && form.hide_sql,
+            hide_sql: result && self.has_sql() && form.hide_sql,
             allow_download: (limits.disable_download && !form.allow_download).then_some(false),
             password: (limits.password && !password.is_empty()).then(|| form.password.clone()),
-            team_id: None,
+            team_id: form
+                .team
+                .clone()
+                .filter(|team| limits.team && limits.teams.iter().any(|known| known.id == *team)),
             snapshot: snapshot.filter(|_| result),
         }
     }
@@ -72,10 +96,21 @@ impl ShareSubject {
     }
 
     pub(crate) fn secret_columns(&self) -> Vec<String> {
-        self.rows.as_ref().map_or_else(Vec::new, |rows| {
-            let names: Vec<&str> = rows.columns.iter().map(|column| column.name.as_str()).collect();
-            secret_scan::scan_columns(&names)
-        })
+        secret_scan::scan_columns(&self.column_names())
+    }
+
+    // The columns the link carries, in their order, before the server's column cap.
+    pub(crate) fn column_names(&self) -> Vec<String> {
+        match (&self.rows, &self.table) {
+            (Some(rows), _) => rows.columns.iter().map(|column| column.name.clone()).collect(),
+            (None, Some(table)) => table
+                .shown
+                .iter()
+                .filter_map(|index| table.columns.get(*index))
+                .map(|column| column.name.clone())
+                .collect(),
+            (None, None) => Vec::new(),
+        }
     }
 }
 
@@ -124,6 +159,14 @@ mod tests {
             team: pro,
             email_verified: true,
             sharing_disabled: false,
+            max_columns: 100,
+            teams: vec![tablepro_account::ShareTeam {
+                id: "team_01".to_owned(),
+                name: "Data".to_owned(),
+                live: 2,
+                live_limit: 1_000,
+                public_links: true,
+            }],
         }
     }
 
@@ -155,16 +198,12 @@ mod tests {
             hide_sql: true,
             password: SecretString::from("hunter2"),
             allow_download: false,
+            team: Some("team_01".to_owned()),
         }
     }
 
     fn query(sql: &str) -> ShareSubject {
-        ShareSubject {
-            title: String::new(),
-            sql: sql.to_owned(),
-            dialect: Some("postgres".to_owned()),
-            rows: None,
-        }
+        ShareSubject::query(String::new(), sql.to_owned(), Some("postgres".to_owned()))
     }
 
     #[test]
@@ -183,6 +222,7 @@ mod tests {
         assert!(request.password.is_none());
         assert_eq!(request.allow_download, None);
         assert!(request.hide_sql);
+        assert_eq!(request.team_id, None, "a team link needs Pro");
     }
 
     #[test]
@@ -204,6 +244,25 @@ mod tests {
         );
         assert_eq!(request.allow_download, Some(false));
         assert_eq!(request.dialect.as_deref(), Some("postgres"));
+        assert_eq!(request.team_id.as_deref(), Some("team_01"));
+    }
+
+    #[test]
+    fn a_result_without_sql_sends_none_to_hide_and_no_team_the_plan_does_not_list() {
+        let subject = ShareSubject {
+            rows: Some(rows(1, 1)),
+            ..query("  ")
+        };
+        let stranger = ShareForm {
+            team: Some("team_99".to_owned()),
+            ..form()
+        };
+
+        let request = subject.request(&stranger, &limits("pro"), None);
+
+        assert!(!subject.has_sql());
+        assert!(!request.hide_sql);
+        assert_eq!(request.team_id, None);
     }
 
     #[test]

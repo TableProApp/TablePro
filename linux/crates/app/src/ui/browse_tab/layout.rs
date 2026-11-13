@@ -198,7 +198,7 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
         // Ctrl+F is the filter strip's in a table tab.
         find: false,
         filter_by_value: true,
-        share: false,
+        share: true,
         tasks: init.tasks,
         label: init.label,
     });
