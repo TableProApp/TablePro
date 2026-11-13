@@ -87,6 +87,28 @@ struct SQLiteAgentProtocolTests {
         #expect(try reader.nextReply() == .done(changes: 3, truncated: false))
     }
 
+    // The reader drops what it already decoded between reads, so a long stream must not lose or repeat a byte.
+    @Test func longStreamSplitAcrossReadsDecodesEveryFrame() throws {
+        let replies = (0..<300).map { index in
+            SQLiteAgentReply.rows(columnCount: 2, values: [.text(Data("\(index)".utf8)), .blob(Data(repeating: UInt8(index % 256), count: index * 37))])
+        }
+        var stream = Data()
+        for reply in replies { stream.append(SQLiteAgentFrameEncoder.encode(reply)) }
+
+        var reader = SQLiteAgentFrameReader()
+        var decoded: [SQLiteAgentReply] = []
+        var offset = 0
+        var chunk = 1
+        while offset < stream.count {
+            let end = min(offset + chunk, stream.count)
+            reader.append(stream.subdata(in: offset..<end))
+            while let reply = try reader.nextReply() { decoded.append(reply) }
+            offset = end
+            chunk = chunk * 7 % 32_771 + 1
+        }
+        #expect(decoded == replies)
+    }
+
     @Test func oversizeFrameLengthIsRejected() {
         var reader = SQLiteAgentFrameReader()
         var header = Data()
