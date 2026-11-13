@@ -1254,6 +1254,18 @@
       },
       "PublicColumn": {
         "properties": {
+          "masked": {
+            "description": "Extensible enum: full, lastFour, email, hash, null. How the app masked the column's values before sharing; absent for an unmasked column",
+            "example": "full",
+            "type": "string",
+            "x-extensible-enum": [
+              "full",
+              "lastFour",
+              "email",
+              "hash",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -1557,6 +1569,16 @@
         ],
         "type": "string"
       },
+      "ShareMaskStyle": {
+        "enum": [
+          "full",
+          "lastFour",
+          "email",
+          "hash",
+          "null"
+        ],
+        "type": "string"
+      },
       "ShareReportReason": {
         "enum": [
           "illegal",
@@ -1787,6 +1809,10 @@
       "SnapshotColumnBody": {
         "additionalProperties": false,
         "properties": {
+          "masked": {
+            "$ref": "#/components/schemas/ShareMaskStyle",
+            "description": "How the app masked the column's values before sharing; omit for an unmasked column"
+          },
           "name": {
             "maxLength": 256,
             "type": "string"

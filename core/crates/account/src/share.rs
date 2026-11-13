@@ -202,6 +202,9 @@ pub struct SnapshotColumnBody {
     pub name: String,
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_name: Option<String>,
+    // The document's ShareMaskStyle: how the app masked the column's values before they left it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub masked: Option<String>,
 }
 
 // The document's maxLength for a column's type.
@@ -219,6 +222,7 @@ impl From<Snapshot> for SnapshotBody {
                     name: column.name.chars().take(COLUMN_NAME_CHARACTERS).collect(),
                     type_name: Some(column.type_name.chars().take(COLUMN_TYPE_CHARACTERS).collect())
                         .filter(|type_name: &String| !type_name.is_empty()),
+                    masked: column.masked.map(|style| style.code().to_owned()),
                 })
                 .collect(),
             rows: snapshot
@@ -385,6 +389,42 @@ mod tests {
             "created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z"}}"#
         );
         serde_json::from_str::<types::ShareView>(&json).expect("a share").into()
+    }
+
+    #[test]
+    fn a_masked_column_names_its_style_and_an_unmasked_one_sends_none() {
+        use tablepro_core::masking::MaskingStyle;
+
+        let columns = [
+            ResultColumn::new("email", ColumnType::untyped_text("text")),
+            ResultColumn::new("id", ColumnType::untyped_text("int")),
+        ];
+        let mut snapshot = build_snapshot(
+            &columns,
+            [vec![Value::Text("a•••@x.io".to_owned()), Value::Int(1)]],
+            ResultExtent::complete(1),
+            10,
+        );
+        snapshot.columns[0].masked = Some(MaskingStyle::LastFour);
+
+        let json = serde_json::to_string(&SnapshotBody::from(snapshot)).expect("JSON");
+
+        assert!(
+            json.contains(r#"{"name":"email","type":"text","masked":"lastFour"}"#),
+            "{json}"
+        );
+        assert!(json.contains(r#"{"name":"id","type":"int"}"#), "{json}");
+    }
+
+    #[test]
+    fn every_style_is_one_the_document_takes() {
+        use tablepro_core::masking::MaskingStyle;
+
+        for style in MaskingStyle::ALL {
+            let parsed: types::ShareMaskStyle =
+                serde_json::from_value(serde_json::json!(style.code())).expect("a ShareMaskStyle");
+            assert_eq!(parsed.to_string(), style.code());
+        }
     }
 
     #[test]
