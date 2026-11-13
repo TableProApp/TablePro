@@ -8,6 +8,7 @@ struct InsertRowView: View {
     let session: ConnectionSession?
     let databaseType: DatabaseType
     let schema: String?
+    let database: String?
     let safeModeLevel: () -> SafeModeLevel
     var onInserted: (() -> Void)?
 
@@ -36,7 +37,10 @@ struct InsertRowView: View {
     }
 
     private var insertWrite: PlannedRowWrite {
-        PlannedRowWrite.insert(table: table.name, schema: schema, type: databaseType, columns: columnDetails, values: fields)
+        PlannedRowWrite.insert(
+            table: table.name, schema: schema, database: database, type: databaseType, columns: columnDetails,
+            values: fields
+        )
     }
 
     var body: some View {
@@ -305,12 +309,6 @@ struct InsertRowView: View {
     }
 
     private func executeInsert(_ write: PlannedRowWrite) async {
-        if let refusal = coordinator.databaseMoveRefusal {
-            operationError = refusal
-            showOperationError = true
-            hapticError.toggle()
-            return
-        }
         isSaving = true
         defer { isSaving = false }
 

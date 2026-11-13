@@ -38,6 +38,9 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     nonisolated(unsafe) private(set) var currentSchema: String? = "dbo"
     // A connection that names no database opens in the login's default one, which only the server knows.
     private let sessionDatabaseName = OSAllocatedUnfairLock<String?>(initialState: nil)
+    // Where the app last put the session (the open, a switch), which a `USE` the user runs never moves. Catalog reads
+    // run there, so a list read while such a run is in flight still lists the picker's database.
+    private let appDatabaseName = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     var currentDatabase: String? {
         sessionDatabaseName.withLock { $0 }
@@ -113,7 +116,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
             }
         }
 
-        _ = try? await sessionDatabase()
+        let opened = try? await sessionDatabase()
+        appDatabaseName.withLock { $0 = opened }
 
         if let serverSchema = try? await runQuery(MSSQLSchemaQueries.currentSchema).rows.first?.first ?? nil,
            !serverSchema.isEmpty {
@@ -291,10 +295,11 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
             throw mapToConnectionError(error)
         }
         sessionDatabaseName.withLock { $0 = name }
+        appDatabaseName.withLock { $0 = name }
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await runQuery(MSSQLSchemaQueries.schemas)
+        let result = try await runQuery(catalogRead(MSSQLSchemaQueries.schemas, in: nil))
         return result.rows.compactMap { $0.first ?? nil }
     }
 
@@ -312,8 +317,28 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
 
     private var effectiveSchema: String { currentSchema ?? "dbo" }
 
+    // A system procedure called through a database name runs in that database and leaves the session where it is.
+    static func catalogStatement(_ statement: String, in database: String?) -> String {
+        guard let database, !database.isEmpty else { return statement }
+        return MSSQLPrincipalStatements.inDatabase(database, statement)
+    }
+
+    // The database a window names wins; a list, or a read that names none, goes where the app last put the session.
+    static func catalogTarget(named database: String?, appDatabase: String?) -> String? {
+        database.flatMap { $0.isEmpty ? nil : $0 } ?? appDatabase
+    }
+
+    private func catalogRead(_ statement: String, in database: String?) -> String {
+        Self.catalogStatement(
+            statement,
+            in: Self.catalogTarget(named: database, appDatabase: appDatabaseName.withLock { $0 })
+        )
+    }
+
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.tables(schema: schema ?? effectiveSchema))
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.tables(schema: schema ?? effectiveSchema), in: nil)
+        )
         return result.rows.compactMap { row in
             MSSQLSchemaQueries.parseTableRow(row).map {
                 TableInfo(name: $0.name, type: $0.isView ? .view : .table)
@@ -322,7 +347,13 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.columns(schema: schema ?? effectiveSchema, table: table))
+        try await fetchColumns(table: table, schema: schema, database: nil)
+    }
+
+    func fetchColumns(table: String, schema: String?, database: String?) async throws -> [ColumnInfo] {
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.columns(schema: schema ?? effectiveSchema, table: table), in: database)
+        )
         return result.rows.enumerated().compactMap { idx, row in
             MSSQLSchemaQueries.parseColumnRow(row).map { parsed in
                 ColumnInfo(
@@ -342,7 +373,13 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.indexes(schema: schema ?? effectiveSchema, table: table))
+        try await fetchIndexes(table: table, schema: schema, database: nil)
+    }
+
+    func fetchIndexes(table: String, schema: String?, database: String?) async throws -> [IndexInfo] {
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.indexes(schema: schema ?? effectiveSchema, table: table), in: database)
+        )
         var byName: [String: (unique: Bool, primary: Bool, cols: [String])] = [:]
         for row in result.rows {
             guard let parsed = MSSQLSchemaQueries.parseIndexRow(row) else { continue }
@@ -357,7 +394,13 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.foreignKeys(schema: schema ?? effectiveSchema, table: table))
+        try await fetchForeignKeys(table: table, schema: schema, database: nil)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?, database: String?) async throws -> [ForeignKeyInfo] {
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.foreignKeys(schema: schema ?? effectiveSchema, table: table), in: database)
+        )
         return result.rows.compactMap { row in
             MSSQLSchemaQueries.parseForeignKeyRow(row).map {
                 ForeignKeyInfo(name: $0.constraintName, column: $0.columnName,

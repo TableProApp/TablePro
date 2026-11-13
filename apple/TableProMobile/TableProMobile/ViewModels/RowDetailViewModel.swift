@@ -20,6 +20,7 @@ final class RowDetailViewModel {
     @ObservationIgnored private let liveSession: (() -> Result<ConnectionSession, AppError>)?
     let databaseType: DatabaseType
     let schema: String?
+    let database: String?
     @ObservationIgnored private let readSafeModeLevel: () -> SafeModeLevel
 
     private(set) var rows: [Row]
@@ -48,6 +49,7 @@ final class RowDetailViewModel {
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
+        database: String? = nil,
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: @escaping @autoclosure () -> [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
@@ -63,6 +65,7 @@ final class RowDetailViewModel {
         self.columnDetails = columnDetails
         self.databaseType = databaseType
         self.schema = schema
+        self.database = database
         self.readSafeModeLevel = safeModeLevel
         self.readForeignKeys = foreignKeys
         self.onSaved = onSaved
@@ -432,6 +435,7 @@ final class RowDetailViewModel {
         let write = PlannedRowWrite.update(
             table: table.name,
             schema: schema,
+            database: database,
             type: databaseType,
             columns: locator.columnNames(of: columns),
             columnDetails: columnDetails,

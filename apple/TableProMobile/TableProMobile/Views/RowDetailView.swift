@@ -27,6 +27,7 @@ struct RowDetailView: View {
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
+        database: String? = nil,
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: @escaping @autoclosure () -> [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
@@ -43,6 +44,7 @@ struct RowDetailView: View {
             columnDetails: columnDetails,
             databaseType: databaseType,
             schema: schema,
+            database: database,
             safeModeLevel: safeModeLevel,
             foreignKeys: foreignKeys(),
             onSaved: onSaved,
@@ -289,7 +291,8 @@ struct RowDetailView: View {
                         if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }),
                            let reference = ForeignKeyReference.make(
                                forColumn: column.name, foreignKeys: viewModel.foreignKeys,
-                               columns: viewModel.columns, cells: cells, sourceSchema: viewModel.schema
+                               columns: viewModel.columns, cells: cells, sourceSchema: viewModel.schema,
+                               sourceDatabase: viewModel.database
                            ) {
                             Button {
                                 fkPreviewItem = FKPreviewItem(reference: reference)
@@ -422,7 +425,6 @@ struct RowDetailView: View {
     }
 
     private func handleSave() async {
-        guard !refusesWhileDatabaseMoves() else { return }
         let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.saveChanges()
         }
@@ -438,7 +440,6 @@ struct RowDetailView: View {
     }
 
     private func executePendingSave() async {
-        guard !refusesWhileDatabaseMoves() else { return }
         let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.executePendingSave()
         }
@@ -447,13 +448,6 @@ struct RowDetailView: View {
         } else {
             hapticError.toggle()
         }
-    }
-
-    private func refusesWhileDatabaseMoves() -> Bool {
-        guard let refusal = connectionCoordinator.databaseMoveRefusal else { return false }
-        viewModel.operationError = refusal
-        hapticError.toggle()
-        return true
     }
 
     // Names the cell rather than carrying its text, so the route stays cheap to compare.

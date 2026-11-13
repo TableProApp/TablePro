@@ -33,6 +33,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
     var reportsDatabaseWithoutStatement: Bool { false }
+    var enforcesReadOnlyMode: Bool { Self.runsReadOnlyTransactions(for: databaseType, banner: serverVersion) }
+
+    func entersReadOnlyMode() async -> Bool {
+        guard enforcesReadOnlyMode else { return false }
+        return await actor.takesReadOnlyTransaction()
+    }
 
     private let settledFacts = OSAllocatedUnfairLock<SQLSessionLexicalFacts?>(initialState: nil)
 
@@ -133,6 +139,11 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @
         )
     }
 
+    static func runsReadOnlyTransactions(for databaseType: DatabaseType, banner: String?) -> Bool {
+        let flavor = serverFlavor(for: databaseType, banner: banner)
+        return flavor.enforcesReadOnlyTransactions && MySQLServerVersion.hasReadOnlyTransactions(banner: banner, flavor: flavor)
+    }
+
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(
@@ -208,11 +219,14 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @
         let statement = killer.reserve()
         let databaseType = self.databaseType
         let session = settledLexicalFacts
+        let inReadOnlyTransaction = options.enforcesReadOnly && enforcesReadOnlyMode
         return AsyncThrowingStream { continuation in
             let task = Task {
                 var openStream: MySQLStreamID?
                 do {
-                    switch try await actor.beginStream(query: query, statement: statement) {
+                    switch try await actor.beginStream(
+                        query: query, statement: statement, inReadOnlyTransaction: inReadOnlyTransaction
+                    ) {
                     case .noResult(let affectedRows):
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
@@ -658,6 +672,11 @@ nonisolated enum MySQLSessionTransaction {
         guard serverStatus & UInt32(SERVER_STATUS_IN_TRANS) != 0 else { return .idle }
         return serverStatus & UInt32(SERVER_STATUS_AUTOCOMMIT) != 0 ? .explicitTransaction : .implicitTransaction
     }
+
+    // A Read-Only statement's own transaction opened on an idle session and ends with its stream.
+    static func state(infoResult: my_bool, serverStatus: UInt32, holdsReadOnlyTransaction: Bool) -> DriverTransactionState {
+        holdsReadOnlyTransaction ? .idle : state(infoResult: infoResult, serverStatus: serverStatus)
+    }
 }
 
 // MARK: - MySQL Actor (thread-safe C API access)
@@ -865,8 +884,11 @@ private actor MySQLActor {
         showTextIsBinary && mysqlStatementListsServerMetadata(query)
     }
 
+    // Closing the session ends a read-only transaction on the server.
     func close() {
         killer.detach()
+        holdsReadOnlyTransaction = false
+        footprint.reset()
         guard let mysql else { return }
         if let result = streamingResult {
             // An open result points at the handle `mysql_close` frees, so it goes first; shutting the socket
@@ -923,7 +945,9 @@ private actor MySQLActor {
         guard let mysql else { return .unknown }
         var serverStatus: UInt32 = 0
         let infoResult = mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus)
-        return MySQLSessionTransaction.state(infoResult: infoResult, serverStatus: serverStatus)
+        return MySQLSessionTransaction.state(
+            infoResult: infoResult, serverStatus: serverStatus, holdsReadOnlyTransaction: holdsReadOnlyTransaction
+        )
     }
 
     /// `NO_BACKSLASH_ESCAPES` from the status flags of the last reply turns the backslash off in both string quotes.
@@ -954,7 +978,10 @@ private actor MySQLActor {
 
         let start = Date()
 
+        let features = lexicalFeatures(of: mysql)
+        footprint.observe(query, lexicalFeatures: features)
         guard mysql_real_query(mysql, query, UInt(query.utf8.count)) == 0 else {
+            footprint.observeFailure(of: query, lexicalFeatures: features)
             throw MySQLError.queryFailed(message(from: mysql))
         }
 
@@ -1020,10 +1047,22 @@ private actor MySQLActor {
     private var streamingColumns: [ColumnInfo] = []
     private var streamingDecoding = MySQLResultColumns()
     private var streamingStatement: SentStatement?
+    // Set from START TRANSACTION READ ONLY until the ROLLBACK after the statement's last result.
+    private var holdsReadOnlyTransaction = false
+    // The status flags never show a LOCK TABLES, which a START TRANSACTION releases, so the statements say it.
+    private var footprint = MySQLSessionFootprint()
 
-    func beginStream(query: String, statement: UInt64) throws -> MySQLBeginStreamResult {
+    // With `inReadOnlyTransaction` the state check, the transaction and the statement go out in this one actor call,
+    // so nothing else on the session runs between them. The session is opened without CLIENT_MULTI_STATEMENTS, so no
+    // `COMMIT; DELETE ...` can follow the read.
+    func beginStream(
+        query: String,
+        statement: UInt64,
+        inReadOnlyTransaction: Bool = false
+    ) throws -> MySQLBeginStreamResult {
         guard let mysql else { throw MySQLError.notConnected }
         endLeftoverStream(of: mysql)
+        if inReadOnlyTransaction { try beginReadOnlyTransaction() }
         streamGeneration &+= 1
         let stream = MySQLStreamID(generation: streamGeneration)
         let sent = send(statement, on: mysql)
@@ -1031,23 +1070,30 @@ private actor MySQLActor {
         // flight and kills it.
         guard !Task.isCancelled else {
             finish(sent, on: mysql)
+            try? endReadOnlyTransaction()
             throw CancellationError()
         }
 
+        let features = lexicalFeatures(of: mysql)
+        footprint.observe(query, lexicalFeatures: features)
         guard mysql_real_query(mysql, query, UInt(query.utf8.count)) == 0 else {
+            footprint.observeFailure(of: query, lexicalFeatures: features)
+            let failure = queryFailure(of: mysql)
             finish(sent, on: mysql)
-            throw MySQLError.queryFailed(message(from: mysql))
+            try? endReadOnlyTransaction()
+            throw failure
         }
 
         guard let result = mysql_use_result(mysql) else {
-            defer { finish(sent, on: mysql) }
-            if mysql_field_count(mysql) != 0 {
-                throw MySQLError.queryFailed(message(from: mysql))
+            return try settle(sent, on: mysql) {
+                if mysql_field_count(mysql) != 0 {
+                    throw queryFailure(of: mysql)
+                }
+                let raw = mysql_affected_rows(mysql)
+                let affected = raw == .max ? 0 : Int(clamping: raw)
+                try consumeTrailingResults(of: mysql)
+                return .noResult(affectedRows: affected)
             }
-            let raw = mysql_affected_rows(mysql)
-            let affected = raw == .max ? 0 : Int(clamping: raw)
-            try consumeTrailingResults(of: mysql)
-            return .noResult(affectedRows: affected)
         }
 
         streamingResult = result
@@ -1119,11 +1165,7 @@ private actor MySQLActor {
         if let sent = streamingStatement {
             killer.rowCapReached(sent.id)
         }
-        do {
-            try releaseStream(of: mysql)
-        } catch {
-            guard flavor.isInterruptedByKill(errno: mysql_errno(mysql), message: message(from: mysql)) else { throw error }
-        }
+        try releaseStream(of: mysql, atRowCap: true)
     }
 
     /// The producer of a superseded stream only learns that its rows were cut off, so an error in the rest of
@@ -1138,13 +1180,76 @@ private actor MySQLActor {
         }
     }
 
-    private func releaseStream(of mysql: UnsafeMutablePointer<MYSQL>) throws {
+    // At the row cap the kill's 1317 is the cut the reader was already told of.
+    private func releaseStream(of mysql: UnsafeMutablePointer<MYSQL>, atRowCap: Bool = false) throws {
         guard let result = streamingResult else { return }
         let sent = streamingStatement
         clearStream()
-        defer { if let sent { finish(sent, on: mysql) } }
-        try drain(result, of: mysql)
-        try consumeTrailingResults(of: mysql)
+        try settle(sent, on: mysql) {
+            do {
+                try drain(result, of: mysql)
+                try consumeTrailingResults(of: mysql)
+            } catch where atRowCap && flavor.isInterruptedByKill(errno: mysql_errno(mysql), message: message(from: mysql)) {}
+        }
+    }
+
+    // The kill bookkeeping reads the statement's error code, so the ROLLBACK, which resets it, comes after.
+    private func settle<Value>(
+        _ sent: SentStatement?,
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        _ statement: () throws -> Value
+    ) throws -> Value {
+        let outcome = Result<Value, any Error>(catching: statement)
+        if let sent { finish(sent, on: mysql) }
+        switch outcome {
+        case .success(let value):
+            try endReadOnlyTransaction()
+            return value
+        case .failure(let error):
+            try? endReadOnlyTransaction()
+            throw error
+        }
+    }
+
+    // A START TRANSACTION would commit the session's open transaction and release its LOCK TABLES. A `SET autocommit
+    // = 0` session is always in one, so the app does not ask for the read-only one there.
+    private func beginReadOnlyTransaction() throws {
+        guard takesReadOnlyTransaction() else {
+            throw ReadOnlyModeRefusal.sessionNotIdle(message: MySQLReadOnlyTransaction.notIdleMessage(.safeMode))
+        }
+        do {
+            _ = try execute(MySQLReadOnlyTransaction.begin)
+        } catch {
+            _ = try? execute(MySQLReadOnlyTransaction.end)
+            throw error
+        }
+        holdsReadOnlyTransaction = true
+    }
+
+    func takesReadOnlyTransaction() -> Bool {
+        mysql != nil && transactionState() == .idle && !footprint.hasLockedTables
+    }
+
+    private func lexicalFeatures(of mysql: UnsafeMutablePointer<MYSQL>) -> SQLLexicalFeatures {
+        var serverStatus: UInt32 = 0
+        let known = mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus) == 0
+        let noBackslashEscapes = known ? serverStatus & UInt32(SERVER_STATUS_NO_BACKSLASH_ESCAPES) != 0 : nil
+        return MySQLLexicalFeatures.features(for: flavor, noBackslashEscapes: noBackslashEscapes)
+    }
+
+    private func endReadOnlyTransaction() throws {
+        guard holdsReadOnlyTransaction else { return }
+        holdsReadOnlyTransaction = false
+        _ = try execute(MySQLReadOnlyTransaction.end)
+    }
+
+    // Taken before the ROLLBACK, which resets the code.
+    private func queryFailure(of mysql: UnsafeMutablePointer<MYSQL>) -> any Error {
+        let text = message(from: mysql)
+        guard holdsReadOnlyTransaction, mysql_errno(mysql) == MySQLReadOnlyTransaction.refusalCode else {
+            return MySQLError.queryFailed(text)
+        }
+        return ReadOnlyModeRefusal.refused(message: MySQLReadOnlyTransaction.refusalMessage(.safeMode), serverMessage: text)
     }
 
     private func clearStream() {
@@ -1196,12 +1301,12 @@ private actor MySQLActor {
     private func consumeTrailingResults(of mysql: UnsafeMutablePointer<MYSQL>) throws {
         while mysql_more_results(mysql) != 0 {
             let status = mysql_next_result(mysql)
-            if status > 0 { throw MySQLError.queryFailed(message(from: mysql)) }
+            if status > 0 { throw queryFailure(of: mysql) }
             if status < 0 { return }
             if let result = mysql_use_result(mysql) {
                 try drain(result, of: mysql)
             } else if mysql_field_count(mysql) != 0 {
-                throw MySQLError.queryFailed(message(from: mysql))
+                throw queryFailure(of: mysql)
             }
         }
     }
@@ -1216,10 +1321,10 @@ private actor MySQLActor {
 
     /// `mysql_fetch_row` returns nil both at the end and on an error, and a command refused while the result
     /// was open leaves its own code on the handle, so only a code the fetch set means the rows ended in an error.
-    private func fetchFailure(of mysql: UnsafeMutablePointer<MYSQL>, errorBefore: UInt32) -> MySQLError? {
+    private func fetchFailure(of mysql: UnsafeMutablePointer<MYSQL>, errorBefore: UInt32) -> (any Error)? {
         let code = mysql_errno(mysql)
         guard code != 0, code != errorBefore else { return nil }
-        return .queryFailed(message(from: mysql))
+        return queryFailure(of: mysql)
     }
 
     private func makeCellRef(column: String, row: MYSQL_ROW, options: StreamOptions, columns: [ColumnInfo]) -> CellRef? {
