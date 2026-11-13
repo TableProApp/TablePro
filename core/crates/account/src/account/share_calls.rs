@@ -9,7 +9,8 @@ use super::{Account, Call, Session};
 use crate::account_error::AccountError;
 use crate::cloud_api::{Bearer, answer_error, v2};
 use crate::share::{
-    CreatedShare, MAX_SHARE_COLUMNS, Share, ShareExpiry, ShareLimits, SharePage, ShareRequest, SharedLink, SnapshotBody,
+    CreatedShare, MAX_SHARE_COLUMNS, MAX_SHARE_SQL_BYTES, Share, ShareExpiry, ShareLimits, SharePage, ShareRequest,
+    SharedLink, SnapshotBody, sent_share_password,
 };
 use crate::share_link::is_share_token;
 
@@ -20,8 +21,6 @@ const UPLOAD_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const TITLE_CHARACTERS: usize = 200;
 const NOTE_CHARACTERS: usize = 2_000;
 const DIALECT_CHARACTERS: usize = 40;
-// The server counts the SQL in UTF-8 bytes, which the document's maxLength in characters does not.
-const SQL_BYTES: usize = 256 * 1_024;
 
 impl Account {
     // What the plan allows and how many live links the account holds, for the share sheet.
@@ -119,7 +118,9 @@ impl Account {
             return Err(not_found("not a share token"));
         }
         let api = self.api(Bearer::public());
-        let password = password.map(share_password).filter(|password| !password.is_empty());
+        let password = password
+            .map(|password| sent_share_password(password.expose_secret()))
+            .filter(|password| !password.is_empty());
         answer(api.get_shared(token, password).await)
             .await
             .map(SharedLink::from)
@@ -156,13 +157,8 @@ async fn answer<T>(sent: Result<ResponseValue<T>, Error<v2::types::Problem>>) ->
     }
 }
 
-// A reader sends it in X-Share-Password, whose value HTTP strips of outer spaces and tabs.
-fn share_password(password: &SecretString) -> &str {
-    password.expose_secret().trim_matches([' ', '\t'])
-}
-
 fn create_body(request: ShareRequest) -> Result<v2::types::CreateShareBody, AccountError> {
-    if request.sql.len() > SQL_BYTES {
+    if request.sql.len() > MAX_SHARE_SQL_BYTES {
         return Err(invalid("the SQL is longer than the server takes"));
     }
     Ok(v2::types::CreateShareBody {
@@ -177,7 +173,7 @@ fn create_body(request: ShareRequest) -> Result<v2::types::CreateShareBody, Acco
         password: request
             .password
             .as_ref()
-            .map(|password| match share_password(password) {
+            .map(|password| match sent_share_password(password.expose_secret()) {
                 "" => Err(invalid("the password is only spaces")),
                 kept => limited(kept.to_owned(), "the password is too long"),
             })

@@ -9,6 +9,14 @@ use crate::cloud_api::v2::types;
 // The server's caps on a snapshot's columns: more columns or a longer name is refused, so the rest are left out.
 pub const MAX_SHARE_COLUMNS: usize = 100;
 const COLUMN_NAME_CHARACTERS: usize = 256;
+// The server counts a share's SQL in UTF-8 bytes, which the document's maxLength in characters does not.
+pub const MAX_SHARE_SQL_BYTES: usize = 256 * 1_024;
+
+// The password as a link keeps it: a reader sends it in X-Share-Password, whose value HTTP strips of outer spaces and
+// tabs. One that strips to nothing is refused.
+pub fn sent_share_password(password: &str) -> &str {
+    password.trim_matches([' ', '\t'])
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShareKind {
