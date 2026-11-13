@@ -124,13 +124,15 @@ impl AccountService {
     }
 
     // A result share takes the set's first `visible_columns` columns and its first `max_rows` rows, the plan's
-    // limit from `share_limits`; the set must have all its rows. A query share takes no set.
+    // limit from `share_limits`; the set must have all its rows. A query share takes no set. For a table page, the
+    // SQL is the page's `view_sql` and `total_rows` what `table_row_count` counts, since the set holds one page.
     pub async fn create_share(
         &self,
         request: ShareRequestArg,
         result: Option<Arc<ResultSet>>,
         visible_columns: u32,
         max_rows: u32,
+        total_rows: Option<u64>,
     ) -> Result<CreatedShareInfo, CoreError> {
         let account = self.account.clone();
         let tasks = self.tasks.clone();
@@ -145,7 +147,7 @@ impl AccountService {
                 }
                 (ShareKindTag::Result, Some(set)) => {
                     let built = tasks
-                        .spawn_blocking_task(move || snapshot_of(&set, visible_columns, max_rows))
+                        .spawn_blocking_task(move || snapshot_of(&set, visible_columns, max_rows, total_rows))
                         .await
                         .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
                     Some(built)
@@ -198,7 +200,12 @@ impl AccountService {
     }
 }
 
-fn snapshot_of(set: &ResultSet, visible_columns: u32, max_rows: u32) -> Result<Snapshot, CoreError> {
+fn snapshot_of(
+    set: &ResultSet,
+    visible_columns: u32,
+    max_rows: u32,
+    total_rows: Option<u64>,
+) -> Result<Snapshot, CoreError> {
     // A set still reading would share the rows held so far as if they were all of them.
     if !set.is_finished() {
         return Err(CoreError::failed("ffi.share_unfinished", "the rows are still arriving"));
@@ -206,9 +213,10 @@ fn snapshot_of(set: &ResultSet, visible_columns: u32, max_rows: u32) -> Result<S
     let held = set.result_columns();
     let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
     let columns: Vec<ResultColumn> = held.iter().take(visible).cloned().collect();
-    let total = set.row_count();
-    let taken = total.min(u64::from(max_rows));
+    let held = set.row_count();
+    let taken = held.min(u64::from(max_rows));
     let rows = (0..taken).map(|row| held_row(set, row, &columns));
+    let total = total_rows.map_or(held, |total| total.max(held));
     Ok(build_snapshot(
         &columns,
         rows,
