@@ -8,13 +8,14 @@ use std::time::Duration;
 
 use tablepro_core::meta::ObjectScope;
 use tablepro_core::{
-    Connection, DriverError, ReadOnlyRefusal, RowLimit, RunEnd, RunOptions, TlsConfig, Value, WorkspaceSettings,
-    WriteKind,
+    Connection, DriverError, ReadOnlyRefusal, RowLimit, RunEnd, RunOptions, TlsConfig, UserSql, Value,
+    WorkspaceSettings, WriteKind,
 };
 use tablepro_test_fixtures::{PgBouncerFixture, PoolMode};
 use tablepro_test_support::conformance::test_liveness;
 use tokio_util::sync::CancellationToken;
 
+use crate::copy_in::queued;
 use crate::support::{
     CALL, apply, connect_with, direct, options_over, password, rows, run, run_ok, run_with, scalar, session, setup,
     statement, text, within,
@@ -163,6 +164,56 @@ async fn enum_citext_10000_row_flight_never_prepares() {
         assert_eq!(result.rows[0][1], Value::Text("happy".to_owned()));
         assert_eq!(result.rows[0][2], Value::Text("Name 1".to_owned()));
     }
+}
+
+/// The copy prepares its statement under a name, which only holds
+/// because the driver's own transaction keeps one server connection from
+/// the Parse to the end of the rows.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn transaction_pool_copy_in_loads_its_rows() {
+    let bouncer = PgBouncerFixture::start(PoolMode::Transaction).await.expect("PgBouncer");
+    let connection = through(&bouncer, false).await;
+    setup(connection.as_ref(), &["CREATE TABLE t (id int, label text)"]).await;
+    let session = session(connection.as_ref()).await;
+
+    let summary = session
+        .copy_in(
+            UserSql::new("COPY t (id, label) FROM stdin"),
+            queued(&[b"1\ta\n2\tb\n"]).await,
+            RunOptions::new(CancellationToken::new()),
+        )
+        .await
+        .expect("the copy");
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    assert_eq!(summary.rows, 2);
+    assert_eq!(text(&scalar(connection.as_ref(), "SELECT count(*) FROM t").await), "2");
+    run_ok(session.as_ref(), "SELECT 1").await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn transaction_pool_copy_refused_at_its_start_keeps_the_session() {
+    let bouncer = PgBouncerFixture::start(PoolMode::Transaction).await.expect("PgBouncer");
+    let connection = through(&bouncer, false).await;
+    let session = session(connection.as_ref()).await;
+
+    let summary = session
+        .copy_in(
+            UserSql::new("COPY missing FROM stdin"),
+            queued(&[b"1\n"]).await,
+            RunOptions::new(CancellationToken::new()),
+        )
+        .await
+        .expect("the copy");
+
+    let RunEnd::Failed(DriverError::Server(diagnostics)) = &summary.end else {
+        panic!("a missing table ended {:?}", summary.end);
+    };
+    assert_eq!(diagnostics.sqlstate(), Some("42P01"));
+    let events = run_ok(session.as_ref(), "SELECT 41 + 1").await;
+    assert_eq!(text(&events.rows()[0][0]), "42");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

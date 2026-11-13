@@ -160,19 +160,6 @@ struct ResultRowsBuildOffMainTests {
         #expect(result.tableRows.value(at: 1, column: 1) == .text("j•••@example.com"))
     }
 
-    @Test("A batch with more results than a run keeps shows the last ones and says how many there were")
-    func batchKeepsTheLastResults() async throws {
-        let count = RunResultPlan.maxRowResults + 2
-        let answered = (1...count).map { ScriptAnsweringDriver.resultSet(columns: Self.columns, rows: [["\($0)", "x@example.com"]]) }
-
-        let results = try await runBatch(answeredWith: answered)
-
-        #expect(results.count == RunResultPlan.maxRowResults)
-        #expect(results.first?.tableRows.value(at: 0, column: 0) == .text("3"))
-        #expect(results.last?.tableRows.value(at: 0, column: 0) == .text("\(count)"))
-        #expect(results.allSatisfy { $0.statusMessage?.contains(count.formatted()) == true })
-    }
-
     @Test("A batch's numbered result sets are each masked and keep their order")
     func batchNumberedResultsAreMasked() async throws {
         let first = ScriptAnsweringDriver.resultSet(columns: Self.columns, rows: [["1", "jane@example.com"]])

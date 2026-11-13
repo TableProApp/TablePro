@@ -877,40 +877,47 @@ struct ExecutionGateTests {
         )
     }
 
-    private static let writableFunctions = ReadOnlyFunctionPolicy(functionsCanWrite: true, levelIsHeld: false)
+    private static let writableFunctions = ReadOnlyFunctionPolicy(functionsCanWrite: true)
 
-    @Test("Read-Only asks before a read that calls a function the engine could let write")
-    func readOnlyAsksBeforeAFunctionCall() async {
+    @Test("Read-Only refuses a read that calls a function the engine could let write, and names the level to switch to")
+    func readOnlyRefusesAFunctionCall() async {
         let confirm = StubConfirming(answer: true)
         let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
 
         let decision = await gate.authorize(makeRequest(sql: "SELECT purge_orders()", kind: .readQuery))
 
-        #expect(decision.isAuthorized)
-        #expect(confirm.callCount == 1)
-        #expect(confirm.lastRequest?.sql == "SELECT purge_orders()")
-        #expect(confirm.lastDestructive == false)
-    }
-
-    @Test("A Cancel at that question is a Cancel, and nothing runs")
-    func readOnlyFunctionCallCancelled() async {
-        let confirm = StubConfirming(answer: false)
-        let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
-
-        let decision = await gate.authorize(makeRequest(sql: "SELECT purge_orders()", kind: .readQuery))
-
-        guard case .denied(_, let cause) = decision else {
-            Issue.record("A Cancel must deny")
+        guard case .denied(let reason, let cause) = decision else {
+            Issue.record("Read-Only must refuse a call it cannot tell from a write")
             return
         }
-        #expect(cause == .cancelledByUser)
+        #expect(reason.contains("Alert"))
+        #expect(cause == .policy)
+        #expect(confirm.callCount == 0)
+    }
+
+    @Test(
+        "A caller cleared before the gate is refused the call all the same",
+        arguments: [CallerCapabilities.preCleared, .confirmationPreCleared]
+    )
+    func clearedCallerIsRefusedTheCall(cleared: CallerCapabilities) async {
+        let confirm = StubConfirming(answer: true)
+        let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
+
+        let decision = await gate.authorize(makeRequest(
+            sql: "SELECT purge_orders()",
+            kind: .readQuery,
+            capabilities: CallerCapabilities.interactiveUser.union(cleared)
+        ))
+
+        #expect(!decision.isAuthorized)
+        #expect(confirm.callCount == 0)
     }
 
     @Test("A managed policy or an engine floor holding Read-Only refuses the call without asking")
     func heldReadOnlyRefusesAFunctionCall() async {
         let confirm = StubConfirming(answer: true)
         let gate = makeReadOnlyGate(
-            policy: ReadOnlyFunctionPolicy(functionsCanWrite: true, levelIsHeld: true),
+            policy: ReadOnlyFunctionPolicy(functionsCanWrite: true, floor: .readOnly),
             confirm: confirm
         )
 
@@ -920,12 +927,89 @@ struct ExecutionGateTests {
             Issue.record("A held Read-Only must refuse")
             return
         }
-        #expect(reason.contains("Read-Only"))
+        #expect(reason.contains("held at Read-Only"))
+        #expect(!reason.contains("Alert"))
         #expect(cause == .policy)
         #expect(confirm.callCount == 0)
     }
 
-    @Test("A caller that cannot prompt is denied the call")
+    @Test(
+        "The refusal names the weakest level the menu offers that runs the call",
+        arguments: [
+            (SafeModeLevel?.none, SafeModeLevel?.some(.alert)), (.silent, .alert), (.alert, .alert),
+            (.alertFull, .alertFull), (.safeModeFull, .safeModeFull), (.readOnly, nil),
+        ]
+    )
+    func refusalNamesTheLevelThatRunsIt(floor: SafeModeLevel?, named: SafeModeLevel?) async {
+        let policy = ReadOnlyFunctionPolicy(functionsCanWrite: true, floor: floor)
+        let gate = makeReadOnlyGate(policy: policy, confirm: StubConfirming(answer: true))
+
+        let reason = await gate.authorize(makeRequest(sql: "SELECT purge_orders()", kind: .readQuery)).deniedReason
+
+        #expect(policy.levelThatRunsIt == named)
+        if let named {
+            #expect(reason?.hasSuffix("Switch Safe Mode to \(named.displayName) to run it.") == true)
+        } else {
+            #expect(reason?.contains("held at Read-Only") == true)
+        }
+    }
+
+    // Oracle and Dameng call a function named bare; the session's catalog tells it from a column.
+    private actor ResolverCalls {
+        private(set) var count = 0
+        func record() { count += 1 }
+    }
+
+    private func makeBareNameGate(calls: ResolverCalls, answer: Bool) -> DefaultExecutionGate {
+        let policy = Self.writableFunctions
+        return DefaultExecutionGate(
+            confirming: StubConfirming(answer: true),
+            authenticating: StubAuthenticating(answer: true),
+            safeModeLevelResolver: { _ in .readOnly },
+            forcesWriteResolver: { _ in false },
+            readOnlyFunctionPolicyResolver: { _, _ in policy },
+            bareNameCallResolver: { _, _ in
+                await calls.record()
+                return answer
+            }
+        )
+    }
+
+    @Test("Read-Only on Oracle and Dameng refuses a name the catalog resolves to a function", arguments: [
+        DatabaseType.oracle, .dameng,
+    ])
+    func readOnlyRefusesABareFunctionName(type: DatabaseType) async {
+        let calls = ResolverCalls()
+        let gate = makeBareNameGate(calls: calls, answer: true)
+
+        let decision = await gate.authorize(makeRequest(sql: "SELECT purge_orders FROM dual", kind: .readQuery, databaseType: type))
+
+        #expect(decision.deniedReason?.contains("calls a function that can change data") == true)
+        #expect(await calls.count == 1)
+    }
+
+    @Test("A name the catalog reads as a column runs, and a query naming nothing never asks the catalog")
+    func bareNameAsksOnlyWhenItMust() async {
+        let calls = ResolverCalls()
+        let gate = makeBareNameGate(calls: calls, answer: false)
+
+        #expect(await gate.authorize(makeRequest(sql: "SELECT id FROM orders", kind: .readQuery, databaseType: .oracle)).isAuthorized)
+        #expect(await calls.count == 1)
+        #expect(await gate.authorize(makeRequest(sql: "SELECT 1 FROM dual", kind: .readQuery, databaseType: .oracle)).isAuthorized)
+        #expect(await gate.authorize(makeRequest(sql: "SELECT id FROM orders", kind: .readQuery, databaseType: .mysql)).isAuthorized)
+        #expect(await calls.count == 1)
+    }
+
+    @Test("A package function named bare is refused without the catalog")
+    func dottedBareCallRefusedByDefault() async {
+        let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: StubConfirming(answer: true))
+
+        let decision = await gate.authorize(makeRequest(sql: "SELECT pkg.purge FROM dual", kind: .readQuery, databaseType: .oracle))
+
+        #expect(!decision.isAuthorized)
+    }
+
+    @Test("A caller that cannot prompt gets the same refusal")
     func readOnlyFunctionCallDeniedWithoutPrompt() async {
         let confirm = StubConfirming(answer: true)
         let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
@@ -934,12 +1018,12 @@ struct ExecutionGateTests {
             makeRequest(sql: "SELECT purge_orders()", kind: .readQuery, capabilities: [.cannotPrompt])
         )
 
-        #expect(decision.deniedReason?.contains("Confirmation") == true)
+        #expect(decision.deniedReason?.contains("Alert") == true)
         #expect(confirm.callCount == 0)
     }
 
     @Test(
-        "Read-Only runs built-ins, keywords before a parenthesis and a plain EXPLAIN without asking",
+        "Read-Only runs built-ins, keywords before a parenthesis and a plain EXPLAIN",
         arguments: [
             "SELECT COUNT(*), MAX(total), LOWER(name) FROM orders WHERE id IN (1, 2) AND EXISTS (SELECT 1)",
             "SELECT ROW_NUMBER() OVER (PARTITION BY region ORDER BY total) FROM orders",
@@ -958,15 +1042,15 @@ struct ExecutionGateTests {
     }
 
     @Test(
-        "A qualified name, a quoted name and a call in a later statement are asked about",
+        "A qualified name, a quoted name and a call in a later statement are refused",
         arguments: [
             "SELECT app.count(id) FROM orders",
             "SELECT `purge_orders`() FROM orders",
             "SELECT 1;\nSELECT purge_orders()",
         ]
     )
-    func readOnlyAsksAboutAnyOtherCall(sql: String) async {
-        let confirm = StubConfirming(answer: false)
+    func readOnlyRefusesAnyOtherCall(sql: String) async {
+        let confirm = StubConfirming(answer: true)
         let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
 
         let decision = await gate.authorize(
@@ -974,11 +1058,11 @@ struct ExecutionGateTests {
         )
 
         #expect(!decision.isAuthorized)
-        #expect(confirm.callCount == 1)
+        #expect(confirm.callCount == 0)
     }
 
     @Test(
-        "A user function named like a keyword another engine leaves unreserved is asked about",
+        "A user function named like a keyword another engine leaves unreserved is refused",
         arguments: [
             "SELECT filter(x) FROM orders",
             "SELECT `within`(1) FROM orders",
@@ -994,18 +1078,18 @@ struct ExecutionGateTests {
             "SELECT id FROM orders WHERE /* don't */ offset(1) = 1",
         ]
     )
-    func keywordNamedFunctionIsAsked(sql: String) async {
-        let confirm = StubConfirming(answer: false)
+    func keywordNamedFunctionIsRefused(sql: String) async {
+        let confirm = StubConfirming(answer: true)
         let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
 
         let decision = await gate.authorize(makeRequest(sql: sql, kind: .readQuery))
 
         #expect(!decision.isAuthorized)
-        #expect(confirm.callCount == 1)
+        #expect(confirm.callCount == 0)
     }
 
     @Test(
-        "A keyword in the syntax that uses it before a parenthesis runs without asking",
+        "A keyword in the syntax that uses it before a parenthesis runs",
         arguments: [
             "SELECT MAX(sal) KEEP (DENSE_RANK FIRST ORDER BY hired) FROM emp",
             "SELECT LISTAGG(name, ',') WITHIN GROUP (ORDER BY name) FROM emp",
@@ -1029,7 +1113,7 @@ struct ExecutionGateTests {
     }
 
     @Test(
-        "A word operator before a parenthesis runs without asking",
+        "A word operator before a parenthesis runs",
         arguments: [
             "SELECT 10 DIV (2), paid XOR (refunded) FROM orders",
             "SELECT id FROM orders WHERE name REGEXP ('^a') OR name RLIKE ('b$')",
@@ -1047,7 +1131,7 @@ struct ExecutionGateTests {
     }
 
     @Test(
-        "The fallback engines' everyday built-ins run without asking",
+        "The fallback engines' everyday built-ins run",
         arguments: [
             (DatabaseType.oracle, "SELECT DECODE(status, 1, 'open', 'closed'), NVL2(a, b, c), INSTR(name, 'x') FROM orders"),
             (.oracle, "SELECT ADD_MONTHS(created, 1), MONTHS_BETWEEN(a, b), TO_TIMESTAMP(t), SYS_GUID() FROM orders"),
@@ -1069,13 +1153,13 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 0)
     }
 
-    // GET_LOCK is refused as a write before the question; the others are asked about, and the test answers Cancel.
+    // GET_LOCK is refused as a write; SLEEP and BENCHMARK are off the built-in list.
     @Test(
         "A built-in that locks, sleeps or waits never runs on its own",
         arguments: ["SELECT GET_LOCK('a', 10)", "SELECT SLEEP(5)", "SELECT BENCHMARK(1000, MD5('a'))"]
     )
     func lockingOrSleepingBuiltinDoesNotRun(sql: String) async {
-        let confirm = StubConfirming(answer: false)
+        let confirm = StubConfirming(answer: true)
         let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
 
         let decision = await gate.authorize(makeRequest(sql: sql, kind: .readQuery))
@@ -1096,7 +1180,7 @@ struct ExecutionGateTests {
         }
     }
 
-    @Test("A driver that runs the statement in the engine's read-only mode is not asked about")
+    @Test("A driver that runs the statement in the engine's read-only mode runs the call")
     func enforcingDriverRunsTheCall() async {
         let confirm = StubConfirming(answer: false)
         let gate = makeReadOnlyGate(policy: ReadOnlyFunctionPolicy(), confirm: confirm)
@@ -1107,7 +1191,7 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 0)
     }
 
-    @Test("Only Read-Only asks: Silent runs the same call", arguments: [SafeModeLevel.silent, .alert])
+    @Test("Only Read-Only refuses: Silent and Alert run the same call", arguments: [SafeModeLevel.silent, .alert])
     func otherLevelsDoNotAsk(level: SafeModeLevel) async {
         let confirm = StubConfirming(answer: false)
         let gate = makeReadOnlyGate(level: level, policy: Self.writableFunctions, confirm: confirm)
@@ -1118,7 +1202,7 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 0)
     }
 
-    @Test("A metadata read is never asked about")
+    @Test("A metadata read is never refused for its calls")
     func metadataReadSkipsTheFunctionCheck() async {
         let confirm = StubConfirming(answer: false)
         let gate = makeReadOnlyGate(policy: Self.writableFunctions, confirm: confirm)
@@ -1152,7 +1236,7 @@ struct ReadOnlyFunctionPolicyTests {
         #expect(!PluginMetadataRegistry.queryFunctionsCanWrite.contains(type))
     }
 
-    @Test("A live MySQL driver without the mode needs the question, and one with it does not")
+    @Test("A live MySQL driver without the mode is refused the call, and one with it is not")
     func liveDriverDecides() {
         let connection = DatabaseConnection(name: "Shop", database: "shop", type: .mysql, safeModeLevel: .readOnly)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
@@ -1163,7 +1247,7 @@ struct ReadOnlyFunctionPolicyTests {
         let enforcing = ExecutionGateProvider.readOnlyFunctionPolicy(connectionId: connection.id, databaseType: .mysql)
 
         #expect(older.functionsCanWrite)
-        #expect(!older.levelIsHeld)
+        #expect(older.levelThatRunsIt == .alert)
         #expect(!enforcing.functionsCanWrite)
         #expect(ExecutionGateProvider.runsAtReadOnly(connection.id))
     }

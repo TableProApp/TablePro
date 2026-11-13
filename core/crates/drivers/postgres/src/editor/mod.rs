@@ -2,6 +2,7 @@
 // with the transaction status followed statement by statement.
 
 mod actor;
+mod copy_flight;
 mod cursor_flight;
 mod editor_dispatch;
 mod editor_session;

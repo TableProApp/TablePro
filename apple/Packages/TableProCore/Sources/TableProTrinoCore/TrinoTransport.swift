@@ -43,6 +43,7 @@ public struct TrinoHTTPRequest: Sendable {
     public enum Method: String, Sendable {
         case get = "GET"
         case post = "POST"
+        case head = "HEAD"
         case delete = "DELETE"
     }
 

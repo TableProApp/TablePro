@@ -81,6 +81,8 @@ internal enum BatchTransactionPolicy {
             return SqlBlockStructure.beginStartsTransaction(followedBy: cursor.next()?.word)
         case "START":
             return cursor.next()?.word == "TRANSACTION"
+        case "BT":
+            return grammar.contains(.transactionShortForms)
         case "XA":
             let following = cursor.next()?.word
             return following == "START" || following == "BEGIN"

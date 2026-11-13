@@ -75,6 +75,9 @@ internal enum BatchStatementRun {
         gate: BatchClaimGate,
         failureSQL: (Statement) -> String,
         isCommitPoint: (Statement) -> Bool,
+        endsItsTransaction: (Statement) -> Bool = { _ in false },
+        closesTransaction: (Statement) -> Bool = { _ in false },
+        movesDatabase: (Statement) -> Bool = { _ in false },
         serverError: (Output) -> String? = { _ in nil },
         replanned: @escaping @MainActor @Sendable (_ ranCount: Int) async -> [Statement]? = { _ in nil },
         commitOutput: ServerOutputBox = ServerOutputBox(),
@@ -93,13 +96,23 @@ internal enum BatchStatementRun {
         var results: [Output] = []
         var queue = statements
         var position = 0
+        var databaseMove: String?
         while position < queue.count {
             let statement = queue[position]
             guard !Task.isCancelled, gate.isCurrent() else {
                 await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: sentBegin)
                 return .cancelled(results: plan.keepsExecutedStatements ? results : [])
             }
-            let ran = await runStatement(
+            let moves = movesDatabase(statement)
+            // `.unknown` also stands for a statement nobody asked about.
+            let heldBefore: PluginSessionTransactionState = moves ? await driver.heldSessionTransactionState() : .unknown
+            // A new run is pinned back to the tab's database, so the rest of this one would land in the wrong one.
+            if heldBefore.holdsUserTransaction {
+                return .failed(
+                    results: results, failure: .databaseMoveAwaitsCommit(sql: failureSQL(statement)), errorDescription: ""
+                )
+            }
+            var ran = await runStatement(
                 statement,
                 isCommitPoint: isCommitPoint(statement),
                 driver: driver,
@@ -107,6 +120,12 @@ internal enum BatchStatementRun {
                 gate: gate,
                 execute: execute
             )
+            // An ANSI session holds the move in a transaction of its own, which the app's own switch commits the same way.
+            if heldBefore == .idle, case .committed(let result) = ran,
+               await driver.heldSessionTransactionState() == .inTransaction {
+                ran = await committingMove(result, driver: driver, connectionId: connectionId, gate: gate)
+            }
+            if moves, case .committed = ran { databaseMove = failureSQL(statement) }
             switch ran {
             case .stopped:
                 await rollback(driver: driver, connectionId: connectionId, plan: plan, sentBegin: sentBegin)
@@ -138,6 +157,15 @@ internal enum BatchStatementRun {
             position += 1
             if position < queue.count, let rest = await replanned(position) {
                 queue = Array(queue.prefix(position)) + rest
+            }
+            // The next statement would be refused, inside BT with the whole block rolled back, so the user commits first.
+            if position < queue.count, !Task.isCancelled, gate.isCurrent(), endsItsTransaction(statement),
+               !closesTransaction(queue[position]), await driver.heldSessionTransactionState() == .inTransaction {
+                return .failed(
+                    results: results,
+                    failure: .awaitsCommit(sql: failureSQL(statement), databaseMove: databaseMove),
+                    errorDescription: ""
+                )
             }
         }
 
@@ -176,6 +204,29 @@ internal enum BatchStatementRun {
             gate: gate,
             exit: .resumes
         ) { @Sendable in try await execute(statement) }
+    }
+
+    // Protected like a script's own COMMIT, and the run carries on after it.
+    private static func committingMove<Output: Sendable>(
+        _ result: Output,
+        driver: DatabaseDriver,
+        connectionId: UUID,
+        gate: BatchClaimGate
+    ) async -> BatchCommitOutcome<Output> {
+        let committed = await BatchCommitPoint.run(
+            driver: driver,
+            connectionId: connectionId,
+            gate: gate,
+            exit: .resumes
+        ) { @Sendable in try await driver.commitTransaction() }
+        switch committed {
+        case .stopped:
+            return .stopped
+        case .committed:
+            return .committed(result)
+        case .failed(let failure):
+            return .failed(failure)
+        }
     }
 
     /// The app's own commit, and the last thing the run does. The mark it takes is held until the

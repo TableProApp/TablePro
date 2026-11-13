@@ -62,6 +62,10 @@
                     SpinButtonPlacementMode="Compact"
                     ValueChanged="OnRowLimitChanged" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="ResultsKeptCard" x:Name="ResultsKeptCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="ViewAll" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="ResultsKeptBox" x:Uid="ResultsKeptBox" AutomationProperties.AutomationId="ResultsKeptBox" MinWidth="200" SelectionChanged="OnResultsKeptChanged" />
+            </toolkit:SettingsCard>
             <toolkit:SettingsCard x:Uid="TimeoutCard" x:Name="TimeoutCard">
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Clock" /></toolkit:SettingsCard.HeaderIcon>
                 <NumberBox
@@ -78,6 +82,10 @@
             <toolkit:SettingsCard x:Uid="PageSizeCard" x:Name="PageSizeCard">
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8FD;" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="PageSizeBox" x:Uid="PageSizeBox" AutomationProperties.AutomationId="PageSizeBox" MinWidth="200" SelectionChanged="OnPageSizeChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="CountThresholdCard" x:Name="CountThresholdCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Calculator" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="CountThresholdBox" x:Uid="CountThresholdBox" AutomationProperties.AutomationId="CountThresholdBox" MinWidth="200" SelectionChanged="OnCountThresholdChanged" />
             </toolkit:SettingsCard>
 
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />

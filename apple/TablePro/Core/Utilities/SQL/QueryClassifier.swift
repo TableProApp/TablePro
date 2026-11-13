@@ -62,6 +62,36 @@ enum QueryClassifier {
         }
     }
 
+    // Nil on an engine with a query language of its own, Cypher, KafkaQL or a shell: which of its commands define,
+    // grant or set the session is not a SQL question.
+    static func isSQLDataStatement(_ sql: String, databaseType: DatabaseType) -> Bool? {
+        let readings = databaseType.lexicalReadings
+        guard (PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editorLanguage ?? .sql) == .sql,
+              documentStoreClassification(sql, databaseType: databaseType, readings: readings) == nil,
+              redisClassification(sql, databaseType: databaseType) == nil
+        else { return nil }
+        let leading = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: readings.execution))
+        guard beancountClassification(leading, databaseType: databaseType) == nil else { return nil }
+        return SQLStatementClassifier.isDataStatement(
+            sql,
+            databaseTypeId: databaseType.rawValue,
+            readings: readings,
+            request: requestClassification(for: databaseType),
+            requestIsData: requestDataStatement(for: databaseType)
+        )
+    }
+
+    private static func requestDataStatement(for databaseType: DatabaseType) -> SQLStatementClassifier.RequestDataStatement? {
+        switch databaseType {
+        case .dynamodb:
+            return { statement, grammar in dynamoDBIsDataStatement(statement, grammar: grammar) }
+        case .influxdb:
+            return { statement, _ in fluxIsDataStatement(statement) }
+        default:
+            return nil
+        }
+    }
+
     static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
         let readings = databaseType.lexicalReadings
         return classify(sql, databaseType: databaseType, readings: readings) { $0.tier != .safe }.tier != .safe
@@ -159,7 +189,7 @@ enum QueryClassifier {
     private static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
 }
 
-private extension QueryClassifier {
+extension QueryClassifier {
     static let redisDestructiveCommands: Set<String> = [
         "FLUSHDB", "FLUSHALL", "SHUTDOWN", "MIGRATE", "SWAPDB", "REPLICAOF", "SLAVEOF",
         "CLUSTER", "FAILOVER", "RESET"
@@ -185,7 +215,7 @@ private extension QueryClassifier {
         }
     }
 
-    private static func redisCommandClassification(_ command: String) -> QueryClassification {
+    static func redisCommandClassification(_ command: String) -> QueryClassification {
         guard let arguments = RedisArgumentCodec.split(command) else {
             return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
         }
@@ -283,9 +313,11 @@ private extension QueryClassifier {
         }
     }
 
-    /// The APIs a POST may reach and still only read. `POST /orders/_mapping` changes the mapping.
+    // The APIs a POST may reach and still only read (REST API spec 8.19). `POST /orders/_mapping` changes the mapping.
     static let elasticsearchReadEndpoints: Set<String> = [
-        "_search", "_count", "_msearch", "_explain", "_analyze", "_field_caps", "_validate", "_render", "_sql"
+        "_search", "_count", "_msearch", "_explain", "_analyze", "_field_caps", "_validate", "_render", "_sql",
+        "_mget", "_query", "_knn_search", "_termvectors", "_mtermvectors", "_terms_enum", "_search_shards",
+        "_rank_eval", "_mvt"
     ]
 
     /// Read the way `ElasticsearchConsoleParser` reads a console request: the method and path on the
@@ -312,7 +344,7 @@ private extension QueryClassifier {
                 tier = .destructive
             } else {
                 let readsOnly = elasticsearchEndpoint(of: path).map(elasticsearchReadEndpoints.contains) ?? false
-                tier = readsOnly ? .safe : .write
+                tier = readsOnly && !elasticsearchKeepsResults(path) ? .safe : .write
             }
         case "DELETE":
             tier = .destructive
@@ -331,7 +363,14 @@ private extension QueryClassifier {
         guard !route.contains(where: { $0.isWhitespace || $0 == "%" || $0 == "\\" }) else { return nil }
         let segments = route.split(separator: "/")
         guard !segments.contains(where: { $0 == "." || $0 == ".." }) else { return nil }
-        return segments.first { $0.hasPrefix("_") }.map(String.init)
+        // `_all` is a target, not an API: `GET /_all/_search`.
+        return segments.first { $0.hasPrefix("_") && $0 != "_all" }.map(String.init)
+    }
+
+    // An async ES|QL query keeps its results on the cluster, as `_async_search` does.
+    static func elasticsearchKeepsResults(_ path: String) -> Bool {
+        let segments = path.prefix { $0 != "?" && $0 != "#" }.split(separator: "/")
+        return zip(segments, segments.dropFirst()).contains { $0 == "_query" && $1 == "async" }
     }
 
     // A snapshot writes to a server path and `/keys` mints API keys.
@@ -428,7 +467,7 @@ private extension QueryClassifier {
         return .write
     }
 
-    private static func weaviateClassification(of request: WeaviateConsoleRequest) -> QueryClassification {
+    static func weaviateClassification(of request: WeaviateConsoleRequest) -> QueryClassification {
         switch request.method {
         case "GET", "HEAD":
             return .safe

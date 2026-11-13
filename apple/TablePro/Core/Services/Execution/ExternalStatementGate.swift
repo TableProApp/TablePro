@@ -32,9 +32,10 @@ internal enum ExternalStatementGate {
         internal let loadsExtensions: Bool
         internal let allowsDestructive: Bool
         internal let allowsMultiStatement: Bool
-        /// What this transport offers instead, appended to the destructive refusal. MCP has a tool
-        /// for it; AppleScript confirms interactively and never reaches the refusal.
+        // Appended to the destructive refusal: MCP has a tool for it, AppleScript confirms and never reaches it.
         internal let destructiveAlternative: String?
+        // The assistant's Edit mode: queries and row changes, no schema, privilege, session or transaction statement.
+        internal let allowsOnlyDataStatements: Bool
 
         internal init(
             sql: String,
@@ -44,7 +45,8 @@ internal enum ExternalStatementGate {
             loadsExtensions: Bool,
             allowsDestructive: Bool,
             allowsMultiStatement: Bool = false,
-            destructiveAlternative: String? = nil
+            destructiveAlternative: String? = nil,
+            allowsOnlyDataStatements: Bool = false
         ) {
             self.sql = sql
             self.connectionId = connectionId
@@ -54,6 +56,7 @@ internal enum ExternalStatementGate {
             self.allowsDestructive = allowsDestructive
             self.allowsMultiStatement = allowsMultiStatement
             self.destructiveAlternative = destructiveAlternative
+            self.allowsOnlyDataStatements = allowsOnlyDataStatements
         }
     }
 
@@ -102,6 +105,11 @@ internal enum ExternalStatementGate {
             )
         }
 
+        if statement.allowsOnlyDataStatements,
+           !QueryClassifier.isDataStatement(statement.sql, databaseType: statement.databaseType) {
+            throw ExternalStatementGateError.denied(dataStatementRefusal)
+        }
+
         return classification
     }
 
@@ -118,6 +126,14 @@ internal enum ExternalStatementGate {
 
     internal static let destructiveRefusal = String(
         localized: "This statement is destructive, like DROP, TRUNCATE or a DELETE with no WHERE."
+    )
+
+    internal static let dataStatementRefusal = String(
+        localized: """
+        Edit mode runs only queries and data changes, such as SELECT, INSERT, UPDATE, DELETE and MERGE. \
+        A schema, privilege, session or transaction statement, or a change to the database's own tables, \
+        needs Agent mode, or run it yourself in a query tab.
+        """
     )
 
     internal static let notDestructiveRefusal = String(

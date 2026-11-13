@@ -177,13 +177,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard QuitApproval.approve() else {
+        guard let plan = QuitApproval.approve() else {
             AppRelauncher.shared.terminationWasCancelled()
             return .terminateCancel
         }
 
         Task {
-            // First, while the drivers are open: a debug stop rolls back the routine's transaction.
+            // Before anything the app could not take back if it stays open.
+            guard await QuitApproval.commitBeforeQuitting(plan) else {
+                NSApp.reply(toApplicationShouldTerminate: false)
+                AppRelauncher.shared.terminationWasCancelled()
+                return
+            }
+            RunningWorkRegistry.shared.cancel(plan.work)
+            // While the drivers are open: a debug stop rolls back the routine's transaction.
             await AppModuleTermination.stopModuleWork()
             await MCPServerManager.shared.stop()
             await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()

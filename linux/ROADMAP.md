@@ -128,7 +128,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 | Capability | Detail |
 |---|---|
-| SQL files | Import SQL File in the main menu runs a `.sql` or `.sql.gz` file of any size on an editor session of its own, split as the engine's client splits it (`DELIMITER`, `GO n`, routine bodies, dollar quotes), with progress, Stop and a summary of what failed and where. pg_dump's `COPY ... FROM stdin` rows run as INSERTs and its `\restrict` lines are passed over |
+| SQL files | Import SQL File in the main menu runs a `.sql` or `.sql.gz` file of any size on an editor session of its own, split as the engine's client splits it (`DELIMITER`, `GO n`, routine bodies, dollar quotes), with progress, Stop and a summary of what failed and where. pg_dump's `COPY ... FROM stdin` rows load through the copy protocol, text or CSV, and its `\restrict` lines are passed over |
 | Errors and transactions | Stop at First Error, or run the rest and list each failure with its line. On PostgreSQL, SQL Server, SQLite and DuckDB the file can run as one transaction, so a failure or Stop undoes it all; MySQL, MariaDB and ClickHouse commit each statement as it runs. Safe Mode Read-Only offers neither import, and the import dialog is the one question Confirm Writes asks for the whole file |
 
 ### Windows and sessions

@@ -234,6 +234,13 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
     }
 
+    func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws {
+        guard driver.supportsCopyFromStandardInput else { throw SQLFileParseError.copyFromStandardInput(line: line) }
+        try await importedData(writes: true, statement: statement) {
+            _ = try await self.driver.copyFromStandardInput(statement: statement, rows: rows, context: nil)
+        }
+    }
+
     // T-SQL scopes a variable and a TRY...CATCH to its batch, so a batch goes whole where the driver can send it so.
     private func send(_ statement: String, line: Int, grammar: SQLLexicalGrammar) async throws {
         guard grammar.contains(.batchSeparatorLines) else {

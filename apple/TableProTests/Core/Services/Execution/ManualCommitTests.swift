@@ -148,7 +148,7 @@ struct ManualCommitTests {
         #expect(AgentTransactionGuard.protection(family: .duckdb, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .redshift, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .mysql, sessionState: .inTransaction, controlsTransaction: false) == .none)
-        #expect(AgentTransactionGuard.protection(family: .teradata, sessionState: .inTransaction, controlsTransaction: false) == .none)
+        #expect(AgentTransactionGuard.protection(family: .teradata, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .postgres, sessionState: .idle, controlsTransaction: false) == .none)
         #expect(AgentTransactionGuard.protection(family: .postgres, sessionState: .inTransaction, controlsTransaction: true) == .none)
     }
@@ -207,6 +207,22 @@ struct ManualCommitTests {
         #expect(AgentTransactionGuard.notice(
             startState: .inTransaction, endState: .inTransaction, pendingMatters: false, openedHold: false
         ) == nil)
+        #expect(AgentTransactionGuard.notice(startState: .idle, endState: .inTransaction, pendingMatters: false, openedHold: false)
+            == ManualCommit.statementOpenedNotice)
+        #expect(AgentTransactionGuard.notice(startState: .idle, endState: .idle, pendingMatters: false, openedHold: false) == nil)
+    }
+
+    @Test("Teradata's BT and ET are transaction control, and only there")
+    func teradataShortFormsControlTheTransaction() {
+        let teradata = DatabaseType.teradata
+        for sql in ["BT", "ET", "bt;"] {
+            #expect(ManualCommit.controlsTransaction([sql], databaseType: teradata, grammar: teradata.lexicalGrammar), "\(sql)")
+        }
+        #expect(ManualCommit.startsTransaction(["BT"], databaseType: teradata, grammar: teradata.lexicalGrammar))
+        #expect(!ManualCommit.startsTransaction(["ET"], databaseType: teradata, grammar: teradata.lexicalGrammar))
+        let postgres = DatabaseType.postgresql
+        #expect(!ManualCommit.controlsTransaction(["ET"], databaseType: postgres, grammar: postgres.lexicalGrammar))
+        #expect(!ManualCommit.controlsTransaction(["BT"], databaseType: postgres, grammar: postgres.lexicalGrammar))
     }
 
     @Test("The refusal says how to run the change")

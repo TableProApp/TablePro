@@ -127,7 +127,10 @@ internal struct AgentTransactionGuard: Sendable {
             throw error
         }
         let pendingMatters = commitMode == .manual && writes
-        guard pendingMatters || startState.holdsUserTransaction else { return (value, nil) }
+        // A Teradata ANSI session holds every change in a transaction it opens, which then refuses the next statement.
+        let mayHoldWrite = writes && !controls && startState == .idle
+            && family.failedStatementAbortsTransaction && !family.takesBackAFailedStatement
+        guard pendingMatters || startState.holdsUserTransaction || mayHoldWrite else { return (value, nil) }
         let endState = await driver.heldSessionTransactionState()
         let notice = Self.notice(
             startState: startState, endState: endState, pendingMatters: pendingMatters, openedHold: opened
@@ -142,7 +145,8 @@ internal struct AgentTransactionGuard: Sendable {
         openedHold: Bool
     ) -> String? {
         if startState.holdsUserTransaction || openedHold, endState == .idle { return ManualCommit.transactionEndedNotice }
-        return pendingMatters && endState.holdsUserTransaction ? ManualCommit.pendingNotice : nil
+        if pendingMatters { return endState.holdsUserTransaction ? ManualCommit.pendingNotice : nil }
+        return startState == .idle && !openedHold && endState.holdsUserTransaction ? ManualCommit.statementOpenedNotice : nil
     }
 
     nonisolated private func savepointed<T>(

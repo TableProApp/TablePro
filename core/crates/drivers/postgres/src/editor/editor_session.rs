@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::{
-    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
-    ResultSink, RunOptions, RunSummary, TransactionState, UserSql,
+    CallOptions, CopyInRows, CopyInSummary, DriverError, EditorSession, EditorSessionId, EditorSessionOptions,
+    EditorSessionState, LossPhase, ResultSink, RunOptions, RunSummary, TransactionState, UserSql,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -80,6 +80,26 @@ impl PgEditorSession {
             close_timeout,
         }))
     }
+
+    /// Hand the actor a command the session was claimed for, and wait for
+    /// its answer.
+    async fn ask<T>(
+        &self,
+        command: Command,
+        answer: oneshot::Receiver<Result<T, DriverError>>,
+        cancel: CancellationToken,
+    ) -> Result<T, DriverError> {
+        // Dropping the caller is itself a cancel: the statement is
+        // already running on the server and has to be stopped.
+        let guard = cancel.drop_guard();
+        if self.commands.send(command).await.is_err() {
+            self.status.lose();
+            return Err(lost());
+        }
+        let outcome = answer.await.unwrap_or_else(|_| Err(lost()));
+        drop(guard.disarm());
+        outcome
+    }
 }
 
 #[async_trait]
@@ -103,9 +123,7 @@ impl EditorSession for PgEditorSession {
         sink: Box<dyn ResultSink>,
     ) -> Result<RunSummary, DriverError> {
         self.status.begin()?;
-        // Dropping the caller is itself a cancel: the statement is
-        // already running on the server and has to be stopped.
-        let guard = options.cancel.clone().drop_guard();
+        let cancel = options.cancel.clone();
         let (reply, answer) = oneshot::channel();
         let command = Command::Run {
             sql,
@@ -113,13 +131,25 @@ impl EditorSession for PgEditorSession {
             sink,
             reply,
         };
-        if self.commands.send(command).await.is_err() {
-            self.status.lose();
-            return Err(lost());
-        }
-        let outcome = answer.await.unwrap_or_else(|_| Err(lost()));
-        drop(guard.disarm());
-        outcome
+        self.ask(command, answer, cancel).await
+    }
+
+    async fn copy_in(
+        &self,
+        statement: UserSql,
+        rows: CopyInRows,
+        options: RunOptions,
+    ) -> Result<CopyInSummary, DriverError> {
+        self.status.begin()?;
+        let cancel = options.cancel.clone();
+        let (reply, answer) = oneshot::channel();
+        let command = Command::CopyIn {
+            statement,
+            rows,
+            options,
+            reply,
+        };
+        self.ask(command, answer, cancel).await
     }
 
     async fn transaction_state(&self, _options: CallOptions) -> Result<TransactionState, DriverError> {

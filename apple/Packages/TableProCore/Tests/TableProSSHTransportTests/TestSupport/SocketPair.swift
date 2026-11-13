@@ -9,9 +9,9 @@
 
 import Foundation
 
-/// A connected pair of local socket fds, used to drive relay and channel-open tests over
-/// real sockets rather than fakes, so closing behaviour is observed the way a database
-/// client would observe it.
+// A connected pair of local socket fds, used to drive relay and channel-open tests over
+// real sockets rather than fakes, so closing behaviour is observed the way a database
+// client would observe it.
 internal final class SocketPair {
     private(set) var a: Int32
     private(set) var b: Int32
@@ -28,6 +28,13 @@ internal final class SocketPair {
     }
 
     func closeB() { Self.close(&b) }
+
+    // Hands `a` to an owner that closes it, so `close()` leaves it alone.
+    func takeA() -> Int32 {
+        let descriptor = a
+        a = -1
+        return descriptor
+    }
 
     func close() {
         Self.close(&a)

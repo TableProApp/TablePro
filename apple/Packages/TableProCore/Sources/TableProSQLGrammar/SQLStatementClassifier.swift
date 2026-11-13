@@ -121,6 +121,7 @@ struct SQLStatementTiering {
     let databaseTypeId: String
     let readings: SQLLexicalReadings
     let request: SQLStatementClassifier.RequestClassification?
+    var rowChanges: Set<String>?
 
     // Each nested statement copies and reads what is left of the text, so nesting past this is refused.
     static let deepestNesting = 32
@@ -276,6 +277,11 @@ extension SQLStatementTiering {
         }
         if isQuery(keyword) {
             return code.contains("INTO") ? .write : .safe
+        }
+        // `INSERT OVERWRITE` empties the table first on Snowflake, Databricks and Hive; Hive's `... DIRECTORY` writes files.
+        if keyword == "INSERT", let verb = code.tokens.firstIndex(where: { $0.kind != .open }),
+           code.tokens.indices.contains(verb + 1), code.tokens[verb + 1].word == "OVERWRITE" {
+            return StatementClassification(tier: .destructive, reachesFilesystemOrExecutesCode: code.contains("DIRECTORY"))
         }
         if keyword == "VACUUM" {
             // SQLite's `VACUUM [schema] INTO 'file'` writes a file whatever stands between the two words.

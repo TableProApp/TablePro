@@ -60,6 +60,41 @@ public sealed class TableTabCountTests
         Assert.Equal(estimate, tab.Page.Estimate);
     }
 
+    // The choices Settings offers, as macOS offers them; Always count counts whatever the estimate.
+    [Theory]
+    [InlineData(1_000L, 5_000L, 0)]
+    [InlineData(10_000L, 9_999L, 1)]
+    [InlineData(1_000_000L, 500_000L, 1)]
+    [InlineData(1_000_000L, 1_000_000L, 0)]
+    [InlineData(AppSettings.AlwaysCount, 2_000_000L, 1)]
+    public async Task TheThresholdInSettingsDecidesWhetherTheServerCounts(long threshold, long estimate, int counts)
+    {
+        _settings = new AppSettings { CountRowsIfEstimateLessThan = threshold };
+        _session.Estimate = new RowEstimate(estimate, IsExact: false);
+        var tab = New();
+
+        await tab.RunAsync();
+
+        long? total = counts == 1 ? 2_000_123 : null;
+        Assert.Equal(counts, _session.Counts);
+        Assert.Equal(total, tab.Page.Total);
+    }
+
+    [Fact]
+    public async Task ARefreshCountsWithTheThresholdSettingsHoldNow()
+    {
+        _session.Estimate = new RowEstimate(2_000_000, IsExact: false);
+        var tab = New();
+        await tab.RunAsync();
+        Assert.Equal(0, _session.Counts);
+
+        _settings = _settings with { CountRowsIfEstimateLessThan = AppSettings.AlwaysCount };
+        await tab.RefreshAsync();
+
+        Assert.Equal(1, _session.Counts);
+        Assert.Equal(2_000_123, tab.Page.Total);
+    }
+
     [Fact]
     public async Task AnExactEstimateOfTheWholeTableIsItsTotalWithNoCount()
     {

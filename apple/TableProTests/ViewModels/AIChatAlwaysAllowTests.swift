@@ -86,6 +86,19 @@ struct AIChatAlwaysAllowTests {
         #expect(state == .approved)
     }
 
+    @Test("Read-Only refuses a granted write tool, and names the level that allows it")
+    func readOnlyBeatsAGrant() {
+        let connection = DatabaseConnection(name: "Prod", safeModeLevel: .readOnly, aiAlwaysAllowedTools: ["writer"])
+
+        let state = viewModel(holding: connection).computeInitialApprovalState(for: "writer", registry: registry)
+
+        guard case .denied(let reason) = state else {
+            Issue.record("Read-Only must deny a granted write tool")
+            return
+        }
+        #expect(reason.contains(SafeModeLevel.alert.displayName))
+    }
+
     @Test("Always Allow after a revoke is stored again")
     func alwaysAllowAfterARevokeIsStored() throws {
         var paneCopy = try stored(alwaysAllowed: [])

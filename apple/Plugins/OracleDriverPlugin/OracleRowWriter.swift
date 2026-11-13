@@ -11,7 +11,8 @@ import TableProSQLQuoting
 ///
 /// A keyed row is found by its primary key alone. A keyless row is found by every column it has, bounded with
 /// `ROWNUM = 1` so a save never touches a second row that looks the same, and a change whose match would need a
-/// column that cannot be compared is refused rather than sent without it.
+/// column that cannot be compared is refused rather than sent without it. An update or delete reports the rows it
+/// matches: measured on 23ai, the count takes in a row already holding the value and leaves out rows a trigger writes.
 ///
 /// Every value is written for the type the host reports for its column, so nothing depends on the session's NLS
 /// settings. Measured on 23ai: a DATE or TIMESTAMP value is converted with an explicit mask, because the same text
@@ -134,7 +135,7 @@ internal struct OracleRowWriter {
         let match = try rowMatch(for: change, parameters: &parameters)
         let bound = primaryKeyColumns.isEmpty ? " AND ROWNUM = 1" : ""
         let statement = "UPDATE \(qualifiedTable) SET \(assignments.joined(separator: ", ")) WHERE \(match)\(bound)"
-        return PluginRowWrite(statement: statement, parameters: parameters, rowIndices: [change.rowIndex])
+        return PluginRowWrite(statement: statement, parameters: parameters, rowIndices: [change.rowIndex], expectedRowCount: 1)
     }
 
     private func deleteWrites(for changes: [PluginRowChange]) throws -> [PluginRowWrite] {
@@ -145,7 +146,8 @@ internal struct OracleRowWriter {
                 return PluginRowWrite(
                     statement: "DELETE FROM \(qualifiedTable) WHERE \(match) AND ROWNUM = 1",
                     parameters: parameters,
-                    rowIndices: [change.rowIndex]
+                    rowIndices: [change.rowIndex],
+                    expectedRowCount: 1
                 )
             }
         }
@@ -160,7 +162,8 @@ internal struct OracleRowWriter {
             return PluginRowWrite(
                 statement: "DELETE FROM \(qualifiedTable) WHERE \(matches.joined(separator: " OR "))",
                 parameters: parameters,
-                rowIndices: chunk.map(\.rowIndex)
+                rowIndices: chunk.map(\.rowIndex),
+                expectedRowCount: chunk.count
             )
         }
     }

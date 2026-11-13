@@ -12,36 +12,63 @@ import Testing
 struct RunResultPlanTests {
     @Test("Statements that return no rows share one summary placed where the last of them ran")
     func columnlessStatementsCollapse() {
-        let plan = RunResultPlan(producesRows: [false, false, true, false, true])
+        let plan = RunResultPlan(producesRows: [false, false, true, false, true], keepingRowResults: nil)
         #expect(plan.entries == [.statement(2), .summary([0, 1, 3]), .statement(4)])
         #expect(plan.droppedNotice == nil)
     }
 
     @Test("A single statement without rows keeps its own result")
     func singleColumnlessStatementStays() {
-        let plan = RunResultPlan(producesRows: [false, true])
+        let plan = RunResultPlan(producesRows: [false, true], keepingRowResults: nil)
         #expect(plan.entries == [.statement(0), .statement(1)])
     }
 
     @Test("A run that ends on a statement without rows ends on the summary")
     func summaryIsLastWhenTheRunEndsWithoutRows() {
-        let plan = RunResultPlan(producesRows: [true, false, false])
+        let plan = RunResultPlan(producesRows: [true, false, false], keepingRowResults: nil)
         #expect(plan.entries.last == .summary([1, 2]))
     }
 
     @Test("Only the last results that return rows are kept, and only their rows are built")
     func rowResultsAreCapped() {
-        let plan = RunResultPlan(producesRows: Array(repeating: true, count: 5), maxRowResults: 2)
+        let plan = RunResultPlan(producesRows: Array(repeating: true, count: 5), keepingRowResults: 2)
         #expect(plan.entries == [.statement(3), .statement(4)])
         #expect(plan.droppedRowResultCount == 3)
         #expect(plan.showsRows(ofStatement: 4))
         #expect(!plan.showsRows(ofStatement: 0))
-        #expect(plan.droppedNotice != nil)
+        #expect(plan.droppedNotice == "3 earlier results were dropped.")
+    }
+
+    @Test("Without a limit every result that returns rows is kept")
+    func noLimitKeepsEveryRowResult() {
+        let plan = RunResultPlan(producesRows: Array(repeating: true, count: 1_000), keepingRowResults: nil)
+        #expect(plan.entries.count == 1_000)
+        #expect(plan.droppedRowResultCount == 0)
+        #expect(plan.droppedNotice == nil)
+    }
+
+    @Test("One dropped result is named in the singular")
+    func oneDroppedResult() {
+        let plan = RunResultPlan(producesRows: [true, true, false], keepingRowResults: 1)
+        #expect(plan.entries == [.statement(1), .statement(2)])
+        #expect(plan.droppedNotice == "1 earlier result was dropped.")
+    }
+
+    @Test("Results already gone count as dropped and never take a kept place")
+    func unavailableResultsCountAsDropped() {
+        let plan = RunResultPlan(producesRows: [true, true, true, true], keepingRowResults: nil, unavailable: [0, 1])
+        #expect(plan.entries == [.statement(2), .statement(3)])
+        #expect(plan.position(ofStatement: 2) == 0)
+        #expect(plan.droppedNotice == "2 earlier results were dropped.")
+
+        let limited = RunResultPlan(producesRows: [true, true, true, true], keepingRowResults: 1, unavailable: [0])
+        #expect(limited.entries == [.statement(3)])
+        #expect(limited.droppedRowResultCount == 3)
     }
 
     @Test("A long script of writes becomes one result")
     func longWriteScriptIsOneResult() {
-        let plan = RunResultPlan(producesRows: Array(repeating: false, count: 10_000))
+        let plan = RunResultPlan(producesRows: Array(repeating: false, count: 10_000), keepingRowResults: nil)
         #expect(plan.entries.count == 1)
         #expect(!plan.showsRows(ofStatement: 0))
     }

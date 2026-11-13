@@ -1085,6 +1085,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1940,6 +1942,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_queryrun_outcome(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_method_queryrun_release_set(ulong @ptr,uint @index,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -3567,6 +3580,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryrun_release_set(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryrun_result_set(
     );
 
@@ -4392,6 +4416,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryrun_outcome();
             if (checksum != 54313) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryrun_outcome` checksum `54313`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryrun_release_set();
+            if (checksum != 49856) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryrun_release_set` checksum `49856`, library returned `{checksum}`");
             }
         }
         {
@@ -6822,6 +6852,10 @@ internal interface IQueryRun {
     /// </summary>
     /// <exception cref="CoreException"></exception>
     Task<RunOutcome> Outcome();
+    /// <summary>
+    /// The app shows this set no more, so the run lets go of its rows; they go once no `ResultSet` holds them.
+    /// </summary>
+    void ReleaseSet(uint @index);
     ResultSet? ResultSet(uint @index);
 }
 /// <summary>
@@ -6960,6 +6994,18 @@ internal class QueryRun : IQueryRun, IDisposable {
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    /// <summary>
+    /// The app shows this set no more, so the run lets go of its rows; they go once no `ResultSet` holds them.
+    /// </summary>
+    public void ReleaseSet(uint @index) {
+        CallWithPointer(thisPtr =>
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_queryrun_release_set(thisPtr, FfiConverterUInt32.INSTANCE.Lower(@index), ref _status)
+));
+    }
+    
+    
     
     public ResultSet? ResultSet(uint @index) {
         return CallWithPointer(thisPtr => FfiConverterOptionalTypeResultSet.INSTANCE.Lift(

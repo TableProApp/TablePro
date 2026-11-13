@@ -1514,7 +1514,11 @@ mod tests {
 
         assert_eq!(
             toasts(),
-            ["The connection could not be duplicated. The keyring is locked. Unlock it and try again."]
+            [
+                "The connection could not be duplicated. The keyring is locked. Unlock the keyring, accept its \
+              prompt and try again. With automatic login, GNOME may have no default keyring yet: create one \
+              in Passwords and Keys and make it the default."
+            ]
         );
     }
 

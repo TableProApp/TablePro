@@ -851,3 +851,25 @@ fn a_catalog_option_the_statement_cannot_carry_says_which() {
         "This database takes no template for a new database."
     );
 }
+
+#[test]
+fn an_import_failure_names_where_the_server_failed() {
+    let diagnostics = ServerDiagnostics {
+        where_context: Some("COPY events, line 3, column ts: \"2024-13-01\"".to_owned()),
+        ..ServerDiagnostics::new(
+            Some(ServerCode::SqlState("22008".to_owned())),
+            "date/time field value out of range",
+        )
+    };
+
+    let message = sql_import_fault_message(&tablepro_core::import::SqlImportFault::Statement(
+        DriverError::reported(diagnostics),
+    ));
+    let without = sql_import_fault_message(&tablepro_core::import::SqlImportFault::Statement(DriverError::server(
+        "syntax error",
+    )));
+
+    assert!(message.contains("out of range"), "{message}");
+    assert!(message.contains("COPY events, line 3, column ts"), "{message}");
+    assert!(!without.contains('\n'), "{without}");
+}

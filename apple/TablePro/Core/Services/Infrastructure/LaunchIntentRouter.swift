@@ -117,7 +117,10 @@ internal final class LaunchIntentRouter {
             isIdleMachineSession: { AppActivationPolicyController.shared.isIdleMachineSession }
         )
         guard quits else { return }
-        NSApp.terminate(nil)
+        // A terminate from inside a main-actor job never lets the quit's reply task run.
+        RunLoop.main.perform {
+            MainActor.assumeIsolated { NSApp.terminate(nil) }
+        }
     }
 
     // A launch made only to serve MCP has nothing left to do once the server is refused or fails to start.

@@ -56,6 +56,17 @@ struct SQLCatalogEffectClassifierTests {
         #expect(SQLCatalogEffectClassifier.effect(of: "rollback", grammar: grammar("MySQL")).endsTransaction)
         #expect(SQLCatalogEffectClassifier.effect(of: "ROLLBACK TO SAVEPOINT a", grammar: grammar("PostgreSQL")) == .none)
         #expect(SQLCatalogEffectClassifier.effect(of: "BEGIN", grammar: grammar("PostgreSQL")) == .none)
+        #expect(SQLCatalogEffectClassifier.effect(of: "ET", grammar: grammar("Teradata")).endsTransaction)
+    }
+
+    @Test("BT and ET are transaction control in Teradata's grammar alone")
+    func transactionShortFormsAreTeradatas() {
+        #expect(SQLCatalogEffectClassifier.effect(of: "et", grammar: grammar("Teradata")).endsTransaction)
+        #expect(SQLCatalogEffectClassifier.effect(of: "BT", grammar: grammar("Teradata")) == .none)
+        for engine in ["PostgreSQL", "MySQL", "SQL Server", "Oracle", "Nonesuch"] {
+            #expect(!SQLCatalogEffectClassifier.effect(of: "ET", grammar: grammar(engine)).endsTransaction, "\(engine)")
+        }
+        #expect(SQLLexicalProfile.everyKnownReading.allSatisfy { !$0.contains(.transactionShortForms) })
     }
 
     @Test("Code the text cannot show refreshes every kind")

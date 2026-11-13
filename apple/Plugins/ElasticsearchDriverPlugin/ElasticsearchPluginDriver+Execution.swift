@@ -56,7 +56,7 @@ extension ElasticsearchPluginDriver {
         guard let index = ElasticsearchOperations.decodeExport(query) else {
             return defaultStreamRows(query: query)
         }
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.makeBounded { continuation, abort in
             let task = Task {
                 do {
                     try await self.streamIndex(index, continuation: continuation)
@@ -65,13 +65,15 @@ extension ElasticsearchPluginDriver {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            abort.onAbort { task.cancel() }
         }
     }
 
     /// A point-in-time pins the index for the whole export, so a document written while it runs
     /// cannot shift the sort and be exported twice or skipped. `search_after` walks it, which is the
     /// only way past the 10,000 `max_result_window` ceiling.
+    ///
+    /// A reader slower than the cluster would otherwise outlive the point-in-time's keep-alive.
     private func streamIndex(
         _ index: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
@@ -84,8 +86,8 @@ extension ElasticsearchPluginDriver {
             index: index, from: 0, size: Self.deepPageBatchSize, sorts: [], filters: [], logicMode: "AND"
         )
 
-        let pit = try await conn.openPointInTime(index: index, keepAlive: Self.pitKeepAlive)
-        defer { Task { await conn.closePointInTime(id: pit) } }
+        let pit = ElasticsearchPointInTime(id: try await conn.openPointInTime(index: index, keepAlive: Self.pitKeepAlive))
+        defer { Task { await conn.closePointInTime(id: pit.id) } }
 
         var columns: [String]?
         var searchAfter: [Any]?
@@ -95,8 +97,10 @@ extension ElasticsearchPluginDriver {
                 for: parsed, fields: fields, size: Self.deepPageBatchSize,
                 tiebreaker: true, searchAfter: searchAfter, supportsCaseInsensitive: supportsCaseInsensitiveSearch
             )
-            body["pit"] = ["id": pit, "keep_alive": Self.pitKeepAlive]
-            let response = try await conn.search(index: nil, body: body)
+            body["pit"] = ["id": pit.id, "keep_alive": Self.pitKeepAlive]
+            body["track_total_hits"] = false
+            let response = try await conn.searchPointInTime(body: body)
+            pit.adopt(from: response)
             let hits = extractHits(response)
             guard !hits.isEmpty else { break }
 
@@ -106,16 +110,18 @@ extension ElasticsearchPluginDriver {
             if columns == nil {
                 let resolved = ElasticsearchMappingFlattener.columns(forHits: hits, mappingColumns: mappingColumns)
                 columns = resolved
-                continuation.yield(.header(PluginStreamHeader(
+                let header = PluginStreamElement.header(PluginStreamHeader(
                     columns: resolved,
                     columnTypeNames: resolved.map { exportTypeName($0, fields: fields) },
                     estimatedRowCount: nil
-                )))
+                ))
+                guard try await deliver(header, to: continuation, renewing: pit, on: conn) else { return }
             }
             if let resolved = columns {
-                continuation.yield(.rows(ElasticsearchMappingFlattener.rows(
+                let rows = PluginStreamElement.rows(ElasticsearchMappingFlattener.rows(
                     forHits: hits, columns: resolved, nestedParents: nestedParents, length: .whole
-                )))
+                ))
+                guard try await deliver(rows, to: continuation, renewing: pit, on: conn) else { return }
             }
 
             searchAfter = hits.last?["sort"] as? [Any]
@@ -124,11 +130,23 @@ extension ElasticsearchPluginDriver {
 
         if columns == nil {
             let resolved = ElasticsearchMappingFlattener.columns(forHits: [], mappingColumns: mappingColumns)
-            continuation.yield(.header(PluginStreamHeader(
+            let header = PluginStreamElement.header(PluginStreamHeader(
                 columns: resolved,
                 columnTypeNames: resolved.map { exportTypeName($0, fields: fields) },
                 estimatedRowCount: nil
-            )))
+            ))
+            _ = try await deliver(header, to: continuation, renewing: pit, on: conn)
+        }
+    }
+
+    private func deliver(
+        _ element: PluginStreamElement,
+        to continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        renewing pit: ElasticsearchPointInTime,
+        on conn: ElasticsearchConnection
+    ) async throws -> Bool {
+        try await PluginRowStream.deliver(element, to: continuation, keepingAliveEvery: Self.pitRenewalInterval) {
+            pit.adopt(from: try await conn.renewPointInTime(id: pit.id, keepAlive: Self.pitKeepAlive))
         }
     }
 
@@ -224,13 +242,13 @@ extension ElasticsearchPluginDriver {
         fields: [String: ElasticsearchFieldInfo],
         conn: ElasticsearchConnection
     ) async throws -> [[String: Any]] {
-        let pit = try await conn.openPointInTime(index: index, keepAlive: Self.pitKeepAlive)
+        let pit = ElasticsearchPointInTime(id: try await conn.openPointInTime(index: index, keepAlive: Self.pitKeepAlive))
         do {
             let hits = try await collectDeepHits(parsed: parsed, fields: fields, pit: pit, conn: conn)
-            await conn.closePointInTime(id: pit)
+            await conn.closePointInTime(id: pit.id)
             return hits
         } catch {
-            await conn.closePointInTime(id: pit)
+            await conn.closePointInTime(id: pit.id)
             throw error
         }
     }
@@ -238,7 +256,7 @@ extension ElasticsearchPluginDriver {
     private func collectDeepHits(
         parsed: ElasticsearchParsedSearch,
         fields: [String: ElasticsearchFieldInfo],
-        pit: String,
+        pit: ElasticsearchPointInTime,
         conn: ElasticsearchConnection
     ) async throws -> [[String: Any]] {
         var searchAfter: [Any]?
@@ -251,8 +269,10 @@ extension ElasticsearchPluginDriver {
                 for: parsed, fields: fields, size: Self.deepPageBatchSize,
                 tiebreaker: true, searchAfter: searchAfter, supportsCaseInsensitive: supportsCaseInsensitiveSearch
             )
-            body["pit"] = ["id": pit, "keep_alive": Self.pitKeepAlive]
+            body["pit"] = ["id": pit.id, "keep_alive": Self.pitKeepAlive]
+            body["track_total_hits"] = false
             let response = try await conn.search(index: nil, body: body)
+            pit.adopt(from: response)
             let hits = extractHits(response)
             guard !hits.isEmpty else { break }
 

@@ -16,8 +16,19 @@ public sealed record AppSettings
 
     public const int DefaultPageSize = 1_000;
 
+    public const long DefaultCountRowsBelow = 100_000;
+
+    // Counts every table whatever its estimate, as macOS's "Always count".
+    public const long AlwaysCount = long.MaxValue;
+
     // The sizes the Settings page offers for a new table tab, as macOS offers them.
     public static IReadOnlyList<int> PageSizeChoices { get; } = [100, 500, 1_000, 5_000, 10_000];
+
+    // The thresholds the Settings page offers, as macOS offers them.
+    public static IReadOnlyList<long> CountThresholdChoices { get; } = [1_000, 10_000, 100_000, 1_000_000, AlwaysCount];
+
+    // As macOS offers them; 0 keeps every result.
+    public static IReadOnlyList<int> ResultsKeptChoices { get; } = [0, 10, 20, 50, 100, 200, 500, 1_000];
 
     public AppTheme Theme { get; set; } = AppTheme.System;
 
@@ -33,6 +44,12 @@ public sealed record AppSettings
     // Zero leaves the statement to the connection's own limit.
     public int QueryTimeoutSeconds { get; set; }
 
+    // A table tab whose table the engine estimates at this many rows or more counts them only when asked.
+    public long CountRowsIfEstimateLessThan { get; set; } = DefaultCountRowsBelow;
+
+    // Results with rows a run keeps, the newest; 0 keeps them all.
+    public int ResultSetsKeptPerRun { get; set; }
+
     public AppSettings Normalized() => this with
     {
         Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
@@ -40,6 +57,8 @@ public sealed record AppSettings
         RowLimit = Math.Clamp(RowLimit, 1, 1_000_000),
         PageSize = Math.Clamp(PageSize, 10, 100_000),
         QueryTimeoutSeconds = Math.Clamp(QueryTimeoutSeconds, 0, 86_400),
+        CountRowsIfEstimateLessThan = Math.Max(0, CountRowsIfEstimateLessThan),
+        ResultSetsKeptPerRun = Math.Max(0, ResultSetsKeptPerRun),
     };
 }
 

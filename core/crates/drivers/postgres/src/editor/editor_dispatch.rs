@@ -71,6 +71,28 @@ pub(crate) fn plan(class: StatementClass, state: KnownState, read_only: bool) ->
     }
 }
 
+/// How a `COPY ... FROM STDIN` with its rows goes to the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CopyFlight {
+    /// In a transaction of the driver's own, so the statement tokio-postgres
+    /// prepares under a name and the Bind that runs it reach the same
+    /// server connection behind a transaction pooler. A COPY on its own
+    /// is atomic already, so the wrap changes nothing else. A read-only
+    /// session starts it READ ONLY, and the server refuses the COPY as it
+    /// refuses any other write.
+    Wrapped { read_only: bool },
+    /// Inside the session's transaction, which a read-only session started
+    /// READ ONLY, or its failed one, which refuses the COPY itself.
+    Plain,
+}
+
+pub(crate) fn copy_plan(state: KnownState, read_only: bool) -> CopyFlight {
+    match state {
+        KnownState::Idle => CopyFlight::Wrapped { read_only },
+        KnownState::InTransaction | KnownState::Failed => CopyFlight::Plain,
+    }
+}
+
 /// The plan for a row source whose DECLARE was refused, which then runs
 /// as a plain statement under the same read-only rule.
 pub(crate) fn fallback(owner: CursorOwner) -> Wrap {
@@ -144,6 +166,22 @@ mod tests {
                 expected,
                 "{class:?} {state:?} {read_only}"
             );
+        }
+    }
+
+    #[test]
+    fn a_copy_is_wrapped_when_idle_and_read_only_when_the_session_is() {
+        use KnownState::{Failed, Idle, InTransaction};
+
+        let cases = [
+            (Idle, false, CopyFlight::Wrapped { read_only: false }),
+            (Idle, true, CopyFlight::Wrapped { read_only: true }),
+            (InTransaction, false, CopyFlight::Plain),
+            (InTransaction, true, CopyFlight::Plain),
+            (Failed, false, CopyFlight::Plain),
+        ];
+        for (state, read_only, expected) in cases {
+            assert_eq!(copy_plan(state, read_only), expected, "{state:?} {read_only}");
         }
     }
 

@@ -16,6 +16,7 @@ mod connection_script;
 mod csv_import;
 mod executable;
 mod fake_connection;
+mod fake_copy_in;
 mod fake_dialect;
 mod fake_driver;
 mod fake_editor_session;
@@ -28,6 +29,8 @@ pub mod history_cases;
 mod replies;
 mod round_trip_counter;
 mod snippet_text;
+#[cfg(test)]
+mod sql_import_copy_in;
 mod stream_end;
 
 pub use call_counters::CallCounters;
@@ -37,6 +40,7 @@ pub use connection_script::ConnectionScript;
 pub use csv_import::{CsvImportFailure, import_csv};
 pub use executable::write_executable;
 pub use fake_connection::FakeConnection;
+pub use fake_copy_in::FakeCopyIn;
 pub use fake_dialect::FakeDialect;
 pub use fake_driver::FakeDriver;
 pub use fake_editor_session::FakeEditorSession;

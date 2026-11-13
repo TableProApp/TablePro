@@ -15,6 +15,9 @@ public protocol PluginImportDataSink: AnyObject, Sendable {
     /// its lines from the batch's first.
     func execute(statement: String, line: Int) async throws
 
+    /// Runs a `COPY ... FROM STDIN` read from the file's `line` and sends it `rows`.
+    func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws
+
     func insertRow(_ values: [String: PluginCellValue]) async throws
     func insertRows(_ rows: [[String: PluginCellValue]]) async throws
     func deleteAllRowsFromTargetTable() async throws
@@ -29,6 +32,11 @@ public extension PluginImportDataSink {
     var targetTable: String? { nil }
     func execute(statement: String, line: Int) async throws {
         try await execute(statement: statement)
+    }
+    func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws {
+        throw PluginImportError.importFailed(
+            String(localized: "This connection cannot load the rows of COPY FROM STDIN.")
+        )
     }
     func insertRow(_ values: [String: PluginCellValue]) async throws {
         throw PluginImportError.importFailed("Row-based import is not supported by this connection")

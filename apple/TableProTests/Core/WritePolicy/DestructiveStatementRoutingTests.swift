@@ -59,13 +59,14 @@ extension GlobalStateSuites {
 
         private static let unfilteredDelete = DestructiveRoute(sql: "DELETE FROM matrix_rows", destructive: true)
 
-        private func makeRig(_ prompts: WritePolicyPrompts, _ databaseType: DatabaseType) -> Rig {
-            let connection = WritePolicyRig.connection(
+        private func makeRig(_ prompts: WritePolicyPrompts, _ databaseType: DatabaseType, database: String? = nil) -> Rig {
+            var connection = WritePolicyRig.connection(
                 type: databaseType,
                 externalAccess: .readWrite,
                 aiPolicy: .alwaysAllow,
                 safeMode: .silent
             )
+            if let database { connection.database = database }
             guard databaseType == .mssql else {
                 let rig = WritePolicyRig(connection: connection, prompts: prompts, live: true)
                 return Rig(rig: rig, received: { rig.driver.received }, rowCaps: { [] })
@@ -121,16 +122,19 @@ extension GlobalStateSuites {
         private func assistant(
             _ tool: any ChatTool,
             _ route: DestructiveRoute,
-            answer: WritePolicyPrompts.Answer = .approveAll
+            answer: WritePolicyPrompts.Answer = .approveAll,
+            mode: AIChatMode = .agent,
+            database: String? = nil
         ) async -> Outcome {
             let prompts = WritePolicyPrompts(answer)
-            let setup = makeRig(prompts, route.databaseType)
+            let setup = makeRig(prompts, route.databaseType, database: database)
             let rig = setup.rig
             defer { rig.tearDown() }
             let context = ChatToolContext(
                 connectionId: rig.connection.id,
                 bridge: MCPConnectionBridge(),
                 authPolicy: rig.authPolicy,
+                chatMode: mode,
                 sessionId: UUID(),
                 policyLookup: { _ in .alwaysAllow }
             )
@@ -197,6 +201,52 @@ extension GlobalStateSuites {
             #expect(outcome.text.contains("without analyze"))
             #expect(outcome.prompts.isEmpty)
             #expect(outcome.received.isEmpty)
+        }
+
+        @Test("Edit runs a row change and refuses a schema, privilege or session statement that Agent runs", arguments: [
+            ("UPDATE matrix_rows SET note = 'x' WHERE id = 1", true),
+            ("INSERT INTO matrix_rows (id) VALUES (2)", true),
+            ("ALTER ROLE app_user WITH SUPERUSER", false),
+            ("GRANT ALL ON matrix_rows TO app_user", false),
+            ("SET session_replication_role = replica", false),
+            ("CREATE TABLE notes (id int)", false),
+        ])
+        func editRunsOnlyDataStatements(sql: String, isData: Bool) async {
+            let route = DestructiveRoute(sql: sql, destructive: false)
+            let edit = await assistant(ExecuteQueryChatTool(), route, mode: .edit)
+            let agent = await assistant(ExecuteQueryChatTool(), route, mode: .agent)
+
+            #expect(edit.ran == isData, "\(edit.text)")
+            #expect(edit.received.contains { $0.contains(sql) } == isData)
+            if !isData {
+                #expect(edit.text == ExternalStatementGate.dataStatementRefusal)
+                #expect(edit.prompts.isEmpty)
+            }
+            #expect(agent.ran, "\(agent.text)")
+            #expect(agent.received.contains { $0.contains(sql) })
+        }
+
+        @Test("Edit refuses a row change that lands in the engine's own schema, which Agent runs")
+        func editRefusesARowChangeInASystemSchema() async {
+            let route = DestructiveRoute(
+                sql: "UPDATE user SET Super_priv = 'Y' WHERE User = 'app'", destructive: false, databaseType: .mysql
+            )
+            let edit = await assistant(ExecuteQueryChatTool(), route, mode: .edit, database: "mysql")
+            let agent = await assistant(ExecuteQueryChatTool(), route, mode: .agent, database: "mysql")
+
+            #expect(!edit.ran)
+            #expect(edit.text == ExternalStatementGate.dataStatementRefusal)
+            #expect(edit.received.isEmpty)
+            #expect(agent.ran, "\(agent.text)")
+        }
+
+        @Test("Edit refuses a transaction statement before anything reaches the database", arguments: ["BEGIN", "COMMIT"])
+        func editRefusesTransactionStatements(sql: String) async {
+            let edit = await assistant(ExecuteQueryChatTool(), DestructiveRoute(sql: sql, destructive: false), mode: .edit)
+
+            #expect(!edit.ran)
+            #expect(edit.text == ExternalStatementGate.dataStatementRefusal)
+            #expect(edit.received.isEmpty)
         }
 
         @Test("A DELETE with no WHERE the user declines never reaches the database")

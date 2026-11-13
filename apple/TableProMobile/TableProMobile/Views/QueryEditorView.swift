@@ -40,6 +40,7 @@ struct QueryEditorView: View {
     @State private var executionStartTime: Date?
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
+    @State private var showFunctionBlockedAlert = false
     @State private var pendingWriteQuery = ""
     @State private var showClearConfirmation = false
     @State private var showShareSheet = false
@@ -230,6 +231,11 @@ struct QueryEditorView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("This connection is in read-only mode. Write queries are not allowed.")
+        }
+        .alert(String(localized: "Query Blocked"), isPresented: $showFunctionBlockedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This query calls a function that can change data, which Read-Only does not run. Switch Safe Mode to \(SafeModeLevel.confirmWrites.displayName) to run it.")
         }
         .confirmationDialog(String(localized: "Execute Write Query?"), isPresented: $showWriteConfirmation, titleVisibility: .visible) {
             Button(String(localized: "Execute"), role: .destructive) {
@@ -854,9 +860,31 @@ struct QueryEditorView: View {
             case .proceed:
                 break
             }
+        } else if ReadOnlyFunctionGuard.refuses(trimmed, databaseType: databaseType, level: safeModeLevel) {
+            showFunctionBlockedAlert = true
+            return
+        } else if await refusesBareFunctionName(trimmed, on: session) {
+            showFunctionBlockedAlert = true
+            return
         }
 
         await executeQueryDirect(trimmed)
+    }
+
+    // Read on the session itself, whose current schema the query resolves its names in.
+    private func refusesBareFunctionName(_ sql: String, on session: ConnectionSession) async -> Bool {
+        let transactions = appState.sessionTransactions
+        let connectionId = connectionId
+        let driver = session.driver
+        return await ReadOnlyFunctionGuard.refusesBareName(
+            sql,
+            databaseType: databaseType,
+            level: safeModeLevel,
+            connectionId: connectionId,
+            schema: activeSchema
+        ) { query in
+            try await transactions.track(connectionId, reading: true) { try await driver.execute(query: query).rows }
+        }
     }
 
     // Claimed before the first await, so a second Run while the session reports how it reads literals starts nothing.

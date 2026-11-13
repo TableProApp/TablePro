@@ -33,6 +33,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .dataCompare,
             .readOnlyStatements,
             .enforcesReadOnlyMode,
+            .copyFromStandardInput,
         ]
     }
 

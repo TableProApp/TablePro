@@ -88,7 +88,8 @@ struct DataWriteExecutorTests {
         matchesRowsWithoutKey: Bool = false,
         refusesSharedKey: Bool = false,
         rowKind: RowWriteKind? = nil,
-        databaseType: DatabaseType = .sqlite
+        databaseType: DatabaseType = .sqlite,
+        countsMatchedRows: Bool = false
     ) -> DataWritePlan {
         DataWritePlan(
             scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
@@ -101,7 +102,8 @@ struct DataWriteExecutorTests {
                     tableName: "t",
                     matchesRowsWithoutKey: matchesRowsWithoutKey,
                     refusesSharedKey: refusesSharedKey,
-                    rowKind: rowKind
+                    rowKind: rowKind,
+                    countsMatchedRows: countsMatchedRows
                 )
             },
             prologue: prologue,
@@ -143,11 +145,11 @@ struct DataWriteExecutorTests {
         #expect(counting.didRollBack == false)
     }
 
-    @Test("A keyed UPDATE short of its rows is an ordinary save on MySQL, which reports zero for an unchanged value")
+    @Test("A keyed UPDATE short of its rows is an ordinary save where nothing says the count is the rows matched")
     func fewerRowsIsNotAFailure() async throws {
         let counting = CountingDriver(affectedRows: 0)
         let results = try await DataWriteExecutor.run(
-            plan(expectedRowCount: 1, rowKind: .update, databaseType: .mysql),
+            plan(expectedRowCount: 1, rowKind: .update, databaseType: .snowflake),
             commitMode: .automatic, on: driver(counting)
         ).results
 
@@ -158,7 +160,8 @@ struct DataWriteExecutorTests {
 
     @Test("A keyed UPDATE that matched no row fails where the count is the rows matched")
     func keyedUpdateThatMatchedNothingFails() async throws {
-        for databaseType in [DatabaseType.postgresql, .sqlite, .duckdb] {
+        let engines: [DatabaseType] = [.postgresql, .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase]
+        for databaseType in engines {
             let counting = CountingDriver(affectedRows: 0)
             await #expect(throws: DataWriteError.self) {
                 try await DataWriteExecutor.run(
@@ -169,6 +172,41 @@ struct DataWriteExecutorTests {
             #expect(counting.didRollBack)
             #expect(counting.didCommit == false)
         }
+    }
+
+    @Test("A driver's own matched-row count holds a keyed UPDATE on an engine the host keeps no count for")
+    func driverCountHoldsAKeyedUpdate() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        await #expect(throws: DataWriteError.self) {
+            try await DataWriteExecutor.run(
+                plan(expectedRowCount: 1, rowKind: .update, databaseType: .snowflake, countsMatchedRows: true),
+                commitMode: .automatic, on: driver(counting)
+            )
+        }
+        #expect(counting.didRollBack)
+        #expect(counting.didCommit == false)
+    }
+
+    @Test("A driver's own count leaves a keyed DELETE of a row already gone an ordinary save")
+    func driverCountLeavesAGoneRowsDeleteAlone() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        _ = try await DataWriteExecutor.run(
+            plan(expectedRowCount: 1, rowKind: .delete, databaseType: .snowflake, countsMatchedRows: true),
+            commitMode: .automatic, on: driver(counting)
+        )
+
+        #expect(counting.didCommit)
+    }
+
+    @Test("A driver's own count through a view keeps the lenient rule")
+    func driverCountThroughAViewStaysLenient() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        var viewPlan = plan(expectedRowCount: 1, rowKind: .update, databaseType: .mssql, countsMatchedRows: true)
+        viewPlan.viewTarget = TestFixtures.viewTarget(keys: ["id"])
+
+        _ = try await DataWriteExecutor.run(viewPlan, commitMode: .automatic, on: driver(counting))
+
+        #expect(counting.didCommit)
     }
 
     @Test("A keyed UPDATE through a view keeps the lenient rule: its count comes from the view's trigger")

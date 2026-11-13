@@ -46,9 +46,11 @@ private struct PreparedStatement: @unchecked Sendable {
     let anchor: StatementAnchor?
     /// Where the script was cut after this statement, which a replan of the rest starts from.
     let statement: SQLStatementScanner.ExecutableStatement?
-    /// Whether this is the script's own `COMMIT`, read from the text before the lease is taken so
-    /// the run never lexes inside it.
+    // Read from the text before the lease is taken, so the run never lexes inside it.
     let isCommitPoint: Bool
+    let endsItsTransaction: Bool
+    let closesTransaction: Bool
+    let movesDatabase: Bool
 }
 
 // What a run sends: the rest is cut again from the script once a statement changes how the session reads literals.
@@ -98,9 +100,13 @@ private struct ExecutedStatementHistory {
     let results: [QueryResult]
     let parameters: [QueryParameter]
     let connection: DatabaseConnection
+    // Read once per run: the rows built off the main actor and the results shown take the same plan.
+    let rowResultLimit: Int?
 
     func keeping(_ kept: [QueryResult]) -> ExecutedStatementHistory {
-        ExecutedStatementHistory(prepared: prepared, results: kept, parameters: parameters, connection: connection)
+        ExecutedStatementHistory(
+            prepared: prepared, results: kept, parameters: parameters, connection: connection, rowResultLimit: rowResultLimit
+        )
     }
 }
 
@@ -414,7 +420,8 @@ extension QueryExecutionCoordinator {
             prepared: prepared,
             grammar: grammar,
             script: Self.scriptHolds(statements, in: script) ? script : nil,
-            end: statements.last.map { NSMaxRange($0.range) } ?? 0
+            // The segment's end, so a last COPY cut again keeps its rows.
+            end: statements.last?.segmentEnd ?? 0
         ) { statement, grammar in
             self.prepareStatement(
                 statement: statement,
@@ -441,7 +448,8 @@ extension QueryExecutionCoordinator {
             )
             let outcome = run.outcome
             let sent = running.prepared
-            let sessionNotice = run.plan.readsSessionEndState ? run.sessionState.openTransactionNotice : nil
+            let readsEndState = run.plan.readsSessionEndState || run.plan == .autocommit
+            let sessionNotice = readsEndState ? run.sessionState.openTransactionNotice : nil
 
             let ranStatements: [String]
             switch outcome {
@@ -470,7 +478,8 @@ extension QueryExecutionCoordinator {
             case .completed(let ran), .cancelled(let ran), .failed(let ran, _, _):
                 results = ran
             }
-            let resultPlan = RunResultPlan(producesRows: results.map { !$0.columns.isEmpty })
+            let rowResultLimit = AppSettingsManager.shared.dataGrid.resultSetLimitPerRun
+            let resultPlan = RunResultPlan(producesRows: results.map { !$0.columns.isEmpty }, keepingRowResults: rowResultLimit)
             let built = await buildStatementRows(
                 zip(sent, results).enumerated().map { index, pair in
                     resultPlan.showsRows(ofStatement: index) ? (sql: pair.0.originalSQL as String?, result: pair.1) : nil
@@ -479,7 +488,7 @@ extension QueryExecutionCoordinator {
             )
 
             let history = ExecutedStatementHistory(
-                prepared: sent, results: results, parameters: parameters, connection: conn
+                prepared: sent, results: results, parameters: parameters, connection: conn, rowResultLimit: rowResultLimit
             )
             guard parent.tabExecution.settle(claim) || reportsUnknownCommitAfterStop(outcome, claim: claim) else {
                 keepStatementsAfterStop(
@@ -544,6 +553,8 @@ extension QueryExecutionCoordinator {
             : SQLParameterExtractor.convertToNativeStyle(sql: sql, parameters: parameters, style: style, grammar: grammar)
         let executableSQL = conversion?.sql ?? sql
         let bounded = resolveStatement(sql: executableSQL, tabType: tabType, bypassLimit: bypassRowLimit)
+        let family = TransactionEngineFamily.of(parent.connection.type)
+        let definitionEnds = family.definitionEndsTransaction
         return PreparedStatement(
             originalSQL: sql,
             executableSQL: executableSQL,
@@ -552,7 +563,10 @@ extension QueryExecutionCoordinator {
             rowCap: bounded.rowCap,
             anchor: StatementAnchor(statement),
             statement: statement,
-            isCommitPoint: BatchCommitStatement.matches(sql, grammar: grammar)
+            isCommitPoint: BatchCommitStatement.matches(sql, grammar: grammar),
+            endsItsTransaction: definitionEnds && AutocommitOnlyStatement.matches(sql, family: family, grammar: grammar),
+            closesTransaction: definitionEnds && TransactionEndStatement.matches(sql, grammar: grammar),
+            movesDatabase: AutocommitOnlyStatement.movesDatabase(sql, family: family, grammar: grammar)
         )
     }
 
@@ -571,6 +585,7 @@ extension QueryExecutionCoordinator {
         let failureOutput = ServerOutputBox()
         let commitOutput = ServerOutputBox()
         let databaseType = parent.connection.type
+        let definitionEnds = TransactionEngineFamily.of(databaseType).definitionEndsTransaction
         let safeModeIsReadOnly = parent.runsAtReadOnly
         let grammar = parent.lexicalGrammar
         let statementTexts = prepared.map(\.sentSQL)
@@ -601,6 +616,9 @@ extension QueryExecutionCoordinator {
                     gate: self.claimGate(for: claim),
                     failureSQL: \.executableSQL,
                     isCommitPoint: \.isCommitPoint,
+                    endsItsTransaction: \.endsItsTransaction,
+                    closesTransaction: \.closesTransaction,
+                    movesDatabase: \.movesDatabase,
                     replanned: { ran in
                         running.replanned(
                             after: ran,
@@ -617,6 +635,7 @@ extension QueryExecutionCoordinator {
                             originalSQL: statement.sentSQL,
                             driver: driver,
                             parameters: statement.parameterValues,
+                            copyData: statement.statement?.copyData,
                             context: context
                         )
                     }
@@ -629,14 +648,15 @@ extension QueryExecutionCoordinator {
                     let endState: PluginSessionTransactionState = asksEndState
                         ? await driver.heldSessionTransactionState()
                         : .unknown
-                    // An unwrapped run can still leave a transaction open: a Teradata ANSI session holds its DDL in one.
-                    let failedState: PluginSessionTransactionState = sessionPlan == .autocommit && !outcome.isCompleted
+                    // An unwrapped run can still leave a transaction open: a Teradata ANSI session holds its DDL in one, completed or not.
+                    let readsHeldWork = sessionPlan == .autocommit && (!outcome.isCompleted || definitionEnds)
+                    let heldState: PluginSessionTransactionState = readsHeldWork
                         ? (asksEndState ? endState : await driver.heldSessionTransactionState())
                         : .idle
                     return MultiStatementRun(
                         outcome: outcome,
                         plan: sessionPlan,
-                        sessionState: failedState,
+                        sessionState: heldState,
                         startState: startState,
                         endState: endState
                     )
@@ -773,7 +793,7 @@ extension QueryExecutionCoordinator {
         let firstNumber = parent.tabManager.tabs.first { $0.id == tabId }?.display.pinnedResultCount ?? 0
         let reading = parent.tableNameReading
         let ran = Array(zip(history.prepared, history.results))
-        let plan = RunResultPlan(producesRows: ran.map { !$0.1.columns.isEmpty })
+        let plan = RunResultPlan(producesRows: ran.map { !$0.1.columns.isEmpty }, keepingRowResults: history.rowResultLimit)
         let resultSets = plan.entries.enumerated().map { position, entry -> ResultSet in
             switch entry {
             case .summary(let indices):
@@ -931,7 +951,10 @@ extension QueryExecutionCoordinator {
             .flatMap { anchors.indices.contains($0) ? anchors[$0] : nil }
 
         let failedStatementSQL = report.failedSQL
-        reportOperation(kind: .queryBatch, claim: claim, outcome: .failed(reason: errorDescription))
+        // A run stopped to wait for a commit has no server error, so the notification carries the report.
+        reportOperation(
+            kind: .queryBatch, claim: claim, outcome: .failed(reason: errorDescription.isEmpty ? report.message : errorDescription)
+        )
         recordExecutedStatements(
             history,
             tabId: tabId,

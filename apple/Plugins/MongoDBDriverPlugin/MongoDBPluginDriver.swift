@@ -933,7 +933,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
         let timeout = conn.queryTimeoutMS
 
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
             let work = Task {
                 do {
                     switch try await runtime.exportPlan(for: trimmed, database: db, access: access, shell: shell) {
@@ -965,7 +965,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                         do {
                             for try await element in inner {
                                 try Task.checkCancellation()
-                                continuation.yield(element)
+                                guard await PluginRowStream.deliver(element, to: continuation) else { break }
                             }
                         } catch {
                             throw MongoScriptStatementFailure.carrying(
@@ -974,7 +974,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                         }
                     case .result(let outcome):
                         if let switched = outcome.databaseSwitch { self.currentDb = switched }
-                        self.yieldMaterialised(outcome, into: continuation)
+                        await self.deliverMaterialised(outcome, to: continuation)
                     }
                     continuation.finish()
                 } catch {
@@ -1014,10 +1014,10 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     /// Hands over a statement that had already run by the time the export asked, rather than
     /// running it a second time. Nested values render the way a streamed cursor renders them, so
     /// one export never mixes two spellings.
-    private func yieldMaterialised(
+    private func deliverMaterialised(
         _ outcome: MongoScriptStatementResult,
-        into continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
-    ) {
+        to continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
+    ) async {
         let result = MongoScriptResultBuilder.result(
             for: outcome,
             startTime: Date(),
@@ -1033,10 +1033,10 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         if !result.columns.isEmpty {
             var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
             if result.isTruncated { header.rowLimit = result.rows.count }
-            continuation.yield(.header(header))
+            guard await PluginRowStream.deliver(.header(header), to: continuation) else { return }
         }
         if !result.rows.isEmpty {
-            continuation.yield(.rows(result.rows, documents: result.exportDocuments))
+            _ = await PluginRowStream.deliver(.rows(result.rows, documents: result.exportDocuments), to: continuation)
         }
     }
 

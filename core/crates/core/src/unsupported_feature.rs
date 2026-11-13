@@ -19,6 +19,9 @@ pub enum UnsupportedFeature {
     },
     CopyFromStdinInEditor,
     CopyToStdoutInEditor,
+    /// The rows of a `COPY ... FROM STDIN`, on a session that cannot send
+    /// them.
+    CopyFromStdin,
     /// A TIMESTAMP in the hour the session time zone repeats, which the
     /// server cannot store as the one instant it was given.
     TimestampInRepeatedHour,
@@ -78,6 +81,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::MinimumVersion { required } => write!(f, "{required} or later"),
             Self::CopyFromStdinInEditor => f.write_str("COPY FROM STDIN in the editor"),
             Self::CopyToStdoutInEditor => f.write_str("COPY TO STDOUT in the editor"),
+            Self::CopyFromStdin => f.write_str("COPY FROM STDIN rows"),
             Self::TimestampInRepeatedHour => {
                 f.write_str("single instant for a TIMESTAMP in the hour its time zone repeats")
             }

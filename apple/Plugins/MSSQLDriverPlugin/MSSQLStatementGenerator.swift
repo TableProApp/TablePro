@@ -41,11 +41,21 @@ struct MSSQLStatementGenerator {
                 writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
             case .update:
                 guard let statement = try updateStatement(for: change) else { continue }
-                writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
+                writes.append(PluginRowWrite(
+                    statement: statement.statement,
+                    parameters: statement.parameters,
+                    rowIndices: [change.rowIndex],
+                    expectedRowCount: 1
+                ))
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex),
                       let statement = try deleteStatement(for: change) else { continue }
-                writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
+                writes.append(PluginRowWrite(
+                    statement: statement.statement,
+                    parameters: statement.parameters,
+                    rowIndices: [change.rowIndex],
+                    expectedRowCount: 1
+                ))
             }
         }
         return writes
@@ -133,11 +143,12 @@ struct MSSQLStatementGenerator {
         primaryKeyColumns.isEmpty ? "TOP (1) " : ""
     }
 
-    /// The app holds a keyless write to the row it matched, and under `SET NOCOUNT ON` the server reports no count.
-    /// A SET inside `sp_executesql` reverts when the call returns. A bound statement already runs in one, so only an
-    /// unbound one, a row whose every column is NULL, is given its own.
+    /// The app holds every update and delete to the row it matched, and under `SET NOCOUNT ON` the server reports no
+    /// count. A SET inside `sp_executesql` reverts when the call returns. A bound statement already runs in one, so
+    /// only an unbound one, such as a keyless row whose every column is NULL, is given its own. Measured on SQL Server
+    /// 2022: the count is the rows matched, a row already holding the value included, and leaves out rows a trigger
+    /// writes (`scripts/probes/check-mssql-keyed-row-counts.sh`).
     private func countReported(_ sql: String, parameters: [PluginCellValue]) -> String {
-        guard primaryKeyColumns.isEmpty else { return sql }
         let counted = "SET NOCOUNT OFF; \(sql)"
         guard parameters.isEmpty else { return counted }
         return "EXEC sp_executesql \(MSSQLStringLiteral.quoted(counted))"

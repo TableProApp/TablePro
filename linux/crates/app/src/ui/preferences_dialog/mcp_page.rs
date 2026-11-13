@@ -1124,9 +1124,11 @@ pub(crate) fn failure_text(failure: &McpFailure) -> String {
 // server cannot do without it.
 fn keyring_text(error: &SecretError) -> String {
     match error {
-        SecretError::Locked | SecretError::UnlockDismissed => {
-            gettext("The keyring is locked, so the access token cannot be read. Unlock it and try again.")
-        }
+        SecretError::Locked | SecretError::UnlockDismissed => format!(
+            "{} {}",
+            gettext("The keyring is locked, so the access token cannot be read."),
+            crate::services::secret_save_report::keyring_locked_recovery(),
+        ),
         SecretError::ServiceUnavailable { .. } => {
             gettext("No keyring is running, so the access token cannot be kept. Start a keyring and try again.")
         }
@@ -1688,6 +1690,39 @@ mod tests {
     }
 
     #[test]
+    fn locked_token_status_explains_default_keyring_recovery() {
+        for error in [SecretError::Locked, SecretError::UnlockDismissed] {
+            let text = status_text(&McpStatus::Failed(McpFailure::Keyring(error)));
+
+            assert!(text.contains("The keyring is locked, so the access token cannot be read."));
+            assert!(text.contains("Unlock the keyring, accept its prompt and try again."));
+            assert!(text.contains(
+                "With automatic login, GNOME may have no default keyring yet: create one in Passwords and Keys and make it the default."
+            ));
+        }
+    }
+
+    #[gtk4::test]
+    fn locked_token_row_shows_recovery_and_retry() {
+        let settings = MemorySettings::new();
+        let page = bound_page(&settings, None);
+        let imp = page.imp();
+
+        for error in [SecretError::Locked, SecretError::UnlockDismissed] {
+            page.show_status(McpStatus::Failed(McpFailure::Keyring(error)));
+
+            let subtitle = imp.status_row.subtitle().expect("the failure status");
+            assert!(subtitle.contains("create one in Passwords and Keys and make it the default."));
+            assert!(imp.retry_button.is_visible());
+
+            page.show_status(McpStatus::Off);
+
+            assert_eq!(imp.status_row.subtitle().as_deref(), Some("Off"));
+            assert!(!imp.retry_button.is_visible());
+        }
+    }
+
+    #[test]
     fn each_failure_has_its_own_sentence() {
         let failures = [
             McpFailure::PortInUse(23508),
@@ -1701,6 +1736,7 @@ mod tests {
             },
             McpFailure::Keyring(SecretError::Locked),
             McpFailure::Keyring(SecretError::ServiceUnavailable { detail: String::new() }),
+            McpFailure::Keyring(SecretError::PortalUnavailable { detail: String::new() }),
             McpFailure::NoRandomness,
             McpFailure::Interrupted(String::new()),
         ];
@@ -1708,5 +1744,17 @@ mod tests {
 
         assert_eq!(texts.len(), failures.len());
         assert!(failure_text(&McpFailure::PortInUse(4000)).contains("4000"));
+        assert_eq!(
+            status_text(&McpStatus::Failed(McpFailure::Keyring(
+                SecretError::ServiceUnavailable { detail: String::new() }
+            ))),
+            "No keyring is running, so the access token cannot be kept. Start a keyring and try again."
+        );
+        assert_eq!(
+            status_text(&McpStatus::Failed(McpFailure::Keyring(
+                SecretError::PortalUnavailable { detail: String::new() }
+            ))),
+            "The secret portal is unavailable, so the access token cannot be kept. Check that xdg-desktop-portal and a keyring are running."
+        );
     }
 }

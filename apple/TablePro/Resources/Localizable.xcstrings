@@ -3474,6 +3474,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ earlier results were dropped." : {
+
+    },
     "%@ ends on %@ and does not renew." : {
       "localizations" : {
         "en" : {
@@ -13623,6 +13626,9 @@
         }
       }
     },
+    "1 earlier result was dropped." : {
+
+    },
     "1 field" : {
 
     },
@@ -16995,6 +17001,9 @@
         }
       }
     },
+    "A run that returns more results with rows keeps only the newest. Pinned results always stay." : {
+
+    },
     "a running query" : {
 
     },
@@ -17053,6 +17062,10 @@
           }
         }
       }
+    },
+    "A script cannot hold binary COPY data, so no rows were sent. Dump the rows as text or CSV." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A script wants to run a query on \"%@\"" : {
       "localizations" : {
@@ -17302,6 +17315,12 @@
           }
         }
       }
+    },
+    "A statement failed in the transaction, so it can only be rolled back." : {
+
+    },
+    "A statement is still running in the transaction, so it cannot be committed now." : {
+
     },
     "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved." : {
       "localizations" : {
@@ -17692,7 +17711,13 @@
     "A transaction is open on this connection, and this change cannot run inside it. Nothing was run. Commit or roll back the transaction, then try again." : {
 
     },
+    "A transaction is open on this connection, and this change would have to end it. Commit or roll back the transaction, then try again." : {
+
+    },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
+
+    },
+    "A transaction is still open on %@." : {
 
     },
     "A transaction is still open on this connection. Commit or roll it back." : {
@@ -34863,6 +34888,9 @@
         }
       }
     },
+    "Cannot run this query at Read-Only: it calls a function that can change data. Switch Safe Mode to %@ to run it." : {
+
+    },
     "Cannot run this query: it calls a function that can change data, and Safe Mode is held at Read-Only for this connection." : {
 
     },
@@ -36703,6 +36731,9 @@
 
     },
     "Changes Unavailable" : {
+
+    },
+    "Changes you don’t commit are rolled back." : {
 
     },
     "Changing %@ from %@ to %@ can truncate existing values." : {
@@ -51330,6 +51361,10 @@
     "Copy as UPDATE Statements" : {
 
     },
+    "COPY at line %@: %@ lines sent" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Copy Average" : {
 
     },
@@ -51803,6 +51838,13 @@
     },
     "Copy Fix SQL" : {
 
+    },
+    "COPY FROM STDIN takes its rows from the lines after it, which only the query editor and SQL import send. Run it there." : {
+
+    },
+    "COPY FROM STDIN takes its rows from the lines after the line its ; ends, so no rows were sent." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Copy ID" : {
       "localizations" : {
@@ -53279,6 +53321,9 @@
           }
         }
       }
+    },
+    "Could Not Commit the Transaction" : {
+
     },
     "Could Not Compare" : {
       "localizations" : {
@@ -66848,6 +66893,33 @@
         }
       }
     },
+    "Do you want to commit the open transaction before closing “%@”?" : {
+
+    },
+    "Do you want to commit the open transaction before closing the database “%@”?" : {
+
+    },
+    "Do you want to commit the open transaction before disconnecting from “%@”?" : {
+
+    },
+    "Do you want to commit the open transaction before quitting?" : {
+
+    },
+    "Do you want to commit the open transaction before relaunching?" : {
+
+    },
+    "Do you want to commit the open transactions before closing “%@”?" : {
+
+    },
+    "Do you want to commit the open transactions before disconnecting from “%@”?" : {
+
+    },
+    "Do you want to commit the open transactions before quitting?" : {
+
+    },
+    "Do you want to commit the open transactions before relaunching?" : {
+
+    },
     "Do you want to save changes?" : {
       "localizations" : {
         "fr" : {
@@ -70872,6 +70944,9 @@
         }
       }
     },
+    "Edit mode runs only queries and data changes, such as SELECT, INSERT, UPDATE, DELETE and MERGE. A schema, privilege, session or transaction statement, or a change to the database's own tables, needs Agent mode, or run it yourself in a query tab." : {
+
+    },
     "Edit Profile…" : {
       "localizations" : {
         "en" : {
@@ -71108,6 +71183,12 @@
           }
         }
       }
+    },
+    "Edit: read-only tools plus queries and data changes. On SQL databases, schema, privilege and session statements need Agent mode." : {
+
+    },
+    "Edit: read-only tools plus queries and data changes. Schema, privilege and session commands need Agent mode." : {
+
     },
     "Edit: read-only tools plus running queries. Destructive DDL stays blocked." : {
       "localizations" : {
@@ -71489,6 +71570,9 @@
       "generatesSymbol" : false
     },
     "Edits %@" : {
+
+    },
+    "Edits saved with Manual Commit on are not committed yet." : {
 
     },
     "Effective" : {
@@ -103789,6 +103873,9 @@
         }
       }
     },
+    "Line %lld runs COPY FROM STDIN, and this connection cannot load its rows. Run the file with psql, or dump it again with --inserts." : {
+
+    },
     "Line %lld runs COPY FROM STDIN, whose rows TablePro cannot send. Run the file with psql, or dump it again with --inserts." : {
 
     },
@@ -113475,6 +113562,9 @@
           }
         }
       }
+    },
+    "Multiple Results" : {
+
     },
     "Multiple statements are not permitted for this client" : {
       "localizations" : {
@@ -144803,6 +144893,9 @@
         }
       }
     },
+    "Read-Only Safe Mode does not allow a commit." : {
+
+    },
     "Read-only SQL over Iceberg tables in R2" : {
       "localizations" : {
         "fr" : {
@@ -152692,6 +152785,9 @@
           }
         }
       }
+    },
+    "Results kept per run:" : {
+
     },
     "Resume" : {
       "localizations" : {
@@ -171426,6 +171522,9 @@
         }
       }
     },
+    "Some tabs have unsaved edits. Relaunching will discard these changes." : {
+
+    },
     "Some values are set outside this file" : {
       "localizations" : {
         "fr" : {
@@ -175114,6 +175213,21 @@
           }
         }
       }
+    },
+    "Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open bar, then begin the rest with “%4$@”." : {
+
+    },
+    "Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open bar, then run the rest." : {
+
+    },
+    "Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open bar. A new run starts in the tab's database, so begin the rest with “%4$@”." : {
+
+    },
+    "Statement %1$d/%2$d moves the session to another database, which this session takes only outside a transaction. The run stopped before it. Click Commit or Roll Back on the Transaction Open bar, then run the script again from statement %1$d." : {
+
+    },
+    "Statement %1$d/%2$d moves the session to another database, which this session takes only outside a transaction. The run stopped before it. Click Roll Back on the Transaction Open bar, move the statement above the script's BT, then run the script again from there." : {
+
     },
     "Statement %lld" : {
       "extractionState" : "stale",
@@ -183242,6 +183356,9 @@
         }
       }
     },
+    "TablePro's Safe Mode is held at Read-Only for this connection, so this tool cannot run." : {
+
+    },
     "TablePro's Safe Mode is set to read-only for this connection. Destructive operations are not permitted." : {
       "localizations" : {
         "fr" : {
@@ -183321,6 +183438,9 @@
           }
         }
       }
+    },
+    "TablePro's Safe Mode is set to Read-Only for this connection. Switch it to %@ to allow this tool." : {
+
     },
     "tables" : {
       "localizations" : {
@@ -187790,6 +187910,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The connection “%@” has an open transaction. Changes you don’t commit are rolled back." : {
+
+    },
+    "The connection “%@” has open transactions. Changes you don’t commit are rolled back." : {
+
+    },
     "The connection closed." : {
 
     },
@@ -188586,6 +188712,9 @@
 
     },
     "The data has no values to insert into %@." : {
+
+    },
+    "The database “%@” has an open transaction. Changes you don’t commit are rolled back." : {
 
     },
     "The database “%@” has an open transaction. Closing rolls it back and discards its uncommitted changes." : {
@@ -197439,6 +197568,9 @@
     "These columns would leave too little room to scroll the rest." : {
 
     },
+    "These connections have open transactions: %@. Changes you don’t commit are rolled back." : {
+
+    },
     "These connections open their tunnel by running a command on this Mac, every time they connect:\n\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -197454,6 +197586,9 @@
 
     },
     "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both.\n\n%@" : {
+
+    },
+    "These databases have open transactions: %@. Changes you don’t commit are rolled back." : {
 
     },
     "These databases have open transactions: %@. Closing rolls them back and discards their uncommitted changes." : {
@@ -197922,6 +198057,9 @@
     "This change does not apply to this kind of type." : {
 
     },
+    "This change is pending in a transaction the statement opened. Other statements are refused until it is committed or rolled back." : {
+
+    },
     "This change needs %@ to be recreated, and it cannot be recreated from the definition the database stored for it. Virtual tables, such as full-text search tables, are the usual reason." : {
       "localizations" : {
         "fr" : {
@@ -198148,6 +198286,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection cannot load the rows of COPY FROM STDIN." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection comes from a file in a linked folder, so its author chose the server and how it signs in." : {
 
     },
@@ -198207,6 +198349,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection has an open transaction. Closing rolls it back and discards its uncommitted changes." : {
+
+    },
     "This connection has an open transaction. Commit or roll it back first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -198218,6 +198363,9 @@
           }
         }
       }
+    },
+    "This connection has an open transaction. Disconnecting rolls it back and discards its uncommitted changes." : {
+
     },
     "This connection has another database attached, which closing the file would detach." : {
       "extractionState" : "manual",
@@ -199775,6 +199923,10 @@
           }
         }
       }
+    },
+    "This driver cannot send rows to COPY FROM STDIN." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This driver has no TLS fallback. Preferred forces TLS, same as Required." : {
       "localizations" : {
@@ -203589,6 +203741,10 @@
           }
         }
       }
+    },
+    "This version of SQL Import cannot run line %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This version of TablePro can no longer sync with iCloud. Update TablePro to resume." : {
 
@@ -208478,7 +208634,13 @@
     "Uncommitted changes on “%@” are rolled back when TablePro quits." : {
 
     },
+    "Uncommitted changes on “%@” are rolled back when TablePro relaunches." : {
+
+    },
     "Uncommitted changes on %@ are rolled back when TablePro quits." : {
+
+    },
+    "Uncommitted changes on %@ are rolled back when TablePro relaunches." : {
 
     },
     "Under MCP Servers click \"+ Add Custom Server\", select the Local tab, paste the JSON below, then click Add Server" : {
@@ -216279,6 +216441,9 @@
           }
         }
       }
+    },
+    "What happened to the open transaction, when it matters" : {
+
     },
     "What is switched on here is ignored when two structures are compared. These drift between environments by design." : {
       "localizations" : {

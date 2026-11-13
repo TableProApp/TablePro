@@ -44,7 +44,8 @@ extension PluginMetadataRegistry {
                     requestedTLSVerifiesIdentity: true,
                     supportsColumnSort: false,
                     supportsRawFilter: false,
-                    statementPolicyInDriver: true
+                    statementPolicyInDriver: true,
+                    dataCommands: kafkaDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -85,6 +86,9 @@ private let kafkaCompletions: [CompletionEntry] = [
     CompletionEntry(label: "DESCRIBE GROUP", insertText: "DESCRIBE GROUP \"group\""),
     CompletionEntry(label: "DESCRIBE TOPIC", insertText: "DESCRIBE TOPIC \"topic\"")
 ]
+
+// KafkaQL (`TableProKafkaCore/KafkaQL.swift`): CONSUME, SHOW and DESCRIBE read, DROP TOPIC drops the topic.
+private let kafkaDataCommands: Set<String> = ["PRODUCE"]
 
 private let kafkaColumnTypes: [String: [String]] = [
     "Message": ["TEXT", "BLOB", "JSON"],
