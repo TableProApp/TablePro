@@ -109766,6 +109766,46 @@
     "Masked %@: this connection has masking rules, and TablePro could not trace these columns to a table column." : {
 
     },
+    "Masked because TablePro cannot tell which table column this comes from." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masquée, car TablePro ne peut pas déterminer de quelle colonne de table elle provient."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 어떤 테이블 열에서 온 값인지 알 수 없어 마스킹되었습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro bunun hangi tablo sütunundan geldiğini anlayamadığı için maskelendi."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã che vì TablePro không xác định được cột này lấy từ cột nào của bảng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已遮盖，因为 TablePro 无法确定它来自哪一列。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已遮蓋，因為 TablePro 無法確定它來自哪一欄。"
+          }
+        }
+      }
+    },
     "Masked by a masking rule" : {
 
     },
@@ -168818,6 +168858,46 @@
         }
       }
     },
+    "Shares the first %lld columns." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partage les %lld premières colonnes."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "처음 %lld개 열을 공유합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İlk %lld sütunu paylaşır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chia sẻ %lld cột đầu tiên."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享前 %lld 列。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享前 %lld 欄。"
+          }
+        }
+      }
+    },
     "Shares the first %lld rows of a larger result." : {
       "localizations" : {
         "fr" : {
@@ -193919,6 +193999,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法建立連結。請再試一次。"
+          }
+        }
+      }
+    },
+    "The link shares the first %lld columns." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le lien partage les %lld premières colonnes."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "링크는 처음 %lld개 열을 공유합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı ilk %lld sütunu paylaşır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liên kết chia sẻ %lld cột đầu tiên."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此链接分享前 %lld 列。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連結分享前 %lld 欄。"
           }
         }
       }
