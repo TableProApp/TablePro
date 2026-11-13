@@ -25,7 +25,8 @@ pub use http_client::AiClient;
 pub use key_vault::ApiKeyVault;
 pub use model_list::list_models;
 pub use prompt::{
-    Action, MAX_DESCRIBED_TABLES, action_message, chat_system_prompt, completion_message, completion_system_prompt,
+    Action, MAX_DESCRIBED_TABLES, ServerError, action_message, chat_system_prompt, completion_message,
+    completion_system_prompt,
 };
 pub use reply::{ReplyEnd, ReplyEvent, StopReason, Usage};
 pub use reply_stream::{collect_reply, stream_reply};

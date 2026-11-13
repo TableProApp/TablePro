@@ -3,6 +3,7 @@ use std::sync::{Arc, PoisonError, RwLock};
 use super::glob::glob_matches;
 use super::{ColumnMasks, MaskingRule, MaskingStyle, MaskingTarget};
 use crate::column::ResultColumn;
+use crate::meta::TableRef;
 
 // The rules one connection masks its values by, and the only place they are matched against columns.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -79,10 +80,7 @@ impl MaskingPolicy {
                             false => Some(MaskingStyle::Full),
                         };
                     };
-                    let relation = match &origin.table.schema {
-                        Some(schema) => format!("{schema}.{}", origin.table.name),
-                        None => origin.table.name.clone(),
-                    };
+                    let relation = table_name(&origin.table);
                     // The relation can be a view, a partition or a child of the rule's table, so a `table.column`
                     // rule also matches by its column part; naming the relation only picks the style.
                     let read = self
@@ -137,6 +135,14 @@ fn matches(rule: &MaskingRule, table: Option<&str>, column: &str, type_name: Opt
                     .rsplit_once('.')
                     .is_some_and(|(_, bare)| glob_matches(table_pattern, bare))
         }
+    }
+}
+
+// A table as a `table.column` rule names it: `schema.table`, or the table alone.
+pub fn table_name(table: &TableRef) -> String {
+    match &table.schema {
+        Some(schema) => format!("{schema}.{}", table.name),
+        None => table.name.clone(),
     }
 }
 
@@ -200,7 +206,6 @@ mod tests {
     use super::MaskingStyle::{Email, Full, Hash, LastFour, Null};
     use super::*;
     use crate::column::{ColumnOrigin, ColumnType};
-    use crate::meta::TableRef;
 
     fn column_rule(pattern: &str, style: MaskingStyle) -> MaskingRule {
         MaskingRule::new(pattern, MaskingTarget::Column, style)
