@@ -7,9 +7,6 @@ public enum EditLock
     NoPrimaryKey,
     KeyUnreadable,
     ColumnsChanged,
-
-    // A key column is masked, so no row of the page can be named to the server until the tab reveals it.
-    MaskedKey,
 }
 
 // An empty text means what the core's parse says for the column: the empty string, the server's default, or NULL.

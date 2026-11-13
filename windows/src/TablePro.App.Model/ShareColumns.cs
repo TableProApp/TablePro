@@ -9,35 +9,23 @@ public enum ShareColumnAction
     Remove,
 }
 
-// One shared column: a rule's column starts masked with the rule's style and cannot be kept, a detected one starts
-// masked with the suggested style, any other is kept (share-v2 PLAN-MASKING 8.4).
+// One shared column: a detected one starts masked with the suggested style and may be kept; any other starts kept
+// (share-v2 PLAN-MASKING 8.0 and 8.4).
 public sealed class ShareColumn
 {
-    private static readonly MaskStyle[] AllStyles =
+    public static IReadOnlyList<MaskStyle> Styles { get; } =
         [MaskStyle.Full, MaskStyle.LastFour, MaskStyle.Email, MaskStyle.Hash, MaskStyle.Null];
 
     internal ShareColumn(ShareColumnMasking masking)
     {
         Name = masking.Name;
-        Rule = masking.Rule;
-        Untraced = Rule is not null && masking.Untraced;
-        Suggestion = Rule is null ? masking.Suggestion : null;
-        (Action, Style) = (Rule, Suggestion) switch
-        {
-            ({ } rule, _) => (ShareColumnAction.Mask, rule),
-            (_, { } suggestion) => (ShareColumnAction.Mask, suggestion.Style),
-            _ => (ShareColumnAction.Keep, MaskStyle.Full),
-        };
-        AllowedStyles = Rule is { } ruled ? [.. AllStyles.Where(style => HidesAsMuch(style, ruled))] : AllStyles;
+        Suggestion = masking.Suggestion;
+        (Action, Style) = Suggestion is { } suggestion
+            ? (ShareColumnAction.Mask, suggestion.Style)
+            : (ShareColumnAction.Keep, MaskStyle.Full);
     }
 
     public string Name { get; }
-
-    // The style the connection's rules mask the column with on every path out.
-    public MaskStyle? Rule { get; }
-
-    // Masked because no table column can be named for it, not because a rule names it.
-    public bool Untraced { get; }
 
     public MaskSuggestion? Suggestion { get; }
 
@@ -46,11 +34,6 @@ public sealed class ShareColumn
     // The style Mask uses; kept while another action is picked, so a return to Mask finds it.
     public MaskStyle Style { get; private set; }
 
-    public bool AllowsKeep => Rule is null;
-
-    // Under a rule only a style that hides at least as much: the rule's own, Full or NULL.
-    public IReadOnlyList<MaskStyle> AllowedStyles { get; }
-
     public ShareColumnChoice Choice => Action switch
     {
         ShareColumnAction.Remove => ShareColumnChoice.Remove.Instance,
@@ -58,32 +41,9 @@ public sealed class ShareColumn
         _ => ShareColumnChoice.Keep.Instance,
     };
 
-    // False for a choice the column refuses, which leaves it as it was.
-    public bool Choose(ShareColumnAction action)
-    {
-        if (action == ShareColumnAction.Keep && !AllowsKeep)
-        {
-            return false;
-        }
+    public void Choose(ShareColumnAction action) => Action = action;
 
-        Action = action;
-        return true;
-    }
-
-    public bool Choose(MaskStyle style)
-    {
-        if (!AllowedStyles.Contains(style))
-        {
-            return false;
-        }
-
-        Style = style;
-        return true;
-    }
-
-    // The engine's strictest(rule, style) is the style itself: equal, NULL, or Full over any other.
-    private static bool HidesAsMuch(MaskStyle style, MaskStyle rule) =>
-        style == rule || style == MaskStyle.Null || (style == MaskStyle.Full && rule != MaskStyle.Null);
+    public void Choose(MaskStyle style) => Style = style;
 }
 
 // The share sheet's Columns list, in the result's order.

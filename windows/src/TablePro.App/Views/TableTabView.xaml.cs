@@ -139,12 +139,6 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     public void Stop() => _model.Stop();
 
-    public async Task RemaskAsync()
-    {
-        await _model.RemaskAsync().ConfigureAwait(true);
-        UpdateEditing();
-    }
-
     public void FocusContent()
     {
         if (_showsStructure && _structure is { } structure)
@@ -300,7 +294,6 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             ReloadReason.Refresh => "ReloadDiscardRefresh",
             ReloadReason.Sort => "ReloadDiscardSort",
             ReloadReason.Filter => "ReloadDiscardFilter",
-            ReloadReason.Reveal => "ReloadDiscardReveal",
             _ => "ReloadDiscardPage",
         }));
 
@@ -325,8 +318,6 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     void ITableTabView.ShowStructureFailed(CoreError failure) => _structure?.ShowFailure(failure);
 
     void ITableTabView.ShowFilterChoicesFailed(CoreError failure) => _filters?.ShowChoicesFailed(failure);
-
-    Task<bool> ITableTabView.ConfirmRevealAsync() => MaskReveal.ConfirmAsync(Owner);
 
     // SelectorBar raises SelectionChanged for ShowView's own change too, which finds the view already shown.
     private void ShowView(bool structure)
@@ -548,10 +539,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         EditRefusal.TableLocked { Lock: EditLock.ReadOnlyConnection } => Strings.Get("EditLockReadOnly"),
         EditRefusal.TableLocked { Lock: EditLock.NoPrimaryKey } => Strings.Format("EditLockNoPrimaryKey", _model.Title),
         EditRefusal.TableLocked { Lock: EditLock.KeyUnreadable } => Strings.Format("EditLockKeyUnreadable", _model.Title),
-        EditRefusal.TableLocked { Lock: EditLock.MaskedKey } => Strings.Format("EditLockMaskedKey", _model.Title),
         EditRefusal.TableLocked => Strings.Get("EditLockColumnsChanged"),
         EditRefusal.CellLocked => Strings.Get("EditCellReadOnly"),
-        EditRefusal.MaskedCell => Strings.Get("EditCellMasked"),
         EditRefusal.SaveBlocked => Strings.Get("SaveUnknownBlocked"),
         EditRefusal.Invalid invalid => Strings.Error(invalid.Failure),
         _ => null,
@@ -574,16 +563,6 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         args.Handled = true;
-        // A masked column's header offers its reveal; any other header keeps the cell menu it always had.
-        var header = grid.HeaderColumnAt(args.OriginalSource);
-        if (header >= 0 && _model.IsColumnMasked(header))
-        {
-            var columnMenu = new MenuFlyout();
-            columnMenu.Items.Add(RevealItem());
-            ShowMenu(columnMenu, grid, args);
-            return;
-        }
-
         var (row, column) = (grid.FocusedRow, grid.FocusedColumn);
         var menu = new MenuFlyout();
         // A row marked for delete offers only to keep it, as macOS does.
@@ -608,12 +587,6 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         var copy = new MenuFlyoutItem { Text = Strings.Get("GridMenuCopy"), IsEnabled = grid.RowCount > 0 };
         copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
         menu.Items.Add(copy);
-        // The keyboard reaches no header, so the focused cell's masked column offers the reveal too.
-        if (_model.IsColumnMasked(column))
-        {
-            menu.Items.Add(RevealItem());
-        }
-
         menu.Items.Add(new MenuFlyoutSeparator());
         var share = new MenuFlyoutItem
         {
@@ -623,32 +596,19 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         };
         share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Result);
         menu.Items.Add(share);
-        ShowMenu(menu, grid, args);
-    }
-
-    private static void ShowMenu(MenuFlyout menu, DataGridView grid, ContextRequestedEventArgs args)
-    {
         if (args.TryGetPosition(grid, out var point))
         {
             menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
+        }
+        else if (grid.FocusedCellMenuPoint() is { } cell)
+        {
+            // From the keyboard, the menu opens at the cell it acts on, not over the editor.
+            menu.ShowAt(grid, new FlyoutShowOptions { Position = cell });
         }
         else
         {
             menu.ShowAt(grid);
         }
-    }
-
-    // Off once the tab shows stored values, and while it reads or saves; pending edits are asked about first.
-    private MenuFlyoutItem RevealItem()
-    {
-        var item = new MenuFlyoutItem
-        {
-            Text = Strings.Get("RevealMaskedCommand"),
-            Icon = new FontIcon { Glyph = "\uE7B3" },
-            IsEnabled = _model.OffersReveal && !_model.IsRunning && !_model.IsSaving,
-        };
-        item.Click += async (_, _) => await _model.RevealMaskedAsync().ConfigureAwait(true);
-        return item;
     }
 
     private MenuFlyoutItem ValueItem(string text, int row, int column, CellValueKind kind) =>

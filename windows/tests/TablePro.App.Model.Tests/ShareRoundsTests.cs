@@ -12,7 +12,7 @@ public sealed class ShareRoundsTests
     private static readonly ShareSummary Sends = new(3, 2, false, null);
 
     private static ShareColumns Columns() => ShareColumns.From(
-        [new ShareColumnMasking("id", null, null), new ShareColumnMasking("email", null, null)]);
+        [new ShareColumnMasking("id", null), new ShareColumnMasking("email", null)]);
 
     [Fact]
     public void ShareWaitsForThisRoundsSummaryAndPreview()
@@ -80,13 +80,14 @@ public sealed class ShareRoundsTests
     [Fact]
     public void TheSummaryLineTakesTheSingularForOneMaskedColumn()
     {
-        var one = ShareColumns.From([new ShareColumnMasking("email", MaskStyle.Email, null), new ShareColumnMasking("id", null, null)]);
+        var one = ShareColumns.From(
+            [new ShareColumnMasking("email", new MaskSuggestion(MaskStyle.Email, new MaskReason.ColumnName("email"))), new ShareColumnMasking("id", null)]);
         var none = Columns();
 
         Assert.Equal("ShareColumnsSummaryOne", one.SummaryKey);
         Assert.Equal("ShareColumnsSummaryMany", none.SummaryKey);
-        Assert.True(none.Columns[0].Choose(ShareColumnAction.Mask));
-        Assert.True(none.Columns[1].Choose(ShareColumnAction.Mask));
+        none.Columns[0].Choose(ShareColumnAction.Mask);
+        none.Columns[1].Choose(ShareColumnAction.Mask);
         Assert.Equal("ShareColumnsSummaryMany", none.SummaryKey);
     }
 }

@@ -22,19 +22,6 @@ internal static partial class Mapping
         _ => Native.MaskStyleTag.Full,
     };
 
-    public static MaskingRule Rule(Native.MaskingRuleRecord rule) => new(
-        Guid.TryParse(rule.Id, out var id) ? id : null,
-        rule.Pattern,
-        rule.Target == Native.MaskTargetTag.Type ? MaskTarget.Type : MaskTarget.Column,
-        Style(rule.Style));
-
-    // The macOS store writes ids in upper case.
-    public static Native.MaskingRuleRecord Rule(MaskingRule rule) => new(
-        rule.Id?.ToString().ToUpperInvariant() ?? string.Empty,
-        rule.Pattern,
-        rule.Target == MaskTarget.Type ? Native.MaskTargetTag.Type : Native.MaskTargetTag.Column,
-        Style(rule.Style));
-
     public static Native.ShareColumnChoice Choice(ShareColumnChoice choice) => choice switch
     {
         ShareColumnChoice.Mask mask => new Native.ShareColumnChoice.Mask(Style(mask.Style)),
@@ -56,7 +43,6 @@ internal static partial class Mapping
 
     public static ShareColumnMasking ColumnMasking(Native.ShareColumnMasking column) => new(
         column.Name,
-        column.Rule is { } rule ? Style(rule) : null,
         column.Suggestion is { } suggestion
             ? new MaskSuggestion(
                 Style(suggestion.Style),
@@ -66,10 +52,7 @@ internal static partial class Mapping
                     Native.MaskReason.ColumnName name => new MaskReason.ColumnName(name.Term),
                     _ => throw new InvalidOperationException("The core sent a reason this build does not know."),
                 })
-            : null)
-    {
-        Untraced = column.RuleReason == Native.RuleReason.Untraced,
-    };
+            : null);
 
     public static ShareSummary Summary(Native.ShareSummary summary) => new(
         Count(summary.RowsSent),

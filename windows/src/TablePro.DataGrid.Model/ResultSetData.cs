@@ -8,7 +8,6 @@ public sealed class ResultSetData : IGridData
 {
     private readonly ResultSet _set;
     private readonly string[] _names;
-    private bool[] _masked;
 
     public ResultSetData(ResultSet set, IReadOnlyList<ResultColumn> columns)
     {
@@ -16,7 +15,6 @@ public sealed class ResultSetData : IGridData
         ArgumentNullException.ThrowIfNull(columns);
         _set = set;
         _names = [.. columns.Select(column => column.Name)];
-        _masked = [.. columns.Select(column => column.Masked is not null)];
     }
 
     // Read when the grid is given the data and on its RowsChanged, after the run's RowsAppended.
@@ -25,15 +23,6 @@ public sealed class ResultSetData : IGridData
     public int ColumnCount => _names.Length;
 
     public string GetColumnName(int column) => _names[column];
-
-    public bool IsColumnMasked(int column) => _masked[column];
-
-    // The set's columns read again after a remask; the grid's CellsChanged then draws them.
-    public void Remasked(IReadOnlyList<ResultColumn> columns)
-    {
-        ArgumentNullException.ThrowIfNull(columns);
-        _masked = [.. _names.Select((_, column) => column < columns.Count && columns[column].Masked is not null)];
-    }
 
     public IGridReader OpenReader() => new Reader(_set);
 

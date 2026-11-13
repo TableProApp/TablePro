@@ -109,8 +109,6 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     public void Stop() => _model.Stop();
 
-    public Task RemaskAsync() => _model.RemaskAsync();
-
     public void FocusContent() => SqlText.Focus(FocusState.Programmatic);
 
     public SessionTab Snapshot() => _model.Snapshot();
@@ -207,10 +205,6 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     void IQueryTabView.CloseEditor() => SqlText.Dispose();
 
-    Task<bool> IQueryTabView.ConfirmRevealAsync() => MaskReveal.ConfirmAsync(this);
-
-    void IQueryTabView.ShowRevealOnNextRun() => StatusText.Text = Strings.Get("StatusRevealOnNextRun");
-
     private async void OnCommit(object sender, RoutedEventArgs e) => await _model.CommitAsync().ConfigureAwait(true);
 
     private async void OnRollBack(object sender, RoutedEventArgs e) => await _model.RollBackAsync().ConfigureAwait(true);
@@ -221,15 +215,6 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         args.Handled = true;
         var grid = Results.GridView;
         var menu = new MenuFlyout();
-        // A masked column's header offers its reveal alone; the cell menu offers it for the focused cell's column.
-        var header = grid.HeaderColumnAt(args.OriginalSource);
-        if (header >= 0 && IsMasked(header))
-        {
-            menu.Items.Add(RevealItem());
-            ShowMenu(menu, grid, args);
-            return;
-        }
-
         var copy = new MenuFlyoutItem
         {
             Text = Strings.Get("GridMenuCopy"),
@@ -238,11 +223,6 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         };
         copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
         menu.Items.Add(copy);
-        if (IsMasked(grid.FocusedColumn))
-        {
-            menu.Items.Add(RevealItem());
-        }
-
         menu.Items.Add(new MenuFlyoutSeparator());
         var share = new MenuFlyoutItem
         {
@@ -252,35 +232,19 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         };
         share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Result);
         menu.Items.Add(share);
-        ShowMenu(menu, grid, args);
-    }
-
-    private static void ShowMenu(MenuFlyout menu, DataGridView grid, ContextRequestedEventArgs args)
-    {
         if (args.TryGetPosition(grid, out var point))
         {
             menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
+        }
+        else if (grid.FocusedCellMenuPoint() is { } cell)
+        {
+            // From the keyboard, the menu opens at the cell it acts on, not over the editor.
+            menu.ShowAt(grid, new FlyoutShowOptions { Position = cell });
         }
         else
         {
             menu.ShowAt(grid);
         }
-    }
-
-    private bool IsMasked(int column) =>
-        column >= 0 && column < Results.Columns.Count && Results.Columns[column].Masked is not null;
-
-    // Off once the tab shows stored values, and while a run is under way.
-    private MenuFlyoutItem RevealItem()
-    {
-        var item = new MenuFlyoutItem
-        {
-            Text = Strings.Get("RevealMaskedCommand"),
-            Icon = new FontIcon { Glyph = "\uE7B3" },
-            IsEnabled = _model.OffersReveal && !IsRunning,
-        };
-        item.Click += async (_, _) => await _model.RevealMaskedAsync().ConfigureAwait(true);
-        return item;
     }
 
     private void OnEditorMenuOpening(object? sender, IList<MenuFlyoutItemBase> items)

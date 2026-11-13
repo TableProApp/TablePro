@@ -701,8 +701,6 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             RestartConnects(result.Saved);
         }
 
-        // The core gave the open sessions the saved rules before the save returned, so the rows on screen follow now.
-        await RemaskOpenAsync(result.Saved);
         await ApplySafeModeAsync(result.Saved, reconnecting);
         if (!result.Connect)
         {
@@ -722,15 +720,6 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         Connect(result.Saved);
-    }
-
-    private async Task RemaskOpenAsync(SavedConnection saved)
-    {
-        List<MainWindow> windows = [this, .. _tabWindows];
-        foreach (var each in windows.SelectMany(window => window._open).Where(item => item.Matches(saved.Id, null)).ToList())
-        {
-            await each.View.RemaskAsync();
-        }
     }
 
     // The core read the saved connection as each connect under way began, in every window.

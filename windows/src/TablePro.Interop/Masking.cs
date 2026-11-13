@@ -1,6 +1,6 @@
 namespace TablePro.Interop;
 
-// The styles of the macOS engine, which the core runs for every app (core ADR 0028).
+// The styles of the macOS engine, which the core computes for a share (core ADR 0028).
 public enum MaskStyle
 {
     Full,
@@ -10,16 +10,7 @@ public enum MaskStyle
     Null,
 }
 
-public enum MaskTarget
-{
-    Column,
-    Type,
-}
-
-// Id is null for a rule the form just added. A save drops a rule whose pattern is blank; the first match wins.
-public sealed record MaskingRule(Guid? Id, string Pattern, MaskTarget Target, MaskStyle Style);
-
-// What a share does with one column. A column the connection's rules mask never leaves weaker than its rule.
+// What a share does with one column; Mask sends each value in that style, computed on this machine.
 public abstract record ShareColumnChoice
 {
     private ShareColumnChoice()
@@ -64,12 +55,8 @@ public abstract record MaskReason
 
 public sealed record MaskSuggestion(MaskStyle Style, MaskReason Reason);
 
-// Rule is the style the connection's rules mask the column with on the way out; else Suggestion is what was detected.
-public sealed record ShareColumnMasking(string Name, MaskStyle? Rule, MaskSuggestion? Suggestion)
-{
-    // The column carries no table column of its own, so a connection with rules masks it as Full.
-    public bool Untraced { get; init; }
-}
+// Suggestion is what the detectors saw in the column's name or its values, null when they saw nothing.
+public sealed record ShareColumnMasking(string Name, MaskSuggestion? Suggestion);
 
 // What a share with the sheet's choices sends, by the plan and the body budget create uses: RowsSent can be fewer than
 // the plan's rows, and none when TooLarge says why even one row cannot go.

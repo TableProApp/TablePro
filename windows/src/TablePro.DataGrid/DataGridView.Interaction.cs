@@ -309,6 +309,21 @@ public sealed partial class DataGridView
     internal bool HasFocusedCell(int row, int column) =>
         FocusState != FocusState.Unfocused && _selection.FocusRow == row && _selection.FocusColumn == column;
 
+    // Where a menu opened from the keyboard (Shift+F10, the Menu key) goes: under the focused cell, in this grid's
+    // coordinates, as a pointer's menu opens where it was clicked. Null when the cell is scrolled out of view.
+    public Point? FocusedCellMenuPoint()
+    {
+        var (row, column) = (_selection.FocusRow, _selection.FocusColumn);
+        if (!IsCellVisible(row, column) || XamlRoot is null)
+        {
+            return null;
+        }
+        var pane = column < _columns.FrozenCount ? (UIElement)_frozenContent : _content;
+        var bounds = pane.TransformToVisual(this).TransformBounds(new Rect(_columns.PaneX(column), row * _rowHeight,
+            _columns.Width(column), _rowHeight));
+        return new Point(bounds.Left, bounds.Bottom);
+    }
+
     // Physical pixels from the window's client area, which is what XAML's UIA bridge expects of a peer.
     internal Rect CellBoundsPhysical(int row, int column)
     {

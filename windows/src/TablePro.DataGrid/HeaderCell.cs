@@ -15,12 +15,10 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
 {
     private const string AscendingGlyph = "";
     private const string DescendingGlyph = "";
-    private const string MaskedGlyph = "";
 
     private readonly DataGridView _grid;
     private readonly TextBlock _title;
     private readonly FontIcon _sort;
-    private readonly FontIcon _mask;
     private readonly ResizeGrip _grip;
     private bool _hover;
     private bool _pressed;
@@ -33,7 +31,6 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
         _grid = grid;
         ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         BorderThickness = new Thickness(0, 0, 1, 1);
         _title = new TextBlock
         {
@@ -43,18 +40,14 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
             TextTrimming = TextTrimming.CharacterEllipsis,
             FontWeight = FontWeights.SemiBold,
         };
-        _mask = new FontIcon { Glyph = MaskedGlyph, FontSize = 12, Margin = new Thickness(0, 0, 6, 0), Visibility = Visibility.Collapsed };
-        SetColumn(_mask, 1);
         _sort = new FontIcon { FontSize = 10, Margin = new Thickness(0, 0, 10, 0), Visibility = Visibility.Collapsed };
-        SetColumn(_sort, 2);
+        SetColumn(_sort, 1);
         _grip = new ResizeGrip { Width = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        SetColumnSpan(_grip, 3);
+        SetColumnSpan(_grip, 2);
         AutomationProperties.SetAccessibilityView(_title, AccessibilityView.Raw);
-        AutomationProperties.SetAccessibilityView(_mask, AccessibilityView.Raw);
         AutomationProperties.SetAccessibilityView(_sort, AccessibilityView.Raw);
         AutomationProperties.SetAccessibilityView(_grip, AccessibilityView.Raw);
         Children.Add(_title);
-        Children.Add(_mask);
         Children.Add(_sort);
         Children.Add(_grip);
 
@@ -81,32 +74,24 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
 
     public SortDirection SortDirection { get; private set; }
 
-    public bool IsMasked { get; private set; }
-
-    public void Bind(int column, string title, SortDirection direction, bool masked = false)
+    public void Bind(int column, string title, SortDirection direction)
     {
-        var (previousColumn, previousDirection, previousMasked) = (Column, SortDirection, IsMasked);
+        var (previousColumn, previousDirection) = (Column, SortDirection);
         Column = column;
         if (!string.Equals(_title.Text, title, StringComparison.Ordinal))
         {
             _title.Text = title;
         }
         SortDirection = direction;
-        IsMasked = masked;
-        if (column == previousColumn && (direction != previousDirection || masked != previousMasked)
+        if (column == previousColumn && direction != previousDirection
             && AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged)
             && FrameworkElementAutomationPeer.FromElement(this) is { } peer)
         {
             peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty,
-                _grid.HeaderStatus(previousDirection, previousMasked), _grid.HeaderStatus(direction, masked));
+                _grid.SortStatus(previousDirection), _grid.SortStatus(direction));
         }
         _sort.Visibility = direction == SortDirection.None ? Visibility.Collapsed : Visibility.Visible;
         _sort.Glyph = direction == SortDirection.Descending ? DescendingGlyph : AscendingGlyph;
-        if (masked != previousMasked || column != previousColumn)
-        {
-            _mask.Visibility = masked ? Visibility.Visible : Visibility.Collapsed;
-            ToolTipService.SetToolTip(this, masked ? _grid.MaskedColumnTip : null);
-        }
         _grip.Visibility = column < 0 ? Visibility.Collapsed : Visibility.Visible;
         AutomationProperties.SetName(this, title);
         ApplyBrushes();
@@ -118,7 +103,6 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
         Background = _pressed ? brushes.HeaderPressed : _hover ? brushes.HeaderHover : brushes.HeaderBackground;
         BorderBrush = brushes.Divider;
         _title.Foreground = brushes.HeaderText;
-        _mask.Foreground = brushes.HeaderText;
         _sort.Foreground = brushes.HeaderText;
     }
 

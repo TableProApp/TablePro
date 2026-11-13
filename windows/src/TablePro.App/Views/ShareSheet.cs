@@ -127,6 +127,8 @@ internal sealed class ShareSheet
             Title = Strings.Get(subject.Kind == ShareKind.Result ? "ShareResultTitle" : "ShareQueryTitle"),
             Content = Layout(),
             PrimaryButtonText = Strings.Get("ShareAction"),
+            // The dialog's own action, as Save is the connection form's; it stays off until a share is allowed.
+            PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"],
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false,
@@ -224,12 +226,7 @@ internal sealed class ShareSheet
                 Text = Strings.Get("SharePreviewHeader"),
                 Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
             });
-            _previewGrid = new DataGridView
-            {
-                SizeColumnsToContent = true,
-                MaskedStatus = Strings.Get("GridMaskedStatus"),
-                MaskedColumnTip = Strings.Get("ShareMaskedColumnTip"),
-            };
+            _previewGrid = new DataGridView { SizeColumnsToContent = true };
             AutomationProperties.SetName(_previewGrid, Strings.Get("SharePreviewHeader"));
             AutomationProperties.SetAutomationId(_previewGrid, "SharePreview");
             _preview.Children.Add(_previewGrid);
@@ -288,7 +285,8 @@ internal sealed class ShareSheet
         _footer.Style = Caption;
         AutomationProperties.SetAutomationId(_footer, "ShareFooter");
 
-        var root = new StackPanel { Spacing = 12, MinWidth = 400 };
+        // The right padding keeps the scroll bar off the rows' dropdowns.
+        var root = new StackPanel { Spacing = 12, MinWidth = 400, Padding = new Thickness(0, 0, ScrollBarGutter, 0) };
         AutomationProperties.SetAutomationId(root, "ShareSheet");
         foreach (var part in new UIElement[] { _busy, _notice, _owners, _form, _atCap, _done, _footer })
         {
@@ -298,6 +296,13 @@ internal sealed class ShareSheet
 
         return new ScrollViewer { Content = root, MaxHeight = 560 };
     }
+
+    private const double ActionWidth = 120;
+    private const double StyleWidth = 180;
+    private const double ScrollBarGutter = 16;
+
+    // Room under the preview's rows for its horizontal scroll bar, so a column past the edge can be scrolled to.
+    private const double PreviewScrollBarRoom = 16;
 
     // A style keeps the dialog's own theme, which a brush read from the app's resources in code would not.
     private static Style Caption => (Style)Application.Current.Resources["CaptionTextBlockStyle"];
@@ -665,12 +670,13 @@ internal sealed class ShareSheet
         ColumnsChanged();
     }
 
+    // Every row lays its controls on the same fixed columns, so a kept row's choice lines up with a masked row's.
     private Grid ColumnRow(ShareColumn column)
     {
         var row = new Grid { ColumnSpacing = 8 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ActionWidth) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(StyleWidth) });
         var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         label.Children.Add(new TextBlock { Text = column.Name, TextTrimming = TextTrimming.CharacterEllipsis });
         var reason = Reason(column);
@@ -679,22 +685,10 @@ internal sealed class ShareSheet
             label.Children.Add(new TextBlock { Text = reason, Style = Caption, TextWrapping = TextWrapping.Wrap });
         }
 
-        var action = new ComboBox { MinWidth = 110, VerticalAlignment = VerticalAlignment.Center };
+        var action = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Center };
         foreach (var each in new[] { ShareColumnAction.Keep, ShareColumnAction.Mask, ShareColumnAction.Remove })
         {
-            var item = new ComboBoxItem
-            {
-                Content = Strings.Get("ShareColumn_" + each),
-                Tag = each,
-                IsEnabled = each != ShareColumnAction.Keep || column.AllowsKeep,
-            };
-            // A screen reader on the disabled Keep hears why it is off, which the caption says on screen.
-            if (!item.IsEnabled && reason is not null)
-            {
-                AutomationProperties.SetHelpText(item, reason);
-            }
-
-            action.Items.Add(item);
+            action.Items.Add(new ComboBoxItem { Content = Strings.Get("ShareColumn_" + each), Tag = each });
         }
 
         action.SelectedIndex = (int)column.Action;
@@ -706,11 +700,11 @@ internal sealed class ShareSheet
 
         var style = new ComboBox
         {
-            MinWidth = 150,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = column.Action == ShareColumnAction.Mask ? Visibility.Visible : Visibility.Collapsed,
         };
-        foreach (var each in column.AllowedStyles)
+        foreach (var each in ShareColumn.Styles)
         {
             style.Items.Add(new ComboBoxItem { Content = Strings.Get("MaskStyle_" + each), Tag = each });
         }
@@ -719,16 +713,18 @@ internal sealed class ShareSheet
         AutomationProperties.SetName(style, Strings.Format("ShareColumnStyleName", column.Name));
         action.SelectionChanged += (_, _) =>
         {
-            if (action.SelectedItem is ComboBoxItem { Tag: ShareColumnAction picked } && column.Choose(picked))
+            if (action.SelectedItem is ComboBoxItem { Tag: ShareColumnAction picked } && picked != column.Action)
             {
+                column.Choose(picked);
                 style.Visibility = picked == ShareColumnAction.Mask ? Visibility.Visible : Visibility.Collapsed;
                 ColumnsChanged();
             }
         };
         style.SelectionChanged += (_, _) =>
         {
-            if (style.SelectedItem is ComboBoxItem { Tag: MaskStyle picked } && column.Choose(picked))
+            if (style.SelectedItem is ComboBoxItem { Tag: MaskStyle picked } && picked != column.Style)
             {
+                column.Choose(picked);
                 ColumnsChanged();
             }
         };
@@ -742,11 +738,6 @@ internal sealed class ShareSheet
 
     private static string? Reason(ShareColumn column)
     {
-        if (column.Rule is not null)
-        {
-            return Strings.Get(column.Untraced ? "ShareColumnUntraced" : "ShareColumnRuled");
-        }
-
         if (column.Suggestion is not { } suggestion)
         {
             return null;
@@ -920,7 +911,7 @@ internal sealed class ShareSheet
         _previewRows = preview;
         if (_previewGrid is { } grid)
         {
-            grid.Height = (count + 1) * 32 + 2;
+            grid.Height = ((count + 1) * 32) + 2 + PreviewScrollBarRoom;
             grid.SetData(preview is null ? null : new ResultSetData(preview, preview.GetColumns()));
         }
 

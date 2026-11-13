@@ -37,17 +37,6 @@ internal sealed class FakeSession : ITabSession
 
     public List<(ColumnSort? Sort, long Limit, long Offset)> Queries { get; } = [];
 
-    // Whether each page read asked for the stored values of masked columns.
-    public List<bool> PageReveals { get; } = [];
-
-    // The statements a reveal asked about, and whether each only reads.
-    public List<string> ReadsOnlyAsked { get; } = [];
-
-    public bool StatementReadsOnly { get; set; } = true;
-
-    // The columns each page's run starts its set with, so a test can mark one masked.
-    public IReadOnlyList<ResultColumn>? PageColumns { get; set; }
-
     // The filter each page read and each count was asked with.
     public List<TableFilter?> PageFilters { get; } = [];
 
@@ -186,11 +175,9 @@ internal sealed class FakeSession : ITabSession
         TableFilter? filter,
         long limit,
         long offset,
-        bool revealMasked,
         CancellationToken cancellationToken)
     {
         Queries.Add((sort, limit, offset));
-        PageReveals.Add(revealMasked);
         PageFilters.Add(filter);
         if (Querying is { } querying)
         {
@@ -219,7 +206,7 @@ internal sealed class FakeSession : ITabSession
             return new TablePageRead(ended, 2, CanSeek: true, ViewSql);
         }
 
-        var page = FakeRun.Rows(Math.Clamp(RowsPicked(filter) - offset, 0, limit), columns: PageColumns);
+        var page = FakeRun.Rows(Math.Clamp(RowsPicked(filter) - offset, 0, limit));
         page.Reading = PageReading;
         Pages.Add(page);
         return new TablePageRead(page, 2, CanSeek: true, ViewSql);
@@ -285,12 +272,6 @@ internal sealed class FakeSession : ITabSession
         return Verdict;
     }
 
-    public bool ReadsOnly(string sql)
-    {
-        ReadsOnlyAsked.Add(sql);
-        return StatementReadsOnly;
-    }
-
     public Range? StatementAt(string sql, int caret) => Statement(sql, caret);
 
     public string? SortedQuery(string sql, IReadOnlyList<string> columns, int column, bool ascending) =>
@@ -326,8 +307,6 @@ internal sealed class FakeEditor(FakeSession session) : ITabEditor
 
     public List<FakeRun> Started { get; } = [];
 
-    public List<QueryOptions> Options { get; } = [];
-
     public bool IsLost { get; set; }
 
     public Gate? Disposing { get; set; }
@@ -342,7 +321,6 @@ internal sealed class FakeEditor(FakeSession session) : ITabEditor
     public ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken)
     {
         Runs.Add(sql);
-        Options.Add(options);
         var run = session.Script(sql);
         Started.Add(run);
         return run;
@@ -379,12 +357,9 @@ internal sealed class FakeRun(IReadOnlyList<QueryEvent> events) : ITabRun
 
     public int Disposals { get; private set; }
 
-    public static FakeRun Rows(
-        long rows,
-        TransactionState transaction = TransactionState.Idle,
-        IReadOnlyList<ResultColumn>? columns = null) => new(
+    public static FakeRun Rows(long rows, TransactionState transaction = TransactionState.Idle) => new(
     [
-        new QueryEvent.ResultSetStarted(0, columns ?? Columns),
+        new QueryEvent.ResultSetStarted(0, Columns),
         new QueryEvent.ResultSetFinished(0, rows, null, Truncation.Complete),
         new QueryEvent.Finished(new QueryOutcome.Completed(TimeSpan.FromMilliseconds(12)), transaction),
     ]);
@@ -456,11 +431,6 @@ internal sealed class FakeResults : IResultsView
 
     public bool SortsHeldRows { get; set; } = true;
 
-    // What a remask of the sets held finds: the columns they take, or null for no change.
-    public IReadOnlyList<ResultColumn>? Remasks { get; set; }
-
-    public int RemaskCalls { get; private set; }
-
     public event EventHandler? ShownSetChanged;
 
     public int KeptSets { get; private set; }
@@ -512,18 +482,6 @@ internal sealed class FakeResults : IResultsView
     }
 
     public void ShowError(CoreError failure) => Shown.Add("error " + failure.Code);
-
-    public Task<bool> RemaskAsync()
-    {
-        RemaskCalls++;
-        if (Remasks is not { } columns || ResultSetCount == 0)
-        {
-            return Task.FromResult(false);
-        }
-
-        Columns = columns;
-        return Task.FromResult(true);
-    }
 
     public void Clear()
     {
@@ -581,16 +539,6 @@ internal sealed class FakeQueryView : IQueryTabView
     public Task<bool> ConfirmRollBackAsync() => Task.FromResult(RollsBack);
 
     public void CloseEditor() => Shown.Add("editor closed");
-
-    public bool Reveals { get; set; } = true;
-
-    public Task<bool> ConfirmRevealAsync()
-    {
-        Shown.Add("reveal asked");
-        return Task.FromResult(Reveals);
-    }
-
-    public void ShowRevealOnNextRun() => Shown.Add("reveal on next run");
 }
 
 internal sealed class FakeTableView : ITableTabView
@@ -723,16 +671,6 @@ internal sealed class FakeTableView : ITableTabView
     public void ShowStructureFailed(CoreError failure) => StructureFailures.Add(failure);
 
     public void ShowFilterChoicesFailed(CoreError failure) => ChoicesFailures.Add(failure);
-
-    public bool Reveals { get; set; } = true;
-
-    public int RevealsAsked { get; private set; }
-
-    public Task<bool> ConfirmRevealAsync()
-    {
-        RevealsAsked++;
-        return Task.FromResult(Reveals);
-    }
 }
 
 // A stored cell reads "r{row}c{column}", and each change plans one statement named for its kind.
