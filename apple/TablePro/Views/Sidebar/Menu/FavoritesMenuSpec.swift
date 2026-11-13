@@ -213,7 +213,10 @@ internal enum FavoritesMenuSpec {
             ]),
             FavoritesMenuSection(gitItems(favorite, gitState: gitState, folderGitState: folderGitState)),
             FavoritesMenuSection(
-                [.command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite))]
+                [
+                    .command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite)),
+                    .command(String(localized: "Share…"), .shareLinkedFavorite(favorite))
+                ]
                     + pathCommands
                     + [.command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite))]
             ),

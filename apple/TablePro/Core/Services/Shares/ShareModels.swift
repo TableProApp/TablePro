@@ -45,6 +45,8 @@ internal struct ShareLimits: Equatable, Sendable {
     let allowsTeamLinks: Bool
     let emailVerified: Bool
     let sharingDisabled: Bool
+    // The teams the account holds a seat in; empty on Free.
+    var teams: [ShareTeam] = []
 
     var isAtCap: Bool {
         live >= liveLimit
@@ -54,30 +56,44 @@ internal struct ShareLimits: Equatable, Sendable {
         expiries.contains(expiry)
     }
 
-    func withLive(_ live: Int) -> ShareLimits {
-        ShareLimits(
-            plan: plan,
-            live: live,
-            liveLimit: liveLimit,
-            maxRows: maxRows,
-            expiries: expiries,
-            defaultExpiry: defaultExpiry,
-            allowsPassword: allowsPassword,
-            allowsDisablingDownload: allowsDisablingDownload,
-            allowsTeamLinks: allowsTeamLinks,
-            emailVerified: emailVerified,
-            sharingDisabled: sharingDisabled
-        )
+    func team(_ id: String) -> ShareTeam? {
+        teams.first { $0.id == id }
     }
 }
 
-// Wide integers, and decimals a browser would print differently, are already strings here.
+internal struct ShareTeam: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    var live: Int
+    let liveLimit: Int
+    let allowsPublicLinks: Bool
+
+    var isAtCap: Bool {
+        live >= liveLimit
+    }
+}
+
+// Who a new link belongs to: the account, or one of its teams.
+internal enum ShareTarget: Hashable, Sendable {
+    case personal
+    case team(String)
+
+    var teamID: String? {
+        guard case .team(let id) = self else { return nil }
+        return id
+    }
+}
+
+// A cell as the core writes it: numbers and JSON documents go as their exact text, never through a Double.
 internal enum ShareCell: Equatable, Sendable {
     case null
     case bool(Bool)
-    case integer(Int64)
-    case double(Double)
+    // A JSON number token, digits exactly as the database gave them.
+    case number(String)
     case string(String)
+    // A JSON document, written as its own text so its key order and digits survive.
+    case document(String)
+    case array([ShareCell])
 }
 
 internal struct ShareSnapshot: Equatable, Sendable {
@@ -88,11 +104,12 @@ internal struct ShareSnapshot: Equatable, Sendable {
 
     let columns: [Column]
     let rows: [[ShareCell]]
-    // The result's true total, at least rows.count.
-    let rowCount: Int
+    // The result's true total, at least rows.count; nil when more rows exist and nobody counted them.
+    let rowCount: Int?
 
     var isTruncated: Bool {
-        rowCount > rows.count
+        guard let rowCount else { return true }
+        return rowCount > rows.count
     }
 }
 
@@ -108,6 +125,7 @@ internal struct ShareDraft: Equatable, Sendable {
     // Sent only to turn downloads off, which needs Pro.
     let allowsDownload: Bool?
     let password: String?
+    let teamID: String?
     let snapshot: ShareSnapshot?
 }
 

@@ -95,7 +95,12 @@ internal final class AccountServices {
         self.api = AccountAPI.client(configuration: configuration, transport: transport, session: session)
         self.shares = CloudShareService(
             api: api,
-            publicAPI: AccountAPI.publicClient(configuration: configuration, transport: transport)
+            publicAPI: AccountAPI.publicClient(configuration: configuration, transport: transport),
+            createRequest: ShareCreateRequest(
+                serverURL: configuration.apiServerURL,
+                transport: transport,
+                middlewares: [BearerTokenMiddleware(session: session)]
+            )
         )
         self.devices = DeviceRegistry(api: api, machine: machine)
         self.entitlements = EntitlementStore(

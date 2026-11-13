@@ -6,13 +6,15 @@
 import Foundation
 import TableProPluginKit
 
-// The displayed result a Share Result sheet works from: visible columns in grid order, filtered rows, masked values.
+// The rows a Share Result sheet works from: visible columns in grid order, display order, masked values.
 internal struct ShareResultSource: Sendable {
     let columns: [String]
     let columnTypes: [ColumnType]
     let rows: [[PluginCellValue]]
-    // The result's true total when known; never less than rows.count.
-    let totalRowCount: Int
+    // The result's true total, at least rows.count; nil when more rows exist and nobody counted them.
+    let totalRowCount: Int?
+    // The statement these rows came from.
+    let sql: String
 }
 
 internal enum ShareSnapshotOutcome: Equatable, Sendable {
@@ -21,12 +23,13 @@ internal enum ShareSnapshotOutcome: Equatable, Sendable {
 }
 
 internal enum ShareSnapshotBuilder {
-    // Under the server's 5 MiB, so a size it counts differently never refuses a share the sheet offered.
     static let maxColumns = 100
     static let maxCellBytes = 256 * 1_024
+    // Under the server's 5 MiB, so a size it counts differently never refuses a share the sheet offered.
     static let maxBodyBytes = 4_500_000
 
-    static func build(_ source: ShareResultSource, maxRows: Int) -> ShareSnapshotOutcome {
+    // Nil once the caller's task is cancelled.
+    static func build(_ source: ShareResultSource, maxRows: Int) -> ShareSnapshotOutcome? {
         guard !source.columns.isEmpty, source.columns.count <= maxColumns else { return .tooLarge }
         let columns = source.columns.indices.map { index in
             ShareSnapshot.Column(name: source.columns[index], type: typeLabel(source.columnTypes, at: index))
@@ -34,9 +37,10 @@ internal enum ShareSnapshotBuilder {
 
         var rows: [[ShareCell]] = []
         rows.reserveCapacity(min(source.rows.count, max(0, maxRows)))
-        var bodyBytes = 2
+        var bodyBytes = 2 + columns.reduce(0) { $0 + ShareCellEncoder.quotedByteCount($1.name) + 12 }
         for row in source.rows {
             guard rows.count < maxRows else { break }
+            if rows.count % 256 == 0, Task.isCancelled { return nil }
             var cells: [ShareCell] = []
             cells.reserveCapacity(columns.count)
             var rowBytes = 2 + max(0, columns.count - 1) + 1
@@ -59,7 +63,7 @@ internal enum ShareSnapshotBuilder {
         return .snapshot(ShareSnapshot(
             columns: columns,
             rows: rows,
-            rowCount: max(source.totalRowCount, source.rows.count, rows.count)
+            rowCount: source.totalRowCount.map { max($0, rows.count) }
         ))
     }
 
@@ -69,10 +73,8 @@ internal enum ShareSnapshotBuilder {
     }
 }
 
+// The core's snapshot cell rules (core/crates/core/src/export/snapshot.rs), so a result looks the same from any app.
 internal enum ShareCellEncoder {
-    // 2^53 - 1: the widest integer a JavaScript number keeps exactly.
-    static let safeIntegerMagnitude: Int64 = 9_007_199_254_740_991
-
     static func encode(_ cell: PluginCellValue, type: ColumnType) -> ShareCell {
         switch cell {
         case .null:
@@ -90,10 +92,17 @@ internal enum ShareCellEncoder {
         case .boolean:
             return boolean(value)
         case .integer:
-            return integer(value)
+            return JsonNumberNormalizer.integerLiteral(from: value).map(ShareCell.number) ?? .string(value)
         case .decimal:
-            return decimal(value)
-        case .text, .date, .timestamp, .datetime, .json, .blob, .enumType, .set, .spatial, .vector, .array:
+            // NaN and Infinity have no JSON number, so they go as their names.
+            return JsonNumberNormalizer.numberLiteral(from: value).map(ShareCell.number) ?? .string(value)
+        case .json:
+            return document(value) ?? .string(value)
+        case .array(_, let element):
+            return array(value, element: element)
+        case .timestamp, .datetime:
+            return .string(isoTimestamp(value))
+        case .text, .date, .blob, .enumType, .set, .spatial, .vector:
             return .string(value)
         }
     }
@@ -106,83 +115,104 @@ internal enum ShareCellEncoder {
             return .bool(false)
         default:
             // MySQL's BOOLEAN is TINYINT(1), which also stores 2 or -1.
-            return integer(value)
+            return JsonNumberNormalizer.integerLiteral(from: value).map(ShareCell.number) ?? .string(value)
         }
     }
 
-    private static func integer(_ value: String) -> ShareCell {
-        guard let literal = JsonNumberNormalizer.integerLiteral(from: value) else { return .string(value) }
-        if let number = Int64(literal), (-safeIntegerMagnitude...safeIntegerMagnitude).contains(number) {
-            return .integer(number)
-        }
-        return .string(literal)
+    private static func document(_ value: String) -> ShareCell? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.isValidJson else { return nil }
+        return .document(trimmed)
     }
 
-    // A number only when a browser prints exactly what the database printed; otherwise the digits travel as text.
-    private static func decimal(_ value: String) -> ShareCell {
-        guard let literal = JsonNumberNormalizer.numberLiteral(from: value) else { return .string(value) }
-        guard let number = Double(literal), number.isFinite, javaScriptText(of: number) == literal else {
-            return .string(literal)
+    // A driver that writes arrays as JSON gives a document; PostgreSQL's literal is read element by element.
+    private static func array(_ value: String, element: ColumnType) -> ShareCell {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("["), let document = document(trimmed) {
+            return document
         }
-        return .double(number)
+        guard let elements = PostgresArrayLiteralCodec.parse(trimmed) else { return .string(value) }
+        return .array(elements.map { item in
+            if case .value(let text) = item {
+                return encode(text: text, type: element)
+            }
+            return .null
+        })
     }
 
-    // ECMAScript Number::toString over Swift's shortest round-trip digits.
-    static func javaScriptText(of number: Double) -> String {
-        if number == 0 { return "0" }
-        let sign = number < 0 ? "-" : ""
-        let described = "\(abs(number))"
-        let parts = described.lowercased().split(separator: "e", maxSplits: 1)
-        var exponent = parts.count == 2 ? Int(parts[1]) ?? 0 : 0
-        let mantissa = parts[0].split(separator: ".", maxSplits: 1)
-        let whole = String(mantissa[0])
-        let fraction = mantissa.count == 2 ? String(mantissa[1]) : ""
-        exponent += whole.count
-        var digits = whole + fraction
-        while digits.hasPrefix("0"), digits.count > 1 {
-            digits.removeFirst()
-            exponent -= 1
+    private static let timestampPattern = try? NSRegularExpression(
+        pattern: "^(-?\\d{4,}-\\d{2}-\\d{2})[ T](\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?) ?(Z|[+-]\\d{2}(?::?\\d{2}){0,2})?( BC)?$"
+    )
+
+    // ISO 8601 as the core writes it: a T between date and time, and an offset as +HH:MM.
+    static func isoTimestamp(_ value: String) -> String {
+        let text = value as NSString
+        guard let pattern = timestampPattern,
+              let match = pattern.firstMatch(in: value, range: NSRange(location: 0, length: text.length))
+        else { return value }
+        func group(_ index: Int) -> String? {
+            let range = match.range(at: index)
+            return range.location == NSNotFound ? nil : text.substring(with: range)
         }
-        while digits.hasSuffix("0"), digits.count > 1 {
-            digits.removeLast()
+        let date = group(1) ?? ""
+        let time = group(2) ?? ""
+        let offset = group(3).map(isoOffset) ?? ""
+        return date + "T" + time + offset + (group(4) ?? "")
+    }
+
+    private static func isoOffset(_ offset: String) -> String {
+        guard offset != "Z" else { return "+00:00" }
+        let sign = offset.prefix(1)
+        let digits = offset.dropFirst().filter(\.isNumber)
+        let hours = digits.prefix(2)
+        let minutes = digits.dropFirst(2).prefix(2)
+        let seconds = digits.dropFirst(4).prefix(2)
+        var text = sign + hours + ":" + (minutes.isEmpty ? "00" : minutes)
+        if !seconds.isEmpty, seconds != "00" {
+            text += ":" + seconds
         }
-        let count = digits.count
-        if count <= exponent, exponent <= 21 {
-            return sign + digits + String(repeating: "0", count: exponent - count)
-        }
-        if exponent > 0, exponent <= 21 {
-            let split = digits.index(digits.startIndex, offsetBy: exponent)
-            return sign + String(digits[..<split]) + "." + String(digits[split...])
-        }
-        if exponent > -6, exponent <= 0 {
-            return sign + "0." + String(repeating: "0", count: -exponent) + digits
-        }
-        let power = exponent - 1
-        let powerText = power < 0 ? "-\(-power)" : "+\(power)"
-        let head = String(digits.prefix(1))
-        let tail = String(digits.dropFirst())
-        return sign + head + (tail.isEmpty ? "" : "." + tail) + "e" + powerText
+        return String(text)
     }
 
     static func jsonByteCount(_ cell: ShareCell) -> Int {
         switch cell {
         case .null: return 4
         case .bool(let value): return value ? 4 : 5
-        case .integer(let value): return String(value).utf8.count
-        case .double(let value): return javaScriptText(of: value).utf8.count
+        case .number(let token): return token.utf8.count
+        case .document(let text): return text.utf8.count
         case .string(let value): return quotedByteCount(value)
+        case .array(let cells): return cells.reduce(2 + max(0, cells.count - 1)) { $0 + jsonByteCount($1) }
         }
     }
 
-    private static func quotedByteCount(_ value: String) -> Int {
+    static func quotedByteCount(_ value: String) -> Int {
         var count = 2
         for byte in value.utf8 {
             switch byte {
-            case 0x22, 0x5C, 0x2F, 0x08, 0x0C, 0x0A, 0x0D, 0x09: count += 2
+            case 0x22, 0x5C, 0x08, 0x0C, 0x0A, 0x0D, 0x09: count += 2
             case 0x00..<0x20, 0x3C, 0x3E, 0x26: count += 6
             default: count += 1
             }
         }
         return count
+    }
+
+    // How the preview shows a cell, as one line.
+    static func previewText(_ cell: ShareCell) -> String {
+        switch cell {
+        case .null: return ""
+        case .bool(let flag): return flag ? "true" : "false"
+        case .number(let token): return token
+        case .string(let text), .document(let text): return text
+        case .array(let cells): return "[" + cells.map(previewElement).joined(separator: ", ") + "]"
+        }
+    }
+
+    private static func previewElement(_ cell: ShareCell) -> String {
+        switch cell {
+        case .null: return "null"
+        case .string(let text): return "\"\(text)\""
+        default: return previewText(cell)
+        }
     }
 }

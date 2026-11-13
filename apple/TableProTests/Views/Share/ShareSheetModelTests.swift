@@ -22,19 +22,28 @@ struct ShareSheetModelTests {
         }
     }
 
-    private static func resultRequest(rows: Int = 3, total: Int? = nil, sql: String = "SELECT id FROM users") -> ShareRequest {
-        .result(
-            title: "Users",
-            sql: sql,
-            dialect: "PostgreSQL",
-            source: ShareResultSource(
-                columns: ["id", "api_key"],
-                columnTypes: [.integer(rawType: "int8"), .text(rawType: "text")],
-                rows: (0..<rows).map { [.text(String($0)), .text("k\($0)")] },
-                totalRowCount: total ?? rows
-            )
+    private static func source(rows: Int, total: Int??, sql: String) -> ShareResultSource {
+        ShareResultSource(
+            columns: ["id", "api_key"],
+            columnTypes: [.integer(rawType: "int8"), .text(rawType: "text")],
+            rows: (0..<rows).map { [.text(String($0)), .text("k\($0)")] },
+            totalRowCount: total ?? rows,
+            sql: sql
         )
     }
+
+    private static func resultRequest(rows: Int = 3, total: Int?? = .none, sql: String = "SELECT id FROM users") -> ShareRequest {
+        .result(title: "Users", dialect: "PostgreSQL", source: source(rows: rows, total: total, sql: sql))
+    }
+
+    private static func link(_ id: String, at seconds: TimeInterval = 0) -> ShareLink {
+        ShareLink(
+            id: id, title: id, kind: .query, createdAt: Date(timeIntervalSince1970: seconds), expiresAt: nil, isSuspended: false
+        )
+    }
+
+    private static let acme = ShareTeam(id: "team_acme", name: "Acme", live: 4, liveLimit: 1_000, allowsPublicLinks: true)
+    private static let closed = ShareTeam(id: "team_closed", name: "Closed", live: 0, liveLimit: 1_000, allowsPublicLinks: false)
 
     private func makeModel(
         _ request: ShareRequest = .query(title: "Report", sql: "SELECT 1", dialect: "MySQL"),
@@ -48,6 +57,10 @@ struct ShareSheetModelTests {
             signInChanges: box.signIns.eraseToAnyPublisher(),
             copyToClipboard: { box.copied.append($0) }
         )
+    }
+
+    private func formatted(_ key: String.LocalizationValue, _ arguments: any CVarArg...) -> String {
+        String(format: String(localized: key), locale: .current, arguments: arguments)
     }
 
     // MARK: - Phases
@@ -157,18 +170,66 @@ struct ShareSheetModelTests {
     func footer() async {
         let free = makeModel(service: FakeShareService(limits: .free(live: 3)))
         await free.load()
-        #expect(free.footer == String(
-            format: String(localized: "Free · %1$@ of %2$@ links · first %3$@ rows"),
-            3.formatted(), 5.formatted(), 1_000.formatted()
-        ))
+        #expect(free.footer == formatted("Free · %1$lld of %2$lld links · first %3$lld rows", Int64(3), Int64(5), Int64(1_000)))
 
         let pro = makeModel(service: FakeShareService(limits: .pro(live: 12)))
         await pro.load()
-        #expect(pro.footer == String(format: String(localized: "Pro · %@ links"), 12.formatted()))
+        #expect(pro.footer == formatted("Pro · %lld links", Int64(12)))
+    }
 
-        let single = makeModel(service: FakeShareService(limits: .pro(live: 1)))
-        await single.load()
-        #expect(single.footer == String(format: String(localized: "Pro · %@ link"), 1.formatted()))
+    @Test("A password over 128 characters and SQL over 262,144 characters block Create with a reason")
+    func fieldLimitsBlockCreate() async {
+        let model = makeModel(service: FakeShareService(limits: .pro()))
+        await model.load()
+        model.password = String(repeating: "p", count: ShareSheetModel.passwordLimit + 1)
+        #expect(model.passwordTooLongMessage != nil)
+        #expect(!model.canCreate)
+        model.password = String(repeating: "p", count: ShareSheetModel.passwordLimit)
+        #expect(model.canCreate)
+
+        let long = makeModel(
+            .query(title: "Long", sql: String(repeating: "x", count: ShareSheetModel.sqlLimit + 1), dialect: nil),
+            service: FakeShareService()
+        )
+        await long.load()
+        #expect(long.sqlTooLongMessage != nil)
+        #expect(!long.canCreate)
+    }
+
+    // MARK: - Teams
+
+    @Test("Share as a team sends its ID and the footer counts the team's links")
+    func teamTarget() async throws {
+        let model = makeModel(service: FakeShareService(limits: .pro(teams: [Self.acme, Self.closed])))
+        await model.load()
+
+        #expect(model.teams.map(\.id) == ["team_acme", "team_closed"])
+        model.target = .team("team_acme")
+        #expect(try #require(model.makeDraft()).teamID == "team_acme")
+        #expect(model.footer == formatted("%1$@ · %2$lld of %3$lld links", "Acme", Int64(4), Int64(1_000)))
+
+        model.target = .personal
+        #expect(try #require(model.makeDraft()).teamID == nil)
+    }
+
+    @Test("A team at its cap shows that team's links, and switching back shows the form")
+    func teamAtCap() async throws {
+        let full = ShareTeam(id: "team_full", name: "Full", live: 1_000, liveLimit: 1_000, allowsPublicLinks: true)
+        let service = FakeShareService(limits: .pro(teams: [full]))
+        service.linksResult = .success([Self.link("shr_team")])
+        let model = makeModel(service: service)
+        await model.load()
+        #expect(model.phase == .form)
+
+        model.target = .team("team_full")
+        #expect(model.phase == .atCap)
+        #expect(model.atCapMessage == formatted("This team has %lld live links.", Int64(1_000)) + " "
+            + formatted("Teams allow %lld. Revoke one to share another.", Int64(1_000)))
+        try await waitUntil { !model.liveLinks.isEmpty }
+        #expect(service.linkTeams.last == "team_full")
+
+        model.target = .personal
+        #expect(model.phase == .form)
     }
 
     // MARK: - Drafts
@@ -190,9 +251,12 @@ struct ShareSheetModelTests {
         #expect(draft.dialect == "MySQL")
     }
 
-    @Test("A result share carries Hide SQL and a snapshot cut to the plan's rows")
+    @Test("A result share carries Hide SQL, the loaded statement, and a snapshot cut to the plan's rows")
     func resultDraft() async throws {
-        let model = makeModel(Self.resultRequest(rows: 1_200, total: 48_210), service: FakeShareService(limits: .free()))
+        let model = makeModel(
+            Self.resultRequest(rows: 1_200, total: 48_210, sql: "SELECT * FROM users LIMIT 1000"),
+            service: FakeShareService(limits: .free())
+        )
         await model.load()
         model.hidesSQL = true
         let draft = try #require(model.makeDraft())
@@ -200,20 +264,36 @@ struct ShareSheetModelTests {
 
         #expect(draft.kind == .result)
         #expect(draft.hidesSQL == true)
+        #expect(draft.sql == "SELECT * FROM users LIMIT 1000")
         #expect(snapshot.rows.count == 1_000)
         #expect(snapshot.rowCount == 48_210)
-        #expect(model.capNote == String(
-            format: String(localized: "Shares the first %1$@ of %2$@ rows."),
-            1_000.formatted(), 48_210.formatted()
-        ))
+        #expect(model.capNote == formatted("Shares the first %1$lld of %2$lld rows.", Int64(1_000), Int64(48_210)))
         #expect(model.previewRows.count == ShareSheetModel.previewRowCount)
     }
 
-    @Test("Pro keeps up to 10,000 rows")
-    func proRowLimit() async throws {
-        let model = makeModel(Self.resultRequest(rows: 12_000), service: FakeShareService(limits: .pro()))
+    @MainActor
+    private final class Asked {
+        var maxRows: [Int] = []
+    }
+
+    @Test("The loader is asked for the plan's rows")
+    func loaderGetsMaxRows() async throws {
+        let asked = Asked()
+        let request = ShareRequest.result(title: "T", sql: "SELECT 1", dialect: nil) { maxRows in
+            asked.maxRows.append(maxRows)
+            return Self.source(rows: 2, total: .none, sql: "SELECT 1")
+        }
+        let model = makeModel(request, service: FakeShareService(limits: .pro()))
         await model.load()
-        #expect(try #require(model.makeDraft()?.snapshot).rows.count == 10_000)
+        #expect(asked.maxRows == [10_000])
+        #expect(model.phase == .form)
+    }
+
+    @Test("A total nobody counted says the result is larger")
+    func unknownTotalNote() async {
+        let model = makeModel(Self.resultRequest(rows: 3, total: .some(nil)), service: FakeShareService())
+        await model.load()
+        #expect(model.capNote == formatted("Shares the first %lld rows of a larger result.", Int64(3)))
     }
 
     @Test("A result inside the limit has no cap note")
@@ -269,6 +349,25 @@ struct ShareSheetModelTests {
         #expect(service.drafts.count == 1)
     }
 
+    @Test("A create that answers after the sheet closed leaves the clipboard alone")
+    func closedSheetKeepsClipboard() async throws {
+        let service = FakeShareService()
+        let gate = AsyncGate()
+        service.createGate = gate
+        let box = Box(signedIn: true)
+        let model = makeModel(service: service, box: box)
+        await model.load()
+
+        let first = Task { await model.create() }
+        await gate.arrived(1)
+        model.close()
+        await gate.open()
+        await first.value
+
+        #expect(box.copied.isEmpty)
+        #expect(model.phase == .form)
+    }
+
     @Test("Each refusal is worded for its code", arguments: [
         (ShareFailure.proRequired, "This option needs TablePro Pro."),
         (.teamSharingDisabled, "Public links are turned off for this team."),
@@ -305,13 +404,13 @@ struct ShareSheetModelTests {
         let count = ShareSnapshotBuilder.maxColumns + 1
         let request = ShareRequest.result(
             title: "Wide",
-            sql: "SELECT *",
             dialect: nil,
             source: ShareResultSource(
                 columns: (0..<count).map { "c\($0)" },
                 columnTypes: Array(repeating: .text(rawType: "text"), count: count),
                 rows: [Array(repeating: .text("x"), count: count)],
-                totalRowCount: 1
+                totalRowCount: 1,
+                sql: "SELECT *"
             )
         )
         let model = makeModel(request, service: FakeShareService())
@@ -326,51 +425,79 @@ struct ShareSheetModelTests {
     @Test("At the cap the live links show oldest first, and revoking one brings the form back")
     func atCapRevoke() async throws {
         let service = FakeShareService(limits: .free(live: 5))
-        let older = ShareLink(id: "shr_old", title: "Old", kind: .query, createdAt: Date(timeIntervalSince1970: 1), expiresAt: nil, isSuspended: false)
-        let newer = ShareLink(id: "shr_new", title: "New", kind: .result, createdAt: Date(timeIntervalSince1970: 2), expiresAt: nil, isSuspended: false)
-        service.linksResult = .success([newer, older])
+        service.linksResult = .success([Self.link("shr_new", at: 2), Self.link("shr_old", at: 1)])
         let model = makeModel(service: service)
         await model.load()
 
         #expect(model.phase == .atCap)
-        #expect(model.atCapMessage == String(
-            format: String(localized: "You have %@ live links, the Free limit. Revoke one to share another."),
-            5.formatted()
-        ))
+        #expect(model.atCapMessage == formatted("You have %lld live links.", Int64(5)) + " "
+            + formatted("Free allows %lld. Revoke one to share another.", Int64(5)))
+        #expect(model.showsProUpsell)
         try await waitUntil { model.liveLinks.map(\.id) == ["shr_old", "shr_new"] }
 
-        await model.revoke(older)
+        await model.revoke(Self.link("shr_old", at: 1))
         #expect(service.revokedIDs == ["shr_old"])
         #expect(model.liveLinks.map(\.id) == ["shr_new"])
         #expect(model.limits?.live == 4)
         #expect(model.phase == .form)
     }
 
-    @Test("A revoke the server refuses keeps the link and says so")
-    func revokeFailureKeepsLink() async throws {
-        let service = FakeShareService(limits: .free(live: 5))
-        let link = ShareLink(id: "shr_1", title: "One", kind: .query, createdAt: Date(), expiresAt: nil, isSuspended: false)
-        service.linksResult = .success([link])
+    @Test("Pro at its cap says how many Pro allows, with no upsell")
+    func proAtCap() async {
+        let service = FakeShareService(limits: .pro(live: 1_000))
+        let model = makeModel(service: service)
+        await model.load()
+        #expect(model.phase == .atCap)
+        #expect(model.atCapMessage == formatted("You have %lld live links.", Int64(1_000)) + " "
+            + formatted("Pro allows %lld. Revoke one to share another.", Int64(1_000)))
+        #expect(!model.showsProUpsell)
+    }
+
+    @Test("A revoke the server refuses keeps the link and says so, and a later one clears the message")
+    func revokeFailureThenSuccess() async throws {
+        let service = FakeShareService(limits: .free(live: 6))
+        let first = Self.link("shr_1", at: 1)
+        let second = Self.link("shr_2", at: 2)
+        service.linksResult = .success([first, second])
         service.revokeFailure = .offline
         let model = makeModel(service: service)
         await model.load()
-        try await waitUntil { !model.liveLinks.isEmpty }
+        try await waitUntil { model.liveLinks.count == 2 }
 
-        await model.revoke(link)
-        #expect(model.liveLinks == [link])
-        #expect(model.phase == .atCap)
+        await model.revoke(first)
+        #expect(model.liveLinks.count == 2)
         #expect(model.linksFailure != nil)
+
+        service.revokeFailure = nil
+        await model.revoke(first)
+        #expect(model.linksFailure == nil)
+        #expect(model.liveLinks == [second])
+    }
+
+    @Test("A list that failed to load comes back on retry")
+    func linksRetry() async throws {
+        let service = FakeShareService(limits: .free(live: 5))
+        service.linksResult = .failure(.offline)
+        let model = makeModel(service: service)
+        await model.load()
+        try await waitUntil { model.linksFailure != nil }
+
+        service.linksResult = .success([Self.link("shr_1")])
+        await model.loadLiveLinks()
+        #expect(model.linksFailure == nil)
+        #expect(model.liveLinks.map(\.id) == ["shr_1"])
     }
 
     // MARK: - Secret warnings
 
     @Test("A secret in the SQL warns while the SQL is shown and not once it is hidden")
-    func secretWarnings() async {
+    func secretWarnings() async throws {
         let model = makeModel(
             Self.resultRequest(sql: "SELECT * FROM users WHERE password = 'hunter2'"),
             service: FakeShareService()
         )
         await model.load()
+        try await waitUntil { !model.secretWarnings.isEmpty }
 
         #expect(model.secretWarnings.count == 1)
         model.hidesSQL = true

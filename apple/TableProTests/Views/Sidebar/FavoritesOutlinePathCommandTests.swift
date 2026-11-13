@@ -12,7 +12,7 @@ import Testing
 struct FavoritesOutlinePathCommandTests {
     private final class Handler: FavoritesOutlineKeyHandling {
         var selectedFilePath: FavoriteFilePath?
-        var selectedFavorite: SQLFavorite?
+        var selectedShareCommand: FavoritesMenuCommand?
         var performed: [FavoritesMenuCommand] = []
 
         func performPrimaryAction() {}
@@ -75,15 +75,25 @@ struct FavoritesOutlinePathCommandTests {
         #expect(handler.performed.isEmpty)
     }
 
-    @Test("A selected saved query answers File > Share Query… with that query")
+    @Test("A selected saved query or linked file answers File > Share Query… with itself")
     func savedQueryAnswersShareQuery() {
-        let (view, handler) = outline(selecting: nil)
         let favorite = SQLFavorite(name: "Report", query: "SELECT 1")
-        handler.selectedFavorite = favorite
+        let linked = LinkedSQLFavorite(
+            folderId: UUID(),
+            fileURL: URL(fileURLWithPath: "/tmp/queries/orders.sql"),
+            relativePath: "orders.sql",
+            name: "orders",
+            mtime: Date(),
+            fileSize: 10
+        )
+        for command in [FavoritesMenuCommand.shareFavorite(favorite), .shareLinkedFavorite(linked)] {
+            let (view, handler) = outline(selecting: nil)
+            handler.selectedShareCommand = command
 
-        #expect(validates(view, #selector(FavoritesNSOutlineView.shareQuery(_:))))
-        view.shareQuery(nil)
-        #expect(handler.performed == [.shareFavorite(favorite)])
+            #expect(validates(view, #selector(FavoritesNSOutlineView.shareQuery(_:))))
+            view.shareQuery(nil)
+            #expect(handler.performed == [command])
+        }
     }
 
     @Test("Share Query… is dimmed with no saved query selected")

@@ -45,7 +45,15 @@ struct CloudShareServiceTests {
             configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
             transport: transport
         )
-        return CloudShareService(api: client, publicAPI: client)
+        return CloudShareService(
+            api: client,
+            publicAPI: client,
+            createRequest: ShareCreateRequest(
+                serverURL: URL(string: "https://api.example.test/v2")!,
+                transport: transport,
+                middlewares: []
+            )
+        )
     }
 
     private static func limitsJSON() -> [String: Any] {
@@ -53,7 +61,7 @@ struct CloudShareServiceTests {
             "plan": "free", "live": 3, "live_limit": 5, "max_rows": 1_000,
             "expiries": ["1d", "7d", "30d"], "default_expiry": "30d",
             "password": false, "disable_download": false, "team": false,
-            "email_verified": true, "sharing_disabled": false
+            "email_verified": true, "sharing_disabled": false, "teams": [[String: Any]]()
         ]
     }
 
@@ -92,9 +100,14 @@ struct CloudShareServiceTests {
             hidesSQL: true,
             allowsDownload: nil,
             password: nil,
+            teamID: "team_1",
             snapshot: ShareSnapshot(
-                columns: [.init(name: "id", type: "int8")],
-                rows: [[.string("9007199254740993")], [.integer(7)], [.null]],
+                columns: [.init(name: "id", type: "int8"), .init(name: "doc", type: "jsonb")],
+                rows: [
+                    [.number("18446744073709551615"), .document("{\"b\":1,\"a\":2}")],
+                    [.number("7"), .array([.number("1"), .null])],
+                    [.null, .string("x\"y")]
+                ],
                 rowCount: 48_210
             )
         )
@@ -103,9 +116,17 @@ struct CloudShareServiceTests {
         #expect(link.id == "shr_1")
         #expect(link.url.absoluteString.hasPrefix("https://s.tablepro.app/"))
 
-        let body = try #require(await transport.sent.first?.body)
+        let sentRequest = try #require(await transport.sent.first)
+        #expect(sentRequest.method == .post)
+        #expect(sentRequest.path == "/shares")
+        let body = sentRequest.body
+        let text = try #require(String(data: body, encoding: .utf8))
+        // Exact tokens and key order, which a Double or a dictionary would lose.
+        #expect(text.contains("[18446744073709551615,{\"b\":1,\"a\":2}]"))
+        #expect(text.contains("[7,[1,null]]"))
         let sent = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(sent["kind"] as? String == "result")
+        #expect(sent["team_id"] as? String == "team_1")
         #expect(sent["expiry"] as? String == "7d")
         #expect(sent["hide_sql"] as? Bool == true)
         #expect(sent["allow_download"] == nil)
@@ -114,23 +135,50 @@ struct CloudShareServiceTests {
         let snapshot = try #require(sent["snapshot"] as? [String: Any])
         #expect((snapshot["row_count"] as? NSNumber)?.intValue == 48_210)
         let rows = try #require(snapshot["rows"] as? [[Any]])
-        #expect(rows[0][0] as? String == "9007199254740993")
-        #expect((rows[1][0] as? NSNumber)?.intValue == 7)
         #expect(rows[2][0] is NSNull)
+        #expect(rows[2][1] as? String == "x\"y")
     }
 
-    @Test("A snapshot that is not cut sends no row_count")
-    func wholeSnapshotHasNoRowCount() {
-        let body = CloudShareService.snapshot(ShareSnapshot(columns: [.init(name: "a", type: nil)], rows: [[.integer(1)]], rowCount: 1))
-        #expect(body.rowCount == nil)
+    @Test("A snapshot that is not cut, or whose total nobody counted, sends no row_count", arguments: [1, nil] as [Int?])
+    func noRowCountUnlessCounted(total: Int?) {
+        let text = ShareBodyWriter.snapshot(ShareSnapshot(columns: [.init(name: "a", type: nil)], rows: [[.number("1")]], rowCount: total))
+        #expect(!text.contains("row_count"))
     }
 
     @Test("A column's name and type are cut to the contract's 256 characters")
-    func columnTextIsCut() {
+    func columnTextIsCut() throws {
         let column = ShareSnapshot.Column(name: String(repeating: "é", count: 300), type: String(repeating: "t", count: 300))
-        let body = CloudShareService.snapshot(ShareSnapshot(columns: [column], rows: [], rowCount: 0))
-        #expect(body.columns.first?.name == String(repeating: "é", count: 256))
-        #expect(body.columns.first?._type == String(repeating: "t", count: 256))
+        let text = ShareBodyWriter.snapshot(ShareSnapshot(columns: [column], rows: [], rowCount: 0))
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        let columns = try #require(object["columns"] as? [[String: String]])
+        #expect(columns.first?["name"] == String(repeating: "é", count: 256))
+        #expect(columns.first?["type"] == String(repeating: "t", count: 256))
+    }
+
+    @Test("Strings are escaped so the body stays valid JSON")
+    func stringsAreEscaped() throws {
+        let text = ShareBodyWriter.quoted("a\"b\\c\n\u{01}é")
+        #expect(text == "\"a\\\"b\\\\c\\n\\u0001é\"")
+        #expect(try JSONSerialization.jsonObject(with: Data(text.utf8), options: .fragmentsAllowed) as? String == "a\"b\\c\n\u{01}é")
+    }
+
+    @Test("Only a URL load that did not finish reads as offline")
+    func offlineOnlyForURLErrors() {
+        #expect(CloudShareService.failure(from: URLError(.notConnectedToInternet)) == .offline)
+        #expect(CloudShareService.failure(from: URLError(.cancelled)) == .canceled)
+        #expect(CloudShareService.failure(from: CancellationError()) == .canceled)
+        #expect(CloudShareService.failure(from: DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: ""))) == .server)
+        #expect(CloudShareService.failure(from: AccountError.signedOut) == .signedOut)
+    }
+
+    @Test("The limits carry the seated teams")
+    func limitsCarryTeams() async throws {
+        var json = Self.limitsJSON()
+        json["plan"] = "pro"
+        json["teams"] = [["id": "team_1", "name": "Acme", "live": 4, "live_limit": 1_000, "public_links": false]]
+        let transport = CannedTransport([FakeAccountServer.json(status: .ok, json)])
+        let limits = try await Self.service(transport).limits()
+        #expect(limits.teams == [ShareTeam(id: "team_1", name: "Acme", live: 4, liveLimit: 1_000, allowsPublicLinks: false)])
     }
 
     @Test("Problem codes reach the sheet as their own failures", arguments: [
@@ -147,7 +195,7 @@ struct CloudShareServiceTests {
         let transport = CannedTransport([FakeAccountServer.problem(status: status, code: code)])
         let draft = ShareDraft(
             kind: .query, sql: "SELECT 1", title: "", note: nil, dialect: nil, expiry: .thirtyDays,
-            hidesSQL: nil, allowsDownload: nil, password: nil, snapshot: nil
+            hidesSQL: nil, allowsDownload: nil, password: nil, teamID: nil, snapshot: nil
         )
         await #expect(throws: failure) {
             _ = try await Self.service(transport).create(draft)
@@ -161,13 +209,22 @@ struct CloudShareServiceTests {
             Self.shareView(id: "shr_old", created: "2026-11-01T10:00:00Z", suspended: true)
         ]]
         let transport = CannedTransport([FakeAccountServer.json(status: .ok, page)])
-        let links = try await Self.service(transport).liveLinks()
+        let links = try await Self.service(transport).liveLinks(teamID: nil)
 
         #expect(links.map(\.id) == ["shr_old", "shr_new"])
         #expect(links.map(\.isSuspended) == [true, false])
         let path = try #require(await transport.sent.first?.path)
         #expect(path.hasPrefix("/shares?"))
         #expect(path.contains("state=live"))
+        #expect(!path.contains("team="))
+    }
+
+    @Test("A team's live links are asked for by its ID")
+    func teamLiveLinks() async throws {
+        let transport = CannedTransport([FakeAccountServer.json(status: .ok, ["data": [[String: Any]]()])])
+        _ = try await Self.service(transport).liveLinks(teamID: "team_1")
+        let path = try #require(await transport.sent.first?.path)
+        #expect(path.contains("team=team_1"))
     }
 
     @Test("Revoke deletes the share by its ID")

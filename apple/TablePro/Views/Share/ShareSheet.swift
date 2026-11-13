@@ -7,6 +7,7 @@ import SwiftUI
 
 internal struct ShareSheet: View {
     @StateObject private var model: ShareSheetModel
+    @State private var linkToRevoke: ShareLink?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -44,8 +45,34 @@ internal struct ShareSheet: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 560, height: model.isResult ? 620 : 460)
+        .frame(width: 560, height: model.isResult ? 640 : 480)
+        .interactiveDismissDisabled(model.isCreating)
+        // Done and Close carry Return, so Esc closes these two through the window.
+        .onExitCommand {
+            switch model.phase {
+            case .created, .sharingDisabled: dismiss()
+            default: break
+            }
+        }
         .task { await model.load() }
+        .onDisappear { model.close() }
+        .alert(
+            revokeTitle,
+            isPresented: Binding(get: { linkToRevoke != nil }, set: { if !$0 { linkToRevoke = nil } }),
+            presenting: linkToRevoke
+        ) { link in
+            Button(String(localized: "Revoke"), role: .destructive) {
+                Task { await model.revoke(link) }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: { _ in
+            Text("Anyone with the link can no longer open it. This can't be undone.")
+        }
+    }
+
+    private var revokeTitle: String {
+        let title = linkToRevoke.map(LiveLinkRow.displayTitle) ?? ""
+        return String(format: String(localized: "Revoke “%@”?"), title)
     }
 
     // MARK: - Content
@@ -61,6 +88,7 @@ internal struct ShareSheet: View {
         case .loading:
             ProgressView()
                 .controlSize(.small)
+                .accessibilityLabel(Text("Loading"))
         case .loadFailed(let text):
             UnavailableStateView {
                 Label(text, systemImage: "wifi.exclamationmark")
@@ -88,8 +116,29 @@ internal struct ShareSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var targetSection: some View {
+        if !model.teams.isEmpty {
+            Section {
+                Picker(String(localized: "Share as"), selection: $model.target) {
+                    Text("Personal").tag(ShareTarget.personal)
+                    ForEach(model.teams) { team in
+                        TeamChoice(team: team)
+                            .tag(ShareTarget.team(team.id))
+                            .disabled(!team.allowsPublicLinks)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .disabled(model.isCreating)
+                .accessibilityIdentifier("share-sheet-target")
+            }
+        }
+    }
+
     private var formContent: some View {
         Form {
+            targetSection
+
             Section {
                 TextField(String(localized: "Title"), text: $model.title)
                     .accessibilityIdentifier("share-sheet-title")
@@ -105,11 +154,21 @@ internal struct ShareSheet: View {
                         .accessibilityIdentifier("share-sheet-hide-sql")
                 }
                 passwordRow
+                if let message = model.passwordTooLongMessage {
+                    NoticeLabel(message, severity: .error)
+                }
                 downloadRow
             }
 
             if model.isResult {
                 previewSection
+            }
+
+            if let message = model.sqlTooLongMessage {
+                Section {
+                    NoticeLabel(message, severity: .error)
+                        .accessibilityIdentifier("share-sheet-sql-too-long")
+                }
             }
 
             if !model.secretWarnings.isEmpty || model.columnWarning != nil {
@@ -207,12 +266,14 @@ internal struct ShareSheet: View {
 
     private var atCapContent: some View {
         Form {
+            targetSection
+
             Section {
                 if let text = model.atCapMessage {
                     Text(text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if !model.isPro {
+                if model.showsProUpsell {
                     HStack(spacing: 6) {
                         Text("Pro allows up to 1,000.")
                             .foregroundStyle(.secondary)
@@ -226,16 +287,24 @@ internal struct ShareSheet: View {
                     ProgressView()
                         .controlSize(.small)
                         .frame(maxWidth: .infinity)
+                        .accessibilityLabel(Text("Loading"))
                 }
                 ForEach(model.liveLinks) { link in
                     LiveLinkRow(
                         link: link,
                         isRevoking: model.revokingLinkIDs.contains(link.id),
-                        revoke: { Task { await model.revoke(link) } }
+                        revoke: { linkToRevoke = link }
                     )
                 }
                 if let failure = model.linksFailure {
-                    NoticeLabel(failure, severity: .error)
+                    HStack {
+                        NoticeLabel(failure, severity: .error)
+                        Spacer(minLength: 8)
+                        Button(String(localized: "Try Again")) {
+                            Task { await model.loadLiveLinks() }
+                        }
+                        .disabled(model.isLoadingLinks)
+                    }
                 }
             }
         }
@@ -290,7 +359,9 @@ internal struct ShareSheet: View {
                     .controlSize(.small)
                     .accessibilityLabel(Text("Creating the link"))
             }
+            // A create already sent finishes on the server whether or not the sheet stays.
             cancelButton
+                .disabled(model.isCreating)
             Button(String(localized: "Create Link")) {
                 Task { await model.create() }
             }
@@ -314,6 +385,23 @@ internal struct ShareSheet: View {
     }
 }
 
+private struct TeamChoice: View {
+    let team: ShareTeam
+
+    var body: some View {
+        if team.allowsPublicLinks {
+            Text(verbatim: team.name)
+        } else {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: team.name)
+                Text("Public links are off for this team.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 // Opens the plan details in the browser rather than a sheet over a sheet.
 private struct ProTag: View {
     @Environment(\.openURL) private var openURL
@@ -331,6 +419,7 @@ private struct ProTag: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .accessibilityHint(Text("Opens the Pro plan details in your browser."))
     }
 }
 
@@ -338,6 +427,10 @@ private struct LiveLinkRow: View {
     let link: ShareLink
     let isRevoking: Bool
     let revoke: () -> Void
+
+    static func displayTitle(_ link: ShareLink) -> String {
+        link.title.isEmpty ? String(localized: "Untitled") : link.title
+    }
 
     var body: some View {
         LabeledContent {
@@ -348,10 +441,11 @@ private struct LiveLinkRow: View {
                 }
                 Button(String(localized: "Revoke"), action: revoke)
                     .disabled(isRevoking)
+                    .accessibilityLabel(Text(String(format: String(localized: "Revoke %@"), Self.displayTitle(link))))
             }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: link.title.isEmpty ? String(localized: "Untitled") : link.title)
+                Text(verbatim: Self.displayTitle(link))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text(detail)
@@ -397,6 +491,8 @@ private struct SharePreviewGrid: View {
             }
             .padding(.vertical, 4)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Rows that will be shared"))
         .accessibilityIdentifier("share-sheet-preview")
     }
 
@@ -417,14 +513,7 @@ private struct SharePreviewGrid: View {
     }
 
     private static func text(_ value: ShareCell) -> String {
-        switch value {
-        case .null: return ""
-        case .bool(let flag): return flag ? "true" : "false"
-        case .integer(let number): return String(number)
-        case .double(let number): return ShareCellEncoder.javaScriptText(of: number)
-        case .string(let text):
-            let line = text.prefix(200).replacingOccurrences(of: "\n", with: " ", options: .literal)
-            return String(line)
-        }
+        let line = ShareCellEncoder.previewText(value).prefix(200)
+        return line.replacingOccurrences(of: "\n", with: " ", options: .literal)
     }
 }

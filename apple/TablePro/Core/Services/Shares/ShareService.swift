@@ -8,8 +8,8 @@ import Foundation
 internal protocol ShareService: Sendable {
     func limits() async throws(ShareFailure) -> ShareLimits
     func create(_ draft: ShareDraft) async throws(ShareFailure) -> CreatedShare
-    // The account's own live links, oldest first.
-    func liveLinks() async throws(ShareFailure) -> [ShareLink]
+    // The live links of the account, or of the team named, oldest first.
+    func liveLinks(teamID: String?) async throws(ShareFailure) -> [ShareLink]
     func revoke(id: String) async throws(ShareFailure)
     // The public read a tablepro://share link opens; needs no session.
     func fetchShared(token: String, password: String?) async throws(ShareFailure) -> SharedQuery

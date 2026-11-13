@@ -10,11 +10,10 @@ import TableProCloudAPI
 internal struct CloudShareService: ShareService {
     private static let pageSize: Int64 = 200
     private static let maxPages = 5
-    // The contract's maxLength for a column's name and its type.
-    private static let columnTextLimit = 256
 
     let api: any APIProtocol
     let publicAPI: any APIProtocol
+    let createRequest: ShareCreateRequest
 
     func limits() async throws(ShareFailure) -> ShareLimits {
         do {
@@ -38,42 +37,32 @@ internal struct CloudShareService: ShareService {
     }
 
     func create(_ draft: ShareDraft) async throws(ShareFailure) -> CreatedShare {
+        let answer: (status: Int, contentType: String?, body: Data)
         do {
-            switch try await api.createShare(body: .json(Self.body(draft))) {
-            case .created(let answer):
-                let created = try answer.body.json
-                guard let url = URL(string: created.url) else { throw ShareFailure.server }
-                return CreatedShare(id: created.share.id, url: url)
-            case .unauthorized(let answer):
-                throw Self.failure(try answer.body.applicationProblemJson)
-            case .forbidden(let answer):
-                throw Self.failure(try answer.body.applicationProblemJson)
-            case .notFound(let answer):
-                throw Self.failure(try answer.body.applicationProblemJson)
-            case .conflict(let answer):
-                throw Self.failure(try answer.body.applicationProblemJson)
-            case .unprocessableContent(let answer):
-                throw Self.failure(try answer.body.applicationProblemJson)
-            case .tooManyRequests(let answer):
-                throw Self.failure(try answer.body.applicationProblemJson)
-            case .internalServerError(let answer):
-                throw Self.failure(try answer.body.applicationProblemJson)
-            case .undocumented(let status, _):
-                throw ShareFailure.httpStatus(status)
-            }
+            answer = try await createRequest.send(ShareBodyWriter.body(draft))
         } catch {
             throw Self.failure(from: error)
         }
+        guard answer.status == 201 else {
+            let problem = try? JSONDecoder().decode(ProblemCode.self, from: answer.body)
+            throw ShareFailure.problem(status: answer.status, code: problem?.code)
+        }
+        guard let created = try? JSONDecoder().decode(CreatedLink.self, from: answer.body),
+              let url = URL(string: created.url)
+        else { throw ShareFailure.server }
+        return CreatedShare(id: created.share.id, url: url)
     }
 
-    func liveLinks() async throws(ShareFailure) -> [ShareLink] {
+    func liveLinks(teamID: String?) async throws(ShareFailure) -> [ShareLink] {
         var links: [ShareLink] = []
         var cursor: String?
         var pages = 0
         do {
             repeat {
                 pages += 1
-                switch try await api.listShares(query: .init(state: .live, cursor: cursor, limit: Self.pageSize)) {
+                switch try await api.listShares(query: .init(
+                    team: teamID, state: .live, cursor: cursor, limit: Self.pageSize
+                )) {
                 case .ok(let answer):
                     let page = try answer.body.json
                     links += page.data.map(Self.link)
@@ -164,7 +153,16 @@ internal struct CloudShareService: ShareService {
             allowsDisablingDownload: wire.disableDownload,
             allowsTeamLinks: wire.team,
             emailVerified: wire.emailVerified,
-            sharingDisabled: wire.sharingDisabled
+            sharingDisabled: wire.sharingDisabled,
+            teams: wire.teams.map { team in
+                ShareTeam(
+                    id: team.id,
+                    name: team.name,
+                    live: Int(team.live),
+                    liveLimit: Int(team.liveLimit),
+                    allowsPublicLinks: team.publicLinks
+                )
+            }
         )
     }
 
@@ -179,66 +177,38 @@ internal struct CloudShareService: ShareService {
         )
     }
 
-    static func body(_ draft: ShareDraft) -> Components.Schemas.CreateShareBody {
-        Components.Schemas.CreateShareBody(
-            allowDownload: draft.allowsDownload,
-            dialect: draft.dialect.map { String($0.prefix(40)) },
-            expiry: expiry(draft.expiry),
-            hideSql: draft.hidesSQL,
-            kind: draft.kind == .result ? .result : .query,
-            note: draft.note,
-            password: draft.password,
-            snapshot: draft.snapshot.map(snapshot),
-            sql: draft.sql,
-            title: draft.title.isEmpty ? nil : draft.title
-        )
-    }
-
-    static func expiry(_ expiry: ShareExpiry) -> Components.Schemas.ShareExpiry {
-        switch expiry {
-        case .oneDay: ._1d
-        case .sevenDays: ._7d
-        case .thirtyDays: ._30d
-        case .never: .never
-        }
-    }
-
-    static func snapshot(_ snapshot: ShareSnapshot) -> Components.Schemas.SnapshotBody {
-        Components.Schemas.SnapshotBody(
-            columns: snapshot.columns.map { column in
-                Components.Schemas.SnapshotColumnBody(
-                    name: clipped(column.name),
-                    _type: column.type.map(clipped)
-                )
-            },
-            rowCount: snapshot.isTruncated ? Int64(snapshot.rowCount) : nil,
-            rows: snapshot.rows.map { $0.map(value) }
-        )
-    }
-
-    // The server counts maxLength in Unicode scalars, not Characters.
-    private static func clipped(_ text: String) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.prefix(columnTextLimit)))
-    }
-
-    static func value(_ cell: ShareCell) -> OpenAPIValueContainer {
-        switch cell {
-        case .null: OpenAPIValueContainer(nilLiteral: ())
-        case .bool(let flag): OpenAPIValueContainer(booleanLiteral: flag)
-        case .integer(let number): OpenAPIValueContainer(integerLiteral: Int(number))
-        case .double(let number): OpenAPIValueContainer(floatLiteral: number)
-        case .string(let text): OpenAPIValueContainer(stringLiteral: text)
-        }
-    }
-
     private static func failure(_ problem: Components.Schemas.Problem) -> ShareFailure {
         ShareFailure.problem(status: Int(problem.status), code: problem.code)
     }
 
-    private static func failure(from error: any Error) -> ShareFailure {
-        if let failure = error as? ShareFailure {
+    // Only a URL load that did not finish is offline; anything else that is not the server's answer is the app's.
+    static func failure(from error: any Error) -> ShareFailure {
+        switch error {
+        case let failure as ShareFailure:
             return failure
+        case let error as ClientError:
+            return failure(from: error.underlyingError)
+        case let error as AccountError:
+            return ShareFailure.from(error)
+        case is CancellationError:
+            return .canceled
+        case let error as URLError:
+            return error.code == .cancelled ? .canceled : .offline
+        default:
+            return .server
         }
-        return ShareFailure.from(AccountError.from(error))
     }
+}
+
+private struct ProblemCode: Decodable {
+    let code: String?
+}
+
+private struct CreatedLink: Decodable {
+    struct Share: Decodable {
+        let id: String
+    }
+
+    let share: Share
+    let url: String
 }

@@ -17,11 +17,13 @@ final class FakeShareService: ShareService {
     var revokeFailure: ShareFailure?
     var fetchResults: [Result<SharedQuery, ShareFailure>] = []
     var createGate: AsyncGate?
+    var fetchGate: AsyncGate?
 
     private(set) var limitsCalls = 0
     private(set) var drafts: [ShareDraft] = []
     private(set) var revokedIDs: [String] = []
     private(set) var fetchedPasswords: [String?] = []
+    private(set) var linkTeams: [String?] = []
 
     init(limits: ShareLimits = .free()) {
         limitsResults = [.success(limits)]
@@ -38,8 +40,8 @@ final class FakeShareService: ShareService {
         return try await createResultNow().get()
     }
 
-    nonisolated func liveLinks() async throws(ShareFailure) -> [ShareLink] {
-        try await linksResultNow().get()
+    nonisolated func liveLinks(teamID: String?) async throws(ShareFailure) -> [ShareLink] {
+        try await linksResult(for: teamID).get()
     }
 
     nonisolated func revoke(id: String) async throws(ShareFailure) {
@@ -47,7 +49,11 @@ final class FakeShareService: ShareService {
     }
 
     nonisolated func fetchShared(token: String, password: String?) async throws(ShareFailure) -> SharedQuery {
-        try await nextFetch(password).get()
+        let gate = await recordFetch(password)
+        await gate?.wait()
+        // A cancelled URL load answers as cancelled, whatever the server would have said.
+        if Task.isCancelled { throw .canceled }
+        return try await nextFetch().get()
     }
 
     private func nextLimits() -> Result<ShareLimits, ShareFailure> {
@@ -64,8 +70,9 @@ final class FakeShareService: ShareService {
         createResult
     }
 
-    private func linksResultNow() -> Result<[ShareLink], ShareFailure> {
-        linksResult
+    private func linksResult(for teamID: String?) -> Result<[ShareLink], ShareFailure> {
+        linkTeams.append(teamID)
+        return linksResult
     }
 
     private func recordRevoke(_ id: String) -> ShareFailure? {
@@ -73,8 +80,12 @@ final class FakeShareService: ShareService {
         return revokeFailure
     }
 
-    private func nextFetch(_ password: String?) -> Result<SharedQuery, ShareFailure> {
+    private func recordFetch(_ password: String?) -> AsyncGate? {
         fetchedPasswords.append(password)
+        return fetchGate
+    }
+
+    private func nextFetch() -> Result<SharedQuery, ShareFailure> {
         guard !fetchResults.isEmpty else { return .failure(.notFound) }
         return fetchResults.removeFirst()
     }
@@ -97,7 +108,7 @@ extension ShareLimits {
         )
     }
 
-    static func pro(live: Int = 12) -> ShareLimits {
+    static func pro(live: Int = 12, teams: [ShareTeam] = []) -> ShareLimits {
         ShareLimits(
             plan: .pro,
             live: live,
@@ -109,7 +120,8 @@ extension ShareLimits {
             allowsDisablingDownload: true,
             allowsTeamLinks: true,
             emailVerified: true,
-            sharingDisabled: false
+            sharingDisabled: false,
+            teams: teams
         )
     }
 }

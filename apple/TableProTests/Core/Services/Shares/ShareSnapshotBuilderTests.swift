@@ -17,72 +17,89 @@ struct ShareSnapshotBuilderTests {
         columns: [String] = ["n"],
         types: [ColumnType] = [.integer(rawType: "int")],
         rows: [[PluginCellValue]],
-        total: Int? = nil
+        total: Int?? = .none
     ) -> ShareResultSource {
-        ShareResultSource(columns: columns, columnTypes: types, rows: rows, totalRowCount: total ?? rows.count)
+        ShareResultSource(
+            columns: columns,
+            columnTypes: types,
+            rows: rows,
+            totalRowCount: total ?? rows.count,
+            sql: "SELECT n FROM t"
+        )
     }
 
-    private func snapshot(_ outcome: ShareSnapshotOutcome) throws -> ShareSnapshot {
-        try #require(outcome.built)
+    private func snapshot(_ outcome: ShareSnapshotOutcome?) throws -> ShareSnapshot {
+        try #require(outcome?.built)
     }
 
-    @Test("Integers inside the JavaScript safe range stay numbers")
-    func safeIntegersAreNumbers() {
-        #expect(cell(.text("42"), .integer(rawType: "int")) == .integer(42))
-        #expect(cell(.text("42.0"), .integer(rawType: "int")) == .integer(42))
-        #expect(cell(.text("9007199254740991"), .integer(rawType: "bigint")) == .integer(9_007_199_254_740_991))
-        #expect(cell(.text("-9007199254740991"), .integer(rawType: "bigint")) == .integer(-9_007_199_254_740_991))
+    @Test("Integers go as number tokens with every digit, at any width")
+    func integersKeepEveryDigit() {
+        #expect(cell(.text("42"), .integer(rawType: "int")) == .number("42"))
+        #expect(cell(.text("42.0"), .integer(rawType: "int")) == .number("42"))
+        #expect(cell(.text("18446744073709551615"), .integer(rawType: "bigint unsigned")) == .number("18446744073709551615"))
+        #expect(cell(.text("-9007199254740993"), .integer(rawType: "bigint")) == .number("-9007199254740993"))
     }
 
-    @Test("Integers past 2^53 - 1 travel as strings with every digit")
-    func wideIntegersAreStrings() {
-        #expect(cell(.text("9007199254740992"), .integer(rawType: "bigint")) == .string("9007199254740992"))
-        #expect(cell(.text("-9007199254740993"), .integer(rawType: "bigint")) == .string("-9007199254740993"))
-        #expect(cell(.text("123456789012345678901234567890"), .integer(rawType: "numeric")) == .string("123456789012345678901234567890"))
-    }
-
-    @Test("A decimal a browser prints the same way is a number", arguments: ["3.14", "19.99", "0.5", "-2.25", "5", "100"])
-    func roundTrippingDecimalsAreNumbers(text: String) {
-        guard case .double(let value) = cell(.text(text), .decimal(rawType: "double")) else {
-            Issue.record("\(text) should stay a number")
-            return
-        }
-        #expect(ShareCellEncoder.javaScriptText(of: value) == JsonNumberNormalizer.numberLiteral(from: text))
-    }
-
-    @Test("A decimal a browser would print differently travels as a string", arguments: [
-        ("0.12345678901234567890123", "0.12345678901234567890123"),
-        ("3.10", "3.10"),
-        ("12345678901234567.5", "12345678901234567.5"),
-        ("1e5", "1e5")
+    @Test("Decimals go as number tokens exactly as the database wrote them", arguments: [
+        ("3.10", "3.10"), ("12345678901234567890.12345678901234567890", "12345678901234567890.12345678901234567890"),
+        ("+5", "5"), (".5", "0.5"), ("1e+20", "1e20")
     ])
-    func lossyDecimalsAreStrings(text: String, expected: String) {
-        #expect(cell(.text(text), .decimal(rawType: "numeric")) == .string(expected))
+    func decimalsKeepEveryDigit(text: String, token: String) {
+        #expect(cell(.text(text), .decimal(rawType: "numeric")) == .number(token))
     }
 
-    @Test("JavaScript number text matches ECMAScript Number::toString", arguments: [
-        (0.1, "0.1"), (5.0, "5"), (100_000.0, "100000"), (1e21, "1e+21"), (1e-7, "1e-7"),
-        (1.5e-7, "1.5e-7"), (0.000001, "0.000001"), (123.456, "123.456"), (-2.5, "-2.5"), (1e16, "10000000000000000")
+    @Test("A number JSON cannot hold goes as its name", arguments: ["NaN", "Infinity", "-Infinity"])
+    func nonFiniteNumbersAreNames(text: String) {
+        #expect(cell(.text(text), .decimal(rawType: "float8")) == .string(text))
+    }
+
+    @Test("A JSON column goes as its document, key order and digits as written")
+    func jsonIsADocument() {
+        #expect(cell(.text(" {\"b\": 1, \"a\": [1, 12345678901234567890]} "), .json(rawType: "jsonb"))
+            == .document("{\"b\": 1, \"a\": [1, 12345678901234567890]}"))
+        #expect(cell(.text("not json"), .json(rawType: "json")) == .string("not json"))
+    }
+
+    @Test("A PostgreSQL array goes as an array, each element by the element type")
+    func postgresArraysRecurse() {
+        let ints = ColumnType.array(rawType: "_int8", element: .integer(rawType: "int8"))
+        #expect(cell(.text("{1,NULL,18446744073709551615}"), ints) == .array([.number("1"), .null, .number("18446744073709551615")]))
+        let texts = ColumnType.array(rawType: "_text", element: .text(rawType: "text"))
+        #expect(cell(.text("{\"a b\",c}"), texts) == .array([.string("a b"), .string("c")]))
+    }
+
+    @Test("An array a driver writes as JSON goes as that document")
+    func jsonArraysAreDocuments() {
+        let type = ColumnType.array(rawType: "Array(Int64)", element: .integer(rawType: "Int64"))
+        #expect(cell(.text("[1, 2, 3]"), type) == .document("[1, 2, 3]"))
+    }
+
+    @Test("Timestamps are written in ISO 8601 with the offset as +HH:MM", arguments: [
+        ("2026-11-13 10:00:00", "2026-11-13T10:00:00"),
+        ("2026-11-13 10:00:00.123456", "2026-11-13T10:00:00.123456"),
+        ("2026-11-13 10:00:00+07", "2026-11-13T10:00:00+07:00"),
+        ("2026-11-13 10:00:00.5 +0530", "2026-11-13T10:00:00.5+05:30"),
+        ("2026-11-13T10:00:00Z", "2026-11-13T10:00:00+00:00"),
+        ("not a time", "not a time")
     ])
-    func javaScriptText(value: Double, expected: String) {
-        #expect(ShareCellEncoder.javaScriptText(of: value) == expected)
+    func timestampsAreISO(text: String, iso: String) {
+        #expect(cell(.text(text), .timestamp(rawType: "timestamptz")) == .string(iso))
     }
 
-    @Test("Booleans normalize and a TINYINT(1) value outside 0 and 1 stays an integer")
+    @Test("Booleans normalize and a TINYINT(1) value outside 0 and 1 stays a number")
     func booleans() {
         #expect(cell(.text("1"), .boolean(rawType: "tinyint(1)")) == .bool(true))
         #expect(cell(.text("t"), .boolean(rawType: "bool")) == .bool(true))
         #expect(cell(.text("false"), .boolean(rawType: "bool")) == .bool(false))
-        #expect(cell(.text("2"), .boolean(rawType: "tinyint(1)")) == .integer(2))
+        #expect(cell(.text("2"), .boolean(rawType: "tinyint(1)")) == .number("2"))
     }
 
-    @Test("Null stays null, bytes say how many, text and JSON stay text")
+    @Test("Null stays null, bytes say how many, dates and text stay text")
     func otherCells() {
         #expect(cell(.null, .text(rawType: nil)) == .null)
         #expect(cell(.bytes(Data(count: 1_024)), .blob(rawType: "blob")) == .string("(binary, 1024 bytes)"))
         #expect(cell(.text("hello"), .text(rawType: "text")) == .string("hello"))
-        #expect(cell(.text("{\"a\":1}"), .json(rawType: "jsonb")) == .string("{\"a\":1}"))
-        #expect(cell(.text("2026-11-13 10:00:00"), .timestamp(rawType: "timestamp")) == .string("2026-11-13 10:00:00"))
+        #expect(cell(.text("2026-11-13"), .date(rawType: "date")) == .string("2026-11-13"))
     }
 
     @Test("Rows past max_rows are cut and the true total is kept")
@@ -93,7 +110,14 @@ struct ShareSnapshotBuilderTests {
         #expect(built.rows.count == 1_000)
         #expect(built.rowCount == 48_210)
         #expect(built.isTruncated)
-        #expect(built.rows.last == [.integer(999)])
+        #expect(built.rows.last == [.number("999")])
+    }
+
+    @Test("A total nobody counted stays unknown, and the snapshot says it is cut")
+    func unknownTotal() throws {
+        let built = try snapshot(ShareSnapshotBuilder.build(source(rows: [[.text("1")]], total: .some(nil)), maxRows: 10))
+        #expect(built.rowCount == nil)
+        #expect(built.isTruncated)
     }
 
     @Test("A result inside the limit is not truncated")
@@ -103,12 +127,6 @@ struct ShareSnapshotBuilderTests {
         #expect(built.rows.count == 2)
         #expect(built.rowCount == 2)
         #expect(!built.isTruncated)
-    }
-
-    @Test("The reported total is never less than the rows sent")
-    func totalCoversTheRows() throws {
-        let built = try snapshot(ShareSnapshotBuilder.build(source(rows: [[.text("1")], [.text("2")]], total: 0), maxRows: 10))
-        #expect(built.rowCount == 2)
     }
 
     @Test("Columns carry their raw type, or the type's name when the driver gave none")
@@ -159,13 +177,26 @@ struct ShareSnapshotBuilderTests {
         #expect(built.isTruncated)
     }
 
-    @Test("A string's JSON size counts its escapes")
+    @Test("A build whose task was cancelled gives nothing")
+    func cancelledBuild() async {
+        let rows = (0..<10_000).map { [PluginCellValue.text(String($0))] }
+        let task = Task.detached { () -> ShareSnapshotOutcome? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return ShareSnapshotBuilder.build(ShareResultSource(
+                columns: ["n"], columnTypes: [.integer(rawType: "int")], rows: rows, totalRowCount: 10_000, sql: ""
+            ), maxRows: 10_000)
+        }
+        #expect(await task.value == nil)
+    }
+
+    @Test("A cell's JSON size counts its escapes and nested arrays")
     func jsonByteCount() {
         #expect(ShareCellEncoder.jsonByteCount(.string("ab")) == 4)
         #expect(ShareCellEncoder.jsonByteCount(.string("a\"b")) == 6)
         #expect(ShareCellEncoder.jsonByteCount(.string("\u{01}")) == 8)
         #expect(ShareCellEncoder.jsonByteCount(.null) == 4)
-        #expect(ShareCellEncoder.jsonByteCount(.integer(-12)) == 3)
+        #expect(ShareCellEncoder.jsonByteCount(.number("-12")) == 3)
+        #expect(ShareCellEncoder.jsonByteCount(.array([.number("1"), .null])) == 8)
     }
 }
 

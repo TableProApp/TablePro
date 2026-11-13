@@ -306,9 +306,12 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         return favoriteNode.content.filePath
     }
 
-    internal var selectedFavorite: SQLFavorite? {
+    internal var selectedShareCommand: FavoritesMenuCommand? {
         guard case .query(let favoriteNode) = selectedNode()?.kind else { return nil }
-        return favoriteNode.asFavorite
+        if let favorite = favoriteNode.asFavorite {
+            return .shareFavorite(favorite)
+        }
+        return favoriteNode.asLinkedFavorite.map(FavoritesMenuCommand.shareLinkedFavorite)
     }
 
     internal func performMenuCommand(_ command: FavoritesMenuCommand) {

@@ -1655,6 +1655,13 @@
           "team": {
             "description": "The plan allows team links",
             "type": "boolean"
+          },
+          "teams": {
+            "description": "The teams the caller holds a seat in, for a team link; empty on Free",
+            "items": {
+              "$ref": "#/components/schemas/ShareTeam"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -1668,7 +1675,8 @@
           "disable_download",
           "team",
           "email_verified",
-          "sharing_disabled"
+          "sharing_disabled",
+          "teams"
         ],
         "type": "object"
       },
@@ -1708,6 +1716,39 @@
           "other"
         ],
         "type": "string"
+      },
+      "ShareTeam": {
+        "properties": {
+          "id": {
+            "description": "Team TypeID, the create's team_id",
+            "type": "string"
+          },
+          "live": {
+            "description": "The team's live links",
+            "format": "int64",
+            "type": "integer"
+          },
+          "live_limit": {
+            "description": "The most live links a team may hold",
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "public_links": {
+            "description": "false: the team turned public links off, and a team link answers team_sharing_disabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "live",
+          "live_limit",
+          "public_links"
+        ],
+        "type": "object"
       },
       "ShareView": {
         "properties": {
