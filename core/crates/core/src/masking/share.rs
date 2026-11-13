@@ -1,5 +1,6 @@
 use super::{ColumnMasks, MaskingStyle, mask_value};
 use crate::column::ResultColumn;
+use crate::export::{SnapshotTooLarge, snapshot_row_count};
 use crate::value::Value;
 
 // What the share sheet does with one column.
@@ -101,6 +102,43 @@ impl SharePlan {
     }
 }
 
+// What a share with a plan sends, for the sheet's note: the rows the snapshot keeps under the plan's row limit and its
+// body budget, or why it cannot go at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareSummary {
+    pub rows_sent: usize,
+    pub columns_sent: usize,
+    pub columns_cut: bool,
+    pub too_large: Option<SnapshotTooLarge>,
+}
+
+impl SharePlan {
+    // `rows` held rows of the visible columns, read one value at a time by `read(row, column)`; at most `max_rows`.
+    pub fn summary(
+        &self,
+        visible: &[ResultColumn],
+        rows: usize,
+        mut read: impl FnMut(usize, usize) -> Value,
+        max_rows: usize,
+    ) -> ShareSummary {
+        let sent = snapshot_row_count(
+            &self.columns(visible),
+            (0..rows).map(|row| self.row(visible, |column| read(row, column))),
+            max_rows,
+        );
+        let (rows_sent, too_large) = match sent {
+            Ok(rows) => (rows, None),
+            Err(refused) => (0, Some(refused)),
+        };
+        ShareSummary {
+            rows_sent,
+            columns_sent: self.kept.len(),
+            columns_cut: self.columns_cut,
+            too_large,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::MaskingStyle::{Email, Full, Hash, LastFour, Null};
@@ -198,5 +236,41 @@ mod tests {
         assert!(
             !SharePlan::new(3, &ColumnMasks::none(), &ColumnMasks::none(), &[ShareChoice::Remove], 2).columns_cut()
         );
+    }
+
+    #[test]
+    fn a_summary_counts_the_rows_the_budget_keeps_or_says_why_none_go() {
+        let visible = [ResultColumn::new("note", ColumnType::untyped_text("text"))];
+        let plan = SharePlan::new(1, &ColumnMasks::none(), &ColumnMasks::none(), &[], 100);
+        let long = |chars: usize| Value::Text("x".repeat(chars));
+
+        let cut = plan.summary(&visible, 30, |_, _| long(200_000), 1_000);
+        let refused = plan.summary(&visible, 3, |_, _| long(300_000), 1_000);
+        let masked = SharePlan::new(
+            1,
+            &ColumnMasks::none(),
+            &ColumnMasks::none(),
+            &[ShareChoice::Mask(Full)],
+            100,
+        )
+        .summary(&visible, 30, |_, _| long(200_000), 1_000);
+
+        assert_eq!(
+            cut,
+            ShareSummary {
+                rows_sent: 22,
+                columns_sent: 1,
+                columns_cut: false,
+                too_large: None,
+            }
+        );
+        assert_eq!(refused.rows_sent, 0);
+        assert_eq!(
+            refused.too_large,
+            Some(SnapshotTooLarge::Cell {
+                column: "note".to_owned()
+            })
+        );
+        assert_eq!(masked.rows_sent, 30);
     }
 }

@@ -19,6 +19,6 @@ pub use mask_value::{BULLETS, mask_text, mask_value, stable_hash};
 pub use masking_sink::{MaskingScope, MaskingSink};
 pub use policy::{MaskingPolicy, SharedMaskingPolicy, WeakMaskingPolicy, base_type_name, table_name};
 pub use rule::{MaskingRule, decode_rules, decode_rules_value, deserialize_rules, encode_rules};
-pub use share::{ShareChoice, SharePlan};
+pub use share::{ShareChoice, SharePlan, ShareSummary};
 pub use style::{MaskingStyle, MaskingTarget};
 pub use withheld::{may_repeat_a_value, server_code};

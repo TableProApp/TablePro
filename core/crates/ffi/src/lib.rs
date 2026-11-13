@@ -63,7 +63,7 @@ pub use library::{
 };
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, MaskTargetTag, MaskingRuleRecord, PersonalDataHitInfo, RuleReason,
-    SensitiveKindTag, ShareColumnChoice, ShareColumnMasking,
+    SensitiveKindTag, ShareColumnChoice, ShareColumnMasking, ShareSummary, SnapshotTooLargeReason,
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
