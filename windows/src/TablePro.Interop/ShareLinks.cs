@@ -54,7 +54,8 @@ public sealed record ShareRequest(ShareKind Kind, string Sql)
     public string? TeamId { get; init; }
 }
 
-// A link as its owner sees it. Kind, Scope and State stay the server's codes; Sql only when read on its own.
+// A link as its owner sees it. Kind, Scope, State and SuspendedBy stay the server's codes; Sql only when read on its own.
+// A suspended link keeps its State and has no Url while the team or staff has sharing off.
 public sealed record SharedLink(
     string Id,
     string Kind,
@@ -78,7 +79,9 @@ public sealed record SharedLink(
     DateTimeOffset? ExpiresAt,
     DateTimeOffset? RevokedAt,
     DateTimeOffset? RemovedAt,
-    string? Url)
+    string? Url,
+    bool Suspended,
+    string? SuspendedBy)
 {
     public bool IsLive => State == "live";
 }

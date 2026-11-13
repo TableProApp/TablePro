@@ -125,7 +125,9 @@ internal static partial class Mapping
         Time(share.ExpiresAtSecs),
         Time(share.RevokedAtSecs),
         Time(share.RemovedAtSecs),
-        share.Url);
+        share.Url,
+        share.Suspended,
+        share.SuspendedBy);
 
     public static CreatedShare Created(Native.CreatedShareInfo created) => new(Link(created.Share), created.Url);
 

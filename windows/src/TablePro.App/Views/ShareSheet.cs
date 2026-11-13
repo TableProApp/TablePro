@@ -541,6 +541,11 @@ internal sealed class ShareSheet
                 : Strings.Format("ShareLinkCreated", link.CreatedAt.LocalDateTime),
             Style = Caption,
         });
+        if (link.Suspended)
+        {
+            text.Children.Add(new TextBlock { Text = Strings.Get("ShareLinkSuspended"), Style = Caption });
+        }
+
         row.Children.Add(text);
         var revoke = new Button { Content = Strings.Get("ShareRevoke"), VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetName(revoke, Strings.Format("ShareRevokeName", title));

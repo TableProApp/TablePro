@@ -188,6 +188,14 @@ public sealed class SharePlanTests
         Assert.Equal(["a", "b", "c"], SharePlan.LiveOldestFirst(links).Select(link => link.Id));
     }
 
+    [Fact]
+    public void ASuspendedLinkStillHoldsASlotInTheAtCapList()
+    {
+        var links = new[] { Link("held", Created, suspended: true), Link("open", Created.AddDays(1)) };
+
+        Assert.Equal(["held", "open"], SharePlan.LiveOldestFirst(links).Select(link => link.Id));
+    }
+
     [Theory]
     [InlineData("account.signed_out", "ShareErrorSignedOut")]
     [InlineData("account.email_unverified", "ShareErrorEmailUnverified")]
@@ -210,7 +218,12 @@ public sealed class SharePlanTests
         Assert.False(ShareErrors.ReloadsLimits("account.pro_required"));
     }
 
-    private static SharedLink Link(string id, DateTimeOffset created, string state = "live", string scope = "account") =>
+    private static SharedLink Link(
+        string id,
+        DateTimeOffset created,
+        string state = "live",
+        string scope = "account",
+        bool suspended = false) =>
         new(
             id,
             "query",
@@ -234,5 +247,7 @@ public sealed class SharePlanTests
             null,
             null,
             null,
-            null);
+            null,
+            suspended,
+            suspended ? "account" : null);
 }

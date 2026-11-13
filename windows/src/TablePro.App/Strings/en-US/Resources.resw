@@ -2823,6 +2823,9 @@ New fingerprint: {2}</value>
   <data name="ShareLinkCreatedExpires" xml:space="preserve">
     <value>Created {0:d} · expires {1:d}</value>
   </data>
+  <data name="ShareLinkSuspended" xml:space="preserve">
+    <value>Suspended</value>
+  </data>
   <data name="ShareRevoke" xml:space="preserve">
     <value>Revoke</value>
   </data>
