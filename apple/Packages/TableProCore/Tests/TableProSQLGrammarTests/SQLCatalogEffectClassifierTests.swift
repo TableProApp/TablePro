@@ -59,7 +59,6 @@ struct SQLCatalogEffectClassifierTests {
         #expect(SQLCatalogEffectClassifier.effect(of: "ET", grammar: grammar("Teradata")).endsTransaction)
     }
 
-    // Only Teradata reads BT and ET as transaction control; elsewhere a lone word is a statement nothing knows.
     @Test("BT and ET are transaction control in Teradata's grammar alone")
     func transactionShortFormsAreTeradatas() {
         #expect(SQLCatalogEffectClassifier.effect(of: "et", grammar: grammar("Teradata")).endsTransaction)

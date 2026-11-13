@@ -82,7 +82,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
                     .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies,
                     .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains, .psqlScripts,
-                    // An unknown engine reads `BT` and `ET` as names, not as the end of a transaction.
+                    // An unknown engine reads `BT` and `ET` as names, not as transaction control.
                     .transactionShortForms,
                 ])
                 if seen.insert(unitless).inserted {
