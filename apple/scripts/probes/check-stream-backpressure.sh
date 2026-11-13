@@ -8,15 +8,20 @@
 # without it holds every row the consumer has not taken yet.
 #
 # Usage:
-#   scripts/probes/check-stream-backpressure.sh <engine> [--rows N] [--delay-ms N] [--root DIR]
+#   scripts/probes/check-stream-backpressure.sh <engine> [--rows N] [--delay-ms N] [--hold-seconds N] [--root DIR]
 #
-#   engine:     postgresql, mysql, sqlite (a scratch file, no server)
+#   engine:     postgresql, mysql, sqlite (a scratch file, no server), sqlite-agent (the same file read through the
+#               remote SQLite agent, run by the local python3 behind a loopback relay that stands in for the SSH session)
 #   --rows      rows in the probe table, default 1000000
 #   --delay-ms  the consumer's wait per batch, default 20
+#   --hold-seconds  how long the consumer waits after its first batch, default 0
 #   --root      the apple/ folder whose sources to build, default this one; Libs comes from it too
 #
 # TP_STREAM_HOST, TP_STREAM_PORT, TP_STREAM_USER, TP_STREAM_PASSWORD and TP_STREAM_DATABASE name the server, by
 # default a local one on the engine's port as the current user. TP_STREAM_BUILD_DIR keeps the harness between runs.
+# For sqlite-agent, TP_STREAM_SSH holds ssh's arguments up to the destination, separated by single spaces with no
+# quoting: the agent then runs on that server through the launcher command the app sends. TP_STREAM_DATABASE must then
+# name an existing scratch file there; the probe fills it with the table and the file keeps that size afterwards.
 # Exits 1 when the read fails, 3 when the probe cannot run.
 
 set -uo pipefail
@@ -25,11 +30,14 @@ ENGINE="${1:-}"
 shift || true
 ROWS=1000000
 DELAY_MS=20
+HOLD_SECONDS=0
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+HERE="$ROOT"
 while [ $# -gt 0 ]; do
     case "$1" in
         --rows) ROWS="${2:?}"; shift 2 ;;
         --delay-ms) DELAY_MS="${2:?}"; shift 2 ;;
+        --hold-seconds) HOLD_SECONDS="${2:?}"; shift 2 ;;
         --root) ROOT="$(cd "${2:?}" && pwd)"; shift 2 ;;
         *) echo "unknown argument $1" >&2; exit 3 ;;
     esac
@@ -52,14 +60,14 @@ case "$ENGINE" in
         digits="(SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9)"
         CREATE="CREATE TABLE tp_stream_probe AS SELECT id, REPEAT(MD5(id), 6) AS payload FROM (SELECT d0.n + d1.n * 10 + d2.n * 100 + d3.n * 1000 + d4.n * 10000 + d5.n * 100000 + d6.n * 1000000 + 1 AS id FROM $digits d0, $digits d1, $digits d2, $digits d3, $digits d4, $digits d5, $digits d6) AS numbers WHERE id <= $ROWS"
         ;;
-    sqlite)
+    sqlite | sqlite-agent)
         FOLDER=SQLiteDriverPlugin CLASS=SQLitePlugin C_MODULE=""
         PRODUCTS="CSQLite TableProSQLiteCore TableProSQLQuoting TableProSQLVocabulary"
         LINK="$ROOT/Libs/libsqlite3_vendored.a"
         CREATE="CREATE TABLE tp_stream_probe AS WITH RECURSIVE g(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM g WHERE x < $ROWS) SELECT x AS id, hex(randomblob(96)) AS payload FROM g"
         ;;
     *)
-        echo "usage: $0 <postgresql|mysql|sqlite> [--rows N] [--delay-ms N] [--root DIR]" >&2
+        echo "usage: $0 <postgresql|mysql|sqlite|sqlite-agent> [--rows N] [--delay-ms N] [--hold-seconds N] [--root DIR]" >&2
         exit 3
         ;;
 esac
@@ -88,9 +96,15 @@ fi
 SOURCES="$WORK/Sources/Probe"
 rm -rf "$SOURCES" "$WORK/CModule"
 mkdir -p "$SOURCES"
-if [ "$ENGINE" = sqlite ] && [ -z "$DATABASE" ]; then
+if [ "$ENGINE" = sqlite-agent ] && [ -n "${TP_STREAM_SSH:-}" ] && [ -z "${TP_STREAM_DATABASE:-}" ]; then
+    echo "TP_STREAM_SSH needs TP_STREAM_DATABASE, a scratch file on that server" >&2
+    exit 3
+fi
+if [ "$FOLDER" = SQLiteDriverPlugin ] && [ -z "$DATABASE" ]; then
     DATABASE="$WORK/probe.sqlite"
     rm -f "$DATABASE" "$DATABASE-wal" "$DATABASE-shm"
+    # The agent opens a file that exists and never creates one.
+    if [ "$ENGINE" = sqlite-agent ]; then : > "$DATABASE"; fi
 fi
 
 while IFS= read -r source; do
@@ -99,6 +113,13 @@ done < <(find "$PLUGINS/$FOLDER" -name '*.swift' -not -path '*/Tests/*')
 for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
     [ -f "$PLUGINS/Shared/$shared.swift" ] && ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
+# The agent program and the relay come from this script's checkout, so --root can name a tree from before the relay.
+if [ "$ENGINE" = sqlite-agent ]; then
+    for helper in TablePro/Core/RemoteSQLite/RemoteSQLiteAgentSource.swift TablePro/Core/RemoteSQLite/RemoteSQLiteWire.swift \
+        Plugins/SQLiteDriverTests/SQLiteAgentLoopback.swift; do
+        ln -s "$HERE/$helper" "$SOURCES/agent_$(basename "$helper")"
+    done
+fi
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),'
@@ -149,9 +170,47 @@ let package = Package(
 )
 MANIFEST
 
-cat > "$SOURCES/probe_Engine.swift" << SWIFT
-typealias EnginePlugin = $CLASS
+if [ "$ENGINE" = sqlite-agent ]; then
+    cat > "$SOURCES/probe_Engine.swift" << 'SWIFT'
+import Foundation
+import TableProPluginKit
+
+typealias EnginePlugin = SQLitePlugin
+
+enum ProbeEndpoint {
+    static func config(host: String, port: Int, username: String, password: String, database: String) throws -> DriverConnectionConfig {
+        let ssh = ProcessInfo.processInfo.environment["TP_STREAM_SSH"].map { $0.split(separator: " ").map(String.init) }
+        let loopback = try ssh.map {
+            // -T: no pty, as on the app's exec channel; a pty would rewrite the binary frames.
+            try SQLiteAgentLoopback(
+                arguments: ["-T"] + $0 + [RemoteSQLiteAgentSource.launcherCommand()], executable: "/usr/bin/ssh", showsErrors: true
+            )
+        } ?? SQLiteAgentLoopback()
+        return DriverConnectionConfig(
+            host: "127.0.0.1", port: loopback.port, username: "", password: "", database: database,
+            additionalFields: [
+                SQLiteAgentProtocol.backendFieldKey: SQLiteAgentProtocol.agentBackendValue,
+                SQLiteAgentProtocol.tokenFieldKey: loopback.token,
+            ]
+        )
+    }
+}
 SWIFT
+else
+    cat > "$SOURCES/probe_Engine.swift" << SWIFT
+import TableProPluginKit
+
+typealias EnginePlugin = $CLASS
+
+enum ProbeEndpoint {
+    static func config(host: String, port: Int, username: String, password: String, database: String) throws -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: host, port: port, username: username, password: password, database: database, additionalFields: [:]
+        )
+    }
+}
+SWIFT
+fi
 
 cat > "$SOURCES/probe_Probe.swift" << 'SWIFT'
 import Darwin
@@ -162,14 +221,21 @@ import TableProPluginKit
 enum Probe {
     static func main() async {
         let arguments = CommandLine.arguments
-        guard arguments.count >= 8, let delay = Int(arguments[7]) else {
-            print("usage: Probe <host> <port> <user> <password> <database> <create sql> <delay ms>")
+        guard arguments.count >= 9, let delay = Int(arguments[7]), let hold = Int(arguments[8]) else {
+            print("usage: Probe <host> <port> <user> <password> <database> <create sql> <delay ms> <hold seconds>")
             exit(3)
         }
-        let driver = EnginePlugin().createDriver(config: DriverConnectionConfig(
-            host: arguments[1], port: Int(arguments[2]) ?? 0, username: arguments[3], password: arguments[4],
-            database: arguments[5], additionalFields: [:]
-        ))
+        let config: DriverConnectionConfig
+        do {
+            config = try ProbeEndpoint.config(
+                host: arguments[1], port: Int(arguments[2]) ?? 0, username: arguments[3], password: arguments[4],
+                database: arguments[5]
+            )
+        } catch {
+            print("cannot reach the engine: \(error)")
+            exit(3)
+        }
+        let driver = EnginePlugin().createDriver(config: config)
         do {
             try await driver.connect()
             try await driver.applyQueryTimeout(0)
@@ -191,7 +257,7 @@ enum Probe {
                 guard case .rows(let batch) = element else { continue }
                 rows += batch.count
                 batches += 1
-                try await Task.sleep(for: .milliseconds(delay))
+                try await Task.sleep(for: .milliseconds(batches == 1 ? delay + hold * 1_000 : delay))
             }
         } catch {
             failure = error
@@ -259,4 +325,4 @@ echo "building the $ENGINE harness from $ROOT (the first build takes a few minut
     grep -E "error:" "$WORK/build.log" | head -30 >&2
     exit 3
 }
-"$WORK/.build/release/Probe" "$HOST" "$PORT" "$USER_NAME" "$PASSWORD" "$DATABASE" "$CREATE" "$DELAY_MS"
+"$WORK/.build/release/Probe" "$HOST" "$PORT" "$USER_NAME" "$PASSWORD" "$DATABASE" "$CREATE" "$DELAY_MS" "$HOLD_SECONDS"

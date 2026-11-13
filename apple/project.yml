@@ -839,9 +839,12 @@ targets:
       - path: Plugins/SQLExportPlugin
         excludes:
           - Info.plist
+      # The agent the app launches over SSH, so the agent backend's tests run the shipped program.
+      - TablePro/Core/RemoteSQLite/RemoteSQLiteAgentSource.swift
+      - TablePro/Core/RemoteSQLite/RemoteSQLiteWire.swift
     dependencies:
       - package: TableProCore
-        products: [TableProProcess, TableProSQLGrammar]
+        products: [TableProProcess, TableProSQLGrammar, TableProTestSupport]
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]
