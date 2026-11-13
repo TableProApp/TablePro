@@ -356,7 +356,7 @@ mod shares {
 
     async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
         let editor = session.open_editor(None).await.unwrap();
-        let run = editor.run(sql.to_owned(), RunSettings::default(), false, Box::new(Quiet));
+        let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
         let outcome = run.outcome().await.unwrap();
         assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
         let set = run.result_set(0);
@@ -498,7 +498,7 @@ mod shares {
             name: "notes".to_owned(),
         };
         let page = session
-            .read_table_page(notes.clone(), None, None, 2, 0, false, Box::new(Quiet), None)
+            .read_table_page(notes.clone(), None, None, 2, 0, Box::new(Quiet), None)
             .await
             .unwrap();
         let outcome = page.run().outcome().await.unwrap();

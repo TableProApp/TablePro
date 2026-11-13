@@ -7742,7 +7742,6 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
- "unicode-normalization",
  "unicode-segmentation",
  "unicode-width",
  "uuid",

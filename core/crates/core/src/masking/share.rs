@@ -1,4 +1,4 @@
-use super::{ColumnMasks, MaskingStyle, mask_value};
+use super::{MaskingStyle, mask_value};
 use crate::column::ResultColumn;
 use crate::export::{SnapshotTooLarge, snapshot_row_count};
 use crate::value::Value;
@@ -12,55 +12,45 @@ pub enum ShareChoice {
 }
 
 impl ShareChoice {
-    // The style the column leaves with: never weaker than its rule's, so Keep takes the rule and a style that shows
-    // what the rule hides becomes Full. Remove is no style.
-    pub fn style(self, rule: Option<MaskingStyle>) -> Option<MaskingStyle> {
-        let wanted = match self {
-            Self::Keep | Self::Remove => None,
+    pub fn style(self) -> Option<MaskingStyle> {
+        match self {
             Self::Mask(style) => Some(style),
-        };
-        MaskingStyle::strictest(rule, wanted)
+            Self::Keep | Self::Remove => None,
+        }
     }
 }
 
-// How a share sends a result's visible columns: which it keeps, what it lays over each value as held, and the style
-// each kept column names. The snapshot and the sheet's preview both go through it, so the preview shows what is sent.
+// How a share sends a result's visible columns: which it keeps and how it masks each. The snapshot, the sheet's preview
+// and its summary all go through it, so the sheet shows what is sent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharePlan {
     kept: Vec<usize>,
-    overlay: ColumnMasks,
-    left: ColumnMasks,
+    styles: Vec<Option<MaskingStyle>>,
     columns_cut: bool,
 }
 
+// What a share with a plan sends, for the sheet's note: the rows the snapshot keeps under the plan's row limit and its
+// body budget, or why it cannot go at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareSummary {
+    pub rows_sent: usize,
+    pub columns_sent: usize,
+    pub columns_cut: bool,
+    pub too_large: Option<SnapshotTooLarge>,
+}
+
 impl SharePlan {
-    // `rules` are the visible columns' external masks (`MaskingPolicy::external_column_masks`), `shown` how the values
-    // held are masked already (the grid's, none for a revealed tab), `choices` the sheet's for each visible column,
-    // Keep past its end. At most `max_columns` columns are kept.
-    pub fn new(
-        visible: usize,
-        rules: &ColumnMasks,
-        shown: &ColumnMasks,
-        choices: &[ShareChoice],
-        max_columns: usize,
-    ) -> Self {
+    // `choices` is the sheet's for each visible column, Keep past its end. At most `max_columns` columns are kept.
+    pub fn new(visible: usize, choices: &[ShareChoice], max_columns: usize) -> Self {
         let choice = |index: usize| choices.get(index).copied().unwrap_or(ShareChoice::Keep);
         let mut kept: Vec<usize> = (0..visible)
             .filter(|index| choice(*index) != ShareChoice::Remove)
             .collect();
         let columns_cut = kept.len() > max_columns;
         kept.truncate(max_columns);
-        let wanted = ColumnMasks::new(
-            (0..visible)
-                .map(|index| choice(index).style(rules.style(index)))
-                .collect(),
-        );
-        let overlay = shown.overlay(&wanted);
-        let left = shown.merged(&overlay);
         Self {
+            styles: (0..visible).map(|index| choice(index).style()).collect(),
             kept,
-            overlay,
-            left,
             columns_cut,
         }
     }
@@ -84,7 +74,10 @@ impl SharePlan {
 
     // The style each kept column names, in the order of `kept`.
     pub fn masked(&self) -> Vec<Option<MaskingStyle>> {
-        self.kept.iter().map(|index| self.left.style(*index)).collect()
+        self.kept
+            .iter()
+            .map(|index| self.styles.get(*index).copied().flatten())
+            .collect()
     }
 
     // One row as sent. `read` gives the value held at a visible position and is asked only for kept columns.
@@ -93,26 +86,14 @@ impl SharePlan {
             .iter()
             .map(|index| {
                 let value = read(*index);
-                match (self.overlay.style(*index), visible.get(*index)) {
+                match (self.styles.get(*index).copied().flatten(), visible.get(*index)) {
                     (Some(style), Some(column)) => mask_value(&value, &column.column_type, style),
                     _ => value,
                 }
             })
             .collect()
     }
-}
 
-// What a share with a plan sends, for the sheet's note: the rows the snapshot keeps under the plan's row limit and its
-// body budget, or why it cannot go at all.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShareSummary {
-    pub rows_sent: usize,
-    pub columns_sent: usize,
-    pub columns_cut: bool,
-    pub too_large: Option<SnapshotTooLarge>,
-}
-
-impl SharePlan {
     // `rows` held rows of the visible columns, read one value at a time by `read(row, column)`; at most `max_rows`.
     pub fn summary(
         &self,
@@ -141,7 +122,7 @@ impl SharePlan {
 
 #[cfg(test)]
 mod tests {
-    use super::MaskingStyle::{Email, Full, Hash, LastFour, Null};
+    use super::MaskingStyle::{Email, Full, LastFour};
     use super::*;
     use crate::column::ColumnType;
 
@@ -152,34 +133,26 @@ mod tests {
             .collect()
     }
 
-    fn held() -> Vec<Value> {
-        ["1", "ann@example.com", "+1 555 0100", "vip"]
-            .iter()
-            .map(|value| Value::Text((*value).to_owned()))
-            .collect()
-    }
-
     fn text(value: &str) -> Value {
         Value::Text(value.to_owned())
     }
 
-    #[test]
-    fn a_rule_masked_column_never_leaves_weaker_than_its_rule() {
-        assert_eq!(ShareChoice::Keep.style(Some(Email)), Some(Email));
-        assert_eq!(ShareChoice::Mask(Email).style(Some(Email)), Some(Email));
-        assert_eq!(ShareChoice::Mask(LastFour).style(Some(Email)), Some(Full));
-        assert_eq!(ShareChoice::Mask(Null).style(Some(Email)), Some(Null));
-        assert_eq!(ShareChoice::Keep.style(None), None);
-        assert_eq!(ShareChoice::Mask(Hash).style(None), Some(Hash));
-        assert_eq!(ShareChoice::Remove.style(Some(Email)), Some(Email));
+    fn held() -> Vec<Value> {
+        ["1", "ann@example.com", "+1 555 0100", "vip"]
+            .iter()
+            .map(|value| text(value))
+            .collect()
     }
 
     #[test]
-    fn removed_columns_go_and_the_rest_take_the_rule_and_the_choice() {
-        let rules = ColumnMasks::new(vec![None, Some(Email), None, None]);
-        let choices = [ShareChoice::Remove, ShareChoice::Keep, ShareChoice::Mask(LastFour)];
+    fn removed_columns_go_and_the_rest_take_their_choice() {
+        let choices = [
+            ShareChoice::Remove,
+            ShareChoice::Mask(Email),
+            ShareChoice::Mask(LastFour),
+        ];
 
-        let plan = SharePlan::new(4, &rules, &ColumnMasks::none(), &choices, 100);
+        let plan = SharePlan::new(4, &choices, 100);
         let row = held();
         let mut asked = Vec::new();
         let sent = plan.row(&columns(), |index| {
@@ -196,64 +169,33 @@ mod tests {
     }
 
     #[test]
-    fn values_the_grid_masked_the_same_way_are_sent_as_held_and_others_tighten() {
-        let rules = ColumnMasks::new(vec![None, Some(Email), None, None]);
-        let shown = ColumnMasks::new(vec![None, Some(Email), Some(Hash), None]);
-        let held = [text("1"), text("a•••@example.com"), text("3f2a9c1b0d4e"), text("vip")];
+    fn a_null_stays_null_under_every_style() {
+        for style in MaskingStyle::ALL {
+            let plan = SharePlan::new(1, &[ShareChoice::Mask(style)], 100);
 
-        let plan = SharePlan::new(
-            4,
-            &rules,
-            &shown,
-            &[ShareChoice::Keep, ShareChoice::Keep, ShareChoice::Keep],
-            100,
-        );
-        let sent = plan.row(&columns(), |index| held[index].clone());
-
-        assert_eq!(
-            sent,
-            [text("1"), text("a•••@example.com"), text("3f2a9c1b0d4e"), text("vip")]
-        );
-        assert_eq!(plan.masked(), [None, Some(Email), Some(Hash), None]);
-
-        let tighter = SharePlan::new(
-            4,
-            &rules,
-            &shown,
-            &[ShareChoice::Keep, ShareChoice::Keep, ShareChoice::Mask(LastFour)],
-            100,
-        );
-        assert_eq!(tighter.row(&columns(), |index| held[index].clone())[2], text("••••"));
-        assert_eq!(tighter.masked()[2], Some(Full));
+            assert_eq!(plan.row(&columns(), |_| Value::Null), [Value::Null], "{style:?}");
+        }
     }
 
     #[test]
     fn columns_past_the_cap_are_left_out_after_removals() {
-        let plan = SharePlan::new(4, &ColumnMasks::none(), &ColumnMasks::none(), &[ShareChoice::Remove], 2);
+        let plan = SharePlan::new(4, &[ShareChoice::Remove], 2);
 
         assert_eq!(plan.kept(), [1, 2]);
         assert!(plan.columns_cut());
-        assert!(
-            !SharePlan::new(3, &ColumnMasks::none(), &ColumnMasks::none(), &[ShareChoice::Remove], 2).columns_cut()
-        );
+        assert!(!SharePlan::new(3, &[ShareChoice::Remove], 2).columns_cut());
     }
 
     #[test]
     fn a_summary_counts_the_rows_the_budget_keeps_or_says_why_none_go() {
         let visible = [ResultColumn::new("note", ColumnType::untyped_text("text"))];
-        let plan = SharePlan::new(1, &ColumnMasks::none(), &ColumnMasks::none(), &[], 100);
+        let plan = SharePlan::new(1, &[], 100);
         let long = |chars: usize| Value::Text("x".repeat(chars));
 
         let cut = plan.summary(&visible, 30, |_, _| long(200_000), 1_000);
         let refused = plan.summary(&visible, 3, |_, _| long(300_000), 1_000);
-        let masked = SharePlan::new(
-            1,
-            &ColumnMasks::none(),
-            &ColumnMasks::none(),
-            &[ShareChoice::Mask(Full)],
-            100,
-        )
-        .summary(&visible, 30, |_, _| long(200_000), 1_000);
+        let masked =
+            SharePlan::new(1, &[ShareChoice::Mask(Full)], 100).summary(&visible, 30, |_, _| long(200_000), 1_000);
 
         assert_eq!(
             cut,
@@ -271,6 +213,6 @@ mod tests {
                 column: "note".to_owned()
             })
         );
-        assert_eq!(masked.rows_sent, 30);
+        assert_eq!(masked.rows_sent, 30, "masked text was not what was weighed");
     }
 }

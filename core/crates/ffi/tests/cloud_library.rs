@@ -94,7 +94,6 @@ async fn saved(library: &ConnectionLibrary, name: &str) -> String {
         ssh: None,
         safe_mode: SafeModeTag::Off,
         query_timeout_secs: None,
-        masking_rules: Vec::new(),
         color: None,
         group_id: None,
         last_opened_ms: None,

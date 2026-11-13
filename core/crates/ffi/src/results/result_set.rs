@@ -1,11 +1,7 @@
 use std::sync::Arc;
 
-use tablepro_core::column::ResultColumn;
-use tablepro_core::masking::{ColumnMasks, MaskingStyle};
-
 use super::{Cursor, ResultStore, ValueKind};
 use crate::error::CoreError;
-use crate::masking::MaskStyleTag;
 use crate::window_abi::TpCursor;
 
 // One result set of a run, readable while its rows still arrive. A sorted set reads the same rows through an order.
@@ -21,8 +17,6 @@ pub struct ResultColumnInfo {
     pub name: String,
     pub type_name: String,
     pub value_kind: ValueKind,
-    // The grid shows this column masked: its header is marked and its cells refuse an edit.
-    pub masked: Option<MaskStyleTag>,
 }
 
 impl ResultSet {
@@ -40,18 +34,6 @@ impl ResultSet {
 
     pub(crate) fn extent(&self) -> tablepro_core::export::ResultExtent {
         self.store.extent()
-    }
-
-    pub(crate) fn shown_masks(&self) -> ColumnMasks {
-        self.store.shown()
-    }
-
-    pub(crate) fn external_masks(&self, columns: &[ResultColumn]) -> ColumnMasks {
-        self.store.external_masks(columns)
-    }
-
-    pub(crate) fn untraced_columns(&self, columns: &[ResultColumn]) -> Vec<usize> {
-        self.store.external_untraced(columns)
     }
 
     pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<tablepro_core::Value> {
@@ -91,23 +73,7 @@ impl ResultSet {
     }
 
     pub fn columns(&self) -> Vec<ResultColumnInfo> {
-        self.store.column_infos()
-    }
-
-    // After the connection's masking rules were saved: masks the held rows of every column the rules now mask, unless
-    // the tab revealed this run, off the caller's thread; windows keep reading meanwhile. True when a column changed, so
-    // the grid draws again and reads `columns`. Rows that arrive after a save are masked without it.
-    pub async fn remask(self: Arc<Self>) -> Result<bool, CoreError> {
-        let tasks = crate::runtime::tasks()?;
-        let blocking = tasks.clone();
-        let store = self.store.clone();
-        crate::runtime::on_runtime(&tasks, async move {
-            blocking
-                .spawn_blocking_task(move || store.remask())
-                .await
-                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))
-        })
-        .await
+        self.store.columns().iter().map(ResultColumnInfo::from).collect()
     }
 
     // The whole value, `None` for null.
@@ -141,13 +107,12 @@ impl ResultSet {
     }
 }
 
-impl ResultColumnInfo {
-    pub(crate) fn of(column: &ResultColumn, masked: Option<MaskingStyle>) -> Self {
+impl From<&tablepro_core::column::ResultColumn> for ResultColumnInfo {
+    fn from(column: &tablepro_core::column::ResultColumn) -> Self {
         Self {
             name: column.name.clone(),
             type_name: column.column_type.name.clone(),
             value_kind: ValueKind::of_column(&column.column_type.kind),
-            masked: masked.map(MaskStyleTag::from),
         }
     }
 }

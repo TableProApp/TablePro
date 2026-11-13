@@ -5,7 +5,7 @@ use regex::Regex;
 
 use crate::column::ColumnType;
 use crate::export::value_text;
-use crate::masking::{MaskingStyle, base_type_name};
+use crate::masking::MaskingStyle;
 use crate::secret_scan::SecretHitKind;
 use crate::value::Value;
 
@@ -109,6 +109,33 @@ static API_KEYS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
     .map(|kind| Pattern::new(kind.pattern()))
     .collect()
 });
+
+// A result names `TINYINT(1)` or `Nullable(String)` where the list says `tinyint` or `string`: ClickHouse wrappers are
+// unwrapped and the width dropped, as the macOS app reads a type.
+fn base_type_name(type_name: &str) -> String {
+    const WRAPPERS: [&str; 2] = ["NULLABLE(", "LOWCARDINALITY("];
+    let mut name = trim_blanks(type_name);
+    while name.ends_with(')') {
+        let Some(wrapper) = WRAPPERS.iter().find(|wrapper| {
+            name.get(..wrapper.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(wrapper))
+        }) else {
+            break;
+        };
+        name = trim_blanks(&name[wrapper.len()..name.len() - 1]);
+    }
+    trim_blanks(name.split('(').next().unwrap_or_default()).to_owned()
+}
+
+// Foundation's `.whitespaces`: tab and the space separators, never a line break.
+fn trim_blanks(text: &str) -> &str {
+    text.trim_matches(|character: char| {
+        matches!(
+            character,
+            '\t' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
+        )
+    })
+}
 
 // A number, date, time, boolean or UUID column holds no text a person typed; an unknown or empty type might.
 pub fn is_text_like(column: &ColumnType) -> bool {
@@ -255,5 +282,14 @@ mod tests {
             assert!(is_text_like(&ColumnType::untyped_text(type_name)), "{type_name}");
         }
         assert_eq!(kind_of("bigint", &texts(&["4111111111111111"])), None);
+    }
+
+    #[test]
+    fn base_type_names_unwrap_clickhouse_wrappers_and_drop_the_width() {
+        assert_eq!(base_type_name("TINYINT(1)"), "TINYINT");
+        assert_eq!(base_type_name("  Nullable( String ) "), "String");
+        assert_eq!(base_type_name("lowcardinality(nullable(String))"), "String");
+        assert_eq!(base_type_name("numeric (10, 2)"), "numeric");
+        assert_eq!(base_type_name(""), "");
     }
 }

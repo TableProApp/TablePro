@@ -82,7 +82,6 @@ async fn people(core: &Core, path: &Path) {
     let run = editor.run(
         "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)".to_owned(),
         RunSettings::default(),
-        false,
         Box::new(Quiet),
     );
     assert!(matches!(run.outcome().await.unwrap(), RunOutcome::Completed { .. }));
@@ -114,7 +113,6 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         ssh: None,
         safe_mode,
         query_timeout_secs: None,
-        masking_rules: Vec::new(),
         color: None,
         group_id: None,
         last_opened_ms: None,

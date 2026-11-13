@@ -2,12 +2,11 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::credentials::SecretKind;
-use tablepro_core::masking::{MaskingPolicy, MaskingRule, SharedMaskingPolicy, WeakMaskingPolicy};
 use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -51,14 +50,6 @@ pub struct SavedConnection {
     /// Preferences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_timeout_secs: Option<u32>,
-    /// What the grid and every path out of the app mask here, in the
-    /// macOS app's shape. A list nothing can read masks everything.
-    #[serde(
-        default,
-        skip_serializing_if = "Vec::is_empty",
-        deserialize_with = "tablepro_core::masking::deserialize_rules"
-    )]
-    pub masking_rules: Vec<MaskingRule>,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,10 +80,6 @@ pub struct SavedConnection {
 }
 
 impl SavedConnection {
-    pub fn masking_policy(&self) -> MaskingPolicy {
-        MaskingPolicy::new(self.masking_rules.iter().cloned())
-    }
-
     /// What a secret of this connection belongs to, in the user's own
     /// terms. Seahorse and the credential prompt both show it, so it
     /// has to identify the connection without TablePro open.
@@ -451,9 +438,6 @@ struct StoreInner {
     path: PathBuf,
     state: Mutex<StoreState>,
     snapshot: watch::Sender<ConnectionListSnapshot>,
-    // Live sessions' masking rules, by connection. Each publish sets them before it is heard of, so a write that
-    // returns has already reached every session.
-    masking: Mutex<Vec<(Uuid, WeakMaskingPolicy)>>,
 }
 
 struct WriteGuard<'a> {
@@ -486,7 +470,6 @@ impl ConnectionStore {
                 path: paths.connections_file(),
                 state: Mutex::new(StoreState::Unloaded),
                 snapshot,
-                masking: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -501,21 +484,6 @@ impl ConnectionStore {
 
     pub fn snapshot(&self) -> ConnectionListSnapshot {
         self.inner.snapshot.borrow().clone()
-    }
-
-    // Keeps `rules` those of the saved connection `id`: every write and every read of the file that publishes a list
-    // sets them before it returns, until the last holder of `rules` is gone.
-    pub fn follow_masking(&self, id: Uuid, rules: &SharedMaskingPolicy) {
-        self.inner
-            .masking
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push((id, rules.downgrade()));
-        if let ConnectionListState::Ready(list) = &self.inner.snapshot.borrow().state
-            && let Some(saved) = list.connections.iter().find(|saved| saved.id == id)
-        {
-            rules.set(saved.masking_policy());
-        }
     }
 
     pub fn load_blocking(&self) -> Result<Arc<[SavedConnection]>, StorageError> {
@@ -923,18 +891,6 @@ impl ConnectionStore {
     }
 
     fn publish(&self, state: &StoreState) {
-        if let StoreState::Ready(document, _) = state {
-            let mut followers = self.inner.masking.lock().unwrap_or_else(PoisonError::into_inner);
-            followers.retain(|(id, weak)| {
-                let Some(rules) = weak.upgrade() else {
-                    return false;
-                };
-                if let Some(saved) = document.connections.iter().find(|saved| saved.id == *id) {
-                    rules.set(saved.masking_policy());
-                }
-                true
-            });
-        }
         let next = match state {
             StoreState::Unloaded => ConnectionListState::Loading,
             StoreState::Ready(document, _) => ConnectionListState::Ready(document.list()),
@@ -1121,7 +1077,6 @@ mod tests {
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
-            masking_rules: Vec::new(),
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(Utc::now()),
@@ -1152,7 +1107,6 @@ mod tests {
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
-            masking_rules: Vec::new(),
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
@@ -1208,92 +1162,6 @@ mod tests {
 
         assert_eq!(list.len(), 1);
         assert_eq!(list[0], connection);
-    }
-
-    #[test]
-    fn masking_rules_are_kept_with_the_connection_in_the_macos_shape() {
-        use tablepro_core::masking::{MaskingStyle, MaskingTarget};
-
-        let root = TempDir::new().expect("tempdir");
-        let store = store(&root);
-        let mut connection = sample_connection();
-        connection.masking_rules = vec![MaskingRule::new(
-            "users.email",
-            MaskingTarget::Column,
-            MaskingStyle::Email,
-        )];
-        let id = connection.masking_rules[0].id.to_string().to_uppercase();
-
-        store.upsert_blocking(connection.clone()).expect("upsert");
-
-        let written: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(store.path()).expect("read")).expect("JSON");
-        let rule = &written["connections"][0]["masking_rules"][0];
-        assert_eq!(
-            [&rule["id"], &rule["pattern"], &rule["target"], &rule["style"]],
-            [id.as_str(), "users.email", "column", "email"]
-        );
-        let reopened = ConnectionStore::new(&crate::StoragePaths::under(
-            root.path(),
-            "tablepro",
-            "app.tablepro.TablePro",
-        ));
-        assert_eq!(reopened.load_blocking().expect("load")[0], connection);
-        assert!(!connection.masking_policy().is_empty());
-    }
-
-    #[test]
-    fn a_write_sets_the_rules_of_every_follower_before_it_returns() {
-        use tablepro_core::masking::{MaskingStyle, MaskingTarget};
-
-        let root = TempDir::new().expect("tempdir");
-        let store = store(&root);
-        let mut connection = sample_connection();
-        store.upsert_blocking(connection.clone()).expect("upsert");
-        let live = SharedMaskingPolicy::default();
-        let gone = SharedMaskingPolicy::default();
-        store.follow_masking(connection.id, &live);
-        store.follow_masking(connection.id, &gone);
-        drop(gone);
-
-        connection.masking_rules = vec![MaskingRule::new("*", MaskingTarget::Column, MaskingStyle::Full)];
-        store.upsert_blocking(connection.clone()).expect("upsert");
-
-        assert_eq!(live.get(), connection.masking_policy());
-        assert_eq!(
-            store.inner.masking.lock().expect("followers").len(),
-            1,
-            "a dropped follower was kept"
-        );
-        let late = SharedMaskingPolicy::default();
-        store.follow_masking(connection.id, &late);
-        assert_eq!(
-            late.get(),
-            connection.masking_policy(),
-            "a follower started with stale rules"
-        );
-    }
-
-    #[test]
-    fn masking_rules_nothing_can_read_mask_everything_and_none_stored_is_none() {
-        for (extra, rules) in [
-            ("", 0),
-            (r#","masking_rules":null"#, 0),
-            (r#","masking_rules":[]"#, 0),
-            (r#","masking_rules":"oops""#, 1),
-            (r#","masking_rules":{"pattern":"ssn"}"#, 1),
-            (r#","masking_rules":[{"pattern":"ssn","target":"schema"}]"#, 1),
-        ] {
-            let root = TempDir::new().expect("tempdir");
-            seed(&root, &connections_json(extra));
-
-            let list = store(&root).load_blocking().expect("load");
-
-            assert_eq!(list[0].masking_rules.len(), rules, "{extra}");
-            if rules == 1 {
-                assert_eq!(list[0].masking_rules[0].pattern, "*", "{extra}");
-            }
-        }
     }
 
     #[test]
