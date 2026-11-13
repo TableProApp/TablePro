@@ -27,7 +27,7 @@ pub fn build_filter(
         return Err(BuildFilterError::CombinatorNotAllowed(filter.combinator));
     }
     if crate::document::speaks_shell(dialect) {
-        let mut params = crate::document::ShellParams::new();
+        let mut params = crate::document::ShellParams::like(builder);
         let Some(document) = crate::document::filter_document(columns, filter, &mut params)? else {
             return Ok(false);
         };
