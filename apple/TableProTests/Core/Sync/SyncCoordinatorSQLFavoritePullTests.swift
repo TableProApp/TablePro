@@ -182,7 +182,7 @@ struct SyncCoordinatorSQLFavoritePullTests {
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )
-        return SyncCoordinator(services: services, recordCache: recordCache)
+        return SyncCoordinator(services: services, recordCache: recordCache, pushRegistrar: .inert)
     }
 
     private static func makeChangeToken() throws -> CKServerChangeToken {

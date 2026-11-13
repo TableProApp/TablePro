@@ -7,6 +7,7 @@ protocol SyncTransport: Sendable {
     func accountStatus() async throws -> CKAccountStatus
     func currentAccountId() async throws -> String
     func ensureZoneExists() async throws
+    func saveSubscription() async throws
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome
     func pull(since token: CKServerChangeToken?) async throws -> PullResult
     func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord]

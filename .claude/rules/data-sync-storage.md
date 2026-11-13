@@ -186,6 +186,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Whether plugin secure fields moved out of `connections.json` into the Keychain, set only when every field moved and the save succeeded | UserDefaults `com.TablePro.pluginSecureFieldsMovedToKeychain`, device-local, never synced | `ConnectionStorage` |
 | Whether a saved-queries store replaced a damaged file and waits for a full fetch, so push treats it as unreadable | Table `sync_refill` in the saved-queries SQLite store, dropped once a full fetch applied | `SQLFavoriteStorage` |
 | Deletions the server reported for a sync category that is off, applied when the category is next read | UserDefaults, device-local, never synced | `SyncMetadataStorage.deferredDeletions` |
+| The iCloud account this device last saved the CloudKit change subscription for; cleared when sync turns on, on Upload Again, when the data is found removed, and when an activation brings a change no notice announced | UserDefaults `com.TablePro.sync.subscribedAccountId`, device-local, never synced | `SyncMetadataStorage.subscribedAccountId` through `SyncPushChannel` |
 | Where a connection came from (`origin`): this Mac, imported, iCloud | `connections.json`, never synced or exported | `ConnectionStorage` |
 | Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

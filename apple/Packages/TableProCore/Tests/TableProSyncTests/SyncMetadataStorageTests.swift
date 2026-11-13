@@ -179,6 +179,16 @@ struct SyncMetadataStorageTests {
         #expect(storage.lastAccountId == "account")
     }
 
+    @Test("The subscribed account round-trips and a full reset forgets it")
+    func subscribedAccountIdRoundTrips() {
+        let storage = makeStorage()
+        #expect(storage.subscribedAccountId == nil)
+        storage.subscribedAccountId = "account"
+        #expect(storage.subscribedAccountId == "account")
+        storage.clearAll()
+        #expect(storage.subscribedAccountId == nil)
+    }
+
     @Test("The first account seen on a device that never synced is recorded and nothing queued is dropped")
     func firstAccountIsRecorded() {
         let defaults = ScratchDefaults.make() ?? .standard

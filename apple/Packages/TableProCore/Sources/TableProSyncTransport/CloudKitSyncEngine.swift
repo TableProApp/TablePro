@@ -86,6 +86,15 @@ public actor CloudKitSyncEngine {
         Self.logger.trace("Created or confirmed sync zone: \(Self.zoneName)")
     }
 
+    // Every device saves the same id, so a save replaces the subscription rather than adding one.
+    public func saveSubscription() async throws {
+        guard let database else { throw Self.unavailable }
+        try await withRetry {
+            _ = try await database.save(SyncPushSubscription.make())
+        }
+        Self.logger.info("Saved the CloudKit change subscription")
+    }
+
     // MARK: - Push
 
     @discardableResult
