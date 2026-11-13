@@ -65,7 +65,11 @@ public abstract record MaskReason
 public sealed record MaskSuggestion(MaskStyle Style, MaskReason Reason);
 
 // Rule is the style the connection's rules mask the column with on the way out; else Suggestion is what was detected.
-public sealed record ShareColumnMasking(string Name, MaskStyle? Rule, MaskSuggestion? Suggestion);
+public sealed record ShareColumnMasking(string Name, MaskStyle? Rule, MaskSuggestion? Suggestion)
+{
+    // The column carries no table column of its own, so a connection with rules masks it as Full.
+    public bool Untraced { get; init; }
+}
 
 // Line counts from 1, where the literal starts.
 public sealed record PersonalDataHit(SensitiveKind Kind, int Line);

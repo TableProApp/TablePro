@@ -11164,6 +11164,7 @@ class FfiConverterTypeServerMessage: FfiConverterRustBuffer<ServerMessage> {
 internal record ShareColumnMasking (
     string Name, 
     MaskStyleTag? Rule, 
+    RuleReason? RuleReason, 
     MaskSuggestionInfo? Suggestion
 ) {
 }
@@ -11175,6 +11176,7 @@ class FfiConverterTypeShareColumnMasking: FfiConverterRustBuffer<ShareColumnMask
         return new ShareColumnMasking(
             Name: FfiConverterString.INSTANCE.Read(stream),
             Rule: FfiConverterOptionalTypeMaskStyleTag.INSTANCE.Read(stream),
+            RuleReason: FfiConverterOptionalTypeRuleReason.INSTANCE.Read(stream),
             Suggestion: FfiConverterOptionalTypeMaskSuggestionInfo.INSTANCE.Read(stream)
         );
     }
@@ -11183,12 +11185,14 @@ class FfiConverterTypeShareColumnMasking: FfiConverterRustBuffer<ShareColumnMask
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.Name)
             + FfiConverterOptionalTypeMaskStyleTag.INSTANCE.AllocationSize(value.Rule)
+            + FfiConverterOptionalTypeRuleReason.INSTANCE.AllocationSize(value.RuleReason)
             + FfiConverterOptionalTypeMaskSuggestionInfo.INSTANCE.AllocationSize(value.Suggestion);
     }
 
     public override void Write(ShareColumnMasking value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Name, stream);
             FfiConverterOptionalTypeMaskStyleTag.INSTANCE.Write(value.Rule, stream);
+            FfiConverterOptionalTypeRuleReason.INSTANCE.Write(value.RuleReason, stream);
             FfiConverterOptionalTypeMaskSuggestionInfo.INSTANCE.Write(value.Suggestion, stream);
     }
 }
@@ -14075,6 +14079,42 @@ class FfiConverterTypeRowSaveOutcome : FfiConverterRustBuffer<RowSaveOutcome>{
 
 
 
+internal enum RuleReason: int {
+    Rule,
+    Untraced
+}
+
+class FfiConverterTypeRuleReason: FfiConverterRustBuffer<RuleReason> {
+    public static FfiConverterTypeRuleReason INSTANCE = new FfiConverterTypeRuleReason();
+
+    public override RuleReason Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return RuleReason.Rule;
+            case 2: return RuleReason.Untraced;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRuleReason.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(RuleReason value) {
+        return 4;
+    }
+
+    public override void Write(RuleReason value, BigEndianStream stream) {
+        switch (value) {
+            case RuleReason.Rule: stream.WriteInt(1); break;
+            case RuleReason.Untraced: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRuleReason.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 /// <summary>
 /// One thing that happened in a run, in the order it happened. Rows that
 /// arrive between two drains come as one `RowsAppended` with the set's
@@ -16951,6 +16991,37 @@ class FfiConverterOptionalTypeMaskStyleTag: FfiConverterRustBuffer<MaskStyleTag?
         } else {
             stream.WriteByte(1);
             FfiConverterTypeMaskStyleTag.INSTANCE.Write((MaskStyleTag)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeRuleReason: FfiConverterRustBuffer<RuleReason?> {
+    public static FfiConverterOptionalTypeRuleReason INSTANCE = new FfiConverterOptionalTypeRuleReason();
+
+    public override RuleReason? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeRuleReason.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(RuleReason? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeRuleReason.INSTANCE.AllocationSize((RuleReason)value);
+        }
+    }
+
+    public override void Write(RuleReason? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeRuleReason.INSTANCE.Write((RuleReason)value, stream);
         }
     }
 }

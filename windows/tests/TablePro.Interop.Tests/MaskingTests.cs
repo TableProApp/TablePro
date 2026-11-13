@@ -155,16 +155,18 @@ public sealed class MaskingTests : IAsyncLifetime
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var ruled = await ConnectAsync(await SaveAsync(Rule("people.name", MaskStyle.Email)));
         await using var ruledEditor = await ruled.OpenEditorAsync(cancellationToken);
-        using var ruledRows = await RunAsync(ruledEditor, "SELECT id, name FROM people ORDER BY id");
+        using var ruledRows = await RunAsync(ruledEditor, "SELECT id, name, 'x' AS tag FROM people ORDER BY id");
         await using var plain = await ConnectAsync(await SaveAsync());
         await using var plainEditor = await plain.OpenEditorAsync(cancellationToken);
         using var plainRows = await RunAsync(plainEditor, "SELECT id, name, 'ann@example.com' AS contact_email FROM people");
 
-        var fromRules = await ruledRows.GetShareMaskingAsync(2, 1_000);
+        var fromRules = await ruledRows.GetShareMaskingAsync(3, 1_000);
         var detected = await plainRows.GetShareMaskingAsync(3, 1_000);
 
         Assert.Equal(new ShareColumnMasking("id", null, null), fromRules[0]);
         Assert.Equal(new ShareColumnMasking("name", MaskStyle.Email, null), fromRules[1]);
+        // No table column can be named for a literal, so a connection with rules sends it as Full.
+        Assert.Equal(new ShareColumnMasking("tag", MaskStyle.Full, null) { Untraced = true }, fromRules[2]);
         Assert.Equal(new ShareColumnMasking("name", null, null), detected[1]);
         Assert.Equal(
             new ShareColumnMasking("contact_email", null, new MaskSuggestion(MaskStyle.Email, new MaskReason.ColumnName("email"))),

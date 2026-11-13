@@ -93,6 +93,19 @@ public sealed class ShareColumnsTests
     }
 
     [Fact]
+    public void AnUntracedColumnIsMaskedAsARuledOneIsAndSaysWhy()
+    {
+        var untraced = ShareColumns.From([new ShareColumnMasking("tag", MaskStyle.Full, null) { Untraced = true }]).Columns[0];
+        var ruled = Columns().Columns[2];
+
+        Assert.True(untraced.Untraced);
+        Assert.False(ruled.Untraced);
+        Assert.False(untraced.AllowsKeep);
+        Assert.Equal(new ShareColumnChoice.Mask(MaskStyle.Full), untraced.Choice);
+        Assert.False(ShareColumns.From([new ShareColumnMasking("x", null, null) { Untraced = true }]).Columns[0].Untraced);
+    }
+
+    [Fact]
     public void EachReasonHasItsWords()
     {
         Assert.Equal("SensitiveName_Secret", SensitiveWords.KeyFor(new MaskReason.ColumnName("apikey")));

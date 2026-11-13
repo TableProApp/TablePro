@@ -66,7 +66,10 @@ internal static partial class Mapping
                     Native.MaskReason.ColumnName name => new MaskReason.ColumnName(name.Term),
                     _ => throw new InvalidOperationException("The core sent a reason this build does not know."),
                 })
-            : null);
+            : null)
+    {
+        Untraced = column.RuleReason == Native.RuleReason.Untraced,
+    };
 
     public static PersonalDataHit Hit(Native.PersonalDataHitInfo hit) => new(Kind(hit.Kind), checked((int)hit.Line));
 }

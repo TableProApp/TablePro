@@ -615,7 +615,15 @@ internal sealed class ShareSheet
             if (!_closed && ReferenceEquals(_content, content))
             {
                 _columnsFor = null;
-                ShowNotice(InfoBarSeverity.Error, Strings.Error(exception.Error), (Strings.Get("ShareRetry"), () => _ = LoadAsync()));
+                // Rows too large to send stay too large, so only another failure offers Retry.
+                if (exception.Code == "account.snapshot_too_large")
+                {
+                    ShowNotice(InfoBarSeverity.Error, Strings.Get(ShareErrors.KeyFor(exception.Code)), null);
+                }
+                else
+                {
+                    ShowNotice(InfoBarSeverity.Error, Strings.Error(exception.Error), (Strings.Get("ShareRetry"), () => _ = LoadAsync()));
+                }
             }
 
             return;
@@ -710,7 +718,7 @@ internal sealed class ShareSheet
     {
         if (column.Rule is not null)
         {
-            return Strings.Get("ShareColumnRuled");
+            return Strings.Get(column.Untraced ? "ShareColumnUntraced" : "ShareColumnRuled");
         }
 
         if (column.Suggestion is not { } suggestion)

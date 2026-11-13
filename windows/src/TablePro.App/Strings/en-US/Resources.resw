@@ -2919,6 +2919,9 @@ New fingerprint: {2}</value>
   <data name="ShareColumnRuled" xml:space="preserve">
     <value>Masked by this connection's rules</value>
   </data>
+  <data name="ShareColumnUntraced" xml:space="preserve">
+    <value>Masked because TablePro cannot tell which table column this comes from.</value>
+  </data>
   <data name="ShareColumnLooksLike" xml:space="preserve">
     <value>Looks like: {0}</value>
   </data>

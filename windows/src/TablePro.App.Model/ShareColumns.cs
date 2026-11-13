@@ -20,6 +20,7 @@ public sealed class ShareColumn
     {
         Name = masking.Name;
         Rule = masking.Rule;
+        Untraced = Rule is not null && masking.Untraced;
         Suggestion = Rule is null ? masking.Suggestion : null;
         (Action, Style) = (Rule, Suggestion) switch
         {
@@ -34,6 +35,9 @@ public sealed class ShareColumn
 
     // The style the connection's rules mask the column with on every path out.
     public MaskStyle? Rule { get; }
+
+    // Masked because no table column can be named for it, not because a rule names it.
+    public bool Untraced { get; }
 
     public MaskSuggestion? Suggestion { get; }
 
