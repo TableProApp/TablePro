@@ -10,7 +10,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut settings = progenitor::GenerationSettings::new();
     settings
         .with_inner_type("crate::cloud_api::Bearer".parse()?)
-        .with_hooks(progenitor::HooksMode::Expected);
+        .with_hooks(progenitor::HooksMode::Expected)
+        // A snapshot's rows go out as the core's raw JSON tokens, and a shared link's rows are never read.
+        .with_replacement("SnapshotBody", "crate::share::SnapshotBody", std::iter::empty())
+        .with_replacement("PublicSnapshot", "crate::share::PublicSnapshot", std::iter::empty());
     let tokens = progenitor::Generator::new(&settings).generate_tokens(&spec)?;
     let out = PathBuf::from(std::env::var("OUT_DIR")?).join("v2.rs");
     std::fs::write(out, tokens.to_string())?;

@@ -15,13 +15,17 @@ pub mod v2 {
     include!(concat!(env!("OUT_DIR"), "/v2.rs"));
 }
 
+// None for a public call, such as reading a shared link, which sends no token at all.
 #[derive(Clone, Debug)]
-pub struct Bearer(pub(crate) SecretString);
+pub struct Bearer(pub(crate) Option<SecretString>);
 
 impl ClientHooks<Bearer> for v2::Client {
     async fn pre<E>(&self, request: &mut reqwest::Request, _: &OperationInfo) -> Result<(), Error<E>> {
         use progenitor_client::ClientInfo as _;
-        let mut value = HeaderValue::from_str(&format!("Bearer {}", self.inner().0.expose_secret()))
+        let Some(token) = &self.inner().0 else {
+            return Ok(());
+        };
+        let mut value = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
             .map_err(|_| Error::InvalidRequest("the access token is not a header value".to_owned()))?;
         value.set_sensitive(true);
         request.headers_mut().insert(AUTHORIZATION, value);
@@ -37,6 +41,9 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
         Error::UnexpectedResponse(response) if response.status() == StatusCode::TOO_MANY_REQUESTS => {
             rate_limited(response.headers())
         }
+        // The framework's or the proxy's, with no problem code of ours: only a share's snapshot gets that large.
+        Error::ErrorResponse(answer) if answer.status().as_u16() == TOO_LARGE => too_large(),
+        Error::UnexpectedResponse(response) if response.status().as_u16() == TOO_LARGE => too_large(),
         Error::ErrorResponse(answer) => problem_error(answer.status().as_u16(), answer.into_inner()),
         // A status the document does not list, such as a proxy's.
         Error::UnexpectedResponse(response) => {
@@ -54,6 +61,16 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
         // Its text carries the whole answer, an entitlement or the account's details among them.
         Error::InvalidResponsePayload(_, error) => AccountError::Protocol(schema_mismatch(&error)),
         other => AccountError::Protocol(other.to_string()),
+    }
+}
+
+const TOO_LARGE: u16 = 413;
+
+fn too_large() -> AccountError {
+    AccountError::Refused {
+        status: TOO_LARGE,
+        code: "snapshot_too_large".to_owned(),
+        detail: "the request is larger than the server takes".to_owned(),
     }
 }
 
