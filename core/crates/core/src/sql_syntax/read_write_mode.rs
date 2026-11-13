@@ -75,12 +75,18 @@ fn names_read_only_setting(token: &Code<'_>) -> bool {
         },
         _ => return false,
     };
-    let name = text.rsplit('.').next().unwrap_or(text).trim_start_matches('@');
+    let name = text
+        .rsplit('.')
+        .next()
+        .unwrap_or(text)
+        .trim_start_matches('@')
+        .trim_end_matches(' ');
     READ_ONLY_SETTINGS.iter().any(|setting| spells(name, setting))
 }
 
-// MySQL looks a variable up under utf8mb3_general_ci, which folds accents: 8.4.13 took `SET SESSION
-// tránsaction_read_only = 0` (measured). So a non-ASCII letter may stand for any letter of the name.
+// MySQL looks a variable up under utf8mb3_general_ci, which folds accents and ignores trailing spaces: 8.4.13 took `SET
+// SESSION tránsaction_read_only = 0` and a backquoted name ending in spaces (measured). So a non-ASCII letter may stand
+// for any letter of the name.
 fn spells(word: &str, name: &str) -> bool {
     word.chars().count() == name.len()
         && word.chars().zip(name.chars()).all(|(written, letter)| {
@@ -137,6 +143,7 @@ mod tests {
             "SET\u{3000}TRANSACTION READ WRITE",
             "SET SESSION tr\u{e1}nsaction_read_only = 0",
             "SET SESSION \"transaction_read_only\" = 0",
+            "SET SESSION `transaction_read_only  ` = 0",
         ] {
             assert!(turns_read_write(sql, SqlGrammar::MySql), "{sql}");
         }
