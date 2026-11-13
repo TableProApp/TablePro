@@ -182,14 +182,13 @@ internal struct InspectorFieldRow: View {
             .accessibilityValue(context.valueState.placeholder ?? context.value.wrappedValue)
     }
 
-    // An editor bound straight to the value follows a new row in place. The others seed state from the
-    // value, such as a draft, a parsed tree or a text view's typing undo, so they start over with it.
+    // These follow a new row in place and start over through the context's `documentID`. The others hold a popover
+    // or a viewer seeded from the value, so they are built again with it.
     private var editorIdentity: AnyHashable {
         switch kind {
-        case .singleLine, .boolean, .enumPicker:
+        case .singleLine, .boolean, .enumPicker, .multiLine, .json, .blobHex, .image, .geometry:
             return AnyHashable(fieldID)
-        case .json, .phpSerialized, .binaryValue, .image, .geometry, .blobHex, .setPicker, .arrayElements, .vector,
-             .multiLine:
+        case .phpSerialized, .binaryValue, .setPicker, .arrayElements, .vector:
             return AnyHashable(editorID)
         }
     }

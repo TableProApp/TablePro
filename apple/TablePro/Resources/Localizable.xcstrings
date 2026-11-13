@@ -3474,6 +3474,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ earlier results were dropped." : {
+
+    },
     "%@ ends on %@ and does not renew." : {
       "localizations" : {
         "en" : {
@@ -13623,6 +13626,9 @@
         }
       }
     },
+    "1 earlier result was dropped." : {
+
+    },
     "1 field" : {
 
     },
@@ -16988,6 +16994,9 @@
           }
         }
       }
+    },
+    "A run that returns more results with rows keeps only the newest. Pinned results always stay." : {
+
     },
     "a running query" : {
 
@@ -113527,6 +113536,9 @@
         }
       }
     },
+    "Multiple Results" : {
+
+    },
     "Multiple statements are not permitted for this client" : {
       "localizations" : {
         "fr" : {
@@ -152740,6 +152752,9 @@
           }
         }
       }
+    },
+    "Results kept per run:" : {
+
     },
     "Resume" : {
       "localizations" : {
@@ -197979,6 +197994,9 @@
     "This change does not apply to this kind of type." : {
 
     },
+    "This change is pending in a transaction the statement opened. Other statements are refused until it is committed or rolled back." : {
+
+    },
     "This change needs %@ to be recreated, and it cannot be recreated from the definition the database stored for it. Virtual tables, such as full-text search tables, are the usual reason." : {
       "localizations" : {
         "fr" : {
@@ -216339,6 +216357,9 @@
           }
         }
       }
+    },
+    "What happened to the open transaction, when it matters" : {
+
     },
     "What is switched on here is ignored when two structures are compared. These drift between environments by design." : {
       "localizations" : {

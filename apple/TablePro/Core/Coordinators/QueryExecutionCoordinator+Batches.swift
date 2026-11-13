@@ -679,6 +679,7 @@ extension QueryExecutionCoordinator {
         }
         // One entry per result in the order `batchResultSets` places them; a count result has no rows to build.
         var shapes: [Bool] = []
+        var superseded: Set<Int> = []
         var sources: [(sql: String?, result: QueryResult)] = []
         var sourceCandidates: [Int] = []
         for (mapped, output) in zip(queries, outputs) {
@@ -689,6 +690,7 @@ extension QueryExecutionCoordinator {
                 continue
             }
             // Result sets the batch let go still count toward the run's results, and are never shown.
+            superseded.formUnion(shapes.count..<(shapes.count + output.supersededResultSetCount))
             shapes += repeatElement(true, count: output.supersededResultSetCount)
             let pairs: [(sql: String?, result: QueryResult)] = mapped.map { mapped in
                 zip(mapped, output.resultSets).map { (sql: $0.sql as String?, result: $1) }
@@ -699,7 +701,11 @@ extension QueryExecutionCoordinator {
                 sources.append(pair)
             }
         }
-        let results = RunResultPlan(producesRows: shapes)
+        let results = RunResultPlan(
+            producesRows: shapes,
+            keepingRowResults: AppSettingsManager.shared.dataGrid.resultSetLimitPerRun,
+            unavailable: superseded
+        )
         let shown = zip(sources, sourceCandidates).map { source, candidate in
             results.showsRows(ofStatement: candidate) ? source : nil
         }
