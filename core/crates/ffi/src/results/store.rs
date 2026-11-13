@@ -231,6 +231,12 @@ impl ResultStore {
         self.read().shown.clone()
     }
 
+    // The rows appended were masked before they came, as a share preview's are: the columns are marked and nothing is
+    // masked again.
+    pub(crate) fn mark_masked(&self, masks: ColumnMasks) {
+        self.state.write().unwrap_or_else(PoisonError::into_inner).shown = masks;
+    }
+
     // What every path out of the app masks `columns` of this set with: by origin, or by name for a page's table.
     pub(crate) fn external_masks(&self, columns: &[ResultColumn]) -> ColumnMasks {
         let state = self.read();

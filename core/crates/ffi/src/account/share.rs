@@ -6,15 +6,14 @@ use tablepro_account::{
     CreatedShare, MAX_SHARE_COLUMNS, Share, ShareExpiry, ShareKind, ShareLimits, SharePage, ShareRequest, ShareTeam,
     SharedLink,
 };
-use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::{ResultExtent, Snapshot, build_snapshot};
-use tablepro_core::masking::ColumnMasks;
+use tablepro_core::masking::{ShareChoice, SharePlan};
 
 use super::account_service::AccountService;
 use crate::error::CoreError;
-use crate::export::held_row;
-use crate::masking::{ShareColumnChoice, chosen_style};
+use crate::export::held_value;
+use crate::masking::ShareColumnChoice;
 use crate::results::ResultSet;
 use crate::runtime::on_runtime;
 
@@ -238,8 +237,8 @@ impl AccountService {
     }
 }
 
-// Also whether columns past the server's cap were left out, before any of their cells is built. A removed column is
-// never read; a masked one leaves masked, and the snapshot says how.
+// Also whether columns past the server's cap were left out. A removed column is never read; a masked one leaves
+// masked, and the snapshot says how.
 fn snapshot_of(
     set: &ResultSet,
     visible_columns: u32,
@@ -251,44 +250,45 @@ fn snapshot_of(
     if !set.is_finished() {
         return Err(CoreError::failed("ffi.share_unfinished", "the rows are still arriving"));
     }
-    let held = set.result_columns();
-    let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
-    let choice = |index: usize| choices.get(index).copied().unwrap_or(ShareColumnChoice::Keep);
-    let kept: Vec<usize> = (0..visible)
-        .filter(|index| choice(*index) != ShareColumnChoice::Remove)
-        .collect();
-    let cut = kept.len() > MAX_SHARE_COLUMNS;
-    let kept = &kept[..kept.len().min(MAX_SHARE_COLUMNS)];
-    let visible_set: Vec<ResultColumn> = held[..visible].to_vec();
-    let rules = set.external_masks(&visible_set);
-    let wanted = ColumnMasks::new(
-        (0..visible)
-            .map(|index| chosen_style(choice(index), rules.style(index)))
-            .collect(),
-    );
-    let shown = set.shown_masks();
-    let overlay = shown.overlay(&wanted);
-    let left = shown.merged(&overlay);
+    let (visible, plan) = share_plan(set, visible_columns, choices);
     let ended = set.extent();
     let taken = ended.held.min(u64::from(max_rows));
-    let columns: Vec<ResultColumn> = kept.iter().map(|index| held[*index].clone()).collect();
-    let rows = (0..taken).map(|row| {
-        let mut cells = held_row(set, row, &visible_set);
-        overlay.apply(&visible_set, &mut cells);
-        kept.iter()
-            .map(|index| std::mem::replace(&mut cells[*index], Value::Null))
-            .collect::<Vec<Value>>()
-    });
+    let rows = (0..taken).map(|row| plan.row(&visible, |index| held_value(set, row, index, &visible[index])));
     // A count the app made of a table view outranks what the page's own read knew.
     let extent = ResultExtent {
         total: total_rows.or(ended.total),
         ..ended
     };
-    let mut snapshot = build_snapshot(&columns, rows, extent, usize::try_from(max_rows).unwrap_or(usize::MAX));
-    for (column, index) in snapshot.columns.iter_mut().zip(kept) {
-        column.masked = left.style(*index);
+    let mut snapshot = build_snapshot(
+        &plan.columns(&visible),
+        rows,
+        extent,
+        usize::try_from(max_rows).unwrap_or(usize::MAX),
+    );
+    for (column, style) in snapshot.columns.iter_mut().zip(plan.masked()) {
+        column.masked = style;
     }
-    Ok((snapshot, cut))
+    Ok((snapshot, plan.columns_cut()))
+}
+
+// The set's first `visible_columns` columns and how a share sends them, by the connection's rules and the sheet.
+pub(crate) fn share_plan(
+    set: &ResultSet,
+    visible_columns: u32,
+    choices: &[ShareColumnChoice],
+) -> (Vec<ResultColumn>, SharePlan) {
+    let held = set.result_columns();
+    let count = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
+    let visible: Vec<ResultColumn> = held[..count].to_vec();
+    let choices: Vec<ShareChoice> = choices.iter().copied().map(ShareChoice::from).collect();
+    let plan = SharePlan::new(
+        count,
+        &set.external_masks(&visible),
+        &set.shown_masks(),
+        &choices,
+        MAX_SHARE_COLUMNS,
+    );
+    (visible, plan)
 }
 
 fn share_request(request: ShareRequestArg, snapshot: Option<Snapshot>) -> ShareRequest {
@@ -450,10 +450,10 @@ impl std::fmt::Debug for ShareRequestArg {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::Truncation;
     use tablepro_core::column::{ColumnOrigin, ColumnType};
     use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget, SharedMaskingPolicy};
     use tablepro_core::meta::TableRef;
+    use tablepro_core::{Truncation, Value};
 
     use super::*;
     use crate::masking::MaskStyleTag;

@@ -435,6 +435,12 @@ impl DatabaseSession {
         safe_mode_gate::gate(&sql, self.session.grammar(), self.session.safe_mode())
     }
 
+    // Every statement of `sql` only reads, by the classifier Safe Mode reads it with; false for empty or open text. A
+    // revealed query tab runs its statement again only then.
+    pub fn reads_only(&self, sql: String) -> bool {
+        tablepro_core::sql_syntax::reads_only(&sql, self.session.grammar())
+    }
+
     // `caret` and the span count UTF-16 units. Split by the grammar `gate_run` and the driver read the text with.
     pub fn statement_at(&self, sql: String, caret: u32) -> Option<StatementSpan> {
         statement_at::statement_at(&sql, caret, self.session.grammar())

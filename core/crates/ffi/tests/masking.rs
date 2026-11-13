@@ -6,7 +6,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use secrecy::SecretString;
 use tablepro_ffi::{
@@ -220,6 +219,19 @@ async fn a_saved_connection_s_rules_mask_the_grid_and_a_revealed_run_shows_the_v
 }
 
 #[tokio::test]
+async fn a_revealed_query_tab_runs_again_only_when_every_statement_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, _, session) = connected(dir.path(), rules()).await;
+
+    assert!(session.reads_only(SELECT.to_owned()));
+    assert!(session.reads_only(format!("{SELECT}; SELECT 1;")));
+    assert!(!session.reads_only(format!("{SELECT}; DELETE FROM people")));
+    assert!(!session.reads_only("UPDATE people SET name = 'x' WHERE id = 1".to_owned()));
+    assert!(!session.reads_only("  ".to_owned()));
+    assert!(!session.reads_only("SELECT 'open".to_owned()));
+}
+
+#[tokio::test]
 async fn a_masked_cell_refuses_an_edit_and_a_masked_key_locks_the_page() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, _, session) = connected(dir.path(), rules()).await;
@@ -325,16 +337,10 @@ async fn a_saved_change_to_the_rules_reaches_the_session_and_the_rows_on_screen(
         )
         .await
         .unwrap();
-    let mut remasked = false;
-    for _ in 0..200 {
-        remasked = on_screen.remask();
-        if remasked {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    assert!(remasked, "the rows on screen were never masked");
+    assert!(
+        on_screen.remask(),
+        "the save returned before the session held the new rules"
+    );
     assert_eq!(masked(&on_screen)[2], Some(MaskStyleTag::Email));
     assert_eq!(texts(&on_screen, 2)[0].as_deref(), Some("a•••@example.com"));
     assert_eq!(texts(&on_screen, 3)[1].as_deref(), Some("••••0199"));

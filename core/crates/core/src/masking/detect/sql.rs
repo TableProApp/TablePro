@@ -20,7 +20,7 @@ pub struct PersonalDataHit {
 }
 
 // Each kind once per line, by line. Only single-quoted literals, `''` being a quote inside one; double-quoted text
-// is a name, and a literal left open is not read.
+// is a name, `--` to the end of the line and `/* */` are comments, and a literal left open is not read.
 pub fn scan_sql_personal_data(sql: &str) -> Vec<PersonalDataHit> {
     let starts = line_starts(sql);
     let line_of = |offset: usize| u32::try_from(starts.partition_point(|start| *start <= offset)).unwrap_or(u32::MAX);
@@ -48,6 +48,16 @@ fn single_quoted_literals(sql: &str) -> Vec<(usize, String)> {
             '"' => {
                 for (_, inside) in characters.by_ref() {
                     if inside == '"' {
+                        break;
+                    }
+                }
+            }
+            '-' if characters.next_if(|(_, next)| *next == '-').is_some() => {
+                while characters.next_if(|(_, next)| !matches!(next, '\n' | '\r')).is_some() {}
+            }
+            '/' if characters.next_if(|(_, next)| *next == '*').is_some() => {
+                while let Some((_, inside)) = characters.next() {
+                    if inside == '*' && characters.next_if(|(_, next)| *next == '/').is_some() {
                         break;
                     }
                 }
@@ -84,6 +94,19 @@ mod tests {
             .into_iter()
             .map(|hit| (hit.kind, hit.line))
             .collect()
+    }
+
+    #[test]
+    fn comments_outside_a_literal_are_skipped() {
+        assert_eq!(
+            single_quoted_literals("-- don't\nSELECT /* it's */ 'a', '-- b /* c */' -- 'd'\r'e'"),
+            [
+                (27, "a".to_owned()),
+                (32, "-- b /* c */".to_owned()),
+                (54, "e".to_owned())
+            ]
+        );
+        assert!(single_quoted_literals("/* 'open").is_empty());
     }
 
     #[test]
