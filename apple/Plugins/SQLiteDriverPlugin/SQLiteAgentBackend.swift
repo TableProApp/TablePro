@@ -143,11 +143,7 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
         )
     }
 
-    func streamQuery(
-        _ query: String,
-        rules: SQLiteStatementRules,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
+    func streamQuery(_ query: String, rules: SQLiteStatementRules, into spill: PluginRowSpill) async throws {
         await takeTurn()
         defer { endTurn() }
         try Task.checkCancellation()
@@ -160,11 +156,11 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
                 scope: Self.agentScope(rules),
                 rowCap: 0,
                 onHeader: { header in
-                    continuation.yield(.header(PluginStreamHeader(
+                    spill.yield(PluginStreamHeader(
                         columns: header.map(\.name),
                         columnTypeNames: header.map { $0.declaredType ?? "" },
                         estimatedRowCount: nil
-                    )))
+                    ))
                 },
                 onRows: { columnCount, values in
                     guard columnCount > 0 else { return }
@@ -174,14 +170,14 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
                         batch.append(values[index..<(index + columnCount)].map(Self.decode))
                         index += columnCount
                     }
-                    // Blocks the reader thread, so the channel and the agent wait too; heartbeats go out on their own timer.
-                    _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
+                    // The spill takes rows the stream cannot, so the agent's statement ends as fast as the session carries them.
+                    spill.deliver(batch)
                 }
             )
         } onCancel: {
             connection.sendCancel()
         }
-        continuation.finish()
+        spill.finish()
     }
 
     private func takeTurn() async {

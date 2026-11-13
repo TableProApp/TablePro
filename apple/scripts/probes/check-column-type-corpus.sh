@@ -116,7 +116,7 @@ case "$ENGINE" in
         FIELDS="oracleServiceName=FREEPDB1"
         ;;
     sqlite)
-        FOLDER=SQLiteDriverPlugin CLASS=SQLitePlugin PRODUCTS="CSQLite TableProSQLiteCore"
+        FOLDER=SQLiteDriverPlugin CLASS=SQLitePlugin PRODUCTS="CSQLite TableProSQLiteCore TableProWireIO"
         LINK="$ROOT/Libs/libsqlite3_vendored.a"
         ;;
     *)
@@ -186,6 +186,7 @@ link_sources corpus "$PLUGINS/ColumnTypeCorpus"
 link_sources csv "$PLUGINS/CSVExportPlugin"
 link_sources json "$PLUGINS/JSONExportPlugin"
 link_sources sql "$PLUGINS/SQLExportPlugin"
+[ "$FOLDER" = SQLiteDriverPlugin ] && link_sources spill "$PLUGINS/SharedSpill"
 for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
     ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
