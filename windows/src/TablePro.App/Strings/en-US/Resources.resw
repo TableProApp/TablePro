@@ -663,6 +663,48 @@
   <data name="ConnectionTimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Query timeout in seconds</value>
   </data>
+  <data name="MaskingCard.Header" xml:space="preserve">
+    <value>Data masking</value>
+  </data>
+  <data name="MaskingCard.Description" xml:space="preserve">
+    <value>Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values.</value>
+  </data>
+  <data name="AddMaskingRuleButton.Content" xml:space="preserve">
+    <value>Add rule</value>
+  </data>
+  <data name="MaskingTargetName" xml:space="preserve">
+    <value>Match</value>
+  </data>
+  <data name="MaskingPatternName" xml:space="preserve">
+    <value>Pattern</value>
+  </data>
+  <data name="MaskingStyleName" xml:space="preserve">
+    <value>Mask</value>
+  </data>
+  <data name="RemoveMaskingRule" xml:space="preserve">
+    <value>Remove rule</value>
+  </data>
+  <data name="MaskTarget_Column" xml:space="preserve">
+    <value>Column</value>
+  </data>
+  <data name="MaskTarget_Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="MaskStyle_Full" xml:space="preserve">
+    <value>Full</value>
+  </data>
+  <data name="MaskStyle_LastFour" xml:space="preserve">
+    <value>Last 4 characters</value>
+  </data>
+  <data name="MaskStyle_Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="MaskStyle_Hash" xml:space="preserve">
+    <value>Stable hash</value>
+  </data>
+  <data name="MaskStyle_Null" xml:space="preserve">
+    <value>NULL</value>
+  </data>
   <data name="AppearanceExpander.Header" xml:space="preserve">
     <value>Appearance</value>
   </data>
@@ -812,6 +854,30 @@
   </data>
   <data name="GridSortedDescending" xml:space="preserve">
     <value>Sorted descending</value>
+  </data>
+  <data name="GridMaskedStatus" xml:space="preserve">
+    <value>Masked</value>
+  </data>
+  <data name="GridMaskedColumnTip" xml:space="preserve">
+    <value>Masked by a masking rule</value>
+  </data>
+  <data name="RevealMaskedCommand" xml:space="preserve">
+    <value>Reveal masked values...</value>
+  </data>
+  <data name="RevealMaskedHelloMessage" xml:space="preserve">
+    <value>Show masked values in this tab</value>
+  </data>
+  <data name="RevealMaskedTitle" xml:space="preserve">
+    <value>Reveal masked values?</value>
+  </data>
+  <data name="RevealMaskedMessage" xml:space="preserve">
+    <value>This tab shows the stored values until it closes. Exports and shared links stay masked.</value>
+  </data>
+  <data name="RevealMaskedButton" xml:space="preserve">
+    <value>Reveal</value>
+  </data>
+  <data name="StatusRevealOnNextRun" xml:space="preserve">
+    <value>Masked values show from the next run.</value>
   </data>
   <data name="SectionFavorites" xml:space="preserve">
     <value>Favorites</value>
@@ -977,6 +1043,12 @@
   </data>
   <data name="OptionsSummaryTimeout" xml:space="preserve">
     <value>Safe Mode: {0}, timeout {1} s</value>
+  </data>
+  <data name="OptionsSummaryMaskingOne" xml:space="preserve">
+    <value>{0}, 1 masking rule</value>
+  </data>
+  <data name="OptionsSummaryMaskingMany" xml:space="preserve">
+    <value>{0}, {1} masking rules</value>
   </data>
   <data name="AppearanceSummary" xml:space="preserve">
     <value>Color: {0}, group: {1}</value>
@@ -1887,6 +1959,12 @@ New fingerprint: {2}</value>
   <data name="EditCellReadOnly" xml:space="preserve">
     <value>This value cannot be edited here.</value>
   </data>
+  <data name="EditCellMasked" xml:space="preserve">
+    <value>This value is masked. Reveal masked values to edit it.</value>
+  </data>
+  <data name="EditLockMaskedKey" xml:space="preserve">
+    <value>Rows of {0} cannot be edited while its key is masked. Reveal masked values to edit them.</value>
+  </data>
   <data name="Error_edit_required" xml:space="preserve">
     <value>This column needs a value.</value>
   </data>
@@ -1979,6 +2057,12 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_edit_out_of_range" xml:space="preserve">
     <value>The rows changed since they were read. Refresh the table and edit again.</value>
+  </data>
+  <data name="Error_edit_masked_column" xml:space="preserve">
+    <value>A masked value cannot be edited. Reveal masked values to edit it.</value>
+  </data>
+  <data name="Error_edit_masked_key" xml:space="preserve">
+    <value>The key is masked, so no row can be named. Reveal masked values to edit.</value>
   </data>
   <data name="Error_build_no_row_identity" xml:space="preserve">
     <value>This table has no way to name a single row.</value>
@@ -2312,6 +2396,9 @@ New fingerprint: {2}</value>
   </data>
   <data name="ReloadDiscardFilter" xml:space="preserve">
     <value>Applying or clearing filters will reload data and discard all unsaved changes.</value>
+  </data>
+  <data name="ReloadDiscardReveal" xml:space="preserve">
+    <value>Revealing masked values will reload data and discard all unsaved changes.</value>
   </data>
   <data name="FilterPanel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Filter rows</value>
@@ -2798,6 +2885,93 @@ New fingerprint: {2}</value>
   </data>
   <data name="SharePreviewHeader" xml:space="preserve">
     <value>Rows that will be shared</value>
+  </data>
+  <data name="ShareMaskedColumnTip" xml:space="preserve">
+    <value>Masked in the shared link</value>
+  </data>
+  <data name="ShareNoColumns" xml:space="preserve">
+    <value>Keep or mask at least one column to share.</value>
+  </data>
+  <data name="ShareColumnsHeader" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="ShareColumnsSummary" xml:space="preserve">
+    <value>{0} columns masked, {1} removed.</value>
+  </data>
+  <data name="ShareColumnsDetected" xml:space="preserve">
+    <value>TablePro masked columns that look sensitive. Check them before sharing.</value>
+  </data>
+  <data name="ShareColumn_Keep" xml:space="preserve">
+    <value>Keep</value>
+  </data>
+  <data name="ShareColumn_Mask" xml:space="preserve">
+    <value>Mask</value>
+  </data>
+  <data name="ShareColumn_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="ShareColumnActionName" xml:space="preserve">
+    <value>Sharing for {0}</value>
+  </data>
+  <data name="ShareColumnStyleName" xml:space="preserve">
+    <value>Mask style for {0}</value>
+  </data>
+  <data name="ShareColumnRuled" xml:space="preserve">
+    <value>Masked by this connection's rules</value>
+  </data>
+  <data name="ShareColumnLooksLike" xml:space="preserve">
+    <value>Looks like: {0}</value>
+  </data>
+  <data name="ShareHideSqlSuggestion" xml:space="preserve">
+    <value>This query contains what looks like personal data ({0}). Turn on Hide SQL to keep the query private.</value>
+  </data>
+  <data name="SensitiveName_Email" xml:space="preserve">
+    <value>email address</value>
+  </data>
+  <data name="SensitiveName_Phone" xml:space="preserve">
+    <value>phone number</value>
+  </data>
+  <data name="SensitiveName_Secret" xml:space="preserve">
+    <value>password or secret</value>
+  </data>
+  <data name="SensitiveName_NationalId" xml:space="preserve">
+    <value>ID number</value>
+  </data>
+  <data name="SensitiveName_CardOrAccount" xml:space="preserve">
+    <value>card or account number</value>
+  </data>
+  <data name="SensitiveName_Address" xml:space="preserve">
+    <value>postal address</value>
+  </data>
+  <data name="SensitiveName_BirthDate" xml:space="preserve">
+    <value>date of birth</value>
+  </data>
+  <data name="SensitiveName_IpAddress" xml:space="preserve">
+    <value>IP address</value>
+  </data>
+  <data name="SensitiveName_PersonName" xml:space="preserve">
+    <value>person's name</value>
+  </data>
+  <data name="SensitiveValue_Card" xml:space="preserve">
+    <value>card number</value>
+  </data>
+  <data name="SensitiveValue_Iban" xml:space="preserve">
+    <value>IBAN</value>
+  </data>
+  <data name="SensitiveValue_Jwt" xml:space="preserve">
+    <value>JSON Web Token</value>
+  </data>
+  <data name="SensitiveValue_ApiKey" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="SensitiveValue_Email" xml:space="preserve">
+    <value>email address</value>
+  </data>
+  <data name="SensitiveValue_Phone" xml:space="preserve">
+    <value>phone number</value>
+  </data>
+  <data name="SensitiveValue_Ip" xml:space="preserve">
+    <value>IP address</value>
   </data>
   <data name="ShareCapNote" xml:space="preserve">
     <value>Shares the first {0:N0} of {1:N0} rows.</value>

@@ -19,6 +19,7 @@ internal sealed record FormResult(SavedConnection Saved, bool Connect, bool Chan
 public sealed partial class ConnectionFormWindow : Window
 {
     private static readonly string[] Colors = ["", "blue", "teal", "green", "yellow", "orange", "red", "pink", "purple", "slate"];
+    private static readonly MaskStyle[] MaskStyles = [MaskStyle.Full, MaskStyle.LastFour, MaskStyle.Email, MaskStyle.Hash, MaskStyle.Null];
 
     private readonly Workbench _workbench;
     // Native AOT trims OverlappedPresenter's wrapper, so AppWindow.Presenter reads back as its base type.
@@ -202,6 +203,7 @@ public sealed partial class ConnectionFormWindow : Window
         ClientKeyBox.Text = draft.ClientKey;
         SafeModeBox.SelectedIndex = (int)draft.SafeMode;
         TimeoutBox.Text = draft.Timeout;
+        FillMaskingRules(draft);
         ColorBox.SelectedIndex = Math.Max(0, Array.IndexOf(Colors, draft.Color ?? string.Empty));
         NameBox.PlaceholderText = draft.SuggestedName();
         ClearErrors();
@@ -487,9 +489,16 @@ public sealed partial class ConnectionFormWindow : Window
             : Strings.Get(SshSwitch.IsOn ? "SshOnSummary" : "SshOffSummary");
         TlsExpander.Description = (TlsModeBox.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
         var safeMode = (SafeModeBox.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
-        OptionsExpander.Description = string.IsNullOrWhiteSpace(TimeoutBox.Text)
+        var options = string.IsNullOrWhiteSpace(TimeoutBox.Text)
             ? Strings.Format("OptionsSummary", safeMode)
             : Strings.Format("OptionsSummaryTimeout", safeMode, TimeoutBox.Text.Trim());
+        var rules = _draft?.MaskingRules.Count ?? 0;
+        OptionsExpander.Description = rules switch
+        {
+            0 => options,
+            1 => Strings.Format("OptionsSummaryMaskingOne", options),
+            _ => Strings.Format("OptionsSummaryMaskingMany", options, rules),
+        };
         var color = (ColorBox.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
         var group = (GroupBox.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
         AppearanceExpander.Description = Strings.Format("AppearanceSummary", color, group);
@@ -514,6 +523,110 @@ public sealed partial class ConnectionFormWindow : Window
     }
 
     private void OnSshAuthChanged(object sender, SelectionChangedEventArgs e) => UpdateSsh();
+
+    // Each row edits its rule in the draft at once, so a save reads the rows in their order.
+    private void FillMaskingRules(ConnectionDraft draft)
+    {
+        MaskingRulesPanel.Children.Clear();
+        foreach (var rule in draft.MaskingRules)
+        {
+            MaskingRulesPanel.Children.Add(MaskingRow(draft, rule));
+        }
+
+        MaskingRulesPanel.Visibility = draft.MaskingRules.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private Grid MaskingRow(ConnectionDraft draft, MaskingRuleDraft rule)
+    {
+        var row = new Grid { ColumnSpacing = 8 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var pattern = new TextBox
+        {
+            Text = rule.Pattern,
+            MinWidth = 160,
+            PlaceholderText = Placeholder(rule.Target),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pattern, Strings.Get("MaskingPatternName"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pattern, "MaskingPattern");
+        pattern.TextChanged += (_, _) => rule.Pattern = pattern.Text;
+
+        var target = new ComboBox { MinWidth = 110 };
+        foreach (var each in new[] { MaskTarget.Column, MaskTarget.Type })
+        {
+            target.Items.Add(new ComboBoxItem { Content = Strings.Get("MaskTarget_" + each), Tag = each });
+        }
+
+        target.SelectedIndex = rule.Target == MaskTarget.Type ? 1 : 0;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(target, Strings.Get("MaskingTargetName"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(target, "MaskingTarget");
+        target.SelectionChanged += (_, _) =>
+        {
+            rule.Target = target.SelectedItem is ComboBoxItem { Tag: MaskTarget picked } ? picked : MaskTarget.Column;
+            pattern.PlaceholderText = Placeholder(rule.Target);
+        };
+
+        var style = new ComboBox { MinWidth = 150 };
+        foreach (var each in MaskStyles)
+        {
+            style.Items.Add(new ComboBoxItem { Content = Strings.Get("MaskStyle_" + each), Tag = each });
+        }
+
+        style.SelectedIndex = Math.Max(0, Array.IndexOf(MaskStyles, rule.Style));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(style, Strings.Get("MaskingStyleName"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(style, "MaskingStyle");
+        style.SelectionChanged += (_, _) =>
+            rule.Style = style.SelectedItem is ComboBoxItem { Tag: MaskStyle picked } ? picked : MaskStyle.Full;
+
+        var remove = new Button { Content = new SymbolIcon(Symbol.Delete) };
+        var removeName = Strings.Get("RemoveMaskingRule");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(remove, removeName);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(remove, "RemoveMaskingRule");
+        ToolTipService.SetToolTip(remove, removeName);
+        remove.Click += (_, _) =>
+        {
+            var index = MaskingRulesPanel.Children.IndexOf(row);
+            draft.MaskingRules.Remove(rule);
+            MaskingRulesPanel.Children.Remove(row);
+            MaskingRulesPanel.Visibility = draft.MaskingRules.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            UpdateSummaries();
+            // Focus stays in the list, on the row that took this one's place, else on Add rule.
+            var next = MaskingRulesPanel.Children.Count > 0
+                ? ((Grid)MaskingRulesPanel.Children[Math.Min(index, MaskingRulesPanel.Children.Count - 1)]).Children[1]
+                : AddMaskingRuleButton;
+            ((Control)next).Focus(FocusState.Programmatic);
+        };
+
+        row.Children.Add(target);
+        Grid.SetColumn(pattern, 1);
+        row.Children.Add(pattern);
+        Grid.SetColumn(style, 2);
+        row.Children.Add(style);
+        Grid.SetColumn(remove, 3);
+        row.Children.Add(remove);
+        return row;
+    }
+
+    private static string Placeholder(MaskTarget target) => target == MaskTarget.Type ? "uuid" : "*.email";
+
+    private void OnAddMaskingRule(object sender, RoutedEventArgs e)
+    {
+        if (_draft is not { } draft)
+        {
+            return;
+        }
+
+        var rule = new MaskingRuleDraft();
+        draft.MaskingRules.Add(rule);
+        var row = MaskingRow(draft, rule);
+        MaskingRulesPanel.Children.Add(row);
+        MaskingRulesPanel.Visibility = Visibility.Visible;
+        UpdateSummaries();
+        ((Control)row.Children[1]).Focus(FocusState.Programmatic);
+    }
 
     private void OnEngineSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) =>
         FillEngines(sender.Text);

@@ -33,6 +33,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ResultGrid.SizeColumnsToContent = true;
         ResultGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
         ResultGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
+        ResultGrid.MaskedStatus = Strings.Get("GridMaskedStatus");
+        ResultGrid.MaskedColumnTip = Strings.Get("GridMaskedColumnTip");
         ResultGrid.SortRequested += (_, sort) => SortRequested?.Invoke(this, sort);
     }
 
@@ -106,6 +108,35 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     }
 
     public void ShowError(CoreError failure) => ShowError(Strings.Error(failure));
+
+    // A sorted copy reads its set's rows, so masking the run's sets masks it too.
+    public bool Remask()
+    {
+        var changed = false;
+        foreach (var held in _held)
+        {
+            if (held.Set.Remask())
+            {
+                held.Result.Remasked(held.Set.GetColumns());
+                changed = true;
+            }
+        }
+
+        if (!changed || _picked is not { } picked)
+        {
+            return changed;
+        }
+
+        Columns = picked.Result.Columns;
+        var shown = ResultGrid.Data is EditedGridData edited ? edited.Data : ResultGrid.Data;
+        if (shown is ResultSetData data)
+        {
+            data.Remasked(Columns);
+        }
+
+        ResultGrid.CellsChanged();
+        return true;
+    }
 
     public void ShowError(string message)
     {

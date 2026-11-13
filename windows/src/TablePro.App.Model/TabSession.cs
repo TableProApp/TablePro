@@ -14,12 +14,14 @@ public interface ITabSession
     Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken);
 
     // Starts the page's read on a pooled connection and returns at once; the token stops the read as well.
+    // Rows arrive masked by the connection's rules unless revealMasked, which only a revealed tab passes.
     Task<TablePageRead> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
         TableFilter? filter,
         long limit,
         long offset,
+        bool revealMasked,
         CancellationToken cancellationToken);
 
     Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken);
@@ -35,6 +37,9 @@ public interface ITabSession
     Task<ObjectSource?> GetObjectDefinitionAsync(ObjectEntry entry, CancellationToken cancellationToken);
 
     RunGate GateRun(string sql);
+
+    // Every statement of the text only reads, by the engine's own rules; empty or unreadable text does not.
+    bool ReadsOnly(string sql);
 
     Range? StatementAt(string sql, int caret);
 
@@ -129,9 +134,11 @@ public sealed class CoreTabSession : ITabSession
         TableFilter? filter,
         long limit,
         long offset,
+        bool revealMasked,
         CancellationToken cancellationToken)
     {
-        var page = await _share.Session.ReadTablePageAsync(table, sort, filter, limit, offset, cancellationToken)
+        var page = await _share.Session
+            .ReadTablePageAsync(table, sort, filter, limit, offset, revealMasked, cancellationToken)
             .ConfigureAwait(true);
         return new TablePageRead(new CoreTabRun(page.Run), page.VisibleColumns, page.CanSeek, page.ViewSql);
     }
@@ -155,6 +162,8 @@ public sealed class CoreTabSession : ITabSession
         _share.Session.GetObjectDefinitionAsync(entry, cancellationToken);
 
     public RunGate GateRun(string sql) => _share.Session.GateRun(sql);
+
+    public bool ReadsOnly(string sql) => _share.Session.ReadsOnly(sql);
 
     public Range? StatementAt(string sql, int caret) => _share.Session.StatementAt(sql, caret);
 

@@ -221,6 +221,12 @@
                             <toolkit:SettingsCard x:Uid="ConnectionTimeoutCard">
                                 <TextBox x:Name="TimeoutBox" x:Uid="ConnectionTimeoutBox" MinWidth="120" InputScope="Number" />
                             </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="MaskingCard" x:Name="MaskingCard" ContentAlignment="Vertical" HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="MaskingCard">
+                                <StackPanel Spacing="8">
+                                    <StackPanel x:Name="MaskingRulesPanel" Spacing="8" AutomationProperties.AutomationId="MaskingRules" />
+                                    <Button x:Uid="AddMaskingRuleButton" x:Name="AddMaskingRuleButton" AutomationProperties.AutomationId="AddMaskingRuleButton" Click="OnAddMaskingRule" />
+                                </StackPanel>
+                            </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>
 

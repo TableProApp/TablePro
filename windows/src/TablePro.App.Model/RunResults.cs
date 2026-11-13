@@ -7,7 +7,7 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
 {
     public int SetIndex { get; } = setIndex;
 
-    public IReadOnlyList<ResultColumn> Columns { get; } = columns;
+    public IReadOnlyList<ResultColumn> Columns { get; private set; } = columns;
 
     public int Position { get; internal set; }
 
@@ -23,6 +23,13 @@ public sealed class RunResult(int setIndex, IReadOnlyList<ResultColumn> columns)
 
     // Set from ByteLimitReached alone, since a finish carries no limit.
     public long? SizeLimit { get; internal set; }
+
+    // After a remask the set's columns are read again, with the masks the saved rules gave them.
+    public void Remasked(IReadOnlyList<ResultColumn> read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        Columns = [.. read.Take(Columns.Count)];
+    }
 }
 
 // Each result set of a run in the order it started, labelled "Result {n} ({rows})" as the Linux app lists them.

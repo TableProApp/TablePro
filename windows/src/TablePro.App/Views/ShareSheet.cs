@@ -76,12 +76,26 @@ internal sealed class ShareSheet
     private readonly TextBlock _doneNote = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private readonly ComboBox _owners = new() { MinWidth = 200 };
     private readonly InfoBar _secrets = new() { IsClosable = false, Severity = InfoBarSeverity.Warning };
+    private readonly InfoBar _personalData = new() { IsClosable = false, Severity = InfoBarSeverity.Warning };
+    private readonly StackPanel _columnsSection = new() { Spacing = 8 };
+    private readonly StackPanel _columnsList = new() { Spacing = 8 };
+    private readonly TextBlock _columnsSummary = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _detectionNote = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+    private readonly InfoBar _noColumns = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
     private readonly InfoBar _error = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
     private readonly StackPanel _atCap = new() { Spacing = 12 };
     private readonly StackPanel _done = new() { Spacing = 12 };
     private readonly TextBox _url = new() { IsReadOnly = true };
     private readonly TextBlock _footer = new();
     private DataGridView? _previewGrid;
+
+    // The set the preview grid reads, which the core masked and cut as the link will be.
+    private ResultSet? _previewRows;
+    private int _previewGeneration;
+
+    // Read once per content: the rules' styles and what the detectors saw, then the user's choices.
+    private ShareColumns? _columns;
+    private SharedContent? _columnsFor;
     private SharedContent _content;
     private TableShareRead? _tableRead;
     private long _tableReadFor = -1;
@@ -143,6 +157,7 @@ internal sealed class ShareSheet
             workbench.AccountChanged -= sheet.OnAccountChanged;
             // The grid gives its cursor back here, before the result set can go.
             sheet._previewGrid?.SetData(null);
+            sheet._previewRows?.Dispose();
             sheet._tableRead?.Dispose();
         }
     }
@@ -179,6 +194,13 @@ internal sealed class ShareSheet
         if (_subject.Kind == ShareKind.Result)
         {
             _form.Children.Add(_hideSql);
+            var hide = new Button { Content = Strings.Get("ShareHideSql") };
+            AutomationProperties.SetAutomationId(hide, "ShareHideSqlButton");
+            hide.Click += (_, _) => _hideSql.IsChecked = true;
+            _personalData.ActionButton = hide;
+            _personalData.Visibility = Visibility.Collapsed;
+            AutomationProperties.SetAutomationId(_personalData, "ShareHideSqlSuggestion");
+            _form.Children.Add(_personalData);
             _noSql.Text = Strings.Get("ShareTableNoSql");
             AutomationProperties.SetAutomationId(_noSql, "ShareTableNoSql");
             _form.Children.Add(_noSql);
@@ -193,14 +215,41 @@ internal sealed class ShareSheet
                 Text = Strings.Get("SharePreviewHeader"),
                 Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
             });
-            _previewGrid = new DataGridView { SizeColumnsToContent = true };
+            _previewGrid = new DataGridView
+            {
+                SizeColumnsToContent = true,
+                MaskedStatus = Strings.Get("GridMaskedStatus"),
+                MaskedColumnTip = Strings.Get("ShareMaskedColumnTip"),
+            };
             AutomationProperties.SetName(_previewGrid, Strings.Get("SharePreviewHeader"));
             AutomationProperties.SetAutomationId(_previewGrid, "SharePreview");
             _preview.Children.Add(_previewGrid);
             _preview.Children.Add(_capNote);
             AutomationProperties.SetAutomationId(_columnsNote, "ShareColumnsNote");
             _preview.Children.Add(_columnsNote);
+            _noColumns.Message = Strings.Get("ShareNoColumns");
+            _noColumns.Visibility = Visibility.Collapsed;
+            AutomationProperties.SetAutomationId(_noColumns, "ShareNoColumns");
+            _preview.Children.Add(_noColumns);
             _form.Children.Add(_preview);
+
+            _columnsSection.Children.Add(new TextBlock
+            {
+                Text = Strings.Get("ShareColumnsHeader"),
+                Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            });
+            AutomationProperties.SetAutomationId(_columnsList, "ShareColumns");
+            AutomationProperties.SetName(_columnsList, Strings.Get("ShareColumnsHeader"));
+            _columnsSection.Children.Add(_columnsList);
+            _columnsSummary.Style = Caption;
+            AutomationProperties.SetAutomationId(_columnsSummary, "ShareColumnsSummary");
+            AutomationProperties.SetLiveSetting(_columnsSummary, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+            _columnsSection.Children.Add(_columnsSummary);
+            _detectionNote.Text = Strings.Get("ShareColumnsDetected");
+            _detectionNote.Style = Caption;
+            AutomationProperties.SetAutomationId(_detectionNote, "ShareColumnsDetected");
+            _columnsSection.Children.Add(_detectionNote);
+            _form.Children.Add(_columnsSection);
         }
 
         AutomationProperties.SetAutomationId(_secrets, "ShareSecrets");
@@ -486,6 +535,8 @@ internal sealed class ShareSheet
         }
 
         _previewGrid?.SetData(null);
+        _previewRows?.Dispose();
+        _previewRows = null;
         _tableRead?.Dispose();
         _tableRead = table;
         _tableReadFor = maxRows;
@@ -528,25 +579,225 @@ internal sealed class ShareSheet
             _hideSql.IsChecked = false;
         }
 
-        var visible = _content.Columns.Count;
-        if (_content.Rows is { } rows && _previewGrid is { Data: null } grid)
-        {
-            var count = (int)plan.PreviewRowCount;
-            grid.Height = (count + 1) * 32 + 2;
-            var shared = _content.Columns.Take(plan.SharedColumns(visible)).ToList();
-            grid.SetData(new FirstRows(new ResultSetData(rows, shared), count));
-        }
-
         _columnsNote.Text = Strings.Format("ShareColumnsNote", plan.Limits.MaxColumns);
-        _columnsNote.Visibility = plan.CutsColumns(visible) ? Visibility.Visible : Visibility.Collapsed;
-
         _capNote.Text = plan.IsTruncated
             ? Strings.Format("ShareCapNote", plan.SharedRows, plan.TotalRows)
             : string.Empty;
         _capNote.Visibility = plan.IsTruncated ? Visibility.Visible : Visibility.Collapsed;
-        ShowSecrets();
         Show(_form);
-        _dialog.IsPrimaryButtonEnabled = true;
+        if (_subject.Kind == ShareKind.Result && !ReferenceEquals(_columnsFor, _content))
+        {
+            _ = LoadColumnsAsync(plan);
+        }
+
+        ColumnsChanged();
+    }
+
+    // Every column starts as PLAN-MASKING 8.4 says, so a detected one leaves masked unless the user keeps it.
+    private async Task LoadColumnsAsync(SharePlan plan)
+    {
+        var content = _content;
+        _columnsFor = content;
+        _columns = null;
+        _columnsList.Children.Clear();
+        if (content.Rows is not { } rows)
+        {
+            return;
+        }
+
+        IReadOnlyList<ShareColumnMasking> masking;
+        try
+        {
+            masking = await rows.GetShareMaskingAsync(content.Columns.Count, plan.Limits.MaxRows).ConfigureAwait(true);
+        }
+        catch (TableProException exception)
+        {
+            if (!_closed && ReferenceEquals(_content, content))
+            {
+                _columnsFor = null;
+                ShowNotice(InfoBarSeverity.Error, Strings.Error(exception.Error), (Strings.Get("ShareRetry"), () => _ = LoadAsync()));
+            }
+
+            return;
+        }
+        catch (ObjectDisposedException)
+        {
+            if (!_closed)
+            {
+                ShowError(Strings.Get("ShareRowsGone"));
+            }
+
+            return;
+        }
+
+        if (_closed || !ReferenceEquals(_content, content))
+        {
+            return;
+        }
+
+        _columns = ShareColumns.From(masking);
+        foreach (var column in _columns.Columns)
+        {
+            _columnsList.Children.Add(ColumnRow(column));
+        }
+
+        ColumnsChanged();
+    }
+
+    private Grid ColumnRow(ShareColumn column)
+    {
+        var row = new Grid { ColumnSpacing = 8 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        label.Children.Add(new TextBlock { Text = column.Name, TextTrimming = TextTrimming.CharacterEllipsis });
+        if (Reason(column) is { } reason)
+        {
+            label.Children.Add(new TextBlock { Text = reason, Style = Caption, TextWrapping = TextWrapping.Wrap });
+        }
+
+        var action = new ComboBox { MinWidth = 110, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var each in new[] { ShareColumnAction.Keep, ShareColumnAction.Mask, ShareColumnAction.Remove })
+        {
+            action.Items.Add(new ComboBoxItem
+            {
+                Content = Strings.Get("ShareColumn_" + each),
+                Tag = each,
+                IsEnabled = each != ShareColumnAction.Keep || column.AllowsKeep,
+            });
+        }
+
+        action.SelectedIndex = (int)column.Action;
+        AutomationProperties.SetName(action, Strings.Format("ShareColumnActionName", column.Name));
+        var style = new ComboBox
+        {
+            MinWidth = 150,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = column.Action == ShareColumnAction.Mask ? Visibility.Visible : Visibility.Collapsed,
+        };
+        foreach (var each in column.AllowedStyles)
+        {
+            style.Items.Add(new ComboBoxItem { Content = Strings.Get("MaskStyle_" + each), Tag = each });
+        }
+
+        style.SelectedItem = style.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (MaskStyle)item.Tag == column.Style);
+        AutomationProperties.SetName(style, Strings.Format("ShareColumnStyleName", column.Name));
+        action.SelectionChanged += (_, _) =>
+        {
+            if (action.SelectedItem is ComboBoxItem { Tag: ShareColumnAction picked } && column.Choose(picked))
+            {
+                style.Visibility = picked == ShareColumnAction.Mask ? Visibility.Visible : Visibility.Collapsed;
+                ColumnsChanged();
+            }
+        };
+        style.SelectionChanged += (_, _) =>
+        {
+            if (style.SelectedItem is ComboBoxItem { Tag: MaskStyle picked } && column.Choose(picked))
+            {
+                ColumnsChanged();
+            }
+        };
+        row.Children.Add(label);
+        Grid.SetColumn(action, 1);
+        row.Children.Add(action);
+        Grid.SetColumn(style, 2);
+        row.Children.Add(style);
+        return row;
+    }
+
+    private static string? Reason(ShareColumn column)
+    {
+        if (column.Rule is not null)
+        {
+            return Strings.Get("ShareColumnRuled");
+        }
+
+        if (column.Suggestion is not { } suggestion)
+        {
+            return null;
+        }
+
+        var looks = SensitiveWords.KeyFor(suggestion.Reason) is { } key
+            ? Strings.Get(key)
+            : (suggestion.Reason as MaskReason.ColumnName)?.Term ?? string.Empty;
+        return Strings.Format("ShareColumnLooksLike", looks);
+    }
+
+    // The counts, the notes, the warnings, the preview and Share follow every choice.
+    private void ColumnsChanged()
+    {
+        if (_plan is not { } plan)
+        {
+            return;
+        }
+
+        var columns = _columns;
+        var kept = columns?.Kept ?? _content.Columns.Count;
+        _columnsNote.Visibility = plan.CutsColumns(kept) ? Visibility.Visible : Visibility.Collapsed;
+        _columnsSection.Visibility = columns is { Columns.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
+        _columnsSummary.Text = columns is null ? string.Empty : Strings.Format("ShareColumnsSummary", columns.Masked, columns.Removed);
+        _detectionNote.Visibility = columns is { HasDetections: true } ? Visibility.Visible : Visibility.Collapsed;
+        var noColumns = columns is { RemovesEveryColumn: true };
+        _noColumns.IsOpen = noColumns;
+        _noColumns.Visibility = noColumns ? Visibility.Visible : Visibility.Collapsed;
+        if (_previewGrid is { } grid)
+        {
+            grid.Visibility = noColumns ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        ShowSecrets();
+        UpdateShareButton();
+        _ = RefreshPreviewAsync();
+    }
+
+    // A result is shared only once its columns are read, so a detected column never leaves unmasked by a quick click.
+    private void UpdateShareButton() =>
+        _dialog.IsPrimaryButtonEnabled = _plan is { Stage: ShareStage.Form } && !_creating && !_created
+            && (_subject.Kind == ShareKind.Query || _columns is { RemovesEveryColumn: false });
+
+    // The core masks and cuts the preview as the link will be, so a Stable Hash shows as it will be sent.
+    private async Task RefreshPreviewAsync()
+    {
+        if (_previewGrid is not { } grid || _plan is not { } plan || _content.Rows is not { } rows
+            || _columns is not { RemovesEveryColumn: false } columns)
+        {
+            return;
+        }
+
+        var generation = ++_previewGeneration;
+        var count = (int)plan.PreviewRowCount;
+        ResultSet preview;
+        try
+        {
+            preview = await rows.GetSharePreviewAsync(_content.Columns.Count, count, columns.Choices).ConfigureAwait(true);
+        }
+        catch (TableProException exception)
+        {
+            if (!_closed && generation == _previewGeneration)
+            {
+                ShowError(Strings.Error(exception.Error));
+            }
+
+            return;
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        if (_closed || generation != _previewGeneration)
+        {
+            preview.Dispose();
+            return;
+        }
+
+        var previous = _previewRows;
+        _previewRows = preview;
+        grid.Height = (count + 1) * 32 + 2;
+        grid.SetData(new ResultSetData(preview, preview.GetColumns()));
+        // The grid gave the old set's cursor back in SetData.
+        previous?.Dispose();
     }
 
     // Warnings only: a share is never refused for them. Hidden SQL is not shown to anyone with the link.
@@ -569,8 +820,12 @@ internal sealed class ShareSheet
 
         if (_subject.Kind == ShareKind.Result)
         {
+            // A masked or removed column sends no value that could be a secret.
             var shared = _plan?.SharedColumns(_content.Columns.Count) ?? _content.Columns.Count;
-            var columns = ShareLinks.ScanColumns(_content.Columns.Take(shared).Select(column => column.Name));
+            var names = _columns is { } chosen
+                ? chosen.Columns.Where(column => column.Action == ShareColumnAction.Keep).Select(column => column.Name)
+                : _content.Columns.Take(shared).Select(column => column.Name);
+            var columns = ShareLinks.ScanColumns(names);
             if (columns.Count > 0)
             {
                 lines.Add(Strings.Format("ShareSecretColumns", string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator + " ", columns)));
@@ -580,6 +835,30 @@ internal sealed class ShareSheet
         _secrets.Message = string.Join("\n", lines);
         _secrets.IsOpen = lines.Count > 0;
         _secrets.Visibility = lines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowHideSqlSuggestion();
+    }
+
+    // Only while Hide SQL is off and there is SQL to hide; the notice's button turns it on.
+    private void ShowHideSqlSuggestion()
+    {
+        var kinds = _subject.Kind == ShareKind.Result && _plan is { OffersHideSql: true } && _hideSql.IsChecked != true
+            ? ShareLinks.ScanSqlForPersonalData(_content.Sql)
+                .Select(hit => hit.Kind)
+                .Distinct()
+                .Select(kind => Strings.Get(SensitiveWords.KeyFor(kind)))
+                .ToList()
+            : [];
+        var shown = kinds.Count > 0;
+        _personalData.Message = shown
+            ? Strings.Format("ShareHideSqlSuggestion", string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator + " ", kinds))
+            : string.Empty;
+        if (shown != _personalData.IsOpen)
+        {
+            // Narrator reads an InfoBar when it opens.
+            _personalData.IsOpen = shown;
+        }
+
+        _personalData.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async Task ShowAtCapAsync(TableProAccount account, SharePlan plan, int generation)
@@ -690,6 +969,12 @@ internal sealed class ShareSheet
             return;
         }
 
+        var choices = _columns?.Choices ?? [];
+        if (_subject.Kind == ShareKind.Result && (_columns is null || _columns.RemovesEveryColumn))
+        {
+            return;
+        }
+
         _creating = true;
         _dialog.IsPrimaryButtonEnabled = false;
         _owners.IsEnabled = false;
@@ -710,7 +995,7 @@ internal sealed class ShareSheet
             var account = await _workbench.GetAccountAsync().ConfigureAwait(true)
                 ?? throw new TableProException(new CoreError("account.signed_out", ["account.signed_out"], string.Empty, null, null));
             var created = await account.CreateShareAsync(
-                    request, content.Rows, content.Columns.Count, plan.Limits.MaxRows, content.ViewCount)
+                    request, content.Rows, content.Columns.Count, plan.Limits.MaxRows, content.ViewCount, choices)
                 .ConfigureAwait(true);
             _created = true;
             // The link exists, so it is copied even when the sheet closed while it was made.
@@ -750,7 +1035,7 @@ internal sealed class ShareSheet
             if (!_created && !_closed)
             {
                 _busy.Visibility = Visibility.Collapsed;
-                _dialog.IsPrimaryButtonEnabled = _plan is { Stage: ShareStage.Form };
+                UpdateShareButton();
             }
         }
     }
@@ -844,15 +1129,4 @@ internal sealed class ShareSheet
         }
     }
 
-    // The preview reads the result's own cells, only its first rows.
-    private sealed class FirstRows(IGridData rows, int count) : IGridData
-    {
-        public int RowCount => Math.Min(rows.RowCount, count);
-
-        public int ColumnCount => rows.ColumnCount;
-
-        public string GetColumnName(int column) => rows.GetColumnName(column);
-
-        public IGridReader OpenReader() => rows.OpenReader();
-    }
 }

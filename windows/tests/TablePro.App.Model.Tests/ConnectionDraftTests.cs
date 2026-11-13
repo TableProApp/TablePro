@@ -42,6 +42,7 @@ public sealed class ConnectionDraftTests
             LastOpened = DateTimeOffset.UnixEpoch,
             Tags = [Guid.NewGuid()],
             Ssh = before.Ssh! with { JumpHosts = ["jump"] },
+            MaskingRules = [new MaskingRule(null, "*.email", MaskTarget.Column, MaskStyle.Email)],
         };
 
         Assert.False(ConnectionDraft.ChangesConnect(before, renamed));
@@ -52,6 +53,47 @@ public sealed class ConnectionDraftTests
         var otherJump = before with { Ssh = before.Ssh! with { JumpHosts = ["other"] } };
         Assert.True(ConnectionDraft.ChangesConnect(before, otherJump));
         Assert.True(ConnectionDraft.ChangesConnect(before, before with { Ssh = null }));
+    }
+
+    [Fact]
+    public void MaskingRulesSaveInOrderTrimmedWithTheirIdsAndABlankPatternDropped()
+    {
+        var known = Guid.NewGuid();
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "app", "sqlite", string.Empty, 0, AbsolutePath("app.sqlite"), string.Empty, TlsSettings.Disabled)
+        {
+            MaskingRules =
+            [
+                new MaskingRule(known, "users.email", MaskTarget.Column, MaskStyle.Email),
+                new MaskingRule(Guid.NewGuid(), "uuid", MaskTarget.Type, MaskStyle.Hash),
+            ],
+        };
+        var draft = ConnectionDraft.From(saved, Sqlite);
+
+        draft.MaskingRules.RemoveAt(1);
+        draft.MaskingRules.Add(new MaskingRuleDraft { Pattern = "  *.ssn \n", Style = MaskStyle.LastFour });
+        draft.MaskingRules.Add(new MaskingRuleDraft { Pattern = "   " });
+        var rules = draft.ToConnection().MaskingRules;
+
+        Assert.Equal(
+            [
+                new MaskingRule(known, "users.email", MaskTarget.Column, MaskStyle.Email),
+                new MaskingRule(null, "*.ssn", MaskTarget.Column, MaskStyle.LastFour),
+            ],
+            rules);
+        Assert.Equal(MaskTarget.Column, new MaskingRuleDraft().Target);
+        Assert.Equal(MaskStyle.Full, new MaskingRuleDraft().Style);
+    }
+
+    [Fact]
+    public void ANetworkConnectionSavesItsMaskingRulesToo()
+    {
+        var draft = ConnectionDraft.New(Postgres);
+        draft.MaskingRules.Add(new MaskingRuleDraft { Pattern = "*.email", Style = MaskStyle.Email });
+
+        var rule = Assert.Single(draft.ToConnection().MaskingRules);
+
+        Assert.Equal(new MaskingRule(null, "*.email", MaskTarget.Column, MaskStyle.Email), rule);
     }
 
     [Fact]

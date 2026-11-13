@@ -39,5 +39,9 @@ public interface IResultsView
 
     void ShowError(CoreError failure);
 
+    // After the connection's masking rules were saved: masks the rows held, unless the run was revealed. True when
+    // a column of a set changed, so Columns and the grid show the new masks.
+    bool Remask();
+
     void Clear();
 }

@@ -998,6 +998,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         ChangesBar.IsOpen = true;
     }
 
+    internal void Remask()
+    {
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>())
+        {
+            (item.Content as ITabContent)?.Remask();
+        }
+    }
+
     internal void HideChangesOnConnect()
     {
         ChangesBar.IsOpen = false;
