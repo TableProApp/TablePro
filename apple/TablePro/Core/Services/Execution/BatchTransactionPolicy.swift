@@ -82,7 +82,7 @@ internal enum BatchTransactionPolicy {
         case "START":
             return cursor.next()?.word == "TRANSACTION"
         case "BT":
-            return family == .teradata
+            return grammar.contains(.transactionShortForms)
         case "XA":
             let following = cursor.next()?.word
             return following == "START" || following == "BEGIN"
