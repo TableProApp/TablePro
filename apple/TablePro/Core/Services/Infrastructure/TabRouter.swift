@@ -495,6 +495,26 @@ internal final class TabRouter {
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
     }
 
+    // False when no connection is up to open it in; the caller holds it until one connects.
+    @discardableResult
+    internal func openSharedQuery(_ query: SharedQueryOpen) -> Bool {
+        let target = Self.sqlFileConnectionId(
+            shownConnectionId: WindowManager.shared.frontmostHost()?.workspaces.selectedConnectionId,
+            lastActiveConnectionId: DatabaseManager.shared.lastActiveSessionId,
+            activeSessionIds: Set(DatabaseManager.shared.activeSessions.keys)
+        )
+        guard let target else { return false }
+        WindowManager.shared.openTab(payload: EditorTabPayload(
+            connectionId: target,
+            tabType: .query,
+            initialQuery: query.sql,
+            forcesNewTab: true,
+            tabTitle: query.title
+        ))
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+        return true
+    }
+
     /// The connection on screen, so the script lands where the user is looking. The last one to
     /// connect is only a fallback for when no window shows a connected one: switching to a
     /// connection that is already up never updates it.

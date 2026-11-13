@@ -1,0 +1,110 @@
+//
+//  SharedLinkOpenerTests.swift
+//  TableProTests
+//
+
+import Foundation
+@testable import TablePro
+import Testing
+
+@MainActor
+struct SharedLinkOpenerTests {
+    private static let token = "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7cDe0fGh3"
+
+    private final class Recorder {
+        var prompts: [SharedLinkOpener.PasswordPrompt] = []
+        var answers: [String?] = []
+        var opened: [SharedQueryOpen] = []
+        var messages: [String] = []
+    }
+
+    private func makeOpener(_ service: FakeShareService, _ recorder: Recorder) -> SharedLinkOpener {
+        SharedLinkOpener(
+            service: { service },
+            askPassword: { prompt in
+                recorder.prompts.append(prompt)
+                return recorder.answers.isEmpty ? nil : recorder.answers.removeFirst()
+            },
+            openQuery: { recorder.opened.append($0) },
+            tell: { recorder.messages.append($0) }
+        )
+    }
+
+    @Test("A shared query opens its SQL in a new tab named after the share")
+    func opensSQL() async {
+        let service = FakeShareService()
+        service.fetchResults = [.success(SharedQuery(kind: .query, title: "Top users", sql: "SELECT 1"))]
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: Self.token)
+
+        #expect(recorder.opened == [SharedQueryOpen(sql: "SELECT 1", title: "Top users")])
+        #expect(recorder.messages.isEmpty)
+        #expect(service.fetchedPasswords == [nil])
+    }
+
+    @Test("An untitled share opens under the editor's own tab name")
+    func untitledShare() async {
+        let service = FakeShareService()
+        service.fetchResults = [.success(SharedQuery(kind: .query, title: "  ", sql: "SELECT 1"))]
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: Self.token)
+        #expect(recorder.opened == [SharedQueryOpen(sql: "SELECT 1", title: nil)])
+    }
+
+    @Test("A password-protected share asks for the password and retries a wrong one")
+    func passwordFlow() async {
+        let service = FakeShareService()
+        service.fetchResults = [
+            .failure(.passwordRequired),
+            .failure(.passwordWrong),
+            .success(SharedQuery(kind: .result, title: "Report", sql: "SELECT 2"))
+        ]
+        let recorder = Recorder()
+        recorder.answers = ["wrong", "right"]
+        await makeOpener(service, recorder).open(token: Self.token)
+
+        #expect(recorder.prompts == [.required, .wrong])
+        #expect(service.fetchedPasswords == [nil, "wrong", "right"])
+        #expect(recorder.opened.map(\.sql) == ["SELECT 2"])
+    }
+
+    @Test("Cancelling the password prompt opens nothing and says nothing")
+    func cancelledPassword() async {
+        let service = FakeShareService()
+        service.fetchResults = [.failure(.passwordRequired)]
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: Self.token)
+
+        #expect(recorder.opened.isEmpty)
+        #expect(recorder.messages.isEmpty)
+    }
+
+    @Test("A result share with hidden SQL has nothing to open")
+    func hiddenSQL() async {
+        let service = FakeShareService()
+        service.fetchResults = [.success(SharedQuery(kind: .result, title: "Report", sql: nil))]
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: Self.token)
+
+        #expect(recorder.opened.isEmpty)
+        #expect(recorder.messages == [String(localized: "This shared result hides its SQL, so there is nothing to open.")])
+    }
+
+    @Test("A link that no longer resolves says so")
+    func gone() async {
+        let service = FakeShareService()
+        service.fetchResults = [.failure(.notFound)]
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: Self.token)
+        #expect(recorder.messages == [String(localized: "This shared link is no longer available.")])
+    }
+
+    @Test("A malformed token never reaches the server")
+    func malformedToken() async {
+        let service = FakeShareService()
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: "nope")
+        #expect(service.fetchedPasswords.isEmpty)
+        #expect(recorder.opened.isEmpty)
+    }
+}

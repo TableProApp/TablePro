@@ -43,6 +43,7 @@ internal final class WelcomeRouter: ObservableObject {
     @Published private(set) var pendingImport: ConnectionBundle?
     @Published private(set) var pendingConnectionShare: URL?
     @Published private(set) var pendingSQLFiles: [URL] = []
+    @Published private(set) var pendingSharedQueries: [SharedQueryOpen] = []
     @Published private(set) var pendingError: PendingConnectionError?
     @Published private(set) var pendingPluginInstall: DatabaseConnection?
 
@@ -53,6 +54,7 @@ internal final class WelcomeRouter: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.drainPendingSQLFiles()
+                self?.drainPendingSharedQueries()
             }
     }
 
@@ -60,6 +62,12 @@ internal final class WelcomeRouter: ObservableObject {
         let urls = consumePendingSQLFiles()
         guard !urls.isEmpty else { return }
         AppCommands.shared.openSQLFiles.send(urls)
+    }
+
+    private func drainPendingSharedQueries() {
+        guard !pendingSharedQueries.isEmpty else { return }
+        let queries = consumePendingSharedQueries()
+        pendingSharedQueries = queries.filter { !TabRouter.shared.openSharedQuery($0) }
     }
 
     internal func route(_ request: WelcomeRequest) {
@@ -95,6 +103,18 @@ internal final class WelcomeRouter: ObservableObject {
 
     internal func enqueueSQLFile(_ url: URL) {
         pendingSQLFiles.append(url)
+    }
+
+    // A shared link opened with no connection up waits for the next one to connect.
+    internal func enqueueSharedQuery(_ query: SharedQueryOpen) {
+        pendingSharedQueries.append(query)
+        showWelcomeWindow()
+    }
+
+    internal func consumePendingSharedQueries() -> [SharedQueryOpen] {
+        let value = pendingSharedQueries
+        pendingSharedQueries.removeAll()
+        return value
     }
 
     internal func consumePendingImport() -> ConnectionBundle? {
