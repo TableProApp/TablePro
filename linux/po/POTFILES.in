@@ -99,7 +99,6 @@ crates/app/src/services/grid/edit_parse.rs
 crates/app/src/services/grid/edit_policy.rs
 crates/app/src/services/grid/find_matches.rs
 crates/app/src/services/grid/grid_column.rs
-crates/app/src/services/grid/grid_masks.rs
 crates/app/src/services/grid/grid_row_id.rs
 crates/app/src/services/grid/hex_dump.rs
 crates/app/src/services/grid/highlight.rs
@@ -232,7 +231,6 @@ crates/app/src/ui/browse_tab/table_filter.rs
 crates/app/src/ui/browse_tab/tests/default_sort.rs
 crates/app/src/ui/browse_tab/tests/json.rs
 crates/app/src/ui/browse_tab/tests/load.rs
-crates/app/src/ui/browse_tab/tests/masking.rs
 crates/app/src/ui/browse_tab/tests/mod.rs
 crates/app/src/ui/browse_tab/tests/references.rs
 crates/app/src/ui/browse_tab/tests/rows.rs
@@ -254,7 +252,6 @@ crates/app/src/ui/connect_dialog/database_file_row.rs
 crates/app/src/ui/connect_dialog/form_errors.rs
 crates/app/src/ui/connect_dialog/form_field.rs
 crates/app/src/ui/connect_dialog/imp.rs
-crates/app/src/ui/connect_dialog/masking_section.rs
 crates/app/src/ui/connect_dialog/mod.rs
 crates/app/src/ui/connect_dialog/pem_validation.rs
 crates/app/src/ui/connect_dialog/row_problem.rs
@@ -302,7 +299,6 @@ crates/app/src/ui/data_grid/highlight_dialog.rs
 crates/app/src/ui/data_grid/imp.rs
 crates/app/src/ui/data_grid/keys.rs
 crates/app/src/ui/data_grid/layout_binding.rs
-crates/app/src/ui/data_grid/masking.rs
 crates/app/src/ui/data_grid/mod.rs
 crates/app/src/ui/data_grid/pinned_numbers.rs
 crates/app/src/ui/data_grid/pointer.rs
@@ -334,7 +330,6 @@ crates/app/src/ui/data_grid/tests/columns.rs
 crates/app/src/ui/data_grid/tests/gutter.rs
 crates/app/src/ui/data_grid/tests/keyboard.rs
 crates/app/src/ui/data_grid/tests/layout.rs
-crates/app/src/ui/data_grid/tests/masking.rs
 crates/app/src/ui/data_grid/tests/menus.rs
 crates/app/src/ui/data_grid/tests/mod.rs
 crates/app/src/ui/data_grid/tests/selection.rs
@@ -452,7 +447,6 @@ crates/app/src/ui/export/export_query.rs
 crates/app/src/ui/export/export_scope.rs
 crates/app/src/ui/export/export_sink_parts.rs
 crates/app/src/ui/export/export_source.rs
-crates/app/src/ui/export/live_masking_sink.rs
 crates/app/src/ui/export/mod.rs
 crates/app/src/ui/export/replace_file_writer/mod.rs
 crates/app/src/ui/export/replace_file_writer/tests.rs
@@ -504,7 +498,6 @@ crates/app/src/ui/key_tab/key_summary.rs
 crates/app/src/ui/key_tab/mod.rs
 crates/app/src/ui/key_tab/tests.rs
 crates/app/src/ui/library_drag.rs
-crates/app/src/ui/masking_text.rs
 crates/app/src/ui/menu_label.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/name_entry.rs
@@ -587,6 +580,7 @@ crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/share_dialog/form.rs
 crates/app/src/ui/share_dialog/imp.rs
+crates/app/src/ui/share_dialog/masking_text.rs
 crates/app/src/ui/share_dialog/mod.rs
 crates/app/src/ui/share_dialog/pages.rs
 crates/app/src/ui/share_dialog/preview.rs

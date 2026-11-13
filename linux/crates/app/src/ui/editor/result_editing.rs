@@ -18,7 +18,7 @@ use super::run_scope::ScopedText;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};
 use crate::services::grid::{
-    EditPolicy, EditRefusal, GridColumn, GridMasks, ResultRefusal, RowKeyBuilder, edit_policy, saving_policy,
+    EditPolicy, EditRefusal, GridColumn, ResultRefusal, RowKeyBuilder, edit_policy, saving_policy,
 };
 use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -326,13 +326,8 @@ impl SqlEditor {
                     Err(lock) => ResultEdit::Locked(lock.into()),
                     Ok(target) => {
                         let target = edit_target(&target.table, &result.columns, &target.positions, catalog);
-                        match key_masked(&target, &result.masks) {
-                            true => ResultEdit::Locked(ResultRefusal::MaskedKey),
-                            false => {
-                                result.rows = typed_rows(&target, &result.columns, std::mem::take(&mut result.rows));
-                                ResultEdit::Editable(Rc::new(target))
-                            }
-                        }
+                        result.rows = typed_rows(&target, &result.columns, std::mem::take(&mut result.rows));
+                        ResultEdit::Editable(Rc::new(target))
                     }
                 },
             }
@@ -360,7 +355,6 @@ impl SqlEditor {
         };
         Some(ResultGrid {
             columns: target.grid_columns.clone(),
-            masks: view.masks.clone(),
             rows: editable_rows(&target, view),
             rules: Some(EditRules {
                 identity: target.identity.clone(),
@@ -409,7 +403,7 @@ impl SqlEditor {
         }
     }
 
-    pub(super) fn refresh_result_page(&self, index: usize) {
+    fn refresh_result_page(&self, index: usize) {
         let Ok(page) = u32::try_from(index) else {
             return;
         };
@@ -418,28 +412,6 @@ impl SqlEditor {
             results.rebuild_page(page);
         } else {
             results.forget_pages(|kept| kept == page);
-        }
-    }
-
-    // A key column a saved rule now masks names no row, so the result stops editing; its pending changes keep their keys.
-    pub(super) fn lock_masked_key(&self, index: usize) {
-        let imp = self.imp();
-        let masked = {
-            let states = imp.editing.states.borrow();
-            let Some(ResultEdit::Editable(target)) = states.get(&index) else {
-                return;
-            };
-            let log = imp.log.borrow();
-            let Some(result) = log.as_ref().and_then(|log| log.result(index)) else {
-                return;
-            };
-            key_masked(target, &result.masks)
-        };
-        if masked {
-            imp.editing
-                .states
-                .borrow_mut()
-                .insert(index, ResultEdit::Locked(ResultRefusal::MaskedKey));
         }
     }
 
@@ -725,11 +697,6 @@ fn typed_rows(target: &EditTarget, read: &[ResultColumn], rows: Vec<Arc<[Value]>
                 .collect()
         })
         .collect()
-}
-
-fn key_masked(target: &EditTarget, masks: &GridMasks) -> bool {
-    (0..target.save_columns.len())
-        .any(|index| target.traced[index] && target.save_columns[index].primary_key && masks.is_masked(index))
 }
 
 // A key value the column's type cannot take, such as a wall-clock TIMESTAMP, shows as read but names no row.

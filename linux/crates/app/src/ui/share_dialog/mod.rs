@@ -1,5 +1,6 @@
 mod form;
 mod imp;
+mod masking_text;
 mod pages;
 mod preview;
 mod share_columns;
@@ -351,19 +352,6 @@ impl ShareDialog {
     fn create(&self) {
         let imp = self.imp();
         if imp.busy.get() || !imp.sendable.get() {
-            return;
-        }
-        // A rule saved since the sheet summarized: the masks are read again, and Create waits for the new summary.
-        if let Some(subject) = self.current_subject()
-            && let Some(rows) = subject.rows.as_ref().filter(|rows| rows.rules_moved())
-        {
-            let mut rows = rows.clone();
-            rows.follow_rules();
-            imp.subject.replace(Some(Arc::new(ShareSubject {
-                rows: Some(rows),
-                ..(*subject).clone()
-            })));
-            self.show(SheetPage::Form);
             return;
         }
         let (Some(deps), Some(account), Some(subject)) = (imp.deps.get(), self.account(), self.current_subject())

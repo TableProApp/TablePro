@@ -221,13 +221,6 @@ fn column_section(sorts: bool) -> gio::Menu {
             item(&gettext("Col_umns…"), "grid.columns"),
         ]),
     );
-    column.append_section(
-        None,
-        &section([hidden_while_disabled(
-            &gettext("Reveal Mas_ked Values…"),
-            "grid.reveal-masked",
-        )]),
-    );
     let menu = gio::Menu::new();
     menu.append_submenu(Some(&gettext("Colu_mn")), &column);
     menu
@@ -235,7 +228,7 @@ fn column_section(sorts: bool) -> gio::Menu {
 
 /// A header's own menu, on a secondary click. It names its column, since
 /// GTK opens it without telling the grid.
-pub fn header_menu(column: &GridColumn, sorting: GridSorting, reveals: bool) -> gio::Menu {
+pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
     let index = (column.index as u32).to_variant();
     let at = |label: String, action: &str| {
         let item = gio::MenuItem::new(Some(&label), None);
@@ -263,12 +256,6 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting, reveals: bool) -> 
             at(gettext("Copy Column _Name"), "grid.copy-column-name-at"),
         ]),
     );
-    if reveals {
-        menu.append_section(
-            None,
-            &section([at(gettext("Reveal Mas_ked Values…"), "grid.reveal-masked-at")]),
-        );
-    }
     menu.append_section(None, &section([item(&gettext("Col_umns…"), "grid.columns")]));
     menu
 }

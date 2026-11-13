@@ -83,7 +83,6 @@ mod tests {
             vec![EntryKind::Failed {
                 message: "boom".to_owned(),
                 error_char: None,
-                server: None,
             }],
             Verdict::Failed,
         );

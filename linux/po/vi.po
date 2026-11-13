@@ -13668,30 +13668,6 @@ msgstr "Không có trường nào khớp"
 msgid "Sidebar Width"
 msgstr "Độ rộng thanh bên"
 
-msgid "Data Masking"
-msgstr "Che giấu dữ liệu"
-
-msgid "Hides matching values in the grid, copies, exports, shared links, the AI assistant and MCP. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions."
-msgstr "Ẩn các giá trị khớp trong lưới, bản sao chép, bản xuất, liên kết chia sẻ, trợ lý AI và MCP. Mẫu là table.column hoặc column, dùng * làm ký tự đại diện, ví dụ *.email. Bộ lọc và sắp xếp vẫn chạy trên giá trị đã lưu, nên che giấu không thay cho quyền trong cơ sở dữ liệu."
-
-msgid "Applies To"
-msgstr "Áp dụng cho"
-
-msgid "Column, such as *.email"
-msgstr "Cột, ví dụ *.email"
-
-msgid "Type, such as uuid"
-msgstr "Kiểu, ví dụ uuid"
-
-msgid "Style"
-msgstr "Kiểu che"
-
-msgid "New Rule"
-msgstr "Quy tắc mới"
-
-msgid "{target} · {style}"
-msgstr "{target} · {style}"
-
 msgid "Full"
 msgstr "Toàn bộ"
 
@@ -13704,44 +13680,8 @@ msgstr "Email"
 msgid "Stable Hash"
 msgstr "Băm ổn định"
 
-msgid "{column} (masked)"
-msgstr "{column} (đã che)"
-
-msgid "Reveal Mas_ked Values…"
-msgstr "Hiện giá trị đã _che…"
-
-msgid "Reveal Masked Values?"
-msgstr "Hiện giá trị đã che?"
-
-msgid "This tab shows the values the connection's masking rules hide. Exports, shares and the assistant stay masked."
-msgstr "Thẻ này sẽ hiện các giá trị mà quy tắc che giấu của kết nối ẩn đi. Bản xuất, liên kết chia sẻ và trợ lý vẫn được che."
-
-msgid "Reveal"
-msgstr "Hiện"
-
-msgid "This column is masked, so its values can't be edited here"
-msgstr "Cột này đã được che nên không thể sửa giá trị ở đây"
-
-msgid "The table's key is masked, so its rows can't be edited here"
-msgstr "Khóa của bảng đã được che nên không thể sửa các dòng ở đây"
-
-msgid "The table's key is masked, so these rows can't be edited"
-msgstr "Khóa của bảng đã được che nên không thể sửa các dòng này"
-
-msgid "Rows with masked values can't be duplicated"
-msgstr "Không thể nhân bản các dòng có giá trị đã che"
-
-msgid "Run the query again to see its masked values."
-msgstr "Chạy lại truy vấn để xem các giá trị đã che."
-
 msgid "Keep"
 msgstr "Giữ"
-
-msgid "A masking rule hides this column"
-msgstr "Một quy tắc che giấu ẩn cột này"
-
-msgid "Masked because TablePro cannot tell which table column this comes from."
-msgstr "Được che vì TablePro không biết cột này lấy từ cột nào của bảng."
 
 msgid "The name looks like personal data"
 msgstr "Tên cột giống dữ liệu cá nhân"
@@ -13800,9 +13740,3 @@ msgstr[0] "Đã che {n} cột, đã gỡ {m} cột."
 
 msgid "Mask as {style}"
 msgstr "Che kiểu {style}"
-
-msgid "Remove the new rule"
-msgstr "Gỡ quy tắc mới"
-
-msgid "Remove rule {pattern}"
-msgstr "Gỡ quy tắc {pattern}"

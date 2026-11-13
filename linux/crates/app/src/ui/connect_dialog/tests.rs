@@ -1168,9 +1168,6 @@ fn edit_dialog_prefills_and_saves_same_id() {
     let log = SignalLog::connect(&harness.dialog, "saved", |values| {
         values[1].get::<String>().expect("an id")
     });
-    let reconnects = SignalLog::connect(&harness.dialog, "saved", |values| {
-        values[2].get::<bool>().expect("whether the session reconnects")
-    });
     let closed = SignalLog::connect(&harness.dialog, "closed", |_| ());
     imp.name_row.set_text("Shop (EU)");
     imp.host_row.set_text("db2.example.com");
@@ -1182,7 +1179,6 @@ fn edit_dialog_prefills_and_saves_same_id() {
 
     assert_eq!(closed.count(), 1, "the landed save left the dialog open");
     assert_eq!(log.take(), [saved.id.to_string()]);
-    assert_eq!(reconnects.take(), [true], "a new host reached the open session");
     let stored = harness.store.load_blocking().expect("the list");
     assert_eq!(stored.len(), 1, "the edit added an entry");
     assert_eq!(stored[0].id, saved.id);
@@ -1197,108 +1193,6 @@ fn edit_dialog_prefills_and_saves_same_id() {
         "the empty password row lost the saved password"
     );
     assert!(harness.connector.calls().is_empty(), "Save connected");
-}
-
-#[gtk4::test]
-fn an_edit_opens_on_its_masking_rules_and_saves_them_without_blank_patterns() {
-    use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
-
-    let rule = MaskingRule::new("*.email", MaskingTarget::Column, MaskingStyle::Email);
-    let saved = SavedConnection {
-        masking_rules: vec![rule.clone()],
-        ..shop()
-    };
-    let harness = editing(&saved, FakeConnector::new([]));
-    let _window = present(&harness.dialog);
-    let imp = harness.dialog.imp();
-    {
-        let rows = imp.masking_rules.borrow();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].expander().title(), "*.email");
-        assert_eq!(rows[0].pattern().title(), "Column, such as *.email");
-        assert_eq!(rows[0].style().selected(), 2, "Email is the third style");
-    }
-    imp.add_masking_rule_row.emit_by_name::<()>("activated", &[]);
-    imp.add_masking_rule_row.emit_by_name::<()>("activated", &[]);
-    {
-        let rows = imp.masking_rules.borrow();
-        assert_eq!(rows.len(), 3);
-        assert_eq!(rows[1].expander().title(), "New Rule");
-        rows[1].target().set_selected(1);
-        rows[1].pattern().set_text("  uuid ");
-        rows[1].style().set_selected(3);
-        assert_eq!(rows[1].pattern().title(), "Type, such as uuid");
-        assert_eq!(rows[1].expander().title(), "uuid");
-        rows[2].pattern().set_text("   ");
-    }
-    let log = SignalLog::connect(&harness.dialog, "saved", |values| {
-        values[2].get::<bool>().expect("whether the session reconnects")
-    });
-
-    without_criticals(|| {
-        imp.connect_button.emit_clicked();
-        wait_until(WAIT, || log.count() == 1).expect("the save");
-    });
-
-    assert_eq!(log.take(), [false], "a masking-only edit asked for a reconnect");
-    let stored = harness.store.load_blocking().expect("the list");
-    let rules = &stored[0].masking_rules;
-    assert_eq!(rules.len(), 2, "a blank pattern was kept: {rules:?}");
-    assert_eq!(rules[0], rule);
-    assert_eq!(
-        (rules[1].pattern.as_str(), rules[1].target, rules[1].style),
-        ("uuid", MaskingTarget::Type, MaskingStyle::Hash)
-    );
-}
-
-#[gtk4::test]
-fn a_removed_rule_is_not_saved() {
-    use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
-
-    let saved = SavedConnection {
-        masking_rules: vec![MaskingRule::new("ssn", MaskingTarget::Column, MaskingStyle::LastFour)],
-        ..shop()
-    };
-    let harness = editing(&saved, FakeConnector::new([]));
-    let _window = present(&harness.dialog);
-    let imp = harness.dialog.imp();
-    imp.add_masking_rule_row.emit_by_name::<()>("activated", &[]);
-    crate::test_support::drain_main_context();
-    assert_eq!(
-        crate::test_support::unlabelled_icon_buttons(&*imp.masking_group),
-        Vec::<String>::new()
-    );
-    let remove = imp.masking_rules.borrow()[0].remove().clone();
-    assert_eq!(remove.tooltip_text().as_deref(), Some("Remove rule ssn"));
-    assert_eq!(
-        imp.masking_rules.borrow()[1].remove().tooltip_text().as_deref(),
-        Some("Remove the new rule")
-    );
-    imp.masking_rules.borrow()[1].pattern().set_text("uuid");
-    assert_eq!(
-        imp.masking_rules.borrow()[1].remove().tooltip_text().as_deref(),
-        Some("Remove rule uuid")
-    );
-    if crate::test_support::test_backend_records_properties() {
-        assert!(gtk4::test_accessible_has_property(
-            &remove,
-            gtk4::AccessibleProperty::Label
-        ));
-    }
-
-    remove.emit_clicked();
-
-    assert_eq!(imp.masking_rules.borrow().len(), 1);
-    assert_eq!(
-        harness
-            .dialog
-            .form()
-            .masking_rules
-            .iter()
-            .map(|rule| rule.pattern.as_str())
-            .collect::<Vec<_>>(),
-        ["uuid"]
-    );
 }
 
 #[gtk4::test]

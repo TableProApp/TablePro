@@ -376,10 +376,6 @@ fn result(rows: usize) -> ShareSubject {
                 .map(|id| RowSnapshot::new(vec![Value::Text(id.to_string()), Value::Null].into(), Vec::new()))
                 .collect(),
             extent: tablepro_core::export::ResultExtent::complete(rows as u64),
-            shown: Default::default(),
-            rules: Default::default(),
-            untraced: Vec::new(),
-            live: None,
         }),
         ..query()
     }
@@ -749,10 +745,6 @@ fn wide_result(columns: usize) -> ShareSubject {
                 Vec::new(),
             )],
             extent: tablepro_core::export::ResultExtent::complete(1),
-            shown: Default::default(),
-            rules: Default::default(),
-            untraced: Vec::new(),
-            live: None,
         }),
         ..query()
     }
@@ -913,8 +905,6 @@ fn a_table_view_is_read_up_to_the_plans_rows_before_the_form_shows() {
 }
 
 fn people() -> ShareSubject {
-    use tablepro_core::masking::{ColumnMasks, MaskingStyle};
-
     let columns: Arc<[ResultColumn]> = ["id", "email", "notes"]
         .into_iter()
         .map(|name| ResultColumn::new(name, ColumnType::untyped_text("text")))
@@ -929,10 +919,6 @@ fn people() -> ShareSubject {
                 Vec::new(),
             )],
             extent: tablepro_core::export::ResultExtent::complete(1),
-            shown: ColumnMasks::none(),
-            rules: ColumnMasks::new(vec![None, Some(MaskingStyle::Email), None]),
-            untraced: Vec::new(),
-            live: None,
         }),
         ..query()
     }
@@ -979,7 +965,7 @@ fn has_label(harness: &Harness, text: &str) -> bool {
 }
 
 #[gtk4::test]
-fn the_columns_list_masks_ruled_and_detected_columns_and_the_preview_shows_what_is_sent() {
+fn the_columns_list_masks_detected_columns_and_the_preview_shows_what_is_sent() {
     use tablepro_core::masking::{MaskingStyle, ShareChoice};
 
     let harness = Harness::new(Cloud::free(0), people(), true);
@@ -987,10 +973,18 @@ fn the_columns_list_masks_ruled_and_detected_columns_and_the_preview_shows_what_
 
     let email = column_row(&harness, "email");
     assert_eq!(chosen(&email), "Mask as Email");
+    assert_eq!(email.subtitle().as_deref(), Some("The name looks like personal data"));
     assert_eq!(
         offered(&email),
-        ["Mask as Full", "Mask as Email", "Mask as NULL", "Remove"],
-        "a ruled column could be kept or shown more"
+        [
+            "Keep",
+            "Mask as Full",
+            "Mask as Last 4 Characters",
+            "Mask as Email",
+            "Mask as Stable Hash",
+            "Mask as NULL",
+            "Remove"
+        ]
     );
     let notes = column_row(&harness, "notes");
     assert_eq!(notes.subtitle().as_deref(), Some("Values look like phone numbers"));
@@ -1076,10 +1070,6 @@ fn a_result_whose_first_row_cannot_go_says_so_and_cannot_be_created() {
                 Vec::new(),
             )],
             extent: tablepro_core::export::ResultExtent::complete(1),
-            shown: Default::default(),
-            rules: Default::default(),
-            untraced: Vec::new(),
-            live: None,
         }),
         ..query()
     };
@@ -1121,54 +1111,4 @@ fn a_form_built_again_for_the_same_rows_reads_what_the_detectors_and_the_summary
         "the same rows were summarized again"
     );
     assert_eq!(chosen(&column_row(&harness, "notes")), "Mask as Last 4 Characters");
-}
-
-#[gtk4::test]
-fn a_rule_saved_after_the_summary_is_read_again_before_the_link_is_made() {
-    use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget, SharedMaskingPolicy};
-
-    use crate::services::grid::{MaskSource, OutwardRules};
-    use crate::services::share_subject::LiveRules;
-
-    let rules = SharedMaskingPolicy::default();
-    let mut subject = people();
-    let rows = subject.rows.as_mut().expect("rows");
-    rows.rules = Default::default();
-    rows.live = Some(LiveRules {
-        outward: OutwardRules::new(
-            rules.clone(),
-            Arc::new(
-                |policy: &MaskingPolicy, columns: &[ResultColumn], _: Option<&tablepro_core::meta::TableRef>| {
-                    MaskSource::Table("users".to_owned()).masks(policy, columns, false)
-                },
-            ),
-        ),
-        columns: rows.columns.to_vec(),
-        table: None,
-        indices: (0..rows.columns.len()).collect(),
-        generation: rules.generation(),
-    });
-    let harness = Harness::new(Cloud::free(0), subject, true);
-    harness.wait_for(|page| *page == SheetPage::Form);
-    assert!(offered(&column_row(&harness, "notes")).contains(&"Keep".to_owned()));
-
-    rules.set(MaskingPolicy::new([MaskingRule::new(
-        "notes",
-        MaskingTarget::Column,
-        MaskingStyle::Full,
-    )]));
-    harness.dialog.create();
-    harness.wait_for(|page| *page == SheetPage::Form);
-
-    assert_eq!(harness.posts(), 0, "the link went out under the old rules");
-    let notes = column_row(&harness, "notes");
-    assert!(
-        !offered(&notes).contains(&"Keep".to_owned()),
-        "the saved rule was not read"
-    );
-    assert!(harness.chrome().create.is_sensitive());
-
-    harness.dialog.create();
-    harness.wait_for(|page| matches!(page, SheetPage::Created { .. }));
-    assert_eq!(harness.posts(), 1);
 }

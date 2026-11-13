@@ -19,7 +19,6 @@ use super::pending_changes_bar::PendingChangesRequest;
 use super::{BrowseTab, BrowseTabInput, GridInput, PAGE_SIZE_OPTIONS, PagingInput, SaveInput, loading_description};
 use crate::i18n::gettext;
 use crate::persistence::ColumnLayoutStore;
-use crate::services::grid::OutwardRules;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::data_grid::{DataGrid, DialectSource, GridConfig, GridSorting, KeysHandle, LayoutBinding};
 use crate::ui::filter_strip::FilterStrip;
@@ -178,7 +177,6 @@ pub(super) struct GridInit {
 /// `grid` actions reach the tab's buttons through the tab.
 pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
     let session = init.session;
-    let outward = session.upgrade().map(|session| OutwardRules::table(session.masking()));
     let dialect: DialectSource = Rc::new(move || session.upgrade()?.current_dialect());
     let layout = init.state_key.map(|state_key| LayoutBinding {
         store: init.layouts,
@@ -201,8 +199,6 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
         find: false,
         filter_by_value: true,
         share: true,
-        reveal: true,
-        outward,
         tasks: init.tasks,
         label: init.label,
     });

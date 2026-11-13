@@ -1,14 +1,12 @@
-use std::cell::RefCell;
 use std::sync::Arc;
 
 use gtk4::prelude::*;
-use tablepro_core::masking::MaskingPolicy;
 use tablepro_session::Session;
 use tablepro_session::runtime::WatchForwarder;
 
 use super::{WorkspaceInput, WorkspaceSender, sidebar};
-use crate::application::AppServices;
 use crate::runtime::DeliverInput;
+use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::handler_guard::HandlerGuard;
 
 /// Feed the reconnect banner, the sidebar and the titles, and stop with
@@ -20,15 +18,10 @@ pub(super) struct SessionWatches {
     _link: WatchForwarder,
     /// A rename, an icon or a policy picked while the session is open.
     _saved: HandlerGuard,
-    // The masking rules the rows on screen were last masked by.
-    masking: RefCell<MaskingPolicy>,
 }
 
 impl SessionWatches {
-    pub(super) fn new(session: &Arc<Session>, services: &AppServices, input: &WorkspaceSender) -> Self {
-        // Every save of the connection sets its rules on the session before it returns (core ADR 0028).
-        session.follow_saved_masking(services.storage.connections());
-        let saved = &services.saved_connections;
+    pub(super) fn new(session: &Arc<Session>, saved: &SavedConnectionList, input: &WorkspaceSender) -> Self {
         let health_input = input.clone();
         let health = WatchForwarder::new(
             session.health(),
@@ -65,14 +58,6 @@ impl SessionWatches {
             _reconnect: reconnect,
             _link: link,
             _saved: HandlerGuard::new(&model, handler),
-            masking: RefCell::new(session.masking_policy()),
         }
-    }
-
-    // False when the rows on screen were masked by these rules already.
-    pub(super) fn rules_changed(&self, now: MaskingPolicy) -> bool {
-        let changed = *self.masking.borrow() != now;
-        self.masking.replace(now);
-        changed
     }
 }

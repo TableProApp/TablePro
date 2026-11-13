@@ -17,13 +17,12 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyWindow};
-use tablepro_core::masking::{ColumnMasks, SharedMaskingPolicy};
 use tablepro_core::meta::KeyKind;
 use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
 
-use crate::services::grid::{MaskSource, OutwardRules, grid_columns};
+use crate::services::grid::grid_columns;
 use crate::ui::data_grid::{DataGrid, GridConfig, GridRequest, GridSorting, RowData};
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportSource};
 use crate::ui::tab_load::{ContentLoad, ContentPage, FirstLoad, LoadFailure, LoadPresentation, StaleBanner};
@@ -158,7 +157,7 @@ impl KeyTab {
         retry.add_css_class("pill");
         error.set_child(Some(&retry));
         stack.add_named(&error, Some(ERROR));
-        let grid = key_grid(&key, settings, tasks.clone(), session.masking());
+        let grid = key_grid(&key, settings, tasks.clone());
         root.insert_action_group("grid", Some(&grid.actions()));
         let (content, parts) = content_page(&grid);
         stack.add_named(&content, Some(CONTENT));
@@ -228,19 +227,6 @@ impl KeyTab {
         &self.inner.key
     }
 
-    // The connection's masking rules changed: the entries on screen take every new mask.
-    pub(crate) fn masking_changed(&self) {
-        let columns: Vec<ResultColumn> = self
-            .inner
-            .grid
-            .grid_columns()
-            .iter()
-            .map(crate::services::grid::GridColumn::result_column)
-            .collect();
-        let masks = MaskSource::Key.masks(&self.inner.session.masking_policy(), &columns, false);
-        self.inner.grid.remask(masks);
-    }
-
     pub(crate) fn is_loading(&self) -> bool {
         self.inner.state.borrow().tab_loading
     }
@@ -275,15 +261,7 @@ impl KeyTab {
 
 /// A key's entries are read a window at a time, so they sort and search
 /// on the client; nothing in them is edited.
-fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks, rules: SharedMaskingPolicy) -> DataGrid {
-    let key_rules = Some(OutwardRules::new(
-        rules,
-        Arc::new(
-            |policy: &tablepro_core::masking::MaskingPolicy,
-             columns: &[ResultColumn],
-             _: Option<&tablepro_core::meta::TableRef>| MaskSource::Key.masks(policy, columns, false),
-        ),
-    ));
+fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
     let grid = DataGrid::new(GridConfig {
         columns: Arc::from([]),
         sorting: GridSorting::Client,
@@ -298,8 +276,6 @@ fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks, rules: SharedMas
         find: true,
         filter_by_value: false,
         share: false,
-        reveal: false,
-        outward: key_rules,
         tasks,
         label: key.to_owned(),
     });
@@ -573,14 +549,12 @@ impl Inner {
         let cut = (page.kind == KeyKind::String && page.rows.truncated)
             .then(|| (cell_bytes(page.rows.cell(0, 0)), page.length.unwrap_or_default()));
         let mut seen = matches!(page.kind, KeyKind::Hash | KeyKind::Set).then(HashSet::new);
-        let masks = MaskSource::Key.masks(&self.session.masking_policy(), &columns, false);
-        let rows = new_rows(page.rows.rows, seen.as_mut(), &columns, &masks.shown);
+        let rows = new_rows(page.rows.rows, seen.as_mut());
         let count = rows.len() as u64;
         if !shows_columns(&self.grid, &columns) {
             self.grid
                 .set_columns(grid_columns(&columns, &[], |_| true), GridSorting::Client, None);
         }
-        self.grid.set_masks(masks);
         self.grid.replace_rows(rows, 0);
         self.body.set_visible_child_name(ROWS);
         self.state.borrow_mut().shown = Some(Shown {
@@ -620,8 +594,7 @@ impl Inner {
             let Some(shown) = state.shown.as_mut() else {
                 return false;
             };
-            let masks = self.grid.masks().shown;
-            let rows = new_rows(page.rows.rows, shown.seen.as_mut(), &page.rows.columns, &masks);
+            let rows = new_rows(page.rows.rows, shown.seen.as_mut());
             shown.rows += rows.len() as u64;
             shown.length = page.length;
             shown.next = page.next;
@@ -695,7 +668,6 @@ impl Inner {
             | GridRequest::FollowReference(_)
             | GridRequest::FilterByValue(_)
             | GridRequest::Share(_)
-            | GridRequest::RevealMasked
             | GridRequest::PendingChanged => {}
         }
     }
@@ -749,21 +721,13 @@ impl Inner {
 
 /// The grid's rows for a window, leaving out an entry `seen` already
 /// holds. A list keeps every element, equal ones too.
-fn new_rows(
-    rows: Vec<Vec<tablepro_core::Value>>,
-    mut seen: Option<&mut HashSet<Vec<u8>>>,
-    columns: &[ResultColumn],
-    masks: &ColumnMasks,
-) -> Vec<RowData> {
+fn new_rows(rows: Vec<Vec<tablepro_core::Value>>, mut seen: Option<&mut HashSet<Vec<u8>>>) -> Vec<RowData> {
     rows.into_iter()
         .filter(|cells| match (seen.as_deref_mut(), entry_name(cells.first())) {
             (Some(seen), Some(name)) => seen.insert(name),
             _ => true,
         })
-        .map(|mut cells| {
-            masks.apply(columns, &mut cells);
-            RowData::result(cells.into())
-        })
+        .map(|cells| RowData::result(cells.into()))
         .collect()
 }
 

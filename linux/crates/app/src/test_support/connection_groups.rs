@@ -83,7 +83,6 @@ pub(crate) fn saved_connection(name: &str) -> SavedConnection {
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
-        masking_rules: Vec::new(),
         auth_mode: tablepro_core::AuthMode::Password,
         ssh: None,
         last_opened_at: None,

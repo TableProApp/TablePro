@@ -6,11 +6,10 @@ use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::{ResultExtent, Snapshot, SnapshotTooLarge, build_snapshot};
 use tablepro_core::masking::detect::{MaskSuggestion, PersonalDataHit, scan_sql_personal_data, suggest_masks};
-use tablepro_core::masking::{ColumnMasks, ShareChoice, SharePlan, ShareSummary};
-use tablepro_core::meta::TableRef;
+use tablepro_core::masking::{ShareChoice, SharePlan, ShareSummary};
 use tablepro_core::secret_scan::{self, SecretHitKind};
 
-use crate::services::grid::{OutwardRules, RowSnapshot};
+use crate::services::grid::RowSnapshot;
 use crate::services::share_table::TableShare;
 
 #[derive(Debug, Clone)]
@@ -30,33 +29,6 @@ pub struct SharedRows {
     pub rows: Vec<RowSnapshot>,
     // What the result knows of its rows, which the link names as the whole.
     pub extent: ResultExtent,
-    // How the held cells are masked already, by column, and what the connection's rules mask each with on the way out.
-    pub shown: ColumnMasks,
-    pub rules: ColumnMasks,
-    // The columns the rules mask whole only because nothing traced them to a table column.
-    pub untraced: Vec<usize>,
-    // The live rules `rules` were read from, which Create reads again.
-    pub live: Option<LiveRules>,
-}
-
-// The session's rules a share's masks came from, and how to work them out again for its columns.
-#[derive(Clone)]
-pub struct LiveRules {
-    pub outward: OutwardRules,
-    // The source's columns and table, and where each shared column sits among those columns.
-    pub columns: Vec<ResultColumn>,
-    pub table: Option<TableRef>,
-    pub indices: Vec<usize>,
-    pub generation: u64,
-}
-
-impl std::fmt::Debug for LiveRules {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LiveRules")
-            .field("indices", &self.indices)
-            .field("generation", &self.generation)
-            .finish_non_exhaustive()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -156,33 +128,10 @@ impl ShareSubject {
 }
 
 impl SharedRows {
-    pub(crate) fn rules_moved(&self) -> bool {
-        self.live
-            .as_ref()
-            .is_some_and(|live| live.outward.rules.generation() != live.generation)
-    }
-
-    // A rule saved since the masks were read: they are read again, and true says the sheet must summarize anew.
-    pub(crate) fn follow_rules(&mut self) -> bool {
-        let Some(live) = self.live.as_mut() else {
-            return false;
-        };
-        if live.outward.rules.generation() == live.generation {
-            return false;
-        }
-        let (generation, fresh) = live.outward.now(&live.columns, live.table.as_ref());
-        self.rules = fresh.external_at(&live.indices);
-        self.untraced = fresh.untraced_at(&live.indices);
-        live.generation = generation;
-        true
-    }
-
-    // The rules always apply, then the sheet's choices; at most the server's columns are kept.
+    // The sheet's choices; at most the server's columns are kept.
     pub(crate) fn plan(&self, choices: &[ShareChoice], max_columns: u64) -> SharePlan {
         SharePlan::new(
             self.columns.len(),
-            &self.rules,
-            &self.shown,
             choices,
             usize::try_from(max_columns).unwrap_or(usize::MAX),
         )
@@ -225,11 +174,11 @@ impl SharedRows {
         plan.row(&self.columns, |index| row.value(index).clone())
     }
 
-    // What the detectors see in the rows the sheet as it starts would send; a column a rule masks gets nothing.
+    // What the detectors see in the rows the sheet as it starts would send.
     pub(crate) fn suggestions(&self, max_rows: u64, max_columns: u64) -> Vec<Option<MaskSuggestion>> {
         let sent = self.summary(&self.plan(&[], max_columns), max_rows).rows_sent;
         let rows: Vec<Vec<Value>> = self.rows.iter().take(sent).map(RowSnapshot::to_values).collect();
-        suggest_masks(&self.columns, &rows, &self.rules)
+        suggest_masks(&self.columns, &rows)
     }
 
     pub(crate) fn total(&self) -> u64 {
@@ -300,10 +249,6 @@ mod tests {
                 total,
                 cut: total.is_some_and(|total| total > count as u64),
             },
-            shown: ColumnMasks::none(),
-            rules: ColumnMasks::none(),
-            untraced: Vec::new(),
-            live: None,
         }
     }
 
@@ -437,7 +382,7 @@ mod tests {
         ResultColumn::new(name, ColumnType::untyped_text("text"))
     }
 
-    fn people(shown: ColumnMasks) -> SharedRows {
+    fn people() -> SharedRows {
         let text = |value: &str| Value::Text(value.to_owned());
         SharedRows {
             columns: vec![text_column("id"), text_column("email"), text_column("note")].into(),
@@ -446,31 +391,26 @@ mod tests {
                 Vec::new(),
             )],
             extent: ResultExtent::complete(1),
-            shown,
-            rules: ColumnMasks::new(vec![None, Some(MaskingStyle::Email), None]),
-            untraced: Vec::new(),
-            live: None,
         }
     }
 
     #[test]
-    fn a_rule_masks_the_link_also_when_the_tab_revealed_its_values() {
-        let shared = people(ColumnMasks::none());
+    fn kept_columns_go_as_held() {
+        let shared = people();
 
         let snapshot = shared.snapshot(10, &shared.plan(&[], 100)).expect("a snapshot");
 
         let cells: Vec<&str> = snapshot.rows[0].iter().map(|cell| cell.get()).collect();
-        assert_eq!(cells, [r#""1""#, r#""a•••@example.com""#, r#""+1 555 0100""#]);
-        let masked: Vec<Option<MaskingStyle>> = snapshot.columns.iter().map(|column| column.masked).collect();
-        assert_eq!(masked, [None, Some(MaskingStyle::Email), None]);
+        assert_eq!(cells, [r#""1""#, r#""ann@example.com""#, r#""+1 555 0100""#]);
+        assert!(snapshot.columns.iter().all(|column| column.masked.is_none()));
     }
 
     #[test]
     fn removed_columns_are_never_sent_and_masked_ones_say_how() {
-        let shared = people(ColumnMasks::none());
+        let shared = people();
         let choices = [
             ShareChoice::Remove,
-            ShareChoice::Keep,
+            ShareChoice::Mask(MaskingStyle::Email),
             ShareChoice::Mask(MaskingStyle::LastFour),
         ];
 
@@ -488,16 +428,16 @@ mod tests {
     }
 
     #[test]
-    fn detection_skips_ruled_columns_and_reads_the_values() {
-        let shared = people(ColumnMasks::none());
+    fn detection_reads_the_names_and_the_values() {
+        let shared = people();
 
-        let suggested = shared.suggestions(1_000, 100);
+        let styles: Vec<Option<MaskingStyle>> = shared
+            .suggestions(1_000, 100)
+            .iter()
+            .map(|suggestion| suggestion.map(|suggestion| suggestion.style))
+            .collect();
 
-        assert_eq!(suggested[1], None, "a ruled column was suggested");
-        assert_eq!(
-            suggested[2].map(|suggestion| suggestion.style),
-            Some(MaskingStyle::LastFour)
-        );
+        assert_eq!(styles, [None, Some(MaskingStyle::Email), Some(MaskingStyle::LastFour)]);
     }
 
     #[test]

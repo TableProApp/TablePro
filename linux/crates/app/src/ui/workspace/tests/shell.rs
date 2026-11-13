@@ -654,53 +654,6 @@ fn export_results_offers_the_rows_a_table_tab_shows() {
 }
 
 #[gtk4::test]
-fn a_rule_saved_to_the_store_masks_the_rows_an_open_table_tab_shows() {
-    use tablepro_core::Value;
-    use tablepro_core::masking::{MaskingRule, MaskingStyle, MaskingTarget};
-
-    use crate::ui::browse_tab::BrowseTab;
-    let test = TestWindow::connected_with("MaskingSaved", |script| *script = served_table());
-    let page = test
-        .workspace()
-        .with_model(|model| {
-            model.open_tab(super::super::tab_spec::TabSpec::Table {
-                table: tablepro_core::meta::TableRef::new(Some("public".to_owned()), "customers"),
-                page: super::super::tab_spec::TablePage::first(1_000),
-                filter: crate::ui::browse_tab::TableFilter::Remembered,
-            })
-        })
-        .flatten()
-        .expect("a table tab");
-    let tab = page.child().downcast::<BrowseTab>().expect("a browse tab");
-    wait_until(WAIT, || tab.grid().row_count() > 0).expect("the tab's rows");
-    let name = || {
-        tab.grid()
-            .store()
-            .rows()
-            .find(|row| row.draft_id().is_none())
-            .and_then(|row| row.cells())
-            .map(|cells| cells[1].clone())
-    };
-    assert_eq!(name(), Some(Value::Text("customer 0".to_owned())));
-
-    test.services
-        .storage
-        .connections()
-        .upsert_blocking(tablepro_storage::SavedConnection {
-            masking_rules: vec![MaskingRule::new(
-                "customers.name",
-                MaskingTarget::Column,
-                MaskingStyle::Full,
-            )],
-            ..test.saved.clone()
-        })
-        .expect("the save");
-
-    wait_until(WAIT, || name() == Some(Value::Text("••••".to_owned()))).expect("the saved rule on the open tab");
-    assert!(tab.grid().masks().is_masked(1));
-}
-
-#[gtk4::test]
 fn export_results_says_when_the_tab_in_front_has_no_rows() {
     let test = TestWindow::connected("ExportResultsNothing");
     WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");

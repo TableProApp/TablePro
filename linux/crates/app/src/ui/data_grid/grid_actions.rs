@@ -77,7 +77,6 @@ pub fn install(grid: &DataGrid) {
     copy::install_actions(grid);
     references::install_actions(grid);
     find_bar::install_actions(grid);
-    super::masking::install_actions(grid);
 }
 
 fn install_column_actions(grid: &DataGrid) {
@@ -213,7 +212,6 @@ impl DataGrid {
         self.edit().refresh_actions(self, target.as_ref());
         copy::refresh_actions(self, target.as_ref());
         references::refresh_actions(self, target.as_ref());
-        super::masking::refresh_actions(self, column);
         self.refresh_summary();
         find_bar::refresh_actions(self);
     }

@@ -10,12 +10,10 @@ pub enum GridRequest {
     /// Read the rows again in this order, `None` in the server's own.
     Sort(Option<(usize, bool)>),
     Export(ExportSource),
-    Share(Box<SharedRows>),
+    Share(SharedRows),
     FollowReference(RowReference),
     FilterByValue(FilterRule),
     Toast(String),
     /// The tracker's pending changes changed: count, undo or redo.
     PendingChanged,
-    // The user confirmed showing the tab's masked values.
-    RevealMasked,
 }

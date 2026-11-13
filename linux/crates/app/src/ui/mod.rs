@@ -36,7 +36,6 @@ mod import_from_app;
 pub(crate) mod import_preview;
 mod key_tab;
 mod library_drag;
-pub(crate) mod masking_text;
 mod menu_label;
 mod name_entry;
 mod picker;

@@ -36,7 +36,6 @@ impl BrowseModel {
                 self.sync_pending_chrome(self.tracker.pending_count(), fx);
                 self.sync_selection();
             }
-            GridRequest::RevealMasked => self.reveal_masked(fx),
         }
     }
 

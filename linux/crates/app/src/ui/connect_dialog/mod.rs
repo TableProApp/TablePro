@@ -10,7 +10,6 @@ mod database_file_row;
 mod form_errors;
 mod form_field;
 mod imp;
-mod masking_section;
 mod pem_validation;
 mod row_problem;
 #[cfg(test)]
@@ -209,7 +208,6 @@ impl ConnectDialog {
         };
         dialog.show_driver(index, &form);
         dialog.show_appearance(&tags, form.icon, &form.tags);
-        dialog.show_masking(&form.masking_rules);
         dialog.connect_handlers();
         dialog.recheck_files();
         dialog.refresh();
@@ -226,18 +224,15 @@ impl ConnectDialog {
         )
     }
 
-    // An Edit's Save wrote the connection with id `id`; `reconnect` when an open session takes the edit only on its
-    // next connect.
-    pub fn connect_saved<F: Fn(&Self, Uuid, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    /// An Edit's Save wrote the connection with id `id`.
+    pub fn connect_saved<F: Fn(&Self, Uuid) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "saved",
             false,
-            glib::closure_local!(
-                move |dialog: &Self, id: String, reconnect: bool| match Uuid::parse_str(&id) {
-                    Ok(id) => f(dialog, id, reconnect),
-                    Err(error) => tracing::warn!(%error, "the connect dialog saved an id it cannot read"),
-                }
-            ),
+            glib::closure_local!(move |dialog: &Self, id: String| match Uuid::parse_str(&id) {
+                Ok(id) => f(dialog, id),
+                Err(error) => tracing::warn!(%error, "the connect dialog saved an id it cannot read"),
+            }),
         )
     }
 
@@ -665,7 +660,6 @@ impl ConnectDialog {
                 .query_timeout_row
                 .enables_expansion()
                 .then(|| imp.query_timeout_seconds_row.value() as u32),
-            masking_rules: self.masking_rules(),
             // A socket is on this computer, so the hidden SSH section is not sent.
             ssh: (!caps.is_file_based() && !self.socket_host())
                 .then(|| imp.ssh_section.form_state())
@@ -1166,7 +1160,6 @@ impl ConnectDialog {
             return;
         };
         let (connection, changes) = self.edited(original, &checked);
-        let reconnect = connect_form::needs_reconnect(original, &connection, &changes);
         self.stop_test();
         imp.saving.set(true);
         self.refresh();
@@ -1185,7 +1178,7 @@ impl ConnectDialog {
                 dialog.refresh();
                 match outcome {
                     Ok(Ok(saved)) => {
-                        dialog.emit_by_name::<()>("saved", &[&saved.id.to_string(), &reconnect]);
+                        dialog.emit_by_name::<()>("saved", &[&saved.id.to_string()]);
                         if !dialog.imp().has_closed.get() {
                             dialog.close();
                         }
@@ -1334,7 +1327,6 @@ fn connect_request(
         workspace_settings: WorkspaceSettings::workspace(form.safe_mode.blocks_writes())
             .with_editor_timeout(QueryTimeout::from_seconds(form.query_timeout_secs)),
         safe_mode: form.safe_mode,
-        masking: connection.masking_policy(),
     }
 }
 

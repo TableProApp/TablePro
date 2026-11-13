@@ -28,7 +28,7 @@ pub(crate) use self::deletion::BULK_DELETE_CONFIRM_THRESHOLD;
 use super::selection::Resolved;
 use super::{DataGrid, EditRules, GridCell, GridRequest, GridRow, PinnedRow, RowData, TrackedValues};
 use crate::i18n::gettext;
-use crate::services::grid::{CommitResult, EditPolicy, EditRefusal, EditStart, GridMasks};
+use crate::services::grid::{CommitResult, EditPolicy, EditRefusal, EditStart};
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
 
@@ -36,7 +36,6 @@ use crate::services::tracker_edit::TrackerEdit;
 pub struct EditController {
     grid: glib::WeakRef<DataGrid>,
     tracked: RefCell<TrackedValues>,
-    masks: RefCell<GridMasks>,
     policy: Cell<Option<EditPolicy>>,
     open: RefCell<Option<Rc<OpenEdit>>>,
     edits_opened: Cell<u64>,
@@ -73,20 +72,12 @@ impl EditController {
             }
             _ => (TrackedValues::untracked().locked_by(result_lock), None),
         };
-        let masks = self.masks.borrow();
-        let tracked = tracked.masked_by(masks.shown.clone(), masks.masked_key);
         self.tracked.replace(tracked);
         self.policy.set(policy);
     }
 
     pub fn tracked(&self) -> TrackedValues {
         self.tracked.borrow().clone()
-    }
-
-    pub fn set_masks(&self, masks: &GridMasks) {
-        let tracked = self.tracked().masked_by(masks.shown.clone(), masks.masked_key);
-        self.tracked.replace(tracked);
-        self.masks.replace(masks.clone());
     }
 
     /// The tracker keeps drafts bottom up, and the newest shows on top.
@@ -171,11 +162,7 @@ impl EditController {
     }
 
     fn policy(&self) -> Option<EditPolicy> {
-        let mut policy = self.policy.get()?;
-        if policy.duplicate.is_ok() && !self.masks.borrow().shown.is_empty() {
-            policy.duplicate = Err(EditRefusal::Masked);
-        }
-        Some(policy)
+        self.policy.get()
     }
 
     fn apply_edit(&self, grid: &DataGrid, edit: TrackerEdit) {

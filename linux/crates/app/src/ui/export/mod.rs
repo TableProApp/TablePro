@@ -22,7 +22,6 @@ mod export_query;
 mod export_scope;
 mod export_sink_parts;
 mod export_source;
-mod live_masking_sink;
 mod replace_file_writer;
 
 pub(crate) use document_sink::DocumentSink;

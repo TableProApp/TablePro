@@ -61,7 +61,6 @@ mod tests {
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
-            masking_rules: Vec::new(),
             auth_mode: AuthMode::Password,
             ssh: Some(SavedSshConfig {
                 host: "bastion".to_owned(),

@@ -52,7 +52,6 @@ fn cell_menu_counterpart(header_action: &str) -> &str {
         "grid.move-column-left-at" => "grid.move-column-left",
         "grid.move-column-right-at" => "grid.move-column-right",
         "grid.copy-column-name-at" => "grid.copy-column-name",
-        "grid.reveal-masked-at" => "grid.reveal-masked",
         other => other,
     }
 }
@@ -427,7 +426,7 @@ fn a_grid_whose_host_shares_offers_share_result_with_the_columns_on_screen_in_th
     shown.activate("share");
 
     let shared = shown.take_requests().into_iter().find_map(|request| match request {
-        crate::ui::data_grid::GridRequest::Share(rows) => Some(*rows),
+        crate::ui::data_grid::GridRequest::Share(rows) => Some(rows),
         _ => None,
     });
     let shared = shared.expect("the grid asked its host to share");

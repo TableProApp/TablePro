@@ -1,7 +1,6 @@
 mod default_sort;
 mod json;
 mod load;
-mod masking;
 mod references;
 mod rows;
 mod save;
