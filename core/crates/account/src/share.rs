@@ -174,7 +174,7 @@ pub struct SharedLink {
     pub title: String,
     pub note: String,
     pub dialect: String,
-    // None when the owner hid it.
+    // None when the owner hid it, or a result was shared with no SQL.
     pub sql: Option<String>,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -341,7 +341,7 @@ impl From<types::PublicShare> for SharedLink {
             title: shared.title,
             note: shared.note,
             dialect: shared.dialect,
-            sql: shared.sql,
+            sql: shared.sql.filter(|sql| !sql.trim().is_empty()),
             created_at: shared.created_at,
             expires_at: shared.expires_at,
             allow_download: shared.allow_download,
@@ -476,5 +476,20 @@ mod tests {
             .into();
 
         assert_eq!((shared.row_count, shared.truncated), (None, Some(true)));
+    }
+
+    #[test]
+    fn a_result_shared_with_blank_sql_has_none_to_open() {
+        let read = |sql: Option<&str>| {
+            let mut json = serde_json::json!({"kind":"result","title":"Orders","note":"","dialect":"postgres",
+                "created_at":"2026-11-13T00:00:00Z","allow_download":true,"made_with":"TablePro"});
+            if let Some(sql) = sql {
+                json["sql"] = sql.into();
+            }
+            SharedLink::from(serde_json::from_value::<types::PublicShare>(json).expect("a shared link")).sql
+        };
+
+        assert_eq!([read(Some("")), read(Some(" \r\n\t")), read(None)], [None, None, None]);
+        assert_eq!(read(Some("SELECT 1")).as_deref(), Some("SELECT 1"));
     }
 }
