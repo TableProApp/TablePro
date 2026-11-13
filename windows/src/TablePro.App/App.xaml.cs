@@ -1,5 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using TablePro.App.Services;
 using TablePro.DataGrid;
 using TablePro.Interop;
@@ -41,9 +42,14 @@ public partial class App : Application
         _window.ActivateRestored();
         // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.
         DataGridView.WarmUpFonts();
+        if (LaunchLink() is { } link)
+        {
+            _window.OpenSharedLink(link);
+        }
     }
 
-    internal void BringToFront()
+    // Another launch handed over, with the tablepro:// link it was started for, if any.
+    internal void Activate(string? link)
     {
         if (_window is null || _closed)
         {
@@ -57,6 +63,24 @@ public partial class App : Application
         catch (Exception exception)
         {
             CrashLog.Write(exception);
+        }
+
+        if (link is not null)
+        {
+            _window.OpenSharedLink(link);
+        }
+    }
+
+    private static string? LaunchLink()
+    {
+        try
+        {
+            return ActivationLink.OfLaunch(AppInstance.GetCurrent().GetActivatedEventArgs());
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+            return null;
         }
     }
 

@@ -2721,6 +2721,234 @@ New fingerprint: {2}</value>
   <data name="DevicePlatform_ios" xml:space="preserve">
     <value>iOS</value>
   </data>
+  <data name="MenuShareResult.Text" xml:space="preserve">
+    <value>Share result...</value>
+  </data>
+  <data name="MenuShareQuery.Text" xml:space="preserve">
+    <value>Share query...</value>
+  </data>
+  <data name="MenuManageSharedLinks.Text" xml:space="preserve">
+    <value>Manage shared links...</value>
+  </data>
+  <data name="ShareResultCommand" xml:space="preserve">
+    <value>Share result...</value>
+  </data>
+  <data name="ShareQueryCommand" xml:space="preserve">
+    <value>Share query...</value>
+  </data>
+  <data name="ShareCommand" xml:space="preserve">
+    <value>Share...</value>
+  </data>
+  <data name="ShareResultTitle" xml:space="preserve">
+    <value>Share result</value>
+  </data>
+  <data name="ShareQueryTitle" xml:space="preserve">
+    <value>Share query</value>
+  </data>
+  <data name="ShareAction" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="ShareDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="ShareTitleField" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="ShareNoteField" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ShareNotePlaceholder" xml:space="preserve">
+    <value>Optional</value>
+  </data>
+  <data name="ShareExpiresField" xml:space="preserve">
+    <value>Expires</value>
+  </data>
+  <data name="ShareHideSql" xml:space="preserve">
+    <value>Hide SQL</value>
+  </data>
+  <data name="SharePasswordField" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="ShareAllowDownload" xml:space="preserve">
+    <value>Allow viewers to download</value>
+  </data>
+  <data name="Expiry_OneDay" xml:space="preserve">
+    <value>1 day</value>
+  </data>
+  <data name="Expiry_SevenDays" xml:space="preserve">
+    <value>7 days</value>
+  </data>
+  <data name="Expiry_ThirtyDays" xml:space="preserve">
+    <value>30 days</value>
+  </data>
+  <data name="Expiry_Never" xml:space="preserve">
+    <value>Never</value>
+  </data>
+  <data name="ExpiryWithProTag" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="ProTag" xml:space="preserve">
+    <value>Pro</value>
+  </data>
+  <data name="ProTagName" xml:space="preserve">
+    <value>Pro: see the plans in your web browser</value>
+  </data>
+  <data name="SharePreviewHeader" xml:space="preserve">
+    <value>Rows that will be shared</value>
+  </data>
+  <data name="ShareCapNote" xml:space="preserve">
+    <value>Shares the first {0:N0} of {1:N0} rows.</value>
+  </data>
+  <data name="ShareFooterFree" xml:space="preserve">
+    <value>Free · {0:N0} of {1:N0} links · first {2:N0} rows</value>
+  </data>
+  <data name="ShareFooterPro" xml:space="preserve">
+    <value>Pro · {0:N0} links</value>
+  </data>
+  <data name="ShareAtCapFree" xml:space="preserve">
+    <value>You have {0:N0} live links, the Free limit. Revoke one to share another.</value>
+  </data>
+  <data name="ShareAtCapPro" xml:space="preserve">
+    <value>You have {0:N0} live links, the Pro limit. Revoke one to share another.</value>
+  </data>
+  <data name="ShareAtCapProAllows" xml:space="preserve">
+    <value>Pro allows up to 1,000.</value>
+  </data>
+  <data name="ShareUntitled" xml:space="preserve">
+    <value>Untitled link</value>
+  </data>
+  <data name="ShareLinkCreated" xml:space="preserve">
+    <value>Created {0:d}</value>
+  </data>
+  <data name="ShareLinkCreatedExpires" xml:space="preserve">
+    <value>Created {0:d} · expires {1:d}</value>
+  </data>
+  <data name="ShareRevoke" xml:space="preserve">
+    <value>Revoke</value>
+  </data>
+  <data name="ShareRevokeName" xml:space="preserve">
+    <value>Revoke {0}</value>
+  </data>
+  <data name="ShareLoading" xml:space="preserve">
+    <value>Loading...</value>
+  </data>
+  <data name="ShareCreating" xml:space="preserve">
+    <value>Creating the link...</value>
+  </data>
+  <data name="ShareSigningIn" xml:space="preserve">
+    <value>Finish signing in in the web browser that opened.</value>
+  </data>
+  <data name="ShareSignIn" xml:space="preserve">
+    <value>Sign in...</value>
+  </data>
+  <data name="ShareOpenAccount" xml:space="preserve">
+    <value>Open account</value>
+  </data>
+  <data name="ShareRetry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="ShareLinkCopied" xml:space="preserve">
+    <value>Link copied</value>
+  </data>
+  <data name="ShareCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ShareOpenInBrowser" xml:space="preserve">
+    <value>Open in browser</value>
+  </data>
+  <data name="ShareRowsGone" xml:space="preserve">
+    <value>These rows are no longer held. Run the query again to share them.</value>
+  </data>
+  <data name="ShareSecretInSql" xml:space="preserve">
+    <value>This query may contain a secret ({0}). Anyone with the link can read it.</value>
+  </data>
+  <data name="ShareSecretColumns" xml:space="preserve">
+    <value>Some columns may hold secrets: {0}.</value>
+  </data>
+  <data name="SecretKind_AwsAccessKey" xml:space="preserve">
+    <value>an AWS access key</value>
+  </data>
+  <data name="SecretKind_PrivateKey" xml:space="preserve">
+    <value>a private key</value>
+  </data>
+  <data name="SecretKind_JsonWebToken" xml:space="preserve">
+    <value>a JSON web token</value>
+  </data>
+  <data name="SecretKind_GitHubToken" xml:space="preserve">
+    <value>a GitHub token</value>
+  </data>
+  <data name="SecretKind_SlackToken" xml:space="preserve">
+    <value>a Slack token</value>
+  </data>
+  <data name="SecretKind_StripeKey" xml:space="preserve">
+    <value>a Stripe key</value>
+  </data>
+  <data name="SecretKind_GoogleApiKey" xml:space="preserve">
+    <value>a Google API key</value>
+  </data>
+  <data name="SecretKind_UrlCredentials" xml:space="preserve">
+    <value>a password in a URL</value>
+  </data>
+  <data name="SecretKind_AssignedSecret" xml:space="preserve">
+    <value>a password or token</value>
+  </data>
+  <data name="ShareErrorSignedOut" xml:space="preserve">
+    <value>Sign in to your TablePro account to share links.</value>
+  </data>
+  <data name="ShareErrorEmailUnverified" xml:space="preserve">
+    <value>Verify your email address to share links.</value>
+  </data>
+  <data name="ShareErrorProRequired" xml:space="preserve">
+    <value>This option needs TablePro Pro.</value>
+  </data>
+  <data name="ShareErrorSharingDisabled" xml:space="preserve">
+    <value>Sharing is turned off for this account.</value>
+  </data>
+  <data name="ShareErrorTeamSharingDisabled" xml:space="preserve">
+    <value>Public links are turned off for this team.</value>
+  </data>
+  <data name="ShareErrorTooLarge" xml:space="preserve">
+    <value>This result is too large to share.</value>
+  </data>
+  <data name="ShareErrorRateLimited" xml:space="preserve">
+    <value>Too many links just now. Try again in a moment.</value>
+  </data>
+  <data name="ShareErrorOffline" xml:space="preserve">
+    <value>You appear to be offline. Try again once you're connected.</value>
+  </data>
+  <data name="ShareErrorFailed" xml:space="preserve">
+    <value>The link couldn't be created. Try again.</value>
+  </data>
+  <data name="SharedLinkTitle" xml:space="preserve">
+    <value>Shared link</value>
+  </data>
+  <data name="SharedQueryTitle" xml:space="preserve">
+    <value>Shared query</value>
+  </data>
+  <data name="SharedLinkUnavailable" xml:space="preserve">
+    <value>This shared link is no longer available.</value>
+  </data>
+  <data name="SharedLinkHidesSql" xml:space="preserve">
+    <value>This shared result hides its SQL, so there is nothing to open.</value>
+  </data>
+  <data name="SharedLinkPasswordTitle" xml:space="preserve">
+    <value>This link is password protected.</value>
+  </data>
+  <data name="SharedLinkPasswordWrong" xml:space="preserve">
+    <value>That password is not correct.</value>
+  </data>
+  <data name="SharedLinkOpenButton" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="SharedLinkNoConnection" xml:space="preserve">
+    <value>Connect to a database to open this query in a new tab. It never runs on its own.</value>
+  </data>
+  <data name="SharedLinkCopySql" xml:space="preserve">
+    <value>Copy SQL</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
   <data name="Error_account_unreachable" xml:space="preserve">
     <value>TablePro's account service could not be reached. Check the internet connection and try again.</value>
   </data>
