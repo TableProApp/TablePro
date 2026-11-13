@@ -47,14 +47,25 @@ extension MainContentCoordinator {
         return ServerErrorText.withheldMessage
     }
 
+    // A sync pull, a rename or a tag edit updates the connection too, and must not re-mask or make a Share sheet read
+    // its rows again.
     func observeMaskingRuleChanges() -> AnyCancellable {
-        services.appEvents.connectionUpdated
+        var applied = storedMaskingRules
+        return services.appEvents.connectionUpdated
             .filter { [connectionId] changed in changed == nil || changed == connectionId }
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.maskLoadedResults()
-                self?.maskingRulesApplied.send()
+                guard let self else { return }
+                let rules = storedMaskingRules
+                guard rules != applied else { return }
+                applied = rules
+                maskLoadedResults()
+                maskingRulesApplied.send()
             }
+    }
+
+    private var storedMaskingRules: [MaskingRule]? {
+        services.databaseManager.connectionStorage.loadConnection(id: connectionId)?.maskingRules
     }
 
     // Masks the rows already on screen when a rule is saved, rather than waiting for the next run. Read from storage,

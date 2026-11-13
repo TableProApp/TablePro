@@ -49,23 +49,23 @@ extension MainContentCoordinator {
               !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
         else { return nil }
         let tabId = tab.id
-        let resultId = tab.display.activeResultSet?.id
+        let key = shareResultKey(of: tab)
         return .result(
             title: tab.title,
             sql: shareSQL(of: tab),
             dialect: connection.type.rawValue,
             sourceChanges: maskingRulesApplied.eraseToAnyPublisher()
         ) { [weak self] maxRows in
-            await self?.shareSource(tabId: tabId, resultId: resultId, maxRows: maxRows)
+            await self?.shareSource(tabId: tabId, key: key, maxRows: maxRows)
         }
     }
 
     // MARK: - Rows
 
-    // The rows of the result the sheet was opened on; nil once the tab shows another. Rows the grid does not hold yet
-    // are read from the server, the grid itself left as it is.
-    func shareSource(tabId: UUID, resultId: UUID?, maxRows: Int) async -> ShareResultSource? {
-        guard let tab = sharedTab(tabId, resultId: resultId) else { return nil }
+    // The rows of the result the sheet was opened on, or of a refresh of it; nil once the tab shows another statement
+    // or database. Rows the grid does not hold yet are read from the server, the grid itself left as it is.
+    func shareSource(tabId: UUID, key: ShareResultKey, maxRows: Int) async -> ShareResultSource? {
+        guard let tab = sharedTab(tabId, key: key) else { return nil }
         if let read = shareRead(for: tab, maxRows: maxRows) {
             do {
                 let result = try await paginationCoordinator.readRows(
@@ -75,20 +75,31 @@ extension MainContentCoordinator {
                     rowCap: maxRows,
                     operationDescription: String(localized: "Share Result")
                 )
-                guard let current = sharedTab(tabId, resultId: resultId) else { return nil }
+                guard let current = sharedTab(tabId, key: key) else { return nil }
                 return await fetchedShareSource(result, tab: current, maxRows: maxRows)
             } catch {
                 Self.shareLogger.notice("Share Result read failed, sharing the loaded rows: \(error.publicLogShape, privacy: .public)")
             }
         }
-        guard !Task.isCancelled, let current = sharedTab(tabId, resultId: resultId) else { return nil }
+        guard !Task.isCancelled, let current = sharedTab(tabId, key: key) else { return nil }
         return await loadedShareSource(tab: current, maxRows: maxRows)
     }
 
-    private func sharedTab(_ tabId: UUID, resultId: UUID?) -> QueryTab? {
-        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
-              tab.display.activeResultSet?.id == resultId
-        else { return nil }
+    // Auto Refresh and a reload install a new result for the same statement, so the share follows what the result is,
+    // never the result instance.
+    func shareResultKey(of tab: QueryTab) -> ShareResultKey {
+        let scope = scope(for: tab)
+        return ShareResultKey(
+            table: tab.tabType == .table ? tab.tableContext.tableName : nil,
+            statement: shareSQL(of: tab),
+            parameters: tab.tabType == .table ? nil : tab.display.activeResultSet?.baseQueryParameterValues,
+            database: scope?.database,
+            schema: scope?.schema
+        )
+    }
+
+    private func sharedTab(_ tabId: UUID, key: ShareResultKey) -> QueryTab? {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }), shareResultKey(of: tab) == key else { return nil }
         return tab
     }
 
@@ -243,6 +254,14 @@ extension MainContentCoordinator {
         else { return text }
         return whole.substring(with: selection)
     }
+}
+
+internal struct ShareResultKey: Equatable, Sendable {
+    let table: String?
+    let statement: String
+    let parameters: [TypedParameterValue?]?
+    let database: String?
+    let schema: String?
 }
 
 // The tab's row count, taken on the main actor for the rows built off it.

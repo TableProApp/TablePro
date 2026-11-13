@@ -154,7 +154,7 @@ extension GlobalStateSuites {
             #expect(shared.totalRowCount == nil)
         }
 
-        @Test("Once the tab shows another result, the sheet's loader reads nothing and finds no rows")
+        @Test("Once the tab shows another statement's result, the sheet's loader reads nothing and finds no rows")
         func replacedResultReadsNothing() async throws {
             let driver = AnsweringPluginDriver(answer: Self.answer(origins: Self.tracedOrigins))
             let fixture = Self.drivenFixture(driver)
@@ -164,10 +164,32 @@ extension GlobalStateSuites {
             )
             let request = try #require(fixture.coordinator.activeResultShareRequest())
             let loader = try #require(request.loadResult)
-            _ = try load(tab, isTruncated: true, into: fixture)
+            var other = tab
+            other.content.query = "SELECT id, email, note FROM archived_users"
+            _ = try load(other, isTruncated: true, into: fixture)
 
             #expect(await loader(1_000) == nil)
             #expect(driver.sent.isEmpty)
+        }
+
+        @Test("A refresh of the same table view, as Auto Refresh installs, still shares; another database does not")
+        func refreshedTableViewStillShares() async throws {
+            fixture.coordinator.queryBuilder = TableQueryBuilder(
+                databaseType: .mysql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+            )
+            let tab = try load(
+                QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users"), origins: nil
+            )
+            let request = try #require(fixture.coordinator.activeResultShareRequest())
+            let loader = try #require(request.loadResult)
+            let opened = fixture.tabManager.tabs.first { $0.id == tab.id }?.display.activeResultSet?.id
+
+            _ = try load(tab, origins: nil)
+            #expect(fixture.tabManager.tabs.first { $0.id == tab.id }?.display.activeResultSet?.id != opened)
+            #expect(await loader(1_000)?.rows.count == 3)
+
+            fixture.tabManager.mutate(tabId: tab.id) { $0.tableContext.databaseName = "archive" }
+            #expect(await loader(1_000) == nil)
         }
 
         @Test("A table tab's view past the page is read with the page's limit off, masked by the rules")
@@ -216,17 +238,42 @@ extension GlobalStateSuites {
             #expect(await read.value == nil)
         }
 
-        @Test("The share's rows are read again once a saved rule has masked the grid")
-        func savedRuleSignalsTheSheet() async throws {
-            _ = try load(QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query))
-            let request = try #require(fixture.coordinator.activeResultShareRequest())
-            let changes = try #require(request.sourceChanges)
+        @Test("Only a change to the connection's masking rules makes the share read its rows again")
+        func onlyRuleChangesSignalTheSheet() async throws {
+            let events = AppEvents()
+            let suite = try EphemeralDefaults()
+            let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("share-rules-\(UUID().uuidString).json")
+            defer { try? FileManager.default.removeItem(at: fileURL) }
+            let storage = ConnectionStorage(
+                fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain(), appEvents: events
+            )
+            var connection = fixture.connection
+            _ = storage.addConnection(connection)
+            let services = AppServices.live.replacing(databaseManager: DatabaseManager(connectionStorage: storage), appEvents: events)
+            let ruled = CoordinatorFixture(connection: connection, services: services)
+            _ = try load(QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query), into: ruled)
+            let changes = try #require(ruled.coordinator.activeResultShareRequest()?.sourceChanges)
             let signals = Signals()
+            let delivered = Signals()
             let observation = changes.sink { signals.count += 1 }
-            defer { observation.cancel() }
+            let probe = events.connectionUpdated.receive(on: RunLoop.main).sink { _ in delivered.count += 1 }
+            defer {
+                observation.cancel()
+                probe.cancel()
+            }
 
-            AppEvents.shared.connectionUpdated.send(fixture.connection.id)
+            connection.name = "Renamed"
+            storage.updateConnection(connection)
+            events.connectionUpdated.send(connection.id)
+            events.connectionUpdated.send(nil)
+            try await waitUntil { delivered.count == 2 }
+            #expect(signals.count == 0)
+
+            connection.maskingRules += [MaskingRule(pattern: "*.note", style: .full)]
+            storage.updateConnection(connection)
+            events.connectionUpdated.send(connection.id)
             try await waitUntil { signals.count == 1 }
+            #expect(delivered.count == 3)
         }
 
         @MainActor
@@ -361,5 +408,45 @@ extension GlobalStateSuites {
             #expect(shared.rows.count == 3)
             #expect(shared.totalRowCount == 3)
         }
+    }
+}
+
+@MainActor
+private extension AppServices {
+    func replacing(databaseManager: DatabaseManager, appEvents: AppEvents) -> AppServices {
+        AppServices(
+            appEvents: appEvents,
+            appSettings: appSettings,
+            appSettingsStorage: appSettingsStorage,
+            connectionStorage: connectionStorage,
+            databaseManager: databaseManager,
+            pluginManager: pluginManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            schemaProviderRegistry: schemaProviderRegistry,
+            catalogChangeService: catalogChangeService,
+            sqlFavoriteManager: sqlFavoriteManager,
+            favoriteTablesStorage: favoriteTablesStorage,
+            favoriteDatabasesStorage: favoriteDatabasesStorage,
+            tableFolderStorage: tableFolderStorage,
+            aiChatStorage: aiChatStorage,
+            aiKeyStorage: aiKeyStorage,
+            aiAccessApprovals: aiAccessApprovals,
+            groupStorage: groupStorage,
+            tagStorage: tagStorage,
+            sshProfileStorage: sshProfileStorage,
+            credentialProfileStorage: credentialProfileStorage,
+            featureAccess: featureAccess,
+            syncMetadataStorage: syncMetadataStorage,
+            favoritesExpansionState: favoritesExpansionState,
+            linkedFolderWatcher: linkedFolderWatcher,
+            queryHistoryManager: queryHistoryManager,
+            dateFormattingService: dateFormattingService,
+            copilotService: copilotService,
+            mcpServerManager: mcpServerManager,
+            syncTracker: syncTracker,
+            welcomeRouter: welcomeRouter,
+            telemetry: telemetry
+        )
     }
 }
