@@ -219,6 +219,11 @@ struct SensitiveDataDetectorTests {
         #expect(SensitiveDataDetector.quotedLiterals(in: "SELECT 1\r\n'a'\r'b'\n'c\nd'").map(\.line) == [2, 3, 4])
         #expect(SensitiveDataDetector.quotedLiterals(in: "-- it's\r\n'a' /* 'b' */ \"c'd\" 'e' /* open 'f'").map(\.text) == ["a", "e"])
         #expect(SensitiveDataDetector.quotedLiterals(in: "'--', '/*', 'x'").map(\.text) == ["--", "/*", "x"])
+        // core sql.rs, comments_outside_a_literal_are_skipped.
+        let commented = SensitiveDataDetector.quotedLiterals(in: "-- don't\nSELECT /* it's */ 'a', '-- b /* c */' -- 'd'\r'e'")
+        #expect(commented.map(\.text) == ["a", "-- b /* c */", "e"])
+        #expect(commented.map(\.line) == [2, 2, 3])
+        #expect(SensitiveDataDetector.quotedLiterals(in: "/* 'open").isEmpty)
     }
 
     @Test("The kinds for the Hide SQL notice come in table order, each once")
