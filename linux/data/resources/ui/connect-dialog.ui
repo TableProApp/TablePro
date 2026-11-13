@@ -234,6 +234,30 @@
                   </object>
                 </child>
                 <child>
+                  <!-- Rule rows go in before Add Rule, which stays last. -->
+                  <object class="AdwPreferencesGroup" id="masking_group">
+                    <property name="title" translatable="yes">Data Masking</property>
+                    <child>
+                      <object class="AdwButtonRow" id="add_masking_rule_row">
+                        <property name="title" translatable="yes">Add Rule</property>
+                        <property name="start-icon-name">list-add-symbolic</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">Masking hides values on screen and in everything TablePro sends out. It does not replace database permissions: filters and sorts still run on the stored values.</property>
+                        <property name="wrap">True</property>
+                        <property name="xalign">0</property>
+                        <property name="margin-top">12</property>
+                        <style>
+                          <class name="dimmed"/>
+                          <class name="caption"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
                   <!-- How the connection list shows the connection. -->
                   <object class="AdwPreferencesGroup">
                     <property name="title" translatable="yes">Appearance</property>

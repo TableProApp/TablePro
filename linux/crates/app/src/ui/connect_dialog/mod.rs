@@ -10,6 +10,7 @@ mod database_file_row;
 mod form_errors;
 mod form_field;
 mod imp;
+mod masking_section;
 mod pem_validation;
 mod row_problem;
 #[cfg(test)]
@@ -208,6 +209,7 @@ impl ConnectDialog {
         };
         dialog.show_driver(index, &form);
         dialog.show_appearance(&tags, form.icon, &form.tags);
+        dialog.show_masking(&form.masking_rules);
         dialog.connect_handlers();
         dialog.recheck_files();
         dialog.refresh();
@@ -660,6 +662,7 @@ impl ConnectDialog {
                 .query_timeout_row
                 .enables_expansion()
                 .then(|| imp.query_timeout_seconds_row.value() as u32),
+            masking_rules: self.masking_rules(),
             // A socket is on this computer, so the hidden SSH section is not sent.
             ssh: (!caps.is_file_based() && !self.socket_host())
                 .then(|| imp.ssh_section.form_state())
@@ -1327,6 +1330,7 @@ fn connect_request(
         workspace_settings: WorkspaceSettings::workspace(form.safe_mode.blocks_writes())
             .with_editor_timeout(QueryTimeout::from_seconds(form.query_timeout_secs)),
         safe_mode: form.safe_mode,
+        masking: connection.masking_policy(),
     }
 }
 
