@@ -430,7 +430,6 @@ internal static partial class Mapping
             : null,
         Level(connection.SafeMode),
         connection.QueryTimeoutSeconds is { } timeout ? checked((uint)timeout) : null,
-        [],
         connection.Color,
         connection.GroupId?.ToString(),
         connection.LastOpened?.ToUnixTimeMilliseconds(),

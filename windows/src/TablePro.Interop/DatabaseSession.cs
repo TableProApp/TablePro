@@ -101,7 +101,6 @@ public sealed partial class DatabaseSession : IAsyncDisposable
                     nativeFilter,
                     checked((ulong)limit),
                     checked((ulong)offset),
-                    false,
                     wake,
                     token),
                 cancellationToken)
