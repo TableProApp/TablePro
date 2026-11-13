@@ -10,7 +10,7 @@ pub enum GridRequest {
     /// Read the rows again in this order, `None` in the server's own.
     Sort(Option<(usize, bool)>),
     Export(ExportSource),
-    Share(SharedRows),
+    Share(Box<SharedRows>),
     FollowReference(RowReference),
     FilterByValue(FilterRule),
     Toast(String),

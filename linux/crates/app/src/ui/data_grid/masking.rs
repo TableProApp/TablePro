@@ -11,7 +11,7 @@ use tablepro_core::column::ResultColumn;
 use super::grid_actions::{add, add_for_column, enable};
 use super::{DataGrid, GridRequest, GridRow, RowData};
 use crate::i18n::{gettext, gettext_f};
-use crate::services::grid::{GridColumn, GridMasks, remask_rows};
+use crate::services::grid::{GridColumn, GridMasks, OutwardRules, remask_rows};
 
 pub(super) fn install_actions(grid: &DataGrid) {
     add(grid, "reveal-masked", |grid| {
@@ -65,6 +65,25 @@ impl DataGrid {
 
     pub fn masks(&self) -> GridMasks {
         self.imp().masks.borrow().clone()
+    }
+
+    // The held cells' masks with what every path out takes under the rules as they are now, with their generation.
+    pub(crate) fn outward_masks(&self) -> (GridMasks, Option<(u64, OutwardRules)>) {
+        let held = self.masks();
+        let Some((outward, table)) = self
+            .config()
+            .and_then(|config| Some((config.outward.clone()?, config.table.clone())))
+        else {
+            return (held, None);
+        };
+        let columns: Vec<ResultColumn> = self.grid_columns().iter().map(GridColumn::result_column).collect();
+        let (generation, fresh) = outward.now(&columns, table.as_ref());
+        let masks = GridMasks {
+            external: fresh.external,
+            untraced: fresh.untraced,
+            ..held
+        };
+        (masks, Some((generation, outward)))
     }
 
     // After a saved change: a column already masked keeps its mask, since the value under it is gone.

@@ -48,7 +48,7 @@ pub use self::edit_parse::{
 pub use self::edit_policy::{EditPolicy, EditRefusal, edit_policy, saving_policy, selection_hint};
 pub use self::find_matches::{FindMatch, find_matches};
 pub use self::grid_column::{CellDisplay, GridColumn, grid_columns};
-pub use self::grid_masks::{GridMasks, MaskSource, remask_rows};
+pub use self::grid_masks::{GridMasks, MaskSource, OutwardRules, remask_rows};
 pub use self::grid_row_id::GridRowId;
 pub use self::hex_dump::hex_dump;
 pub use self::highlight::{HighlightColor, HighlightRule, HighlightRules, HighlightTarget, HighlightValue};

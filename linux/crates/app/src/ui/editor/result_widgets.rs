@@ -191,6 +191,7 @@ mod tests {
                 settings: settings.get().clone(),
                 tasks: runtime.tasks(),
                 dialect: None,
+                rules: None,
             },
             _settings: settings,
             _runtime: runtime,

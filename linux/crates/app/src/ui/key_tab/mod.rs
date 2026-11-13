@@ -17,13 +17,13 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyWindow};
-use tablepro_core::masking::ColumnMasks;
+use tablepro_core::masking::{ColumnMasks, SharedMaskingPolicy};
 use tablepro_core::meta::KeyKind;
 use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
 
-use crate::services::grid::{MaskSource, grid_columns};
+use crate::services::grid::{MaskSource, OutwardRules, grid_columns};
 use crate::ui::data_grid::{DataGrid, GridConfig, GridRequest, GridSorting, RowData};
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportSource};
 use crate::ui::tab_load::{ContentLoad, ContentPage, FirstLoad, LoadFailure, LoadPresentation, StaleBanner};
@@ -158,7 +158,7 @@ impl KeyTab {
         retry.add_css_class("pill");
         error.set_child(Some(&retry));
         stack.add_named(&error, Some(ERROR));
-        let grid = key_grid(&key, settings, tasks.clone());
+        let grid = key_grid(&key, settings, tasks.clone(), session.masking());
         root.insert_action_group("grid", Some(&grid.actions()));
         let (content, parts) = content_page(&grid);
         stack.add_named(&content, Some(CONTENT));
@@ -275,7 +275,15 @@ impl KeyTab {
 
 /// A key's entries are read a window at a time, so they sort and search
 /// on the client; nothing in them is edited.
-fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
+fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks, rules: SharedMaskingPolicy) -> DataGrid {
+    let key_rules = Some(OutwardRules::new(
+        rules,
+        Arc::new(
+            |policy: &tablepro_core::masking::MaskingPolicy,
+             columns: &[ResultColumn],
+             _: Option<&tablepro_core::meta::TableRef>| MaskSource::Key.masks(policy, columns, false),
+        ),
+    ));
     let grid = DataGrid::new(GridConfig {
         columns: Arc::from([]),
         sorting: GridSorting::Client,
@@ -291,6 +299,7 @@ fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
         filter_by_value: false,
         share: false,
         reveal: false,
+        outward: key_rules,
         tasks,
         label: key.to_owned(),
     });

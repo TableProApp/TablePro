@@ -677,6 +677,7 @@ impl SqlEditor {
             settings: deps.settings.clone(),
             tasks: deps.tasks.clone(),
             dialect: Some(dialect),
+            rules: deps.session.get().map(|session| session.masking()),
         })
     }
 
@@ -685,7 +686,7 @@ impl SqlEditor {
     fn grid_request(&self, index: u32, request: GridRequest) {
         match request {
             GridRequest::Export(shown) => self.offer_export(index, shown),
-            GridRequest::Share(rows) => self.offer_share(index, rows),
+            GridRequest::Share(rows) => self.offer_share(index, *rows),
             GridRequest::Toast(text) => self.emit_by_name::<()>("toast", &[&text]),
             GridRequest::PendingChanged => self.on_rows_pending_changed(),
             GridRequest::RevealMasked => self.reveal_masked(),
@@ -746,9 +747,10 @@ impl SqlEditor {
         });
     }
 
-    // A result the log replaced or changed meanwhile keeps what it holds; the next save or run masks it.
+    // A result the log changed meanwhile is masked again from what it holds now, until the newest rules are on it.
     fn take_remasked(&self, remasked: Vec<(usize, ResultSetView, ResultSetView)>) {
         let mut taken = Vec::new();
+        let mut stale = false;
         {
             let mut log = self.imp().log.borrow_mut();
             let Some(log) = log.as_mut() else {
@@ -759,6 +761,7 @@ impl SqlEditor {
                     continue;
                 };
                 if !same_rows(result, &before) {
+                    stale = true;
                     continue;
                 }
                 *result = after;
@@ -768,6 +771,9 @@ impl SqlEditor {
         for index in taken {
             self.lock_masked_key(index);
             self.refresh_result_page(index);
+        }
+        if stale {
+            self.masking_changed();
         }
     }
 
@@ -1420,8 +1426,10 @@ fn remasked(policy: &tablepro_core::masking::MaskingPolicy, result: &ResultSetVi
     Some(after)
 }
 
+// The columns are each run's own, so two empty results of different runs are never taken for one.
 fn same_rows(held: &ResultSetView, read: &ResultSetView) -> bool {
-    held.masks == read.masks
+    Arc::ptr_eq(&held.columns, &read.columns)
+        && held.masks == read.masks
         && held.rows.len() == read.rows.len()
         && held
             .rows

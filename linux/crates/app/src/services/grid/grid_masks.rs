@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::masking::{ColumnMasks, MaskingPolicy, MaskingStyle, mask_value};
+use tablepro_core::masking::{ColumnMasks, MaskingPolicy, MaskingStyle, SharedMaskingPolicy, mask_value, table_name};
+use tablepro_core::meta::TableRef;
 
 // How a grid's columns meet the connection's masking rules, by column index (core ADR 0026).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -97,6 +98,47 @@ impl MaskSource {
             masked_key: false,
             untraced,
         }
+    }
+}
+
+// The masks a grid's columns take under rules, worked out again at each use; the table is the grid's own when it has one.
+pub type OutwardMasks = Arc<dyn Fn(&MaskingPolicy, &[ResultColumn], Option<&TableRef>) -> GridMasks + Send + Sync>;
+
+// The session's live rules and how a grid's columns meet them, so an export or a share reads the rules as they are
+// when it runs, never a remask still on its way.
+#[derive(Clone)]
+pub struct OutwardRules {
+    pub rules: SharedMaskingPolicy,
+    pub masks: OutwardMasks,
+}
+
+impl OutwardRules {
+    pub fn new(rules: SharedMaskingPolicy, masks: OutwardMasks) -> Self {
+        Self { rules, masks }
+    }
+
+    // A table's own read: the grid's table and columns, by name.
+    pub fn table(rules: SharedMaskingPolicy) -> Self {
+        Self::new(
+            rules,
+            Arc::new(
+                |policy: &MaskingPolicy, columns: &[ResultColumn], table: Option<&TableRef>| {
+                    MaskSource::Table(table.map(table_name).unwrap_or_default()).masks(policy, columns, false)
+                },
+            ),
+        )
+    }
+
+    // The generation first, so rules set between the reads are read again next time.
+    pub fn now(&self, columns: &[ResultColumn], table: Option<&TableRef>) -> (u64, GridMasks) {
+        let generation = self.rules.generation();
+        (generation, (self.masks)(&self.rules.get(), columns, table))
+    }
+}
+
+impl std::fmt::Debug for OutwardRules {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OutwardRules").finish_non_exhaustive()
     }
 }
 

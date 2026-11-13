@@ -240,6 +240,7 @@ impl Grid {
             filter_by_value: spec.filter_by_value,
             share: spec.share,
             reveal: spec.share,
+            outward: None,
             tasks: runtime.tasks(),
             label: "test grid".to_owned(),
         };
