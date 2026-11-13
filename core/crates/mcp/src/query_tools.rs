@@ -4,7 +4,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::Serialize;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, build_count, build_export};
 use tablepro_core::masking::{MaskingPolicy, MaskingScope, MaskingSink, table_name};
-use tablepro_core::meta::{ObjectScope, RowIdentity};
+use tablepro_core::meta::{ObjectScope, RowIdentity, SchemaInfo};
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
 use tablepro_core::sql_syntax::{
     SqlGrammar, StatementAccess, changes_catalog, reaches_outside_database, statement_access,
@@ -294,15 +294,35 @@ pub(crate) struct Masking<'a> {
 }
 
 impl Masking<'_> {
-    // The app's own statement over one table's columns, as a browse or an export reads it.
-    pub(crate) fn table<'a>(policy: &'a MaskingPolicy, table: &TableRef) -> Masking<'a> {
+    // The app's own statement over one table's columns, as a browse or an export reads it: matched by name, except in
+    // a system schema or database, such as pg_catalog or performance_schema, whose tables repeat other tables' values
+    // and what sessions sent, so they are masked by origin as a client's statement is, as on macOS.
+    pub(crate) async fn table<'a>(policy: &'a MaskingPolicy, session: &Session, table: &TableRef) -> Masking<'a> {
+        let by_name = policy.is_empty() || !in_system_container(session, table).await;
         Masking {
             policy,
             scope: MaskingScope::External {
-                table: Some(table_name(table)),
+                table: by_name.then(|| table_name(table)),
             },
         }
     }
+}
+
+// The table's schema or the session's database is one the engine marks as its own. A catalog that cannot be read
+// counts as one, which masks more rather than less.
+async fn in_system_container(session: &Session, table: &TableRef) -> bool {
+    let Ok(schemas) = session.schemas().await else {
+        return true;
+    };
+    names_system_container(&schemas, table.schema.as_deref().into_iter().chain(session.database()))
+}
+
+fn names_system_container<'a>(schemas: &[SchemaInfo], mut containers: impl Iterator<Item = &'a str>) -> bool {
+    containers.any(|container| {
+        schemas
+            .iter()
+            .any(|schema| schema.is_system && schema.name.eq_ignore_ascii_case(container))
+    })
 }
 
 // A table's rows pass through `precision`, so a decimal keeps the scale its column declares, as in an export. Then
@@ -369,7 +389,7 @@ pub async fn browse_table(
     let catalog: Arc<[ColumnInfo]> = columns.into();
     let started = Instant::now();
     let policy = connection.masking_policy();
-    let masking = Masking::table(&policy, &table);
+    let masking = Masking::table(&policy, &session, &table).await;
     let collected = stream(
         &session,
         Keep::results(limit),
@@ -518,6 +538,29 @@ fn history_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_system_schema_or_database_is_told_apart_from_a_user_one() {
+        let schema = |name: &str, is_system: bool| SchemaInfo {
+            name: name.to_owned(),
+            is_default: false,
+            is_system,
+        };
+        let schemas = [
+            schema("pg_catalog", true),
+            schema("performance_schema", true),
+            schema("public", false),
+        ];
+
+        assert!(names_system_container(&schemas, ["pg_catalog"].into_iter()));
+        assert!(names_system_container(
+            &schemas,
+            ["public", "PERFORMANCE_SCHEMA"].into_iter()
+        ));
+        assert!(!names_system_container(&schemas, ["public"].into_iter()));
+        assert!(!names_system_container(&schemas, std::iter::empty()));
+        assert!(!names_system_container(&schemas, ["pg_catalog_copy"].into_iter()));
+    }
 
     #[test]
     fn one_statement_passes_and_two_are_refused() {

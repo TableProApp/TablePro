@@ -495,7 +495,7 @@ pub(crate) fn held_row(set: &ResultSet, row: u64, columns: &[ResultColumn]) -> V
 }
 
 // The value where the store kept it exactly, else read back from the text the core's export wrote for it on arrival.
-fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) -> Value {
+pub(crate) fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) -> Value {
     if let Some(value) = set.stored_value(row, index) {
         return value;
     }
