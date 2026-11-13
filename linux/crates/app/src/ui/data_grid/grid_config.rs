@@ -65,6 +65,8 @@ pub struct GridConfig {
     pub filter_by_value: bool,
     // The host can share the rows as a link: an editor's results and a table tab's rows.
     pub share: bool,
+    // The host can show the tab's masked values again after the user confirms.
+    pub reveal: bool,
     pub tasks: Tasks,
     /// What a screen reader calls the grid.
     pub label: String,

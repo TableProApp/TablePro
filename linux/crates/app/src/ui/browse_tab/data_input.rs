@@ -10,4 +10,5 @@ pub(crate) enum DataInput {
     Command(Box<BrowseCommand>),
     LinkChanged(LinkGeneration),
     SchemaChanged,
+    MaskingChanged,
 }

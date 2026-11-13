@@ -71,7 +71,9 @@ where
         EntryKind::Notice { message } => {
             status_page(&crate::i18n::gettext("Notice"), message, icons::TEXT_X_GENERIC).upcast()
         }
-        EntryKind::Failed { message, error_char } => failed_page(message, *error_char, go_to_error, fix),
+        EntryKind::Failed {
+            message, error_char, ..
+        } => failed_page(message, *error_char, go_to_error, fix),
         EntryKind::ClientWarning { message } => status_page(
             &crate::i18n::gettext("Check the Script"),
             message,
@@ -239,6 +241,7 @@ mod tests {
             kind: EntryKind::Failed {
                 message: "column <b>name</b> & more".to_owned(),
                 error_char: None,
+                server: None,
             },
             batch: Some(0),
             preview: String::new(),
@@ -260,6 +263,7 @@ mod tests {
             kind: EntryKind::Failed {
                 message: "syntax error".to_owned(),
                 error_char: Some(42),
+                server: None,
             },
             batch: Some(0),
             preview: String::new(),
@@ -287,6 +291,7 @@ mod tests {
             kind: EntryKind::Failed {
                 message: "syntax error".to_owned(),
                 error_char: Some(3),
+                server: None,
             },
             batch: Some(0),
             preview: String::new(),

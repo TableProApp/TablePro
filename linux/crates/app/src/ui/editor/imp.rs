@@ -7,6 +7,7 @@ use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
+use tablepro_core::sql_syntax::SqlGrammar;
 use tokio_util::sync::CancellationToken;
 
 use super::EditorDeps;
@@ -16,6 +17,7 @@ use super::find_bar::FindBar;
 use super::result_editing::ResultEditing;
 use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
+use super::run_scope::ScopedText;
 use super::transaction_dirty::OpenTransaction;
 use super::vim_mode::VimMode;
 use crate::ui::handler_guard::HandlerGuard;
@@ -105,6 +107,10 @@ pub struct SqlEditor {
     /// run, and lets the key go on.
     pub(super) escape_found_popup: Cell<bool>,
     pub(super) editing: ResultEditing,
+    // The user revealed the tab's masked values, for every run until the tab closes.
+    pub(super) reveals_masked: Cell<bool>,
+    // What the last run sent, which a reveal runs again when it only reads.
+    pub(super) last_run: RefCell<Option<(ScopedText, SqlGrammar)>>,
 }
 
 #[glib::object_subclass]

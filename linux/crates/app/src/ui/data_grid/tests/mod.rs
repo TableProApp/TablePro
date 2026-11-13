@@ -3,6 +3,7 @@ mod columns;
 mod gutter;
 mod keyboard;
 mod layout;
+mod masking;
 mod menus;
 mod selection;
 mod sorting;

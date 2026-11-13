@@ -199,7 +199,7 @@ pub(crate) struct WorkspaceModel {
     workspace: Rc<workspace_persistence::WorkspacePersistence>,
     // Until the saved tabs are back, a script waits, so a restored tab bound to its file can take it.
     loading_scripts: Option<Vec<(gio::File, String)>>,
-    _watches: SessionWatches,
+    watches: SessionWatches,
     /// Tells the user once when editor drafts start failing to land.
     _draft_failures: tablepro_session::runtime::WatchForwarder,
 }
@@ -861,7 +861,7 @@ impl Workspace {
         imp.factory.replace(Some(tabs.factory.clone()));
         let assistant = assistant::install(&tabs, &input);
         let _ = imp.assistant_pane.set(assistant.pane());
-        let watches = SessionWatches::new(&session, &services.saved_connections, &input);
+        let watches = SessionWatches::new(&session, &services, &input);
         let draft_failures = draft_failure_watch(&drafts, &input);
         transaction_banner::connect_show(&imp.transaction_banner, &input);
 
@@ -917,7 +917,7 @@ impl Workspace {
             import_dialog: None,
             workspace: persistence,
             loading_scripts: Some(Vec::new()),
-            _watches: watches,
+            watches,
             _draft_failures: draft_failures,
         };
         workspace.hold(model, [exports, imports]);
@@ -1305,6 +1305,38 @@ impl WorkspaceModel {
     fn on_saved_connections_changed(&self) {
         self.retitle_tabs();
         self.refresh_assistant();
+        self.follow_masking();
+    }
+
+    // The session holds the saved rules already; the rows each tab shows take them.
+    fn follow_masking(&self) {
+        let Some(policy) = self.context.active.get().map(|session| session.masking_policy()) else {
+            return;
+        };
+        if !self.watches.rules_changed(policy) {
+            return;
+        }
+        let mut remasks: Vec<Box<dyn Fn()>> = Vec::new();
+        for tab in self.workspace_tabs.borrow().values() {
+            match tab {
+                WorkspaceTab::Editor(slot) => {
+                    let editor = slot.editor.clone();
+                    remasks.push(Box::new(move || editor.masking_changed()));
+                }
+                WorkspaceTab::Table(slot) => {
+                    let browse = slot.browse.clone();
+                    remasks.push(Box::new(move || browse.masking_changed()));
+                }
+                WorkspaceTab::Key(slot) => {
+                    let key = slot.tab.clone();
+                    remasks.push(Box::new(move || key.masking_changed()));
+                }
+                WorkspaceTab::Structure(_) | WorkspaceTab::Diagram(_) => {}
+            }
+        }
+        for remask in remasks {
+            remask();
+        }
     }
 
     fn retitle_tabs(&self) {

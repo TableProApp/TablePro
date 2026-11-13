@@ -199,6 +199,7 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
         find: false,
         filter_by_value: true,
         share: true,
+        reveal: true,
         tasks: init.tasks,
         label: init.label,
     });

@@ -4,6 +4,7 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::column::{ColumnInfo, ResultColumn};
 use tablepro_core::edit::CellInput;
+use tablepro_core::export::ResultExtent;
 use tablepro_core::{FilterRule, Value};
 use tablepro_linux_platform::settings::RowCopyFormat;
 
@@ -102,17 +103,27 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
 /// The rows the grid shows, pending edits included, under the columns
 /// on screen in their order.
 pub fn export_source(grid: &DataGrid) -> ExportSource {
+    let indices = ShownColumns::of(grid).indices;
     let (columns, rows) = shown_rows(grid, &grid.shown_rows());
-    ExportSource::Rows { columns, rows }
+    ExportSource::Rows {
+        columns,
+        rows,
+        masks: grid.masks().outward(&indices),
+    }
 }
 
-// What a share link takes: the rows an export of the shown rows would write.
+// What a share link takes: the rows an export of the shown rows would write, with how the rules meet each column.
 pub fn shared_rows(grid: &DataGrid) -> SharedRows {
+    let indices = ShownColumns::of(grid).indices;
     let (columns, rows) = shown_rows(grid, &grid.shown_rows());
+    let masks = grid.masks();
     SharedRows {
         columns,
-        row_count: rows.len() as u64,
+        extent: ResultExtent::complete(rows.len() as u64),
         rows,
+        shown: masks.shown_at(&indices),
+        rules: masks.external_at(&indices),
+        untraced: masks.untraced_at(&indices),
     }
 }
 

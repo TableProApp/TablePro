@@ -18,6 +18,8 @@ pub enum ResultRefusal {
     SeveralResults,
     Checking,
     ColumnsUnread,
+    // A column of the table's key is masked, so no row can be named.
+    MaskedKey,
 }
 
 impl From<ResultLock> for ResultRefusal {
@@ -55,6 +57,7 @@ impl ResultRefusal {
             Self::SeveralResults => gettext("Rows can be edited when the run returns one result"),
             Self::Checking => gettext("Checking whether these rows can be edited…"),
             Self::ColumnsUnread => gettext("The table's columns couldn't be read, so its rows can't be edited"),
+            Self::MaskedKey => gettext("The table's key is masked, so these rows can't be edited"),
         }
     }
 }
@@ -82,6 +85,7 @@ mod tests {
             ResultRefusal::SeveralResults,
             ResultRefusal::Checking,
             ResultRefusal::ColumnsUnread,
+            ResultRefusal::MaskedKey,
         ];
 
         let texts: HashSet<String> = all.iter().map(|refusal| refusal.explanation()).collect();

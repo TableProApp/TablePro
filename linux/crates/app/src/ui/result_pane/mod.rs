@@ -19,7 +19,7 @@ pub(crate) use self::result_limit_banner::ResultLimitBanner;
 pub(crate) use self::result_set_view::ResultSetView;
 pub(crate) use self::result_summary::ResultSummary;
 use crate::i18n::ngettext_f;
-use crate::services::grid::{GridColumn, ResultRefusal, grid_columns};
+use crate::services::grid::{GridColumn, GridMasks, ResultRefusal, grid_columns};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::data_grid::{DataGrid, DialectSource, EditRules, GridConfig, GridSorting, RowData};
 use crate::ui::export::ExportSource;
@@ -36,6 +36,7 @@ pub(crate) struct ResultGridDeps {
 
 pub(crate) struct ResultGrid {
     pub columns: Arc<[GridColumn]>,
+    pub masks: GridMasks,
     pub rows: Vec<RowData>,
     pub rules: Option<EditRules>,
     pub tracker: Option<TabTrackerHandle>,
@@ -47,6 +48,7 @@ impl ResultGrid {
     pub(crate) fn read_only(view: &ResultSetView, result_lock: Option<ResultRefusal>) -> Self {
         Self {
             columns: grid_columns(&view.columns, &[], |_| true),
+            masks: view.masks.clone(),
             rows: view.rows.iter().cloned().map(RowData::result).collect(),
             rules: None,
             tracker: None,
@@ -69,6 +71,7 @@ pub(crate) fn result_set_page(
 ) -> (gtk::Widget, DataGrid) {
     let ResultGrid {
         columns,
+        masks,
         rows,
         rules,
         tracker,
@@ -89,11 +92,13 @@ pub(crate) fn result_set_page(
         find: true,
         filter_by_value: false,
         share: true,
+        reveal: true,
         tasks: deps.tasks.clone(),
         label: name.to_owned(),
     });
     grid.set_hexpand(true);
     grid.set_vexpand(true);
+    grid.set_masks(masks);
     grid.replace_rows(rows, 0);
     let banner = ResultLimitBanner::new(&view.summary);
     let shown = grid.downgrade();

@@ -58,7 +58,7 @@ use self::result_widgets::PageActions;
 use self::results_pane::ResultPage;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
-use self::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, plan_batches, run_in_tab};
+use self::script_runner::{RUN_ROW_LIMIT, RunBatch, RunMasking, ScriptRun, plan_batches, run_in_tab};
 pub(crate) use self::sql_file::load_text;
 pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::data_grid::{DialectSource, GridRequest};
@@ -67,6 +67,7 @@ use super::handler_guard::HandlerGuard;
 use super::result_pane::ResultGridDeps;
 use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
+use crate::services::grid::{GridMasks, remask_rows};
 use crate::services::history_service::HistoryService;
 use crate::services::share_subject::{ShareSubject, SharedRows};
 use crate::services::snippet_library::SnippetLibrary;
@@ -514,6 +515,12 @@ impl SqlEditor {
                 .any(|batch| tablepro_core::sql_syntax::may_change_database(&batch.text, grammar)),
         );
         let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
+        imp.last_run.replace(Some((scoped.clone(), grammar)));
+        let masking = RunMasking {
+            policy: session.masking_policy(),
+            grammar: grammar.is_sql().then_some(grammar),
+            revealed: imp.reveals_masked.get(),
+        };
         let run = ScriptRun {
             batches,
             policy,
@@ -524,6 +531,7 @@ impl SqlEditor {
             row_limit: RowLimit::EDITOR_DEFAULT,
             run_row_limit: RUN_ROW_LIMIT,
             byte_limit: ByteLimit::EDITOR_DEFAULT,
+            masking,
         };
         let metadata = session.metadata().clone();
         // Read again at the end from the run's own session, never the
@@ -679,7 +687,67 @@ impl SqlEditor {
             GridRequest::Share(rows) => self.offer_share(index, rows),
             GridRequest::Toast(text) => self.emit_by_name::<()>("toast", &[&text]),
             GridRequest::PendingChanged => self.on_rows_pending_changed(),
+            GridRequest::RevealMasked => self.reveal_masked(),
             GridRequest::Sort(_) | GridRequest::FollowReference(_) | GridRequest::FilterByValue(_) => {}
+        }
+    }
+
+    // The values are gone from the rows held, so they are read again: at once when the run only read.
+    fn reveal_masked(&self) {
+        let imp = self.imp();
+        imp.reveals_masked.set(true);
+        let last = imp.last_run.borrow().clone();
+        let Some((scoped, grammar)) = last else {
+            return;
+        };
+        match tablepro_core::sql_syntax::reads_only(&scoped.text, grammar) && !self.is_running() {
+            true => self.execute(scoped),
+            false => self.emit_by_name::<()>(
+                "toast",
+                &[&crate::i18n::gettext("Run the query again to see its masked values.")],
+            ),
+        }
+    }
+
+    // A saved change to the rules: the rows on screen take every new mask.
+    pub(crate) fn masking_changed(&self) {
+        let imp = self.imp();
+        let Some(session) = self.deps().and_then(|deps| deps.session.get()) else {
+            return;
+        };
+        let policy = session.masking_policy();
+        let changed: Vec<usize> = {
+            let mut log = imp.log.borrow_mut();
+            let Some(log) = log.as_mut() else {
+                return;
+            };
+            let count = log.entries().len();
+            (0..count)
+                .filter(|index| {
+                    let Some(result) = log.result_mut(*index) else {
+                        return false;
+                    };
+                    let fresh = result
+                        .mask_source
+                        .masks(&policy, &result.columns, result.masks.revealed);
+                    let remasked = remask_rows(&result.columns, &result.masks.shown, &fresh.shown, &result.rows);
+                    let shown = match remasked {
+                        Some((shown, rows)) => {
+                            result.rows = rows;
+                            shown
+                        }
+                        None => result.masks.shown.clone(),
+                    };
+                    let masks = GridMasks { shown, ..fresh };
+                    let differs = masks != result.masks;
+                    result.masks = masks;
+                    differs
+                })
+                .collect()
+        };
+        for index in changed {
+            self.lock_masked_key(index);
+            self.refresh_result_page(index);
         }
     }
 
@@ -992,7 +1060,7 @@ impl SqlEditor {
     }
 
     // Named as the results list names it: Hide SQL keeps the statement off the link, so its title may not carry it.
-    fn offer_share(&self, index: u32, rows: SharedRows) {
+    fn offer_share(&self, index: u32, mut rows: SharedRows) {
         let Ok(position) = usize::try_from(index) else {
             return;
         };
@@ -1003,6 +1071,12 @@ impl SqlEditor {
             };
             let EntryKind::ResultSet(result) = &entry.kind else {
                 return;
+            };
+            // The run's limits can cut a result the server never counted, which the link then says.
+            rows.extent = tablepro_core::export::ResultExtent {
+                held: result.summary.retained.max(rows.rows.len() as u64),
+                total: result.summary.total_rows,
+                cut: result.summary.is_truncated(),
             };
             ShareSubject {
                 title: result.summary.tab_label(position),

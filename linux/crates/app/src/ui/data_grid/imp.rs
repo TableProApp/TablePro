@@ -70,6 +70,9 @@ pub struct DataGrid {
     /// descending sort.
     pub shown: OnceCell<ReversedList>,
     pub columns: RefCell<ColumnSet>,
+    pub masks: RefCell<crate::services::grid::GridMasks>,
+    #[cfg(test)]
+    pub reveal_dialogs: RefCell<Vec<adw::AlertDialog>>,
     pub actions: gio::SimpleActionGroup,
     pub menus: OnceCell<GridMenus>,
     pub summary: SummaryState,

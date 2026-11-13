@@ -52,6 +52,7 @@ fn cell_menu_counterpart(header_action: &str) -> &str {
         "grid.move-column-left-at" => "grid.move-column-left",
         "grid.move-column-right-at" => "grid.move-column-right",
         "grid.copy-column-name-at" => "grid.copy-column-name",
+        "grid.reveal-masked-at" => "grid.reveal-masked",
         other => other,
     }
 }
@@ -438,7 +439,7 @@ fn a_grid_whose_host_shares_offers_share_result_with_the_columns_on_screen_in_th
             .collect::<Vec<_>>(),
         ["name"]
     );
-    assert_eq!(shared.row_count, 2);
+    assert_eq!(shared.total(), 2);
     assert_eq!(
         shared.rows.iter().map(|row| row.to_values()).collect::<Vec<_>>(),
         [vec![Value::Text("A".into())], vec![Value::Text("B".into())]]

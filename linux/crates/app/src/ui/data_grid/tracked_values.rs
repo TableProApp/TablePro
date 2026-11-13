@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use tablepro_core::Value;
 use tablepro_core::edit::{CellExpression, CellInput};
+use tablepro_core::masking::ColumnMasks;
 use tablepro_core::meta::RowIdentity;
 
 use super::GridRow;
@@ -93,6 +94,8 @@ pub struct TrackedValues {
     identity: RowIdentity,
     read_only: bool,
     result_lock: Option<ResultRefusal>,
+    masked: ColumnMasks,
+    masked_key: bool,
 }
 
 impl Default for TrackedValues {
@@ -108,6 +111,8 @@ impl TrackedValues {
             identity: RowIdentity::Unordered,
             read_only: true,
             result_lock: None,
+            masked: ColumnMasks::none(),
+            masked_key: false,
         }
     }
 
@@ -117,7 +122,16 @@ impl TrackedValues {
             identity,
             read_only: false,
             result_lock: None,
+            masked: ColumnMasks::none(),
+            masked_key: false,
         }
+    }
+
+    // A masked cell holds no value to start from, and a masked key names no row; a new row's cells stay open.
+    pub fn masked_by(mut self, masked: ColumnMasks, masked_key: bool) -> Self {
+        self.masked = masked;
+        self.masked_key = masked_key;
+        self
     }
 
     pub fn locked_by(mut self, result_lock: Option<ResultRefusal>) -> Self {
@@ -163,6 +177,13 @@ impl TrackedValues {
     /// `lock` for a cell whose mark the caller already read.
     pub fn lock_marked(&self, column: &GridColumn, row: &GridRow, row_deleted: bool) -> Option<CellLock> {
         let locked = row.with_id(|id| {
+            let read = !matches!(id, GridRowId::Draft(_));
+            if read && self.masked.is_masked(column.index) {
+                return Some(CellLock::Masked);
+            }
+            if read && self.masked_key && !matches!(id, GridRowId::Result) {
+                return Some(CellLock::MaskedKey);
+            }
             if let (Some(refusal), GridRowId::Result) = (self.result_lock, id) {
                 return Some(CellLock::Result(refusal));
             }

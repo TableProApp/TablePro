@@ -220,6 +220,7 @@ impl BrowseTab {
             actions,
             saving: Cell::new(false),
             suppress_combo_emit: Cell::new(true),
+            revealed: false,
             widgets,
         };
         tab.imp().model.replace(Some(model));
@@ -341,6 +342,11 @@ impl BrowseTab {
 
     pub fn rename_table(&self, name: &str) {
         self.send(DataInput::Renamed(name.to_owned()));
+    }
+
+    // The connection's masking rules changed: the rows on screen take every new mask.
+    pub fn masking_changed(&self) {
+        self.send(DataInput::MaskingChanged);
     }
 
     pub fn table(&self) -> String {
@@ -709,6 +715,8 @@ pub(crate) struct BrowseModel {
     /// Set until the first page lands, so the page-size dropdown being
     /// set from a restored state does not count as the user choosing.
     suppress_combo_emit: Cell<bool>,
+    // The user revealed the table's masked values, until the tab moves to another table.
+    revealed: bool,
     widgets: BrowseTabWidgets,
 }
 

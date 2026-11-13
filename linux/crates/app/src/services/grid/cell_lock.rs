@@ -25,6 +25,10 @@ pub enum CellLock {
     /// The running save writes this cell. An editor left open across the
     /// save would commit against the value read before it.
     Saving,
+    // The connection's masking rules hide this column's values, which the grid no longer holds.
+    Masked,
+    // A key column is masked, so no row can be named to the server.
+    MaskedKey,
 }
 
 impl CellLock {
@@ -46,6 +50,8 @@ impl CellLock {
                 gettext("A field whose name has a dot or starts with $ can only be changed in the editor")
             }
             Self::Saving => gettext("This row is being saved. Change it again once the save finishes."),
+            Self::Masked => gettext("This column is masked, so its values can't be edited here"),
+            Self::MaskedKey => gettext("The table's key is masked, so its rows can't be edited here"),
         }
     }
 }
@@ -71,6 +77,8 @@ mod tests {
             CellLock::PendingDelete,
             CellLock::Unaddressable,
             CellLock::Saving,
+            CellLock::Masked,
+            CellLock::MaskedKey,
         ];
         let unused = |_: &EditParseError| String::new();
 
