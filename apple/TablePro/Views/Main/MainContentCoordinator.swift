@@ -361,6 +361,8 @@ final class MainContentCoordinator: ObservableObject {
     private var clearedEditsCancellable: AnyCancellable?
     private var gridRepaintCancellable: AnyCancellable?
     var maskingRulesCancellable: AnyCancellable?
+    // Sent once a saved rule has masked the rows on screen, so an open Share sheet reads them again.
+    let maskingRulesApplied = PassthroughSubject<Void, Never>()
     private var browseContainerCancellable: AnyCancellable?
 
     @Published var fileConflictRequest: FileConflictRequest?

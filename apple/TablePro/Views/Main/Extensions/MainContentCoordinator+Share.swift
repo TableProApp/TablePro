@@ -3,10 +3,12 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProUtilities
 
 extension MainContentCoordinator {
@@ -47,16 +49,23 @@ extension MainContentCoordinator {
               !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
         else { return nil }
         let tabId = tab.id
-        return .result(title: tab.title, sql: shareSQL(of: tab), dialect: connection.type.rawValue) { [weak self] maxRows in
-            await self?.shareSource(tabId: tabId, maxRows: maxRows)
+        let resultId = tab.display.activeResultSet?.id
+        return .result(
+            title: tab.title,
+            sql: shareSQL(of: tab),
+            dialect: connection.type.rawValue,
+            sourceChanges: maskingRulesApplied.eraseToAnyPublisher()
+        ) { [weak self] maxRows in
+            await self?.shareSource(tabId: tabId, resultId: resultId, maxRows: maxRows)
         }
     }
 
     // MARK: - Rows
 
-    // Rows the grid does not hold yet are read from the server, the grid itself left as it is.
-    func shareSource(tabId: UUID, maxRows: Int) async -> ShareResultSource? {
-        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
+    // The rows of the result the sheet was opened on; nil once the tab shows another. Rows the grid does not hold yet
+    // are read from the server, the grid itself left as it is.
+    func shareSource(tabId: UUID, resultId: UUID?, maxRows: Int) async -> ShareResultSource? {
+        guard let tab = sharedTab(tabId, resultId: resultId) else { return nil }
         if let read = shareRead(for: tab, maxRows: maxRows) {
             do {
                 let result = try await paginationCoordinator.readRows(
@@ -66,124 +75,153 @@ extension MainContentCoordinator {
                     rowCap: maxRows,
                     operationDescription: String(localized: "Share Result")
                 )
-                if let current = tabManager.tabs.first(where: { $0.id == tabId }) {
-                    return fetchedShareSource(result, tab: current, sql: shareSQL(of: current), maxRows: maxRows)
-                }
-                return nil
+                guard let current = sharedTab(tabId, resultId: resultId) else { return nil }
+                return await fetchedShareSource(result, tab: current, maxRows: maxRows)
             } catch {
                 Self.shareLogger.notice("Share Result read failed, sharing the loaded rows: \(error.publicLogShape, privacy: .public)")
             }
         }
-        guard let current = tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
-        return loadedShareSource(tab: current, maxRows: maxRows)
+        guard !Task.isCancelled, let current = sharedTab(tabId, resultId: resultId) else { return nil }
+        return await loadedShareSource(tab: current, maxRows: maxRows)
     }
 
-    // The statement to read, or nil when the grid already holds what the share needs.
+    private func sharedTab(_ tabId: UUID, resultId: UUID?) -> QueryTab? {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
+              tab.display.activeResultSet?.id == resultId
+        else { return nil }
+        return tab
+    }
+
+    // The statement to read, or nil when the grid already holds what the share needs or the result's own statement
+    // cannot safely run again.
     private func shareRead(for tab: QueryTab, maxRows: Int) -> (query: String, parameters: [TypedParameterValue?]?)? {
         // A value filter narrows the rows on screen, so the share is exactly those.
         guard !tab.valueFilter.isActive, maxRows > 0 else { return nil }
         let loaded = tabSessionRegistry.tableRows(for: tab.id).rows.count
         if tab.tabType == .table {
-            let total = Self.exactTotal(of: tab)
+            let total = ShareTotals(tab).exact
             let pageHoldsEnough = tab.pagination.currentOffset == 0
                 && (loaded >= maxRows || (total.map { loaded >= $0 } ?? false))
             guard !pageHoldsEnough, let query = filterCoordinator.viewQuery(for: tab, limit: maxRows) else { return nil }
             return (query, nil)
         }
-        let isCut = tab.pagination.hasMoreRows || tab.display.activeResultSet?.isTruncated == true
-        guard isCut, loaded < maxRows, let base = tab.pagination.baseQueryForMore else { return nil }
-        return (base, tab.pagination.baseQueryParameterValues)
+        // A write that returned rows, such as UPDATE ... RETURNING, must not run again, as Reveal decides.
+        guard let result = tab.display.activeResultSet, result.isTruncated, loaded < maxRows,
+              let base = result.baseQuery, !wasReadElsewhere(result, in: tab),
+              QueryClassifier.classify(base, databaseType: connection.type).tier == .safe
+        else { return nil }
+        return (base, result.baseQueryParameterValues)
     }
 
-    private func fetchedShareSource(_ result: QueryResult, tab: QueryTab, sql: String, maxRows: Int) -> ShareResultSource {
+    private func fetchedShareSource(_ result: QueryResult, tab: QueryTab, maxRows: Int) async -> ShareResultSource? {
         let policy = maskingPolicy
         let table = tab.tabType == .table ? tab.tableContext.tableName : nil
-        let rows = TableRows.from(
-            queryRows: result.rows,
-            columns: result.columns,
-            columnTypes: result.columnTypes,
-            exportDocuments: result.exportDocuments,
-            absentCells: result.absentCells,
-            unloadedCells: result.unloadedCells,
-            masks: policy.columnMasks(table: table, columns: result.columns, columnTypes: result.columnTypes),
-            exportPolicy: policy,
-            exportTable: table,
-            columnOrigins: result.columnOrigins
+        let typeNames = result.columnTypes.map(\.rawType)
+        let masks = policy.columnMasks(table: table, columns: result.columns, typeNames: typeNames).strictest(
+            with: policy.externalColumnMasks(
+                table: table, columns: result.columns, typeNames: typeNames, origins: result.columnOrigins
+            )
         )
-        let external = policy.externalColumnMasks(
-            table: table, columns: rows.columns, typeNames: rows.columnTypes.map(\.rawType), origins: rows.columnOrigins
+        let projection = VisibleColumnProjection.fromColumnLayout(tab.columnLayout, columns: result.columns)
+        let untraced = policy.untracedColumns(table: table, columns: result.columns, origins: result.columnOrigins)
+        return await Self.fetchedShareSource(
+            FetchedShareRows(
+                columns: result.columns,
+                columnTypes: result.columnTypes,
+                rows: result.rows,
+                absentCells: result.absentCells,
+                unloadedCells: result.unloadedCells,
+                isTruncated: result.isTruncated,
+                masks: masks,
+                projection: projection,
+                untracedColumns: projection.positions(of: Set(untraced)),
+                totals: ShareTotals(tab),
+                sql: shareSQL(of: tab)
+            ),
+            maxRows: maxRows
         )
-        let masked = policy.isEmpty ? rows : rows.externallyMasked(by: external)
-        let projection = VisibleColumnProjection.fromColumnLayout(tab.columnLayout, columns: masked.columns)
+    }
+
+    @concurrent
+    private static func fetchedShareSource(_ fetched: FetchedShareRows, maxRows: Int) async -> ShareResultSource? {
+        let shape = TableRows.RowShape(columns: fetched.columns, masks: fetched.masks, exportPolicy: .none, exportTable: nil)
+        let prepared = await TableRows.preparing(
+            fetched.rows, absentCells: fetched.absentCells, unloadedCells: fetched.unloadedCells, shape: shape
+        )
+        guard prepared.isComplete, !Task.isCancelled else { return nil }
         let read = DisplayedResultReader.read(
-            tableRows: masked,
+            tableRows: TableRows.from(prepared: prepared, columnTypes: fetched.columnTypes),
             displayIDs: nil,
             selectedDisplayIndices: [],
-            columns: projection
+            columns: fetched.projection
         )
-        let untraced = policy.untracedColumns(table: table, columns: rows.columns, origins: rows.columnOrigins)
-        let more = result.isTruncated || read.rows.count >= maxRows
+        guard !Task.isCancelled else { return nil }
+        let more = fetched.isTruncated || read.rows.count >= maxRows
         return ShareResultSource(
             columns: read.columns,
             columnTypes: read.columnTypes,
             rows: read.rows,
-            totalRowCount: Self.shareTotal(of: tab, rows: read.rows.count, more: more),
-            sql: sql,
+            totalRowCount: fetched.totals.total(rows: read.rows.count, more: more),
+            sql: fetched.sql,
             masks: read.masks,
-            untracedColumns: projection.positions(of: Set(untraced))
+            untracedColumns: fetched.untracedColumns
         )
     }
 
-    // At most max_rows display positions are read, so a large grid is never copied whole.
-    private func loadedShareSource(tab: QueryTab, maxRows: Int) -> ShareResultSource {
-        let tableRows = externallyMaskedRows(forTab: tab.id)
+    private func loadedShareSource(tab: QueryTab, maxRows: Int) async -> ShareResultSource? {
+        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         let table = tab.tabType == .table ? tab.tableContext.tableName : nil
         let untraced = maskingPolicy.untracedColumns(table: table, columns: tableRows.columns, origins: tableRows.columnOrigins)
         let projection = VisibleColumnProjection.fromColumnLayout(tab.columnLayout, columns: tableRows.columns)
-        let displayIDs = displayIDs(forTab: tab.id)
-        let displayed = displayIDs?.count ?? tableRows.rows.count
-        let deleted = changeManager.deletedRowIDs
-        let positions = Set(0..<min(displayed, maxRows + deleted.count))
-        let read = DisplayedResultReader.read(
-            tableRows: tableRows,
-            displayIDs: displayIDs,
-            selectedDisplayIndices: positions,
-            deletedRowIDs: deleted,
-            columns: projection
+        return await Self.loadedShareSource(
+            HeldShareRows(
+                tableRows: tableRows,
+                displayIDs: displayIDs(forTab: tab.id),
+                deletedRowIDs: changeManager.deletedRowIDs,
+                overlay: externalOverlay(forTab: tab.id),
+                projection: projection,
+                untracedColumns: projection.positions(of: Set(untraced)),
+                totals: ShareTotals(tab),
+                isValueFiltered: tab.valueFilter.isActive,
+                hasRowsElsewhere: tab.pagination.hasMoreRows || tab.display.activeResultSet?.isTruncated == true
+                    || tab.pagination.currentOffset > 0,
+                sql: shareSQL(of: tab)
+            ),
+            maxRows: maxRows
         )
-        let rows = Array(read.rows.prefix(maxRows))
+    }
+
+    // At most max_rows display positions are read and masked, so a large grid is never copied or masked whole.
+    @concurrent
+    private static func loadedShareSource(_ held: HeldShareRows, maxRows: Int) async -> ShareResultSource? {
+        guard !Task.isCancelled else { return nil }
+        let displayed = held.displayIDs?.count ?? held.tableRows.rows.count
+        let read = DisplayedResultReader.read(
+            tableRows: held.tableRows,
+            displayIDs: held.displayIDs,
+            selectedDisplayIndices: Set(0..<min(displayed, maxRows + held.deletedRowIDs.count)),
+            deletedRowIDs: held.deletedRowIDs,
+            columns: held.projection
+        )
+        guard !Task.isCancelled else { return nil }
+        let overlay = held.projection.masks(held.overlay)
+        let rows = overlay.rows(Array(read.rows.prefix(maxRows)))
         let total: Int?
-        if tab.valueFilter.isActive {
+        if held.isValueFiltered {
             total = displayed - read.skippedDeletedCount
         } else {
-            let more = tab.pagination.hasMoreRows || tab.display.activeResultSet?.isTruncated == true
-                || tab.pagination.currentOffset > 0 || displayed - read.skippedDeletedCount > rows.count
-            total = Self.shareTotal(of: tab, rows: rows.count, more: more)
+            let more = held.hasRowsElsewhere || displayed - read.skippedDeletedCount > rows.count
+            total = held.totals.total(rows: rows.count, more: more)
         }
         return ShareResultSource(
             columns: read.columns,
             columnTypes: read.columnTypes,
             rows: rows,
             totalRowCount: total.map { max($0, rows.count) },
-            sql: shareSQL(of: tab),
-            masks: read.masks,
-            untracedColumns: projection.positions(of: Set(untraced))
+            sql: held.sql,
+            masks: read.masks.strictest(with: overlay),
+            untracedColumns: held.untracedColumns
         )
-    }
-
-    // The true total when counted; an estimate when it is above the rows held; else the rows, or nil if more exist.
-    private static func shareTotal(of tab: QueryTab, rows: Int, more: Bool) -> Int? {
-        if let exact = exactTotal(of: tab) {
-            return max(exact, rows)
-        }
-        if tab.pagination.isApproximateRowCount, let estimate = tab.pagination.totalRowCount, estimate > rows {
-            return estimate
-        }
-        return more ? nil : rows
-    }
-
-    private static func exactTotal(of tab: QueryTab) -> Int? {
-        tab.pagination.isApproximateRowCount ? nil : tab.pagination.totalRowCount
     }
 
     // A table tab shares its view without the page's window, or no SQL when the host cannot write that view.
@@ -194,10 +232,7 @@ extension MainContentCoordinator {
 
     private static func resultSQL(of tab: QueryTab) -> String {
         let resultSet = tab.display.activeResultSet
-        return (resultSet?.namedParameterStatement?.sql
-            ?? resultSet?.baseQuery
-            ?? tab.pagination.baseQueryForMore
-            ?? tab.content.query)
+        return (resultSet?.namedParameterStatement?.sql ?? resultSet?.baseQuery ?? tab.content.query)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -208,4 +243,56 @@ extension MainContentCoordinator {
         else { return text }
         return whole.substring(with: selection)
     }
+}
+
+// The tab's row count, taken on the main actor for the rows built off it.
+private struct ShareTotals: Sendable {
+    let exact: Int?
+    let estimate: Int?
+
+    @MainActor
+    init(_ tab: QueryTab) {
+        let pagination = tab.pagination
+        exact = pagination.isApproximateRowCount ? nil : pagination.totalRowCount
+        estimate = pagination.isApproximateRowCount ? pagination.totalRowCount : nil
+    }
+
+    // The true total when counted; an estimate when it is above the rows held; else the rows, or nil if more exist.
+    func total(rows: Int, more: Bool) -> Int? {
+        if let exact {
+            return max(exact, rows)
+        }
+        if let estimate, estimate > rows {
+            return estimate
+        }
+        return more ? nil : rows
+    }
+}
+
+private struct FetchedShareRows: Sendable {
+    let columns: [String]
+    let columnTypes: [ColumnType]
+    let rows: [[PluginCellValue]]
+    let absentCells: [Int: Set<Int>]
+    let unloadedCells: [Int: [Int: Int]]
+    let isTruncated: Bool
+    let masks: ColumnMasks
+    let projection: VisibleColumnProjection
+    let untracedColumns: Set<Int>
+    let totals: ShareTotals
+    let sql: String
+}
+
+private struct HeldShareRows: Sendable {
+    let tableRows: TableRows
+    let displayIDs: [RowID]?
+    let deletedRowIDs: Set<RowID>
+    // What the grid's own masks leave for a reader outside the app, by source column.
+    let overlay: ColumnMasks
+    let projection: VisibleColumnProjection
+    let untracedColumns: Set<Int>
+    let totals: ShareTotals
+    let isValueFiltered: Bool
+    let hasRowsElsewhere: Bool
+    let sql: String
 }

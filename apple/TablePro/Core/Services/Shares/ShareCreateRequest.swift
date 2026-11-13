@@ -46,6 +46,12 @@ internal enum ShareBodyWriter {
     static let dialectLimit = 40
     static let columnTextLimit = 256
 
+    // A snapshot body runs to 4.5 MB, too much to write on the main actor at Create.
+    @concurrent
+    static func encoded(_ draft: ShareDraft) async -> Data {
+        body(draft)
+    }
+
     static func body(_ draft: ShareDraft) -> Data {
         var json = "{"
         var first = true

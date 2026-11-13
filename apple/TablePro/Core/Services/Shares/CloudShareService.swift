@@ -38,8 +38,9 @@ internal struct CloudShareService: ShareService {
 
     func create(_ draft: ShareDraft) async throws(ShareFailure) -> CreatedShare {
         let answer: (status: Int, contentType: String?, body: Data)
+        let body = await ShareBodyWriter.encoded(draft)
         do {
-            answer = try await createRequest.send(ShareBodyWriter.body(draft))
+            answer = try await createRequest.send(body)
         } catch {
             throw Self.failure(from: error)
         }

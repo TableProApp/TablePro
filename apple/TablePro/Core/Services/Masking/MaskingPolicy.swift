@@ -177,6 +177,15 @@ struct ColumnMasks: Equatable, Sendable {
         styles[column] != nil
     }
 
+    func strictest(with other: ColumnMasks) -> ColumnMasks {
+        guard !other.isEmpty else { return self }
+        var merged = styles
+        for (column, style) in other.styles {
+            merged[column] = MaskingStyle.strictest(merged[column], style)
+        }
+        return ColumnMasks(styles: merged)
+    }
+
     func value(_ value: PluginCellValue, column: Int) -> PluginCellValue {
         guard let style = styles[column] else { return value }
         return MaskedValue.mask(value, style: style)

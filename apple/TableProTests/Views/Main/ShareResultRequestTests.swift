@@ -3,9 +3,11 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 extension GlobalStateSuites {
@@ -21,8 +23,14 @@ extension GlobalStateSuites {
 
         private static let tracedOrigins = ["id", "email", "note"].map { PluginColumnOrigin(schema: "shop", table: "users", column: $0) }
 
-        private func load(_ tab: QueryTab, origins: [PluginColumnOrigin?] = tracedOrigins) throws -> QueryTab {
-            let added = fixture.addTab(tab)
+        private func load(
+            _ tab: QueryTab,
+            origins: [PluginColumnOrigin?]? = tracedOrigins,
+            isTruncated: Bool = false,
+            into fixture: CoordinatorFixture? = nil
+        ) throws -> QueryTab {
+            let fixture = fixture ?? self.fixture
+            let added = fixture.tabManager.tabs.contains { $0.id == tab.id } ? tab : fixture.addTab(tab)
             fixture.coordinator.applyPhase1Result(
                 tabId: added.id,
                 columns: ["id", "email", "note"],
@@ -33,16 +41,197 @@ extension GlobalStateSuites {
                 executionTime: 0,
                 rowsAffected: 0,
                 statusMessage: nil,
-                tableName: nil,
+                tableName: tab.tabType == .table ? tab.tableContext.tableName : nil,
                 isEditable: false,
                 metadata: nil,
                 hasSchema: false,
                 read: TableFreshness.Read(startedAt: .now, includesDefinition: false),
                 sql: tab.content.query,
                 connection: fixture.connection,
+                isTruncated: isTruncated,
                 columnOrigins: origins
             )
             return try #require(fixture.tabManager.tabs.first { $0.id == added.id })
+        }
+
+        // MARK: - Reading past the rows held
+
+        private static func answer(origins: [PluginColumnOrigin?]?) -> @Sendable (String) -> PluginQueryResult {
+            { _ in
+                var result = PluginQueryResult(
+                    columns: ["id", "email", "note"],
+                    columnTypeNames: ["int8", "text", "text"],
+                    rows: (1...5).map { [.text(String($0)), .text("user\($0)@example.com"), .text("note \($0)")] },
+                    rowsAffected: 0,
+                    executionTime: 0
+                )
+                result.columnOrigins = origins
+                return result
+            }
+        }
+
+        // A coordinator whose connection has a live session answering every statement from `driver`.
+        private static func drivenFixture(_ driver: AnsweringPluginDriver) -> CoordinatorFixture {
+            var connection = TestFixtures.makeConnection(database: "shop", type: .postgresql)
+            connection.maskingRules = [MaskingRule(pattern: "*.email", style: .email)]
+            _ = AnsweringPluginDriver.install(driver, connection: connection)
+            let fixture = CoordinatorFixture(connection: connection)
+            fixture.coordinator.executionGate = AlwaysAllowGate()
+            return fixture
+        }
+
+        private static func source(of fixture: CoordinatorFixture, maxRows: Int = 1_000) async throws -> ShareResultSource? {
+            let request = try #require(fixture.coordinator.activeResultShareRequest())
+            let load = try #require(request.loadResult)
+            return await load(maxRows)
+        }
+
+        @Test("A cut read is read again up to max_rows in its own statement, masked by the rules")
+        func cutReadIsReadAgainMasked() async throws {
+            let driver = AnsweringPluginDriver(answer: Self.answer(origins: Self.tracedOrigins))
+            let fixture = Self.drivenFixture(driver)
+            defer { DatabaseManager.shared.removeSession(for: fixture.connection.id) }
+            _ = try load(QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query), isTruncated: true, into: fixture)
+
+            let shared = try #require(try await Self.source(of: fixture))
+
+            #expect(driver.sent.map(\.query) == ["SELECT id, email, note FROM users"])
+            #expect(driver.sent.first?.rowCap == 1_000)
+            #expect(shared.rows.count == 5)
+            #expect(shared.rows.map { $0[1] } == Array(repeating: .text("u•••@example.com"), count: 5))
+            #expect(shared.rows.first?[2] == .text("note 1"))
+            #expect(shared.masks == ColumnMasks(styles: [1: .email]))
+        }
+
+        @Test("A cut read nothing traced is read again with every column masked whole")
+        func untracedReadIsMaskedWhole() async throws {
+            let driver = AnsweringPluginDriver(answer: Self.answer(origins: nil))
+            let fixture = Self.drivenFixture(driver)
+            defer { DatabaseManager.shared.removeSession(for: fixture.connection.id) }
+            _ = try load(
+                QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query),
+                origins: nil, isTruncated: true, into: fixture
+            )
+
+            let shared = try #require(try await Self.source(of: fixture))
+
+            #expect(driver.sent.count == 1)
+            #expect(shared.untracedColumns == [0, 1, 2])
+            #expect(shared.masks == ColumnMasks(styles: [0: .full, 1: .full, 2: .full]))
+            #expect(shared.rows.allSatisfy { row in row == Array(repeating: PluginCellValue.text("••••"), count: 3) })
+        }
+
+        @Test("A cut write that returned rows never runs again: the rows held go, marked as cut")
+        func cutWriteIsNotRunAgain() async throws {
+            let driver = AnsweringPluginDriver(answer: Self.answer(origins: Self.tracedOrigins))
+            let fixture = Self.drivenFixture(driver)
+            defer { DatabaseManager.shared.removeSession(for: fixture.connection.id) }
+            let sql = "UPDATE users SET seen = true RETURNING id, email, note"
+            _ = try load(QueryTab(title: "Q", query: sql, tabType: .query), isTruncated: true, into: fixture)
+
+            let shared = try #require(try await Self.source(of: fixture))
+
+            #expect(driver.sent.isEmpty)
+            #expect(shared.rows.count == 3)
+            #expect(shared.totalRowCount == nil)
+            #expect(shared.sql == sql)
+        }
+
+        @Test("A cut result read in another database is not read again in the tab's")
+        func resultReadElsewhereIsNotReadAgain() async throws {
+            let driver = AnsweringPluginDriver(answer: Self.answer(origins: Self.tracedOrigins))
+            let fixture = Self.drivenFixture(driver)
+            defer { DatabaseManager.shared.removeSession(for: fixture.connection.id) }
+            let tab = try load(
+                QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query), isTruncated: true, into: fixture
+            )
+            tab.display.activeResultSet?.origin = ResultOrigin(tableName: "users", databaseName: "archive")
+
+            let shared = try #require(try await Self.source(of: fixture))
+
+            #expect(driver.sent.isEmpty)
+            #expect(shared.rows.count == 3)
+            #expect(shared.totalRowCount == nil)
+        }
+
+        @Test("Once the tab shows another result, the sheet's loader reads nothing and finds no rows")
+        func replacedResultReadsNothing() async throws {
+            let driver = AnsweringPluginDriver(answer: Self.answer(origins: Self.tracedOrigins))
+            let fixture = Self.drivenFixture(driver)
+            defer { DatabaseManager.shared.removeSession(for: fixture.connection.id) }
+            let tab = try load(
+                QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query), isTruncated: true, into: fixture
+            )
+            let request = try #require(fixture.coordinator.activeResultShareRequest())
+            let loader = try #require(request.loadResult)
+            _ = try load(tab, isTruncated: true, into: fixture)
+
+            #expect(await loader(1_000) == nil)
+            #expect(driver.sent.isEmpty)
+        }
+
+        @Test("A table tab's view past the page is read with the page's limit off, masked by the rules")
+        func tableViewReadIsMasked() async throws {
+            let driver = AnsweringPluginDriver(answer: Self.answer(origins: nil))
+            let fixture = Self.drivenFixture(driver)
+            defer { DatabaseManager.shared.removeSession(for: fixture.connection.id) }
+            fixture.coordinator.queryBuilder = TableQueryBuilder(
+                databaseType: .postgresql,
+                dialect: SQLDialectDescriptor(
+                    identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+                    regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+                    likeEscapeStyle: .implicit, paginationStyle: .limit
+                ),
+                pagination: .offset,
+                dialectQuote: SQLEscaping.quoteIdentifier
+            )
+            let tab = try load(
+                QueryTab(title: "users", query: "SELECT * FROM \"users\" LIMIT 3", tabType: .table, tableName: "users"),
+                origins: nil, into: fixture
+            )
+            fixture.tabManager.mutate(tabId: tab.id) {
+                $0.pagination.totalRowCount = 5
+                $0.pagination.isApproximateRowCount = false
+            }
+
+            let shared = try #require(try await Self.source(of: fixture))
+
+            #expect(driver.sent.count == 1)
+            #expect(driver.sent.first?.query.contains("users") == true)
+            #expect(driver.sent.first?.rowCap == 1_000)
+            #expect(shared.rows.count == 5)
+            #expect(shared.rows.map { $0[1] } == Array(repeating: .text("u•••@example.com"), count: 5))
+            #expect(shared.masks == ColumnMasks(styles: [1: .email]))
+            #expect(shared.totalRowCount == 5)
+        }
+
+        @Test("A read for a sheet that closed stops and gives nothing")
+        func cancelledReadGivesNothing() async throws {
+            _ = try load(QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query))
+            let request = try #require(fixture.coordinator.activeResultShareRequest())
+            let load = try #require(request.loadResult)
+
+            let read = Task { await load(1_000) }
+            read.cancel()
+            #expect(await read.value == nil)
+        }
+
+        @Test("The share's rows are read again once a saved rule has masked the grid")
+        func savedRuleSignalsTheSheet() async throws {
+            _ = try load(QueryTab(title: "Q", query: "SELECT id, email, note FROM users", tabType: .query))
+            let request = try #require(fixture.coordinator.activeResultShareRequest())
+            let changes = try #require(request.sourceChanges)
+            let signals = Signals()
+            let observation = changes.sink { signals.count += 1 }
+            defer { observation.cancel() }
+
+            AppEvents.shared.connectionUpdated.send(fixture.connection.id)
+            try await waitUntil { signals.count == 1 }
+        }
+
+        @MainActor
+        private final class Signals {
+            var count = 0
         }
 
         private func source(maxRows: Int = 1_000) async throws -> ShareResultSource {

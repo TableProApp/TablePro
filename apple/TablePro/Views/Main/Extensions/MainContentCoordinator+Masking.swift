@@ -51,11 +51,14 @@ extension MainContentCoordinator {
         services.appEvents.connectionUpdated
             .filter { [connectionId] changed in changed == nil || changed == connectionId }
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.maskLoadedResults() }
+            .sink { [weak self] _ in
+                self?.maskLoadedResults()
+                self?.maskingRulesApplied.send()
+            }
     }
 
-    /// Masks the rows already on screen when a rule is saved, rather than waiting for the next run. Read from storage,
-    /// since the live session may adopt the saved record after this runs.
+    // Masks the rows already on screen when a rule is saved, rather than waiting for the next run. Read from storage,
+    // since the live session may adopt the saved record after this runs.
     func maskLoadedResults() {
         guard let stored = services.databaseManager.connectionStorage.loadConnection(id: connectionId) else { return }
         let policy = stored.maskingPolicy
