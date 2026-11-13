@@ -91,8 +91,8 @@ internal struct ShareColumnChoice: Identifiable, Equatable, Sendable {
     }
 
     // Nil once the caller's task is cancelled.
-    static func defaults(for source: ShareResultSource, maxRows: Int) -> [ShareColumnChoice]? {
-        guard let detections = SensitiveDataDetector.detections(in: source, maxRows: maxRows) else { return nil }
+    static func defaults(for source: ShareResultSource, windows: [Int]) -> [ShareColumnChoice]? {
+        guard let detections = SensitiveDataDetector.detections(in: source, windows: windows) else { return nil }
         return source.columns.indices.map { index in
             ShareColumnChoice(
                 index: index,
@@ -117,29 +117,22 @@ internal struct ShareColumnChoice: Identifiable, Equatable, Sendable {
         }
     }
 
-    // The body budget can cut a snapshot short of the rows the detectors read, so they read again over just the rows it
-    // sends until both cover the same rows. Nil once the caller's task is cancelled.
+    // Detection reads the first max_rows rows and the rows a keep-everything snapshot sends, as the core does, so neither
+    // the body budget nor a short sensitive run hides a column. Nil once the caller's task is cancelled.
     static func prepare(_ source: ShareResultSource, maxRows: Int, keeping previous: [ShareColumnChoice]) -> SharePreparation? {
-        var rowCap = max(0, maxRows)
-        var prepared: SharePreparation?
-        for _ in 0..<SharePreparation.maxPasses {
-            guard let defaults = defaults(for: source, maxRows: rowCap) else { return nil }
-            let columns = carryingOver(previous, onto: defaults)
-            let shared = columns.compactMap(\.sharedColumn)
-            guard let built = ShareSnapshotBuilder.build(source, maxRows: rowCap, columns: shared) else { return nil }
-            prepared = SharePreparation(columns: columns, rowCap: rowCap, snapshot: built)
-            guard case .snapshot(let snapshot) = built, snapshot.rows.count < min(rowCap, source.rows.count) else { break }
-            rowCap = snapshot.rows.count
-        }
-        return prepared
+        let rowCap = max(0, maxRows)
+        guard let everything = ShareSnapshotBuilder.build(source, maxRows: rowCap) else { return nil }
+        let sentWhole = if case .snapshot(let snapshot) = everything { snapshot.rows.count } else { 0 }
+        guard let defaults = defaults(for: source, windows: [rowCap, sentWhole]) else { return nil }
+        let columns = carryingOver(previous, onto: defaults)
+        guard let built = ShareSnapshotBuilder.build(source, maxRows: rowCap, columns: columns.compactMap(\.sharedColumn))
+        else { return nil }
+        return SharePreparation(columns: columns, rowCap: rowCap, snapshot: built)
     }
 }
 
 // What a share sheet starts from once the rows are read.
 internal struct SharePreparation: Sendable {
-    // Each pass reads fewer rows; the choices settle in one in practice.
-    static let maxPasses = 8
-
     let columns: [ShareColumnChoice]
     // The rows the detectors read, which the snapshot never goes past.
     let rowCap: Int

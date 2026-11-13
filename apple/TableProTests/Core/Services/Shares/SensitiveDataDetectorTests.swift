@@ -184,7 +184,7 @@ struct SensitiveDataDetectorTests {
         let source = ShareResultSource(
             columns: ["c"], columnTypes: [.text(rawType: type)], rows: values.map { [$0] }, totalRowCount: values.count, sql: ""
         )
-        let detections = try #require(SensitiveDataDetector.detections(in: source, maxRows: 100))
+        let detections = try #require(SensitiveDataDetector.detections(in: source, windows: [100]))
         #expect(detections[0] == flagged.map(SensitiveDetection.values))
     }
 
@@ -200,7 +200,7 @@ struct SensitiveDataDetectorTests {
             sql: "",
             masks: ColumnMasks(styles: [2: .full])
         )
-        let detections = try #require(SensitiveDataDetector.detections(in: source, maxRows: 10))
+        let detections = try #require(SensitiveDataDetector.detections(in: source, windows: [10]))
         #expect(detections == [0: .name(.phone), 1: .values(.card)])
     }
 
@@ -210,8 +210,29 @@ struct SensitiveDataDetectorTests {
             columns: ["notes"], columnTypes: [.text(rawType: "text")], rows: [[.text("x")], [.text("4111111111111111")]],
             totalRowCount: 2, sql: ""
         )
-        #expect(try #require(SensitiveDataDetector.detections(in: source, maxRows: 1)).isEmpty)
-        #expect(try #require(SensitiveDataDetector.detections(in: source, maxRows: 2)) == [0: .values(.card)])
+        #expect(try #require(SensitiveDataDetector.detections(in: source, windows: [1])).isEmpty)
+        #expect(try #require(SensitiveDataDetector.detections(in: source, windows: [2])) == [0: .values(.card)])
+    }
+
+    @Test("Each window keeps its own threshold; a column either window flags takes the first kind in table order")
+    func detectionWindows() throws {
+        let phones: [PluginCellValue] = [.text("+1 555 0100"), .text("+1 555 0101")]
+        let emails: [PluginCellValue] = (0..<4).map { .text("user\($0)@example.com") }
+        let source = ShareResultSource(
+            columns: ["contact"], columnTypes: [.text(rawType: "text")], rows: (phones + emails).map { [$0] },
+            totalRowCount: 6, sql: ""
+        )
+        #expect(try #require(SensitiveDataDetector.detections(in: source, windows: [2])) == [0: .values(.phone)])
+        #expect(try #require(SensitiveDataDetector.detections(in: source, windows: [6])) == [0: .values(.email)])
+        #expect(try #require(SensitiveDataDetector.detections(in: source, windows: [6, 2])) == [0: .values(.email)])
+
+        let shortRun = ShareResultSource(
+            columns: ["contact"], columnTypes: [.text(rawType: "text")],
+            rows: (phones + Array(repeating: PluginCellValue.text("n/a"), count: 4)).map { [$0] },
+            totalRowCount: 6, sql: ""
+        )
+        #expect(try #require(SensitiveDataDetector.detections(in: shortRun, windows: [6])).isEmpty)
+        #expect(try #require(SensitiveDataDetector.detections(in: shortRun, windows: [6, 2, 0])) == [0: .values(.phone)])
     }
 
     // MARK: - SQL

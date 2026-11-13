@@ -61,7 +61,7 @@ struct ShareColumnChoiceTests {
             masks: ColumnMasks(styles: [1: .full]),
             untracedColumns: [1]
         )
-        let choices = try #require(ShareColumnChoice.defaults(for: source, maxRows: 10))
+        let choices = try #require(ShareColumnChoice.defaults(for: source, windows: [10]))
         #expect(choices.map(\.isUntraced) == [false, true])
         #expect(!choices[1].allowsKeep)
         #expect(choices[1].allowedStyles == [.full, .null])
@@ -85,27 +85,72 @@ struct ShareColumnChoiceTests {
         #expect(carried.map(\.index) == [0, 1, 2])
     }
 
-    @Test("When the body budget cuts the snapshot, the detectors read only the rows it sends")
-    func detectionCoversTheSentRows() throws {
-        let wide = String(repeating: "y", count: 200_000)
-        var rows: [[PluginCellValue]] = Array(repeating: [.text(wide), .text("x")], count: 40)
-        rows[39][1] = .text("4111111111111111")
-        let source = ShareResultSource(
+    private static func bodyAndNotes(_ rows: [[PluginCellValue]]) -> ShareResultSource {
+        ShareResultSource(
             columns: ["body", "notes"],
             columnTypes: [.text(rawType: "text"), .text(rawType: "text")],
             rows: rows,
-            totalRowCount: 40,
+            totalRowCount: rows.count,
             sql: ""
         )
+    }
+
+    private static func snapshotRows(_ outcome: ShareSnapshotOutcome?) -> [[ShareCell]]? {
+        guard case .snapshot(let snapshot) = outcome else { return nil }
+        return snapshot.rows
+    }
+
+    @Test("A card past the rows the body budget sends still flags the column, and the snapshot may go to max_rows")
+    func detectionReadsPastTheBudget() throws {
+        let wide = String(repeating: "y", count: 200_000)
+        var rows: [[PluginCellValue]] = Array(repeating: [.text(wide), .text("x")], count: 40)
+        rows[39][1] = .text("4111111111111111")
+        let prepared = try #require(ShareColumnChoice.prepare(Self.bodyAndNotes(rows), maxRows: 1_000, keeping: []))
+        let sent = try #require(Self.snapshotRows(prepared.snapshot))
+
+        #expect(sent.count < 40)
+        #expect(prepared.rowCap == 1_000)
+        #expect(prepared.columns.map(\.action) == [.keep, .mask])
+        #expect(prepared.columns[1].detection == .values(.card))
+    }
+
+    @Test("A 300 KiB cell in the first row refuses the whole snapshot, and the notes' emails are still flagged")
+    func refusedSnapshotStillDetects() throws {
+        var rows: [[PluginCellValue]] = (0..<10).map { [.text("short"), .text("user\($0)@example.com")] }
+        rows[0][0] = .text(String(repeating: "y", count: 300 * 1_024))
+        let source = Self.bodyAndNotes(rows)
+        #expect(ShareSnapshotBuilder.build(source, maxRows: 1_000) == .tooLarge)
+
         let prepared = try #require(ShareColumnChoice.prepare(source, maxRows: 1_000, keeping: []))
-        guard case .snapshot(let snapshot) = prepared.snapshot else {
-            Issue.record("no snapshot")
-            return
+        #expect(prepared.columns.map(\.action) == [.keep, .mask])
+        #expect(prepared.columns[1].detection == .values(.email))
+
+        let notesOnly = try #require(prepared.columns[0].choosing(.remove))
+        let shared = [notesOnly, prepared.columns[1]].compactMap(\.sharedColumn)
+        let sent = try #require(Self.snapshotRows(ShareSnapshotBuilder.build(source, maxRows: prepared.rowCap, columns: shared)))
+        #expect(sent.count == 10)
+        #expect(sent.last == [.string("u•••@example.com")])
+    }
+
+    @Test("Emails only in the rows that fit once a wide column is removed are flagged, and those rows go masked")
+    func emailsPastTheBudgetAreFlagged() throws {
+        let wide = String(repeating: "y", count: 250_000)
+        let rows: [[PluginCellValue]] = (0..<40).map { index in
+            [.text(wide), .text(index < 20 ? "no address here" : "user\(index)@example.com")]
         }
-        #expect(snapshot.rows.count < 40)
-        #expect(prepared.rowCap == snapshot.rows.count)
-        #expect(prepared.columns.map(\.action) == [.keep, .keep])
-        #expect(snapshot.rowCount == 40)
+        let source = Self.bodyAndNotes(rows)
+        let keptWhole = try #require(Self.snapshotRows(ShareSnapshotBuilder.build(source, maxRows: 1_000)))
+        #expect(keptWhole.count <= 20)
+
+        let prepared = try #require(ShareColumnChoice.prepare(source, maxRows: 1_000, keeping: []))
+        #expect(prepared.columns.map(\.action) == [.keep, .mask])
+        #expect(prepared.columns[1].detection == .values(.email))
+
+        let notesOnly = try #require(prepared.columns[0].choosing(.remove))
+        let shared = [notesOnly, prepared.columns[1]].compactMap(\.sharedColumn)
+        let sent = try #require(Self.snapshotRows(ShareSnapshotBuilder.build(source, maxRows: prepared.rowCap, columns: shared)))
+        #expect(sent.count == 40)
+        #expect(sent.last == [.string("u•••@example.com")])
     }
 
     @Test("Defaults come from the source's rule masks and the detectors")
@@ -118,7 +163,7 @@ struct ShareColumnChoiceTests {
             sql: "",
             masks: ColumnMasks(styles: [1: .email])
         )
-        let choices = try #require(ShareColumnChoice.defaults(for: source, maxRows: 10))
+        let choices = try #require(ShareColumnChoice.defaults(for: source, windows: [10]))
         #expect(choices.map(\.action) == [.keep, .mask, .mask])
         #expect(choices.map(\.style) == [.full, .email, .full])
         #expect(choices.map(\.ruleStyle) == [nil, .email, nil])

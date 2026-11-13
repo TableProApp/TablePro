@@ -501,10 +501,12 @@ internal enum SensitiveDataDetector {
 
     // MARK: - A result
 
-    // Nil once the caller's task is cancelled. Columns the connection's rules mask get nothing: their values are gone.
-    static func detections(in source: ShareResultSource, maxRows: Int) -> [Int: SensitiveDetection]? {
+    // Each window is a count of leading rows, read on its own with its own thresholds; a column any window flags is
+    // flagged, with the first kind in table order. Nil once the caller's task is cancelled. Columns the connection's
+    // rules mask get nothing: their values are gone.
+    static func detections(in source: ShareResultSource, windows: [Int]) -> [Int: SensitiveDetection]? {
         var detections: [Int: SensitiveDetection] = [:]
-        let rows = source.rows.prefix(max(0, maxRows))
+        let counts = Set(windows.map { min(max(0, $0), source.rows.count) }).filter { $0 > 0 }
         for index in source.columns.indices where !source.masks.isMasked(index) {
             if Task.isCancelled { return nil }
             if let kind = nameKind(source.columns[index]) {
@@ -513,11 +515,17 @@ internal enum SensitiveDataDetector {
             }
             let rawType = source.columnTypes.indices.contains(index) ? source.columnTypes[index].rawType : nil
             guard isTextLike(rawType) else { continue }
-            let values = rows.lazy.map { $0.indices.contains(index) ? $0[index] : .null }
-            let kind = valueKind(of: values)
-            if Task.isCancelled { return nil }
-            if let kind {
-                detections[index] = .values(kind)
+            var found: SensitiveValueKind?
+            for count in counts {
+                let values = source.rows.prefix(count).lazy.map { $0.indices.contains(index) ? $0[index] : .null }
+                let kind = valueKind(of: values)
+                if Task.isCancelled { return nil }
+                if let kind, found.map({ kind.order < $0.order }) ?? true {
+                    found = kind
+                }
+            }
+            if let found {
+                detections[index] = .values(found)
             }
         }
         return detections
