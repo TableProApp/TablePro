@@ -12,13 +12,15 @@ import Foundation
 import TableProSSHTransport
 
 nonisolated internal enum LibSSH2JumpRelay {
-    // The relay is the only thing that touches these once it starts, which the compiler cannot see
+    // The hop's pump is the only thing that touches these once it starts, which the compiler cannot see
     // through an OpaquePointer.
     nonisolated private struct Handles: @unchecked Sendable {
         let channel: OpaquePointer
         let session: OpaquePointer
     }
 
+    // The hop session carries one channel, relayed to `localFD`, which the pump closes. The fence finishes once
+    // the pump has stopped, so teardown frees the channel and session only after the pump's last libssh2 call.
     static func start(
         channel: OpaquePointer,
         localFD: Int32,
@@ -26,36 +28,20 @@ nonisolated internal enum LibSSH2JumpRelay {
         session: OpaquePointer,
         sessionQueue: DispatchQueue
     ) -> SSHJumpRelayFence {
-        let relayQueue = DispatchQueue(
-            label: "com.TablePro.ssh.hop-relay",
-            qos: .utility
-        )
         let handles = Handles(channel: channel, session: session)
+        let pump = SSHSessionPump(transportFD: transportFD, queue: sessionQueue)
         let fence = SSHJumpRelayFence {
-            shutdown(localFD, SHUT_RDWR)
-            shutdown(transportFD, SHUT_RDWR)
+            pump.stop()
         }
-        relayQueue.async {
-            defer {
-                fence.finish {
-                    shutdown(localFD, SHUT_RDWR)
-                    Darwin.close(localFD)
-                }
-            }
-
-            let relay = SSHChannelRelay(
-                localFD: localFD,
-                transportFD: transportFD,
-                channelIO: LibSSH2ChannelIO(
-                    channel: handles.channel,
-                    session: handles.session,
-                    sessionQueue: sessionQueue
-                ),
-                bufferSize: 32_768,
-                isActive: { fence.isActive }
-            )
-
-            _ = relay.run()
+        pump.whenStopped {
+            fence.finish()
+        }
+        pump.relay(
+            localFD: localFD,
+            channel: LibSSH2ChannelIO(channel: handles.channel, session: handles.session),
+            bufferSize: 32_768
+        ) { _ in
+            pump.stop()
         }
         return fence
     }

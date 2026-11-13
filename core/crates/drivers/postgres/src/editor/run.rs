@@ -40,9 +40,9 @@ enum Role {
 }
 
 pub(crate) struct Run<'a> {
-    core: &'a mut SessionCore,
+    pub(super) core: &'a mut SessionCore,
     sink: &'a mut dyn ResultSink,
-    watch: StopWatch,
+    pub(super) watch: StopWatch,
     limit: RowLimit,
     sink_gone: bool,
     notices_sent: u64,
@@ -375,6 +375,11 @@ impl<'a> Run<'a> {
         Err(Lost)
     }
 
+    /// One of the driver's own statements, its notices dropped.
+    pub(super) async fn control(&mut self, sql: &str) -> Result<Option<DriverError>, Lost> {
+        self.exchange(sql, Role::Control).await
+    }
+
     /// Send one message and read everything it returns, keeping the first
     /// error. Its notices reach the sink unless it is the driver's own.
     async fn exchange(&mut self, sql: &str, role: Role) -> Result<Option<DriverError>, Lost> {
@@ -581,7 +586,7 @@ fn truncation(truncated: bool, cursor: bool) -> Truncation {
 
 /// How a run that was stopped ends. The server's 57014 is the
 /// acknowledgement; any other error was the statement's own.
-fn end_after_stop(interrupt: Interrupt, error: &DriverError) -> RunEnd {
+pub(super) fn end_after_stop(interrupt: Interrupt, error: &DriverError) -> RunEnd {
     match interrupt {
         Interrupt::Cancelled | Interrupt::ConsumerGone => RunEnd::Cancelled,
         Interrupt::DeadlineElapsed => RunEnd::TimedOut {

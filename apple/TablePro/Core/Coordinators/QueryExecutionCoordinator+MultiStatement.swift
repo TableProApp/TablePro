@@ -55,14 +55,21 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    // A context is Read-Only's, and every call below carries it.
+    // A context is Read-Only's, and every call below carries it. A COPY with rows never goes as a header alone: a driver
+    // without copy-in refuses before anything is sent, where some servers drop the connection on the header.
     func executeStatement(
         rowCap: Int?,
         originalSQL: String,
         driver: DatabaseDriver,
         parameters: [Any?]? = nil,
+        copyData: String? = nil,
         context: PluginStatementContext? = nil
     ) async throws -> QueryResult {
+        if let copyData {
+            return try await driver.copyFromStandardInput(
+                statement: originalSQL, rows: CopyDataPieces.reading(copyData), context: context
+            )
+        }
         if let context {
             return try await executeStatement(
                 rowCap: rowCap, originalSQL: originalSQL, driver: driver, parameters: parameters, carrying: context

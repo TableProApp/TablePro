@@ -300,6 +300,7 @@ An editor tab holds one session for as long as it is open, because the state a u
 - A statement the server refused ends the run with `RunEnd::Failed` in the `RunSummary`; an `Err` from `run` means the session itself failed.
 - `RunSummary` carries `elapsed`, the `RunEnd` (`Completed`, `Failed`, `Cancelled`, `TimedOut { server_cancelled }`) and the `TransactionState` after the run. `Unknown` is an answer of its own: the tab's close guard warns instead of guessing.
 - `close` stops a running statement, then closes the connection within `close_timeout`.
+- `copy_in(statement, rows, options)` runs a `COPY ... FROM STDIN` from an imported file and sends it the `CopyInPiece`s it receives, ending at `CopyInPiece::End`; a closed channel abandons the copy. The default refuses with `Unsupported { CopyFromStdin }`; only PostgreSQL implements it.
 
 ### `ResultSink` and backpressure
 

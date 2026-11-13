@@ -31,6 +31,15 @@ pub struct ScriptUnit {
 pub enum ScriptUnitKind {
     /// Sent to the server.
     Run,
+    /// A `COPY ... FROM stdin`, sent as written with the `CopyData` units
+    /// that follow it as its rows, up to the `CopyEnd`.
+    CopyFromStdin,
+    /// A piece of the rows, as the file holds them: the lines after the
+    /// COPY's line, cut anywhere.
+    CopyData,
+    /// The rows ended, at psql's `\.` line or the end of the file. The
+    /// marker itself is never sent.
+    CopyEnd,
     /// A line only psql reads, such as pg_dump's `\restrict`, which keeps
     /// psql from running meta-commands a server could plant in the data.
     /// Nothing here runs meta-commands, so it is passed over.
@@ -43,11 +52,9 @@ pub enum ScriptUnitKind {
 pub enum RefusedUnit {
     /// A psql meta-command other than `\restrict` and `\unrestrict`.
     ClientCommand { command: String },
-    /// `COPY ... FROM stdin` in a form other than the text format pg_dump
-    /// writes, or with options.
-    CopyFormat,
-    /// `COPY` data that is not UTF-8 once its escapes are read.
-    CopyNotText,
+    /// `COPY ... FROM stdin` in the binary format, whose rows a script
+    /// cannot hold. Its rows are passed over.
+    CopyBinary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -63,10 +70,11 @@ pub enum ScriptReadError {
 /// `DELIMITER` line sets, at SQL Server `GO` lines. Only text up to the
 /// last line break is planned until the end, since a directive is a whole
 /// line. On PostgreSQL it also reads what psql reads in a pg_dump file:
-/// `COPY ... FROM stdin` rows up to `\.`, which become INSERTs, and
-/// backslash lines. A `SET` of `standard_conforming_strings` or of a
-/// `sql_mode` with `NO_BACKSLASH_ESCAPES` changes how the rest reads, as
-/// it does on the server.
+/// `COPY ... FROM stdin` rows up to `\.`, given as the file holds them in
+/// bounded pieces, and backslash lines. A `SET` of
+/// `standard_conforming_strings` or of a `sql_mode` with
+/// `NO_BACKSLASH_ESCAPES` changes how the rest reads, as it does on the
+/// server.
 #[derive(Debug)]
 pub struct ScriptReader {
     grammar: SqlGrammar,
@@ -77,9 +85,12 @@ pub struct ScriptReader {
     delimiter: String,
     plan_at: usize,
     copy: Option<CopyRows>,
-    /// What lets an INSERT made from COPY rows set an identity column, as
-    /// COPY itself may.
-    copy_overriding: Option<String>,
+    /// What follows a COPY on its own line, which psql runs once the rows
+    /// end, with the line it is on.
+    after_rows: Option<(String, u64)>,
+    /// The line of the first line of `pending` when it is not `line`: the
+    /// rest of a COPY's line, put back in front of what follows its rows.
+    first_line: Option<u64>,
     tracker: LexicalTracker,
     units: VecDeque<ScriptUnit>,
 }
@@ -94,7 +105,8 @@ impl ScriptReader {
             delimiter: ";".to_owned(),
             plan_at: 0,
             copy: None,
-            copy_overriding: None,
+            after_rows: None,
+            first_line: None,
             tracker: LexicalTracker::default(),
             units: VecDeque::new(),
         }
@@ -107,19 +119,19 @@ impl ScriptReader {
         self
     }
 
-    /// The clause `SqlDialect::insert_overriding_clause` gives, for the
-    /// INSERTs COPY rows become.
-    pub fn with_copy_overriding(mut self, clause: Option<&str>) -> Self {
-        self.copy_overriding = clause.map(str::to_owned);
-        self
-    }
-
     /// Take the next piece of the script, and give back the units it
     /// completed.
     pub fn push(&mut self, text: &str) -> Result<Vec<ScriptUnit>, ScriptReadError> {
         self.pending.push_str(text);
         self.process(false)?;
         Ok(self.units.drain(..).collect())
+    }
+
+    /// Take the last piece before the text stops being readable, and give
+    /// back every unit it completed, without waiting for more text first.
+    pub(crate) fn push_last(&mut self, text: &str) -> Result<Vec<ScriptUnit>, ScriptReadError> {
+        self.plan_at = 0;
+        self.push(text)
     }
 
     /// The end of the script: what is left, whole or not, as the client
@@ -159,7 +171,7 @@ impl ScriptReader {
                 }
                 Planned::Nothing => {
                     if self.pending.len() > MAX_UNIT_BYTES {
-                        return Err(ScriptReadError::TooLong { line: self.line });
+                        return Err(ScriptReadError::TooLong { line: self.line_of(0) });
                     }
                     self.plan_at = (self.pending.len() * 2).max(self.pending.len() + PLAN_STEP);
                     break;
@@ -182,6 +194,10 @@ impl ScriptReader {
             false => settled.offset,
         };
         let mut found = Vec::new();
+        let mut after_rows = None;
+        // A COPY whose line has not all been read yet, on a line too long
+        // to wait for whole.
+        let mut waits_at = None;
         let mut interrupted_at = None;
         let mut delimiter_at_cut = None;
         for batch in plan.batches() {
@@ -195,21 +211,34 @@ impl ScriptReader {
             }
             if self.grammar == SqlGrammar::PostgreSql {
                 let tokens: Vec<ScriptToken> = plan.tokens(batch.range.clone()).collect();
-                if let Some(copy) = CopyRows::starting(text, &tokens, self.copy_overriding.as_deref()) {
-                    let after_line = text
-                        .get(batch.range.end..)
-                        .and_then(|rest| rest.find('\n'))
-                        .map_or(limit, |at| batch.range.end + at + 1);
-                    // A COPY the reader turns into INSERTs is never sent;
-                    // one it cannot read is reported and its rows passed over.
-                    if let Some(refused) = copy.refusal() {
-                        found.push((batch.range.clone(), 1, Some(refused)));
+                if let Some(copy) = CopyRows::starting(text, &tokens) {
+                    // psql reads the rows from the line after the COPY's
+                    // `;`, and runs the rest of that line once they end.
+                    let ends = plan
+                        .statements()
+                        .get(batch.statements.start)
+                        .map_or(batch.range.end, |statement| statement.extent.end.max(batch.range.end));
+                    let line_end = text.get(ends..).and_then(|rest| rest.find('\n')).map(|at| ends + at);
+                    if line_end.is_none() && !end {
+                        waits_at = Some(batch.range.start);
+                        break;
                     }
+                    let after_line = line_end.map_or(limit, |at| at + 1);
+                    let rest = text.get(ends..line_end.unwrap_or(limit)).unwrap_or_default();
+                    if !rest.trim().is_empty() {
+                        let newlines = text.get(..ends).unwrap_or_default().matches('\n').count() as u64;
+                        after_rows = Some((rest.to_owned(), self.line_of(newlines)));
+                    }
+                    let kind = match copy.refusal() {
+                        Some(refused) => ScriptUnitKind::Refused(refused),
+                        None => ScriptUnitKind::CopyFromStdin,
+                    };
+                    found.push((batch.range.clone(), 1, kind));
                     interrupted_at = Some((after_line, Some(copy)));
                     break;
                 }
             }
-            found.push((batch.range.clone(), batch.repeat.get(), None));
+            found.push((batch.range.clone(), batch.repeat.get(), ScriptUnitKind::Run));
             // A statement that changes how a backslash reads changes how
             // the rest of the text splits, so it is planned again from here.
             if let Some(settings) = self.tracker.after(unit_text, self.grammar, self.settings) {
@@ -224,24 +253,26 @@ impl ScriptReader {
             }
         }
         let lines_before = |offset: usize| text.get(..offset).unwrap_or_default().matches('\n').count() as u64;
-        for (range, repeat, refused) in &found {
+        for (range, repeat, kind) in found {
             let unit_text = text.get(range.clone()).unwrap_or_default().trim().to_owned();
             if unit_text.is_empty() {
                 continue;
             }
             self.units.push_back(ScriptUnit {
                 text: unit_text,
-                line: self.line + lines_before(range.start),
-                repeat: *repeat,
-                kind: match refused {
-                    Some(refused) => ScriptUnitKind::Refused(refused.clone()),
-                    None => ScriptUnitKind::Run,
-                },
+                line: self.line_of(lines_before(range.start)),
+                repeat,
+                kind,
             });
+        }
+        if let Some(start) = waits_at {
+            self.cut(start);
+            return Planned::Nothing;
         }
         match interrupted_at {
             Some((cut, copy)) => {
                 self.cut(cut);
+                self.after_rows = after_rows;
                 self.copy = copy.map(|copy| copy.at_line(self.line));
                 self.delimiter = delimiter_at_cut.unwrap_or_else(|| self.delimiter.clone());
                 Planned::Interrupted
@@ -304,7 +335,7 @@ impl ScriptReader {
                 .unwrap_or_default()
                 .trim_end()
                 .to_owned();
-            let starts_on = self.line + self.pending.get(..offset).unwrap_or_default().matches('\n').count() as u64;
+            let starts_on = self.line_of(self.pending.get(..offset).unwrap_or_default().matches('\n').count() as u64);
             let command = line.split_whitespace().next().unwrap_or_default().to_owned();
             let kind = match command.as_str() {
                 "\\restrict" | "\\unrestrict" => ScriptUnitKind::ClientOnly,
@@ -321,37 +352,21 @@ impl ScriptReader {
         }
     }
 
-    /// Read COPY rows a line at a time. True when the data ended and the
-    /// script goes on.
+    /// Read COPY rows. True when the data ended and the script goes on.
     fn copy_lines(&mut self, end: bool) -> bool {
         let Some(mut copy) = self.copy.take() else {
             return false;
         };
-        let mut consumed = 0;
-        let mut finished = false;
-        while let Some(at) = self.pending.get(consumed..).and_then(|rest| rest.find('\n')) {
-            let line = self.pending.get(consumed..consumed + at).unwrap_or_default();
-            let line = line.strip_suffix('\r').unwrap_or(line);
-            consumed += at + 1;
-            if line == "\\." {
-                finished = true;
-                break;
-            }
-            copy.row(line, &mut self.units);
-        }
-        if !finished && end {
-            let line = self.pending.get(consumed..).unwrap_or_default();
-            let line = line.strip_suffix('\r').unwrap_or(line);
-            if !line.is_empty() && line != "\\." {
-                copy.row(line, &mut self.units);
-            }
-            consumed = self.pending.len();
-            finished = true;
-        }
+        let (consumed, finished) = copy.take(&self.pending, end, &mut self.units);
         self.cut(consumed);
         if finished {
-            copy.finish(&mut self.units);
             self.plan_at = 0;
+            if let Some((rest, line)) = self.after_rows.take() {
+                self.pending.insert(0, '\n');
+                self.pending.insert_str(0, &rest);
+                self.line = self.line.saturating_sub(1);
+                self.first_line = Some(line);
+            }
             return true;
         }
         self.copy = Some(copy);
@@ -360,8 +375,21 @@ impl ScriptReader {
 
     fn cut(&mut self, offset: usize) {
         let offset = offset.min(self.pending.len());
-        self.line += self.pending.get(..offset).unwrap_or_default().matches('\n').count() as u64;
+        let newlines = self.pending.get(..offset).unwrap_or_default().matches('\n').count() as u64;
+        if newlines > 0 {
+            self.first_line = None;
+        }
+        self.line += newlines;
         self.pending.drain(..offset);
+    }
+
+    /// The line of text that starts after `newlines` line breaks of
+    /// `pending`.
+    fn line_of(&self, newlines: u64) -> u64 {
+        match (newlines, self.first_line) {
+            (0, Some(line)) => line,
+            _ => self.line + newlines,
+        }
     }
 }
 
@@ -369,7 +397,7 @@ enum Planned {
     /// A COPY or a backslash line stopped the plan; read on from there.
     Interrupted,
     Settled,
-    /// No unit is whole yet.
+    /// No unit is whole yet, or a COPY waits for the rest of its line.
     Nothing,
 }
 

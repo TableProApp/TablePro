@@ -145,6 +145,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// statements after it may still have run and returned results.
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult?
 
+    /// Runs `statement`, a `COPY ... FROM STDIN`, and sends it `rows` a piece at a time through the engine's copy
+    /// protocol, holding the session until the copy ends. A driver declares `PluginCapabilities.copyFromStandardInput`
+    /// for it; the default throws `PluginDriverUnsupportedOperation.copyFromStandardInput`.
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult
+
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
 
     /// What `fetchTables(schema:)` lists for every schema `fetchSchemas()` lists, in one call, each
@@ -1508,6 +1517,14 @@ public extension PluginDatabaseDriver {
 
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
         nil
+    }
+
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        throw PluginDriverUnsupportedOperation.copyFromStandardInput
     }
 
     /// The bounded read for a driver whose `streamRows` yields rows as they arrive and whose

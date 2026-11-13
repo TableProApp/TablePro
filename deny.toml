@@ -67,4 +67,5 @@ deny = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = []
+# tokio-postgres with the copy_in fix, until a release has it (Cargo.toml, patch.crates-io).
+allow-git = ["https://github.com/TableProApp/rust-postgres"]

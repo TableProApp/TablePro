@@ -72,6 +72,9 @@ enum QueryExecutionRoute {
     ///
     /// A driver that cannot send batches runs statement by statement, and a `GO n` it cannot honour is refused rather
     /// than run once: expanding a count up to `Int32.max` into statements would stall the app before any of them ran.
+    ///
+    /// A run holding a `COPY ... FROM STDIN`'s rows goes statement by statement, the one path that sends them: the
+    /// single path streams rows into the grid, and a batch is sent as text.
     static func resolve(
         _ batches: [ExecutableBatch],
         sendsBatchesWhole: Bool,
@@ -79,9 +82,10 @@ enum QueryExecutionRoute {
     ) -> QueryExecutionRoute? {
         let statements = batches.flatMap(\.statements)
         guard let first = statements.first else { return nil }
-        guard sendsBatchesWhole else {
+        let carriesCopyData = statements.contains { $0.copyData != nil }
+        guard sendsBatchesWhole, !carriesCopyData else {
             guard batches.allSatisfy({ $0.repeatCount == 1 }) else { return .needsBatchDriver }
-            return statements.count == 1 ? .single(first) : .statements(statements)
+            return statements.count == 1 && !carriesCopyData ? .single(first) : .statements(statements)
         }
         if statements.count == 1, batches.first?.repeatCount == 1, isPlainQuery(first.sql) {
             return .single(first)
