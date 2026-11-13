@@ -13,9 +13,11 @@ import TableProPluginKit
 enum ResultSnapshotBuilder {
     static let maxRows = 10_000
     static let maxColumns = 100
-    // Per cell and for the whole snapshot, under the server's 256 KB/cell and 5 MB (compressed) caps.
+    // Per cell, under the server's 256 KB/cell cap. The snapshot budget is counted on the uncompressed
+    // bytes and kept under the server's 5 MB compressed cap: gzip never expands, so staying under 4.5 MB
+    // uncompressed stays under 5 MB compressed, and a deterministic 422 never surprises the user.
     static let maxCellBytes = 64 * 1_024
-    static let maxSnapshotBytes = 8 * 1_024 * 1_024
+    static let maxSnapshotBytes = 4_500_000
 
     struct Built {
         let snapshot: Components.Schemas.SnapshotInput

@@ -18,6 +18,8 @@ internal struct FavoritesTabView: View {
     @State private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
     @State private var folderToDelete: SQLFavoriteFolder?
     @State private var showDeleteFolderAlert = false
+    // Set while a Share Link request is in flight, so a second click does not mint a duplicate link.
+    @State private var isSharing = false
     @State private var linkedFileToTrash: LinkedSQLFavorite?
     @State private var showTrashLinkedFileAlert = false
     @State private var linkedMetadataTarget: LinkedSQLFavorite?
@@ -322,7 +324,10 @@ internal struct FavoritesTabView: View {
     }
 
     private func shareFavorite(_ favorite: SQLFavorite) {
+        guard !isSharing else { return }
+        isSharing = true
         Task { @MainActor in
+            defer { isSharing = false }
             let client = ShareClient(api: AccountServices.shared.api)
             do throws(ShareFailure) {
                 let link = try await client.createQuery(title: favorite.name, sql: favorite.query, note: nil, dialect: nil)

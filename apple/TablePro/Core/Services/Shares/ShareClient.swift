@@ -10,8 +10,7 @@ internal enum ShareFailure: Error, Equatable, Sendable {
     case offline
     // The request was cancelled (torn down, superseded). Nothing to tell the user.
     case canceled
-    // The 429's Retry-After, when it carried one.
-    case rateLimited(retryAfter: Duration?)
+    case rateLimited
     case server
     case signedOut
     // The account's plan does not include shared_links.
@@ -63,13 +62,16 @@ internal enum ShareFailure: Error, Equatable, Sendable {
         case .server(let status, _) where status == 401:
             return .signedOut
         case .server(let status, _) where status == 429:
-            return .rateLimited(retryAfter: nil)
+            return .rateLimited
         case .server(let status, _) where status >= 500:
             return .server
         case .server:
             return .refused
-        default:
+        case .network:
             return .offline
+        default:
+            // An OAuth, decode, or state error is not "offline"; treat it as a server-side problem.
+            return .server
         }
     }
 }
@@ -117,7 +119,7 @@ internal struct ShareClient: Sendable {
             case .unprocessableContent:
                 throw ShareFailure.refused
             case .tooManyRequests(let answer):
-                throw ShareFailure.rateLimited(retryAfter: Self.delay(seconds: answer.headers.retryAfter))
+                throw ShareFailure.rateLimited
             case .internalServerError:
                 throw ShareFailure.server
             case .undocumented(let status, _):
@@ -138,7 +140,7 @@ internal struct ShareClient: Sendable {
             case .notFound, .unprocessableContent:
                 throw ShareFailure.notFound
             case .tooManyRequests(let answer):
-                throw ShareFailure.rateLimited(retryAfter: Self.delay(seconds: answer.headers.retryAfter))
+                throw ShareFailure.rateLimited
             case .internalServerError:
                 throw ShareFailure.server
             case .undocumented(let status, _):
@@ -151,14 +153,9 @@ internal struct ShareClient: Sendable {
         }
     }
 
-    private static func delay(seconds: Int?) -> Duration? {
-        guard let seconds, seconds > 0 else { return nil }
-        return .seconds(seconds)
-    }
-
     private static func undocumented(_ status: Int) -> ShareFailure {
         switch status {
-        case 429: .rateLimited(retryAfter: nil)
+        case 429: .rateLimited
         case 500...: .server
         default: .refused
         }

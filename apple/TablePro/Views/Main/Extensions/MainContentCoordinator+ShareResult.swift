@@ -9,7 +9,8 @@ extension MainContentCoordinator {
     // Shares the active result as a public link: the selected rows, or the whole loaded result when
     // nothing is selected, capped and sent to the share service, then the URL is put on the clipboard.
     func shareActiveResult() {
-        guard let tab = tabManager.selectedTab else { return }
+        guard FeatureAccess.shared.isAvailable(.sharedLinks) else { return }
+        guard !isSharingInFlight, let tab = tabManager.selectedTab else { return }
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         guard !tableRows.rows.isEmpty else { return }
 
@@ -21,6 +22,8 @@ extension MainContentCoordinator {
             tableRows: tableRows,
             displayIDs: model.order.filteredIDs,
             selectedDisplayIndices: selectedDisplayIndices,
+            // A row marked for deletion must not land in a public snapshot, as the JSON view already excludes it.
+            deletedRowIDs: model.changeState?.deletedRowIDs ?? [],
             defaultedCells: model.changeState?.defaultedCells(in: tableRows) ?? [:],
             columns: projection
         )
@@ -37,7 +40,9 @@ extension MainContentCoordinator {
         )
 
         let window = contentWindow
+        isSharingInFlight = true
         Task { @MainActor in
+            defer { isSharingInFlight = false }
             let client = ShareClient(api: AccountServices.shared.api)
             do throws(ShareFailure) {
                 let link = try await client.createResult(

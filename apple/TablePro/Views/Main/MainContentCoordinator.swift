@@ -129,6 +129,8 @@ enum ActiveSheet: Identifiable {
 
 @MainActor
 final class MainContentCoordinator: ObservableObject {
+    // Set while a Share Result request is in flight, so a second click does not mint a duplicate link.
+    var isSharingInFlight = false
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
     nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
