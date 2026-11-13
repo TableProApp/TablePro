@@ -191,6 +191,10 @@ pub struct SnapshotBody {
     pub rows: Vec<Vec<Box<RawValue>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row_count: Option<i64>,
+    // Rows exist beyond those sent and nobody counted them; the viewer then says so rather than read the rows as
+    // the whole result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub more_rows: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,7 +229,8 @@ impl From<Snapshot> for SnapshotBody {
                     row
                 })
                 .collect(),
-            row_count: Some(i64::try_from(snapshot.row_count).unwrap_or(i64::MAX)),
+            row_count: snapshot.row_count.map(|count| i64::try_from(count).unwrap_or(i64::MAX)),
+            more_rows: snapshot.more_rows.then_some(true),
         }
     }
 }
@@ -234,7 +239,9 @@ impl From<Snapshot> for SnapshotBody {
 // app opens a link's SQL, so its rows are skipped rather than parsed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicSnapshot {
-    pub row_count: i64,
+    // None for a result cut with no count.
+    #[serde(default)]
+    pub row_count: Option<i64>,
     pub truncated: bool,
 }
 
@@ -334,7 +341,7 @@ impl From<types::PublicShare> for SharedLink {
             created_at: shared.created_at,
             expires_at: shared.expires_at,
             allow_download: shared.allow_download,
-            row_count: shared.snapshot.map(|snapshot| count(snapshot.row_count)),
+            row_count: shared.snapshot.and_then(|snapshot| snapshot.row_count).map(count),
             truncated: shared.snapshot.map(|snapshot| snapshot.truncated),
         }
     }
@@ -348,7 +355,7 @@ fn count(number: i64) -> u64 {
 #[cfg(test)]
 mod tests {
     use tablepro_core::column::{ColumnType, ResultColumn};
-    use tablepro_core::export::build_snapshot;
+    use tablepro_core::export::{ResultExtent, build_snapshot};
     use tablepro_core::value::Value;
 
     use super::*;
@@ -361,7 +368,7 @@ mod tests {
         columns[0].name = "n".repeat(300);
         let row: Vec<Value> = (0..=MAX_SHARE_COLUMNS).map(|index| Value::Int(index as i64)).collect();
 
-        let body = SnapshotBody::from(build_snapshot(&columns, [row], 1, 10));
+        let body = SnapshotBody::from(build_snapshot(&columns, [row], ResultExtent::complete(1), 10));
 
         assert_eq!(body.columns.len(), MAX_SHARE_COLUMNS);
         assert_eq!(body.columns[0].name.chars().count(), 256);
@@ -389,5 +396,49 @@ mod tests {
         assert_eq!(deleted.suspended_by.as_deref(), Some("team_deleted"));
         assert!(!live.suspended);
         assert_eq!(live.suspended_by, None);
+    }
+
+    #[test]
+    fn a_cut_result_nobody_counted_sends_more_rows_and_no_count() {
+        let columns = [ResultColumn::new("n", ColumnType::untyped_text("int"))];
+        let rows = [vec![Value::Int(1)]];
+        let uncounted = ResultExtent::finished(1, None, tablepro_core::Truncation::ReadPastLimit);
+
+        let cut = serde_json::to_string(&SnapshotBody::from(build_snapshot(
+            &columns,
+            rows.clone(),
+            uncounted,
+            10,
+        )))
+        .expect("JSON");
+        let whole = serde_json::to_string(&SnapshotBody::from(build_snapshot(
+            &columns,
+            rows,
+            ResultExtent::complete(1),
+            10,
+        )))
+        .expect("JSON");
+
+        assert!(
+            cut.contains(r#""more_rows":true"#) && !cut.contains("row_count"),
+            "{cut}"
+        );
+        assert!(
+            whole.contains(r#""row_count":1"#) && !whole.contains("more_rows"),
+            "{whole}"
+        );
+    }
+
+    #[test]
+    fn a_shared_result_with_no_count_reads_as_cut_without_one() {
+        let json = r#"{"kind":"result","title":"","note":"","dialect":"","created_at":"2026-11-13T00:00:00Z",
+            "allow_download":true,"made_with":"TablePro",
+            "snapshot":{"columns":[{"name":"n","type":"int"}],"rows":[[1]],"row_count":null,"truncated":true}}"#;
+
+        let shared: SharedLink = serde_json::from_str::<types::PublicShare>(json)
+            .expect("a shared link")
+            .into();
+
+        assert_eq!((shared.row_count, shared.truncated), (None, Some(true)));
     }
 }

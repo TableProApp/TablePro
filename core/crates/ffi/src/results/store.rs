@@ -1,8 +1,9 @@
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
 
-use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
+use tablepro_core::export::ResultExtent;
 use tablepro_core::value::order::{row_order, sorts_as_text};
+use tablepro_core::{Truncation, Value};
 
 use super::column_cells::{Cell, ColumnCells, cell_value, stored_value};
 use super::{ValueKind, cell_text};
@@ -23,6 +24,9 @@ pub(super) struct StoreState {
     pub(super) chunks: Vec<Chunk>,
     pub(super) rows: u64,
     pub(super) finished: bool,
+    // As the set's end reported them: every row when counted, and whether rows may follow those held.
+    pub(super) total: Option<u64>,
+    pub(super) cut: bool,
 }
 
 #[derive(Debug)]
@@ -41,6 +45,8 @@ impl ResultStore {
                 chunks: Vec::new(),
                 rows: 0,
                 finished: false,
+                total: None,
+                cut: false,
             }),
         }
     }
@@ -118,12 +124,40 @@ impl ResultStore {
         state.rows
     }
 
-    // A set the last chunk holds would otherwise keep the slack its arrays grew by.
+    #[cfg(test)]
     pub(crate) fn finish(&self) {
+        self.finish_as(None, Truncation::Complete);
+    }
+
+    // A set the last chunk holds would otherwise keep the slack its arrays grew by.
+    pub(crate) fn finish_as(&self, total_rows: Option<u64>, truncation: Truncation) {
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         state.finished = true;
+        state.total = total_rows;
+        state.cut = truncation != Truncation::Complete;
         if let Some(chunk) = state.chunks.last_mut() {
             chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
+    }
+
+    // The run ended, as a cancel or an error ends it, before the set said it was finished: rows may follow.
+    pub(crate) fn finish_with_run(&self) {
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        if !state.finished {
+            state.finished = true;
+            state.cut = true;
+        }
+        if let Some(chunk) = state.chunks.last_mut() {
+            chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
+    }
+
+    pub(crate) fn extent(&self) -> ResultExtent {
+        let state = self.read();
+        ResultExtent {
+            held: state.rows,
+            total: state.total,
+            cut: state.cut,
         }
     }
 

@@ -700,7 +700,7 @@ fn not_connected() -> CoreError {
 #[cfg(test)]
 mod tests {
     use tablepro_core::column::{IntegerKind, IntegerWidth, ReadForm, TextLength};
-    use tablepro_core::export::build_snapshot;
+    use tablepro_core::export::{ResultExtent, build_snapshot};
 
     use super::*;
     use crate::results::ResultStore;
@@ -754,7 +754,7 @@ mod tests {
         let set = ResultSet::new(0, store);
 
         let held = held_row(&set, 0, &columns);
-        let snapshot = build_snapshot(&columns, [held.clone()], 1, 10);
+        let snapshot = build_snapshot(&columns, [held.clone()], ResultExtent::complete(1), 10);
 
         assert_eq!(held, row);
         let cells: Vec<&str> = snapshot.rows[0].iter().map(|cell| cell.get()).collect();

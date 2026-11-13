@@ -19,7 +19,7 @@ use tablepro_account::{
 };
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::credentials::SecretError;
-use tablepro_core::export::build_snapshot;
+use tablepro_core::export::{ResultExtent, build_snapshot};
 use tablepro_core::value::Value;
 use tokio::process::{Child, Command};
 use url::Url;
@@ -702,7 +702,7 @@ fn result_share(title: &str, rows: usize, row_count: u64, kept: usize) -> ShareR
         .collect();
     ShareRequest {
         kind: ShareKind::Result,
-        snapshot: Some(build_snapshot(&columns, &rows, row_count, kept)),
+        snapshot: Some(build_snapshot(&columns, &rows, ResultExtent::complete(row_count), kept)),
         ..query_share(title)
     }
 }
@@ -948,7 +948,12 @@ async fn a_pro_link_behind_a_password_opens_with_it_keeps_every_digit_and_takes_
             kind: ShareKind::Result,
             password: Some(SecretString::from(PASSWORD)),
             allow_download: Some(false),
-            snapshot: Some(build_snapshot(&columns, &rows_shared, 2, max_rows)),
+            snapshot: Some(build_snapshot(
+                &columns,
+                &rows_shared,
+                ResultExtent::complete(2),
+                max_rows,
+            )),
             ..query_share("Ledger")
         })
         .await

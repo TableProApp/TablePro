@@ -71,7 +71,7 @@ impl ResultSink for RunSink {
             } => {
                 let (set_index, row_count) = match self.current.take() {
                     Some((set_index, store)) => {
-                        store.finish();
+                        store.finish_as(total_rows, truncation);
                         (set_index, store.row_count())
                     }
                     None => (u32::MAX, 0),
@@ -104,7 +104,7 @@ mod tests {
     use tablepro_core::{ServerNotice, Truncation, Value};
 
     use super::*;
-    use crate::run::{RunListener, TruncationTag};
+    use crate::run::{RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 
     struct Quiet;
 
@@ -148,6 +148,38 @@ mod tests {
                 truncation: TruncationTag::ByteLimit,
             }
         );
+    }
+
+    #[tokio::test]
+    async fn a_set_keeps_how_it_ended_and_one_a_run_ended_first_is_cut() {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text(""))].into();
+        let ended = Arc::new(RunState::new(Box::new(Quiet)));
+        let mut sink = RunSink::new(ended.clone(), ByteLimit::EDITOR_DEFAULT);
+        sink.accept(ResultEvent::ResultSetStarted {
+            columns: columns.clone(),
+        })
+        .await;
+        sink.accept(ResultEvent::Rows(vec![vec![Value::Int(1)]])).await;
+        sink.accept(ResultEvent::ResultSetFinished {
+            retained: 1,
+            total_rows: None,
+            truncation: Truncation::ReadPastLimit,
+        })
+        .await;
+        let cancelled = Arc::new(RunState::new(Box::new(Quiet)));
+        let mut sink = RunSink::new(cancelled.clone(), ByteLimit::EDITOR_DEFAULT);
+        sink.accept(ResultEvent::ResultSetStarted { columns }).await;
+        sink.accept(ResultEvent::Rows(vec![vec![Value::Int(1)]])).await;
+
+        cancelled.finish(RunOutcome::Completed { elapsed_ms: 0 }, TransactionStateTag::Idle);
+
+        let cut = tablepro_core::export::ResultExtent {
+            held: 1,
+            total: None,
+            cut: true,
+        };
+        assert_eq!(ended.set(0).unwrap().extent(), cut);
+        assert_eq!(cancelled.set(0).unwrap().extent(), cut);
     }
 
     #[tokio::test]

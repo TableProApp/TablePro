@@ -1,6 +1,7 @@
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 use serde_json::value::RawValue;
 
+use crate::Truncation;
 use crate::column::{ColumnKind, ResultColumn};
 use crate::value::Value;
 
@@ -13,8 +14,40 @@ use super::value_text::element_kind;
 pub struct Snapshot {
     pub columns: Vec<SnapshotColumn>,
     pub rows: Vec<Vec<Box<RawValue>>>,
-    // Every row of the result, the ones left out included.
-    pub row_count: u64,
+    // Every row of the result, the ones left out included; None when it was cut and nobody counted it.
+    pub row_count: Option<u64>,
+    // Rows exist beyond those here, how many unknown.
+    pub more_rows: bool,
+}
+
+// What a result knows of its rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResultExtent {
+    // The rows the result holds.
+    pub held: u64,
+    // Every row of the result when something counted them: the server, or a count of a table view.
+    pub total: Option<u64>,
+    // Rows may follow those held: a row or byte limit, one page of a table, or a run that ended first.
+    pub cut: bool,
+}
+
+impl ResultExtent {
+    pub fn complete(held: u64) -> Self {
+        Self {
+            held,
+            total: None,
+            cut: false,
+        }
+    }
+
+    // As the result's `ResultEvent::ResultSetFinished` reports it.
+    pub fn finished(held: u64, total_rows: Option<u64>, truncation: Truncation) -> Self {
+        Self {
+            held,
+            total: total_rows,
+            cut: truncation != Truncation::Complete,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,16 +58,16 @@ pub struct SnapshotColumn {
 
 impl Snapshot {
     pub fn truncated(&self) -> bool {
-        self.row_count > self.rows.len() as u64
+        self.more_rows || self.row_count.is_some_and(|count| count > self.rows.len() as u64)
     }
 }
 
-// Takes at most `max_rows` rows; `row_count` is the result's true total, which a caller that holds every row gives
-// as their count.
+// Takes at most `max_rows` rows. A result cut with no count says only that more rows exist, so a viewer never
+// reads the rows held as the whole result.
 pub fn build_snapshot<R: AsRef<[Value]>>(
     columns: &[ResultColumn],
     rows: impl IntoIterator<Item = R>,
-    row_count: u64,
+    extent: ResultExtent,
     max_rows: usize,
 ) -> Snapshot {
     let rows: Vec<Vec<Box<RawValue>>> = rows
@@ -42,6 +75,12 @@ pub fn build_snapshot<R: AsRef<[Value]>>(
         .take(max_rows)
         .map(|row| snapshot_row(columns, row.as_ref()))
         .collect();
+    let at_least = extent.held.max(rows.len() as u64);
+    let (row_count, more_rows) = match (extent.total, extent.cut) {
+        (Some(total), _) => (Some(total.max(at_least)), false),
+        (None, false) => (Some(at_least), false),
+        (None, true) => (None, true),
+    };
     Snapshot {
         columns: columns
             .iter()
@@ -50,7 +89,8 @@ pub fn build_snapshot<R: AsRef<[Value]>>(
                 type_name: column.column_type.name.clone(),
             })
             .collect(),
-        row_count: row_count.max(rows.len() as u64),
+        row_count,
+        more_rows,
         rows,
     }
 }
@@ -116,10 +156,10 @@ mod tests {
         let columns = cols(&["n"]);
         let rows: Vec<Vec<Value>> = (0..5).map(|row| vec![Value::Int(row)]).collect();
 
-        let snapshot = build_snapshot(&columns, &rows, rows.len() as u64, 3);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(rows.len() as u64), 3);
 
         assert_eq!(texts(&snapshot), [["0"], ["1"], ["2"]]);
-        assert_eq!(snapshot.row_count, 5);
+        assert_eq!(snapshot.row_count, Some(5));
         assert!(snapshot.truncated());
     }
 
@@ -128,10 +168,10 @@ mod tests {
         let columns = cols(&["n"]);
         let rows = vec![vec![Value::Int(1)], vec![Value::Int(2)]];
 
-        let snapshot = build_snapshot(&columns, &rows, 2, 1_000);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(2), 1_000);
 
         assert_eq!(snapshot.rows.len(), 2);
-        assert_eq!(snapshot.row_count, 2);
+        assert_eq!(snapshot.row_count, Some(2));
         assert!(!snapshot.truncated());
     }
 
@@ -140,9 +180,26 @@ mod tests {
         let columns = cols(&["n"]);
         let rows = vec![vec![Value::Int(1)], vec![Value::Int(2)]];
 
-        let snapshot = build_snapshot(&columns, &rows, 0, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(0), 10);
 
-        assert_eq!(snapshot.row_count, 2);
+        assert_eq!(snapshot.row_count, Some(2));
+    }
+
+    #[test]
+    fn a_cut_result_nobody_counted_says_only_that_more_rows_exist() {
+        let columns = cols(&["n"]);
+        let rows = vec![vec![Value::Int(1)], vec![Value::Int(2)]];
+        let cut = |total, truncation| ResultExtent::finished(2, total, truncation);
+
+        let uncounted = build_snapshot(&columns, &rows, cut(None, Truncation::ReadPastLimit), 10);
+        let byte_limit = build_snapshot(&columns, &rows, cut(None, Truncation::ByteLimit), 10);
+        let counted = build_snapshot(&columns, &rows, cut(Some(48_210), Truncation::ReadPastLimit), 10);
+
+        assert_eq!((uncounted.row_count, uncounted.more_rows), (None, true));
+        assert!(uncounted.truncated());
+        assert_eq!((byte_limit.row_count, byte_limit.more_rows), (None, true));
+        assert_eq!((counted.row_count, counted.more_rows), (Some(48_210), false));
+        assert!(counted.truncated());
     }
 
     #[test]
@@ -159,7 +216,12 @@ mod tests {
             typed("body", "text", ColumnKind::Other),
         ];
 
-        let snapshot = build_snapshot(&columns, std::iter::empty::<Vec<Value>>(), 0, 10);
+        let snapshot = build_snapshot(
+            &columns,
+            std::iter::empty::<Vec<Value>>(),
+            ResultExtent::complete(0),
+            10,
+        );
 
         assert_eq!(
             snapshot.columns,
@@ -201,7 +263,7 @@ mod tests {
             Value::Decimal("12345678901234567890.12345678901234567890".parse().expect("a decimal")),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, 1, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(
             texts(&snapshot),
@@ -216,7 +278,7 @@ mod tests {
             JsonText::parse(r#"{"b": 1, "a": [1, 2]}"#.to_owned()).expect("JSON"),
         )]];
 
-        let snapshot = build_snapshot(&columns, &rows, 1, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(texts(&snapshot), [[r#"{"b": 1, "a": [1, 2]}"#]]);
     }
@@ -246,7 +308,7 @@ mod tests {
             Value::Array(vec![Value::Bytes(vec![1]), Value::Null]),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, 1, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(
             texts(&snapshot),
@@ -279,7 +341,7 @@ mod tests {
             })),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, 1, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(texts(&snapshot), [[r#""2024-06-15T12:00:00.500""#, "null"]]);
     }
@@ -289,7 +351,7 @@ mod tests {
         let columns = cols(&["a", "b"]);
         let rows = vec![vec![Value::Int(1)], vec![Value::Int(1), Value::Int(2), Value::Int(3)]];
 
-        let snapshot = build_snapshot(&columns, &rows, 2, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(2), 10);
 
         assert_eq!(texts(&snapshot), [["1", "null"], ["1", "2"]]);
     }
@@ -298,7 +360,7 @@ mod tests {
     fn a_number_field_s_json_goes_in_as_the_number() {
         let (columns, rows) = super::super::test_columns::mixed_json();
 
-        let snapshot = build_snapshot(&columns, &rows, 1, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
 
         let row = &texts(&snapshot)[0];
         assert_eq!(row[0], "3000000000");
@@ -313,7 +375,7 @@ mod tests {
             Value::Float64(f64::NAN),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, 1, 10);
+        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
 
         let parsed: Vec<serde_json::Value> = snapshot.rows[0]
             .iter()

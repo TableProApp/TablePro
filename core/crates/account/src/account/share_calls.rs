@@ -482,7 +482,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_result_s_rows_go_out_as_the_core_wrote_them() {
         use tablepro_core::column::{ColumnType, ResultColumn};
-        use tablepro_core::export::build_snapshot;
+        use tablepro_core::export::{ResultExtent, build_snapshot};
         use tablepro_core::value::Value;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -506,7 +506,12 @@ mod tests {
         let request = ShareRequest {
             kind: ShareKind::Result,
             hide_sql: true,
-            snapshot: Some(build_snapshot(&columns, &rows, 48_210, 1)),
+            snapshot: Some(build_snapshot(
+                &columns,
+                &rows,
+                ResultExtent::finished(2, Some(48_210), tablepro_core::Truncation::ReadPastLimit),
+                1,
+            )),
             ..query("Orders")
         };
 
@@ -728,7 +733,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_result_past_100_columns_shares_the_first_ones_and_says_so() {
         use tablepro_core::column::{ColumnType, ResultColumn};
-        use tablepro_core::export::build_snapshot;
+        use tablepro_core::export::{ResultExtent, build_snapshot};
         use tablepro_core::value::Value;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -748,7 +753,7 @@ mod tests {
         let row: Vec<Value> = (0..120).map(Value::Int).collect();
         let request = ShareRequest {
             kind: ShareKind::Result,
-            snapshot: Some(build_snapshot(&columns, [row], 1, 10)),
+            snapshot: Some(build_snapshot(&columns, [row], ResultExtent::complete(1), 10)),
             ..query("Wide")
         };
 

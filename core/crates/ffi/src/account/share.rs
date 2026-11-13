@@ -7,7 +7,7 @@ use tablepro_account::{
     SharedLink,
 };
 use tablepro_core::column::ResultColumn;
-use tablepro_core::export::{Snapshot, build_snapshot};
+use tablepro_core::export::{ResultExtent, Snapshot, build_snapshot};
 
 use super::account_service::AccountService;
 use crate::error::CoreError;
@@ -246,11 +246,15 @@ fn snapshot_of(
     let held = set.result_columns();
     let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
     let columns: Vec<ResultColumn> = held.iter().take(visible.min(MAX_SHARE_COLUMNS)).cloned().collect();
-    let held = set.row_count();
-    let taken = held.min(u64::from(max_rows));
+    let ended = set.extent();
+    let taken = ended.held.min(u64::from(max_rows));
     let rows = (0..taken).map(|row| held_row(set, row, &columns));
-    let total = total_rows.map_or(held, |total| total.max(held));
-    let snapshot = build_snapshot(&columns, rows, total, usize::try_from(max_rows).unwrap_or(usize::MAX));
+    // A count the app made of a table view outranks what the page's own read knew.
+    let extent = ResultExtent {
+        total: total_rows.or(ended.total),
+        ..ended
+    };
+    let snapshot = build_snapshot(&columns, rows, extent, usize::try_from(max_rows).unwrap_or(usize::MAX));
     Ok((snapshot, visible > MAX_SHARE_COLUMNS))
 }
 
@@ -408,5 +412,32 @@ impl std::fmt::Debug for ShareRequestArg {
             .field("allow_download", &self.allow_download)
             .field("has_password", &self.password.is_some())
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::column::ColumnType;
+    use tablepro_core::{Truncation, Value};
+
+    use super::*;
+    use crate::results::ResultStore;
+
+    fn cut_set() -> ResultSet {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("int"))].into();
+        let store = Arc::new(ResultStore::new(columns));
+        store.append(&[vec![Value::Int(1)], vec![Value::Int(2)]]);
+        store.finish_as(None, Truncation::ReadPastLimit);
+        ResultSet::new(0, store)
+    }
+
+    #[test]
+    fn a_set_cut_with_no_count_shares_that_more_rows_exist() {
+        let (uncounted, _) = snapshot_of(&cut_set(), 1, 1_000, None).unwrap();
+        let (counted, _) = snapshot_of(&cut_set(), 1, 1_000, Some(48_210)).unwrap();
+
+        assert_eq!((uncounted.row_count, uncounted.more_rows), (None, true));
+        assert_eq!(uncounted.rows.len(), 2);
+        assert_eq!((counted.row_count, counted.more_rows), (Some(48_210), false));
     }
 }
