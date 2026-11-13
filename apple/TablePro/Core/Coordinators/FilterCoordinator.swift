@@ -301,10 +301,41 @@ final class FilterCoordinator: ObservableObject {
         }
     }
 
-    // The table tab's view, its filters, search and sort, read from the first row: what Share Result sends.
+    // The table tab's view, its filters, search and sort, read from the first row: what Share Result reads.
     func viewQuery(for tab: QueryTab, limit: Int) -> String? {
         guard let tableName = tab.tableContext.tableName else { return nil }
         return tableQuery(for: tab, tableName: tableName, limit: limit, offset: 0).query
+    }
+
+    // The same view with no LIMIT or OFFSET, as a shared link shows it; nil when the host cannot write it as SQL.
+    func viewSQL(for tab: QueryTab) -> String? {
+        guard parent.queryBuilder.writesSQL,
+              let tableName = tab.tableContext.tableName,
+              activeBrowseSearch(for: tab.filterState) == nil
+        else { return nil }
+        let rerun = tab.filterState.rerunFilters
+        let (columns, columnTypes) = parent.queryColumns(for: tab)
+        guard !rerun.filters.isEmpty else {
+            return parent.queryBuilder.buildBaseQuery(
+                tableName: tableName,
+                schemaName: tab.tableContext.schemaName,
+                sortState: querySortState(for: tab),
+                columns: columns,
+                selectColumns: parent.selectColumns(for: tab),
+                window: false
+            )
+        }
+        return parent.queryBuilder.buildFilteredQuery(
+            tableName: tableName,
+            schemaName: tab.tableContext.schemaName,
+            filters: rerun.filters,
+            logicMode: parent.supportsMatchAnyFilters ? rerun.logicMode : .and,
+            sortState: querySortState(for: tab),
+            columns: columns,
+            columnTypes: columnTypes,
+            selectColumns: parent.selectColumns(for: tab),
+            window: false
+        )
     }
 
     private func tableQuery(

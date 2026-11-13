@@ -105,6 +105,35 @@ extension GlobalStateSuites {
             #expect(shared.totalRowCount == nil)
         }
 
+        @Test("A table tab shares its view's SQL without the page's LIMIT and OFFSET")
+        func tableTabSharesItsViewWithoutWindow() throws {
+            fixture.coordinator.queryBuilder = TableQueryBuilder(
+                databaseType: .mysql,
+                dialect: SQLDialectDescriptor(
+                    identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+                    regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+                    likeEscapeStyle: .implicit, paginationStyle: .limit
+                ),
+                pagination: .offset,
+                dialectQuote: SQLEscaping.quoteIdentifier
+            )
+            var tab = QueryTab(title: "users", query: "SELECT * FROM `users` LIMIT 1000 OFFSET 3000", tabType: .table, tableName: "users")
+            tab.pagination.currentOffset = 3_000
+            fixture.addTab(tab)
+
+            #expect(fixture.coordinator.shareSQL(of: tab) == "SELECT * FROM \"users\"")
+        }
+
+        @Test("A table view the host cannot write as SQL shares no SQL")
+        func dialectlessTableSharesNoSQL() {
+            fixture.coordinator.queryBuilder = TableQueryBuilder(
+                databaseType: .mysql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+            )
+            let tab = QueryTab(title: "users", query: "", tabType: .table, tableName: "users")
+            fixture.addTab(tab)
+            #expect(fixture.coordinator.shareSQL(of: tab).isEmpty)
+        }
+
         @Test("A whole result held in the grid is its own total")
         func wholeResultCountsItself() async throws {
             let tab = try load(QueryTab(title: "Q", query: "SELECT * FROM users", tabType: .query))

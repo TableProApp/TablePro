@@ -205818,6 +205818,46 @@
         }
       }
     },
+    "This table view has no SQL to share, so the link shares its rows only." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette vue de table n’a pas de SQL à partager : le lien ne partage que ses lignes."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 테이블 보기에는 공유할 SQL이 없으므로 링크는 행만 공유합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu tablo görünümünün paylaşılacak SQL’i yok, bu yüzden bağlantı yalnızca satırlarını paylaşır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chế độ xem bảng này không có SQL để chia sẻ, nên liên kết chỉ chia sẻ các hàng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此表视图没有可分享的 SQL，因此链接只分享其中的行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此表格檢視沒有可分享的 SQL，因此連結只分享其中的列。"
+          }
+        }
+      }
+    },
     "This team has %lld live links." : {
       "localizations" : {
         "en" : {

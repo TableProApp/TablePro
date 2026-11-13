@@ -286,6 +286,11 @@ internal final class ShareSheetModel: ObservableObject {
         source?.sql ?? request.sql
     }
 
+    // A table view the host cannot write as SQL shares its rows alone.
+    var hasSharedSQL: Bool {
+        !sharedSQL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var sqlTooLongMessage: String? {
         guard sharedSQL.unicodeScalars.count > Self.sqlLimit else { return nil }
         return String(
@@ -353,7 +358,7 @@ internal final class ShareSheetModel: ObservableObject {
             note: trimmedNote.isEmpty ? nil : Self.clipped(trimmedNote, to: Self.noteLimit),
             dialect: request.dialect,
             expiry: limits.allows(expiry) ? expiry : limits.defaultExpiry,
-            hidesSQL: request.kind == .result ? hidesSQL : nil,
+            hidesSQL: request.kind == .result && hasSharedSQL ? hidesSQL : nil,
             allowsDownload: limits.allowsDisablingDownload && !allowsDownload ? false : nil,
             password: usesPassword ? password : nil,
             teamID: target.teamID,

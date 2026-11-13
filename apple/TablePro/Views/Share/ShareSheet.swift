@@ -149,9 +149,14 @@ internal struct ShareSheet: View {
 
             Section {
                 expiryRow
-                if model.isResult {
+                if model.isResult, model.hasSharedSQL {
                     Toggle(String(localized: "Hide SQL"), isOn: $model.hidesSQL)
                         .accessibilityIdentifier("share-sheet-hide-sql")
+                } else if model.isResult {
+                    Text("This table view has no SQL to share, so the link shares its rows only.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 passwordRow
                 if let message = model.passwordTooLongMessage {

@@ -47,7 +47,7 @@ extension MainContentCoordinator {
               !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
         else { return nil }
         let tabId = tab.id
-        return .result(title: tab.title, sql: Self.resultSQL(of: tab), dialect: connection.type.rawValue) { [weak self] maxRows in
+        return .result(title: tab.title, sql: shareSQL(of: tab), dialect: connection.type.rawValue) { [weak self] maxRows in
             await self?.shareSource(tabId: tabId, maxRows: maxRows)
         }
     }
@@ -67,7 +67,7 @@ extension MainContentCoordinator {
                     operationDescription: String(localized: "Share Result")
                 )
                 if let current = tabManager.tabs.first(where: { $0.id == tabId }) {
-                    return fetchedShareSource(result, tab: current, query: read.query, maxRows: maxRows)
+                    return fetchedShareSource(result, tab: current, sql: shareSQL(of: current), maxRows: maxRows)
                 }
                 return nil
             } catch {
@@ -95,7 +95,7 @@ extension MainContentCoordinator {
         return (base, tab.pagination.baseQueryParameterValues)
     }
 
-    private func fetchedShareSource(_ result: QueryResult, tab: QueryTab, query: String, maxRows: Int) -> ShareResultSource {
+    private func fetchedShareSource(_ result: QueryResult, tab: QueryTab, sql: String, maxRows: Int) -> ShareResultSource {
         let policy = maskingPolicy
         let table = tab.tabType == .table ? tab.tableContext.tableName : nil
         let rows = TableRows.from(
@@ -126,7 +126,7 @@ extension MainContentCoordinator {
             columnTypes: read.columnTypes,
             rows: read.rows,
             totalRowCount: Self.shareTotal(of: tab, rows: read.rows.count, more: more),
-            sql: query
+            sql: sql
         )
     }
 
@@ -158,7 +158,7 @@ extension MainContentCoordinator {
             columnTypes: read.columnTypes,
             rows: rows,
             totalRowCount: total.map { max($0, rows.count) },
-            sql: Self.resultSQL(of: tab)
+            sql: shareSQL(of: tab)
         )
     }
 
@@ -175,6 +175,12 @@ extension MainContentCoordinator {
 
     private static func exactTotal(of tab: QueryTab) -> Int? {
         tab.pagination.isApproximateRowCount ? nil : tab.pagination.totalRowCount
+    }
+
+    // A table tab shares its view without the page's window, or no SQL when the host cannot write that view.
+    func shareSQL(of tab: QueryTab) -> String {
+        guard tab.tabType == .table else { return Self.resultSQL(of: tab) }
+        return filterCoordinator.viewSQL(for: tab) ?? ""
     }
 
     private static func resultSQL(of tab: QueryTab) -> String {

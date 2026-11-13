@@ -289,6 +289,18 @@ struct ShareSheetModelTests {
         #expect(model.phase == .form)
     }
 
+    @Test("A result with no SQL to share sends its rows without Hide SQL")
+    func resultWithoutSQL() async throws {
+        let model = makeModel(Self.resultRequest(rows: 3, sql: ""), service: FakeShareService())
+        await model.load()
+        model.hidesSQL = true
+        let draft = try #require(model.makeDraft())
+        #expect(!model.hasSharedSQL)
+        #expect(draft.sql.isEmpty)
+        #expect(draft.hidesSQL == nil)
+        #expect(draft.snapshot != nil)
+    }
+
     @Test("A total nobody counted says the result is larger")
     func unknownTotalNote() async {
         let model = makeModel(Self.resultRequest(rows: 3, total: .some(nil)), service: FakeShareService())
