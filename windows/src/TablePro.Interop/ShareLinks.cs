@@ -19,19 +19,24 @@ public enum ShareExpiry
     Never,
 }
 
-// What the plan allows now (core ADR 0025). Plan is the server's code, "free" or "pro".
+// What the plan allows now (core ADR 0025). Plan is the server's code, "free" or "pro"; Teams, the seated ones.
 public sealed record ShareLimits(
     string Plan,
     long Live,
     long LiveLimit,
     long MaxRows,
+    long MaxColumns,
     IReadOnlyList<ShareExpiry> Expiries,
     ShareExpiry? DefaultExpiry,
     bool Password,
     bool DisableDownload,
     bool Team,
     bool EmailVerified,
-    bool SharingDisabled);
+    bool SharingDisabled,
+    IReadOnlyList<ShareTeam> Teams);
+
+// A team link counts against the team's own limit; PublicLinks false means the team turned them off.
+public sealed record ShareTeam(string Id, string Name, long Live, long LiveLimit, bool PublicLinks);
 
 // Sql is always stored; a result share's snapshot is built by the core from the set it is given.
 public sealed record ShareRequest(ShareKind Kind, string Sql)
@@ -68,7 +73,7 @@ public sealed record ShareRequest(ShareKind Kind, string Sql)
     }
 }
 
-// A link as its owner sees it. Kind, Scope and State stay the server's codes; Sql only when read on its own.
+// A link as its owner sees it: Kind, Scope, State and SuspendedBy stay the server's codes; Sql only read alone.
 public sealed record SharedLink(
     string Id,
     string Kind,
@@ -86,6 +91,8 @@ public sealed record SharedLink(
     bool HasPassword,
     string State,
     string? RemovedReason,
+    bool Suspended,
+    string? SuspendedBy,
     long ViewCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
@@ -97,7 +104,8 @@ public sealed record SharedLink(
     public bool IsLive => State == "live";
 }
 
-public sealed record CreatedShare(SharedLink Share, string Url);
+// ColumnsTruncated: only the first MaxColumns of the visible columns were shared.
+public sealed record CreatedShare(SharedLink Share, string Url, bool ColumnsTruncated);
 
 // NextCursor is null on the last page.
 public sealed record SharePage(IReadOnlyList<SharedLink> Shares, string? NextCursor);

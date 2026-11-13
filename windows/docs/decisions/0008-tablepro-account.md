@@ -16,7 +16,7 @@ The app opens one account at launch and shows it on the Settings page, with the 
 - `TableProCore.OpenAccountAsync(AccountConfiguration, IAccountBrowser)` returns a `TableProAccount`, which restores the last sign-in and keeps the entitlement fresh until it is disposed. Its calls run on the thread pool as every other call does, and throw `TableProException` with the core's `account.*` code.
 - The core's status callback only signals. `AccountWake` holds one slot in a bounded channel, as `RunWake` does for a run, and `ReadStatusChangesAsync` reads `Status` again on the UI thread for every wake, so changes that come while the UI is busy are read as one.
 - `IAccountBrowser.OpenAsync` opens the sign-in page. The core calls it on a thread it lets block; the app's `SystemBrowser` hands the URL to the UI thread's dispatcher and opens it with `Launcher.LaunchUriAsync`, which needs the thread its window lives on.
-- The refresh token stays in the core's own store: `TablePro/account-refresh-token` in Credential Manager under `CreateWithSystemSecrets`, or `SecretItem.AccountRefreshToken` of a host's `ISecretStore`. The account's device and entitlement are in `account.json` in the data folder.
+- The refresh token stays in the core's own store: `TablePro/account/<key>/refresh-token` in Credential Manager under `CreateWithSystemSecrets`, the key named for the account service and the account file, or `SecretItem.AccountRefreshToken` of a host's `ISecretStore` (core 0024). The account's device and entitlement are in `account.json` in the data folder.
 - The core reads `MachineGuid` itself. `AccountConfiguration.MachineGuid` is for a host off Windows, as the interop tests.
 
 ### App
@@ -37,4 +37,4 @@ The app opens one account at launch and shows it on the Settings page, with the 
 
 - No offline file import, billing or license key entry yet; the portal has them.
 - The UI tests run signed out: a data folder with no `account.json` starts signed out and the core never opens Credential Manager, so nothing reaches tablepro.app.
-- The refresh token's target is per Windows user, not per data folder: two data folders signed in at once write the same credential, and the last sign-in's token is the one kept.
+- Each data folder signs in on its own: the credential's key follows the account file, so a second data folder or a development stack never takes another's token.

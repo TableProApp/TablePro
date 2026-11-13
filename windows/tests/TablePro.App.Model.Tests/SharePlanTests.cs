@@ -11,26 +11,34 @@ public sealed class SharePlanTests
         Live: 3,
         LiveLimit: 5,
         MaxRows: 1_000,
+        MaxColumns: 100,
         [ShareExpiry.OneDay, ShareExpiry.SevenDays, ShareExpiry.ThirtyDays],
         ShareExpiry.ThirtyDays,
         Password: false,
         DisableDownload: false,
         Team: false,
         EmailVerified: true,
-        SharingDisabled: false);
+        SharingDisabled: false,
+        Teams: []);
 
     private static readonly ShareLimits Pro = new(
         "pro",
         Live: 12,
         LiveLimit: 1_000,
         MaxRows: 10_000,
+        MaxColumns: 100,
         [ShareExpiry.OneDay, ShareExpiry.SevenDays, ShareExpiry.ThirtyDays, ShareExpiry.Never],
         ShareExpiry.Never,
         Password: true,
         DisableDownload: true,
         Team: true,
         EmailVerified: true,
-        SharingDisabled: false);
+        SharingDisabled: false,
+        Teams:
+        [
+            new ShareTeam("team_data", "Data", 1_000, 1_000, true),
+            new ShareTeam("team_ops", "Ops", 2, 1_000, false),
+        ]);
 
     private static readonly ShareForm Everything = new(
         "  Orders  ",
@@ -179,6 +187,56 @@ public sealed class SharePlanTests
     }
 
     [Fact]
+    public void ShareAsListsPersonalFirstThenEveryTeamWithOneWhoseLinksAreOffDisabled()
+    {
+        Assert.Equal(
+            [
+                new ShareOwner(null, null, true),
+                new ShareOwner("team_data", "Data", true),
+                new ShareOwner("team_ops", "Ops", false),
+            ],
+            SharePlan.For(Pro, ShareKind.Query).Owners);
+        Assert.Equal([new ShareOwner(null, null, true)], SharePlan.For(Free, ShareKind.Query).Owners);
+    }
+
+    [Fact]
+    public void ATeamLinkUsesTheTeamsOwnCountAndLimitAndSendsItsId()
+    {
+        var personal = SharePlan.For(Pro, ShareKind.Query);
+        var team = SharePlan.For(Pro, ShareKind.Query, teamId: "team_data");
+
+        Assert.Null(personal.TeamId);
+        Assert.Equal(ShareStage.Form, personal.Stage);
+        Assert.Equal("team_data", team.TeamId);
+        Assert.Equal(ShareStage.AtCap, team.Stage);
+        Assert.Equal(new ShareCap(true, 1_000, 1_000, "Data"), team.Cap);
+        Assert.Equal(new ShareFooter(true, 1_000, 1_000, 10_000, "Data"), team.Footer);
+        Assert.Equal("team_data", team.Request(Everything, "SELECT 1", null).TeamId);
+        Assert.Null(personal.Request(Everything, "SELECT 1", null).TeamId);
+    }
+
+    [Fact]
+    public void ATeamWithPublicLinksOffOrUnknownIsNeverChosen()
+    {
+        Assert.Null(SharePlan.For(Pro, ShareKind.Query, teamId: "team_ops").TeamId);
+        Assert.Null(SharePlan.For(Pro, ShareKind.Query, teamId: "team_gone").TeamId);
+        Assert.Equal(12, SharePlan.For(Pro, ShareKind.Query, teamId: "team_ops").Live);
+    }
+
+    [Theory]
+    [InlineData(ShareKind.Result, 100, false, 100)]
+    [InlineData(ShareKind.Result, 101, true, 100)]
+    [InlineData(ShareKind.Result, 3, false, 3)]
+    [InlineData(ShareKind.Query, 300, false, 300)]
+    public void AResultSharesTheFirstColumnsTheServerTakesAndSaysSo(ShareKind kind, int visible, bool cut, int shared)
+    {
+        var plan = SharePlan.For(Free, kind, 10);
+
+        Assert.Equal(cut, plan.CutsColumns(visible));
+        Assert.Equal(shared, plan.SharedColumns(visible));
+    }
+
+    [Fact]
     public void TheStageFollowsTheEmailTheSwitchAndTheCapInThatOrder()
     {
         Assert.Equal(ShareStage.Form, SharePlan.For(Free, ShareKind.Query).Stage);
@@ -205,6 +263,7 @@ public sealed class SharePlanTests
         };
 
         Assert.Equal(["a", "b", "c"], SharePlan.LiveOldestFirst(links).Select(link => link.Id));
+        Assert.Equal(["team"], SharePlan.LiveOldestFirst(links, "team_data").Select(link => link.Id));
     }
 
     [Theory]
@@ -235,7 +294,7 @@ public sealed class SharePlanTests
             id,
             "query",
             scope,
-            null,
+            scope == "team" ? "team_data" : null,
             id,
             "",
             "sqlite",
@@ -247,6 +306,8 @@ public sealed class SharePlanTests
             true,
             false,
             state,
+            null,
+            false,
             null,
             0,
             created,

@@ -1329,7 +1329,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_accountservice_list_shares(ulong @ptr,sbyte @liveOnly,RustBuffer @cursor
+     ulong uniffi_tablepro_ffi_fn_method_accountservice_list_shares(ulong @ptr,sbyte @liveOnly,RustBuffer @teamId,RustBuffer @cursor
     );
 
     #if NET8_0_OR_GREATER
@@ -4750,8 +4750,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_accountservice_list_shares();
-            if (checksum != 5547) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_list_shares` checksum `5547`, library returned `{checksum}`");
+            if (checksum != 2719) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_list_shares` checksum `2719`, library returned `{checksum}`");
             }
         }
         {
@@ -5609,7 +5609,7 @@ internal interface IAccountService {
     /// <exception cref="CoreException"></exception>
     Task<SharedLinkInfo> FetchShared(string @token, SecretString? @password);
     /// <exception cref="CoreException"></exception>
-    Task<SharePageInfo> ListShares(bool @liveOnly, string? @cursor);
+    Task<SharePageInfo> ListShares(bool @liveOnly, string? @teamId, string? @cursor);
     /// <exception cref="CoreException"></exception>
     Task RevokeShare(string @shareId);
     /// <exception cref="CoreException"></exception>
@@ -5925,11 +5925,11 @@ internal class AccountService : IAccountService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<SharePageInfo> ListShares(bool @liveOnly, string? @cursor) {
+    public async Task<SharePageInfo> ListShares(bool @liveOnly, string? @teamId, string? @cursor) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_list_shares(thisPtr, FfiConverterBoolean.INSTANCE.Lower(@liveOnly), FfiConverterOptionalString.INSTANCE.Lower(@cursor));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_list_shares(thisPtr, FfiConverterBoolean.INSTANCE.Lower(@liveOnly), FfiConverterOptionalString.INSTANCE.Lower(@teamId), FfiConverterOptionalString.INSTANCE.Lower(@cursor));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -9449,7 +9449,8 @@ class FfiConverterTypeConnectionSecrets: FfiConverterRustBuffer<ConnectionSecret
 
 internal record CreatedShareInfo (
     ShareInfo Share, 
-    string Url
+    string Url, 
+    bool ColumnsTruncated
 ) {
 }
 
@@ -9459,19 +9460,22 @@ class FfiConverterTypeCreatedShareInfo: FfiConverterRustBuffer<CreatedShareInfo>
     public override CreatedShareInfo Read(BigEndianStream stream) {
         return new CreatedShareInfo(
             Share: FfiConverterTypeShareInfo.INSTANCE.Read(stream),
-            Url: FfiConverterString.INSTANCE.Read(stream)
+            Url: FfiConverterString.INSTANCE.Read(stream),
+            ColumnsTruncated: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(CreatedShareInfo value) {
         return 0
             + FfiConverterTypeShareInfo.INSTANCE.AllocationSize(value.Share)
-            + FfiConverterString.INSTANCE.AllocationSize(value.Url);
+            + FfiConverterString.INSTANCE.AllocationSize(value.Url)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.ColumnsTruncated);
     }
 
     public override void Write(CreatedShareInfo value, BigEndianStream stream) {
             FfiConverterTypeShareInfo.INSTANCE.Write(value.Share, stream);
             FfiConverterString.INSTANCE.Write(value.Url, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.ColumnsTruncated, stream);
     }
 }
 
@@ -10846,6 +10850,8 @@ internal record ShareInfo (
     bool HasPassword, 
     string State, 
     string? RemovedReason, 
+    bool Suspended, 
+    string? SuspendedBy, 
     ulong ViewCount, 
     long CreatedAtSecs, 
     long UpdatedAtSecs, 
@@ -10877,6 +10883,8 @@ class FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
             HasPassword: FfiConverterBoolean.INSTANCE.Read(stream),
             State: FfiConverterString.INSTANCE.Read(stream),
             RemovedReason: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Suspended: FfiConverterBoolean.INSTANCE.Read(stream),
+            SuspendedBy: FfiConverterOptionalString.INSTANCE.Read(stream),
             ViewCount: FfiConverterUInt64.INSTANCE.Read(stream),
             CreatedAtSecs: FfiConverterInt64.INSTANCE.Read(stream),
             UpdatedAtSecs: FfiConverterInt64.INSTANCE.Read(stream),
@@ -10905,6 +10913,8 @@ class FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.HasPassword)
             + FfiConverterString.INSTANCE.AllocationSize(value.State)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.RemovedReason)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Suspended)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SuspendedBy)
             + FfiConverterUInt64.INSTANCE.AllocationSize(value.ViewCount)
             + FfiConverterInt64.INSTANCE.AllocationSize(value.CreatedAtSecs)
             + FfiConverterInt64.INSTANCE.AllocationSize(value.UpdatedAtSecs)
@@ -10931,6 +10941,8 @@ class FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
             FfiConverterBoolean.INSTANCE.Write(value.HasPassword, stream);
             FfiConverterString.INSTANCE.Write(value.State, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.RemovedReason, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Suspended, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.SuspendedBy, stream);
             FfiConverterUInt64.INSTANCE.Write(value.ViewCount, stream);
             FfiConverterInt64.INSTANCE.Write(value.CreatedAtSecs, stream);
             FfiConverterInt64.INSTANCE.Write(value.UpdatedAtSecs, stream);
@@ -10948,13 +10960,15 @@ internal record ShareLimitsInfo (
     ulong Live, 
     ulong LiveLimit, 
     ulong MaxRows, 
+    ulong MaxColumns, 
     ShareExpiryTag[] Expiries, 
     ShareExpiryTag? DefaultExpiry, 
     bool Password, 
     bool DisableDownload, 
     bool Team, 
     bool EmailVerified, 
-    bool SharingDisabled
+    bool SharingDisabled, 
+    ShareTeamInfo[] Teams
 ) {
 }
 
@@ -10967,13 +10981,15 @@ class FfiConverterTypeShareLimitsInfo: FfiConverterRustBuffer<ShareLimitsInfo> {
             Live: FfiConverterUInt64.INSTANCE.Read(stream),
             LiveLimit: FfiConverterUInt64.INSTANCE.Read(stream),
             MaxRows: FfiConverterUInt64.INSTANCE.Read(stream),
+            MaxColumns: FfiConverterUInt64.INSTANCE.Read(stream),
             Expiries: FfiConverterSequenceTypeShareExpiryTag.INSTANCE.Read(stream),
             DefaultExpiry: FfiConverterOptionalTypeShareExpiryTag.INSTANCE.Read(stream),
             Password: FfiConverterBoolean.INSTANCE.Read(stream),
             DisableDownload: FfiConverterBoolean.INSTANCE.Read(stream),
             Team: FfiConverterBoolean.INSTANCE.Read(stream),
             EmailVerified: FfiConverterBoolean.INSTANCE.Read(stream),
-            SharingDisabled: FfiConverterBoolean.INSTANCE.Read(stream)
+            SharingDisabled: FfiConverterBoolean.INSTANCE.Read(stream),
+            Teams: FfiConverterSequenceTypeShareTeamInfo.INSTANCE.Read(stream)
         );
     }
 
@@ -10983,13 +10999,15 @@ class FfiConverterTypeShareLimitsInfo: FfiConverterRustBuffer<ShareLimitsInfo> {
             + FfiConverterUInt64.INSTANCE.AllocationSize(value.Live)
             + FfiConverterUInt64.INSTANCE.AllocationSize(value.LiveLimit)
             + FfiConverterUInt64.INSTANCE.AllocationSize(value.MaxRows)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.MaxColumns)
             + FfiConverterSequenceTypeShareExpiryTag.INSTANCE.AllocationSize(value.Expiries)
             + FfiConverterOptionalTypeShareExpiryTag.INSTANCE.AllocationSize(value.DefaultExpiry)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Password)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.DisableDownload)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Team)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.EmailVerified)
-            + FfiConverterBoolean.INSTANCE.AllocationSize(value.SharingDisabled);
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.SharingDisabled)
+            + FfiConverterSequenceTypeShareTeamInfo.INSTANCE.AllocationSize(value.Teams);
     }
 
     public override void Write(ShareLimitsInfo value, BigEndianStream stream) {
@@ -10997,6 +11015,7 @@ class FfiConverterTypeShareLimitsInfo: FfiConverterRustBuffer<ShareLimitsInfo> {
             FfiConverterUInt64.INSTANCE.Write(value.Live, stream);
             FfiConverterUInt64.INSTANCE.Write(value.LiveLimit, stream);
             FfiConverterUInt64.INSTANCE.Write(value.MaxRows, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.MaxColumns, stream);
             FfiConverterSequenceTypeShareExpiryTag.INSTANCE.Write(value.Expiries, stream);
             FfiConverterOptionalTypeShareExpiryTag.INSTANCE.Write(value.DefaultExpiry, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Password, stream);
@@ -11004,6 +11023,7 @@ class FfiConverterTypeShareLimitsInfo: FfiConverterRustBuffer<ShareLimitsInfo> {
             FfiConverterBoolean.INSTANCE.Write(value.Team, stream);
             FfiConverterBoolean.INSTANCE.Write(value.EmailVerified, stream);
             FfiConverterBoolean.INSTANCE.Write(value.SharingDisabled, stream);
+            FfiConverterSequenceTypeShareTeamInfo.INSTANCE.Write(value.Teams, stream);
     }
 }
 
@@ -11096,6 +11116,48 @@ class FfiConverterTypeShareRequestArg: FfiConverterRustBuffer<ShareRequestArg> {
             FfiConverterOptionalBoolean.INSTANCE.Write(value.AllowDownload, stream);
             FfiConverterOptionalTypeSecretString.INSTANCE.Write(value.Password, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.TeamId, stream);
+    }
+}
+
+
+
+internal record ShareTeamInfo (
+    string Id, 
+    string Name, 
+    ulong Live, 
+    ulong LiveLimit, 
+    bool PublicLinks
+) {
+}
+
+class FfiConverterTypeShareTeamInfo: FfiConverterRustBuffer<ShareTeamInfo> {
+    public static FfiConverterTypeShareTeamInfo INSTANCE = new FfiConverterTypeShareTeamInfo();
+
+    public override ShareTeamInfo Read(BigEndianStream stream) {
+        return new ShareTeamInfo(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            Live: FfiConverterUInt64.INSTANCE.Read(stream),
+            LiveLimit: FfiConverterUInt64.INSTANCE.Read(stream),
+            PublicLinks: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(ShareTeamInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Live)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.LiveLimit)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.PublicLinks);
+    }
+
+    public override void Write(ShareTeamInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.Live, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.LiveLimit, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.PublicLinks, stream);
     }
 }
 
@@ -17527,6 +17589,52 @@ class FfiConverterSequenceTypeShareInfo: FfiConverterRustBuffer<ShareInfo[]> {
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeShareInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeShareTeamInfo: FfiConverterRustBuffer<ShareTeamInfo[]> {
+    public static FfiConverterSequenceTypeShareTeamInfo INSTANCE = new FfiConverterSequenceTypeShareTeamInfo();
+
+    public override ShareTeamInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new ShareTeamInfo[length];
+        var readFn = FfiConverterTypeShareTeamInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(ShareTeamInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeShareTeamInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(ShareTeamInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeShareTeamInfo.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }

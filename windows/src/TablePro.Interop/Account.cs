@@ -25,8 +25,7 @@ public sealed record AccountConfiguration(
     public string? MachineGuid { get; init; }
 }
 
-// Opens the sign-in page in the user's browser. The core calls it on a thread it lets block; false or a throw ends
-// the sign-in with account.browser.
+// The core calls it on a thread it lets block; false or a throw ends the sign-in with account.browser.
 public interface IAccountBrowser
 {
     Task<bool> OpenAsync(Uri url);
@@ -205,9 +204,10 @@ public sealed class TableProAccount : IDisposable
         return Mapping.Created(created);
     }
 
-    // The account's own links, newest first, without their SQL.
-    public async Task<SharePage> ListSharesAsync(bool liveOnly, string? cursor = null) =>
-        Mapping.Page(await CoreCall.RunAsync(() => _service.ListShares(liveOnly, cursor)).ConfigureAwait(false));
+    // The account's own links, or a team's with teamId, newest first, without their SQL.
+    public async Task<SharePage> ListSharesAsync(bool liveOnly, string? teamId = null, string? cursor = null) =>
+        Mapping.Page(
+            await CoreCall.RunAsync(() => _service.ListShares(liveOnly, teamId, cursor)).ConfigureAwait(false));
 
     public Task RevokeShareAsync(string shareId)
     {

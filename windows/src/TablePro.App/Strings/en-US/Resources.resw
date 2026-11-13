@@ -2931,6 +2931,30 @@ New fingerprint: {2}</value>
   <data name="ShareTableNoSql" xml:space="preserve">
     <value>TablePro cannot write this table's query for its database, so the link shares the rows without SQL and opens nothing in TablePro.</value>
   </data>
+  <data name="ShareAsField" xml:space="preserve">
+    <value>Share as</value>
+  </data>
+  <data name="ShareAsPersonal" xml:space="preserve">
+    <value>Personal</value>
+  </data>
+  <data name="ShareAsTeamOff" xml:space="preserve">
+    <value>{0} · Public links are off for this team.</value>
+  </data>
+  <data name="ShareFooterTeam" xml:space="preserve">
+    <value>{0} · {1:N0} of {2:N0} links</value>
+  </data>
+  <data name="ShareAtCapTeam" xml:space="preserve">
+    <value>{0} has {1:N0} live links. The team allows {2:N0}. Revoke one to share another.</value>
+  </data>
+  <data name="ShareSuspended" xml:space="preserve">
+    <value>Suspended</value>
+  </data>
+  <data name="ShareColumnsNote" xml:space="preserve">
+    <value>Shares the first {0:N0} columns.</value>
+  </data>
+  <data name="ShareColumnsCut" xml:space="preserve">
+    <value>The link shares the first {0:N0} columns.</value>
+  </data>
   <data name="SharedLinkTitle" xml:space="preserve">
     <value>Shared link</value>
   </data>
