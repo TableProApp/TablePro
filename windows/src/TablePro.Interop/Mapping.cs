@@ -230,7 +230,10 @@ internal static partial class Mapping
         column.Comment);
 
     public static ResultColumn ResultColumn(Native.ResultColumnInfo column) =>
-        new(column.Name, column.TypeName, Kind(column.ValueKind));
+        new(column.Name, column.TypeName, Kind(column.ValueKind))
+        {
+            Masked = column.Masked is { } style ? Style(style) : null,
+        };
 
     public static Native.RunSettings Settings(QueryOptions options) => new(
         options.RowLimit is { } limit ? checked((ulong)limit) : null,
@@ -430,6 +433,7 @@ internal static partial class Mapping
             : null,
         Level(connection.SafeMode),
         connection.QueryTimeoutSeconds is { } timeout ? checked((uint)timeout) : null,
+        [.. connection.MaskingRules.Select(Rule)],
         connection.Color,
         connection.GroupId?.ToString(),
         connection.LastOpened?.ToUnixTimeMilliseconds(),
@@ -478,6 +482,7 @@ internal static partial class Mapping
         record.LastOpenedMs is { } opened ? DateTimeOffset.FromUnixTimeMilliseconds(opened) : null)
     {
         Tags = [.. record.Tags.Select(Guid.Parse)],
+        MaskingRules = [.. record.MaskingRules.Select(Rule)],
     };
 
     public static ConnectionGroup Group(Native.GroupRecord group) => new(
@@ -582,6 +587,7 @@ internal static partial class Mapping
         Native.EditLock.ReadOnlyConnection => EditLock.ReadOnlyConnection,
         Native.EditLock.NoPrimaryKey => EditLock.NoPrimaryKey,
         Native.EditLock.KeyUnreadable => EditLock.KeyUnreadable,
+        Native.EditLock.MaskedKey => EditLock.MaskedKey,
         _ => EditLock.ColumnsChanged,
     };
 

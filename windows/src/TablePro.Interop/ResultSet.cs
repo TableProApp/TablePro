@@ -34,6 +34,38 @@ public sealed class ResultSet : IDisposable
     // Each thread that reads windows opens its own.
     public ResultCursor OpenCursor() => new(_set.OpenCursor());
 
+    // After the connection's rules were saved: masks the held rows of each column they now mask, unless the tab
+    // revealed this run. True when a column changed, so the grid reads its cells and GetColumns again.
+    public bool Remask() => _set.Remask();
+
+    // The share sheet's columns as it starts them, from the first visibleColumns columns and the rows a share of
+    // maxRows sends: the style the rules mask each with on the way out, else what the detectors saw.
+    public async Task<IReadOnlyList<ShareColumnMasking>> GetShareMaskingAsync(int visibleColumns, long maxRows)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        var columns = await CoreCall.RunAsync(() => _set.ShareMasking(checked((uint)visibleColumns), limit))
+            .ConfigureAwait(false);
+        return [.. columns.Select(Mapping.ColumnMasking)];
+    }
+
+    // The rows a share of maxRows with the sheet's choices sends, as a finished set: removed columns left out and
+    // every value masked as the link's, so the preview shows a Stable Hash the core computed.
+    public async Task<ResultSet> GetSharePreviewAsync(
+        int visibleColumns, long maxRows, IReadOnlyList<ShareColumnChoice> columns)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        ArgumentNullException.ThrowIfNull(columns);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        Native.ShareColumnChoice[] choices = [.. columns.Select(Mapping.Choice)];
+        var preview = await CoreCall.RunAsync(
+                () => _set.SharePreview(checked((uint)visibleColumns), limit, choices))
+            .ConfigureAwait(false);
+        return new ResultSet(preview, Index);
+    }
+
     // For a statement that cannot run again: a new set over the rows held, sorted stably; this one keeps its order.
     public Task<ResultSet> SortedAsync(int column, bool ascending)
     {

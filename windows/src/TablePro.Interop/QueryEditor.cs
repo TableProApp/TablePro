@@ -16,9 +16,10 @@ public sealed class QueryEditor : IAsyncDisposable
     public QueryRun Run(string sql, QueryOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sql);
-        var settings = Mapping.Settings(options ?? new QueryOptions());
+        options ??= new QueryOptions();
+        var settings = Mapping.Settings(options);
         var wake = new RunWake();
-        return new QueryRun(_editor.Run(sql, settings, wake), wake, cancellationToken);
+        return new QueryRun(_editor.Run(sql, settings, options.RevealMasked, wake), wake, cancellationToken);
     }
 
     // An engine that binds a connection's database when it connects refuses it.

@@ -149,6 +149,13 @@ public static class ShareLinks
         return [.. Native.CoreMethods.ScanSqlForSecrets(sql).Select(Mapping.Hit)];
     }
 
+    // Personal data in the SQL's single-quoted literals, each kind once per line: the sheet suggests Hide SQL.
+    public static IReadOnlyList<PersonalDataHit> ScanSqlForPersonalData(string sql)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        return [.. Native.CoreMethods.ScanSqlForPersonalData(sql).Select(Mapping.Hit)];
+    }
+
     // The names of the columns that may hold a secret, in their order, each once.
     public static IReadOnlyList<string> ScanColumns(IEnumerable<string> names)
     {
