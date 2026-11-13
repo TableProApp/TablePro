@@ -85,6 +85,7 @@ internal sealed class ShareSheet
     private readonly InfoBar _noColumns = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
     private readonly InfoBar _tooLarge = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
     private readonly InfoBar _error = new() { IsClosable = true, Severity = InfoBarSeverity.Error };
+    private readonly InfoBar _fieldProblems = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
     private readonly StackPanel _atCap = new() { Spacing = 12 };
     private readonly StackPanel _done = new() { Spacing = 12 };
     private readonly TextBox _url = new() { IsReadOnly = true };
@@ -217,6 +218,10 @@ internal sealed class ShareSheet
         }
 
         _form.Children.Add(WithTag(_password, _passwordPro));
+        _password.PasswordChanged += (_, _) => ShowFieldProblems();
+        _fieldProblems.Visibility = Visibility.Collapsed;
+        AutomationProperties.SetAutomationId(_fieldProblems, "ShareFieldProblems");
+        _form.Children.Add(_fieldProblems);
         _form.Children.Add(WithTag(_allowDownload, _downloadPro));
         if (_subject.Kind == ShareKind.Result)
         {
@@ -611,6 +616,7 @@ internal sealed class ShareSheet
         }
 
         Show(_form);
+        ShowFieldProblems();
         if (_subject.Kind == ShareKind.Result && !ReferenceEquals(_columnsFor, _content))
         {
             _ = LoadColumnsAsync(plan);
@@ -795,7 +801,27 @@ internal sealed class ShareSheet
     // A result is shared only once this round's columns, summary and preview are in, so a detected column never
     // leaves unmasked by a quick click, a result too large never reaches the server, and the preview shows what goes.
     private void UpdateShareButton() =>
-        _dialog.IsPrimaryButtonEnabled = !_creating && !_created && _rounds.CanShare(_columns);
+        _dialog.IsPrimaryButtonEnabled = !_creating && !_created && _rounds.CanShare(_columns)
+            && FieldProblems().Count == 0;
+
+    private IReadOnlyList<string> FieldProblems() =>
+        _rounds.Plan?.FieldProblems(_password.Password, _content.Sql) ?? [];
+
+    // As macOS: a field the core would refuse says why under the password, and Share stays off until it is fixed.
+    private void ShowFieldProblems()
+    {
+        var problems = FieldProblems();
+        var shown = problems.Count > 0;
+        _fieldProblems.Message = string.Join("\n", problems.Select(Strings.Get));
+        if (shown != _fieldProblems.IsOpen)
+        {
+            // Narrator reads an InfoBar when it opens.
+            _fieldProblems.IsOpen = shown;
+        }
+
+        _fieldProblems.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        UpdateShareButton();
+    }
 
     // Read again for each choice, off the UI thread; an older read that lands late is dropped, so Share waits.
     private async Task RefreshSummaryAsync()
@@ -1099,7 +1125,8 @@ internal sealed class ShareSheet
     private async void OnShare(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         args.Cancel = true;
-        if (_creating || _created || _rounds.Plan is not { } plan || !_rounds.CanShare(_columns))
+        if (_creating || _created || _rounds.Plan is not { } plan || !_rounds.CanShare(_columns)
+            || FieldProblems().Count > 0)
         {
             return;
         }

@@ -2814,6 +2814,12 @@ New fingerprint: {2}</value>
   <data name="SharePreviewHeader" xml:space="preserve">
     <value>Rows that will be shared</value>
   </data>
+  <data name="SharePasswordBlank" xml:space="preserve">
+    <value>A password can't be only spaces or tabs.</value>
+  </data>
+  <data name="ShareSqlTooLong" xml:space="preserve">
+    <value>This query is too long to share. A link holds up to 256 KB of SQL.</value>
+  </data>
   <data name="SharePreviewMasked" xml:space="preserve">
     <value>Masked: {0}</value>
   </data>

@@ -67,6 +67,9 @@ public sealed class SharePlan
     // The preview shows this many rows of the visible columns.
     public const int PreviewRows = 5;
 
+    // The server takes this much SQL, counted in UTF-8 bytes; the core refuses more at create.
+    public const int MaxSqlBytes = 256 * 1024;
+
     private static readonly ShareExpiry[] AllExpiries =
         [ShareExpiry.OneDay, ShareExpiry.SevenDays, ShareExpiry.ThirtyDays, ShareExpiry.Never];
 
@@ -197,10 +200,37 @@ public sealed class SharePlan
             Dialect = string.IsNullOrWhiteSpace(dialect) ? null : dialect,
             Expiry = allowed ? form.Expiry : DefaultExpiry,
             HideSql = OffersHideSql && form.HideSql,
-            Password = PasswordAllowed && form.Password.Length > 0 ? form.Password : null,
+            Password = PasswordAllowed && SentPassword(form.Password) is { Length: > 0 } sent ? sent : null,
             AllowDownload = DownloadChoiceAllowed && !form.AllowDownload ? false : null,
             TeamId = TeamId,
         };
+    }
+
+    // What a link keeps of a password: readers send it in a header, where HTTP drops outer spaces and tabs.
+    public static string SentPassword(string password)
+    {
+        ArgumentNullException.ThrowIfNull(password);
+        return password.Trim(' ', '\t');
+    }
+
+    // The sentences, as macOS words them, for what the form's own fields hold that the core refuses at create; Share
+    // stays off while there is one.
+    public IReadOnlyList<string> FieldProblems(string password, string sql)
+    {
+        ArgumentNullException.ThrowIfNull(password);
+        ArgumentNullException.ThrowIfNull(sql);
+        var problems = new List<string>();
+        if (Encoding.UTF8.GetByteCount(sql) > MaxSqlBytes)
+        {
+            problems.Add("ShareSqlTooLong");
+        }
+
+        if (PasswordAllowed && password.Length > 0 && SentPassword(password).Length == 0)
+        {
+            problems.Add("SharePasswordBlank");
+        }
+
+        return problems;
     }
 
     // The links a revoke would free a slot of, oldest first: the personal ones, or the chosen team's.

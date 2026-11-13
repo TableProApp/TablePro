@@ -168,6 +168,30 @@ public sealed class SharePlanTests
     }
 
     [Fact]
+    public void APasswordOfOnlySpacesOrSqlPast256KibKeepsShareOff()
+    {
+        var pro = SharePlan.For(Pro, ShareKind.Query);
+
+        Assert.Equal(["SharePasswordBlank"], pro.FieldProblems(" \t ", "SELECT 1"));
+        Assert.Empty(pro.FieldProblems(" pw\t", "SELECT 1"));
+        Assert.Empty(pro.FieldProblems(string.Empty, "SELECT 1"));
+        // Two bytes a character: 131,073 of them are past 256 KiB though far fewer characters.
+        Assert.Empty(pro.FieldProblems(string.Empty, new string('é', 131_072)));
+        Assert.Equal(["ShareSqlTooLong", "SharePasswordBlank"], pro.FieldProblems(" ", new string('é', 131_073)));
+        Assert.Empty(SharePlan.For(Free, ShareKind.Query).FieldProblems("   ", "SELECT 1"));
+    }
+
+    [Fact]
+    public void APasswordGoesWithoutItsOuterSpacesAndTabs()
+    {
+        var pro = SharePlan.For(Pro, ShareKind.Query);
+        ShareForm Form(string password) => new("Orders", string.Empty, ShareExpiry.Never, false, password, true);
+
+        Assert.Equal("hunter2", pro.Request(Form(" \thunter2 "), "SELECT 1", null).Password);
+        Assert.Null(pro.Request(Form(string.Empty), "SELECT 1", null).Password);
+    }
+
+    [Fact]
     public void ProsFooterTakesTheSingularForOneLink()
     {
         Assert.Equal("ShareFooterProOne", SharePlan.For(Pro with { Live = 1 }, ShareKind.Query).Footer.ProKey);
