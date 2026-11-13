@@ -200,7 +200,8 @@ public sealed class SharePlan
             Dialect = string.IsNullOrWhiteSpace(dialect) ? null : dialect,
             Expiry = allowed ? form.Expiry : DefaultExpiry,
             HideSql = OffersHideSql && form.HideSql,
-            Password = PasswordAllowed && SentPassword(form.Password) is { Length: > 0 } sent ? sent : null,
+            // As typed: the core strips it and refuses one of only spaces, so a link never loses its password here.
+            Password = PasswordAllowed && form.Password.Length > 0 ? form.Password : null,
             AllowDownload = DownloadChoiceAllowed && !form.AllowDownload ? false : null,
             TeamId = TeamId,
         };

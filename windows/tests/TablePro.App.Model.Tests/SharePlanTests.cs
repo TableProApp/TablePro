@@ -182,12 +182,13 @@ public sealed class SharePlanTests
     }
 
     [Fact]
-    public void APasswordGoesWithoutItsOuterSpacesAndTabs()
+    public void ARequestNeverDropsAPasswordThatWasTyped()
     {
         var pro = SharePlan.For(Pro, ShareKind.Query);
         ShareForm Form(string password) => new("Orders", string.Empty, ShareExpiry.Never, false, password, true);
 
-        Assert.Equal("hunter2", pro.Request(Form(" \thunter2 "), "SELECT 1", null).Password);
+        Assert.Equal(" \thunter2 ", pro.Request(Form(" \thunter2 "), "SELECT 1", null).Password);
+        Assert.Equal(" \t ", pro.Request(Form(" \t "), "SELECT 1", null).Password);
         Assert.Null(pro.Request(Form(string.Empty), "SELECT 1", null).Password);
     }
 
