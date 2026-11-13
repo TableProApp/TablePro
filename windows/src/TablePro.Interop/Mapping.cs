@@ -3,7 +3,7 @@ using Native = TablePro.Interop.Native;
 namespace TablePro.Interop;
 
 // Generated types stay internal so a generator upgrade cannot change the API. Counts cross unsigned and fit a long.
-internal static class Mapping
+internal static partial class Mapping
 {
     public static CoreError Error(Native.ErrorInfo info) => new(
         info.Code,
@@ -375,12 +375,15 @@ internal static class Mapping
         _ => Native.TlsFailureTag.Other,
     };
 
+    // Every tag named: a tag this build does not know must not land in another item's slot.
     public static SecretItem Item(Native.SecretItemTag item) => item switch
     {
+        Native.SecretItemTag.McpToken => SecretItem.McpToken,
         Native.SecretItemTag.AnthropicKey => SecretItem.AnthropicKey,
         Native.SecretItemTag.OpenAiKey => SecretItem.OpenAIKey,
         Native.SecretItemTag.OpenAiCompatibleKey => SecretItem.OpenAICompatibleKey,
-        _ => SecretItem.McpToken,
+        Native.SecretItemTag.AccountRefreshToken => SecretItem.AccountRefreshToken,
+        _ => throw new ArgumentOutOfRangeException(nameof(item), item, "A secret item the core added after this build."),
     };
 
     public static Native.HostConfig Host(HostConfiguration configuration) =>
