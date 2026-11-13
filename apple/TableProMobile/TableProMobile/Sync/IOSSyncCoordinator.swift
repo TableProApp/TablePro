@@ -84,6 +84,7 @@ final class IOSSyncCoordinator {
     @ObservationIgnored private var activationHeld = false
     @ObservationIgnored private var activationAwaitsRun = false
     @ObservationIgnored private var downloadIsAheadInRun = false
+    @ObservationIgnored private let pushChannel: SyncPushChannel
 
     // Each returns whether the merged list was saved; false holds the change token for a replay.
     @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Bool)?
@@ -109,8 +110,10 @@ final class IOSSyncCoordinator {
         isEnabled: @escaping () -> Bool = { AppPreferences.isCloudSyncEnabled },
         notificationCenter: NotificationCenter = .default,
         networkMonitor: SyncNetworkMonitor? = SyncNetworkMonitor(),
-        activationClock: any Clock<Duration> = ContinuousClock()
+        activationClock: any Clock<Duration> = ContinuousClock(),
+        pushRegistrar: SyncPushRegistrar = .live
     ) {
+        self.pushChannel = SyncPushChannel(registrar: pushRegistrar, metadata: metadata)
         self.metadata = metadata
         self.recordCache = recordCache
         self.makeTransport = makeTransport
@@ -160,6 +163,12 @@ final class IOSSyncCoordinator {
 
     // MARK: - Enable / Disable
 
+    // At launch, from the app delegate: nothing registers while sync is off.
+    func registerForPushesIfEnabled() {
+        guard isEnabled() else { return }
+        pushChannel.register()
+    }
+
     func setEnabled(_ enabled: Bool) {
         resetRetryState()
         guard enabled else {
@@ -167,6 +176,7 @@ final class IOSSyncCoordinator {
             debounceTask = nil
             pendingTriggers = []
             endActivationHold()
+            pushChannel.unregister()
             metadata.lastSyncDate = nil
             lastSyncDate = nil
             decide(.disabled(.userDisabled))
@@ -177,6 +187,8 @@ final class IOSSyncCoordinator {
             prepareFullUpload()
         }
         decide(.idle)
+        pushChannel.forgetSubscription()
+        registerForPushesIfEnabled()
         Task { await sync(.userRequest) }
     }
 
@@ -194,6 +206,7 @@ final class IOSSyncCoordinator {
     }
 
     private func prepareFullUpload() {
+        pushChannel.forgetSubscription()
         metadata.saveToken(nil)
         metadata.zoneState = .unknown
         dropRecordCache()
@@ -212,7 +225,9 @@ final class IOSSyncCoordinator {
             return
         }
         if let runningSync {
-            if !pendingTriggers.contains(trigger) {
+            // The download still ahead in this run brings what a notice announced.
+            let coveredByRun = trigger == .remoteChange && downloadIsAheadInRun
+            if !coveredByRun, !pendingTriggers.contains(trigger) {
                 pendingTriggers.append(trigger)
             }
             await runningSync.value
@@ -367,6 +382,7 @@ final class IOSSyncCoordinator {
                 admission = .full
             }
         }
+        await pushChannel.saveSubscriptionIfNeeded { try await transport.saveSubscription() }
 
         guard let result = await pullThenPush(admission, generation: generation, using: transport) else { return nil }
         let zone = metadata.zoneState
@@ -376,6 +392,7 @@ final class IOSSyncCoordinator {
         if nextZone == .removed, zone != .removed {
             dropRecordCache()
             metadata.saveToken(nil)
+            pushChannel.forgetSubscription()
         }
         metadata.zoneState = nextZone
         return result

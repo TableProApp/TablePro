@@ -69,6 +69,12 @@ final class SyncCoordinator: ObservableObject {
     private var activationHeldForCooldown = false
     private var downloadIsAheadInRun = false
 
+    // While CloudKit's notices reach this Mac they bring other devices' changes, so an activation only covers a lost one.
+    nonisolated static let pushFallbackInterval: Duration = .seconds(15 * 60)
+    let pushChannel: SyncPushChannel
+    // Notices received when the last successful download began; one after that may be what a later download brings.
+    private var noticesAtLastDownload = 0
+
     init(
         services: AppServices = .live,
         recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache(),
@@ -78,10 +84,12 @@ final class SyncCoordinator: ObservableObject {
         themeCatalog: ThemeCatalog = .shared,
         licenseGate: (@MainActor () -> DisableReason?)? = nil,
         recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
-        activationClock: any Clock<Duration> = ContinuousClock()
+        activationClock: any Clock<Duration> = ContinuousClock(),
+        pushRegistrar: SyncPushRegistrar = .live
     ) {
         self.services = services
         self.activationClock = activationClock
+        self.pushChannel = SyncPushChannel(registrar: pushRegistrar, metadata: services.syncMetadataStorage)
         self.makeTransport = transport
         self.makeNetworkMonitor = makeNetworkMonitor
         self.recordCreationDate = recordCreationDate
@@ -149,6 +157,10 @@ final class SyncCoordinator: ObservableObject {
         if trigger == .activation, holdsActivationBack() {
             return
         }
+        // The download still ahead in this run brings what the notice announced.
+        if trigger == .remoteChange, isRunning, downloadIsAheadInRun {
+            return
+        }
         guard !isRunning else {
             if !pendingTriggers.contains(trigger) {
                 pendingTriggers.append(trigger)
@@ -176,7 +188,7 @@ final class SyncCoordinator: ObservableObject {
         if previousError == nil || trigger == .userRequest {
             syncStatus = .syncing
         }
-        let result = await accountThenPushThenPull(admission)
+        let result = await accountThenPushThenPull(admission, startedBy: trigger)
         isRunning = false
         finish(result, previousError: previousError, from: generation)
         if uploadAgainRequested {
@@ -205,9 +217,10 @@ final class SyncCoordinator: ObservableObject {
         activationCooldown?.cancel()
         activationHeldForCooldown = false
         let clock = activationClock
+        let interval = activationHoldInterval
         activationCooldown = Task { [weak self] in
             do {
-                try await clock.sleep(for: Self.activationInterval)
+                try await clock.sleep(for: interval)
             } catch {
                 return
             }
@@ -221,7 +234,7 @@ final class SyncCoordinator: ObservableObject {
     }
 
     internal func runSyncCycle(_ admission: SyncAdmission = .full) async -> SyncError? {
-        await accountThenPushThenPull(admission).failure?.error
+        await accountThenPushThenPull(admission, startedBy: .userRequest).failure?.error
     }
 
     private struct CycleResult {
@@ -229,7 +242,7 @@ final class SyncCoordinator: ObservableObject {
         var failure: SyncStepFailure?
     }
 
-    private func accountThenPushThenPull(_ requested: SyncAdmission) async -> CycleResult {
+    private func accountThenPushThenPull(_ requested: SyncAdmission, startedBy trigger: SyncTrigger) async -> CycleResult {
         var admission = requested
         downloadIsAheadInRun = true
         defer { downloadIsAheadInRun = false }
@@ -242,6 +255,7 @@ final class SyncCoordinator: ObservableObject {
                 admission = .full
             }
         }
+        await pushChannel.saveSubscriptionIfNeeded { try await transport.saveSubscription() }
 
         /// Only a run that may upload creates the zone. A download looks for it, and finding it
         /// again is how this Mac learns another device brought deleted data back.
@@ -256,8 +270,15 @@ final class SyncCoordinator: ObservableObject {
         }
 
         let push = admission == .full ? await performPush() : PushReport()
-        let pullFailure = await performPull(echoGuard: push.echoGuard)
+        let noticesAtThisDownload = pushChannel.noticesReceived
+        let pull = await performPull(echoGuard: push.echoGuard)
+        let pullFailure = pull.failure
         if pullFailure == nil {
+            if trigger == .activation, pull.broughtRemoteChanges,
+               pushChannel.activationFoundUnannouncedChanges(noticesSince: noticesAtLastDownload) {
+                Self.logger.notice("An activation brought changes no CloudKit notice announced, so activations download once a minute again")
+            }
+            noticesAtLastDownload = noticesAtThisDownload
             startActivationCooldown()
         }
 
@@ -274,6 +295,7 @@ final class SyncCoordinator: ObservableObject {
             recordCache.removeAll()
             metadataStorage.deferredDeletions = []
             metadataStorage.saveToken(nil)
+            pushChannel.forgetSubscription()
         }
         metadataStorage.zoneState = nextZone
         return CycleResult(admission: admission, failure: failure)
@@ -435,6 +457,7 @@ final class SyncCoordinator: ObservableObject {
 
         // Clear token to force a full fetch on first sync after enabling
         metadataStorage.saveToken(nil)
+        pushChannel.forgetSubscription()
         metadataStorage.deferredDeletions = []
         /// Turning sync on is the person's choice to upload, a removed zone included.
         metadataStorage.zoneState = .unknown
@@ -463,6 +486,7 @@ final class SyncCoordinator: ObservableObject {
         metadataStorage.zoneState = .unknown
         metadataStorage.saveToken(nil)
         metadataStorage.deferredDeletions = []
+        pushChannel.forgetSubscription()
         recordCache.removeAll()
         markAllLocalDataDirty()
         await markSQLFavoritesDirty()
@@ -471,76 +495,6 @@ final class SyncCoordinator: ObservableObject {
         resetRetryState()
         decide(.idle)
         await sync(.userRequest)
-    }
-
-    /// Marks existing SQL favorites and folders dirty. Separate from `markAllLocalDataDirty`
-    /// because the favorite store is an actor and must be read asynchronously.
-    private func markSQLFavoritesDirty() async {
-        let favorites = await services.sqlFavoriteManager.fetchFavorites()
-        changeTracker.markDirty(.favorite, ids: favorites.map { $0.id.uuidString })
-
-        let folders = await services.sqlFavoriteManager.fetchFolders()
-        changeTracker.markDirty(.favoriteFolder, ids: folders.map { $0.id.uuidString })
-    }
-
-    /// Marks every synced record dirty so the first sync after enabling pushes the lot.
-    ///
-    /// Every type is marked as one batch. Marking record by record posted a change notification per
-    /// record, and an account with a few hundred saved column layouts built a chain of hundreds of
-    /// tasks each waiting on its predecessor until the app stopped responding to the switch that
-    /// started it.
-    private func markAllLocalDataDirty() {
-        let connections = services.connectionStorage.loadConnections()
-        changeTracker.markDirty(
-            .connection,
-            ids: connections.filter(\.participatesInSync).map { $0.id.uuidString }
-        )
-
-        let groups = services.groupStorage.loadGroups()
-        changeTracker.markDirty(.group, ids: groups.map { $0.id.uuidString })
-
-        let tags = services.tagStorage.loadTags()
-        changeTracker.markDirty(.tag, ids: tags.map { $0.id.uuidString })
-
-        let sshProfiles = services.sshProfileStorage.loadProfiles()
-        changeTracker.markDirty(.sshProfile, ids: sshProfiles.map { $0.id.uuidString })
-
-        let credentialProfiles = services.credentialProfileStorage.loadProfiles()
-        changeTracker.markDirty(.credentialProfile, ids: credentialProfiles.map { $0.id.uuidString })
-
-        let favoriteTables = services.favoriteTablesStorage.loadFavorites()
-        changeTracker.markDirty(
-            .tableFavorite,
-            ids: favoriteTables.map { FavoriteTablesStorage.syncId(for: $0) }
-        )
-
-        let favoriteDatabases = services.favoriteDatabasesStorage.loadFavorites()
-        changeTracker.markDirty(
-            .favoriteDatabase,
-            ids: favoriteDatabases.map { FavoriteDatabasesStorage.syncId(for: $0) }
-        )
-
-        let tableFolderIds = tableFolderSyncIds()
-        changeTracker.markDirty(.tableFolder, ids: tableFolderIds.folders)
-        changeTracker.markDirty(.tableFolderItem, ids: tableFolderIds.items)
-
-        let settingsCategories = AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory]
-        let columnLayoutCategories = columnLayouts().customizedStorageKeys()
-            .map { FileColumnLayoutPersister.syncCategory(for: $0) }
-        let themeCategories = themeCatalog.syncCategories
-        changeTracker.markDirty(.settings, ids: settingsCategories + columnLayoutCategories + themeCategories)
-
-        let summary = [
-            "connections=\(connections.count)",
-            "groups=\(groups.count)",
-            "tags=\(tags.count)",
-            "sshProfiles=\(sshProfiles.count)",
-            "favoriteTables=\(favoriteTables.count)",
-            "tableFolders=\(tableFolderIds.folders.count)",
-            "settings=\(AppSettingsCategory.synced.count + 1)",
-            "themes=\(themeCategories.count)"
-        ].joined(separator: ", ")
-        Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
     }
 
     /// Called when user disables sync in settings
@@ -583,6 +537,7 @@ final class SyncCoordinator: ObservableObject {
             arm()
             return
         }
+        pushChannel.unregister()
         triggers = nil
         resetRetryState()
         pendingTriggers = []
@@ -740,9 +695,15 @@ final class SyncCoordinator: ObservableObject {
         Self.logger.info("Reading record types the last pull skipped: cleared sync token for full fetch")
     }
 
+    private struct PullReport {
+        var failure: SyncStepFailure?
+        // A delta that carried records this run did not upload, which another device sent.
+        var broughtRemoteChanges = false
+    }
+
     /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
     /// this Mac up to date, and must not say Synced or move Last Synced.
-    private func performPull(echoGuard: SyncEchoGuard?) async -> SyncStepFailure? {
+    private func performPull(echoGuard: SyncEchoGuard?) async -> PullReport {
         // Applied with the categories recorded here, so one turned off during the download is still read once.
         let settings = services.appSettingsStorage.loadSync()
         adoptReadableContent(for: settings)
@@ -754,22 +715,24 @@ final class SyncCoordinator: ObservableObject {
 
         do {
             let result = try await transport.pull(since: token)
-            return await applyPull(result, isFullFetch: token == nil, settings: settings, echoGuard: echoGuard)
-                ? nil : .pullNotSaved
+            guard await applyPull(result, isFullFetch: token == nil, settings: settings, echoGuard: echoGuard) else {
+                return PullReport(failure: .pullNotSaved)
+            }
+            return PullReport(broughtRemoteChanges: token != nil && result.carriesRemoteChanges(besides: echoGuard))
         } catch let error where Self.isTokenExpired(error) {
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
             metadataStorage.saveToken(nil)
             do {
                 let result = try await transport.pull(since: nil)
                 return await applyPull(result, isFullFetch: true, settings: settings, echoGuard: echoGuard)
-                    ? nil : .pullNotSaved
+                    ? PullReport() : PullReport(failure: .pullNotSaved)
             } catch {
                 Self.logger.error("Full fetch after token expiry failed: \(error.localizedDescription)")
-                return SyncStepFailure(error)
+                return PullReport(failure: SyncStepFailure(error))
             }
         } catch {
             Self.logger.error("Pull failed: \(error.localizedDescription)")
-            return SyncStepFailure(error)
+            return PullReport(failure: SyncStepFailure(error))
         }
     }
 
@@ -1294,6 +1257,7 @@ final class SyncCoordinator: ObservableObject {
             localChanges: observeLocalChanges(),
             networkMonitor: observeNetwork()
         )
+        pushChannel.register()
 
         /// Empty local storage (a fresh install or a wipe) needs a full fetch: a delta returns nothing.
         if services.connectionStorage.loadConnections().isEmpty {

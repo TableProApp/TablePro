@@ -58,7 +58,8 @@ struct AppStateFixture {
             recordCache: SyncRecordCache(directory: root.appendingPathComponent("Cache"), defaults: nil),
             makeTransport: { transport },
             isEnabled: { syncEnabled },
-            notificationCenter: NotificationCenter()
+            notificationCenter: NotificationCenter(),
+            pushRegistrar: .inert
         )
         return AppState(
             libraryDirectory: libraryDirectory,

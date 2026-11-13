@@ -223,6 +223,12 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         set { userDefaults.set(newValue, forKey: key("lastAccountId")) }
     }
 
+    // Device-local: every device saves the change subscription once for the account it syncs with.
+    public var subscribedAccountId: String? {
+        get { userDefaults.string(forKey: key("subscribedAccountId")) }
+        set { userDefaults.set(newValue, forKey: key("subscribedAccountId")) }
+    }
+
     @discardableResult
     public func adoptAccount(_ accountId: String) -> SyncAccountChange {
         guard let recorded = lastAccountId else {
@@ -281,6 +287,7 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
         userDefaults.removeObject(forKey: key("lastAccountId"))
+        userDefaults.removeObject(forKey: key("subscribedAccountId"))
 
         for type in SyncRecordType.allCases {
             clearDirty(type: type)

@@ -129,6 +129,8 @@ private actor FakeSyncTransport: IOSSyncTransport {
         return accountId
     }
 
+    func saveSubscription() async throws {}
+
     func ensureZoneExists() async throws {
         zoneSaves += 1
     }
@@ -211,7 +213,8 @@ struct IOSSyncCoordinatorTests {
             makeTransport: { transport },
             isEnabled: { box.syncEnabled },
             notificationCenter: notificationCenter,
-            networkMonitor: nil
+            networkMonitor: nil,
+            pushRegistrar: .inert
         )
         coordinator.getCurrentState = { (box.connections, box.groups, box.tags) }
         coordinator.onConnectionsChanged = { box.connections = $0; return box.saves }

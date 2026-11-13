@@ -41,3 +41,13 @@ struct SyncEchoGuard: Sendable {
         return tracker.hasEdit(identity, since: snapshot)
     }
 }
+
+extension PullResult {
+    // Records this run did not upload, which another device sent.
+    func carriesRemoteChanges(besides echoGuard: SyncEchoGuard?) -> Bool {
+        let uploaded = echoGuard?.pushedRecordIDs ?? []
+        let deleted = echoGuard.map { Set($0.deletedRecords.keys) } ?? []
+        return changedRecords.contains { !uploaded.contains($0.recordID) }
+            || deletedRecordIDs.contains { !deleted.contains($0) }
+    }
+}
