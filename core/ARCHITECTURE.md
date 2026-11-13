@@ -49,7 +49,7 @@ core/crates/
 | `cli` | no workspace crate |
 | `ai` | `core`, `net` |
 | `account` | `core`, `storage` |
-| `ffi` | `core`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
+| `ffi` | `account`, `core`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
 | An app, such as `linux/crates/app` | every crate above, and its platform crate |
 
 Rules, enforced by review:
@@ -84,7 +84,7 @@ A value or a trait the app passes in:
 | `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 | `Core::with_system_secrets`, the platform's store the core reaches itself (below); `HostSecrets`, a callback interface, for a host with a store of its own |
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature ([ADR 0009](docs/decisions/0009-in-process-ssh-on-windows.md)) |
 | `ProcessHold` | `gio::Application::hold` | none |
-| `RefreshTokenVault`, `BrowserLauncher`, `MachineId` and `AppClient` (`tablepro-account`) | the keyring through `SecretStore`, `gtk::UriLauncher`, `MachineId::derive` of what `tablepro_linux_platform::read_machine_id` reads, `AppClient::LINUX` | none yet |
+| `RefreshTokenVault`, `BrowserLauncher`, `MachineId` and `AppClient` (`tablepro-account`) | the keyring through `SecretStore`, `gtk::UriLauncher`, `MachineId::derive` of what `tablepro_linux_platform::read_machine_id` reads, `AppClient::LINUX` | the Core's secret store, the `HostBrowser` callback, `MachineId::derive_machine_guid` of the registry's MachineGuid, `AppClient::WINDOWS` ([ADR 0024](docs/decisions/0024-the-windows-app-signs-in-through-the-ffi.md)) |
 | `Host` (`tablepro-cli`) | `LinuxHost` in the app crate: the port and switch from GSettings, the token read from the keyring, `NameHasOwner` for a running app, each connection's peer checked by `Host::verify_peer` through `tablepro_net::loopback_peer_is_ours` | none yet |
 | `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
@@ -98,7 +98,8 @@ A `cfg` split inside a crate:
 | SQLite | the distribution's | bundled | bundled |
 | DuckDB's file lock while a file is replaced | fcntl | fcntl | LockFileEx |
 | SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the system's GSS framework, behind the `kerberos` feature | SSPI, NTLM only (winauth) |
-| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>`; a secret over a credential's 2,560 bytes goes on in `<name>/1`, `<name>/2`, each part carrying a `TablePro_Parts` attribute with its write, part count and length (`credential_parts`) |
+| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>`, `TablePro/<item>` and `TablePro/account-refresh-token`; a secret over a credential's 2,560 bytes goes on in `<name>/1`, `<name>/2`, each part carrying a `TablePro_Parts` attribute with its write, part count and length (`credential_parts`) |
+| The account's machine ID (`ffi`) | not read | not read | `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`, from the 64-bit view |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | The in-process SSH transport's agent | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK` | `SSH_AUTH_SOCK`, else `\\.\pipe\openssh-ssh-agent`, then Pageant |
 | A server's own Unix-domain socket (`tablepro_net::LocalSocketTransport`, `NetworkOption::LocalSocket`) | yes | yes | not built: no engine offers one |
@@ -112,6 +113,7 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 `ffi` is the library an app outside Rust loads: the Windows app as a DLL, the Apple apps as a static library in an XCFramework, built without the `engines` feature by `apple/scripts/build-core.sh`. Core ADRs 0002, on the bindings, 0003, on result windows, and 0009, on the macOS slices, hold the reasons.
 
 - One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL with `tablepro_core::connection_url`, refusing one that needs a setting its record has no field for. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), picks the statement at a caret with the session's grammar (`statement_at`), says what Safe Mode lets an editor run do at the session's level and takes a level saved while it is open (`gate_run`, over `SafeModeLevel::gate`, and `set_safe_mode`), reports and waits on the session's health, opens a `QueryEditor`, and opens a `TableEditor`, which plans a table tab's typed edits into a `RowSave` and runs it (`docs/decisions/0019-row-edits-through-the-ffi.md`). `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
+- `Core::open_account` opens the TablePro account as an `AccountService`, whose `AccountListener` only signals that `status()` changed. It also shares links: `create_share` builds a result's snapshot from a `ResultSet` in Rust ([ADR 0025](docs/decisions/0025-share-links.md)). `scan_sql_for_secrets`, `scan_columns_for_secrets` and `share_token_from_link` are functions of their own.
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
