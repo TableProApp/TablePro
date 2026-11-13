@@ -208,8 +208,8 @@ mod tests {
     const TOKENS: &str =
         r#"{"access_token":"stub-access","token_type":"Bearer","expires_in":900,"refresh_token":"stub-refresh"}"#;
     const VIEW: &str = r#"{"id":"shr_01","kind":"query","scope":"account","title":"Orders","note":"","dialect":"postgres",
-        "has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live","view_count":3,
-        "created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z","expires_at":"2026-12-13T00:00:00Z",
+        "has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live","suspended":false,
+        "view_count":3,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z","expires_at":"2026-12-13T00:00:00Z",
         "url":"https://s.tablepro.app/Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0hIjK"}"#;
 
     // What the stub was sent: the method and path, the header lines in lower case, and the body.
@@ -548,6 +548,31 @@ mod tests {
         assert_eq!(listed.next_cursor, None);
         let list = &sent(&log, "GET /v2/shares")[0].request;
         assert!(list.contains("state=live") && list.contains("limit=100"), "{list}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_suspended_link_stays_live_without_a_url() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let held = r#"{"id":"shr_02","kind":"query","scope":"account","title":"Orders","note":"","dialect":"postgres",
+            "has_snapshot":false,"hide_sql":false,"allow_download":true,"has_password":false,"state":"live",
+            "suspended":true,"suspended_by":"account","view_count":0,
+            "created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z"}"#;
+        let (endpoints, _) = cloud(move |sent| match sent.request.as_str() {
+            "POST /oauth/token" => (200, "", TOKENS.to_owned()),
+            request if request.starts_with("GET /v2/shares") => (200, "", format!(r#"{{"data":[{VIEW},{held}]}}"#)),
+            _ => (404, "", String::new()),
+        });
+        let account = signed_in(dir.path(), endpoints).await;
+
+        let listed = account.list_shares(true, None).await.expect("the list");
+
+        let [open, suspended] = listed.shares.as_slice() else {
+            panic!("{listed:?}");
+        };
+        assert!(!open.suspended && open.suspended_by.is_none() && open.url.is_some());
+        assert!(suspended.is_live() && suspended.suspended);
+        assert_eq!(suspended.suspended_by.as_deref(), Some("account"));
+        assert_eq!(suspended.url, None);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

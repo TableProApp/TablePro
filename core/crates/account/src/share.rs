@@ -116,6 +116,10 @@ pub struct Share {
     pub revoked_at: Option<DateTime<Utc>>,
     pub removed_at: Option<DateTime<Utc>>,
     pub url: Option<String>,
+    // The team or staff turned sharing off: the state stays, the link does not resolve and has no url.
+    pub suspended: bool,
+    // "account" or "team" while suspended.
+    pub suspended_by: Option<String>,
 }
 
 impl Share {
@@ -246,6 +250,8 @@ impl From<types::ShareView> for Share {
             revoked_at: view.revoked_at,
             removed_at: view.removed_at,
             url: view.url.filter(|url| !url.is_empty()),
+            suspended: view.suspended,
+            suspended_by: view.suspended_by.filter(|by| !by.is_empty()),
         }
     }
 }

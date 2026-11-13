@@ -86,6 +86,10 @@ pub struct ShareInfo {
     pub revoked_at_secs: Option<i64>,
     pub removed_at_secs: Option<i64>,
     pub url: Option<String>,
+    // The team or staff turned sharing off: the state stays, the link does not resolve and has no url.
+    pub suspended: bool,
+    // "account" or "team" while suspended.
+    pub suspended_by: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -310,6 +314,8 @@ impl From<Share> for ShareInfo {
             revoked_at_secs: share.revoked_at.map(seconds),
             removed_at_secs: share.removed_at.map(seconds),
             url: share.url,
+            suspended: share.suspended,
+            suspended_by: share.suspended_by,
         }
     }
 }

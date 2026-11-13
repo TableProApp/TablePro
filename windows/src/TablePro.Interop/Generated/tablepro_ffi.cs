@@ -10852,7 +10852,9 @@ internal record ShareInfo (
     long? ExpiresAtSecs, 
     long? RevokedAtSecs, 
     long? RemovedAtSecs, 
-    string? Url
+    string? Url, 
+    bool Suspended, 
+    string? SuspendedBy
 ) {
 }
 
@@ -10883,7 +10885,9 @@ class FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
             ExpiresAtSecs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             RevokedAtSecs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             RemovedAtSecs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
-            Url: FfiConverterOptionalString.INSTANCE.Read(stream)
+            Url: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Suspended: FfiConverterBoolean.INSTANCE.Read(stream),
+            SuspendedBy: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
 
@@ -10911,7 +10915,9 @@ class FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.ExpiresAtSecs)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.RevokedAtSecs)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.RemovedAtSecs)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Url);
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Url)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Suspended)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SuspendedBy);
     }
 
     public override void Write(ShareInfo value, BigEndianStream stream) {
@@ -10938,6 +10944,8 @@ class FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
             FfiConverterOptionalInt64.INSTANCE.Write(value.RevokedAtSecs, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.RemovedAtSecs, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Url, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Suspended, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.SuspendedBy, stream);
     }
 }
 

@@ -411,7 +411,7 @@ mod shares {
         format!(
             r#"{{"share":{{"id":"shr_01","kind":"result","scope":"account","title":"Orders","note":"","dialect":"sqlite",
             "has_snapshot":true,"row_count":2,"truncated":true,"hide_sql":true,"allow_download":true,"has_password":false,
-            "state":"live","view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z",
+            "state":"live","suspended":false,"view_count":0,"created_at":"2026-11-13T00:00:00Z","updated_at":"2026-11-13T00:00:00Z",
             "expires_at":"2026-12-13T00:00:00Z","url":"https://s.tablepro.app/{TOKEN}"}},
             "token":"{TOKEN}","url":"https://s.tablepro.app/{TOKEN}"}}"#
         )
