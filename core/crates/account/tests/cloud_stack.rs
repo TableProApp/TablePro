@@ -303,8 +303,21 @@ fn signed_in(account: &Account) -> SignedIn {
     }
 }
 
-// Fails when the browser step does, not 10 minutes later when the sign-in times out.
+// The stack takes 30 token requests a minute per client, which the whole suite passes; a sign-in it refuses for that
+// waits out the Retry-After and starts again.
 async fn sign_in(account: &Account, browser: &Browser) -> Result<(), AccountError> {
+    loop {
+        match sign_in_once(account, browser).await {
+            Err(AccountError::RateLimited { retry_after }) => {
+                tokio::time::sleep(retry_after.unwrap_or(std::time::Duration::from_secs(60))).await;
+            }
+            answered => return answered,
+        }
+    }
+}
+
+// Fails when the browser step does, not 10 minutes later when the sign-in times out.
+async fn sign_in_once(account: &Account, browser: &Browser) -> Result<(), AccountError> {
     let signing_in = account.sign_in(std::future::pending());
     tokio::pin!(signing_in);
     loop {
