@@ -94,11 +94,13 @@ fn escape_string_continues_past_a_line_break() {
     }
     // Without a line break, past a block comment, or past anything but a
     // blank or a `--` comment, the server ends the string and so must the
-    // lexer.
+    // lexer. PostgreSQL 17.11 reads a non-ASCII space as part of a name.
     for apart in [
         "SELECT E'a' '\\'",
         "SELECT E'a' /* note */\n'\\'",
         "SELECT E'a'\n, '\\'",
+        "SELECT E'a'\u{a0}\n'\\'",
+        "SELECT E'a'\n\u{3000}'\\'",
     ] {
         let text = format!("{apart}; SELECT 2;");
         assert_eq!(
@@ -370,6 +372,33 @@ fn routine_case_end_inside_body() {
             "SELECT 3"
         ]
     );
+}
+
+// Measured on PostgreSQL 17.11: each definition ran in one simple query
+// with the statement after it.
+#[test]
+fn a_begin_name_in_a_routine_opens_no_body() {
+    for routine in [
+        "CREATE FUNCTION begin() RETURNS int AS 'select 1' LANGUAGE sql",
+        "CREATE OR REPLACE PROCEDURE s.begin() LANGUAGE sql AS 'select 1'",
+        "CREATE FUNCTION f(begin int) RETURNS int RETURN begin",
+        "CREATE FUNCTION f() RETURNS int LANGUAGE sql SET search_path = begin RETURN 1",
+        "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin FROM t; SELECT 2; END",
+        "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) s; END",
+        "CREATE PROCEDURE p() LANGUAGE sql BEGIN ATOMIC CREATE OR REPLACE FUNCTION g() RETURNS int BEGIN ATOMIC SELECT begin atomic FROM t; END; SELECT begin atomic FROM t; END",
+    ] {
+        let text = format!("{routine};\nDROP TABLE users;");
+        assert_eq!(
+            statements(SqlGrammar::PostgreSql, &text),
+            [routine, "DROP TABLE users"],
+            "{routine}"
+        );
+        assert_eq!(
+            statement_access(&text, SqlGrammar::PostgreSql),
+            StatementAccess::Destructive,
+            "{routine}"
+        );
+    }
 }
 
 #[test]

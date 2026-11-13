@@ -198,9 +198,34 @@ struct SQLNonCodeSpanTests {
         #expect(end("E'x' -- c\n'y' z", postgreSQL) == 13)
         #expect(end("E'x'\n-- c\n'y' z", postgreSQL) == 13)
         #expect(end("E'x'\n'y'\n\n'z' w", postgreSQL) == 13)
-        #expect(end("E'x'\u{00A0}\n\u{3000}'y' z", postgreSQL) == 10)
         #expect(end("E'x'\u{200C}\n'y' z", postgreSQL) == 4)
         #expect(SQLNonCodeSpan.span(at: 0, in: "E'x'\r\n'y'\n'z'" as NSString, grammar: postgreSQL)?.newlines == 2)
+    }
+
+    // Measured: PostgreSQL 17.11 answers a syntax error at the second string, and DuckDB 1.5.4 returns `xy`.
+    @Test("A non-ASCII space between the parts of a continued string is a name on PostgreSQL and a blank on DuckDB 1.5")
+    func nonASCIISpaceBeforeAContinuedString() {
+        let text = "E'x'\u{00A0}\n\u{3000}'y' z"
+        for engine in ["PostgreSQL", "CockroachDB", "Redshift", "KingbaseES"] {
+            let readings = SQLLexicalReadings.resolve(databaseTypeId: engine, declared: nil, session: nil)
+            for grammar in readings.all where grammar.contains(.escapeStringPrefix) {
+                #expect(end(text, grammar) == 4, "\(engine)")
+                #expect(end("E'x'\n\u{00A0}'y' z", grammar) == 4, "\(engine)")
+            }
+        }
+        let duckDB15 = Self.execution("DuckDB").union(.escapeStringContinuations)
+        #expect(end(text, duckDB15) == 10)
+        #expect(end(text, duckDB15.subtracting(.nonASCIISpacesEndNames)) == 4)
+    }
+
+    // Measured on PostgreSQL 17.11: psql ran the statement after `'\'`.
+    @Test("Every gate reading sees the statement after a string a non-ASCII space keeps from continuing")
+    func nonASCIISpaceBeforeAContinuedStringHidesNothing() {
+        let sql = "SELECT E'a'\u{00A0}\n'\\'; DROP TABLE t; --'"
+        for engine in ["PostgreSQL", "CockroachDB", "Redshift", "KingbaseES", "DuckDB", "Nonesuch"] {
+            #expect(Self.tier(sql, engine) == .destructive, "\(engine)")
+        }
+        #expect(Self.statements(sql, "PostgreSQL") == 2)
     }
 
     @Test("An E'...' ends at its quote without a line break, across a block comment, or on DuckDB")
