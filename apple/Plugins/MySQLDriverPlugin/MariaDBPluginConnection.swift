@@ -936,6 +936,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             return try MySQLReadOnlyTransaction.run(
                 state: scope.sessionState(isInTransaction),
                 reason: scope.reason,
+                runsInOpenTransaction: scope.runsInOpenTransaction,
                 send: { _ = try executeQuerySync($0) },
                 statement: {
                     guard let params else {
@@ -1511,6 +1512,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         try MySQLReadOnlyTransaction.run(
                             state: readOnly.sessionState(isInTransaction),
                             reason: readOnly.reason,
+                            runsInOpenTransaction: readOnly.runsInOpenTransaction,
                             send: { _ = try executeQuerySync($0) },
                             statement: stream
                         )

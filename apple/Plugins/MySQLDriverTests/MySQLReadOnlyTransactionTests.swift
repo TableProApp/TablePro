@@ -187,6 +187,52 @@ struct MySQLReadOnlyTransactionTests {
         #expect(error?.code == 1_064)
     }
 
+    // A `SET autocommit = 0` session always holds a transaction, so Read-Only could otherwise run nothing there.
+    @Test(
+        "At Read-Only a session that is not idle runs a statement with no unlisted call as it is",
+        arguments: [PluginSessionTransactionState.inTransaction, .holdsSessionLocks, .abortedTransaction, .unknown]
+    )
+    func runsInTheOpenTransaction(state: PluginSessionTransactionState) throws {
+        let wire = Wire()
+
+        let rows = try MySQLReadOnlyTransaction.run(
+            state: state, reason: .safeMode, runsInOpenTransaction: true, send: wire.send
+        ) {
+            try wire.send(Self.statement)
+            return 3
+        }
+
+        #expect(rows == 3)
+        #expect(wire.sent == [Self.statement])
+    }
+
+    @Test("An idle session still takes the read-only transaction for a statement with no unlisted call")
+    func idleSessionStillWraps() throws {
+        let wire = Wire()
+
+        try MySQLReadOnlyTransaction.run(state: .idle, reason: .safeMode, runsInOpenTransaction: true, send: wire.send) {
+            try wire.send(Self.statement)
+        }
+
+        #expect(wire.sent == ["START TRANSACTION READ ONLY", Self.statement, "ROLLBACK"])
+    }
+
+    // Measured on MySQL 5.5.62 and MariaDB 5.5.64: `START TRANSACTION READ ONLY` is error 1064 there.
+    @Test("A server before the READ ONLY characteristic is not wrapped", arguments: [
+        ("5.5.62", MySQLServerFlavor.mysql, false),
+        ("5.6.4-m7", .mysql, false),
+        ("5.6.5", .mysql, true),
+        ("8.4.13", .mysql, true),
+        ("5.5.64-MariaDB-1~trusty", .mariadb, false),
+        ("10.0.38-MariaDB", .mariadb, true),
+        ("11.4.13-MariaDB-ubu2404", .mariadb, true),
+    ])
+    func olderServerIsNotWrapped(banner: String, flavor: MySQLServerFlavor, wraps: Bool) {
+        #expect(MySQLReadOnlyTransaction.isAvailable(banner: banner, flavor: flavor) == wraps)
+        #expect((MySQLReadOnlyTransaction.reason(for: Self.safeModeRead, flavor: flavor, banner: banner) != nil) == wraps)
+        #expect((MySQLReadOnlyTransaction.reason(for: Self.externalRead, flavor: flavor, banner: banner) != nil) == wraps)
+    }
+
     @Test("Only an external read or a Read-Only statement on MySQL or MariaDB is wrapped", arguments: [
         (MySQLServerFlavor.mysql, true),
         (.mariadb, true),

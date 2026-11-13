@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 internal enum ExecutionGateProvider {
     /// A driver that declares no read-only mode gets every statement treated as a write, unless the

@@ -334,11 +334,11 @@ final class LibPQDriverCore: @unchecked Sendable {
     func executeReadOnly(
         query: String,
         parameters: [PluginCellValue]?,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, reason: reason)
+        let result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, scope: scope)
         return Self.answer(result, since: startTime)
     }
 
@@ -346,11 +346,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         query: String,
         parameters: [PluginCellValue]?,
         bound: LibPQReadBound,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, reason: reason)
+        let result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, scope: scope)
         return Self.answer(result, since: startTime)
     }
 
@@ -360,16 +360,16 @@ final class LibPQDriverCore: @unchecked Sendable {
     func executeExternalStatement(
         query: String,
         parameters: [PluginCellValue]?,
-        readOnly: LibPQReadOnlyTransaction.Reason?,
+        readOnly: LibPQReadOnlyTransaction.Scope?,
         bound: LibPQReadBound?
     ) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
         let result: LibPQPluginQueryResult
         if let readOnly, let bound {
-            result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, reason: readOnly)
+            result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, scope: readOnly)
         } else if let readOnly {
-            result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, reason: readOnly)
+            result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, scope: readOnly)
         } else if let parameters {
             result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
         } else {
@@ -420,7 +420,7 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func streamRows(
         query: String,
-        readOnly: LibPQReadOnlyTransaction.Reason? = nil
+        readOnly: LibPQReadOnlyTransaction.Scope? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let pqConn = libpqConnection else {
             return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
@@ -606,7 +606,7 @@ extension LibPQBackedDriver {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        let readOnly = readOnlyReason(context)
+        let readOnly = readOnlyScope(context)
         if context.origin == .external {
             let answer = try await core.executeExternalStatement(
                 query: query,
@@ -620,7 +620,7 @@ extension LibPQBackedDriver {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
         let answer = try await readOnlyRead(
-            query: query, parameters: parameters, rowCap: rowCap, context: context, reason: readOnly
+            query: query, parameters: parameters, rowCap: rowCap, context: context, scope: readOnly
         )
         return Self.capped(answer, rowCap: rowCap)
     }
@@ -628,8 +628,8 @@ extension LibPQBackedDriver {
     // An app read the host marked `readOnly` alone, a catalog read among them, has no read-only reason and keeps its pin.
     // One that also sets `enforcesReadOnly` runs read-only and unpinned.
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
-        if let readOnly = readOnlyReason(context) {
-            return try await readOnlyRead(query: query, parameters: nil, rowCap: nil, context: context, reason: readOnly)
+        if let readOnly = readOnlyScope(context) {
+            return try await readOnlyRead(query: query, parameters: nil, rowCap: nil, context: context, scope: readOnly)
         }
         // The catalog entry runs its text as a multi-statement string, so it takes only the app's own SQL.
         if context.readsCatalog, context.origin == .app { return try await catalogRead(query) }
@@ -641,14 +641,14 @@ extension LibPQBackedDriver {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        guard let readOnly = readOnlyReason(context) else {
+        guard let readOnly = readOnlyScope(context) else {
             return try await executeParameterized(query: query, parameters: parameters)
         }
-        return try await readOnlyRead(query: query, parameters: parameters, rowCap: nil, context: context, reason: readOnly)
+        return try await readOnlyRead(query: query, parameters: parameters, rowCap: nil, context: context, scope: readOnly)
     }
 
-    private func readOnlyReason(_ context: PluginStatementContext) -> LibPQReadOnlyTransaction.Reason? {
-        LibPQReadOnlyTransaction.reason(for: context, capabilities: capabilities)
+    private func readOnlyScope(_ context: PluginStatementContext) -> LibPQReadOnlyTransaction.Scope? {
+        LibPQReadOnlyTransaction.scope(for: context, capabilities: capabilities)
     }
 
     // Bounded at the source when the caller set a row cap or a byte limit, whole otherwise.
@@ -657,12 +657,12 @@ extension LibPQBackedDriver {
         parameters: [PluginCellValue]?,
         rowCap: Int?,
         context: PluginStatementContext,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> PluginQueryResult {
         guard let bound = LibPQReadBound.ifSet(rowCap: rowCap, byteLimit: context.resultByteLimit) else {
-            return try await core.executeReadOnly(query: query, parameters: parameters, reason: reason)
+            return try await core.executeReadOnly(query: query, parameters: parameters, scope: scope)
         }
-        return try await core.executeBoundedReadOnly(query: query, parameters: parameters, bound: bound, reason: reason)
+        return try await core.executeBoundedReadOnly(query: query, parameters: parameters, bound: bound, scope: scope)
     }
 
     private static func capped(_ raw: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
@@ -690,7 +690,7 @@ extension LibPQBackedDriver {
         rowCap: Int,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult? {
-        guard let readOnly = readOnlyReason(context) else {
+        guard let readOnly = readOnlyScope(context) else {
             guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
                   context.allowsDestructive, context.allowsServerCode
             else { return nil }
@@ -700,7 +700,7 @@ extension LibPQBackedDriver {
         guard context.origin == .app else {
             return try await core.executeExternalStatement(query: query, parameters: nil, readOnly: readOnly, bound: bound)
         }
-        return try await core.executeBoundedReadOnly(query: query, parameters: nil, bound: bound, reason: readOnly)
+        return try await core.executeBoundedReadOnly(query: query, parameters: nil, bound: bound, scope: readOnly)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -708,7 +708,7 @@ extension LibPQBackedDriver {
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let readOnly = readOnlyReason(context) else { return streamRows(query: query) }
+        guard let readOnly = readOnlyScope(context) else { return streamRows(query: query) }
         return core.streamRows(query: query, readOnly: readOnly)
     }
 
