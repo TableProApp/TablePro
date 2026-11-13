@@ -44,6 +44,8 @@ internal final class WelcomeRouter: ObservableObject {
     @Published private(set) var pendingConnectionShare: URL?
     @Published private(set) var pendingSQLFiles: [URL] = []
     @Published private(set) var pendingSharedQueries: [SharedQueryOpen] = []
+    // Taken by a connection opened while they waited; they open once that connection is up.
+    private(set) var claimedSharedQueries: [UUID: [SharedQueryOpen]] = [:]
     @Published private(set) var pendingError: PendingConnectionError?
     @Published private(set) var pendingPluginInstall: DatabaseConnection?
 
@@ -52,9 +54,9 @@ internal final class WelcomeRouter: ObservableObject {
     internal init(appEvents: AppEvents = .shared) {
         databaseDidConnectCancellable = appEvents.databaseDidConnect
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] event in
                 self?.drainPendingSQLFiles()
-                self?.drainPendingSharedQueries()
+                self?.drainSharedQueries(connectedTo: event.connectionId)
             }
     }
 
@@ -64,7 +66,10 @@ internal final class WelcomeRouter: ObservableObject {
         AppCommands.shared.openSQLFiles.send(urls)
     }
 
-    private func drainPendingSharedQueries() {
+    private func drainSharedQueries(connectedTo connectionId: UUID) {
+        for query in claimedSharedQueries.removeValue(forKey: connectionId) ?? [] {
+            TabRouter.shared.openSharedQuery(query, in: connectionId)
+        }
         guard !pendingSharedQueries.isEmpty else { return }
         let queries = consumePendingSharedQueries()
         pendingSharedQueries = queries.filter { !TabRouter.shared.openSharedQuery($0) }
@@ -109,6 +114,16 @@ internal final class WelcomeRouter: ObservableObject {
     internal func enqueueSharedQuery(_ query: SharedQueryOpen) {
         pendingSharedQueries.append(query)
         showWelcomeWindow()
+    }
+
+    internal func claimPendingSharedQueries(for connectionId: UUID) {
+        guard !pendingSharedQueries.isEmpty else { return }
+        claimedSharedQueries[connectionId, default: []] += consumePendingSharedQueries()
+    }
+
+    // Closed with no connection taking them: a tab must not open hours later off an unrelated connect.
+    internal func welcomeDidClose() {
+        pendingSharedQueries.removeAll()
     }
 
     internal func consumePendingSharedQueries() -> [SharedQueryOpen] {

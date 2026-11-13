@@ -141,6 +141,7 @@ internal final class TabRouter {
     }
 
     private func openConnection(id: UUID, transientConnection: DatabaseConnection? = nil) async throws {
+        WelcomeRouter.shared.claimPendingSharedQueries(for: id)
         let connection: DatabaseConnection
         if let stored = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) {
             connection = stored
@@ -504,15 +505,19 @@ internal final class TabRouter {
             activeSessionIds: Set(DatabaseManager.shared.activeSessions.keys)
         )
         guard let target else { return false }
+        openSharedQuery(query, in: target)
+        return true
+    }
+
+    internal func openSharedQuery(_ query: SharedQueryOpen, in connectionId: UUID) {
         WindowManager.shared.openTab(payload: EditorTabPayload(
-            connectionId: target,
+            connectionId: connectionId,
             tabType: .query,
             initialQuery: query.sql,
             forcesNewTab: true,
             tabTitle: query.title
         ))
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        return true
     }
 
     /// The connection on screen, so the script lands where the user is looking. The last one to

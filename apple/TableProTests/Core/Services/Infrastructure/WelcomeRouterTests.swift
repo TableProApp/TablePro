@@ -72,6 +72,27 @@ final class WelcomeRouterTests {
         #expect(selected == .mysql)
     }
 
+    @Test("A shared query a connection took waits for it, and closing Welcome keeps it")
+    func claimedSharedQueryOutlivesWelcome() {
+        let query = SharedQueryOpen(sql: "SELECT 1", title: "Report")
+        let connectionId = UUID()
+        router.enqueueSharedQuery(query)
+        router.claimPendingSharedQueries(for: connectionId)
+
+        #expect(router.pendingSharedQueries.isEmpty)
+        #expect(router.claimedSharedQueries[connectionId] == [query])
+        router.welcomeDidClose()
+        #expect(router.claimedSharedQueries[connectionId] == [query])
+    }
+
+    @Test("Closing Welcome drops a shared query no connection took")
+    func unclaimedSharedQueryDiesWithWelcome() {
+        router.enqueueSharedQuery(SharedQueryOpen(sql: "SELECT 1", title: nil))
+        router.welcomeDidClose()
+        #expect(router.pendingSharedQueries.isEmpty)
+        #expect(router.claimedSharedQueries.isEmpty)
+    }
+
     @Test
     func requestSlotIsIndependentOfTheOtherPendingSlots() {
         let connection = DatabaseConnection(name: "Test", type: .mysql)
