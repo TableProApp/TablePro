@@ -32,6 +32,8 @@ public sealed class EditedGridData : IGridData
 
     public string GetColumnName(int column) => Data.GetColumnName(column);
 
+    public bool IsColumnMasked(int column) => Data.IsColumnMasked(column);
+
     public RowMark GetRowMark(int row)
     {
         var edits = Edits;
