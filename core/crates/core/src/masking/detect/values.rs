@@ -150,30 +150,61 @@ pub fn column_value_kind<'v>(
     if !is_text_like(column) {
         return None;
     }
-    let mut counted = 0_usize;
-    let mut matched = [0_usize; SensitiveKind::ALL.len()];
+    let mut tally = ValueTally::default();
     for value in values {
+        tally.record(Seen::of(column, value));
+    }
+    tally.kind()
+}
+
+// What one value of a text-like column adds to a tally, worked out once for every window it falls in.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Seen {
+    counted: bool,
+    matched: [bool; SensitiveKind::ALL.len()],
+}
+
+impl Seen {
+    pub fn of(column: &ColumnType, value: &Value) -> Self {
+        let mut seen = Self::default();
         match value {
-            Value::Null => continue,
-            Value::Bytes(_) => counted += 1,
+            Value::Null => {}
+            Value::Bytes(_) => seen.counted = true,
             value => {
-                counted += 1;
-                let Some(text) = value_text(value, column).filter(|text| !text.is_empty()) else {
-                    continue;
-                };
-                for (index, kind) in SensitiveKind::ALL.into_iter().enumerate() {
-                    if kind.matches(&text) {
-                        matched[index] += 1;
+                seen.counted = true;
+                if let Some(text) = value_text(value, column).filter(|text| !text.is_empty()) {
+                    for (matched, kind) in seen.matched.iter_mut().zip(SensitiveKind::ALL) {
+                        *matched = kind.matches(&text);
                     }
                 }
             }
         }
+        seen
     }
-    SensitiveKind::ALL
-        .into_iter()
-        .zip(matched)
-        .find(|(kind, count)| *count > 0 && (kind.flags_on_any() || count * 2 >= counted))
-        .map(|(kind, _)| kind)
+}
+
+// A column's values counted a value at a time, so no window of rows is held to judge them.
+#[derive(Debug, Clone, Default)]
+pub struct ValueTally {
+    counted: usize,
+    matched: [usize; SensitiveKind::ALL.len()],
+}
+
+impl ValueTally {
+    pub fn record(&mut self, seen: Seen) {
+        self.counted += usize::from(seen.counted);
+        for (count, matched) in self.matched.iter_mut().zip(seen.matched) {
+            *count += usize::from(matched);
+        }
+    }
+
+    pub fn kind(&self) -> Option<SensitiveKind> {
+        SensitiveKind::ALL
+            .into_iter()
+            .zip(self.matched)
+            .find(|(kind, count)| *count > 0 && (kind.flags_on_any() || count * 2 >= self.counted))
+            .map(|(kind, _)| kind)
+    }
 }
 
 // Only digits, spaces and dashes; 13 to 19 digits; Luhn.

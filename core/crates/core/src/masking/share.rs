@@ -1,7 +1,7 @@
-use super::detect::{MaskSuggestion, suggest_masks_over};
+use super::detect::{MaskSuggestion, Seen, ValueTally, is_text_like, suggest_from_tallies};
 use super::{MaskingStyle, mask_value};
 use crate::column::ResultColumn;
-use crate::export::{SnapshotRefusal, snapshot_row_count};
+use crate::export::{SnapshotFit, SnapshotRefusal, snapshot_row_count};
 use crate::value::Value;
 
 // What the share sheet does with one column.
@@ -121,24 +121,52 @@ impl SharePlan {
     }
 }
 
-// The first `max_rows` held rows whatever they weigh, and the rows a share keeping every column sends (core ADR 0028).
+// The first `max_rows` held rows whatever they weigh, and the rows a share keeping every column sends (core ADR 0028),
+// read a row at a time so no rows are held twice.
 pub fn share_suggestions<R: AsRef<[Value]>>(
     visible: &[ResultColumn],
     held: impl IntoIterator<Item = R>,
     max_rows: usize,
     max_columns: usize,
 ) -> Vec<Option<MaskSuggestion>> {
-    let first: Vec<R> = held.into_iter().take(max_rows).collect();
-    let plan = SharePlan::new(visible.len(), &[], max_columns);
-    let sent = plan
-        .summary(
-            visible,
-            first.len(),
-            |row, column| first[row].as_ref().get(column).cloned().unwrap_or(Value::Null),
-            max_rows,
-        )
-        .rows_sent;
-    suggest_masks_over(visible, &[first.as_slice(), &first[..sent.min(first.len())]])
+    // Keeping every column, a share sends the first `max_columns` as held.
+    let kept = &visible[..visible.len().min(max_columns)];
+    let text_like: Vec<bool> = visible.iter().map(|column| is_text_like(&column.column_type)).collect();
+    let mut first = vec![ValueTally::default(); visible.len()];
+    let mut sent = vec![ValueTally::default(); visible.len()];
+    // None from the first row that does not fit; `refused` when the share cannot go at all.
+    let mut fit = SnapshotFit::new(kept).ok();
+    let mut refused = fit.is_none();
+    for row in held.into_iter().take(max_rows) {
+        let row = row.as_ref();
+        let goes = match fit.as_mut().map(|fit| fit.take(&row[..kept.len().min(row.len())])) {
+            Some(Ok(true)) => true,
+            Some(Ok(false)) => {
+                fit = None;
+                false
+            }
+            Some(Err(_)) => {
+                fit = None;
+                refused = true;
+                false
+            }
+            None => false,
+        };
+        for (index, column) in visible.iter().enumerate() {
+            if !text_like[index] {
+                continue;
+            }
+            let seen = Seen::of(&column.column_type, row.get(index).unwrap_or(&Value::Null));
+            first[index].record(seen);
+            if goes {
+                sent[index].record(seen);
+            }
+        }
+    }
+    match refused {
+        true => suggest_from_tallies(visible, &[first]),
+        false => suggest_from_tallies(visible, &[first, sent]),
+    }
 }
 
 #[cfg(test)]
@@ -303,6 +331,38 @@ mod tests {
         let suggested = share_suggestions(&visible, &rows, 1_000, 100);
 
         assert_eq!(style_of(suggested[1]), Some(Email));
+    }
+
+    #[test]
+    fn detection_reads_one_held_row_at_a_time() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        // A row that counts the rows alive at once, and the most there were.
+        struct Counted(Vec<Value>, Rc<Cell<(usize, usize)>>);
+        impl AsRef<[Value]> for Counted {
+            fn as_ref(&self) -> &[Value] {
+                &self.0
+            }
+        }
+        impl Drop for Counted {
+            fn drop(&mut self) {
+                let (alive, most) = self.1.get();
+                self.1.set((alive - 1, most));
+            }
+        }
+        let visible = [ResultColumn::new("contact", ColumnType::untyped_text("text"))];
+        let alive = Rc::new(Cell::new((0, 0)));
+        let rows = (0..50).map(|row| {
+            let (now, most) = alive.get();
+            alive.set((now + 1, most.max(now + 1)));
+            Counted(vec![text(&format!("p{row}@example.com"))], alive.clone())
+        });
+
+        let suggested = share_suggestions(&visible, rows, 1_000, 100);
+
+        assert_eq!(style_of(suggested[0]), Some(Email));
+        assert_eq!(alive.get(), (0, 1), "rows were held for detection");
     }
 
     #[test]

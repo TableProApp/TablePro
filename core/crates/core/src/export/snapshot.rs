@@ -134,26 +134,50 @@ pub fn build_snapshot<R: AsRef<[Value]>>(
     })
 }
 
-// How many of `rows` a snapshot of `max_rows` keeps, by the same budget, for a preview or a detector that must read
+// How many of `rows` a snapshot of `max_rows` keeps, by the same budget, for a preview or a summary that must read
 // exactly the rows sent.
 pub fn snapshot_row_count<R: AsRef<[Value]>>(
     columns: &[ResultColumn],
     rows: impl IntoIterator<Item = R>,
     max_rows: usize,
 ) -> Result<usize, SnapshotRefusal> {
-    if columns.is_empty() {
-        return Err(SnapshotRefusal::NoColumns);
-    }
-    let mut budget = Budget::new(columns);
+    let mut fit = SnapshotFit::new(columns)?;
     let mut kept = 0;
     for row in rows.into_iter().take(max_rows) {
-        let (_, bytes) = sized_row(columns, row.as_ref())?;
-        if !budget.take(bytes, kept == 0)? {
+        if !fit.take(row.as_ref())? {
             break;
         }
         kept += 1;
     }
     Ok(kept)
+}
+
+// The snapshot's cut a row at a time, for a reader that holds no rows: true while a row fits the body, false for the
+// first that does not, and the refusal `build_snapshot` would give.
+pub struct SnapshotFit<'c> {
+    columns: &'c [ResultColumn],
+    budget: Budget,
+    kept: usize,
+}
+
+impl<'c> SnapshotFit<'c> {
+    pub fn new(columns: &'c [ResultColumn]) -> Result<Self, SnapshotRefusal> {
+        if columns.is_empty() {
+            return Err(SnapshotRefusal::NoColumns);
+        }
+        Ok(Self {
+            columns,
+            budget: Budget::new(columns),
+            kept: 0,
+        })
+    }
+
+    pub fn take(&mut self, row: &[Value]) -> Result<bool, SnapshotRefusal> {
+        let (_, bytes) = sized_row(self.columns, row)?;
+        let fits = self.budget.take(bytes, self.kept == 0)?;
+        self.kept += usize::from(fits);
+        Ok(fits)
+    }
 }
 
 // The body as the macOS app weighs it: braces and each column's quoted name plus 24, then each row's brackets, commas

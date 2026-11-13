@@ -12,7 +12,7 @@ mod fixtures;
 pub use names::{NameHit, column_name_hit, name_words};
 pub(crate) use names::{Term, longest_term};
 pub use sql::{PersonalDataHit, scan_sql_personal_data};
-pub use values::{SensitiveKind, column_value_kind, is_text_like};
+pub use values::{Seen, SensitiveKind, ValueTally, column_value_kind, is_text_like};
 
 use super::MaskingStyle;
 use crate::column::ResultColumn;
@@ -33,13 +33,27 @@ pub enum SuggestionReason {
 
 // One per column, from the rows to be shared. A name beats what the values show.
 pub fn suggest_masks<R: AsRef<[Value]>>(columns: &[ResultColumn], rows: &[R]) -> Vec<Option<MaskSuggestion>> {
-    suggest_masks_over(columns, &[rows])
+    let tallies: Vec<ValueTally> = columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| {
+            let mut tally = ValueTally::default();
+            if is_text_like(&column.column_type) {
+                for value in rows.iter().filter_map(|row| row.as_ref().get(index)) {
+                    tally.record(Seen::of(&column.column_type, value));
+                }
+            }
+            tally
+        })
+        .collect();
+    suggest_from_tallies(columns, &[tallies])
 }
 
-// A column any window flags; each window keeps its thresholds, and the first kind in table order wins.
-pub fn suggest_masks_over<R: AsRef<[Value]>>(
+// From a tally per column for each window of rows: a column any window flags is flagged, each window by its own
+// thresholds, and the first kind in table order wins.
+pub fn suggest_from_tallies<T: AsRef<[ValueTally]>>(
     columns: &[ResultColumn],
-    windows: &[&[R]],
+    windows: &[T],
 ) -> Vec<Option<MaskSuggestion>> {
     columns
         .iter()
@@ -53,12 +67,7 @@ pub fn suggest_masks_over<R: AsRef<[Value]>>(
             }
             windows
                 .iter()
-                .filter_map(|rows| {
-                    column_value_kind(
-                        &column.column_type,
-                        rows.iter().filter_map(|row| row.as_ref().get(index)),
-                    )
-                })
+                .filter_map(|tallies| tallies.as_ref().get(index)?.kind())
                 .min()
                 .map(|kind| MaskSuggestion {
                     style: kind.style(),
@@ -120,7 +129,15 @@ mod tests {
             vec![text("x")],
         ];
 
-        let suggested = suggest_masks_over(&columns, &[emails.as_slice(), cards.as_slice()]);
+        let tally = |rows: &[Vec<Value>]| {
+            let mut tally = ValueTally::default();
+            for row in rows {
+                tally.record(Seen::of(&columns[0].column_type, &row[0]));
+            }
+            vec![tally]
+        };
+
+        let suggested = suggest_from_tallies(&columns, &[tally(&emails), tally(&cards)]);
 
         assert_eq!(
             suggested[0].map(|found| found.reason),

@@ -34,8 +34,8 @@ pub use json_field_names::json_field_names;
 pub use markdown::render_markdown;
 pub use render_insert_error::RenderInsertError;
 pub use snapshot::{
-    MAX_SNAPSHOT_BODY_BYTES, MAX_SNAPSHOT_CELL_BYTES, ResultExtent, Snapshot, SnapshotColumn, SnapshotRefusal,
-    build_snapshot, snapshot_row_count,
+    MAX_SNAPSHOT_BODY_BYTES, MAX_SNAPSHOT_CELL_BYTES, ResultExtent, Snapshot, SnapshotColumn, SnapshotFit,
+    SnapshotRefusal, build_snapshot, snapshot_row_count,
 };
 pub use sql::{literal, render_inserts, render_sql_insert};
 pub use text_table::{TextTableError, render_text_table};
