@@ -20,7 +20,6 @@ use crate::editor::QueryEditor;
 use crate::error::{BoxedErrorInfo, CoreError};
 use crate::filter::{self, FilterChoices, TableFilterArg};
 use crate::library::SafeModeTag;
-use crate::results::GridMasking;
 use crate::row_edits::TableEditor;
 use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
 use crate::runtime::on_runtime;
@@ -231,11 +230,10 @@ impl DatabaseSession {
         .await
     }
 
-    // Returns once the page is built and its read started, so a bad filter fails the call; rows come as run events,
-    // masked by the connection's rules unless `reveal_masked`, which only a tab the user revealed passes.
+    // Returns once the page is built and its read started, so a bad filter fails the call; rows come as run events.
     #[expect(
         clippy::too_many_arguments,
-        reason = "the page's table, sort, filter and window, the tab's reveal, the app's listener and its cancel"
+        reason = "the page's table, sort, filter and window, the app's listener and its cancel, as the app passes them"
     )]
     pub async fn read_table_page(
         &self,
@@ -244,7 +242,6 @@ impl DatabaseSession {
         filter: Option<TableFilterArg>,
         limit: u64,
         offset: u64,
-        reveal_masked: bool,
         listener: Box<dyn RunListener>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<Arc<TablePageRead>, CoreError> {
@@ -255,7 +252,7 @@ impl DatabaseSession {
             let dialect = session.current_dialect().ok_or_else(not_connected)?;
             let filter = filter::filter_set(filter, &*dialect)?;
             let plan = plan_page(&session, table, sort_keys(sort), filter, limit, offset, &cancel).await?;
-            Ok(Arc::new(start_page(session, &tasks, plan, reveal_masked, listener)))
+            Ok(Arc::new(start_page(session, &tasks, plan, listener)))
         })
         .await
     }
@@ -435,12 +432,6 @@ impl DatabaseSession {
         safe_mode_gate::gate(&sql, self.session.grammar(), self.session.safe_mode())
     }
 
-    // Every statement of `sql` only reads, by the classifier Safe Mode reads it with; false for empty or open text. A
-    // revealed query tab runs its statement again only then.
-    pub fn reads_only(&self, sql: String) -> bool {
-        tablepro_core::sql_syntax::reads_only(&sql, self.session.grammar())
-    }
-
     // `caret` and the span count UTF-16 units. Split by the grammar `gate_run` and the driver read the text with.
     pub fn statement_at(&self, sql: String, caret: u32) -> Option<StatementSpan> {
         statement_at::statement_at(&sql, caret, self.session.grammar())
@@ -471,12 +462,7 @@ impl DatabaseSession {
             let editor = session
                 .open_editor_session(EditorSessionOptions::default(), &cancel)
                 .await?;
-            Ok(Arc::new(QueryEditor::new(
-                editor,
-                tasks,
-                session.masking(),
-                session.grammar(),
-            )))
+            Ok(Arc::new(QueryEditor::new(editor, tasks)))
         })
         .await
     }
@@ -657,29 +643,15 @@ async fn plan_page(
     })
 }
 
-fn start_page(
-    session: Arc<Session>,
-    tasks: &Tasks,
-    plan: PagePlan,
-    reveal_masked: bool,
-    listener: Box<dyn RunListener>,
-) -> TablePageRead {
+fn start_page(session: Arc<Session>, tasks: &Tasks, plan: PagePlan, listener: Box<dyn RunListener>) -> TablePageRead {
     let state = Arc::new(RunState::new(listener));
-    let table = tablepro_core::masking::table_name(&plan.table);
-    let masking = GridMasking {
-        policy: session.masking(),
-        named_table: Some(table.clone()),
-        own_table: Some(table),
-        visible: usize::try_from(plan.visible_columns).ok(),
-        revealed: reveal_masked,
-    };
     let visible_columns = plan.visible_columns;
     let can_seek = plan.can_seek;
     let view_sql = plan.view_sql.clone();
     let run = state.clone();
     drop(tasks.spawn_task(async move {
         let started = Instant::now();
-        let outcome = match catch_panic(read_into(&session, &plan, &run, masking)).await {
+        let outcome = match catch_panic(read_into(&session, &plan, &run)).await {
             Ok(Ok(())) => RunOutcome::Completed {
                 elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             },
@@ -701,12 +673,7 @@ fn start_page(
 }
 
 // The run's cancel reaches the driver through the operation, so a cancel stops the statement on the server.
-async fn read_into(
-    session: &Session,
-    plan: &PagePlan,
-    state: &Arc<RunState>,
-    masking: GridMasking,
-) -> Result<(), OperationError> {
+async fn read_into(session: &Session, plan: &PagePlan, state: &Arc<RunState>) -> Result<(), OperationError> {
     let read = session
         .run_cancellable(OperationKind::Page, &state.cancel, move |lease, options| async move {
             let request = PageRequest {
@@ -727,7 +694,7 @@ async fn read_into(
         false => Truncation::Complete,
     };
     deliver(
-        RunSink::new(state.clone(), ByteLimit::EDITOR_DEFAULT).masked(masking),
+        RunSink::new(state.clone(), ByteLimit::EDITOR_DEFAULT),
         read.result,
         truncation,
     )

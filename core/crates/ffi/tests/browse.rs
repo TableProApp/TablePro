@@ -93,7 +93,7 @@ async fn fixture(dir: &Path, sql: &str) -> (Arc<Core>, Arc<DatabaseSession>) {
 // On an editor of its own, closed before the test reads through the session.
 async fn execute(session: &DatabaseSession, sql: &str) {
     let editor = session.open_editor(None).await.unwrap();
-    let run = editor.run(sql.to_owned(), RunSettings::default(), false, Box::new(Quiet));
+    let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
     let outcome = run.outcome().await.unwrap();
     assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
     editor.close().await.unwrap();
@@ -140,16 +140,7 @@ async fn read(
     offset: u64,
 ) -> Result<Arc<TablePageRead>, CoreError> {
     session
-        .read_table_page(
-            table("people"),
-            sort,
-            filter,
-            limit,
-            offset,
-            false,
-            Box::new(Quiet),
-            None,
-        )
+        .read_table_page(table("people"), sort, filter, limit, offset, Box::new(Quiet), None)
         .await
 }
 
@@ -185,7 +176,7 @@ async fn a_page_s_view_sql_selects_every_page_with_its_filter_written_in() {
     let names = column(&page, 1).await;
     let sql = page.view_sql().unwrap();
     let editor = session.open_editor(None).await.unwrap();
-    let run = editor.run(sql.clone(), RunSettings::default(), false, Box::new(Quiet));
+    let run = editor.run(sql.clone(), RunSettings::default(), Box::new(Quiet));
     let outcome = run.outcome().await.unwrap();
     let set = run.result_set(0).unwrap();
     let every: Vec<Option<String>> = (0..set.row_count()).map(|row| set.cell_text(row, 1).unwrap()).collect();
@@ -400,7 +391,7 @@ async fn a_cancel_stops_a_page_read_on_the_engine() {
     let (_core, session) = fixture(dir.path(), &format!("{PEOPLE}; {endless}")).await;
 
     let page = session
-        .read_table_page(table("endless"), None, None, 100, 0, false, Box::new(Quiet), None)
+        .read_table_page(table("endless"), None, None, 100, 0, Box::new(Quiet), None)
         .await
         .unwrap();
     let run = page.run();

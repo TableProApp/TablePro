@@ -15,7 +15,6 @@ use tablepro_storage::{
 use uuid::Uuid;
 
 use crate::error::CoreError;
-use crate::masking::{MaskingRuleRecord, saved_rules};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -111,8 +110,6 @@ pub struct ConnectionRecord {
     pub ssh: Option<SshSettings>,
     pub safe_mode: SafeModeTag,
     pub query_timeout_secs: Option<u32>,
-    // In order: the first rule that matches a column wins. A save reaches every open session of the connection.
-    pub masking_rules: Vec<MaskingRuleRecord>,
     pub color: Option<String>,
     pub group_id: Option<String>,
     pub last_opened_ms: Option<i64>,
@@ -724,7 +721,6 @@ pub(crate) fn blank(id: Uuid) -> SavedConnection {
         external_access: tablepro_core::ExternalAccess::default(),
         ai_policy: tablepro_core::AiPolicy::default(),
         query_timeout_secs: None,
-        masking_rules: Vec::new(),
         auth_mode: AuthMode::default(),
         ssh: None,
         last_opened_at: None,
@@ -759,7 +755,6 @@ pub(crate) fn apply(
     saved.ssh = record.ssh.as_ref().map(saved_ssh);
     saved.safe_mode = record.safe_mode.into();
     saved.query_timeout_secs = record.query_timeout_secs;
-    saved.masking_rules = saved_rules(&record.masking_rules);
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
 }
@@ -868,7 +863,6 @@ impl From<&SavedConnection> for ConnectionRecord {
                 SafeModeLevel::ReadOnly => SafeModeTag::ReadOnly,
             },
             query_timeout_secs: saved.query_timeout_secs,
-            masking_rules: saved.masking_rules.iter().map(MaskingRuleRecord::from).collect(),
             color: saved.color.map(|color| color.id().to_owned()),
             group_id: saved.group_id.map(|id| id.to_string()),
             last_opened_ms: saved.last_opened_at.map(|at: DateTime<Utc>| at.timestamp_millis()),

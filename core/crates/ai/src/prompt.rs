@@ -57,16 +57,8 @@ pub fn chat_system_prompt(context: &SchemaContext, editor: Option<&str>) -> Stri
     prompt
 }
 
-/// What the server said when a statement failed, for the Fix action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ServerError<'a> {
-    Text(&'a str),
-    // The connection has masking rules, and a server's message can repeat a value it read, so only its code goes.
-    Withheld { code: Option<&'a str> },
-}
-
 /// The user's message for an editor action on `statement`.
-pub fn action_message(action: Action, statement: &str, error: Option<ServerError<'_>>) -> String {
+pub fn action_message(action: Action, statement: &str, error: Option<&str>) -> String {
     let (statement, _) = head(statement.trim(), MAX_STATEMENT_CHARS);
     let ask = match action {
         Action::Explain => "Explain what this statement does, step by step.",
@@ -80,22 +72,10 @@ pub fn action_message(action: Action, statement: &str, error: Option<ServerError
         Action::Fix => "This statement failed. Correct it, and say in a sentence what was wrong.",
     };
     let mut message = format!("{ask}\n\n{}", fence(statement, "sql"));
-    match error {
-        Some(ServerError::Text(error)) if !error.trim().is_empty() => {
-            let (error, _) = head(error.trim(), MAX_ERROR_CHARS);
-            message.push_str("\n\nThe server said:\n");
-            message.push_str(&fence(error, "text"));
-        }
-        Some(ServerError::Withheld { code }) => {
-            message.push_str(
-                "\n\nThe server's message is not shown: this connection masks values, and the message can repeat one.",
-            );
-            if let Some(code) = code.map(str::trim).filter(|code| !code.is_empty()) {
-                let (code, _) = head(code, MAX_ERROR_CHARS);
-                message.push_str(&format!(" Its error code is {code}."));
-            }
-        }
-        Some(ServerError::Text(_)) | None => {}
+    if let Some(error) = error.map(str::trim).filter(|error| !error.is_empty()) {
+        let (error, _) = head(error, MAX_ERROR_CHARS);
+        message.push_str("\n\nThe server said:\n");
+        message.push_str(&fence(error, "text"));
     }
     message
 }
@@ -332,30 +312,11 @@ mod tests {
 
     #[test]
     fn a_fix_carries_the_servers_error() {
-        let message = action_message(
-            Action::Fix,
-            " SELEC 1 ",
-            Some(ServerError::Text("syntax error at or near \"SELEC\"")),
-        );
+        let message = action_message(Action::Fix, " SELEC 1 ", Some("syntax error at or near \"SELEC\""));
 
         assert!(message.starts_with("This statement failed."));
         assert!(message.contains("```sql\nSELEC 1\n```"));
         assert!(message.contains("The server said:\n```text\nsyntax error at or near \"SELEC\"\n```"));
-    }
-
-    #[test]
-    fn a_fix_on_a_connection_with_masking_rules_sends_the_code_and_never_the_message() {
-        let message = action_message(
-            Action::Fix,
-            "SELECT CAST(email AS int) FROM users",
-            Some(ServerError::Withheld { code: Some("22P02") }),
-        );
-        let no_code = action_message(Action::Fix, "SELECT 1", Some(ServerError::Withheld { code: None }));
-
-        assert!(!message.contains("The server said"), "{message}");
-        assert!(message.contains("this connection masks values"), "{message}");
-        assert!(message.contains("Its error code is 22P02."), "{message}");
-        assert!(!no_code.contains("error code"), "{no_code}");
     }
 
     #[test]

@@ -85,7 +85,7 @@ fn people() -> TableName {
 
 async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
     let editor = session.open_editor(None).await.unwrap();
-    let run = editor.run(sql.to_owned(), RunSettings::default(), false, Box::new(Quiet));
+    let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
     assert!(matches!(run.outcome().await.unwrap(), RunOutcome::Completed { .. }));
     let set = run.result_set(0);
     editor.close().await.unwrap();
@@ -112,7 +112,7 @@ async fn seeded(core: &Core, path: &Path) {
 // The page as a table tab reads it.
 async fn page_of(session: &DatabaseSession, table: TableName) -> Arc<ResultSet> {
     let read = session
-        .read_table_page(table, None, None, 100, 0, false, Box::new(Quiet), None)
+        .read_table_page(table, None, None, 100, 0, Box::new(Quiet), None)
         .await
         .unwrap();
     let run = read.run();
@@ -161,7 +161,6 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         ssh: None,
         safe_mode,
         query_timeout_secs: None,
-        masking_rules: Vec::new(),
         color: None,
         group_id: None,
         last_opened_ms: None,

@@ -305,7 +305,7 @@ fn too_large(error: SnapshotTooLarge) -> CoreError {
     CoreError::failed("account.snapshot_too_large", error.to_string())
 }
 
-// The set's first `visible_columns` columns and how a share sends them, by the connection's rules and the sheet.
+// The set's first `visible_columns` columns and how a share sends them, by the sheet's choices.
 pub(crate) fn share_plan(
     set: &ResultSet,
     visible_columns: u32,
@@ -315,14 +315,7 @@ pub(crate) fn share_plan(
     let count = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
     let visible: Vec<ResultColumn> = held[..count].to_vec();
     let choices: Vec<ShareChoice> = choices.iter().copied().map(ShareChoice::from).collect();
-    let plan = SharePlan::new(
-        count,
-        &set.external_masks(&visible),
-        &set.shown_masks(),
-        &choices,
-        MAX_SHARE_COLUMNS,
-    );
-    (visible, plan)
+    (visible, SharePlan::new(count, &choices, MAX_SHARE_COLUMNS))
 }
 
 fn share_request(request: ShareRequestArg, snapshot: Option<Snapshot>) -> ShareRequest {
@@ -484,14 +477,13 @@ impl std::fmt::Debug for ShareRequestArg {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::column::{ColumnOrigin, ColumnType};
-    use tablepro_core::masking::{MaskingPolicy, MaskingRule, MaskingStyle, MaskingTarget, SharedMaskingPolicy};
-    use tablepro_core::meta::TableRef;
+    use tablepro_core::column::ColumnType;
+    use tablepro_core::masking::MaskingStyle;
     use tablepro_core::{Truncation, Value};
 
     use super::*;
     use crate::masking::MaskStyleTag;
-    use crate::results::{GridMasking, ResultStore};
+    use crate::results::ResultStore;
 
     fn cut_set() -> ResultSet {
         let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("int"))].into();
@@ -511,78 +503,46 @@ mod tests {
         assert_eq!((counted.row_count, counted.more_rows), (Some(48_210), false));
     }
 
-    fn traced(name: &str, source: &str) -> ResultColumn {
-        ResultColumn::new(name, ColumnType::untyped_text("text"))
-            .with_origin(Some(ColumnOrigin::new(TableRef::unqualified("users"), source)))
-    }
-
-    // users.email masked as Email, read by `SELECT id, email, phone, notes FROM users`.
-    fn ruled_set(revealed: bool) -> ResultSet {
-        let columns: Arc<[ResultColumn]> = vec![
-            traced("id", "id"),
-            traced("email", "email"),
-            traced("phone", "phone"),
-            traced("notes", "notes"),
-        ]
-        .into();
-        let policy = MaskingPolicy::new([MaskingRule::new(
-            "users.email",
-            MaskingTarget::Column,
-            MaskingStyle::Email,
-        )]);
-        let masking = GridMasking {
-            policy: SharedMaskingPolicy::new(policy),
-            named_table: Some("users".to_owned()),
-            own_table: None,
-            visible: None,
-            revealed,
-        };
-        let store = Arc::new(ResultStore::with_masking(columns, Some(masking)));
+    fn people() -> ResultSet {
+        let columns: Arc<[ResultColumn]> = ["id", "email", "phone", "notes"]
+            .iter()
+            .map(|name| ResultColumn::new(*name, ColumnType::untyped_text("text")))
+            .collect::<Vec<_>>()
+            .into();
+        let store = Arc::new(ResultStore::new(columns));
         let text = |value: &str| Value::Text(value.to_owned());
-        store.append(&[vec![
-            text("1"),
-            text("ann@example.com"),
-            text("+1 555 0100"),
-            text("vip"),
-        ]]);
+        store.append(&[
+            vec![text("1"), text("ann@example.com"), text("+1 555 0100"), text("vip")],
+            vec![text("2"), Value::Null, Value::Null, Value::Null],
+        ]);
         store.finish();
         ResultSet::new(0, store)
     }
 
-    fn cells(snapshot: &Snapshot) -> Vec<&str> {
-        snapshot.rows[0].iter().map(|cell| cell.get()).collect()
+    fn cells(snapshot: &Snapshot, row: usize) -> Vec<&str> {
+        snapshot.rows[row].iter().map(|cell| cell.get()).collect()
     }
 
     #[test]
-    fn a_rule_masks_the_share_also_when_the_tab_revealed_its_rows() {
-        for revealed in [false, true] {
-            let (snapshot, _) = snapshot_of(&ruled_set(revealed), 4, 10, None, &[]).unwrap();
-
-            assert_eq!(
-                cells(&snapshot),
-                [r#""1""#, r#""a•••@example.com""#, r#""+1 555 0100""#, r#""vip""#],
-                "revealed {revealed}"
-            );
-            let masked: Vec<Option<MaskingStyle>> = snapshot.columns.iter().map(|column| column.masked).collect();
-            assert_eq!(masked, [None, Some(MaskingStyle::Email), None, None]);
-        }
-    }
-
-    #[test]
-    fn the_sheet_masks_and_removes_columns_and_never_keeps_a_ruled_one() {
+    fn the_sheet_masks_and_removes_columns_and_the_snapshot_names_each_style() {
         let mask = |style| ShareColumnChoice::Mask { style };
         let choices = [
             ShareColumnChoice::Remove,
-            ShareColumnChoice::Keep,
+            mask(MaskStyleTag::Email),
             mask(MaskStyleTag::LastFour),
             mask(MaskStyleTag::Null),
         ];
 
-        let (snapshot, cut) = snapshot_of(&ruled_set(true), 4, 10, None, &choices).unwrap();
+        let (snapshot, cut) = snapshot_of(&people(), 4, 10, None, &choices).unwrap();
 
         let names: Vec<&str> = snapshot.columns.iter().map(|column| column.name.as_str()).collect();
         assert_eq!(names, ["email", "phone", "notes"]);
-        assert_eq!(cells(&snapshot), [r#""a•••@example.com""#, r#""••••0100""#, "null"]);
+        assert_eq!(cells(&snapshot, 0), [r#""a•••@example.com""#, r#""••••0100""#, "null"]);
+        assert_eq!(
+            cells(&snapshot, 1),
+            ["null", "null", "null"],
+            "a NULL was masked into a value"
+        );
         let masked: Vec<Option<MaskingStyle>> = snapshot.columns.iter().map(|column| column.masked).collect();
         assert_eq!(
             masked,
@@ -596,18 +556,11 @@ mod tests {
     }
 
     #[test]
-    fn a_style_that_shows_what_the_rule_hides_leaves_as_full() {
-        let choices = [
-            ShareColumnChoice::Keep,
-            ShareColumnChoice::Mask {
-                style: MaskStyleTag::LastFour,
-            },
-        ];
+    fn a_kept_column_goes_as_held_and_names_no_style() {
+        let (snapshot, _) = snapshot_of(&people(), 2, 10, None, &[]).unwrap();
 
-        let (snapshot, _) = snapshot_of(&ruled_set(false), 2, 10, None, &choices).unwrap();
-
-        assert_eq!(cells(&snapshot), [r#""1""#, r#""••••""#]);
-        assert_eq!(snapshot.columns[1].masked, Some(MaskingStyle::Full));
+        assert_eq!(cells(&snapshot, 0), [r#""1""#, r#""ann@example.com""#]);
+        assert!(snapshot.columns.iter().all(|column| column.masked.is_none()));
     }
 
     fn notes(rows: usize, chars: usize) -> Arc<ResultSet> {

@@ -100,7 +100,6 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         external_access: access,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
-        masking_rules: Vec::new(),
         auth_mode: tablepro_core::AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -143,7 +142,6 @@ async fn open_session(dir: &Path, file: &Path, id: Uuid, create: bool) -> Arc<Se
         target: RequestTarget::File(endpoint),
         workspace_settings: WorkspaceSettings::workspace(false),
         safe_mode: SafeModeLevel::Off,
-        masking: Default::default(),
     };
     let pending = connector
         .establish(request, CredentialInteraction::Unattended, CancellationToken::new())

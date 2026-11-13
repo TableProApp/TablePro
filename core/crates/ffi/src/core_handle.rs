@@ -154,8 +154,6 @@ impl Core {
                 target: RequestTarget::File(endpoint),
                 workspace_settings: WorkspaceSettings::workspace(false),
                 safe_mode: SafeModeLevel::default(),
-                // A file opened by path is no saved connection, so it has no rules.
-                masking: Default::default(),
             };
             if request.read_only {
                 connect.open_read_only();
@@ -239,8 +237,6 @@ impl Core {
                     prompter,
                 },
             );
-            // A save of the connection's masking rules reaches the session as it lands.
-            session.follow_saved_masking(&store);
             let stamped = tasks
                 .spawn_blocking_task(move || store.touch_last_opened_blocking(id))
                 .await;
