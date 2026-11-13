@@ -32,6 +32,7 @@ nonisolated enum RowWriteBatch: Sendable {
     static func update(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         driver: any DatabaseDriver,
         columns: [String],
@@ -49,8 +50,8 @@ nonisolated enum RowWriteBatch: Sendable {
         }
         guard let keys = locator.keyValues else { return nil }
         let sql = SQLBuilder.buildUpdate(
-            table: table, schema: schema, type: type, driver: driver, changes: changes, primaryKeys: keys,
-            columns: columnDetails
+            table: table, schema: schema, database: database, type: type, driver: driver, changes: changes,
+            primaryKeys: keys, columns: columnDetails
         )
         return .sql([sql], driver)
     }
@@ -58,6 +59,7 @@ nonisolated enum RowWriteBatch: Sendable {
     static func delete(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         driver: any DatabaseDriver,
         columns: [String],
@@ -73,7 +75,8 @@ nonisolated enum RowWriteBatch: Sendable {
         }
         guard let keys = locator.keyValues, !keys.isEmpty else { return nil }
         let sql = SQLBuilder.buildDelete(
-            table: table, schema: schema, type: type, driver: driver, primaryKeys: keys, columns: columnDetails
+            table: table, schema: schema, database: database, type: type, driver: driver, primaryKeys: keys,
+            columns: columnDetails
         )
         return .sql([sql], driver)
     }
@@ -95,6 +98,7 @@ nonisolated struct PlannedRowWrite: Sendable {
     static func update(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         columns: [String],
         columnDetails: [ColumnInfo],
@@ -103,7 +107,7 @@ nonisolated struct PlannedRowWrite: Sendable {
     ) -> PlannedRowWrite {
         PlannedRowWrite { driver in
             try RowWriteBatch.update(
-                table: table, schema: schema, type: type, driver: driver, columns: columns,
+                table: table, schema: schema, database: database, type: type, driver: driver, columns: columns,
                 columnDetails: columnDetails, locator: locator, changes: changes
             )
         }
@@ -112,13 +116,14 @@ nonisolated struct PlannedRowWrite: Sendable {
     static func insert(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         columns: [ColumnInfo],
         values: [String: PayloadValue]
     ) -> PlannedRowWrite {
         PlannedRowWrite { driver in
             try RowInsertPlanner.batch(
-                table: table, schema: schema, type: type, driver: driver, columns: columns,
+                table: table, schema: schema, database: database, type: type, driver: driver, columns: columns,
                 rows: [PayloadRow(values: values)], allowAllDefaults: true, dropsEmptyPrimaryKey: false
             )
         }

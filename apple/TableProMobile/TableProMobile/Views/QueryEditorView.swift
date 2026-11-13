@@ -239,7 +239,7 @@ struct QueryEditorView: View {
         }
         .confirmationDialog(String(localized: "Execute Write Query?"), isPresented: $showWriteConfirmation, titleVisibility: .visible) {
             Button(String(localized: "Execute"), role: .destructive) {
-                executeTask = Task { await executeQueryDirect(pendingWriteQuery) }
+                executeTask = Task { await executeQueryDirect(pendingWriteQuery, enforcesReadOnly: false) }
             }
         } message: {
             Text("This query will modify data. Are you sure you want to continue?")
@@ -848,7 +848,11 @@ struct QueryEditorView: View {
             return
         }
 
-        if SQLWriteClassifier.isWriteQuery(trimmed, databaseType: databaseType) {
+        let writes = SQLWriteClassifier.isWriteQuery(trimmed, databaseType: databaseType)
+        let readOnlyMode = await ReadOnlyFunctionGuard.runsInReadOnlyMode(
+            writes: writes, level: safeModeLevel, driver: session.driver
+        )
+        if writes {
             switch safeModeLevel.writePermission {
             case .blocked:
                 showWriteBlockedAlert = true
@@ -860,7 +864,9 @@ struct QueryEditorView: View {
             case .proceed:
                 break
             }
-        } else if ReadOnlyFunctionGuard.refuses(trimmed, databaseType: databaseType, level: safeModeLevel) {
+        } else if ReadOnlyFunctionGuard.refuses(
+            trimmed, databaseType: databaseType, level: safeModeLevel, enforcesReadOnlyMode: readOnlyMode
+        ) {
             showFunctionBlockedAlert = true
             return
         } else if await refusesBareFunctionName(trimmed, on: session) {
@@ -868,7 +874,7 @@ struct QueryEditorView: View {
             return
         }
 
-        await executeQueryDirect(trimmed)
+        await executeQueryDirect(trimmed, enforcesReadOnly: readOnlyMode)
     }
 
     // Read on the session itself, whose current schema the query resolves its names in.
@@ -888,7 +894,7 @@ struct QueryEditorView: View {
     }
 
     // Claimed before the first await, so a second Run while the session reports how it reads literals starts nothing.
-    private func executeQueryDirect(_ trimmed: String) async {
+    private func executeQueryDirect(_ trimmed: String, enforcesReadOnly: Bool) async {
         guard let session, !isExecuting else { return }
         // A run with a `USE` in any window holds the session until the picker follows it.
         guard !coordinator.isDatabaseMoving else {
@@ -956,7 +962,7 @@ struct QueryEditorView: View {
             failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed },
             rolledBack: { _ in viewModel.ranTransactionRollBack }
         ) {
-            await viewModel.run(driver: session.driver, script: script)
+            await viewModel.run(driver: session.driver, script: script, enforcesReadOnly: enforcesReadOnly)
         }
 
         progressUpdater.cancel()

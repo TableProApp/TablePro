@@ -9,6 +9,7 @@ struct StructureView: View {
     let session: ConnectionSession?
     let databaseType: DatabaseType
     let schema: String?
+    let database: String?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "StructureView")
 
@@ -242,9 +243,11 @@ struct StructureView: View {
         appError = nil
 
         do {
-            async let fetchedColumns = session.driver.fetchColumns(table: table.name, schema: schema)
-            async let fetchedIndexes = session.driver.fetchIndexes(table: table.name, schema: schema)
-            async let fetchedForeignKeys = session.driver.fetchForeignKeys(table: table.name, schema: schema)
+            async let fetchedColumns = session.driver.fetchColumns(table: table.name, schema: schema, database: database)
+            async let fetchedIndexes = session.driver.fetchIndexes(table: table.name, schema: schema, database: database)
+            async let fetchedForeignKeys = session.driver.fetchForeignKeys(
+                table: table.name, schema: schema, database: database
+            )
 
             self.columns = try await fetchedColumns
             self.indexes = try await fetchedIndexes

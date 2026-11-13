@@ -3,7 +3,6 @@ import Testing
 import TableProModels
 @testable import TableProMobile
 
-@Suite("RowInsertPlanner")
 struct RowInsertPlannerTests {
     private let columns = [
         ColumnInfo(name: "id", typeName: "integer", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
@@ -67,6 +66,18 @@ struct RowInsertPlannerTests {
             table: "people", schema: nil, type: .mysql, driver: ansiDriver(), columns: [autoIncrement, name], rows: [row]
         )
         #expect((mysql.first ?? "").contains("1890"))
+    }
+
+    @Test("A SQL Server insert names the window's database in front of the schema")
+    func sqlServerInsertNamesTheDatabase() throws {
+        let write = PlannedRowWrite.insert(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, columns: columns,
+            values: ["name": .text("Ada")]
+        )
+
+        let batch = try #require(try write.batch(on: ansiDriver()))
+
+        #expect(batch.statements == ["INSERT INTO [shop].[dbo].[orders] ([name]) VALUES (N'Ada')"])
     }
 
     @Test("writes NULL for null values")

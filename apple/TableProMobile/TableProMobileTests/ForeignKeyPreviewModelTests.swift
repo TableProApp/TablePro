@@ -79,6 +79,25 @@ struct ForeignKeyPreviewModelTests {
         #expect(query.contains("\"id\" = '5'"))
     }
 
+    @Test("On SQL Server the lookup and the referenced table's reads name the database the key was read in")
+    func sqlServerLookupNamesTheDatabase() async throws {
+        let driver = Self.driver(rows: [Self.userRow])
+        let reference = ForeignKeyReference(table: "tenant_users", schema: "dbo", database: "shop", parts: [
+            ForeignKeyReference.Part(column: "tenant_id", value: "2"),
+            ForeignKeyReference.Part(column: "id", value: "5")
+        ])
+        let model = ForeignKeyPreviewModel(reference: reference, session: Self.session(driver), databaseType: .mssql)
+        await model.load()
+
+        let query = try #require(driver.executedQueries.first)
+        #expect(query.hasPrefix("SELECT * FROM [shop].[dbo].[tenant_users]"))
+        #expect(driver.fetchColumnsDatabases == ["shop"])
+        #expect(driver.fetchForeignKeysDatabases == ["shop"])
+        let linked = model.fields.compactMap { $0.reference }
+        #expect(!linked.isEmpty)
+        #expect(linked.allSatisfy { $0.database == "shop" })
+    }
+
     // MySQL finds no row for `bit_col = '5'`, and the browser's filter compares the same column bare.
     @Test("The lookup reads the referenced table's columns first and takes each literal from their types")
     func lookupTakesLiteralsFromTheColumns() async throws {

@@ -35,6 +35,22 @@ struct ForeignKeyReferenceTests {
         #expect(reference.parts == [ForeignKeyReference.Part(column: "id", value: "5")])
     }
 
+    @Test("A reference keeps the database its key was read in, from one key or from all of them")
+    func referenceKeepsTheSourceDatabase() throws {
+        let cells = Self.cells(.text("1"), .text("2"), .text("5"), .null)
+        let reference = try #require(ForeignKeyReference.make(
+            forColumn: "user_id", foreignKeys: [Self.userKey], columns: Self.orderColumns, cells: cells,
+            sourceSchema: "dbo", sourceDatabase: "shop"
+        ))
+        let all = ForeignKeyReference.all(
+            foreignKeys: [Self.userKey], columns: Self.orderColumns, cells: cells,
+            sourceSchema: "dbo", sourceDatabase: "shop"
+        )
+
+        #expect(reference.database == "shop")
+        #expect(all.map { $0.reference.database } == ["shop"])
+    }
+
     @Test("The key's own schema wins over the source schema")
     func referencedSchemaWins() throws {
         let key = ForeignKeyInfo(
