@@ -22,8 +22,9 @@ final class PGlitePluginDriver: PostgreSQLPluginDriver {
         super.init(config: config, singleConnectionMode: true)
     }
 
+    // pglite-socket 0.2.19 (PGlite 0.5.16) never reads CopyData: a COPY FROM STDIN, psql's too, loses the connection.
     override var capabilities: PluginCapabilities {
-        super.capabilities.subtracting(.cancelQuery)
+        super.capabilities.subtracting([.cancelQuery, .copyFromStandardInput])
     }
 
     // pldebugger is a server C extension and needs a second session; PGlite has neither.

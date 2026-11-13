@@ -63,23 +63,29 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
         let grammar = self.grammar.withLock { $0 }
         let parsed = parser.parseFile(url: fileURL, encoding: encoding, grammar: grammar)
         guard !sendsFileBytesUnchanged else { return parsed }
-        return Self.sentAsUTF8(parsed, decodedFrom: encoding, family: family, grammar: grammar)
+        let rewriting = TranscodedDumpStatements(parsed, rewriter: rewriter(grammar: grammar))
+        return AsyncThrowingStream(unfolding: {
+            try await rewriting.next()
+        })
+    }
+
+    func elements() async throws -> AsyncThrowingStream<PluginImportElement, Error> {
+        let fileURL = try await resolveURL()
+        let grammar = self.grammar.withLock { $0 }
+        let parsed = parser.parseElements(url: fileURL, encoding: encoding, grammar: grammar)
+        guard !sendsFileBytesUnchanged else { return parsed }
+        let rewriting = TranscodedDumpElements(parsed, rewriter: rewriter(grammar: grammar))
+        return AsyncThrowingStream(unfolding: {
+            try await rewriting.next()
+        })
     }
 
     private var sendsFileBytesUnchanged: Bool {
         encoding == .utf8 || encoding == .ascii
     }
 
-    private static func sentAsUTF8(
-        _ statements: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>,
-        decodedFrom encoding: String.Encoding,
-        family: TransactionEngineFamily,
-        grammar: @escaping @Sendable () -> SQLLexicalGrammar
-    ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
-        let rewriting = TranscodedDumpStatements(statements, decodedFrom: encoding, family: family, grammar: grammar)
-        return AsyncThrowingStream(unfolding: {
-            try await rewriting.next()
-        })
+    private func rewriter(grammar: @escaping @Sendable () -> SQLLexicalGrammar) -> TranscodedStatementRewriter {
+        TranscodedStatementRewriter(encoding: encoding, family: family, grammar: grammar)
     }
 
     /// `ownsDecompressedFile` answers only whether the caller handed over a file to delete. A file
@@ -158,34 +164,52 @@ internal enum SqlFileImportError: LocalizedError, Equatable {
 }
 
 private final class TranscodedDumpStatements: @unchecked Sendable {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SqlFileImportSource")
-
     private var statements: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>.AsyncIterator
-    private let encoding: String.Encoding
-    private let family: TransactionEngineFamily
-    private let grammar: @Sendable () -> SQLLexicalGrammar
+    private let rewriter: TranscodedStatementRewriter
 
-    init(
-        _ statements: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>,
-        decodedFrom encoding: String.Encoding,
-        family: TransactionEngineFamily,
-        grammar: @escaping @Sendable () -> SQLLexicalGrammar
-    ) {
+    init(_ statements: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>, rewriter: TranscodedStatementRewriter) {
         self.statements = statements.makeAsyncIterator()
-        self.encoding = encoding
-        self.family = family
-        self.grammar = grammar
+        self.rewriter = rewriter
     }
 
     func next() async throws -> (statement: String, lineNumber: Int)? {
         guard let (statement, lineNumber) = try await statements.next() else { return nil }
+        return (try rewriter.rewritten(statement, at: lineNumber), lineNumber)
+    }
+}
+
+// COPY rows pass unchanged: the parser hands them out as UTF-8 already.
+private final class TranscodedDumpElements: @unchecked Sendable {
+    private var elements: AsyncThrowingStream<PluginImportElement, Error>.AsyncIterator
+    private let rewriter: TranscodedStatementRewriter
+
+    init(_ elements: AsyncThrowingStream<PluginImportElement, Error>, rewriter: TranscodedStatementRewriter) {
+        self.elements = elements.makeAsyncIterator()
+        self.rewriter = rewriter
+    }
+
+    func next() async throws -> PluginImportElement? {
+        guard let element = try await elements.next() else { return nil }
+        guard case let .statement(statement, lineNumber) = element else { return element }
+        return .statement(try rewriter.rewritten(statement, at: lineNumber), lineNumber: lineNumber)
+    }
+}
+
+private struct TranscodedStatementRewriter: Sendable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SqlFileImportSource")
+
+    let encoding: String.Encoding
+    let family: TransactionEngineFamily
+    let grammar: @Sendable () -> SQLLexicalGrammar
+
+    func rewritten(_ statement: String, at lineNumber: Int) throws -> String {
         let grammar = self.grammar()
         let literals = try rewrittenLiterals(of: statement, at: lineNumber, grammar: grammar) ?? statement
         guard let rewritten = SQLClientEncodingRewriter.rewritten(literals, family: family, grammar: grammar) else {
-            return (literals, lineNumber)
+            return literals
         }
         Self.logger.info("Kept the session's client encoding at line \(lineNumber, privacy: .public), since the import sends UTF-8")
-        return (rewritten, lineNumber)
+        return rewritten
     }
 
     private func rewrittenLiterals(of statement: String, at lineNumber: Int, grammar: SQLLexicalGrammar) throws -> String? {

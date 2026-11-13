@@ -44,6 +44,36 @@ struct SqlFileImportSourceEncodingTests {
         #expect(result.first == "SET client_encoding = 'UTF8'")
     }
 
+    @Test("A Latin-1 pg_dump's COPY rows arrive as UTF-8, and its statements still run with a UTF-8 client encoding")
+    func latin1PgDumpCopyRows() async throws {
+        let dump = "SET client_encoding = 'LATIN1';\nCOPY t (a) FROM stdin;\nCafé\nZürich\n\\.\nSELECT 'é';\n"
+        let bytes = try #require(dump.data(using: .isoLatin1, allowLossyConversion: false))
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SqlFileImportSourceEncodingTests-\(UUID().uuidString).sql")
+        try bytes.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let source = SqlFileImportSource(url: url, encoding: .isoLatin1, grammar: { TestGrammar.postgres }, family: .postgres)
+
+        var statements: [String] = []
+        var rows = Data()
+        for try await element in try await source.elements() {
+            switch element {
+            case let .statement(statement, _):
+                statements.append(statement)
+            case let .copyFromStandardInput(statement, _, copy):
+                statements.append(statement)
+                while let piece = try copy.nextPiece() {
+                    rows.append(piece)
+                }
+            @unknown default:
+                Issue.record("An element this test does not read: \(element)")
+            }
+        }
+
+        #expect(statements == ["SET client_encoding = 'UTF8'", "COPY t (a) FROM stdin", "SELECT 'é'"])
+        #expect(rows == Data("Café\nZürich\n".utf8))
+    }
+
     @Test("A UTF-8 file keeps its own character set statement, since its bytes go to the server unchanged")
     func utf8FileKeepsItsDeclaration() async throws {
         let dump = "/*!40101 SET NAMES latin1 */;\nINSERT INTO t VALUES ('é');\n"

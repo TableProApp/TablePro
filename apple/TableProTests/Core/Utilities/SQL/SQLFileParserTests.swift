@@ -615,8 +615,8 @@ struct SQLFileParserTests {
         ])
     }
 
-    @Test("Postgres: COPY FROM STDIN stops the file at its line before the COPY or its rows are sent")
-    func postgresCopyFromStandardInputIsRefused() async throws {
+    @Test("Postgres: the statement stream stops at COPY FROM STDIN before the COPY or its rows are sent, and the count reads the COPY as one statement")
+    func postgresStatementStreamRefusesCopyFromStandardInputAndCountReadsIt() async throws {
         let sql = """
         CREATE TABLE t (a int, b text);
         COPY public.t (a, b) FROM stdin;
@@ -636,9 +636,7 @@ struct SQLFileParserTests {
             }
         }
         #expect(statements == ["CREATE TABLE t (a int, b text)"])
-        await #expect(throws: SQLFileParseError.copyFromStandardInput(line: 2)) {
-            _ = try await SQLFileParser().countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres)
-        }
+        #expect(try await SQLFileParser().countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres) == 3)
     }
 
     @Test("Postgres: a COPY that reads a server file or writes rows out still runs", arguments: [

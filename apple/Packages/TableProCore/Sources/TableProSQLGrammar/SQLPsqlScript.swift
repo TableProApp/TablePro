@@ -31,6 +31,54 @@ public enum SQLPsqlScript {
         return NSRange(location: semicolon + 1, length: length - semicolon - 1)
     }
 
+    /// The rows of the `COPY` block `rows` spans, as ``copyRows(afterSemicolonAt:in:length:)`` found it: the lines
+    /// after the `;`'s line, each with its line break, up to the `\.` line or the end of the text. The `\.` line is
+    /// never part of them: psql 18 does not send it, and PostgreSQL 18 reads it as data in CSV.
+    public static func copyData(inRows rows: NSRange, of text: NSString) -> NSRange {
+        let end = NSMaxRange(rows)
+        guard let firstBreak = lineEnd(in: text, from: rows.location, length: end) else {
+            return NSRange(location: end, length: 0)
+        }
+        let start = firstBreak + 1
+        var lastLineStart = start
+        if start < end {
+            let found = text.range(
+                of: "\n",
+                options: [.literal, .backwards],
+                range: NSRange(location: start, length: end - start)
+            )
+            if found.location != NSNotFound { lastLineStart = found.location + 1 }
+        }
+        let dataEnd = endOfDataMarker(in: text, at: lastLineStart, length: text.length) == end ? lastLineStart : end
+        return NSRange(location: start, length: max(0, dataEnd - start))
+    }
+
+    /// Where the `\.` line that starts at `lineStart` ends, its line break excluded, or nil when the line is not one.
+    /// psql 18 matches `\.` and a LF or CRLF at a line's start only; a last line `\.` with no line break ends the rows
+    /// too. The unit after the marker is read to decide, so `text` has to hold it unless the marker ends the text.
+    public static func endOfDataMarker(in text: NSString, at lineStart: Int, length: Int) -> Int? {
+        guard lineStart + 1 < length,
+              text.character(at: lineStart) == backslash,
+              text.character(at: lineStart + 1) == period
+        else {
+            return nil
+        }
+        let after = lineStart + 2
+        guard after < length else { return after }
+        switch text.character(at: after) {
+        case SqlLexer.newline:
+            return after
+        case SqlLexer.carriageReturn where after + 1 == length || text.character(at: after + 1) == SqlLexer.newline:
+            return after
+        default:
+            return nil
+        }
+    }
+
+    /// How many units ``endOfDataMarker(in:at:length:)`` reads from a line's start: `\`, `.`, a carriage return and
+    /// the line feed after it.
+    public static let endOfDataMarkerLookahead = 4
+
     /// The `\restrict` or `\unrestrict` line whose backslash is at `offset`, its line break excluded, when only blanks
     /// stand before it on its line. psql reads both names case for case.
     public static func restrictLine(at offset: Int, in text: NSString, length: Int) -> NSRange? {
@@ -69,27 +117,6 @@ public enum SQLPsqlScript {
             guard isLineBlank(next) || next == SqlLexer.newline || next == SqlLexer.carriageReturn else { return nil }
         }
         return nameEnd
-    }
-
-    // psql 18 matches `\.` + LF or CRLF at a line's start only; a last line `\.` with no line break ends the rows too.
-    // The unit after the returned end, when there is one, was read to decide.
-    private static func endOfDataMarker(in text: NSString, at lineStart: Int, length: Int) -> Int? {
-        guard lineStart + 1 < length,
-              text.character(at: lineStart) == backslash,
-              text.character(at: lineStart + 1) == period
-        else {
-            return nil
-        }
-        let after = lineStart + 2
-        guard after < length else { return after }
-        switch text.character(at: after) {
-        case SqlLexer.newline:
-            return after
-        case SqlLexer.carriageReturn where after + 1 == length || text.character(at: after + 1) == SqlLexer.newline:
-            return after
-        default:
-            return nil
-        }
     }
 
     private static func lineEnd(in text: NSString, from offset: Int, length: Int) -> Int? {
