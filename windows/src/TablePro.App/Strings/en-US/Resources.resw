@@ -2595,4 +2595,223 @@ New fingerprint: {2}</value>
   <data name="HistoryDetailConnection" xml:space="preserve">
     <value>{0} · {1}</value>
   </data>
+  <data name="AccountCallbackFinished" xml:space="preserve">
+    <value>You can close this tab and go back to TablePro.</value>
+  </data>
+  <data name="AccountCallbackUnknown" xml:space="preserve">
+    <value>TablePro is not waiting for this sign-in. Start it again from TablePro.</value>
+  </data>
+  <data name="AccountHeader.Text" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="AccountTitle" xml:space="preserve">
+    <value>TablePro account</value>
+  </data>
+  <data name="AccountSignedOut" xml:space="preserve">
+    <value>Sign in to share links and use your plan on this computer. Everything else works without an account.</value>
+  </data>
+  <data name="AccountSigningIn" xml:space="preserve">
+    <value>Finish signing in in the web browser that opened.</value>
+  </data>
+  <data name="AccountSignedInDescription" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="AccountPlanPro" xml:space="preserve">
+    <value>Pro</value>
+  </data>
+  <data name="AccountPlanFree" xml:space="preserve">
+    <value>Free</value>
+  </data>
+  <data name="AccountOffline" xml:space="preserve">
+    <value>Using an offline file. Sign in to share links.</value>
+  </data>
+  <data name="AccountSignIn" xml:space="preserve">
+    <value>Sign in...</value>
+  </data>
+  <data name="AccountSignOut" xml:space="preserve">
+    <value>Sign out</value>
+  </data>
+  <data name="AccountRefresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="AccountTryAgain" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="AccountRemoveDevice" xml:space="preserve">
+    <value>Remove a device...</value>
+  </data>
+  <data name="AccountErrorTitle" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="AccountExpiredTitle" xml:space="preserve">
+    <value>Plan not verified lately</value>
+  </data>
+  <data name="AccountExpiredMessage" xml:space="preserve">
+    <value>The last verification of your plan ran out. Connect to the internet and refresh.</value>
+  </data>
+  <data name="AccountRefreshFailedTitle" xml:space="preserve">
+    <value>Could not verify your plan</value>
+  </data>
+  <data name="AccountDeviceLimitMessage" xml:space="preserve">
+    <value>Your license is in use on as many devices as it allows. Remove one to use it on this computer.</value>
+  </data>
+  <data name="AccountNotRememberedTitle" xml:space="preserve">
+    <value>Sign-in not saved</value>
+  </data>
+  <data name="AccountNotRememberedMessage" xml:space="preserve">
+    <value>Credential Manager did not take the sign-in, so TablePro asks for it again the next time it starts.</value>
+  </data>
+  <data name="AccountDetails.Header" xml:space="preserve">
+    <value>Plan</value>
+  </data>
+  <data name="AccountDetails.Description" xml:space="preserve">
+    <value>TablePro checks your plan with the account service once a day.</value>
+  </data>
+  <data name="AccountRefreshButton.Content" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ManageAccountCard.Header" xml:space="preserve">
+    <value>Manage account</value>
+  </data>
+  <data name="ManageAccountCard.Description" xml:space="preserve">
+    <value>Opens in your web browser</value>
+  </data>
+  <data name="ManageSharedLinksCard.Header" xml:space="preserve">
+    <value>Manage shared links</value>
+  </data>
+  <data name="ManageSharedLinksCard.Description" xml:space="preserve">
+    <value>See, extend and revoke your links in your web browser</value>
+  </data>
+  <data name="DevicesExpander.Header" xml:space="preserve">
+    <value>Devices</value>
+  </data>
+  <data name="DevicesExpander.Description" xml:space="preserve">
+    <value>The computers that use your plan</value>
+  </data>
+  <data name="DeviceLimitTitle" xml:space="preserve">
+    <value>Device limit reached</value>
+  </data>
+  <data name="DeviceLimitMessage" xml:space="preserve">
+    <value>Your license is in use on as many devices as it allows. Remove one to use it on this computer.</value>
+  </data>
+  <data name="DeviceRemove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="DeviceRemoveName" xml:space="preserve">
+    <value>Remove {0}</value>
+  </data>
+  <data name="DeviceThisComputer" xml:space="preserve">
+    <value>This computer</value>
+  </data>
+  <data name="DeviceLastSeen" xml:space="preserve">
+    <value>{0} · last seen {1:d}</value>
+  </data>
+  <data name="DeviceOfflineUntil" xml:space="preserve">
+    <value>{0} · offline file until {1:d}</value>
+  </data>
+  <data name="DevicePlatform_windows" xml:space="preserve">
+    <value>Windows</value>
+  </data>
+  <data name="DevicePlatform_macos" xml:space="preserve">
+    <value>macOS</value>
+  </data>
+  <data name="DevicePlatform_linux" xml:space="preserve">
+    <value>Linux</value>
+  </data>
+  <data name="DevicePlatform_ios" xml:space="preserve">
+    <value>iOS</value>
+  </data>
+  <data name="Error_account_unreachable" xml:space="preserve">
+    <value>TablePro's account service could not be reached. Check the internet connection and try again.</value>
+  </data>
+  <data name="Error_account_browser" xml:space="preserve">
+    <value>The web browser did not open the sign-in page.</value>
+  </data>
+  <data name="Error_account_sign_in_timed_out" xml:space="preserve">
+    <value>The sign-in was not finished in the web browser in time. Try again.</value>
+  </data>
+  <data name="Error_account_sign_in_canceled" xml:space="preserve">
+    <value>The sign-in was canceled.</value>
+  </data>
+  <data name="Error_account_sign_in_refused" xml:space="preserve">
+    <value>The account service refused the sign-in.</value>
+  </data>
+  <data name="Error_account_signed_out" xml:space="preserve">
+    <value>Sign in to your TablePro account first.</value>
+  </data>
+  <data name="Error_account_device_revoked" xml:space="preserve">
+    <value>This computer was removed from your account. Sign in again to use it.</value>
+  </data>
+  <data name="Error_account_device_limit_reached" xml:space="preserve">
+    <value>Your license is in use on as many devices as it allows. Remove one to use it on this computer.</value>
+  </data>
+  <data name="Error_account_other_account" xml:space="preserve">
+    <value>The offline file is for another account than the one signed in.</value>
+  </data>
+  <data name="Error_account_refused" xml:space="preserve">
+    <value>The account service refused the request.</value>
+  </data>
+  <data name="Error_account_rate_limited" xml:space="preserve">
+    <value>The account service asked for fewer requests. Try again in a moment.</value>
+  </data>
+  <data name="Error_account_entitlement" xml:space="preserve">
+    <value>TablePro could not verify the plan the account service sent.</value>
+  </data>
+  <data name="Error_account_storage" xml:space="preserve">
+    <value>TablePro could not keep the account's state in its data folder.</value>
+  </data>
+  <data name="Error_account_protocol" xml:space="preserve">
+    <value>The account service sent an answer TablePro does not understand.</value>
+  </data>
+  <data name="Error_account_no_machine_id" xml:space="preserve">
+    <value>This computer has no machine ID, which the TablePro account needs.</value>
+  </data>
+  <data name="Error_account_email_unverified" xml:space="preserve">
+    <value>Verify your email address to share links.</value>
+  </data>
+  <data name="Error_account_pro_required" xml:space="preserve">
+    <value>This option needs TablePro Pro.</value>
+  </data>
+  <data name="Error_account_sharing_disabled" xml:space="preserve">
+    <value>Sharing is turned off for this account.</value>
+  </data>
+  <data name="Error_account_team_sharing_disabled" xml:space="preserve">
+    <value>Public links are turned off for this team.</value>
+  </data>
+  <data name="Error_account_seat_required" xml:space="preserve">
+    <value>A team link needs a seat in the team.</value>
+  </data>
+  <data name="Error_account_not_found" xml:space="preserve">
+    <value>That link or team was not found.</value>
+  </data>
+  <data name="Error_account_share_limit_reached" xml:space="preserve">
+    <value>Every live link is taken. Revoke one to share another.</value>
+  </data>
+  <data name="Error_account_share_revoked" xml:space="preserve">
+    <value>This link was revoked.</value>
+  </data>
+  <data name="Error_account_share_removed" xml:space="preserve">
+    <value>This link was removed by TablePro.</value>
+  </data>
+  <data name="Error_account_validation_failed" xml:space="preserve">
+    <value>The account service refused what was sent.</value>
+  </data>
+  <data name="Error_account_snapshot_too_large" xml:space="preserve">
+    <value>This result is too large to share.</value>
+  </data>
+  <data name="Error_account_share_password_required" xml:space="preserve">
+    <value>This link is password protected.</value>
+  </data>
+  <data name="Error_account_share_password_wrong" xml:space="preserve">
+    <value>That password is not correct.</value>
+  </data>
+  <data name="Error_ffi_account_config" xml:space="preserve">
+    <value>The account settings of this build are not valid.</value>
+  </data>
+  <data name="Error_ffi_share_needs_result" xml:space="preserve">
+    <value>A result share needs its rows.</value>
+  </data>
+  <data name="Error_ffi_share_unfinished" xml:space="preserve">
+    <value>The rows are still arriving. Share them once the query finishes.</value>
+  </data>
 </root>

@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using TablePro.App.Services;
 using TablePro.DataGrid;
@@ -29,7 +30,12 @@ public partial class App : Application
         var folder = AppStorage.DataFolder;
         Directory.CreateDirectory(folder);
         var core = TableProCore.CreateWithSystemSecrets(new HostConfiguration(AppStorage.Version, folder));
-        _window = new MainWindow(new Workbench(core, folder));
+        var workbench = new Workbench(core, folder);
+        workbench.StartAccount(
+            AccountSetup.Configuration(folder),
+            new SystemBrowser(DispatcherQueue.GetForCurrentThread()),
+            AccountSetup.Portal());
+        _window = new MainWindow(workbench);
         _window.SessionSaved += (_, _) => ReleaseFolder();
         _window.Closed += (_, _) => ReleaseFolder();
         _window.ActivateRestored();
