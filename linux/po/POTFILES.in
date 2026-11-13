@@ -16,6 +16,7 @@ crates/app/src/application/metainfo_release.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
 crates/app/src/application/open_links.rs
+crates/app/src/application/open_share_link.rs
 crates/app/src/application/quit_sequence.rs
 crates/app/src/application/runtime_versions.rs
 crates/app/src/application/session_signals.rs
@@ -131,6 +132,8 @@ crates/app/src/services/secret_changes.rs
 crates/app/src/services/secret_labels.rs
 crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
+crates/app/src/services/share_link.rs
+crates/app/src/services/share_subject.rs
 crates/app/src/services/snippet_library.rs
 crates/app/src/services/ssh_environment.rs
 crates/app/src/services/structure_tracker.rs
@@ -574,6 +577,13 @@ crates/app/src/ui/session_window/tests/other_databases.rs
 crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
+crates/app/src/ui/share_dialog/form.rs
+crates/app/src/ui/share_dialog/imp.rs
+crates/app/src/ui/share_dialog/mod.rs
+crates/app/src/ui/share_dialog/pages.rs
+crates/app/src/ui/share_dialog/preview.rs
+crates/app/src/ui/share_dialog/sheet_view.rs
+crates/app/src/ui/share_dialog/tests.rs
 crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs
 crates/app/src/ui/source_dialog.rs

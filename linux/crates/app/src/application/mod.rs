@@ -19,6 +19,7 @@ mod mcp_bridge;
 mod metainfo_release;
 mod open_files;
 mod open_links;
+mod open_share_link;
 mod quit_sequence;
 mod runtime_versions;
 mod session_signals;

@@ -102,7 +102,7 @@ impl TableProApplication {
         }
     }
 
-    fn link_window(&self, placement: Placement) -> Option<SessionWindow> {
+    pub(super) fn link_window(&self, placement: Placement) -> Option<SessionWindow> {
         self.idle_window(placement)
             .or_else(|| self.open_window(WindowLaunch::Picker).and_downcast::<SessionWindow>())
     }

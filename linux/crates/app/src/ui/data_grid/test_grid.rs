@@ -111,6 +111,7 @@ pub(crate) struct GridSpec {
     pub layout: Option<LayoutBinding>,
     pub find: bool,
     pub filter_by_value: bool,
+    pub share: bool,
     pub policy: Option<EditPolicy>,
     pub references: Option<super::KeysHandle>,
     pub dialect: Option<DialectSource>,
@@ -130,6 +131,7 @@ impl GridSpec {
             layout: None,
             find: false,
             filter_by_value: true,
+            share: false,
             policy: None,
             references: None,
             dialect: None,
@@ -144,6 +146,7 @@ impl GridSpec {
             sorting: GridSorting::Client,
             find: true,
             filter_by_value: false,
+            share: true,
             ..Self::table(columns)
         }
     }
@@ -235,6 +238,7 @@ impl Grid {
             table: spec.table,
             find: spec.find,
             filter_by_value: spec.filter_by_value,
+            share: spec.share,
             tasks: runtime.tasks(),
             label: "test grid".to_owned(),
         };

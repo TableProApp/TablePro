@@ -236,6 +236,11 @@ A link never connects without consent.
 For a saved connection, click Open; Enter and Escape cancel.
 For other links, review the connect dialog and click Connect.
 A successful connection from that dialog is saved.
+.SH SHARE LINKS
+The desktop also registers the tablepro scheme.
+A link of the form tablepro://share?token=TOKEN, from a shared query's page,
+opens the shared SQL in a new query tab of the connection in front.
+The SQL never runs on its own, and the link names no connection.
 .SH EXIT STATUS
 .TP
 .B 0

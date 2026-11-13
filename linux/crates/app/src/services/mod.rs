@@ -39,6 +39,8 @@ pub mod secret_changes;
 pub mod secret_labels;
 pub mod secret_save_report;
 pub mod session_context;
+pub mod share_link;
+pub(crate) mod share_subject;
 pub mod snippet_library;
 pub mod ssh_environment;
 pub mod structure_tracker;

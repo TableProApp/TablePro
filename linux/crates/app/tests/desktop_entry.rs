@@ -45,9 +45,10 @@ fn sql_scripts_are_offered_to_tablepro() {
     );
 }
 
-// xdg-open and browsers hand a postgresql:// link to the app that claims x-scheme-handler/postgresql.
+// xdg-open and browsers hand a postgresql:// link to the app that claims x-scheme-handler/postgresql, and a
+// shared query's tablepro://share link to the one that claims x-scheme-handler/tablepro.
 #[test]
-fn connection_links_are_offered_to_tablepro() {
+fn connection_and_share_links_are_offered_to_tablepro() {
     let entry = entry().expect("the desktop entry parses");
 
     let types = list(&entry, MAIN, "MimeType").expect("a MimeType list");
@@ -57,6 +58,7 @@ fn connection_links_are_offered_to_tablepro() {
         .collect();
     claimed.sort_unstable();
     let mut expected = tablepro_app::LINK_SCHEMES.to_vec();
+    expected.push(tablepro_app::SHARE_LINK_SCHEME);
     expected.sort_unstable();
 
     assert_eq!(claimed, expected);

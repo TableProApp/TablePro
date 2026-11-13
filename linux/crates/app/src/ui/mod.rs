@@ -47,6 +47,7 @@ pub(crate) mod safe_mode;
 mod saved_queries_dialog;
 mod session_target;
 mod session_window;
+mod share_dialog;
 mod shell;
 mod source_dialog;
 mod sql_import_dialog;

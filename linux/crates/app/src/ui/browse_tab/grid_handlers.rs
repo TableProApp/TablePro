@@ -28,6 +28,8 @@ impl BrowseModel {
             GridRequest::FollowReference(reference) => fx.output(BrowseTabOutput::FollowReference(reference)),
             GridRequest::FilterByValue(rule) => self.filter_strip.add_and_apply(rule),
             GridRequest::Toast(text) => fx.output(BrowseTabOutput::ShowToast(text)),
+            // A table tab's grid offers no Share Result.
+            GridRequest::Share(_) => {}
             GridRequest::PendingChanged => {
                 self.sync_pending_chrome(self.tracker.pending_count(), fx);
                 self.sync_selection();

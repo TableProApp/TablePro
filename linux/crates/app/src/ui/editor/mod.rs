@@ -68,6 +68,7 @@ use super::result_pane::ResultGridDeps;
 use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
+use crate::services::share_subject::{ShareSubject, SharedRows};
 use crate::services::snippet_library::SnippetLibrary;
 use crate::workspace::WorkOutcome;
 
@@ -389,6 +390,16 @@ impl SqlEditor {
         )
     }
 
+    pub(crate) fn connect_share_requested<F: Fn(&Self, ShareSubject) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "share-requested",
+            false,
+            glib::closure_local!(move |editor: &Self, payload: glib::BoxedAnyObject| {
+                f(editor, payload.borrow::<ShareSubject>().clone());
+            }),
+        )
+    }
+
     pub fn connect_transaction_changed<F: Fn(&Self, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "transaction-changed",
@@ -665,6 +676,7 @@ impl SqlEditor {
     fn grid_request(&self, index: u32, request: GridRequest) {
         match request {
             GridRequest::Export(shown) => self.offer_export(index, shown),
+            GridRequest::Share(rows) => self.offer_share(index, rows),
             GridRequest::Toast(text) => self.emit_by_name::<()>("toast", &[&text]),
             GridRequest::PendingChanged => self.on_rows_pending_changed(),
             GridRequest::Sort(_) | GridRequest::FollowReference(_) | GridRequest::FilterByValue(_) => {}
@@ -945,6 +957,74 @@ impl SqlEditor {
             name: export_name_for_query(&entry.preview),
             target: None,
         })
+    }
+
+    // The selection, else the whole text; the workspace names it after the tab.
+    pub(crate) fn share_query(&self) {
+        let buffer = self.buffer();
+        let text = buffer_text(&buffer);
+        let selection = buffer.selection_bounds().map(|(start, end)| {
+            let start = usize::try_from(start.offset()).unwrap_or_default();
+            let end = usize::try_from(end.offset()).unwrap_or_default();
+            start..end
+        });
+        let Some(scoped) = run_scope::for_run(&text, selection) else {
+            let message = crate::i18n::gettext("There is nothing in the editor to share.");
+            self.emit_by_name::<()>("toast", &[&message]);
+            return;
+        };
+        self.request_share(ShareSubject {
+            title: String::new(),
+            sql: scoped.text,
+            dialect: self.driver_id(),
+            rows: None,
+        });
+    }
+
+    pub(crate) fn share_shown_result(&self) {
+        let results = &self.imp().results;
+        let grid = results
+            .selected()
+            .and_then(|index| Some((index, results.kept_grid(index)?)))
+            .filter(|(_, grid)| grid.row_count() > 0);
+        match grid {
+            Some((index, grid)) => self.offer_share(index, grid.shared_rows()),
+            None => {
+                let message = crate::i18n::gettext("Run a query that returns rows to share its result.");
+                self.emit_by_name::<()>("toast", &[&message]);
+            }
+        }
+    }
+
+    fn offer_share(&self, index: u32, rows: SharedRows) {
+        let subject = {
+            let log = self.imp().log.borrow();
+            let Some(entry) = log
+                .as_ref()
+                .and_then(|log| log.entries().get(usize::try_from(index).ok()?))
+            else {
+                return;
+            };
+            let EntryKind::ResultSet(result) = &entry.kind else {
+                return;
+            };
+            ShareSubject {
+                title: entry.preview.clone(),
+                sql: result.statement.as_str().to_owned(),
+                dialect: self.driver_id(),
+                rows: Some(rows),
+            }
+        };
+        self.request_share(subject);
+    }
+
+    fn request_share(&self, subject: ShareSubject) {
+        self.emit_by_name::<()>("share-requested", &[&glib::BoxedAnyObject::new(subject)]);
+    }
+
+    fn driver_id(&self) -> Option<String> {
+        let session = self.deps()?.session.get()?;
+        Some(session.metadata().driver_id.clone())
     }
 
     fn install_drop_target(&self) {
