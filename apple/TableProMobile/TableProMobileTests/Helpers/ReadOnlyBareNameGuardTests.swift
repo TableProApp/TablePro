@@ -7,9 +7,10 @@ import Testing
 struct ReadOnlyBareNameGuardTests {
     private struct Unreachable: Error {}
 
-    // The catalog Oracle 23ai answered for a schema with function PURGE and table ORDERS(ID, PURGE).
+    // The catalog Oracle 23ai answered for a schema with function PURGE, table ORDERS(ID, PURGE) and DUAL.
     private static let catalog: SQLCallableCatalogCache.Reader = { query in
         if query == SQLCallableCatalog.query { return [["F", "PURGE"]] }
+        if query.contains("'DUAL'") { return [["0", "3", nil, "DUMMY"]] }
         return [["0", "1", nil, "ID"], ["0", "1", nil, "PURGE"]]
     }
 
