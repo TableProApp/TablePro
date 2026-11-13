@@ -3,6 +3,7 @@ use serde_json::value::RawValue;
 
 use crate::Truncation;
 use crate::column::{ColumnKind, ResultColumn};
+use crate::masking::MaskingStyle;
 use crate::value::Value;
 
 use super::json::JsonCell;
@@ -54,6 +55,8 @@ impl ResultExtent {
 pub struct SnapshotColumn {
     pub name: String,
     pub type_name: String,
+    // How the app masked the column's values before they left it; the viewer marks the column.
+    pub masked: Option<MaskingStyle>,
 }
 
 impl Snapshot {
@@ -87,6 +90,7 @@ pub fn build_snapshot<R: AsRef<[Value]>>(
             .map(|column| SnapshotColumn {
                 name: column.name.clone(),
                 type_name: column.column_type.name.clone(),
+                masked: None,
             })
             .collect(),
         row_count,
@@ -228,11 +232,13 @@ mod tests {
             [
                 SnapshotColumn {
                     name: "id".to_owned(),
-                    type_name: "bigint".to_owned()
+                    type_name: "bigint".to_owned(),
+                    masked: None,
                 },
                 SnapshotColumn {
                     name: "body".to_owned(),
-                    type_name: "text".to_owned()
+                    type_name: "text".to_owned(),
+                    masked: None,
                 }
             ]
         );

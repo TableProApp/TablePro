@@ -2,6 +2,9 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::masking::MaskingStyle;
+use crate::masking::detect::{Term, longest_term, name_words};
+
 // What a shared query or result may give away. Each app words the kind; a hit warns and never blocks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SecretHitKind {
@@ -50,19 +53,20 @@ impl SecretHitKind {
         }
     }
 
-    fn pattern(self) -> &'static str {
+    // PLAN-MASKING 8.3: only what Rust's and Swift's engines both read, no lookaround and no possessive runs.
+    pub(crate) fn pattern(self) -> &'static str {
         match self {
             Self::AwsAccessKey => r"AKIA[0-9A-Z]{16}",
             Self::PrivateKey => r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----",
-            Self::JsonWebToken => r"eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+",
+            Self::JsonWebToken => r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
             Self::GitHubToken => r"gh[pousr]_[A-Za-z0-9]{36,}",
             Self::SlackToken => r"xox[abprs]-",
             Self::StripeKey => r"sk_live_",
             Self::GoogleApiKey => r"AIza[0-9A-Za-z_-]{35}",
-            Self::UrlCredentials => r"\w+://[^\s:/]+:[^\s@]+@",
-            // A name may close its own quote or bracket before the operator, as in JSON or T-SQL.
+            Self::UrlCredentials => r"\w+://[^\s:/@]+:[^\s@]+@",
+            // A name may be quoted or bracketed, as in JSON or T-SQL; the value closes with the quote it opened with.
             Self::AssignedSecret => {
-                r#"(?i)\w*(?:password|passwd|pwd|secret|token|api_key)\w*["'`\]]?\s*(?:=>|:=|=|:)\s*(?:'[^'\n]+'|"[^"\n]+")"#
+                r#"(?i)\w*(?:password|passwd|pwd|secret|token|api_key)\w*["'`\]]?\s*(?:=>|:=|=|:)\s*(?:'[^']+'|"[^"]+")"#
             }
         }
     }
@@ -75,11 +79,9 @@ static PATTERNS: LazyLock<Vec<(SecretHitKind, Regex)>> = LazyLock::new(|| {
         .collect()
 });
 
-// Each kind once per line, by line.
+// Each kind once per line, by line. CR, LF and CRLF each end a line.
 pub fn scan_sql(sql: &str) -> Vec<SecretHit> {
-    let line_starts: Vec<usize> = std::iter::once(0)
-        .chain(sql.match_indices('\n').map(|(at, _)| at + 1))
-        .collect();
+    let line_starts = line_starts(sql);
     let line_of =
         |offset: usize| u32::try_from(line_starts.partition_point(|start| *start <= offset)).unwrap_or(u32::MAX);
     let mut hits: Vec<SecretHit> = PATTERNS
@@ -96,6 +98,27 @@ pub fn scan_sql(sql: &str) -> Vec<SecretHit> {
     hits
 }
 
+// Byte offsets where each line starts; a CRLF pair is one break.
+pub(crate) fn line_starts(text: &str) -> Vec<usize> {
+    let bytes = text.as_bytes();
+    let mut starts = vec![0];
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\r' if bytes.get(at + 1) == Some(&b'\n') => {
+                at += 2;
+                starts.push(at);
+            }
+            b'\r' | b'\n' => {
+                at += 1;
+                starts.push(at);
+            }
+            _ => at += 1,
+        }
+    }
+    starts
+}
+
 // The names of the columns that may hold a secret, in their order, each once.
 pub fn scan_columns<S: AsRef<str>>(names: &[S]) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
@@ -107,49 +130,29 @@ pub fn scan_columns<S: AsRef<str>>(names: &[S]) -> Vec<String> {
     found
 }
 
-// Separators and case go, so api_key, apiKey and API-KEY read alike. "ssn" must be a word of its own, or
-// "class_name" would match.
-fn column_may_hold_secret(name: &str) -> bool {
-    const PARTS: [&str; 7] = [
-        "password",
-        "passwd",
-        "secret",
-        "token",
-        "apikey",
-        "creditcard",
-        "cardnumber",
-    ];
-    let joined: String = name
-        .chars()
-        .filter(|character| character.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect();
-    PARTS.iter().any(|part| joined.contains(part)) || words(name).any(|word| word == "ssn")
+const SECRET_TERMS: [Term; 8] = [
+    secret_term("password"),
+    secret_term("passwd"),
+    secret_term("secret"),
+    secret_term("token"),
+    secret_term("apikey"),
+    secret_term("ssn"),
+    secret_term("creditcard"),
+    secret_term("cardnumber"),
+];
+
+const fn secret_term(compact: &'static str) -> Term {
+    Term {
+        compact,
+        single_word: false,
+        style: MaskingStyle::Full,
+    }
 }
 
-// Split at anything not a letter or digit and where a lower-case letter meets an upper-case one.
-fn words(name: &str) -> impl Iterator<Item = String> + '_ {
-    let mut words = Vec::new();
-    let mut word = String::new();
-    let mut previous_lower = false;
-    for character in name.chars() {
-        if !character.is_alphanumeric() {
-            if !word.is_empty() {
-                words.push(std::mem::take(&mut word));
-            }
-            previous_lower = false;
-            continue;
-        }
-        if character.is_uppercase() && previous_lower && !word.is_empty() {
-            words.push(std::mem::take(&mut word));
-        }
-        previous_lower = character.is_lowercase() || character.is_ascii_digit();
-        word.extend(character.to_lowercase());
-    }
-    if !word.is_empty() {
-        words.push(word);
-    }
-    words.into_iter()
+// Whole words as the masking detectors split a name, so api_key, apiKey and API-KEY read alike and class_name holds
+// no "ssn".
+fn column_may_hold_secret(name: &str) -> bool {
+    longest_term(&name_words(name), &SECRET_TERMS).is_some()
 }
 
 #[cfg(test)]
