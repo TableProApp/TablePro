@@ -39,7 +39,8 @@ extension PluginMetadataRegistry {
                     exactRowCountIsFullScan: true,
                     supportsColumnSort: false,
                     columnsAreSampled: true,
-                    supportsPrincipalConnectionLimit: false
+                    supportsPrincipalConnectionLimit: false,
+                    dataCommands: bigtableDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -70,6 +71,9 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// The driver's writes, each one MutateRow on the Bigtable Data API v2.
+private let bigtableDataCommands: Set<String> = ["INSERT", "PUT", "DELETE"]
 
 private let bigtableCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET row", insertText: "GET events/user#42"),

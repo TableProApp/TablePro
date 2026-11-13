@@ -16,6 +16,8 @@ internal struct OperationRequest: Sendable {
     let scope: DatabaseScope?
     // What the confirmation shows, values written in. Empty means `sql` alone.
     let statements: [String]
+    // Where a tab's statement runs, which its confirmation does not name: Oracle and Dameng resolve a bare name there.
+    let runsIn: DatabaseScope?
 
     init(
         connectionId: UUID,
@@ -26,7 +28,8 @@ internal struct OperationRequest: Sendable {
         capabilities: CallerCapabilities,
         operationDescription: String,
         scope: DatabaseScope? = nil,
-        statements: [String] = []
+        statements: [String] = [],
+        runsIn: DatabaseScope? = nil
     ) {
         self.connectionId = connectionId
         self.databaseType = databaseType
@@ -37,5 +40,6 @@ internal struct OperationRequest: Sendable {
         self.operationDescription = operationDescription
         self.scope = scope
         self.statements = statements
+        self.runsIn = runsIn
     }
 }

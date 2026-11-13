@@ -30,8 +30,16 @@ struct SQLReadOnlyFunctionCallsTests {
     func writingEnginesAreTypeIds() {
         #expect(SQLReadOnlyFunctionCalls.queryFunctionsCanWrite == [
             "Oracle", "Dameng", "MySQL", "MariaDB", "OceanBase", "PostgreSQL", "CockroachDB", "PGlite", "KingbaseES",
+            "SurrealDB",
         ])
         #expect(SQLReadOnlyFunctionCalls.builtins(forDatabaseTypeId: "Oracle").contains("NVL"))
         #expect(!SQLReadOnlyFunctionCalls.builtins(forDatabaseTypeId: "MySQL").contains("NVL"))
+    }
+
+    @Test("On SurrealDB only a stored body is unlisted: its built-ins are namespaced")
+    func surrealStoredBodies() {
+        #expect(Self.callsUnlisted("SELECT fn::mk() FROM ONLY person:one", "SurrealDB"))
+        #expect(Self.callsUnlisted("RETURN api::invoke('/x')", "SurrealDB"))
+        #expect(!Self.callsUnlisted("SELECT time::now(), string::lowercase(name), count() FROM person", "SurrealDB"))
     }
 }

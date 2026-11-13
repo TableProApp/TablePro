@@ -139,7 +139,8 @@ internal struct ObjectCopyRunner {
             connectionId: request.source.connectionId,
             databaseType: request.source.databaseType,
             gate: gate,
-            operationDescription: String(localized: "Execute Query")
+            operationDescription: String(localized: "Execute Query"),
+            runsIn: request.source.scope
         )
 
         return try await gate.authorizing(authorizationRequest(for: plan)) {

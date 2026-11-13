@@ -79,7 +79,8 @@ extension PluginMetadataRegistry {
                     patternFiltersReadAnyColumn: true,
                     filtersTypedByReadRows: true,
                     readOnlyEnforcement: .clientGuard,
-                    statementPolicyInDriver: true
+                    statementPolicyInDriver: true,
+                    dataCommands: Self.mongoDBDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -181,7 +182,8 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: false,
                     supportsOpportunisticTLS: false,
                     supportsColumnSort: false,
-                    readOnlyEnforcement: .clientGuard
+                    readOnlyEnforcement: .clientGuard,
+                    dataCommands: Self.redisDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -738,8 +740,8 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [
-                        "system", "system_schema", "system_auth",
-                        "system_distributed", "system_traces", "system_virtual_schema"
+                        "system", "system_schema", "system_auth", "system_distributed", "system_distributed_everywhere",
+                        "system_traces", "system_views", "system_virtual_schema", "system_replicated_keys"
                     ],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -784,8 +786,8 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [
-                        "system", "system_schema", "system_auth",
-                        "system_distributed", "system_traces", "system_virtual_schema"
+                        "system", "system_schema", "system_auth", "system_distributed", "system_distributed_everywhere",
+                        "system_traces", "system_views", "system_virtual_schema", "system_replicated_keys"
                     ],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -833,7 +835,8 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: false,
                     supportsOpportunisticTLS: false,
                     supportsColumnSort: false,
-                    supportsRawFilter: false
+                    supportsRawFilter: false,
+                    dataCommands: Self.etcdDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

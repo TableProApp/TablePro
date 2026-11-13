@@ -1,25 +1,32 @@
 import Foundation
 
-/// What a statement the grammar accepted does: every call in order, and every key its literals spell.
 public struct MongoStatement: Equatable, Sendable {
+    public enum Receiver: Equatable, Sendable {
+        // `use` and `show`, which the driver rewrites into calls of the shell's own functions.
+        case shell
+        case database, collection, cursor, explainer
+    }
+
     public struct Call: Equatable, Sendable {
         public let name: String
         public let isRead: Bool
-        /// The first key of a `runCommand` or `adminCommand` document, which names the command.
+        // The first key of a `runCommand` or `adminCommand` document, which names the command.
         public let commandName: String?
+        public let receiver: Receiver
+        // Named by `getSiblingDB`, `getDB`, `use` or a command's `$db`, `admin` for `adminCommand`, nil for the current one.
+        public let database: String?
+        // `db.<name>`, `db["name"]`, `getCollection("name")`, or a command document's first value when it is a string.
+        public let collection: String?
     }
 
     public var calls: [Call] = []
     public var objectKeys: Set<String> = []
 }
 
-/// Accepts one mongosh statement whose arguments are literal data, and nothing else.
-///
-/// Rejecting is always safe, since the caller then treats the statement as a write. Accepting has
-/// to mean JavaScriptCore reads the text the same way, so the lexical rules for whitespace,
-/// comments, strings, numbers and regular expression literals follow ECMAScript exactly, and
-/// anything they would read differently is refused: escapes in identifiers, legacy octal, `?.`,
-/// template literals, a second statement.
+// Accepts one mongosh statement whose arguments are literal data, and nothing else. Rejecting is always safe, since
+// the caller then treats the statement as a write. Accepting has to mean JavaScriptCore reads the text the same way,
+// so whitespace, comments, strings, numbers and regular expressions follow ECMAScript exactly, and anything they
+// would read differently is refused: escapes in identifiers, legacy octal, `?.`, template literals, a second statement.
 public struct MongoStatementParser {
     private struct Rejected: Error {}
 
@@ -27,7 +34,15 @@ public struct MongoStatementParser {
         case database, client, collection, cursor, explainer, value
     }
 
-    /// Deep enough for any real filter, shallow enough that a crafted `[[[...]]]` cannot exhaust the stack.
+    private struct Literal {
+        var string: String?
+        var firstKey: String?
+        var firstValue: String?
+        // A command's own `$db`, which libmongoc 1.28.1 sends instead of the database it was called on (mongoc-cmd.c).
+        var database: String?
+    }
+
+    // Deep enough for any real filter, shallow enough that a crafted `[[[...]]]` cannot exhaust the stack.
     private static let maximumDepth = 64
 
     private static let databaseReads: Set<String> = [
@@ -55,7 +70,7 @@ public struct MongoStatementParser {
 
     private static let commandMethods: Set<String> = ["runCommand", "adminCommand"]
 
-    /// Pure value constructors from the shell prelude. None of them reaches the server.
+    // Pure value constructors from the shell prelude. None of them reaches the server.
     private static let constructors: Set<String> = [
         "ObjectId", "ISODate", "Date", "NumberLong", "NumberInt", "NumberDecimal", "Int32", "Long",
         "Decimal128", "Double", "Timestamp", "BinData", "HexData", "UUID", "LegacyJavaUUID",
@@ -63,7 +78,7 @@ public struct MongoStatementParser {
         "BSONRegExp", "BSONSymbol", "DBRef"
     ]
 
-    /// Non-writable globals, so no earlier statement can rebind them.
+    // Non-writable globals, so no earlier statement can rebind them.
     private static let numericConstants: Set<String> = ["NaN", "Infinity"]
 
     private static let boundaryKeys: Set<String> = ["MinKey", "MaxKey"]
@@ -76,6 +91,8 @@ public struct MongoStatementParser {
     private var index: String.UnicodeScalarView.Index
     private var depth = 0
     private var statement = MongoStatement()
+    private var database: String?
+    private var collection: String?
     private let shadowsCollection: (String) -> Bool
 
     private init(_ text: String, shadowsCollection: @escaping (String) -> Bool = { _ in false }) {
@@ -84,7 +101,7 @@ public struct MongoStatementParser {
         self.shadowsCollection = shadowsCollection
     }
 
-    /// Whitespace and comments only, as JavaScript reads them: a `--` line is a decrement, not a comment.
+    // As JavaScript reads it: a `--` line is a decrement, not a comment.
     public static func isTrivia(_ text: String) -> Bool {
         var parser = MongoStatementParser(text)
         guard (try? parser.skipTrivia()) != nil else { return false }
@@ -94,23 +111,40 @@ public struct MongoStatementParser {
     // `shadowsCollection` names what `db.<name>` reaches instead of a collection: PluginKit's
     // MongoCollectionAccessor.isShadowedByDatabaseMember, which this module cannot import.
     public static func parse(_ text: String, shadowsCollection: @escaping (String) -> Bool) -> MongoStatement? {
-        if isShellCommand(text) { return MongoStatement() }
+        if let command = shellCommand(text) {
+            let call = MongoStatement.Call(
+                name: command.keyword,
+                isRead: true,
+                commandName: nil,
+                receiver: .shell,
+                database: command.keyword == "use" ? command.argument : nil,
+                collection: nil
+            )
+            return MongoStatement(calls: [call])
+        }
         var parser = MongoStatementParser(text, shadowsCollection: shadowsCollection)
         return try? parser.statementText()
     }
 
-    /// `use orders` and `show collections`, in exactly the shape the driver rewrites into a call
-    /// (`MongoShellCommandLine.rewrite`): anything looser reaches JavaScriptCore as typed.
     public static func isShellCommand(_ text: String) -> Bool {
+        shellCommand(text) != nil
+    }
+
+    // `use orders` and `show collections`, in exactly the shape the driver rewrites into a call
+    // (`MongoShellCommandLine.rewrite`): anything looser reaches JavaScriptCore as typed.
+    private static func shellCommand(_ text: String) -> (keyword: String, argument: String)? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = trimmed.lowercased()
         for keyword in ["use", "show"] where lowered.hasPrefix(keyword + " ") {
             let remainder = trimmed.dropFirst(keyword.count).trimmingCharacters(in: .whitespaces)
             let word = remainder.hasSuffix(";") ? String(remainder.dropLast()) : remainder
-            guard keyword == "use" else { return shownTopics.contains(word.lowercased()) }
-            return !word.isEmpty && word.unicodeScalars.allSatisfy(isDatabaseNameScalar)
+            guard keyword == "use" else {
+                return shownTopics.contains(word.lowercased()) ? (keyword: keyword, argument: word) : nil
+            }
+            guard !word.isEmpty, word.unicodeScalars.allSatisfy(isDatabaseNameScalar) else { return nil }
+            return (keyword: keyword, argument: word)
         }
-        return false
+        return nil
     }
 
     private static func isDatabaseNameScalar(_ scalar: Unicode.Scalar) -> Bool {
@@ -135,7 +169,7 @@ public struct MongoStatementParser {
         return statement
     }
 
-    /// `.name` or `["name"]`, with trivia allowed around the dot as JavaScript allows it.
+    // Trivia is allowed around the dot, as JavaScript allows it.
     private mutating func memberName() throws -> String? {
         try skipTrivia()
         switch peek() {
@@ -162,77 +196,96 @@ public struct MongoStatementParser {
         case .database:
             guard isCall else {
                 guard !shadowsCollection(member) else { throw Rejected() }
+                collection = member
                 return .collection
             }
             switch member {
             case "getSiblingDB":
-                try stringArgument()
+                database = try stringArgument()
                 return .database
             case "getCollection":
-                try stringArgument()
+                collection = try stringArgument()
                 return .collection
             case "getMongo":
-                try call(member, isRead: true)
+                try call(member, on: .database, isRead: true)
                 return .client
             default:
-                try call(member, isRead: Self.databaseReads.contains(member))
+                try call(member, on: .database, isRead: Self.databaseReads.contains(member))
                 return .value
             }
         case .client:
             guard isCall, member == "getDB" else { throw Rejected() }
-            try stringArgument()
+            database = try stringArgument()
             return .database
         case .collection:
             guard isCall else { throw Rejected() }
             switch member {
             case "find", "aggregate":
-                try call(member, isRead: true)
+                try call(member, on: .collection, isRead: true)
                 return .cursor
             case "explain":
-                try call(member, isRead: true)
+                try call(member, on: .collection, isRead: true)
                 return .explainer
             default:
-                try call(member, isRead: Self.collectionReads.contains(member))
+                try call(member, on: .collection, isRead: Self.collectionReads.contains(member))
                 return .value
             }
         case .cursor:
             guard isCall else { throw Rejected() }
             let modifies = Self.cursorModifiers.contains(member)
-            try call(member, isRead: modifies || Self.cursorReads.contains(member))
+            try call(member, on: .cursor, isRead: modifies || Self.cursorReads.contains(member))
             return modifies ? .cursor : .value
         case .explainer:
             guard isCall else { throw Rejected() }
-            try call(member, isRead: Self.explainedReads.contains(member))
+            try call(member, on: .explainer, isRead: Self.explainedReads.contains(member))
             return .value
         case .value:
             throw Rejected()
         }
     }
 
-    private mutating func call(_ name: String, isRead: Bool) throws {
-        let firstKey = try arguments()
-        let commandName = Self.commandMethods.contains(name) ? firstKey : nil
-        statement.calls.append(MongoStatement.Call(name: name, isRead: isRead, commandName: commandName))
+    private mutating func call(_ name: String, on receiver: MongoStatement.Receiver, isRead: Bool) throws {
+        let first = try arguments()
+        guard Self.commandMethods.contains(name) else {
+            statement.calls.append(MongoStatement.Call(
+                name: name,
+                isRead: isRead,
+                commandName: nil,
+                receiver: receiver,
+                database: database,
+                collection: receiver == .database ? nil : collection
+            ))
+            return
+        }
+        statement.calls.append(MongoStatement.Call(
+            name: name,
+            isRead: isRead,
+            commandName: first.firstKey,
+            receiver: receiver,
+            database: first.database ?? (name == "adminCommand" ? "admin" : database),
+            collection: first.firstValue
+        ))
     }
 
-    private mutating func stringArgument() throws {
+    private mutating func stringArgument() throws -> String {
         try expect("(")
         try skipTrivia()
-        _ = try string()
+        let argument = try string()
         try skipTrivia()
         try expect(")")
+        return argument
     }
 
-    /// The literal arguments of a call. Returns the first key of the first argument when it is a document.
-    private mutating func arguments() throws -> String? {
+    // Only the first argument's literal: a command is its first argument.
+    private mutating func arguments() throws -> Literal {
         try expect("(")
         try skipTrivia()
-        var firstKey: String?
+        var first = Literal()
         var isFirst = true
         while peek() != ")" {
-            let key = try value()
+            let literal = try value()
             if isFirst {
-                firstKey = key
+                first = literal
                 isFirst = false
             }
             try skipTrivia()
@@ -241,13 +294,12 @@ public struct MongoStatementParser {
             try skipTrivia()
         }
         try expect(")")
-        return firstKey
+        return first
     }
 
     // MARK: - Literals
 
-    /// One literal value. Returns its first key when it is a document.
-    private mutating func value() throws -> String? {
+    private mutating func value() throws -> Literal {
         depth += 1
         defer { depth -= 1 }
         guard depth <= Self.maximumDepth else { throw Rejected() }
@@ -259,7 +311,7 @@ public struct MongoStatementParser {
         case "[":
             try array()
         case "\"", "'":
-            _ = try string()
+            return Literal(string: try string())
         case "/":
             try regularExpression()
         case "-", ".", "0"..."9":
@@ -267,29 +319,32 @@ public struct MongoStatementParser {
         default:
             try word()
         }
-        return nil
+        return Literal()
     }
 
-    private mutating func document() throws -> String? {
+    private mutating func document() throws -> Literal {
         try expect("{")
         try skipTrivia()
-        var firstKey: String?
+        var literal = Literal()
         while peek() != "}" {
             let key = try propertyKey()
             // A literal's `__proto__` key sets its prototype rather than a field.
             guard key != "__proto__" else { throw Rejected() }
             statement.objectKeys.insert(key)
-            if firstKey == nil { firstKey = key }
+            if literal.firstKey == nil { literal.firstKey = key }
             try skipTrivia()
             try expect(":")
-            _ = try value()
+            let entry = try value()
+            // A key written twice keeps its first place and takes its last value.
+            if key == literal.firstKey { literal.firstValue = entry.string }
+            if key == "$db" { literal.database = entry.string }
             try skipTrivia()
             guard peek() == "," else { break }
             advance()
             try skipTrivia()
         }
         try expect("}")
-        return firstKey
+        return literal
     }
 
     private mutating func propertyKey() throws -> String {
@@ -318,7 +373,7 @@ public struct MongoStatementParser {
         try expect("]")
     }
 
-    /// `true`, `false`, `null`, a prelude constructor called on literals, or `MinKey`/`MaxKey`.
+    // `true`, `false`, `null`, a prelude constructor called on literals, or `MinKey`/`MaxKey`.
     private mutating func word() throws {
         var name = try identifier()
         if Self.numericConstants.contains(name) { return }
@@ -431,7 +486,7 @@ public struct MongoStatementParser {
         return scalar
     }
 
-    /// A decimal literal, optionally negated. Hex, octal, binary, BigInt and separators are refused.
+    // Decimal only: hex, octal, binary, BigInt and separators are refused.
     private mutating func number() throws {
         if peek() == "-" {
             advance()
@@ -466,7 +521,7 @@ public struct MongoStatementParser {
         return count
     }
 
-    /// The lexical grammar of a regular expression literal: a `/` inside a class does not end it.
+    // A `/` inside a class does not end the literal.
     private mutating func regularExpression() throws {
         try expect("/")
         var inClass = false
@@ -501,8 +556,8 @@ public struct MongoStatementParser {
 
     // MARK: - Lexing
 
-    /// An ASCII identifier. One followed by `\` or by a non-ASCII character JavaScript might read as
-    /// part of the name is refused, since the name the parser saw would not be the name that runs.
+    // ASCII only. One followed by `\` or by a non-ASCII character JavaScript might read as part of the name is
+    // refused, since the name the parser saw would not be the name that runs.
     private mutating func identifier() throws -> String {
         guard let first = peek(), isIdentifierStart(first) else { throw Rejected() }
         var name = String.UnicodeScalarView()
@@ -522,7 +577,7 @@ public struct MongoStatementParser {
         isIdentifierStart(scalar) || ("0"..."9").contains(scalar)
     }
 
-    /// ECMAScript WhiteSpace and LineTerminator, and comments. An unterminated block comment is refused.
+    // ECMAScript WhiteSpace and LineTerminator, and comments. An unterminated block comment is refused.
     private mutating func skipTrivia() throws {
         while let scalar = peek() {
             if isTrivia(scalar) {
