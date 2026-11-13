@@ -420,6 +420,12 @@ extension SQLBareNameCalls {
                         index += 1
                     }
                     if index < end, tokens[index].kind == .open, let close = closing[index] {
+                        // A row pattern variable qualifies the reshaped table's columns: `up.price`.
+                        if word == "MATCH_RECOGNIZE", let input = blocks[body].sources.first {
+                            for variable in patternVariables((index + 1)..<close) {
+                                blocks[body].sources.append(input.named(variable))
+                            }
+                        }
                         expression(
                             (index + 1)..<close, block: body, commonTables: commonTables, ordersBy: false,
                             readsAfterAs: word == "MATCH_RECOGNIZE"
@@ -525,6 +531,25 @@ extension SQLBareNameCalls {
             }
             let table = SQLTableName(owner: parts.count >= 2 ? parts[parts.count - 2] : nil, name: name)
             return (last + 1, append(.table(table, alias: nil), to: block))
+        }
+
+        // The names `PATTERN (...)` and `SUBSET x = (...)` give.
+        private func patternVariables(_ range: Range<Int>) -> [String] {
+            var names: [String] = []
+            var index = range.lowerBound
+            while index < range.upperBound {
+                if word(at: index) == "PATTERN", index + 1 < range.upperBound, tokens[index + 1].kind == .open,
+                   let close = closing[index + 1] {
+                    names += ((index + 2)..<close).compactMap { identifier(at: $0) }
+                    index = close + 1
+                    continue
+                }
+                if word(at: index) == "SUBSET", let name = identifier(at: index + 1) {
+                    names.append(name)
+                }
+                index += 1
+            }
+            return names
         }
 
         private mutating func naming(_ source: Int, in block: Int, alias: String, columns: [String]?) {

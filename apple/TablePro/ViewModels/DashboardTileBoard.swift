@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 final class DashboardTileBoard: ObservableObject {
@@ -32,6 +33,8 @@ final class DashboardTileBoard: ObservableObject {
         var nullDisplay: @MainActor () -> String
         var storage: ServerDashboardTileStorage
         var now: @MainActor () -> Date = Date.init
+        // Where a tile's query runs, so Read-Only reads an Oracle or Dameng catalog in that schema.
+        var runsIn: @MainActor (UUID) -> DatabaseScope? = { _ in nil }
 
         @MainActor
         static func live(services: AppServices) -> Environment {
@@ -55,7 +58,13 @@ final class DashboardTileBoard: ObservableObject {
                 },
                 chartsAvailable: { services.featureAccess.isAvailable(.resultCharts) },
                 nullDisplay: { services.appSettings.dataGrid.nullDisplay },
-                storage: ServerDashboardTileStorage()
+                storage: ServerDashboardTileStorage(),
+                // A tile runs on the session itself, in whichever schema it is on.
+                runsIn: { connectionId in
+                    guard let browse = services.databaseManager.browseScope(for: connectionId) else { return nil }
+                    let schema = services.databaseManager.driver(for: connectionId)?.currentSchema ?? browse.schema
+                    return DatabaseScope(connectionId: connectionId, database: browse.database, schema: schema)
+                }
             )
         }
     }
@@ -77,11 +86,17 @@ final class DashboardTileBoard: ObservableObject {
     private struct GateDecision {
         let sql: String
         let safeModeLevel: SafeModeLevel
+        let runsIn: DatabaseScope?
+        let decidedAt: Date
         let denial: String?
     }
 
-    /// One gate decision per tile, statement and Safe Mode level, until Refresh Now. The gate logs
-    /// every decision, and a tile on a one second cycle must not append one each second.
+    // Oracle and Dameng read a bare name against a catalog that changes, so their decision is asked again after the
+    // catalog's own lifetime.
+    private static let catalogDecisionLifetime: TimeInterval = 60
+
+    // One gate decision per tile, statement, Safe Mode level and schema, until Refresh Now, or a minute on Oracle and
+    // Dameng. The gate logs every decision, and a tile on a one second cycle must not append one each second.
     private var gateDecisions: [UUID: GateDecision] = [:]
     private var cancellables: Set<AnyCancellable> = []
 
@@ -244,16 +259,22 @@ final class DashboardTileBoard: ObservableObject {
 
         let denial: String?
         let safeModeLevel = environment.safeModeLevel(connectionId)
-        if let cached = gateDecisions[tileId], cached.sql == sql, cached.safeModeLevel == safeModeLevel {
+        let runsIn = environment.runsIn(connectionId)
+        let readsCatalog = SQLBareNameCalls.engines.contains(databaseType.rawValue)
+        if let cached = gateDecisions[tileId], cached.sql == sql, cached.safeModeLevel == safeModeLevel,
+           cached.runsIn == runsIn,
+           !readsCatalog || (0..<Self.catalogDecisionLifetime).contains(startedAt.timeIntervalSince(cached.decidedAt)) {
             denial = cached.denial
         } else {
-            let decision = await environment.gate.authorize(request(for: sql))
+            let decision = await environment.gate.authorize(request(for: sql, runsIn: runsIn))
             guard isCurrent(tileId, sql: sql) else {
                 finishStale(tileId)
                 return
             }
             denial = decision.deniedReason
-            gateDecisions[tileId] = GateDecision(sql: sql, safeModeLevel: safeModeLevel, denial: denial)
+            gateDecisions[tileId] = GateDecision(
+                sql: sql, safeModeLevel: safeModeLevel, runsIn: runsIn, decidedAt: startedAt, denial: denial
+            )
         }
         if let denial {
             refuse(tileId, denial)
@@ -314,7 +335,7 @@ final class DashboardTileBoard: ObservableObject {
         return savedQuery(for: tile)?.query == sql
     }
 
-    private func request(for sql: String) -> OperationRequest {
+    private func request(for sql: String, runsIn: DatabaseScope?) -> OperationRequest {
         OperationRequest(
             connectionId: connectionId,
             databaseType: databaseType,
@@ -322,7 +343,8 @@ final class DashboardTileBoard: ObservableObject {
             kind: .readQuery,
             caller: .userInterface,
             capabilities: [.cannotPrompt],
-            operationDescription: String(localized: "Run a saved query on the Server Dashboard")
+            operationDescription: String(localized: "Run a saved query on the Server Dashboard"),
+            runsIn: runsIn
         )
     }
 

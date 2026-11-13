@@ -232,6 +232,14 @@ struct SQLBareNameBlock: Sendable, Equatable {
             }
         }
 
+        func named(_ alias: String) -> Source {
+            switch self {
+            case .table(let table, _): return .table(table, alias: alias)
+            case .derived(let block, let columns, _): return .derived(block: block, columns: columns, alias: alias)
+            case .opaque: return .opaque(alias: alias)
+            }
+        }
+
         // The name a qualifier can use: the alias, or else the table's own name.
         func answers(to qualifier: String) -> Bool {
             if let alias { return alias == qualifier }

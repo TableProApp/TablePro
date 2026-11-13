@@ -104,6 +104,8 @@ struct SQLBareNameCallsTests {
         #expect(!Self.calls("SELECT a FROM (VALUES (1)) t (a)"))
         #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PATTERN (x) DEFINE x AS wipe = 1)"))
         #expect(!Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PATTERN (x) DEFINE x AS purge = 100)"))
+        #expect(!Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PATTERN (up+) DEFINE up AS up.purge > 1)"))
+        #expect(Self.calls("SELECT * FROM orders MATCH_RECOGNIZE (PATTERN (up+) DEFINE up AS other.purge > 1)"))
         #expect(Self.calls("SELECT * FROM orders, dual PIVOT (MAX(purge) FOR dummy IN ('X' AS x))"))
         #expect(!Self.calls("SELECT * FROM orders, dual PIVOT (MAX(dummy) FOR dummy IN ('X' AS x)) WHERE purge = 1"))
         #expect(Self.calls("SELECT * FROM orders PARTITION FOR (wipe)"))
