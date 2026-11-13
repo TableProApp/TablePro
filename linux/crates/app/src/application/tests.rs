@@ -378,7 +378,14 @@ fn a_file_without_a_hint_opens_in_the_idle_picker() {
 fn startup_installs_the_app_actions_and_their_accels() {
     let test = TestApp::started("Actions");
 
-    for action in ["new-window", "quit", "preferences", "about", "buy-license"] {
+    for action in [
+        "new-window",
+        "quit",
+        "preferences",
+        "about",
+        "buy-license",
+        "manage-shared-links",
+    ] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
 }

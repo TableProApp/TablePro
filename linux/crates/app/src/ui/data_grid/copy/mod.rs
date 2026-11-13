@@ -12,6 +12,7 @@ use super::selection::Resolved;
 use super::{DataGrid, GridRequest, GridRow, RowJsonRequest, present_row_json};
 use crate::i18n::gettext;
 use crate::services::grid::{CopyScope, GridColumn, GridRowId, RowSnapshot, cell_filter_rule, copy_scope};
+use crate::services::share_subject::SharedRows;
 use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows, InsertCopy, InsertRow};
 use crate::ui::export::ExportSource;
 use crate::ui::filter_strip::FilterVocabulary;
@@ -60,6 +61,9 @@ pub fn install_actions(grid: &DataGrid) {
     add(grid, "export", |grid| {
         grid.request(GridRequest::Export(export_source(grid)))
     });
+    add(grid, "share", |grid| {
+        grid.request(GridRequest::Share(shared_rows(grid)))
+    });
     add(grid, "filter-by-value", |grid| filter_by_value(grid, false));
     add(grid, "exclude-value", |grid| filter_by_value(grid, true));
 }
@@ -84,6 +88,11 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
     enable(grid, "copy-column-name", cell.is_some());
     enable(grid, "show-row-json", target.and_then(json_row).is_some());
     enable(grid, "export", grid.row_count() > 0);
+    enable(
+        grid,
+        "share",
+        grid.row_count() > 0 && grid.config().is_some_and(|config| config.share),
+    );
     for (name, exclude) in [("filter-by-value", false), ("exclude-value", true)] {
         let rule = cell.and_then(|(row, column)| value_rule(grid, row, *column, exclude));
         enable(grid, name, rule.is_some());
@@ -93,15 +102,17 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
 /// The rows the grid shows, pending edits included, under the columns
 /// on screen in their order.
 pub fn export_source(grid: &DataGrid) -> ExportSource {
-    let shown = ShownColumns::of(grid);
-    let tracked = grid.tracked();
-    ExportSource::Rows {
-        columns: shown.columns.clone(),
-        rows: grid
-            .shown_rows()
-            .iter()
-            .map(|row| shown.project(tracked.snapshot(row)))
-            .collect(),
+    let (columns, rows) = shown_rows(grid, &grid.shown_rows());
+    ExportSource::Rows { columns, rows }
+}
+
+// What a share link takes: the rows an export of the shown rows would write.
+pub fn shared_rows(grid: &DataGrid) -> SharedRows {
+    let (columns, rows) = shown_rows(grid, &grid.shown_rows());
+    SharedRows {
+        columns,
+        row_count: rows.len() as u64,
+        rows,
     }
 }
 

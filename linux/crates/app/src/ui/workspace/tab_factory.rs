@@ -575,6 +575,13 @@ pub(super) fn connect_editor(
             offer: Box::new(offer),
         });
     });
+    let share = input.clone();
+    editor.connect_share_requested(move |_, subject| {
+        share.deliver(WorkspaceInput::Share {
+            tab: Some(tab_id),
+            subject: Box::new(subject),
+        });
+    });
     // The overlay is an ancestor of the editor, so a strong capture
     // would keep both alive once the window lets go of them.
     let toasts = toasts.clone();

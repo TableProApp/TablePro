@@ -20,7 +20,7 @@ use super::device_limit_dialog::DeviceLimitDialog;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::account_service::{AccountHandle, AccountStart};
 use crate::services::telemetry::Telemetry;
-use crate::ui::error_text::{account_error_message, offline_file_message};
+use crate::ui::error_text::{account_error_message, account_unavailable_message, offline_file_message};
 use crate::ui::icons;
 
 const CANCEL: &str = "cancel";
@@ -537,18 +537,7 @@ impl AccountPage {
         let imp = self.imp();
         let group = imp.account_group.get();
         let start = imp.deps.get().map(|deps| deps.handle.start.borrow().clone());
-        let unavailable = match &start {
-            None | Some(AccountStart::Starting | AccountStart::Ready(_)) => None,
-            Some(AccountStart::NoMachineId(detail)) => Some(gettext_f(
-                "TablePro accounts need this computer’s machine ID, which could not be read: {detail}",
-                &[("detail", detail)],
-            )),
-            Some(AccountStart::Misconfigured(detail)) => Some(gettext_f(
-                "This development build’s account settings are not valid: {detail}",
-                &[("detail", detail)],
-            )),
-            Some(AccountStart::Failed(error)) => Some(account_error_message(error)),
-        };
+        let unavailable = start.as_ref().and_then(account_unavailable_message);
         if let Some(reason) = unavailable {
             self.add(&group, &warning_row(&gettext("Accounts Unavailable"), &reason));
             return;
@@ -1378,7 +1367,7 @@ mod tests {
             Some("Use your plan on this computer. Everything else works without an account.")
         );
         assert!(!imp.plan_group.is_visible());
-        assert!(!imp.features_group.is_visible());
+        assert_eq!(harness.titles(&imp.features_group), ["Pro Options for Shared Links"]);
         assert!(!imp.devices_group.is_visible());
         assert!(!imp.teams_group.is_visible());
         assert_eq!(
@@ -1543,7 +1532,11 @@ mod tests {
 
         assert!(imp.features_group.is_visible());
         assert_eq!(imp.features_group.title(), "Features");
-        assert_eq!(harness.titles(&imp.features_group), ["Data Rewind", "Result Charts"]);
+        // The page's own render lists the features Linux has, Pro's share options among them.
+        assert_eq!(
+            harness.titles(&imp.features_group),
+            ["Pro Options for Shared Links", "Data Rewind", "Result Charts"]
+        );
         assert_eq!(marked("Data Rewind"), (true, false));
         assert_eq!(marked("Result Charts"), (false, true));
         harness.audit();

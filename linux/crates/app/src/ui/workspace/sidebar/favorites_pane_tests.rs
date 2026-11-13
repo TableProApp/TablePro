@@ -122,7 +122,7 @@ fn a_favorite_has_a_named_menu_button_that_acts_on_its_row() {
     button.popup();
     assert!(button.popover().expect("row popover").is_visible());
     let menu = button.menu_model().expect("row menu");
-    assert_eq!(menu.n_items(), 3);
+    assert_eq!(menu.n_items(), 4);
     crate::test_support::assert_access_keys(&menu);
     let action = menu
         .item_attribute_value(0, "action", None)
@@ -433,5 +433,34 @@ fn reopening_an_expanded_subtree_keeps_a_selected_root_siblings_position() {
     assert_eq!(
         pane.tree.row(pane.selection.selected()).as_ref().and_then(key_of),
         Some(selected)
+    );
+}
+
+#[gtk4::test]
+fn share_on_a_favorite_asks_to_share_its_query() {
+    let (pane, _window, actions) = shown();
+    let menu = menu_of(Key::Query(2));
+    let shares_at = |menu: &gio::Menu| {
+        (0..menu.n_items()).find(|position| {
+            menu.item_attribute_value(*position, "action", None)
+                .and_then(|value| value.get::<String>())
+                .as_deref()
+                == Some("favorite.share")
+        })
+    };
+    let share = shares_at(&menu).expect("Share… on a favorite");
+
+    list(&pane)
+        .activate_action("favorite.share", Some(&target(&menu, share)))
+        .expect("share from the menu");
+
+    assert!(matches!(
+        actions.borrow().last(),
+        Some(FavoriteAction::Share(query)) if query.id == 2 && query.name == "Two"
+    ));
+    assert_eq!(
+        shares_at(&menu_of(Key::Folder(1))),
+        None,
+        "a folder has nothing to share"
     );
 }
