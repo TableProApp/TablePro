@@ -4,10 +4,11 @@ use async_trait::async_trait;
 use tablepro_account::{BrowserLauncher, Url};
 use tablepro_session::runtime::Tasks;
 
-// The app opens the sign-in page in the user's browser. The core calls it on a thread it lets block.
+// The app opens the sign-in page in the user's browser. The core calls it on a thread it lets block. Not `open`:
+// UniFFI's Swift generator escapes that name in the C header too, which then does not compile.
 #[uniffi::export(callback_interface)]
 pub trait HostBrowser: Send + Sync {
-    fn open(&self, url: String) -> Result<(), HostBrowserError>;
+    fn open_url(&self, url: String) -> Result<(), HostBrowserError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
@@ -47,7 +48,7 @@ impl BrowserLauncher for HostBrowserBridge {
     async fn open(&self, url: &Url) -> Result<(), String> {
         let host = self.host.clone();
         let url = url.to_string();
-        match self.tasks.spawn_blocking_task(move || host.open(url)).await {
+        match self.tasks.spawn_blocking_task(move || host.open_url(url)).await {
             Ok(opened) => opened.map_err(|error| error.to_string()),
             Err(failure) => Err(failure.to_string()),
         }
@@ -65,7 +66,7 @@ mod tests {
     struct Recording(Arc<Mutex<Vec<String>>>);
 
     impl HostBrowser for Recording {
-        fn open(&self, url: String) -> Result<(), HostBrowserError> {
+        fn open_url(&self, url: String) -> Result<(), HostBrowserError> {
             self.0.lock().unwrap().push(url);
             Ok(())
         }
@@ -74,7 +75,7 @@ mod tests {
     struct Refusing;
 
     impl HostBrowser for Refusing {
-        fn open(&self, _: String) -> Result<(), HostBrowserError> {
+        fn open_url(&self, _: String) -> Result<(), HostBrowserError> {
             Err(HostBrowserError::Failed {
                 detail: "no default browser".to_owned(),
             })
@@ -84,7 +85,7 @@ mod tests {
     struct Throwing;
 
     impl HostBrowser for Throwing {
-        fn open(&self, _: String) -> Result<(), HostBrowserError> {
+        fn open_url(&self, _: String) -> Result<(), HostBrowserError> {
             panic!("the app's callback threw");
         }
     }

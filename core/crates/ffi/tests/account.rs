@@ -79,7 +79,7 @@ impl AccountListener for Counting {
 struct Browser(Arc<Mutex<Option<String>>>);
 
 impl HostBrowser for Browser {
-    fn open(&self, url: String) -> Result<(), HostBrowserError> {
+    fn open_url(&self, url: String) -> Result<(), HostBrowserError> {
         *self.0.lock().unwrap() = Some(url);
         Ok(())
     }
