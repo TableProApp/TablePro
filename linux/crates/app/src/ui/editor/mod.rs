@@ -996,20 +996,21 @@ impl SqlEditor {
         }
     }
 
+    // Named as the results list names it: Hide SQL keeps the statement off the link, so its title may not carry it.
     fn offer_share(&self, index: u32, rows: SharedRows) {
+        let Ok(position) = usize::try_from(index) else {
+            return;
+        };
         let subject = {
             let log = self.imp().log.borrow();
-            let Some(entry) = log
-                .as_ref()
-                .and_then(|log| log.entries().get(usize::try_from(index).ok()?))
-            else {
+            let Some(entry) = log.as_ref().and_then(|log| log.entries().get(position)) else {
                 return;
             };
             let EntryKind::ResultSet(result) = &entry.kind else {
                 return;
             };
             ShareSubject {
-                title: entry.preview.clone(),
+                title: result.summary.tab_label(position),
                 sql: result.statement.as_str().to_owned(),
                 dialect: self.driver_id(),
                 rows: Some(rows),

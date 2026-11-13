@@ -3518,7 +3518,11 @@ fn share_result_shares_the_rows_and_the_statement_in_front() {
         panic!("one share asked for: {}", heard.len());
     };
     assert_eq!(subject.sql, "SELECT n FROM numbers");
-    assert_eq!(subject.title, "SELECT n FROM numbers");
+    assert_eq!(subject.title, "Result 1 (3)");
+    assert!(
+        !subject.title.contains("SELECT"),
+        "the title carries the SQL Hide SQL keeps back"
+    );
     let rows = subject.rows.as_ref().expect("the result's rows");
     assert_eq!(rows.row_count, 3);
     assert_eq!(rows.columns[0].name, "n");
