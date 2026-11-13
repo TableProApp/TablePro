@@ -183,7 +183,10 @@ final class ServerDashboardViewModel: ObservableObject {
         await refresh(forcingTiles: true)
     }
 
-    private static func readExecutor(connectionId: UUID, services: AppServices) -> DashboardTileBoard.Execute {
+    private static func readExecutor(
+        connectionId: UUID,
+        services: AppServices
+    ) -> @MainActor (String) async throws -> QueryResult {
         { [connectionId, services] query in
             try await liveDriver(connectionId: connectionId, services: services).executeCatalogRead(query: query)
         }
@@ -191,26 +194,35 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // A saved query can return a whole table, so a tile stops at the rows it can draw. A driver with no bounded fetch
     // gets `executeRead`, which is also where a scripting engine refuses writes. At Read-Only, a driver that can runs
-    // the saved query in the engine's read-only mode.
+    // the saved query in the engine's read-only mode. It runs in the session's turn, pinned to the scope the gate was
+    // asked about, as a query tab's run is, so no tab moves the session's schema between the check and the run.
     private static func tileExecutor(connectionId: UUID, services: AppServices) -> DashboardTileBoard.Execute {
-        { [connectionId, services] query in
-            let driver = try liveDriver(connectionId: connectionId, services: services)
-            let policy = await MainActor.run {
-                services.databaseManager.session(for: connectionId)?.connection.maskingPolicy ?? .none
+        { [connectionId, services] query, runsIn in
+            let manager = services.databaseManager
+            guard let scope = runsIn ?? manager.browseScope(for: connectionId) else {
+                throw DatabaseError.connectionFailed(String(localized: "No active connection"))
             }
+            let policy = manager.session(for: connectionId)?.connection.maskingPolicy ?? .none
             let rowCap = DashboardTileTable.rowCap
-            let isReadOnly = ExecutionGateProvider.runsAtReadOnly(connectionId, in: services.databaseManager)
-            if let context = driver.readOnlyRunContext(safeModeIsReadOnly: isReadOnly) {
-                if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: rowCap, context: context) {
+            let isReadOnly = ExecutionGateProvider.runsAtReadOnly(connectionId, in: manager)
+            return try await manager.withCancellableRead(
+                scope: scope,
+                route: manager.executionRoute(for: scope),
+                ownsSessionState: false,
+                readsOnly: true
+            ) { driver in
+                if let context = driver.readOnlyRunContext(safeModeIsReadOnly: isReadOnly) {
+                    if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: rowCap, context: context) {
+                        return bounded.masked(by: policy)
+                    }
+                    return try await driver.executeUserQuery(query: query, rowCap: rowCap, parameters: nil, context: context)
+                        .masked(by: policy)
+                }
+                if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: rowCap) {
                     return bounded.masked(by: policy)
                 }
-                return try await driver.executeUserQuery(query: query, rowCap: rowCap, parameters: nil, context: context)
-                    .masked(by: policy)
+                return try await driver.executeRead(query: query).masked(by: policy)
             }
-            if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: rowCap) {
-                return bounded.masked(by: policy)
-            }
-            return try await driver.executeRead(query: query).masked(by: policy)
         }
     }
 

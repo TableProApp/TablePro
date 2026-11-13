@@ -134,8 +134,12 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     // A statement holding this text fails, the way a server rejects one statement of a script.
     var failsStatementContaining: (text: String, error: any Error)?
 
+    // Holds `execute` until the test opens it, whether or not the task awaiting it is cancelled.
+    var executeGate: AsyncGate?
+
     func execute(query: String) async throws -> QueryResult {
         executedQueries.append(query)
+        await executeGate?.wait()
         if let failure = failsStatementContaining, query.contains(failure.text) { throw failure.error }
         if executeDelaySeconds > 0 {
             try await Task.sleep(nanoseconds: UInt64(executeDelaySeconds * 1_000_000_000))

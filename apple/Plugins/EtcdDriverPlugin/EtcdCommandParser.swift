@@ -63,8 +63,11 @@ extension EtcdOperation {
         case .put, .create, .leaseGrant, .leaseKeepAlive, .authEnable, .userAdd, .roleAdd,
              .userGrantRole, .userRevokeRole:
             return .write
-        // A move takes the key away from its name, as a del does.
-        case .move, .del, .compaction, .leaseRevoke, .authDisable, .userDelete, .roleDelete:
+        // One key by name is a row change, as a keyed DELETE is. A prefix can take every key.
+        case .del(_, let prefix):
+            return prefix ? .destructive : .write
+        // A move takes the key away from its name.
+        case .move, .compaction, .leaseRevoke, .authDisable, .userDelete, .roleDelete:
             return .destructive
         case .unknown:
             return nil
@@ -309,9 +312,14 @@ struct EtcdCommandParser {
         guard let key = positional.first?.bytes else {
             throw EtcdParseError.missingArgument("del requires a key")
         }
+        // etcdctl deletes a range for a range end, `--from-key` or `--prefix=true`, which `.del` cannot carry.
+        guard positional.count == 1, !flags.has("from-key"), flags.value(for: "from-key") == nil,
+              flags.value(for: "prefix") == nil
+        else {
+            throw EtcdParseError.invalidArgument("del takes one key, or a prefix with --prefix")
+        }
 
-        let prefix = flags.has("prefix")
-        return .del(key: key, prefix: prefix)
+        return .del(key: key, prefix: flags.has("prefix"))
     }
 
     private static func parseWatch(_ tokens: [EtcdCommandToken]) throws -> EtcdOperation {

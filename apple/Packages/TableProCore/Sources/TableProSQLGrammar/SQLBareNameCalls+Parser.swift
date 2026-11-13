@@ -426,10 +426,11 @@ extension SQLBareNameCalls {
                                 blocks[body].sources.append(input.named(variable))
                             }
                         }
-                        expression(
-                            (index + 1)..<close, block: body, commonTables: commonTables, ordersBy: false,
-                            readsAfterAs: word == "MATCH_RECOGNIZE"
-                        )
+                        if word == "MATCH_RECOGNIZE" {
+                            rowPatternClause((index + 1)..<close, block: body, commonTables: commonTables)
+                        } else {
+                            expression((index + 1)..<close, block: body, commonTables: commonTables, ordersBy: false)
+                        }
                         index = close + 1
                     }
                     state = .afterTable
@@ -533,6 +534,59 @@ extension SQLBareNameCalls {
             return (last + 1, append(.table(table, alias: nil), to: block))
         }
 
+        // As Oracle 23ai runs MATCH_RECOGNIZE (measured): PARTITION BY, ORDER BY, each MEASURES expression and each DEFINE
+        // condition hold names. A MEASURES alias, a DEFINE variable, the row pattern, SUBSET and the clause's own words
+        // are not. A clause that does not read in Oracle's order is read whole, every name after AS included.
+        private mutating func rowPatternClause(_ range: Range<Int>, block: Int, commonTables: [String: CommonTable]) {
+            guard let first = range.first,
+                  let clause = SQLRowPatternClause.read(tokens, body: range, text: code.code as NSString)
+            else {
+                expression(range, block: block, commonTables: commonTables, ordersBy: false, readsAfterAs: true)
+                return
+            }
+            let depth = tokens[first].depth
+            for list in [clause.partitionBy, clause.orderBy].compactMap({ $0 }) {
+                expression(list, block: block, commonTables: commonTables, ordersBy: false)
+            }
+            for item in clause.measures.map({ items($0, depth: depth) }) ?? [] {
+                let read = measureExpression(item, depth: depth)
+                expression(read, block: block, commonTables: commonTables, ordersBy: false, inRowPattern: true)
+            }
+            for item in items(clause.define, depth: depth) {
+                let read = definedCondition(item, depth: depth)
+                expression(read, block: block, commonTables: commonTables, ordersBy: false, inRowPattern: true)
+            }
+        }
+
+        private func items(_ range: Range<Int>, depth: Int) -> [Range<Int>] {
+            var items: [Range<Int>] = []
+            var start = range.lowerBound
+            for index in range.lowerBound...range.upperBound
+                where index == range.upperBound || (tokens[index].kind == .comma && tokens[index].depth == depth) {
+                if start < index { items.append(start..<index) }
+                start = index + 1
+            }
+            return items
+        }
+
+        // `expr [AS] alias`: the alias names the measure.
+        private func measureExpression(_ item: Range<Int>, depth: Int) -> Range<Int> {
+            if let alias = item.first(where: { tokens[$0].depth == depth && word(at: $0) == "AS" }) {
+                return item.lowerBound..<alias
+            }
+            let last = item.upperBound - 1
+            guard last > item.lowerBound, identifier(at: last) != nil, endsOperand(at: last - 1) else { return item }
+            return item.lowerBound..<last
+        }
+
+        // `variable AS condition`.
+        private func definedCondition(_ item: Range<Int>, depth: Int) -> Range<Int> {
+            guard let condition = item.first(where: { tokens[$0].depth == depth && word(at: $0) == "AS" }) else {
+                return item
+            }
+            return (condition + 1)..<item.upperBound
+        }
+
         // The names `PATTERN (...)` and `SUBSET x = (...)` give.
         private func patternVariables(_ range: Range<Int>) -> [String] {
             var names: [String] = []
@@ -586,13 +640,15 @@ extension SQLBareNameCalls {
 
         // MARK: - Expressions
 
-        // `readsAfterAs`: MATCH_RECOGNIZE's `DEFINE v AS <condition>`, where AS leads an expression, not a type.
+        // `readsAfterAs`: a MATCH_RECOGNIZE clause read whole, where AS also leads a DEFINE condition. `inRowPattern`: a
+        // MATCH_RECOGNIZE measure or condition, where RUNNING and FINAL before a call are the clause's own words.
         private mutating func expression(
             _ range: Range<Int>,
             block: Int,
             commonTables: [String: CommonTable],
             ordersBy: Bool,
-            readsAfterAs: Bool = false
+            readsAfterAs: Bool = false,
+            inRowPattern: Bool = false
         ) {
             var index = range.lowerBound
             let end = range.upperBound
@@ -605,7 +661,10 @@ extension SQLBareNameCalls {
                     if startsQuery(inner) {
                         _ = queryExpression(inner, parent: block, commonTables: commonTables)
                     } else {
-                        expression(inner, block: block, commonTables: commonTables, ordersBy: false, readsAfterAs: readsAfterAs)
+                        expression(
+                            inner, block: block, commonTables: commonTables, ordersBy: false,
+                            readsAfterAs: readsAfterAs, inRowPattern: inRowPattern
+                        )
                     }
                     index = close + 1
                     afterAs = false
@@ -613,6 +672,11 @@ extension SQLBareNameCalls {
                 }
                 if token.word == "AS" {
                     afterAs = !readsAfterAs
+                    index += 1
+                    continue
+                }
+                if inRowPattern, token.word == "RUNNING" || token.word == "FINAL", index + 2 < end,
+                   identifier(at: index + 1) != nil, tokens[index + 2].kind == .open {
                     index += 1
                     continue
                 }

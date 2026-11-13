@@ -82,9 +82,21 @@ struct ExternalStatementGateTests {
         #expect(refused == (runs ? nil : .denied(ExternalStatementGate.dataStatementRefusal)))
     }
 
+    @Test("Edit runs a SurrealQL DELETE of one record by id, and refuses one of a table or a range as destructive", arguments: [
+        ("DELETE person:three", false),
+        ("DELETE person", true),
+        ("DELETE person:1..3", true),
+    ])
+    func surrealRecordDeleteInEdit(sql: String, refused: Bool) {
+        let edit = statement(sql, databaseType: .surrealdb, allowsDestructive: false, allowsOnlyDataStatements: true)
+        #expect(refusal(edit) == (refused ? .denied(ExternalStatementGate.destructiveRefusal) : nil))
+    }
+
     @Test("A write into a keyspace or database the engine keeps its own state in is a system scope")
     func systemScopesOfOtherLanguages() {
         #expect(QueryClassifier.writesSystemScope(database: "system_auth", schema: nil, databaseType: .cassandra))
+        #expect(QueryClassifier.writesSystemScope(database: "audit", schema: nil, databaseType: .scylladb))
+        #expect(!QueryClassifier.writesSystemScope(database: "audit", schema: nil, databaseType: .cassandra))
         #expect(QueryClassifier.writesSystemScope(database: "admin", schema: nil, databaseType: .mongodb))
         #expect(!QueryClassifier.writesSystemScope(database: "shop", schema: nil, databaseType: .mongodb))
         #expect(!QueryClassifier.writesSystemScope(database: "admin", schema: nil, databaseType: .postgresql))
