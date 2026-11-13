@@ -160,6 +160,43 @@ public sealed class RunResultsTests
         Assert.Equal(0, results.Dropped);
     }
 
+    [Fact]
+    public void PastTheLimitADroppedSetShownGivesWayToTheNewestAndAKeptOneStays()
+    {
+        var results = New(kept: 2);
+        var sets = Enumerable.Range(0, 4).Select(index => results.Add(index, Columns, out _)).ToList();
+
+        Assert.Same(sets[3], results.ShownAtEnd(sets[0]));
+        Assert.Same(sets[3], results.ShownAtEnd(sets[1]));
+        Assert.Same(sets[2], results.ShownAtEnd(sets[2]));
+    }
+
+    [Fact]
+    public void ARunWithinTheLimitEndsOnTheSetShown()
+    {
+        var unlimited = New();
+        var first = unlimited.Add(0, Columns, out _);
+        unlimited.Add(1, Columns, out _);
+        var limited = New(kept: 2);
+        var kept = limited.Add(0, Columns, out _);
+        limited.Add(1, Columns, out _);
+
+        Assert.Same(first, unlimited.ShownAtEnd(first));
+        Assert.Same(kept, limited.ShownAtEnd(kept));
+    }
+
+    // A run with no set, such as an UPDATE, asks while the grid still shows the last run's set.
+    [Fact]
+    public void ARunThatDroppedNothingGivesBackASetOfAnotherRun()
+    {
+        var earlier = New().Add(0, Columns, out _);
+        var limited = New(kept: 2);
+        limited.Add(0, Columns, out _);
+
+        Assert.Same(earlier, New(kept: 2).ShownAtEnd(earlier));
+        Assert.Same(earlier, limited.ShownAtEnd(earlier));
+    }
+
     // The sets a 10,000-set script leaves held, with the limit at 100.
     [Fact]
     public void TenThousandSetsWithAHundredKeptHoldAHundred()
