@@ -1,5 +1,6 @@
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 use serde_json::value::RawValue;
+use thiserror::Error;
 
 use crate::Truncation;
 use crate::column::{ColumnKind, ResultColumn};
@@ -65,26 +66,51 @@ impl Snapshot {
     }
 }
 
-// Takes at most `max_rows` rows. A result cut with no count says only that more rows exist, so a viewer never
-// reads the rows held as the whole result.
+// What a snapshot body may weigh, as the macOS app counts it (ShareSnapshotBuilder): under the server's 5 MiB, so a
+// size it counts differently never refuses a share the app offered.
+pub const MAX_SNAPSHOT_BODY_BYTES: usize = 4_500_000;
+pub const MAX_SNAPSHOT_CELL_BYTES: usize = 256 * 1_024;
+
+// A share that cannot go out even cut: the server refuses a cell this big, and a body with no row is no share.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SnapshotTooLarge {
+    #[error("a value in column {column} is over 256 KiB")]
+    Cell { column: String },
+    #[error("the first row alone is over the share's 4.5 MB")]
+    FirstRow,
+}
+
+impl SnapshotTooLarge {
+    pub fn code(&self) -> &'static str {
+        "export.snapshot_too_large"
+    }
+}
+
+// Takes at most `max_rows` rows, and stops before the row that would take the body past `MAX_SNAPSHOT_BODY_BYTES`; the
+// row count stays the result's, so the server marks the share cut. A result cut with no count says only that more rows
+// exist, so a viewer never reads the rows held as the whole result.
 pub fn build_snapshot<R: AsRef<[Value]>>(
     columns: &[ResultColumn],
     rows: impl IntoIterator<Item = R>,
     extent: ResultExtent,
     max_rows: usize,
-) -> Snapshot {
-    let rows: Vec<Vec<Box<RawValue>>> = rows
-        .into_iter()
-        .take(max_rows)
-        .map(|row| snapshot_row(columns, row.as_ref()))
-        .collect();
-    let at_least = extent.held.max(rows.len() as u64);
+) -> Result<Snapshot, SnapshotTooLarge> {
+    let mut budget = Budget::new(columns);
+    let mut kept: Vec<Vec<Box<RawValue>>> = Vec::new();
+    for row in rows.into_iter().take(max_rows) {
+        let (cells, bytes) = sized_row(columns, row.as_ref())?;
+        if !budget.take(bytes, kept.is_empty())? {
+            break;
+        }
+        kept.push(cells);
+    }
+    let at_least = extent.held.max(kept.len() as u64);
     let (row_count, more_rows) = match (extent.total, extent.cut) {
         (Some(total), _) => (Some(total.max(at_least)), false),
         (None, false) => (Some(at_least), false),
         (None, true) => (None, true),
     };
-    Snapshot {
+    Ok(Snapshot {
         columns: columns
             .iter()
             .map(|column| SnapshotColumn {
@@ -95,25 +121,113 @@ pub fn build_snapshot<R: AsRef<[Value]>>(
             .collect(),
         row_count,
         more_rows,
-        rows,
+        rows: kept,
+    })
+}
+
+// How many of `rows` a snapshot of `max_rows` keeps, by the same budget, for a preview or a detector that must read
+// exactly the rows sent.
+pub fn snapshot_row_count<R: AsRef<[Value]>>(
+    columns: &[ResultColumn],
+    rows: impl IntoIterator<Item = R>,
+    max_rows: usize,
+) -> Result<usize, SnapshotTooLarge> {
+    let mut budget = Budget::new(columns);
+    let mut kept = 0;
+    for row in rows.into_iter().take(max_rows) {
+        let (_, bytes) = sized_row(columns, row.as_ref())?;
+        if !budget.take(bytes, kept == 0)? {
+            break;
+        }
+        kept += 1;
+    }
+    Ok(kept)
+}
+
+// The body as the macOS app weighs it: braces and each column's quoted name plus 24, then each row's brackets, commas
+// and closing comma.
+struct Budget {
+    spent: usize,
+}
+
+impl Budget {
+    fn new(columns: &[ResultColumn]) -> Self {
+        Self {
+            spent: 2 + columns
+                .iter()
+                .map(|column| quoted_bytes(&column.name) + 24)
+                .sum::<usize>(),
+        }
+    }
+
+    // False once the row would cross the budget; the first row not fitting refuses the share.
+    fn take(&mut self, row: usize, first: bool) -> Result<bool, SnapshotTooLarge> {
+        if self.spent + row > MAX_SNAPSHOT_BODY_BYTES {
+            return match first {
+                true => Err(SnapshotTooLarge::FirstRow),
+                false => Ok(false),
+            };
+        }
+        self.spent += row;
+        Ok(true)
     }
 }
 
-// One cell per column: a short row's missing cells are null, and a cell past the last column has nowhere to go.
-fn snapshot_row(columns: &[ResultColumn], row: &[Value]) -> Vec<Box<RawValue>> {
-    columns
-        .iter()
-        .enumerate()
-        .map(|(index, column)| {
-            let value = row.get(index).unwrap_or(&Value::Null);
-            let value = crate::document::json_number(value, &column.column_type);
-            let cell = SnapshotCell {
-                value: &value,
-                kind: &column.column_type.kind,
-            };
-            serde_json::value::to_raw_value(&cell).unwrap_or_else(|_| RawValue::NULL.to_owned())
+fn sized_row(columns: &[ResultColumn], row: &[Value]) -> Result<(Vec<Box<RawValue>>, usize), SnapshotTooLarge> {
+    let mut bytes = 2 + columns.len().saturating_sub(1) + 1;
+    let mut cells = Vec::with_capacity(columns.len());
+    for (index, column) in columns.iter().enumerate() {
+        let value = row.get(index).unwrap_or(&Value::Null);
+        let value = crate::document::json_number(value, &column.column_type);
+        let cell = SnapshotCell {
+            value: &value,
+            kind: &column.column_type.kind,
+        };
+        let token = serde_json::value::to_raw_value(&cell).unwrap_or_else(|_| RawValue::NULL.to_owned());
+        let size = cell_bytes(&value, &column.column_type.kind, &token);
+        if size > MAX_SNAPSHOT_CELL_BYTES {
+            return Err(SnapshotTooLarge::Cell {
+                column: column.name.clone(),
+            });
+        }
+        bytes += size;
+        cells.push(token);
+    }
+    Ok((cells, bytes))
+}
+
+// A cell's JSON bytes as the macOS app counts them: a document and a number as written, a string with `<`, `>` and `&`
+// escaped as six bytes each, an array element by element.
+fn cell_bytes(value: &Value, kind: &ColumnKind, token: &RawValue) -> usize {
+    match value {
+        Value::Array(values) => {
+            let element = element_kind(kind);
+            2 + values.len().saturating_sub(1)
+                + values
+                    .iter()
+                    .map(|value| {
+                        let cell = SnapshotCell { value, kind: element };
+                        serde_json::value::to_raw_value(&cell).map_or(4, |token| cell_bytes(value, element, &token))
+                    })
+                    .sum::<usize>()
+        }
+        Value::Json(_) => token.get().len(),
+        _ => match token.get().starts_with('"') {
+            true => serde_json::from_str::<String>(token.get()).map_or(token.get().len(), |text| quoted_bytes(&text)),
+            false => token.get().len(),
+        },
+    }
+}
+
+fn quoted_bytes(text: &str) -> usize {
+    2 + text
+        .bytes()
+        .map(|byte| match byte {
+            b'"' | b'\\' | 0x08 | 0x0c | b'\n' | b'\r' | b'\t' => 2,
+            0x00..=0x1f | b'<' | b'>' | b'&' => 6,
+            _ => 1,
         })
-        .collect()
+        .sum::<usize>()
 }
 
 // The export's JSON cell, except that bytes name their size: a viewer has no use for hex it cannot show.
@@ -147,6 +261,15 @@ mod tests {
     use super::super::test_columns::{cols, typed};
     use super::*;
 
+    fn snap<R: AsRef<[Value]>>(
+        columns: &[ResultColumn],
+        rows: impl IntoIterator<Item = R>,
+        extent: ResultExtent,
+        max_rows: usize,
+    ) -> Snapshot {
+        build_snapshot(columns, rows, extent, max_rows).expect("a snapshot")
+    }
+
     fn texts(snapshot: &Snapshot) -> Vec<Vec<&str>> {
         snapshot
             .rows
@@ -160,7 +283,7 @@ mod tests {
         let columns = cols(&["n"]);
         let rows: Vec<Vec<Value>> = (0..5).map(|row| vec![Value::Int(row)]).collect();
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(rows.len() as u64), 3);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(rows.len() as u64), 3);
 
         assert_eq!(texts(&snapshot), [["0"], ["1"], ["2"]]);
         assert_eq!(snapshot.row_count, Some(5));
@@ -172,7 +295,7 @@ mod tests {
         let columns = cols(&["n"]);
         let rows = vec![vec![Value::Int(1)], vec![Value::Int(2)]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(2), 1_000);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(2), 1_000);
 
         assert_eq!(snapshot.rows.len(), 2);
         assert_eq!(snapshot.row_count, Some(2));
@@ -184,7 +307,7 @@ mod tests {
         let columns = cols(&["n"]);
         let rows = vec![vec![Value::Int(1)], vec![Value::Int(2)]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(0), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(0), 10);
 
         assert_eq!(snapshot.row_count, Some(2));
     }
@@ -195,9 +318,9 @@ mod tests {
         let rows = vec![vec![Value::Int(1)], vec![Value::Int(2)]];
         let cut = |total, truncation| ResultExtent::finished(2, total, truncation);
 
-        let uncounted = build_snapshot(&columns, &rows, cut(None, Truncation::ReadPastLimit), 10);
-        let byte_limit = build_snapshot(&columns, &rows, cut(None, Truncation::ByteLimit), 10);
-        let counted = build_snapshot(&columns, &rows, cut(Some(48_210), Truncation::ReadPastLimit), 10);
+        let uncounted = snap(&columns, &rows, cut(None, Truncation::ReadPastLimit), 10);
+        let byte_limit = snap(&columns, &rows, cut(None, Truncation::ByteLimit), 10);
+        let counted = snap(&columns, &rows, cut(Some(48_210), Truncation::ReadPastLimit), 10);
 
         assert_eq!((uncounted.row_count, uncounted.more_rows), (None, true));
         assert!(uncounted.truncated());
@@ -220,7 +343,7 @@ mod tests {
             typed("body", "text", ColumnKind::Other),
         ];
 
-        let snapshot = build_snapshot(
+        let snapshot = snap(
             &columns,
             std::iter::empty::<Vec<Value>>(),
             ResultExtent::complete(0),
@@ -269,7 +392,7 @@ mod tests {
             Value::Decimal("12345678901234567890.12345678901234567890".parse().expect("a decimal")),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(
             texts(&snapshot),
@@ -284,7 +407,7 @@ mod tests {
             JsonText::parse(r#"{"b": 1, "a": [1, 2]}"#.to_owned()).expect("JSON"),
         )]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(texts(&snapshot), [[r#"{"b": 1, "a": [1, 2]}"#]]);
     }
@@ -314,7 +437,7 @@ mod tests {
             Value::Array(vec![Value::Bytes(vec![1]), Value::Null]),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(
             texts(&snapshot),
@@ -347,7 +470,7 @@ mod tests {
             })),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(1), 10);
 
         assert_eq!(texts(&snapshot), [[r#""2024-06-15T12:00:00.500""#, "null"]]);
     }
@@ -357,7 +480,7 @@ mod tests {
         let columns = cols(&["a", "b"]);
         let rows = vec![vec![Value::Int(1)], vec![Value::Int(1), Value::Int(2), Value::Int(3)]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(2), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(2), 10);
 
         assert_eq!(texts(&snapshot), [["1", "null"], ["1", "2"]]);
     }
@@ -366,7 +489,7 @@ mod tests {
     fn a_number_field_s_json_goes_in_as_the_number() {
         let (columns, rows) = super::super::test_columns::mixed_json();
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(1), 10);
 
         let row = &texts(&snapshot)[0];
         assert_eq!(row[0], "3000000000");
@@ -381,7 +504,7 @@ mod tests {
             Value::Float64(f64::NAN),
         ]];
 
-        let snapshot = build_snapshot(&columns, &rows, ResultExtent::complete(1), 10);
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(1), 10);
 
         let parsed: Vec<serde_json::Value> = snapshot.rows[0]
             .iter()
@@ -390,6 +513,66 @@ mod tests {
         assert_eq!(
             parsed,
             [serde_json::json!("a \"quoted\"\nline"), serde_json::json!("NaN")]
+        );
+    }
+
+    fn wide_rows(rows: usize, columns: usize, chars: usize) -> Vec<Vec<Value>> {
+        (0..rows)
+            .map(|_| (0..columns).map(|_| Value::Text("x".repeat(chars))).collect())
+            .collect()
+    }
+
+    #[test]
+    fn a_string_weighs_as_the_macos_app_counts_it() {
+        assert_eq!(quoted_bytes("abc"), 5);
+        assert_eq!(quoted_bytes("a<b>&"), 2 + 2 + 18);
+        assert_eq!(quoted_bytes("\"\\\n\r\t"), 2 + 10);
+        assert_eq!(quoted_bytes("\u{1}\u{7f}"), 2 + 6 + 1);
+        assert_eq!(quoted_bytes("é•"), 2 + 5);
+    }
+
+    #[test]
+    fn rows_stop_before_the_one_that_would_cross_the_budget() {
+        let columns = cols(&["c"]);
+        // 29 bytes of header, then 200,005 a row: 22 rows fit in 4,500,000.
+        let rows = wide_rows(30, 1, 200_000);
+
+        let snapshot = snap(&columns, &rows, ResultExtent::complete(30), 1_000);
+
+        assert_eq!(snapshot.rows.len(), 22);
+        assert_eq!(snapshot.row_count, Some(30));
+        assert!(snapshot.truncated());
+        assert_eq!(snapshot_row_count(&columns, &rows, 1_000), Ok(22));
+        assert_eq!(snapshot_row_count(&columns, &rows, 5), Ok(5));
+    }
+
+    #[test]
+    fn a_first_row_over_the_budget_refuses_the_share() {
+        let columns = cols(&[
+            "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u",
+            "v", "w",
+        ]);
+        let rows = wide_rows(1, columns.len(), 200_000);
+
+        assert_eq!(
+            build_snapshot(&columns, &rows, ResultExtent::complete(1), 10).err(),
+            Some(SnapshotTooLarge::FirstRow)
+        );
+        assert_eq!(snapshot_row_count(&columns, &rows, 10), Err(SnapshotTooLarge::FirstRow));
+    }
+
+    #[test]
+    fn a_cell_over_256_kib_refuses_the_share_and_one_at_it_goes() {
+        let columns = cols(&["note"]);
+        let at_limit = wide_rows(1, 1, MAX_SNAPSHOT_CELL_BYTES - 2);
+        let over = wide_rows(1, 1, MAX_SNAPSHOT_CELL_BYTES - 1);
+
+        assert_eq!(snap(&columns, &at_limit, ResultExtent::complete(1), 10).rows.len(), 1);
+        assert_eq!(
+            build_snapshot(&columns, &over, ResultExtent::complete(1), 10).err(),
+            Some(SnapshotTooLarge::Cell {
+                column: "note".to_owned()
+            })
         );
     }
 }

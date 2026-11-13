@@ -702,7 +702,7 @@ fn result_share(title: &str, rows: usize, row_count: u64, kept: usize) -> ShareR
         .collect();
     ShareRequest {
         kind: ShareKind::Result,
-        snapshot: Some(build_snapshot(&columns, &rows, ResultExtent::complete(row_count), kept)),
+        snapshot: Some(build_snapshot(&columns, &rows, ResultExtent::complete(row_count), kept).expect("a snapshot")),
         ..query_share(title)
     }
 }
@@ -948,12 +948,9 @@ async fn a_pro_link_behind_a_password_opens_with_it_keeps_every_digit_and_takes_
             kind: ShareKind::Result,
             password: Some(SecretString::from(PASSWORD)),
             allow_download: Some(false),
-            snapshot: Some(build_snapshot(
-                &columns,
-                &rows_shared,
-                ResultExtent::complete(2),
-                max_rows,
-            )),
+            snapshot: Some(
+                build_snapshot(&columns, &rows_shared, ResultExtent::complete(2), max_rows).expect("a snapshot"),
+            ),
             ..query_share("Ledger")
         })
         .await
