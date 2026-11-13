@@ -118,6 +118,20 @@ struct MySQLReadOnlyRunTests {
         #expect(Array(run.served.queries.suffix(2)) == ["BEGIN", "ROLLBACK"])
     }
 
+    @Test("A Read-Only read on a session holding LOCK TABLES is refused before the read-only transaction goes out")
+    func tableLockIsRefusedByTheDriver() async throws {
+        let server = try FakeMySQLServer(identity: nil, streamsRowsStarting: Self.scan, streamedRows: 3)
+        let run = try await Self.run(on: server, closingWith: "UNLOCK TABLES") { driver in
+            _ = try await driver.execute(query: "LOCK TABLES events READ")
+            return await #expect(throws: ReadOnlyModeRefusal.self) {
+                _ = try await Self.read(driver.executeStreaming(query: Self.scan, options: Self.readOnly))
+            }
+        }
+
+        #expect(run.read == .sessionNotIdle(message: MySQLReadOnlyTransaction.notIdleMessage(.safeMode)))
+        #expect(Array(run.served.queries.suffix(2)) == ["LOCK TABLES events READ", "UNLOCK TABLES"])
+    }
+
     @Test("The session reads as idle during and after a Read-Only read")
     func streamReadsAsIdle() async throws {
         let server = try FakeMySQLServer(identity: nil, streamsRowsStarting: Self.scan, streamedRows: 10_000)
