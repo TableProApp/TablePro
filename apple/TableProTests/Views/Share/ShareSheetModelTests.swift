@@ -125,7 +125,11 @@ struct ShareSheetModelTests {
 
     // MARK: - Plan gating
 
-    @Test("Free defaults to 30 days and cannot pick Never, a password or turning downloads off")
+    private func needsPro(_ action: String.LocalizationValue) -> String {
+        String(localized: "This option needs TablePro Pro.") + " " + String(localized: action)
+    }
+
+    @Test("Free defaults to 30 days, and Never, a password or downloads turned off hold Create with the reason, never dropped")
     func freeGating() async throws {
         let model = makeModel(service: FakeShareService(limits: .free()))
         await model.load()
@@ -133,14 +137,85 @@ struct ShareSheetModelTests {
         #expect(model.expiry == .thirtyDays)
         #expect(!model.isAvailable(.never))
         #expect(model.isAvailable(.oneDay))
+        #expect(model.canCreate)
 
         model.expiry = .never
+        #expect(model.expiryMessage == needsPro("Choose another expiry to create the link."))
         model.password = "secret"
+        #expect(model.passwordMessage == needsPro("Clear the password to create the link."))
         model.allowsDownload = false
+        #expect(model.downloadMessage == needsPro("Turn downloads back on to create the link."))
+        #expect(!model.canCreate)
+        #expect(model.makeDraft() == nil)
+
+        model.expiry = .sevenDays
+        model.password = ""
+        model.allowsDownload = true
+        #expect(model.canCreate)
         let draft = try #require(model.makeDraft())
-        #expect(draft.expiry == .thirtyDays)
+        #expect(draft.expiry == .sevenDays)
         #expect(draft.password == nil)
         #expect(draft.allowsDownload == nil)
+    }
+
+    @Test("A reload as Free keeps the typed password and Never, and holds Create until the person changes them")
+    func downgradeKeepsChoices() async throws {
+        let service = FakeShareService()
+        service.limitsResults = [.success(.pro()), .success(.free())]
+        service.createResult = .failure(.limitReached)
+        let model = makeModel(service: service)
+        await model.load()
+        #expect(model.expiry == .never)
+        model.password = "hunter2"
+
+        await model.create()
+        #expect(model.limits?.plan == .free)
+        #expect(model.phase == .form)
+        #expect(model.password == "hunter2")
+        #expect(model.expiry == .never)
+        #expect(model.passwordMessage == needsPro("Clear the password to create the link."))
+        #expect(model.expiryMessage == needsPro("Choose another expiry to create the link."))
+        #expect(!model.canCreate)
+
+        model.password = ""
+        model.expiry = .thirtyDays
+        #expect(model.canCreate)
+    }
+
+    @Test("A password goes without leading and trailing spaces and tabs, and one of only those holds Create")
+    func passwordWhitespace() async throws {
+        let model = makeModel(service: FakeShareService(limits: .pro()))
+        await model.load()
+
+        model.password = " \thunter 2\t "
+        #expect(try #require(model.makeDraft()).password == "hunter 2")
+
+        model.password = " \t "
+        #expect(model.passwordMessage == String(localized: "A password can't be only spaces or tabs."))
+        #expect(!model.canCreate)
+        #expect(model.makeDraft() == nil)
+    }
+
+    @Test("SQL is held to 256 KiB of UTF-8, not 262,144 characters")
+    func sqlLimitCountsBytes() async {
+        let atLimit = makeModel(
+            .query(title: "Q", sql: String(repeating: "\u{E9}", count: ShareSheetModel.sqlLimit / 2), dialect: nil),
+            service: FakeShareService()
+        )
+        await atLimit.load()
+        #expect(atLimit.sqlTooLongMessage == nil)
+        #expect(atLimit.canCreate)
+
+        let over = makeModel(
+            .query(title: "Q", sql: String(repeating: "\u{E9}", count: ShareSheetModel.sqlLimit / 2 + 1), dialect: nil),
+            service: FakeShareService()
+        )
+        await over.load()
+        #expect(over.sqlTooLongMessage == String(
+            format: String(localized: "This query is too long to share. A link holds up to %@ of SQL."),
+            ByteCountFormatter.string(fromByteCount: Int64(ShareSheetModel.sqlLimit), countStyle: .memory)
+        ))
+        #expect(!over.canCreate)
     }
 
     @Test("Pro defaults to Never and sends a password and turned-off downloads")
@@ -182,7 +257,7 @@ struct ShareSheetModelTests {
         let model = makeModel(service: FakeShareService(limits: .pro()))
         await model.load()
         model.password = String(repeating: "p", count: ShareSheetModel.passwordLimit + 1)
-        #expect(model.passwordTooLongMessage != nil)
+        #expect(model.passwordMessage != nil)
         #expect(!model.canCreate)
         model.password = String(repeating: "p", count: ShareSheetModel.passwordLimit)
         #expect(model.canCreate)
@@ -689,5 +764,68 @@ struct ShareSheetModelTests {
         await query.load()
         try await waitUntil { !query.sqlPersonalData.isEmpty }
         #expect(query.hideSQLSuggestion == nil)
+    }
+
+    // MARK: - The rows changing under the sheet
+
+    private static func notesSource(masked: Bool) -> ShareResultSource {
+        ShareResultSource(
+            columns: ["id", "notes"],
+            columnTypes: [.integer(rawType: "int8"), .text(rawType: "text")],
+            rows: [[.text("1"), .text(masked ? "••••" : "hello")]],
+            totalRowCount: 1,
+            sql: "SELECT id, notes FROM people",
+            masks: masked ? ColumnMasks(styles: [1: .full]) : .none
+        )
+    }
+
+    @Test("A rule saved while the sheet is open reads the rows again, and Create waits for them")
+    func ruleSavedRereadsTheRows() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let asked = Asked()
+        let request = ShareRequest.result(
+            title: "People", sql: "SELECT id, notes FROM people", dialect: nil, sourceChanges: changes.eraseToAnyPublisher()
+        ) { maxRows in
+            asked.maxRows.append(maxRows)
+            return Self.notesSource(masked: asked.maxRows.count > 1)
+        }
+        let model = makeModel(request, service: FakeShareService())
+        await model.load()
+        #expect(model.canCreate)
+        model.setAction(.remove, forColumn: 0)
+        try await waitUntil { model.canCreate }
+
+        changes.send()
+        #expect(!model.canCreate)
+        #expect(model.makeDraft() == nil)
+        try await waitUntil { model.canCreate }
+
+        #expect(asked.maxRows == [1_000, 1_000])
+        #expect(model.columns.map(\.action) == [.remove, .mask])
+        #expect(model.columns.map(\.ruleStyle) == [nil, .full])
+        let snapshot = try #require(model.makeDraft()?.snapshot)
+        #expect(snapshot.columns.map(\.masked) == [.full])
+        #expect(snapshot.rows == [[.string("••••")]])
+    }
+
+    @Test("A result no longer open says why Create is off")
+    func resultGone() async {
+        let request = ShareRequest.result(title: "Gone", sql: "SELECT 1", dialect: nil) { _ in nil }
+        let model = makeModel(request, service: FakeShareService())
+        await model.load()
+
+        #expect(model.phase == .form)
+        #expect(model.resultGoneMessage == String(localized: "This result is no longer open, so there are no rows to share."))
+        #expect(!model.canCreate)
+    }
+
+    @Test("Counts read with the user's digit grouping, as PLAN 6 writes them")
+    func countsAreGrouped() async {
+        let free = makeModel(Self.resultRequest(rows: 1_200, total: 48_210), service: FakeShareService(limits: .free()))
+        await free.load()
+        #expect(free.footer == formatted("Free · %1$lld of %2$lld links · first %3$lld rows", Int64(3), Int64(5), Int64(1_000)))
+        #expect(free.footer?.contains(1_000.formatted()) == true)
+        #expect(free.capNote?.contains(1_000.formatted()) == true)
+        #expect(free.capNote?.contains(48_210.formatted()) == true)
     }
 }

@@ -19,7 +19,8 @@ internal final class ShareSheetModel: ObservableObject {
         case created(URL)
     }
 
-    // The server's field caps (api/v2.json, CreateShareBody), counted in Unicode scalars as the server counts them.
+    // The server's field caps (api/v2.json, CreateShareBody), counted as the server counts them: Unicode scalars, and
+    // UTF-8 bytes for the SQL.
     static let titleLimit = 200
     static let noteLimit = 2_000
     static let passwordLimit = 128
@@ -43,6 +44,10 @@ internal final class ShareSheetModel: ObservableObject {
     @Published private(set) var sqlSecretKinds: [SecretKind] = []
     @Published private(set) var sqlPersonalData: [SensitiveValueKind] = []
     @Published private(set) var columns: [ShareColumnChoice] = []
+    // The loader found the result gone, as when its tab closed or shows another result.
+    @Published private(set) var isResultGone = false
+    // The rows were masked again since the snapshot was built, and are being read again.
+    @Published private(set) var isSourceStale = false
 
     @Published var title: String
     @Published var note = ""
@@ -61,8 +66,13 @@ internal final class ShareSheetModel: ObservableObject {
     private let isSignedIn: @MainActor () -> Bool
     private let copyToClipboard: @MainActor (String) -> Void
     private var signInObservation: AnyCancellable?
+    private var sourceObservation: AnyCancellable?
     private var appliedDefaults = false
     private var sourceMaxRows: Int?
+    private var loadingMaxRows: Int?
+    // Moves on every read of the rows, so a read another one overtook is dropped.
+    private var sourceGeneration = 0
+    private var sourceReload: Task<Void, Never>?
     // The rows the detectors read; a rebuild never sends past them.
     private var rowCap: Int?
     // The column choices the snapshot was built with; a snapshot built for others is never sent.
@@ -91,6 +101,9 @@ internal final class ShareSheetModel: ObservableObject {
                 guard let self, self.phase == .signedOut else { return }
                 self.track(Task { await self.load() })
             }
+        sourceObservation = request.sourceChanges?.sink { [weak self] in
+            self?.sourceChanged()
+        }
         scanSQL(request.sql)
     }
 
@@ -171,10 +184,19 @@ internal final class ShareSheetModel: ObservableObject {
         }
     }
 
-    // Up to 10,000 rows of 100 columns: read, scanned and built off the main actor, once per row limit.
-    private func loadSource(maxRows: Int) async {
-        guard let load = request.loadResult, sourceMaxRows != maxRows else { return }
-        guard let loaded = await load(maxRows), !Task.isCancelled, !isClosed else { return }
+    // Up to 10,000 rows of 100 columns: read, scanned and built off the main actor, once per row limit unless forced.
+    private func loadSource(maxRows: Int, force: Bool = false) async {
+        guard let load = request.loadResult, force || sourceMaxRows != maxRows else { return }
+        sourceGeneration += 1
+        let generation = sourceGeneration
+        loadingMaxRows = maxRows
+        let loaded = await load(maxRows)
+        guard !Task.isCancelled, !isClosed, generation == sourceGeneration else { return }
+        guard let loaded else {
+            isResultGone = true
+            return
+        }
+        isResultGone = false
         // The old snapshot and choices belong to the rows being replaced: nothing built from them is sent.
         let previous = columns
         rebuild?.cancel()
@@ -192,16 +214,28 @@ internal final class ShareSheetModel: ObservableObject {
         } onCancel: {
             prepare.cancel()
         }
-        guard let prepared, !isClosed else { return }
+        guard let prepared, !isClosed, generation == sourceGeneration else { return }
         sourceMaxRows = maxRows
+        isSourceStale = false
         rowCap = prepared.rowCap
         columns = prepared.columns
         snapshot = prepared.snapshot
         builtColumns = prepared.columns
     }
 
+    // A masking rule saved in another window masked the rows again: Create waits for them to be read once more.
+    private func sourceChanged() {
+        guard !isClosed, request.kind == .result, let maxRows = sourceMaxRows ?? loadingMaxRows else { return }
+        isSourceStale = true
+        sourceReload?.cancel()
+        let task = Task { await loadSource(maxRows: maxRows, force: true) }
+        sourceReload = task
+        track(task)
+    }
+
     private func buildSnapshot() async {
         guard let source, let rowCap else { return }
+        let generation = sourceGeneration
         let choices = columns
         let shared = choices.compactMap(\.sharedColumn)
         let build = Task.detached(priority: .userInitiated) {
@@ -212,7 +246,7 @@ internal final class ShareSheetModel: ObservableObject {
         } onCancel: {
             build.cancel()
         }
-        guard let built, !isClosed, choices == columns else { return }
+        guard let built, !Task.isCancelled, !isClosed, choices == columns, generation == sourceGeneration else { return }
         snapshot = built
         builtColumns = choices
     }
@@ -340,9 +374,15 @@ internal final class ShareSheetModel: ObservableObject {
         snapshot == .noColumns && builtColumns == columns
     }
 
-    // Also while a change to the columns is rebuilding the snapshot, so Create never sends values masked the old way.
+    // Also while a change to the columns or the rules is rebuilding the snapshot, so Create never sends values masked
+    // the old way.
     var isPreparingRows: Bool {
-        request.kind == .result && (snapshot == nil || builtColumns != columns)
+        request.kind == .result && (snapshot == nil || builtColumns != columns || isSourceStale)
+    }
+
+    var resultGoneMessage: String? {
+        guard request.kind == .result, isResultGone else { return nil }
+        return String(localized: "This result is no longer open, so there are no rows to share.")
     }
 
     var sharedSQL: String {
@@ -355,16 +395,29 @@ internal final class ShareSheetModel: ObservableObject {
     }
 
     var sqlTooLongMessage: String? {
-        guard sharedSQL.unicodeScalars.count > Self.sqlLimit else { return nil }
+        guard sharedSQL.utf8.count > Self.sqlLimit else { return nil }
         return String(
-            format: String(localized: "This query is too long to share. A link holds up to %lld characters."),
-            locale: .current,
-            Int64(Self.sqlLimit)
+            format: String(localized: "This query is too long to share. A link holds up to %@ of SQL."),
+            ByteCountFormatter.string(fromByteCount: Int64(Self.sqlLimit), countStyle: .memory)
         )
     }
 
-    var passwordTooLongMessage: String? {
-        guard password.unicodeScalars.count > Self.passwordLimit else { return nil }
+    // Readers send the password in a header, where HTTP drops leading and trailing spaces and tabs.
+    static func sentPassword(_ typed: String) -> String {
+        typed.trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
+    }
+
+    // A password the plan no longer allows, as after a reload as Free, is never dropped silently.
+    var passwordMessage: String? {
+        guard !password.isEmpty else { return nil }
+        if let limits, !limits.allowsPassword {
+            return Self.sentences(Self.proRequired, String(localized: "Clear the password to create the link."))
+        }
+        let sent = Self.sentPassword(password)
+        if sent.isEmpty {
+            return String(localized: "A password can't be only spaces or tabs.")
+        }
+        guard sent.unicodeScalars.count > Self.passwordLimit else { return nil }
         return String(
             format: String(localized: "A password can be up to %lld characters."),
             locale: .current,
@@ -372,9 +425,24 @@ internal final class ShareSheetModel: ObservableObject {
         )
     }
 
+    var expiryMessage: String? {
+        guard let limits, !limits.allows(expiry) else { return nil }
+        return Self.sentences(Self.proRequired, String(localized: "Choose another expiry to create the link."))
+    }
+
+    var downloadMessage: String? {
+        guard !allowsDownload, let limits, !limits.allowsDisablingDownload else { return nil }
+        return Self.sentences(Self.proRequired, String(localized: "Turn downloads back on to create the link."))
+    }
+
+    private static var proRequired: String {
+        String(localized: "This option needs TablePro Pro.")
+    }
+
     var canCreate: Bool {
         phase == .form && !isCreating && !isSnapshotTooLarge && !isEveryColumnRemoved && !isPreparingRows
-            && sqlTooLongMessage == nil && passwordTooLongMessage == nil
+            && !isResultGone && sqlTooLongMessage == nil && passwordMessage == nil && expiryMessage == nil
+            && downloadMessage == nil
     }
 
     func create() async {
@@ -410,7 +478,9 @@ internal final class ShareSheetModel: ObservableObject {
     }
 
     func makeDraft() -> ShareDraft? {
-        guard let limits else { return nil }
+        guard limits != nil, !isSourceStale, !isResultGone, passwordMessage == nil, expiryMessage == nil,
+              downloadMessage == nil
+        else { return nil }
         let snapshotValue: ShareSnapshot?
         switch (request.kind, snapshot) {
         case (.result, .snapshot(let built)) where builtColumns == columns:
@@ -421,17 +491,17 @@ internal final class ShareSheetModel: ObservableObject {
             snapshotValue = nil
         }
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let usesPassword = limits.allowsPassword && !password.isEmpty
+        let sentPassword = Self.sentPassword(password)
         return ShareDraft(
             kind: request.kind,
             sql: sharedSQL,
             title: Self.clipped(title.trimmingCharacters(in: .whitespacesAndNewlines), to: Self.titleLimit),
             note: trimmedNote.isEmpty ? nil : Self.clipped(trimmedNote, to: Self.noteLimit),
             dialect: request.dialect,
-            expiry: limits.allows(expiry) ? expiry : limits.defaultExpiry,
+            expiry: expiry,
             hidesSQL: request.kind == .result && hasSharedSQL ? hidesSQL : nil,
-            allowsDownload: limits.allowsDisablingDownload && !allowsDownload ? false : nil,
-            password: usesPassword ? password : nil,
+            allowsDownload: allowsDownload ? nil : false,
+            password: sentPassword.isEmpty ? nil : sentPassword,
             teamID: target.teamID,
             snapshot: snapshotValue
         )

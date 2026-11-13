@@ -149,6 +149,10 @@ internal struct ShareSheet: View {
 
             Section {
                 expiryRow
+                if let message = model.expiryMessage {
+                    NoticeLabel(message, severity: .error)
+                        .accessibilityIdentifier("share-sheet-expiry-message")
+                }
                 if model.isResult, model.hasSharedSQL {
                     Toggle(String(localized: "Hide SQL"), isOn: $model.hidesSQL)
                         .accessibilityIdentifier("share-sheet-hide-sql")
@@ -168,10 +172,15 @@ internal struct ShareSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 passwordRow
-                if let message = model.passwordTooLongMessage {
+                if let message = model.passwordMessage {
                     NoticeLabel(message, severity: .error)
+                        .accessibilityIdentifier("share-sheet-password-message")
                 }
                 downloadRow
+                if let message = model.downloadMessage {
+                    NoticeLabel(message, severity: .error)
+                        .accessibilityIdentifier("share-sheet-download-message")
+                }
             }
 
             if model.isResult {
@@ -229,10 +238,11 @@ internal struct ShareSheet: View {
 
     private var passwordRow: some View {
         LabeledContent {
+            // A password the plan no longer allows stays editable, so it can be cleared.
             SecureField(String(localized: "Password"), text: $model.password)
                 .labelsHidden()
                 .frame(maxWidth: 220)
-                .disabled(!(model.limits?.allowsPassword ?? false))
+                .disabled(!(model.limits?.allowsPassword ?? false) && model.password.isEmpty)
                 .accessibilityIdentifier("share-sheet-password")
         } label: {
             proLabel(String(localized: "Password"), showsTag: !(model.limits?.allowsPassword ?? false))
@@ -244,7 +254,7 @@ internal struct ShareSheet: View {
             Toggle(String(localized: "Allow viewers to download"), isOn: $model.allowsDownload)
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .disabled(!(model.limits?.allowsDisablingDownload ?? false))
+                .disabled(!(model.limits?.allowsDisablingDownload ?? false) && model.allowsDownload)
                 .accessibilityIdentifier("share-sheet-allow-download")
         } label: {
             proLabel(
@@ -265,7 +275,10 @@ internal struct ShareSheet: View {
 
     private var previewSection: some View {
         Section {
-            if model.isSnapshotTooLarge {
+            if let message = model.resultGoneMessage {
+                NoticeLabel(message, severity: .error)
+                    .accessibilityIdentifier("share-sheet-result-gone")
+            } else if model.isSnapshotTooLarge {
                 NoticeLabel(String(localized: "This result is too large to share."), severity: .error)
             } else if model.isEveryColumnRemoved {
                 NoticeLabel(String(localized: "Keep or mask at least one column to share."), severity: .error)
