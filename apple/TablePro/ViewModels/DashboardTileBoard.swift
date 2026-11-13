@@ -62,7 +62,8 @@ final class DashboardTileBoard: ObservableObject {
                 // A tile runs on the session itself, in whichever schema it is on.
                 runsIn: { connectionId in
                     guard let browse = services.databaseManager.browseScope(for: connectionId) else { return nil }
-                    let schema = services.databaseManager.driver(for: connectionId)?.currentSchema ?? browse.schema
+                    let driver = services.databaseManager.driver(for: connectionId) as? SchemaSwitchable
+                    let schema = driver?.currentSchema ?? browse.schema
                     return DatabaseScope(connectionId: connectionId, database: browse.database, schema: schema)
                 }
             )
