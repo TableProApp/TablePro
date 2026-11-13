@@ -1,18 +1,10 @@
 namespace TablePro.Interop;
 
 // Null takes the core's: 10,000 rows per set, 256,000,000 bytes of rows per run, no timeout past the connection's.
-public sealed record QueryOptions(long? RowLimit = null, TimeSpan? Timeout = null, long? ByteLimit = null)
-{
-    // Only a tab the user revealed passes it; an export or share of the rows masks them again.
-    public bool RevealMasked { get; init; }
-}
+public sealed record QueryOptions(long? RowLimit = null, TimeSpan? Timeout = null, long? ByteLimit = null);
 
 // TypeName: the type as the server spells it, for display.
-public sealed record ResultColumn(string Name, string TypeName, ValueKind ValueKind)
-{
-    // The grid shows the column masked: its cells hold the masked text and refuse an edit.
-    public MaskStyle? Masked { get; init; }
-}
+public sealed record ResultColumn(string Name, string TypeName, ValueKind ValueKind);
 
 public enum Truncation
 {

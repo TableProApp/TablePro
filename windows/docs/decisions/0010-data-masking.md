@@ -1,27 +1,25 @@
-# 0010: Data masking
+# 0010: Masking a shared result
 
 - **Status**: Accepted
-- **Date**: 2026-11-13
+- **Date**: 2026-11-14
 
 ## Context
 
-On 2026-11-13 the maintainer decided that the Windows app masks a connection's values as the macOS app does: rules per connection, masked grids with Reveal, and every export and share masked. The core holds the engine, the rules, the detectors and every masked path out ([core 0026](../../../core/docs/decisions/0026-data-masking.md)). Reveal asks the device's owner first: Windows Hello where it is set up, a confirmation where it is not.
+On 2026-11-14 the maintainer decided that masking in this work is only for sharing: a share link hides sensitive columns before it leaves the machine, and nothing else in the Windows app masks (share-v2 PLAN-MASKING 8.0). The core computes the styles, detects what looks sensitive, previews and sums up the rows a share sends, and builds the masked snapshot ([core 0026](../../../core/docs/decisions/0026-data-masking.md)).
 
 ## Decision
 
-Each part works as the macOS app's does, in Windows sentence case and with three dots for an ellipsis (0009). The rules of the form, the tabs and the sheet are in `src/TablePro.App.Model`, tested with fakes; the views lay out.
+The share sheet's result section works as the macOS app's does, in Windows sentence case (0009). Its rules are in `src/TablePro.App.Model` (`ShareColumns`, `ShareRounds`, `SharePlan`), tested with no core; `ShareSheet` lays out.
 
-- **Rules.** The connection form's Options hold a Data masking card: one row per rule with Column or Type, the pattern (placeholder `*.email` or `uuid`), the style (Full, Last 4 characters, Email, Stable hash, NULL) and Remove rule, then Add rule. `ConnectionDraft.MaskingRules` drops a blank pattern and trims the rest. A saved change reaches the open sessions before the save returns, so the workspace calls `ResultSet.Remask` on every set it holds, and the grid reads its cells and headers again in place (`DataGridView.CellsChanged`). A rule change does not reconnect.
-- **Grid.** `ResultColumn.Masked` marks a column. The header shows the Hide glyph, the tooltip "Masked by a masking rule" and "Masked" in its UIA item status. A masked cell of a saved row refuses an edit and says why; a new row takes what is typed. A masked key locks the page (`EditLock.MaskedKey`). Copy reads the set's text, which the core already masked.
-- **Reveal.** A masked column's header menu offers Reveal masked values..., and so does the cell menu when the focused cell's column is masked, since the keyboard reaches no header. `MaskReveal` checks `UserConsentVerifier.CheckAvailabilityAsync` and asks through `UserConsentVerifierInterop.RequestVerificationForWindowAsync` with the tab's window, as a desktop app must; when Hello is not available, a `ContentDialog` asks instead. The tab keeps the reveal until it closes. A table tab asks about pending edits, then reads its page again with `revealMasked`; it never moves to another table, so its reveal never carries over. A query tab runs its statement again only when `DatabaseSession.ReadsOnly` says it only reads; otherwise the next run shows the values.
-- **Share sheet.** Below the preview, a Columns list: Keep, Mask with a style, or Remove per column, from `ResultSet.GetShareMaskingAsync`. A rule's column starts masked with the rule's style and offers only a style that hides as much; a detected column starts masked with the suggested style. The preview is `ResultSet.GetSharePreviewAsync`, so a Stable Hash shows as the core computes it. `ResultSet.GetShareSummaryAsync` is read again off the UI thread for each choice: it gives the rows the link's body budget keeps (the row note), the column cap note, and why a result too large to send cannot go; Share stays off while it is stale or too large. Under the list: "{n} columns masked, {m} removed." and, after a detection, a note to check the columns. Personal data in the SQL shows an InfoBar with a Hide SQL button. Share stays off until the columns are read, so a detected column never leaves unmasked.
+- **Columns.** Below the preview, one row per column with Keep, Mask with a style (Full, Last 4 characters, Email, Stable hash, NULL) or Remove, from `ResultSet.GetShareMaskingAsync`. A column the detectors flag starts masked with the suggested style and says what it looks like; the user may keep it. Every row lays its controls on the same fixed columns.
+- **Preview and summary.** Each choice starts a round: `ResultSet.GetShareSummaryAsync` and then `GetSharePreviewAsync` are read off the UI thread, and one from an older round is dropped. The preview is the core's own, so a Stable Hash shows as sent; the row note, the 100-column note and why a result too large cannot go come from the summary. Share, the dialog's accent button, stays off until this round's summary and preview have landed, while a value is too large, and when every column is removed.
+- **Notices.** "{n} columns masked, {m} removed." with a singular form, a note to check the columns after a detection, and an InfoBar with a Hide SQL button when the SQL holds what looks like personal data.
 
 ## Consequences
 
-- Reveal never unmasks an export or a share: the core masks them by the connection's rules whatever the tab shows.
-- The header and Reveal flows run on Windows only; their logic is covered by `tests/TablePro.App.Model.Tests` and the core's masking by `tests/TablePro.Interop.Tests/MaskingTests.cs`.
+- The grid, copies and exports show stored values; only a share's snapshot is masked, and the server never receives the originals.
+- The sheet runs on Windows only; its logic is covered by `tests/TablePro.App.Model.Tests` and the core's calls by `tests/TablePro.Interop.Tests/MaskingTests.cs`.
 
 ## Alternatives considered
 
-- **Mask in the app.** The Stable Hash key is the core's, per process, so the app could not preview or match it.
-- **Windows Hello only.** A machine without Hello set up could then never reveal.
+- **Mask in the app.** The Stable Hash key is the core's, per process, so the app could not preview it.

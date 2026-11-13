@@ -242,7 +242,6 @@ internal sealed class DefinitionSession : ITabSession
         TableFilter? filter,
         long limit,
         long offset,
-        bool revealMasked,
         CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
@@ -262,8 +261,6 @@ internal sealed class DefinitionSession : ITabSession
         throw new NotSupportedException();
 
     public RunGate GateRun(string sql) => throw new NotSupportedException();
-
-    public bool ReadsOnly(string sql) => throw new NotSupportedException();
 
     public Range? StatementAt(string sql, int caret) => throw new NotSupportedException();
 

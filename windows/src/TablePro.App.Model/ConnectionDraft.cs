@@ -25,24 +25,6 @@ public enum FieldProblem
 
 public sealed record FieldError(FormField Field, FieldProblem Problem);
 
-// One masking rule as the form edits it; a new one starts as a Full column rule, as on macOS.
-public sealed class MaskingRuleDraft
-{
-    public Guid? Id { get; init; }
-
-    public MaskTarget Target { get; set; } = MaskTarget.Column;
-
-    public string Pattern { get; set; } = string.Empty;
-
-    public MaskStyle Style { get; set; } = MaskStyle.Full;
-
-    public static MaskingRuleDraft From(MaskingRule rule)
-    {
-        ArgumentNullException.ThrowIfNull(rule);
-        return new MaskingRuleDraft { Id = rule.Id, Target = rule.Target, Pattern = rule.Pattern, Style = rule.Style };
-    }
-}
-
 // Numbers stay text as typed, so Validate can name the field that does not parse.
 public sealed class ConnectionDraft
 {
@@ -110,9 +92,6 @@ public sealed class ConnectionDraft
 
     public DateTimeOffset? LastOpened { get; set; }
 
-    // In order: the first rule that matches a column wins.
-    public List<MaskingRuleDraft> MaskingRules { get; } = [];
-
     public bool IsNew => Id is null;
 
     public bool VerifiesCertificate => TlsMode is TlsMode.VerifyFull or TlsMode.Strict;
@@ -146,7 +125,7 @@ public sealed class ConnectionDraft
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(engine);
-        var draft = new ConnectionDraft
+        return new ConnectionDraft
         {
             _savedSsh = connection.Ssh,
             Id = connection.Id,
@@ -178,8 +157,6 @@ public sealed class ConnectionDraft
             GroupId = connection.GroupId,
             LastOpened = connection.LastOpened,
         };
-        draft.MaskingRules.AddRange(connection.MaskingRules.Select(MaskingRuleDraft.From));
-        return draft;
     }
 
     public void Apply(ParsedConnectionUrl url, DatabaseEngine engine)
@@ -301,10 +278,7 @@ public sealed class ConnectionDraft
         {
             return new SavedConnection(
                 Id, name, EngineId, string.Empty, 0, Database.Trim(), string.Empty, TlsSettings.Disabled,
-                SafeMode, Color: Color, GroupId: GroupId, LastOpened: LastOpened)
-            {
-                MaskingRules = Rules(),
-            };
+                SafeMode, Color: Color, GroupId: GroupId, LastOpened: LastOpened);
         }
 
         return new SavedConnection(
@@ -339,14 +313,10 @@ public sealed class ConnectionDraft
                 : int.Parse(Timeout.Trim(), NumberStyles.None, CultureInfo.InvariantCulture),
             Color: Color,
             GroupId: GroupId,
-            LastOpened: LastOpened)
-        {
-            MaskingRules = Rules(),
-        };
+            LastOpened: LastOpened);
     }
 
-    // A rename, a colour or a group is nothing a connect reads, so a connect under way goes on without them; saved
-    // masking rules reach the open sessions as they are.
+    // A rename, a colour or a group is nothing a connect reads, so a connect under way goes on without them.
     public static bool ChangesConnect(SavedConnection before, SavedConnection after)
     {
         ArgumentNullException.ThrowIfNull(before);
@@ -362,7 +332,6 @@ public sealed class ConnectionDraft
             GroupId = before.GroupId,
             LastOpened = before.LastOpened,
             Tags = before.Tags,
-            MaskingRules = before.MaskingRules,
             Ssh = ssh,
         } != before;
     }
@@ -380,19 +349,6 @@ public sealed class ConnectionDraft
             ? SshPassword
             : null;
         return new ConnectionSecrets(password, sshPassword);
-    }
-
-    // Patterns are trimmed and a blank one is dropped, as the macOS form saves them.
-    private MaskingRule[] Rules()
-    {
-        MaskingRule[] rules =
-        [
-            .. MaskingRules
-                .Where(rule => !string.IsNullOrWhiteSpace(rule.Pattern))
-                .Select(rule => new MaskingRule(rule.Id, rule.Pattern.Trim(), rule.Target, rule.Style)),
-        ];
-        // A record compares its lists by reference, so no rules is the same empty list a connection starts with.
-        return rules.Length == 0 ? [] : rules;
     }
 
     private static void CheckPort(List<FieldError> errors, FormField field, string text, bool required)

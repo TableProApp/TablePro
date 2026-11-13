@@ -321,7 +321,7 @@ public sealed class SharePlanTests
     public void AResultIsReadyOnlyOnceItsColumnsAndWhatTheySendAreRead()
     {
         var plan = SharePlan.For(Free, ShareKind.Result, totalRows: 48_210);
-        var columns = ShareColumns.From([new ShareColumnMasking("id", null, null), new ShareColumnMasking("note", null, null)]);
+        var columns = ShareColumns.From([new ShareColumnMasking("id", null), new ShareColumnMasking("note", null)]);
         var sends = new ShareSummary(1_000, 2, false, null);
 
         Assert.Equal(ShareReadiness.Ready, SharePlan.For(Free, ShareKind.Query).Readiness(null, null));

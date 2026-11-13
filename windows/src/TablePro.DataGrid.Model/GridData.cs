@@ -9,9 +9,6 @@ public interface IGridData
 
     string GetColumnName(int column);
 
-    // The header marks a column whose cells show masked values.
-    bool IsColumnMasked(int column) => false;
-
     // A reader belongs to the thread that opened it: the grid keeps one for its UI thread, a copy opens its own.
     IGridReader OpenReader();
 }

@@ -216,11 +216,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     public string SortedDescendingStatus { get; set; } = "Sorted descending";
 
-    // A masked column's header: its UIA ItemStatus, after any sort order, and its tooltip.
-    public string MaskedStatus { get; set; } = "Masked";
-
-    public string MaskedColumnTip { get; set; } = "Masked by a masking rule";
-
     public int FrozenColumnCount
     {
         get => _columns.FrozenCount;
@@ -269,14 +264,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         SortDirection.Descending => SortedDescendingStatus,
         _ => string.Empty,
     };
-
-    internal string HeaderStatus(SortDirection direction, bool masked) =>
-        (SortStatus(direction), masked) switch
-        {
-            (var sort, false) => sort,
-            ({ Length: 0 }, true) => MaskedStatus,
-            (var sort, true) => $"{sort}, {MaskedStatus}",
-        };
 
     internal GridBrushes Brushes { get; }
 
@@ -357,7 +344,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     void IGridWindow.PrepareHeader(UIElement header, int column)
     {
         header.CanBeScrollAnchor = false;
-        ((HeaderCell)header).Bind(column, _names[column], column == _sort.Column ? _sort.Direction : SortDirection.None, IsMasked(column));
+        ((HeaderCell)header).Bind(column, _names[column], column == _sort.Column ? _sort.Direction : SortDirection.None);
     }
 
     // Shows data, or nothing for null. The grid opens its own reader on this thread and disposes it with the data.
@@ -410,39 +397,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _scroller.ChangeView(0, 0, null, true);
         Follow(0, 0);
         RaiseStatusChanges();
-    }
-
-    // The data's cells or its masked columns changed in place, as after a remask: every cell and header is read
-    // again, and the selection and the scroll stay. An open editor closes, since its value may be masked now.
-    public void CellsChanged()
-    {
-        if (_data is null)
-        {
-            return;
-        }
-        Cancel(EditorFocused);
-        _cache?.Dispose();
-        _cache = new CellCache(_data.OpenReader());
-        RebindHeaders();
-        _layoutVersion++;
-        InvalidateRows();
-    }
-
-    // The column whose header holds the element a menu or a click came from; -1 for none, or the corner.
-    public int HeaderColumnAt(object? source)
-    {
-        for (var element = source as DependencyObject; element is not null; element = VisualTreeHelper.GetParent(element))
-        {
-            if (element is HeaderCell header)
-            {
-                return Math.Max(-1, header.Column);
-            }
-            if (ReferenceEquals(element, this))
-            {
-                break;
-            }
-        }
-        return -1;
     }
 
     // The data's RowCount grew, as rows of a running query arrived.
@@ -541,8 +495,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _layoutVersion++;
         InvalidateRows();
     }
-
-    private bool IsMasked(int column) => _data is { } data && column < data.ColumnCount && data.IsColumnMasked(column);
 
     internal IEnumerable<HeaderCell> HeaderCells()
     {
@@ -687,7 +639,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         for (var column = 0; column < _columns.FrozenCount; column++)
         {
             var cell = _cornerCells[column + 1];
-            cell.Bind(column, _names[column], column == _sort.Column ? _sort.Direction : SortDirection.None, IsMasked(column));
+            cell.Bind(column, _names[column], column == _sort.Column ? _sort.Direction : SortDirection.None);
             cell.Width = _columns.Width(column);
             cell.Height = HeaderHeight;
             Canvas.SetLeft(cell, _columns.PaneX(column));
@@ -699,7 +651,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         RebuildCorner();
         foreach (var (column, element) in _headerLayout.Realized)
         {
-            ((HeaderCell)element).Bind(column, _names[column], column == _sort.Column ? _sort.Direction : SortDirection.None, IsMasked(column));
+            ((HeaderCell)element).Bind(column, _names[column], column == _sort.Column ? _sort.Direction : SortDirection.None);
         }
     }
 

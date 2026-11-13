@@ -663,36 +663,6 @@
   <data name="ConnectionTimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Query timeout in seconds</value>
   </data>
-  <data name="MaskingCard.Header" xml:space="preserve">
-    <value>Data masking</value>
-  </data>
-  <data name="MaskingCard.Description" xml:space="preserve">
-    <value>Hides matching values in the grid, copies, exports and shared links. A pattern is table.column or column, with * as a wildcard, such as *.email. Filters and sorts still run on the stored values, so masking does not replace database permissions.</value>
-  </data>
-  <data name="AddMaskingRuleButton.Content" xml:space="preserve">
-    <value>Add rule</value>
-  </data>
-  <data name="MaskingTargetName" xml:space="preserve">
-    <value>Match, rule {0}</value>
-  </data>
-  <data name="MaskingPatternName" xml:space="preserve">
-    <value>Pattern, rule {0}</value>
-  </data>
-  <data name="MaskingStyleName" xml:space="preserve">
-    <value>Mask, rule {0}</value>
-  </data>
-  <data name="RemoveMaskingRule" xml:space="preserve">
-    <value>Remove rule</value>
-  </data>
-  <data name="RemoveMaskingRuleName" xml:space="preserve">
-    <value>Remove rule {0}</value>
-  </data>
-  <data name="MaskTarget_Column" xml:space="preserve">
-    <value>Column</value>
-  </data>
-  <data name="MaskTarget_Type" xml:space="preserve">
-    <value>Type</value>
-  </data>
   <data name="MaskStyle_Full" xml:space="preserve">
     <value>Full</value>
   </data>
@@ -858,30 +828,6 @@
   <data name="GridSortedDescending" xml:space="preserve">
     <value>Sorted descending</value>
   </data>
-  <data name="GridMaskedStatus" xml:space="preserve">
-    <value>Masked</value>
-  </data>
-  <data name="GridMaskedColumnTip" xml:space="preserve">
-    <value>Masked by a masking rule</value>
-  </data>
-  <data name="RevealMaskedCommand" xml:space="preserve">
-    <value>Reveal masked values...</value>
-  </data>
-  <data name="RevealMaskedHelloMessage" xml:space="preserve">
-    <value>Show masked values in this tab</value>
-  </data>
-  <data name="RevealMaskedTitle" xml:space="preserve">
-    <value>Reveal masked values?</value>
-  </data>
-  <data name="RevealMaskedMessage" xml:space="preserve">
-    <value>This tab shows the stored values until it closes. Exports and shared links stay masked.</value>
-  </data>
-  <data name="RevealMaskedButton" xml:space="preserve">
-    <value>Reveal</value>
-  </data>
-  <data name="StatusRevealOnNextRun" xml:space="preserve">
-    <value>Masked values show from the next run.</value>
-  </data>
   <data name="SectionFavorites" xml:space="preserve">
     <value>Favorites</value>
   </data>
@@ -1046,12 +992,6 @@
   </data>
   <data name="OptionsSummaryTimeout" xml:space="preserve">
     <value>Safe Mode: {0}, timeout {1} s</value>
-  </data>
-  <data name="OptionsSummaryMaskingOne" xml:space="preserve">
-    <value>{0}, 1 masking rule</value>
-  </data>
-  <data name="OptionsSummaryMaskingMany" xml:space="preserve">
-    <value>{0}, {1} masking rules</value>
   </data>
   <data name="AppearanceSummary" xml:space="preserve">
     <value>Color: {0}, group: {1}</value>
@@ -1962,12 +1902,6 @@ New fingerprint: {2}</value>
   <data name="EditCellReadOnly" xml:space="preserve">
     <value>This value cannot be edited here.</value>
   </data>
-  <data name="EditCellMasked" xml:space="preserve">
-    <value>This value is masked. Reveal masked values to edit it.</value>
-  </data>
-  <data name="EditLockMaskedKey" xml:space="preserve">
-    <value>Rows of {0} cannot be edited while its key is masked. Reveal masked values to edit them.</value>
-  </data>
   <data name="Error_edit_required" xml:space="preserve">
     <value>This column needs a value.</value>
   </data>
@@ -2060,12 +1994,6 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_edit_out_of_range" xml:space="preserve">
     <value>The rows changed since they were read. Refresh the table and edit again.</value>
-  </data>
-  <data name="Error_edit_masked_column" xml:space="preserve">
-    <value>A masked value cannot be edited. Reveal masked values to edit it.</value>
-  </data>
-  <data name="Error_edit_masked_key" xml:space="preserve">
-    <value>The key is masked, so no row can be named. Reveal masked values to edit.</value>
   </data>
   <data name="Error_build_no_row_identity" xml:space="preserve">
     <value>This table has no way to name a single row.</value>
@@ -2399,9 +2327,6 @@ New fingerprint: {2}</value>
   </data>
   <data name="ReloadDiscardFilter" xml:space="preserve">
     <value>Applying or clearing filters will reload data and discard all unsaved changes.</value>
-  </data>
-  <data name="ReloadDiscardReveal" xml:space="preserve">
-    <value>Revealing masked values will reload data and discard all unsaved changes.</value>
   </data>
   <data name="FilterPanel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Filter rows</value>
@@ -2889,9 +2814,6 @@ New fingerprint: {2}</value>
   <data name="SharePreviewHeader" xml:space="preserve">
     <value>Rows that will be shared</value>
   </data>
-  <data name="ShareMaskedColumnTip" xml:space="preserve">
-    <value>Masked in the shared link</value>
-  </data>
   <data name="ShareNoColumns" xml:space="preserve">
     <value>Keep or mask at least one column to share.</value>
   </data>
@@ -2927,12 +2849,6 @@ New fingerprint: {2}</value>
   </data>
   <data name="ShareColumnStyleName" xml:space="preserve">
     <value>Mask style for {0}</value>
-  </data>
-  <data name="ShareColumnRuled" xml:space="preserve">
-    <value>Masked by this connection's rules</value>
-  </data>
-  <data name="ShareColumnUntraced" xml:space="preserve">
-    <value>Masked because TablePro cannot tell which table column this comes from.</value>
   </data>
   <data name="ShareColumnLooksLike" xml:space="preserve">
     <value>Looks like: {0}</value>

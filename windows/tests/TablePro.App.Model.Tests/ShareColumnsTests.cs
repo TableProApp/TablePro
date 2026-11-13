@@ -5,16 +5,17 @@ namespace TablePro.App.Model.Tests;
 public sealed class ShareColumnsTests
 {
     private static readonly MaskSuggestion EmailName = new(MaskStyle.Email, new MaskReason.ColumnName("email"));
+    private static readonly MaskSuggestion CardValues = new(MaskStyle.LastFour, new MaskReason.Values(SensitiveKind.Card));
 
     private static ShareColumns Columns() => ShareColumns.From(
     [
-        new ShareColumnMasking("id", null, null),
-        new ShareColumnMasking("email", null, EmailName),
-        new ShareColumnMasking("ssn", MaskStyle.LastFour, null),
+        new ShareColumnMasking("id", null),
+        new ShareColumnMasking("email", EmailName),
+        new ShareColumnMasking("card", CardValues),
     ]);
 
     [Fact]
-    public void ARuleMasksWithItsStyleADetectionWithItsSuggestionAndTheRestIsKept()
+    public void ADetectedColumnStartsMaskedWithItsSuggestionAndTheRestIsKept()
     {
         var columns = Columns();
 
@@ -30,40 +31,21 @@ public sealed class ShareColumnsTests
     }
 
     [Fact]
-    public void ARuledColumnIsNeverKeptAndTakesOnlyAStyleThatHidesAsMuch()
-    {
-        var ruled = Columns().Columns[2];
-
-        Assert.False(ruled.AllowsKeep);
-        Assert.False(ruled.Choose(ShareColumnAction.Keep));
-        Assert.Equal([MaskStyle.Full, MaskStyle.LastFour, MaskStyle.Null], ruled.AllowedStyles);
-        Assert.False(ruled.Choose(MaskStyle.Email));
-        Assert.Equal(MaskStyle.LastFour, ruled.Style);
-        Assert.True(ruled.Choose(ShareColumnAction.Remove));
-        Assert.Equal(ShareColumnChoice.Remove.Instance, ruled.Choice);
-
-        var nulled = ShareColumns.From([new ShareColumnMasking("x", MaskStyle.Null, null)]).Columns[0];
-        var full = ShareColumns.From([new ShareColumnMasking("x", MaskStyle.Full, null)]).Columns[0];
-        Assert.Equal([MaskStyle.Null], nulled.AllowedStyles);
-        Assert.Equal([MaskStyle.Full, MaskStyle.Null], full.AllowedStyles);
-    }
-
-    [Fact]
-    public void ADetectedColumnCanBeKeptAndAKeptColumnMaskedWithAnyStyle()
+    public void ADetectedColumnCanBeKeptAndAnyColumnMaskedWithAnyStyle()
     {
         var columns = Columns();
         var email = columns.Columns[1];
         var id = columns.Columns[0];
 
-        Assert.True(email.Choose(ShareColumnAction.Keep));
-        Assert.True(id.Choose(ShareColumnAction.Mask));
-        Assert.True(id.Choose(MaskStyle.Hash));
+        email.Choose(ShareColumnAction.Keep);
+        id.Choose(ShareColumnAction.Mask);
+        id.Choose(MaskStyle.Hash);
 
         Assert.Equal(ShareColumnChoice.Keep.Instance, email.Choice);
         Assert.Equal(new ShareColumnChoice.Mask(MaskStyle.Hash), id.Choice);
-        Assert.Equal(5, id.AllowedStyles.Count);
+        Assert.Equal(5, ShareColumn.Styles.Count);
         // The style stays for a return to Mask.
-        Assert.True(email.Choose(ShareColumnAction.Mask));
+        email.Choose(ShareColumnAction.Mask);
         Assert.Equal(new ShareColumnChoice.Mask(MaskStyle.Email), email.Choice);
     }
 
@@ -74,35 +56,13 @@ public sealed class ShareColumnsTests
 
         foreach (var column in columns.Columns)
         {
-            Assert.True(column.Choose(ShareColumnAction.Remove));
+            column.Choose(ShareColumnAction.Remove);
         }
 
         Assert.True(columns.RemovesEveryColumn);
         Assert.Equal((0, 3, 0), (columns.Masked, columns.Removed, columns.Kept));
+        Assert.Equal(ShareColumnChoice.Remove.Instance, columns.Columns[1].Choice);
         Assert.False(ShareColumns.None.RemovesEveryColumn);
-    }
-
-    [Fact]
-    public void ARuleWinsOverASuggestionSoTheColumnSaysOnlyThatItIsRuled()
-    {
-        var column = ShareColumns.From([new ShareColumnMasking("email", MaskStyle.Hash, EmailName)]).Columns[0];
-
-        Assert.Null(column.Suggestion);
-        Assert.Equal(new ShareColumnChoice.Mask(MaskStyle.Hash), column.Choice);
-        Assert.False(ShareColumns.From([new ShareColumnMasking("email", MaskStyle.Hash, EmailName)]).HasDetections);
-    }
-
-    [Fact]
-    public void AnUntracedColumnIsMaskedAsARuledOneIsAndSaysWhy()
-    {
-        var untraced = ShareColumns.From([new ShareColumnMasking("tag", MaskStyle.Full, null) { Untraced = true }]).Columns[0];
-        var ruled = Columns().Columns[2];
-
-        Assert.True(untraced.Untraced);
-        Assert.False(ruled.Untraced);
-        Assert.False(untraced.AllowsKeep);
-        Assert.Equal(new ShareColumnChoice.Mask(MaskStyle.Full), untraced.Choice);
-        Assert.False(ShareColumns.From([new ShareColumnMasking("x", null, null) { Untraced = true }]).Columns[0].Untraced);
     }
 
     [Fact]

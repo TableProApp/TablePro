@@ -82,7 +82,7 @@ public sealed class VerticalPathTests
         var cancellationToken = TestContext.Current.CancellationToken;
         var people = new TableName(null, "people");
 
-        var second = await database.Session.ReadTablePageAsync(people, null, null, 2, 2, cancellationToken: cancellationToken);
+        var second = await database.Session.ReadTablePageAsync(people, null, null, 2, 2, cancellationToken);
         var count = await database.Session.CountRowsAsync(people, cancellationToken: cancellationToken);
 
         Assert.True(second.CanSeek);

@@ -998,15 +998,6 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         ChangesBar.IsOpen = true;
     }
 
-    internal async Task RemaskAsync()
-    {
-        var contents = Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<ITabContent>().ToList();
-        foreach (var content in contents)
-        {
-            await content.RemaskAsync().ConfigureAwait(true);
-        }
-    }
-
     internal void HideChangesOnConnect()
     {
         ChangesBar.IsOpen = false;

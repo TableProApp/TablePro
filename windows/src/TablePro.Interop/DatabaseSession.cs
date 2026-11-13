@@ -81,14 +81,12 @@ public sealed partial class DatabaseSession : IAsyncDisposable
     }
 
     // Returns once the read starts, so a bad filter throws here unsent; the token also stops the read, as Run's does.
-    // The rows arrive masked by the connection's rules unless revealMasked, which only a revealed tab passes.
     public async Task<TablePageRun> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
         TableFilter? filter,
         long limit,
         long offset = 0,
-        bool revealMasked = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(table);
@@ -103,7 +101,7 @@ public sealed partial class DatabaseSession : IAsyncDisposable
                     nativeFilter,
                     checked((ulong)limit),
                     checked((ulong)offset),
-                    revealMasked,
+                    false,
                     wake,
                     token),
                 cancellationToken)
@@ -200,13 +198,6 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(sql);
         var gate = _session.GateRun(sql);
         return new RunGate(gate.Refused, [.. gate.Confirm], gate.Destructive);
-    }
-
-    // Every statement of the text only reads, by the engine's own rules; empty or unreadable text does not.
-    public bool ReadsOnly(string sql)
-    {
-        ArgumentNullException.ThrowIfNull(sql);
-        return _session.ReadsOnly(sql);
     }
 
     // The statement the caret is in, or the last one before it, split as GateRun and the driver split the text.
