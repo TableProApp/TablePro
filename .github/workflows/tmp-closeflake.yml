@@ -1,0 +1,122 @@
+name: tmp closeflake
+
+on:
+  push:
+    branches: [tmp/windows-closeflake, tmp/windows-closeflake-4285]
+
+concurrency:
+  group: tmp-closeflake-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UNIFFI_BINDGEN_CS_TAG: v0.11.1+v0.31.0
+  # The caches share the repository's 10 GB; line tables keep them about 30% smaller (build-linux.yml).
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  test:
+    name: Windows (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            app: true
+            rid: win-arm64
+            platform: ARM64
+    runs-on: ${{ matrix.runner }}
+    # DuckDB's C++ takes most of it, and MSVC builds it slowly.
+    timeout-minutes: 150
+    env:
+      RUSTFLAGS: -D warnings
+      # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks; its prebuilt objects stand in.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: ${{ matrix.target }}
+      # Saved from main only: a pull request's cache serves that pull request alone and pushes main's out.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: windows-${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # rust-cache restores DuckDB's unpacked sources as empty folders, which its build script cannot unpack over.
+      - name: Drop the emptied DuckDB sources
+        run: rm -rf "target/${{ matrix.target }}/duckdb-sources" target/duckdb-sources
+      # windows/global.json takes the newest 10.0 SDK.
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish the app with Native AOT
+        if: matrix.app
+        working-directory: windows
+        run: |
+          dotnet publish src/TablePro.App -c Release -r "${{ matrix.rid }}" -p:Platform="${{ matrix.platform }}" \
+            -p:CargoProfile=dev -p:TreatWarningsAsErrors=false -o "$RUNNER_TEMP/app"
+          if [ -e "$RUNNER_TEMP/app/TablePro.dll" ]; then
+            echo "::error::the publish holds TablePro.dll: the app was not compiled ahead of time"
+            exit 1
+          fi
+          while IFS= read -r -d '' asset; do
+            relative="${asset#src/TablePro.App/}"
+            if ! cmp -s "$asset" "$RUNNER_TEMP/app/$relative"; then
+              echo "::error::the published app is missing or changed $relative"
+              exit 1
+            fi
+          done < <(git ls-files -z -- src/TablePro.App/Assets)
+      # The Arm64 image opens its privacy settings window over the desktop, where it takes the tests' clicks.
+      - name: Prepare the desktop
+        if: matrix.app
+        shell: pwsh
+        run: |
+          . windows/ci/desktop.ps1
+          Clear-FirstLogon
+          Block-Wsl
+          Set-Display 1920 1080
+          Set-DragFullWindows
+      # A native crash can end the app before its managed exception handler writes crash.log.
+      - name: Keep native crash dumps during UI tests
+        if: matrix.app
+        shell: pwsh
+        run: |
+          $folder = "$env:RUNNER_TEMP/crash-dumps"
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\TablePro.exe'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $folder -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpCount -Value 4 -PropertyType DWord -Force | Out-Null
+      - name: The roll back prompt, many times in one process
+        working-directory: windows
+        env:
+          TABLEPRO_UI_SCREENSHOTS: ${{ github.workspace }}/screenshots
+          PROBE_PASSES: "15"
+        run: |
+          TABLEPRO_APP="$RUNNER_TEMP/app/TablePro.exe" dotnet test --project tests/TablePro.App.UITests -p:TreatWarningsAsErrors=false -- --filter-method "*ProbeLoop*" || true
+          mkdir -p "$GITHUB_WORKSPACE/probe"
+          cp "$(cygpath -u "$TEMP")"/tablepro-probe-*.log "$GITHUB_WORKSPACE/probe/" || true
+          cat "$GITHUB_WORKSPACE"/probe/tablepro-probe-*.log | sort > "$GITHUB_WORKSPACE/probe/merged.log" || true
+          cat "$GITHUB_WORKSPACE/probe/merged.log"
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: closeflake-evidence
+          path: |
+            screenshots
+            probe
+          if-no-files-found: ignore
