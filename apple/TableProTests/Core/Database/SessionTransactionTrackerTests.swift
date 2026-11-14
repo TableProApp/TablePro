@@ -344,14 +344,14 @@ struct SessionTransactionTrackerTests {
         }
         _ = try await DatabaseManager.shared.withScopedDriver(
             scope: Self.scope(connection.id), route: .sessionDriver, cancellation: .untracked,
-            ownsSessionState: false, readsOnly: true
+            sessionWork: .independent, readsOnly: true
         ) { driver in
             try await driver.execute(query: "SELECT 1")
         }
         #expect(Self.tracker.isCurrent(hold))
 
         _ = try await DatabaseManager.shared.withScopedDriver(
-            scope: Self.scope(connection.id), route: .sessionDriver, cancellation: .untracked, ownsSessionState: false
+            scope: Self.scope(connection.id), route: .sessionDriver, cancellation: .untracked, sessionWork: .independent
         ) { driver in
             try await driver.execute(query: "INSERT INTO t VALUES (1)")
         }

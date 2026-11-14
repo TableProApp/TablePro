@@ -19,7 +19,6 @@ struct MatchAnyUnsupportedFilterTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "events", query: "SELECT * FROM events", tabType: .table)

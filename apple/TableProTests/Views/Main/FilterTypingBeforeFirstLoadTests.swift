@@ -21,7 +21,6 @@ extension GlobalStateSuites {
             let coordinator = MainContentCoordinator(
                 connection: TestFixtures.makeConnection(type: type),
                 tabManager: tabManager,
-                changeManager: DataChangeManager(),
                 toolbarState: ConnectionToolbarState()
             )
             var tab = QueryTab(title: "items", query: "SELECT * FROM `items` LIMIT 200", tabType: .table)

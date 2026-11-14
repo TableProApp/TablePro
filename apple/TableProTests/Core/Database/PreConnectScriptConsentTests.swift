@@ -442,7 +442,6 @@ struct PreConnectScriptEntryPointTests {
         let coordinator = MainContentCoordinator(
             connection: fixture.connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState(),
             services: Self.services(databaseManager: fixture.manager)
         )

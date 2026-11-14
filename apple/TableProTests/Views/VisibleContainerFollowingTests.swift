@@ -30,7 +30,6 @@ struct VisibleContainerFollowingTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -108,8 +107,7 @@ struct VisibleContainerFollowingTests {
         }
     }
 
-    /// The edits are the outgoing tab's and go with it. Left in the change manager with no tab
-    /// selected, a Save would write them against the database on screen.
+    // A Save with no tab selected must not write the outgoing tab's edits against the database on screen.
     @Test("Landing on an entry with no tabs keeps the outgoing edits on their tab")
     func emptyEntryTakesNoLiveEdits() async throws {
         try await withConnectedCoordinator { coordinator, tabManager, _ in
@@ -137,7 +135,8 @@ struct VisibleContainerFollowingTests {
             coordinator.handleTabChange(from: orders.id, to: nil, tabs: tabManager.tabs)
 
             #expect(!coordinator.changeManager.hasChanges)
-            #expect(tabManager.tabs.first?.pendingChanges.hasChanges == true)
+            #expect(coordinator.selectedTabEdits.manager === coordinator.idleChangeManager)
+            #expect(coordinator.hasStagedRowEdits(inTab: orders.id))
         }
     }
 

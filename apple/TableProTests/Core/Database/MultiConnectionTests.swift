@@ -177,13 +177,11 @@ struct CoordinatorConnectionIsolationTests {
         let connId = UUID()
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -201,7 +199,6 @@ struct CoordinatorConnectionIsolationTests {
         let coordinator1 = MainContentCoordinator(
             connection: conn1,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator1.teardown() }
@@ -209,7 +206,6 @@ struct CoordinatorConnectionIsolationTests {
         let coordinator2 = MainContentCoordinator(
             connection: conn2,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator2.teardown() }
@@ -242,13 +238,11 @@ struct CoordinatorConnectionIsolationTests {
         let connId = UUID()
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }

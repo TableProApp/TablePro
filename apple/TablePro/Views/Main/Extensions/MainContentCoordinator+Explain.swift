@@ -131,7 +131,7 @@ extension MainContentCoordinator {
                 let fetchResult = try await services.databaseManager.withScopedDriver(
                     scope: scope,
                     route: services.databaseManager.executionRoute(for: scope),
-                    cancellation: .cancellableRead(lease)
+                    cancellation: .cancellableRead(lease), sessionWork: .statements
                 ) { [queryExecutor, held = manualCommitRun(skipped: !ranWrite)] driver in
                     try await held.running([request.gatedSQL(databaseType: conn.type)], on: driver) {
                         try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) { () async throws -> QueryFetchResult in
@@ -214,7 +214,7 @@ extension MainContentCoordinator {
                         }
                     }
                     seedBufferFromActiveResult(tabId: tabId)
-                    dropParkedEdits(ofBackgroundTab: tabId)
+                    dropEdits(ofReplacedResultIn: tabId)
                     toolbarState.isResultsCollapsed = false
 
                     recordHistory(

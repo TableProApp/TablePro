@@ -270,7 +270,7 @@ internal final class WindowManager {
         /// The destination has to be told a tab arrived. Its coordinator was built with no payload
         /// and `selectedTabId` is set before anything observes the manager, so the switch that
         /// normally prepares an incoming tab never runs: `toolbarState.isTableTab` stayed false and
-        /// `changeManager` kept empty table, column and primary-key metadata, which leaves Find and
+        /// the tab's edits kept empty table, column and primary-key metadata, which leaves Find and
         /// Filter disabled and a later edit unable to name the row it is saving. This is that same
         /// preparation, with no outgoing tab to put away.
         state.coordinator.handleTabChange(from: nil, to: moved.id, tabs: [moved])

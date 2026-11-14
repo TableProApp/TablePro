@@ -155,7 +155,6 @@ struct RowCountTaskLifecycleTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         return (coordinator, tabManager)

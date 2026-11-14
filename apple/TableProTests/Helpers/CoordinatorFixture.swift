@@ -6,7 +6,7 @@
 final class CoordinatorFixture {
     let connection: DatabaseConnection
     let tabManager = QueryTabManager()
-    let changeManager = DataChangeManager()
+    var changeManager: DataChangeManager { coordinator.changeManager }
     let coordinator: MainContentCoordinator
     private let injectedSession: Bool
 
@@ -25,7 +25,6 @@ final class CoordinatorFixture {
         coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: ConnectionToolbarState(),
             services: services
         )

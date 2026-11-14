@@ -72,7 +72,6 @@ struct AIChatInsertQueryTests {
         MainContentCoordinator(
             connection: TestFixtures.makeConnection(database: "db"),
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
     }

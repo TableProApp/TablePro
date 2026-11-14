@@ -18,7 +18,6 @@ private final class SeedFixture {
         coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         let tab = QueryTab(title: "Query 1", query: "SELECT 3 AS third_col;", tabType: .query)

@@ -171,7 +171,12 @@ final class MainContentCoordinator: ObservableObject {
     }
     let selectionSummary = SelectionSummaryState()
     let tabManager: QueryTabManager
-    let changeManager: DataChangeManager
+    // Each tab stages its edits in its own manager; this one answers while no tab is selected.
+    let idleChangeManager = DataChangeManager()
+    var tabEdits: [UUID: TabEdits] = [:]
+    let selectedTabEdits: SelectedTabEdits
+    // The driver a tab's edits are written through, kept for the managers tabs create later.
+    var rowWriter: (any PluginDatabaseDriver)?
     let toolbarState: ConnectionToolbarState
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor
@@ -182,10 +187,6 @@ final class MainContentCoordinator: ObservableObject {
 
     @Published internal var queryBuilder: TableQueryBuilder
     let persistence: TabPersistenceCoordinator
-    internal lazy var rowOperationsManager: RowOperationsManager = {
-        RowOperationsManager(changeManager: changeManager)
-    }()
-
     private(set) var filterCoordinator: FilterCoordinator!
     private(set) var findCoordinator: FindCoordinator!
     private(set) var queryExecutionCoordinator: QueryExecutionCoordinator!
@@ -234,13 +235,6 @@ final class MainContentCoordinator: ObservableObject {
 
     // One grid model per data tab, outliving every mount of its grid.
     var dataGridEntries: [UUID: DataTabGridEntry] = [:]
-    // Set while a tab switch still has the outgoing tab's edits in the change manager.
-    var tabSwitchOutgoingTabId: UUID?
-    // Tabs given a result while off screen, with the tab selected at that moment. One still listed when the switch
-    // handler parks its edits on the way to that same tab got the result before the handler ran, so the edits in
-    // the change manager are the old result's.
-    var tabsGivenResultOffScreen: [UUID: UUID?] = [:]
-    private(set) lazy var gridChangeState = AnyChangeManager(changeManager)
     let gridCellsEdited = PassthroughSubject<Void, Never>()
 
     // One-shot: set on an explicit open (Return, double-click), consumed by the grid to take focus. Never set on selection.
@@ -358,8 +352,7 @@ final class MainContentCoordinator: ObservableObject {
     private var externalFileModCancellable: AnyCancellable?
     internal lazy var sourceFileDiskChangeMonitor = SourceFileDiskChangeMonitor(tabManager: tabManager)
     private var schemaSwitchCancellable: AnyCancellable?
-    private var clearedEditsCancellable: AnyCancellable?
-    private var gridRepaintCancellable: AnyCancellable?
+    private var selectedTabEditsCancellable: AnyCancellable?
     var maskingRulesCancellable: AnyCancellable?
     // Sent once a saved rule has masked the rows on screen, so an open Share sheet reads them again.
     let maskingRulesApplied = PassthroughSubject<Void, Never>()
@@ -595,7 +588,6 @@ final class MainContentCoordinator: ObservableObject {
     init(
         connection: DatabaseConnection,
         tabManager: QueryTabManager,
-        changeManager: DataChangeManager,
         toolbarState: ConnectionToolbarState,
         tabSessionRegistry: TabSessionRegistry? = nil,
         queryExecutor: QueryExecutor? = nil,
@@ -606,7 +598,8 @@ final class MainContentCoordinator: ObservableObject {
         self.connection = connection
         self.windowSidebarState = WindowSidebarState(connectionId: connection.id)
         self.tabManager = tabManager
-        self.changeManager = changeManager
+        idleChangeManager.databaseType = connection.type
+        self.selectedTabEdits = SelectedTabEdits(idleChangeManager)
         self.toolbarState = toolbarState
         let resolvedRegistry = tabSessionRegistry ?? TabSessionRegistry()
         self.tabSessionRegistry = resolvedRegistry
@@ -622,8 +615,6 @@ final class MainContentCoordinator: ObservableObject {
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
 
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
-        changeManager.undoManagerProvider = { [weak self] in self?.browseUndoManager }
-        changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
         tabManager.onVisibleContainerReconciled = { [weak self] in
             self?.browseCursorCoordinator.followVisibleContainer()
         }
@@ -679,8 +670,7 @@ final class MainContentCoordinator: ObservableObject {
         self.queryExecutionCoordinator = QueryExecutionCoordinator(parent: self)
         self.paginationCoordinator = PaginationCoordinator(parent: self)
         self.rowEditingCoordinator = RowEditingCoordinator(parent: self)
-        clearedEditsCancellable = resumeWhenEditsClear()
-        gridRepaintCancellable = observeChangeManagerForGridRepaint()
+        selectedTabEditsCancellable = followSelectedTabEdits()
         maskingRulesCancellable = observeMaskingRuleChanges()
         observeSelectionForAutoRefresh()
 
@@ -756,10 +746,7 @@ final class MainContentCoordinator: ObservableObject {
         if !queryBuilder.usesSessionDriver(driver) {
             queryBuilder.setSessionDriver(driver)
         }
-        let rowWriter = driver.rowWritingPluginDriver
-        if rowWriter !== changeManager.pluginDriver {
-            changeManager.pluginDriver = rowWriter
-        }
+        adoptRowWriter(driver.rowWritingPluginDriver)
     }
 
     func markTeardownScheduled() {
@@ -909,8 +896,7 @@ final class MainContentCoordinator: ObservableObject {
         tabManager.selectedTabId = nil
 
         // pluginDriver strongly holds the whole database driver, which blocks deallocation.
-        changeManager.clearChanges()
-        changeManager.pluginDriver = nil
+        releaseAllTabEdits()
 
         services.schemaProviderRegistry.release(for: connection.id)
         services.schemaProviderRegistry.purgeUnused()

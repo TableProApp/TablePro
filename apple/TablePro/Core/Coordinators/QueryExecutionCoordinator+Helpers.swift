@@ -369,30 +369,23 @@ extension QueryExecutionCoordinator {
             isEditable: isEditable
         )
 
-        if parent.tabManager.selectedTabId == tabId {
-            parent.changeManager.configureForTable(
-                tableName: tableName ?? "",
-                schemaName: parent.tabManager.tabs[idx].tableContext.schemaName,
-                columns: columns,
-                primaryKeyColumns: resolvedPKs,
-                databaseType: conn.type,
-                generatedColumns: generatedColumns,
-                rowMatchPolicy: resolved.rowMatchPolicy,
-                columnTypeNames: newTableRows.columnTypeNames
-            )
-            parent.changeManagerMatchesSelectedResult()
-        }
-        parent.dropParkedEdits(ofBackgroundTab: tabId)
+        // The tab's own edits named rows of the result this replaces.
+        parent.changeManager(forTab: tabId).configureForTable(
+            tableName: tableName ?? "",
+            schemaName: parent.tabManager.tabs[idx].tableContext.schemaName,
+            columns: columns,
+            primaryKeyColumns: resolvedPKs,
+            databaseType: conn.type,
+            generatedColumns: generatedColumns,
+            rowMatchPolicy: resolved.rowMatchPolicy,
+            columnTypeNames: newTableRows.columnTypeNames
+        )
 
         if trigger.recordsHistory {
             recordSuccessfulRun(
                 query: historySQL ?? sql, tabId: tabId, connection: conn,
                 executionTime: executionTime, rowCount: rows.count, timing: timing
             )
-        }
-
-        if parent.tabManager.selectedTabId == tabId, isEditable, !parent.changeManager.hasChanges {
-            parent.changeManager.clearChangesAndUndoHistory()
         }
     }
 
@@ -451,7 +444,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
-        parent.dropParkedEdits(ofBackgroundTab: tabId)
+        parent.dropEdits(ofReplacedResultIn: tabId)
         parent.toolbarState.isResultsCollapsed = false
 
         recordHistory(
@@ -688,14 +681,12 @@ extension QueryExecutionCoordinator {
             tab.metadataVersion += 1
         }
 
-        if parent.tabManager.selectedTabId == tabId, !parsed.primaryKeyColumns.isEmpty {
-            parent.changeManager.setPrimaryKeyColumns(parsed.primaryKeyColumns)
+        let changeManager = parent.changeManager(forTab: tabId)
+        if !parsed.primaryKeyColumns.isEmpty {
+            changeManager.setPrimaryKeyColumns(parsed.primaryKeyColumns)
         }
-
-        if parent.tabManager.selectedTabId == tabId {
-            parent.changeManager.setGeneratedColumns(parsed.generatedColumns)
-            parent.changeManager.setRowMatchPolicy(parsed.rowMatchPolicy)
-        }
+        changeManager.setGeneratedColumns(parsed.generatedColumns)
+        changeManager.setRowMatchPolicy(parsed.rowMatchPolicy)
 
         // The metadata delta rebuilt the model's columns; the foreign key arrows need the rows redrawn.
         let refreshed = isActiveTab(tabId)

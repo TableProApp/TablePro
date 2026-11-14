@@ -35,11 +35,10 @@ struct DataTabGridEditCommitTests {
         return tab.id
     }
 
-    // The change manager holds the selected tab's edits.
     private func select(_ tabId: UUID, in coordinator: MainContentCoordinator) {
         coordinator.tabManager.selectedTabId = tabId
         let name = coordinator.tabManager.tabs.first { $0.id == tabId }?.tableContext.tableName ?? ""
-        coordinator.changeManager.configureForTable(
+        coordinator.changeManager(forTab: tabId).configureForTable(
             tableName: name,
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
@@ -106,7 +105,7 @@ struct DataTabGridEditCommitTests {
         coordinator.handleTabChange(from: outgoing, to: incoming, tabs: coordinator.tabManager.tabs)
 
         #expect(mount.commitCount == 1)
-        #expect(coordinator.tabManager.tabs.first { $0.id == outgoing }?.pendingChanges.hasChanges == true)
+        #expect(coordinator.changeManager(forTab: outgoing).isCellModified(rowID: .existing(1), columnIndex: 1))
         #expect(name(coordinator, tabId: outgoing) == .text("Zed"))
         #expect(name(coordinator, tabId: incoming) == .text("Bob"))
         #expect(!coordinator.changeManager.hasChanges)
@@ -127,8 +126,8 @@ struct DataTabGridEditCommitTests {
         #expect(name(coordinator, tabId: tabId) == .text("Zed"))
     }
 
-    @Test("the adapter refuses a commit for a tab that no longer holds the change manager")
-    func commitForAnotherTabIsRefused() throws {
+    @Test("a commit from a tab the selection has left lands in that tab's own edits")
+    func commitForAnotherTabLandsInItsOwnEdits() throws {
         let coordinator = fixtures.make().coordinator
         let outgoing = addTableTab(coordinator, name: "users")
         let incoming = addTableTab(coordinator, name: "orders")
@@ -140,9 +139,10 @@ struct DataTabGridEditCommitTests {
 
         let committed = model.commit([try nameEdit(model, "Zed")], actionName: "Edit")
 
-        #expect(!committed)
+        #expect(committed)
+        #expect(coordinator.changeManager(forTab: outgoing).isCellModified(rowID: .existing(1), columnIndex: 1))
         #expect(!coordinator.changeManager.hasChanges)
-        #expect(name(coordinator, tabId: outgoing) == .text("Bob"))
+        #expect(name(coordinator, tabId: outgoing) == .text("Zed"))
         #expect(name(coordinator, tabId: incoming) == .text("Bob"))
     }
 

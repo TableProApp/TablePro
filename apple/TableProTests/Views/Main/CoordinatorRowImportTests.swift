@@ -25,7 +25,6 @@ struct CoordinatorRowImportTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(name: "Warehouse", type: type),
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: toolbarState
         )
         coordinator.importFormatLookup = lookup
