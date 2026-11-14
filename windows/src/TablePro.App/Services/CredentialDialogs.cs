@@ -137,7 +137,7 @@ internal sealed class CredentialDialogs(FrameworkElement owner) : ICredentialPro
                 DefaultButton = trust ? ContentDialogButton.Close : ContentDialogButton.Primary,
             };
             AutomationProperties.SetAutomationId(dialog, "CredentialDialog");
-            var shown = WindowDialogs.ShowAsync(dialog, owner);
+            var shown = WindowDialogs.ShowAsync(dialog, owner, cancellationToken);
             using var registration = cancellationToken.Register(() => owner.DispatcherQueue.TryEnqueue(dialog.Hide));
             var result = await shown;
             cancellationToken.ThrowIfCancellationRequested();

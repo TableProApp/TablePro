@@ -31,9 +31,13 @@ internal static class WindowDialogs
                 await (_free ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
                     .ConfigureAwait(true);
             }
+            else if (_closing > 0)
+            {
+                await ClosedAsync().ConfigureAwait(true);
+            }
             else
             {
-                return await ShowAsync(dialog, owner).ConfigureAwait(true);
+                return await ShowNowAsync(dialog, owner).ConfigureAwait(true);
             }
         }
     }
@@ -51,15 +55,30 @@ internal static class WindowDialogs
         return loaded.Task;
     }
 
-    public static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, FrameworkElement owner)
+    private static Task ClosedAsync() =>
+        (_closed ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+
+    // A question asked during the last answer's closing transition, as a click right after Cancel, waits for it.
+    public static async Task<ContentDialogResult> ShowAsync(
+        ContentDialog dialog, FrameworkElement owner, CancellationToken cancellationToken = default)
     {
-        // A question asked during the last answer's closing transition, as a click right after Cancel, waits for it.
         while (OpenRoots.Count == 0 && _closing > 0)
         {
-            await (_closed ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
-                .ConfigureAwait(true);
+            try
+            {
+                await ClosedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return ContentDialogResult.None;
+            }
         }
 
+        return await ShowNowAsync(dialog, owner).ConfigureAwait(true);
+    }
+
+    private static async Task<ContentDialogResult> ShowNowAsync(ContentDialog dialog, FrameworkElement owner)
+    {
         if (owner.XamlRoot is not { } root || OpenRoots.Count > 0)
         {
             return ContentDialogResult.None;
