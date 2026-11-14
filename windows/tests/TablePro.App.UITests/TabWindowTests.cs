@@ -204,7 +204,7 @@ public sealed partial class ShellTests
         app.Find("PrimaryButton", torn).AsButton().Invoke();
         app.WaitForClose(SampleWindow);
         app.TypeInto("Query 1", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
-        app.Chord(() => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+        app.Chord(() => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
         Assert.Equal("0", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "0"));
     }

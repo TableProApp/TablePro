@@ -23,10 +23,10 @@ final class PaginationCoordinator: ObservableObject {
     // MARK: - Pagination
 
     func goToNextPage() {
-        guard canSeek, let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
+        guard canSeek, let (tab, _) = parent.tabManager.selectedTabAndIndex else { return }
         let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
-        paginateAfterConfirmation(tabIndex: tabIndex) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
+        paginateAfterConfirmation(tabId: tab.id) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
     }
 
     func goToPreviousPage() {
@@ -80,9 +80,8 @@ final class PaginationCoordinator: ObservableObject {
             ),
             confirmTitle: String(localized: "Show All")
         ) { [weak self] in
-            guard let self,
-                  let tabIndex = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-            paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            guard let self, parent.tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+            paginateAfterConfirmation(tabId: tabId) { pagination in
                 pagination.updatePageSize(max(total, 1))
                 pagination.goToFirstPage()
             }
@@ -116,32 +115,28 @@ final class PaginationCoordinator: ObservableObject {
         where condition: (PaginationState) -> Bool = { _ in true },
         mutate: @escaping (inout PaginationState) -> Void
     ) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
+        guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
               condition(tab.pagination) else { return }
-        paginateAfterConfirmation(tabIndex: tabIndex, mutate: mutate)
+        paginateAfterConfirmation(tabId: tab.id, mutate: mutate)
     }
 
     private func paginateAfterConfirmation(
-        tabIndex: Int,
+        tabId: UUID,
         mutate: @escaping (inout PaginationState) -> Void
     ) {
-        let tabId = parent.tabManager.tabs[tabIndex].id
-        parent.confirmDiscardChangesIfNeeded(action: .pagination) { [weak self] confirmed in
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .pagination) { [weak self] confirmed in
             guard let self, confirmed else { return }
             guard parent.tabManager.mutate(tabId: tabId, { tab in
                 mutate(&tab.pagination)
                 tab.paginationVersion += 1
             }) else { return }
-            reloadCurrentPage()
+            reloadPage(ofTab: tabId)
         }
     }
 
-    private func reloadCurrentPage() {
-        guard let tabIndex = parent.tabManager.selectedTabIndex,
-              tabIndex < parent.tabManager.tabs.count else { return }
-
-        parent.rebuildTableQuery(at: tabIndex)
-        parent.runQuery(viewport: .firstRow)
+    private func reloadPage(ofTab tabId: UUID) {
+        parent.rebuildTableQuery(forTab: tabId)
+        parent.runQuery(onTab: tabId, viewport: .firstRow)
     }
 
     // MARK: - Cancel Current Query

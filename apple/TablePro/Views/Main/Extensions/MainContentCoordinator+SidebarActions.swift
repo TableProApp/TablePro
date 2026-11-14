@@ -75,7 +75,7 @@ extension MainContentCoordinator {
             return
         }
         // The active result's unsaved edits leave with it, so this asks first, as switching does.
-        confirmDiscardChangesIfNeeded(action: .resultClose) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .resultClose) { [weak self] confirmed in
             guard confirmed, let self,
                   let tabIdx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
             let replacementId = replacement(self.tabManager.tabs[tabIdx].display)
@@ -117,7 +117,7 @@ extension MainContentCoordinator {
             clearUnpinnedResults(in: tabId)
             return
         }
-        confirmDiscardChangesIfNeeded(action: .clearResults) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .clearResults) { [weak self] confirmed in
             if confirmed { self?.clearUnpinnedResults(in: tabId) }
         }
     }

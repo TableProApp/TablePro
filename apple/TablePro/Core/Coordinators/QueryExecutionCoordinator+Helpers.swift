@@ -236,12 +236,12 @@ extension QueryExecutionCoordinator {
             databaseType: conn.type,
             declaredVariants: conn.type.explainVariants
         ) {
-            applyExplainResult(
-                tabId: tabId,
-                routed: routed,
+            installExplainPlan(
+                routed,
+                onTab: tabId,
                 executionTime: executionTime,
                 rowCount: rows.count,
-                sql: sql,
+                resultSQL: sql,
                 historySQL: historySQL ?? sql,
                 connection: conn,
                 queryParameterValues: queryParameterValues,
@@ -351,7 +351,9 @@ extension QueryExecutionCoordinator {
                 tab.display.isResultsCollapsed = false
             }
         }
-        parent.toolbarState.isResultsCollapsed = false
+        if parent.tabManager.selectedTabId == tabId {
+            parent.toolbarState.isResultsCollapsed = false
+        }
 
         let resolvedPKs = Self.resolvedPrimaryKeys(
             reported: metadata?.primaryKeyColumns,
@@ -383,108 +385,44 @@ extension QueryExecutionCoordinator {
 
         if trigger.recordsHistory {
             recordSuccessfulRun(
-                query: historySQL ?? sql, tabId: tabId, connection: conn,
+                query: historySQL ?? sql, tabId: tabId,
                 executionTime: executionTime, rowCount: rows.count, timing: timing
             )
         }
     }
 
-    private func applyExplainResult(
-        tabId: UUID,
-        routed: ExplainResultRouter.RoutedPlan,
-        executionTime: TimeInterval,
-        rowCount: Int,
-        sql: String,
-        historySQL: String,
-        connection conn: DatabaseConnection,
-        queryParameterValues: [QueryParameter]?,
-        anchor: StatementAnchor? = nil,
-        timing: PluginQueryTiming? = nil,
-        serverOutput: PluginServerOutput
-    ) {
-        let databaseName = historyDatabaseName(tabId: tabId)
-        let schemaName = historySchemaName(tabId: tabId)
-        let historyId = UUID()
-        let captured = QueryPlanCaptureBuilder.make(
-            subjectSQL: routed.subjectSQL,
-            rawPlan: routed.rawText,
-            format: routed.format,
-            variantKey: routed.variantKey,
-            scope: QueryPlanScope(
-                connectionId: conn.id,
-                databaseType: conn.type,
-                databaseName: databaseName,
-                schemaName: schemaName
-            ),
-            executionTime: executionTime,
-            capturedAt: Date(),
-            historyId: historyId,
-            queryParameters: queryParameterValues
-        )
-        parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
-        parent.tabManager.mutate(tabId: tabId) { tab in
-            tab.execution.executionTime = executionTime
-            tab.execution.rowsAffected = 0
-            tab.execution.statusMessage = nil
-            tab.execution.lastExecutedAt = Date()
-            tab.pagination.resetLoadMore()
-            tab.display.replaceUnpinnedResults(
-                with: [ExplainResultSetFactory.make(
-                    rawText: routed.rawText,
-                    plan: routed.plan,
-                    sql: sql,
-                    executionTime: executionTime,
-                    anchor: anchor,
-                    planContext: captured.context,
-                    serverOutput: serverOutput
-                )]
-            )
-            if tab.display.isResultsCollapsed {
-                tab.display.isResultsCollapsed = false
-            }
-        }
-        parent.seedBufferFromActiveResult(tabId: tabId)
-        parent.dropEdits(ofReplacedResultIn: tabId)
-        parent.toolbarState.isResultsCollapsed = false
-
-        recordHistory(
-            QueryHistoryRecordRequest(
-                id: historyId,
-                query: historySQL,
-                connectionId: conn.id,
-                databaseName: databaseName,
-                databaseType: conn.type,
-                schemaName: schemaName,
-                source: .explain,
-                executionTime: executionTime,
-                rowCount: rowCount,
-                wasSuccessful: true,
-                planCapture: captured.capture,
-                timing: timing
-            )
-        )
-    }
-
     private func recordSuccessfulRun(
         query: String,
         tabId: UUID,
-        connection conn: DatabaseConnection,
         executionTime: TimeInterval,
         rowCount: Int,
         timing: PluginQueryTiming?
     ) {
-        recordHistory(
+        recordRunHistory(
+            RunHistoryEntry(query: query, executionTime: executionTime, rowCount: rowCount, timing: timing),
+            tabId: tabId
+        )
+    }
+
+    // The one history writer for a tab's runs: every kind files under the tab's database and schema as the row is written.
+    @discardableResult
+    func recordRunHistory(_ entry: RunHistoryEntry, tabId: UUID) -> Task<Bool, Never> {
+        let conn = parent.connection
+        return recordHistory(
             QueryHistoryRecordRequest(
-                query: query,
+                id: entry.id,
+                query: entry.terminates && !entry.query.hasSuffix(";") ? entry.query + ";" : entry.query,
                 connectionId: conn.id,
                 databaseName: historyDatabaseName(tabId: tabId),
                 databaseType: conn.type,
                 schemaName: historySchemaName(tabId: tabId),
-                source: historySource(tabId: tabId),
-                executionTime: executionTime,
-                rowCount: rowCount,
-                wasSuccessful: true,
-                timing: timing
+                source: entry.source ?? historySource(tabId: tabId),
+                executionTime: entry.executionTime,
+                rowCount: entry.rowCount,
+                wasSuccessful: entry.failure == nil,
+                errorMessage: entry.failure,
+                planCapture: entry.planCapture,
+                timing: entry.timing
             )
         )
     }
@@ -498,7 +436,9 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
-        let resultSetId = parent.tabManager.tabs.first { $0.id == tabId }?.display.activeResultSetId
+        let tab = parent.tabManager.tabs.first { $0.id == tabId }
+        let resultSetId = tab?.display.activeResultSetId
+        let scope = tab.flatMap(parent.scope(for:))
         Task(priority: .utility) { [weak self, parent] in
             // The caller marked the total pending; every exit that skips `resolveRowCount` must release it, or Count Exactly never returns.
             guard let self else {
@@ -534,7 +474,8 @@ extension QueryExecutionCoordinator {
             let columnEnumValues = await parent.fetchEnumValues(
                 columnInfo: schema.columns,
                 tableName: tableName,
-                connectionType: connectionType
+                connectionType: connectionType,
+                scope: scope
             )
             guard !columnEnumValues.isEmpty else { return }
 
@@ -886,7 +827,8 @@ extension QueryExecutionCoordinator {
         tabId: UUID,
         connection conn: DatabaseConnection,
         serverOutput: PluginServerOutput = .none,
-        trigger: TableLoadTrigger = .userInitiated
+        trigger: TableLoadTrigger = .userInitiated,
+        historySource: QueryHistorySource? = nil
     ) {
         let diagnosis = DatabaseWriteRejectionDiagnosis.formatted(error)
         let message = ServerOutputCapture.failureMessage(diagnosis, output: serverOutput)
@@ -900,19 +842,15 @@ extension QueryExecutionCoordinator {
         }
 
         guard trigger.recordsHistory else { return }
-        recordHistory(
-            QueryHistoryRecordRequest(
+        recordRunHistory(
+            RunHistoryEntry(
                 query: sql,
-                connectionId: conn.id,
-                databaseName: historyDatabaseName(tabId: tabId),
-                databaseType: conn.type,
-                schemaName: historySchemaName(tabId: tabId),
-                source: historySource(tabId: tabId),
+                source: historySource,
                 executionTime: 0,
                 rowCount: -1,
-                wasSuccessful: false,
-                errorMessage: error.localizedDescription
-            )
+                failure: error.localizedDescription
+            ),
+            tabId: tabId
         )
     }
 }

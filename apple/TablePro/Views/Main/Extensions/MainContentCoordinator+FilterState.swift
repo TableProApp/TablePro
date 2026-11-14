@@ -37,7 +37,7 @@ extension MainContentCoordinator {
 
     func applyCellFilter(_ filter: TableFilter, forTab tabId: UUID) {
         guard tabManager.selectedTab?.id == tabId else { return }
-        filterCoordinator.applyCellFilter(filter)
+        filterCoordinator.applyCellFilter(filter, forTab: tabId)
     }
 
     func toggleFilterPanel() {

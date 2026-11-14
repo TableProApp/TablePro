@@ -23,7 +23,7 @@ struct RunDiscardGuardTests {
     func runStatementAsksFirst() {
         let (fixture, tabId) = makeEditedResult()
 
-        #expect(!fixture.coordinator.runStatement("SELECT * FROM users"))
+        #expect(!fixture.coordinator.runStatement("SELECT * FROM users", onTab: fixture.coordinator.commandTabId))
 
         #expect(fixture.changeManager.hasChanges)
         #expect(!fixture.coordinator.isShowingSafeModePrompt)
@@ -34,8 +34,8 @@ struct RunDiscardGuardTests {
     func runAndRunAllAskFirst() {
         let (fixture, tabId) = makeEditedResult()
 
-        fixture.coordinator.runQuery(viewport: .firstRow)
-        fixture.coordinator.runAllStatements()
+        fixture.coordinator.runQuery(onTab: fixture.coordinator.commandTabId, viewport: .firstRow)
+        fixture.coordinator.runAllStatements(onTab: fixture.coordinator.commandTabId)
 
         #expect(fixture.changeManager.hasChanges)
         #expect(!fixture.coordinator.isShowingSafeModePrompt)
@@ -50,6 +50,6 @@ struct RunDiscardGuardTests {
         fixture.changeManager.hasChanges = true
         fixture.coordinator.isShowingConfirmAlert = true
 
-        #expect(fixture.coordinator.runStatement("SELECT 1"))
+        #expect(fixture.coordinator.runStatement("SELECT 1", onTab: fixture.coordinator.commandTabId))
     }
 }

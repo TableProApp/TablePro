@@ -49,7 +49,8 @@ extension MainContentCoordinator {
             databaseName: targetDatabase ?? browseDatabaseName,
             claimFocus: true
         )
-        runAllStatements(extraCapabilities: .confirmsWrites)
+        guard let tabId = tabManager.selectedTabId else { return }
+        runAllStatements(onTab: tabId, extraCapabilities: .confirmsWrites)
     }
 
     /// Deleting a connection deletes its query history with it, so an id that resolves to nothing

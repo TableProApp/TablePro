@@ -22,60 +22,21 @@ final class QueryExecutionCoordinator: ObservableObject {
         self.parent = parent
     }
 
-    // MARK: - Run All Statements
-
-    func runAllStatements(extraCapabilities: CallerCapabilities = []) {
-        guard let (tab, index) = parent.tabManager.selectedTabAndIndex,
-              !parent.tabExecution.isExecuting(tab.id),
-              tab.tabType == .query else { return }
-
-        let batches = executionBatches(in: tab.content.query)
-        let statements = batches.flatMap(\.statements)
-        guard !statements.isEmpty else { return }
-        parent.tabVersions.record(tab, connectionId: parent.connectionId, reason: .run)
-
-        if AppSettingsManager.shared.editor.queryParametersEnabled, parent.bindsNamedParameters {
-            let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
-            let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL, grammar: parent.lexicalGrammar)
-
-            if !detectedNames.isEmpty {
-                let reconciled = detectAndReconcileParameters(
-                    sql: combinedSQL,
-                    existing: parent.tabManager.tabs[index].content.queryParameters
-                )
-                parent.tabManager.mutate(at: index) { $0.content.queryParameters = reconciled }
-
-                if !parent.tabManager.tabs[index].content.isParameterPanelVisible {
-                    parent.tabManager.mutate(at: index) { $0.content.isParameterPanelVisible = true }
-                    return
-                }
-
-                dispatchParameterizedBatches(
-                    batches,
-                    parameters: reconciled,
-                    tabIndex: index,
-                    extraCapabilities: extraCapabilities
-                )
-                return
-            }
-        }
-
-        dispatchBatches(batches, tabIndex: index, extraCapabilities: extraCapabilities)
-    }
-
+    // `parameters` nil runs the text as written; a list binds each statement's `:name` markers.
     func dispatchBatches(
         _ batches: [ExecutableBatch],
-        tabIndex index: Int,
+        parameters: [QueryParameter]? = nil,
+        onTab tabId: UUID,
         bypassRowLimit: Bool = false,
         extraCapabilities: CallerCapabilities = [],
         install: ResultInstall = .newResult
     ) {
         guard !parent.isShowingSafeModePrompt, let route = executionRoute(for: batches) else { return }
-        guard !refuses(route, tabIndex: index), let target = runTarget(at: index) else { return }
+        guard !refuses(route, onTab: tabId), let target = runTarget(onTab: tabId) else { return }
         parent.isShowingSafeModePrompt = true
         let request = makeExecuteRequest(
             statements: batches.flatMap(\.statements),
-            tabIndex: index,
+            onTab: tabId,
             extraCapabilities: extraCapabilities
         )
         Task { [parent] in
@@ -83,39 +44,54 @@ final class QueryExecutionCoordinator: ObservableObject {
             switch await parent.executionGate.authorize(request) {
             case .authorized:
                 guard parent.rereadCanStart(install.source), stillHolds(target) else { return }
-                switch route {
-                case .single(let only):
-                    parent.executeQueryInternal(
-                        only.sql,
-                        bypassRowLimit: bypassRowLimit,
-                        anchor: install.anchor ?? StatementAnchor(only),
-                        viewport: install.viewport,
-                        source: install.source,
-                        onTab: target.tabId
-                    )
-                case .statements(let statements):
-                    executeMultipleStatements(statements, bypassRowLimit: bypassRowLimit, onTab: target.tabId)
-                case .batches(let batches):
-                    executeBatches(batches, parameters: [], bypassRowLimit: bypassRowLimit, onTab: target.tabId)
-                case .needsBatchDriver:
-                    break
-                }
+                start(route, parameters: parameters, bypassRowLimit: bypassRowLimit, install: install, onTab: target.tabId)
             case .denied(let reason, _):
                 parent.tabManager.mutate(tabId: target.tabId) { $0.execution.errorMessage = reason }
             }
         }
     }
 
-    private func runTarget(at index: Int) -> RunTarget? {
-        guard parent.tabManager.tabs.indices.contains(index) else { return nil }
-        let tab = parent.tabManager.tabs[index]
+    private func start(
+        _ route: QueryExecutionRoute,
+        parameters: [QueryParameter]?,
+        bypassRowLimit: Bool,
+        install: ResultInstall,
+        onTab tabId: UUID
+    ) {
+        switch route {
+        case .single(let only):
+            let anchor = install.anchor ?? StatementAnchor(only)
+            if let parameters {
+                executeQueryWithParameters(
+                    only.sql, parameters: parameters, onTab: tabId,
+                    bypassRowLimit: bypassRowLimit, anchor: anchor, install: install
+                )
+            } else {
+                startSingleRun(
+                    SingleRunRequest(sql: only.sql, bypassRowLimit: bypassRowLimit, anchor: anchor, install: install),
+                    onTab: tabId
+                )
+            }
+        case .statements(let statements):
+            executeMultipleStatementsWithParameters(
+                statements, parameters: parameters ?? [], onTab: tabId, bypassRowLimit: bypassRowLimit
+            )
+        case .batches(let batches):
+            executeBatches(batches, parameters: parameters ?? [], onTab: tabId, bypassRowLimit: bypassRowLimit)
+        case .needsBatchDriver:
+            break
+        }
+    }
+
+    func runTarget(onTab tabId: UUID) -> RunTarget? {
+        guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
         return RunTarget(
             tabId: tab.id, databaseName: tab.tableContext.databaseName, schemaName: tab.tableContext.schemaName
         )
     }
 
     // The approval prompt is not window-modal: the tab can be closed or repointed at another database before the answer.
-    private func stillHolds(_ target: RunTarget) -> Bool {
+    func stillHolds(_ target: RunTarget) -> Bool {
         guard let tab = parent.tabManager.tabs.first(where: { $0.id == target.tabId }) else { return false }
         // A tab bound to no database follows the connection, which a queued switch may move meanwhile.
         let moved = !target.databaseName.isEmpty
@@ -133,11 +109,10 @@ final class QueryExecutionCoordinator: ObservableObject {
 
     private func makeExecuteRequest(
         statements: [SQLStatementScanner.ExecutableStatement],
-        tabIndex index: Int,
+        onTab tabId: UUID,
         extraCapabilities: CallerCapabilities = []
     ) -> OperationRequest {
         let sql = statements.map(\.sql)
-        let tabs = parent.tabManager.tabs
         return OperationRequest(
             connectionId: parent.connectionId,
             databaseType: parent.connection.type,
@@ -146,76 +121,14 @@ final class QueryExecutionCoordinator: ObservableObject {
             caller: .userInterface,
             capabilities: CallerCapabilities.interactiveUser.union(extraCapabilities),
             operationDescription: String(localized: "Execute Query"),
-            runsIn: tabs.indices.contains(index) ? parent.scope(for: tabs[index]) : nil
+            runsIn: parent.tabManager.tabs.first { $0.id == tabId }.flatMap(parent.scope(for:))
         )
-    }
-
-    func dispatchParameterizedBatches(
-        _ batches: [ExecutableBatch],
-        parameters: [QueryParameter],
-        tabIndex index: Int,
-        bypassRowLimit: Bool = false,
-        extraCapabilities: CallerCapabilities = [],
-        install: ResultInstall = .newResult
-    ) {
-        guard !parent.isShowingSafeModePrompt, let route = executionRoute(for: batches) else { return }
-        guard !refuses(route, tabIndex: index), let target = runTarget(at: index) else { return }
-        parent.isShowingSafeModePrompt = true
-        let request = makeExecuteRequest(
-            statements: batches.flatMap(\.statements),
-            tabIndex: index,
-            extraCapabilities: extraCapabilities
-        )
-        Task { [parent] in
-            defer { parent.isShowingSafeModePrompt = false }
-            switch await parent.executionGate.authorize(request) {
-            case .authorized:
-                guard parent.rereadCanStart(install.source), stillHolds(target) else { return }
-                executeParameterizedAfterSafeMode(
-                    route,
-                    parameters: parameters,
-                    bypassRowLimit: bypassRowLimit,
-                    install: install,
-                    tabId: target.tabId
-                )
-            case .denied(let reason, _):
-                parent.tabManager.mutate(tabId: target.tabId) { $0.execution.errorMessage = reason }
-            }
-        }
-    }
-
-    private func executeParameterizedAfterSafeMode(
-        _ route: QueryExecutionRoute,
-        parameters: [QueryParameter],
-        bypassRowLimit: Bool,
-        install: ResultInstall,
-        tabId: UUID
-    ) {
-        switch route {
-        case .single(let only):
-            executeQueryWithParameters(
-                only.sql,
-                parameters: parameters,
-                bypassRowLimit: bypassRowLimit,
-                anchor: install.anchor ?? StatementAnchor(only),
-                install: install,
-                onTab: tabId
-            )
-        case .statements(let statements):
-            executeMultipleStatementsWithParameters(
-                statements, parameters: parameters, bypassRowLimit: bypassRowLimit, onTab: tabId
-            )
-        case .batches(let batches):
-            executeBatches(batches, parameters: parameters, bypassRowLimit: bypassRowLimit, onTab: tabId)
-        case .needsBatchDriver:
-            break
-        }
     }
 
     // A run the driver cannot carry out as written says so before anything is sent, rather than running part of it.
-    private func refuses(_ route: QueryExecutionRoute, tabIndex index: Int) -> Bool {
+    private func refuses(_ route: QueryExecutionRoute, onTab tabId: UUID) -> Bool {
         guard case .needsBatchDriver = route else { return false }
-        parent.tabManager.mutate(at: index) {
+        parent.tabManager.mutate(tabId: tabId) {
             $0.execution.errorMessage = String(
                 localized: "Update the database driver in Settings > Extensions to run a batch more than once with GO."
             )
