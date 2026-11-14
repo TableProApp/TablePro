@@ -357,3 +357,29 @@ async fn a_pinned_run_comes_first_and_an_export_writes_the_runs_asked_for() {
     assert_eq!(relative.code(), "ffi.export_bad_path");
     session.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn an_edit_by_id_reaches_the_query_after_a_rename_elsewhere() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let queries = core.history().await.unwrap().saved_queries();
+    let id = queries
+        .save(draft(SHOP, "Daily", "SELECT 1"), false)
+        .await
+        .unwrap()
+        .unwrap();
+    queries.rename(id, "Weekly".to_owned()).await.unwrap();
+
+    queries.set_sql(id, "SELECT 7".to_owned()).await.unwrap();
+    let gone = queries.set_sql(9_999, "SELECT 2".to_owned()).await.unwrap_err();
+
+    let snapshot = queries.snapshot(SHOP.to_owned()).await.unwrap();
+    let [query] = snapshot.queries.as_slice() else {
+        panic!("{:?}", snapshot.queries)
+    };
+    assert_eq!(
+        (query.id, query.name.as_str(), query.sql.as_str()),
+        (id, "Weekly", "SELECT 7")
+    );
+    assert_eq!(gone.code(), "storage.not_found");
+}

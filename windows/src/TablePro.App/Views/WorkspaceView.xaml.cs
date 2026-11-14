@@ -638,6 +638,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
     }
 
+    private async void OnSaveQueryRequested(object? sender, EventArgs e)
+    {
+        if (sender is QueryTabView { Editor: { } editor })
+        {
+            await SaveQueryAsync(editor.Document.Snapshot()).ConfigureAwait(true);
+        }
+    }
+
     // Insert in editor: a blank query tab takes the text, one with text gets it after a blank line, else a new tab opens.
     private void InsertQuery(string sql)
     {
@@ -783,9 +791,15 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             ShowExport(result.Succeeded ? InfoBarSeverity.Success : InfoBarSeverity.Error, result.Message, running: false);
             if (result.TableChanged)
             {
-                foreach (var item in Tabs.TabItems.OfType<TabViewItem>())
+                // Taken before the first refresh, since a tab can open, close or move while one runs.
+                var views = Tabs.TabItems.OfType<TabViewItem>()
+                    .Select(item => item.Content)
+                    .OfType<TableTabView>()
+                    .Where(view => view.Shows(entry.Schema, entry.Name))
+                    .ToList();
+                foreach (var view in views)
                 {
-                    if (item.Content is TableTabView view && view.Shows(entry.Schema, entry.Name))
+                    if (Tabs.TabItems.OfType<TabViewItem>().Any(item => ReferenceEquals(item.Content, view)))
                     {
                         await view.RefreshRowsAsync().ConfigureAwait(true);
                     }
@@ -957,6 +971,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested += OnShareRequested;
         }
 
+        if (item.Content is QueryTabView query)
+        {
+            query.CanSaveQuery = CanShowSavedQueries;
+            query.SaveQueryRequested += OnSaveQueryRequested;
+        }
+
         if (item.Content is TableTabView tableTab)
         {
             tableTab.DraftChanged += OnEditorTextChanged;
@@ -1006,6 +1026,11 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is IShareSource source)
         {
             source.ShareRequested -= OnShareRequested;
+        }
+
+        if (item.Content is QueryTabView query)
+        {
+            query.SaveQueryRequested -= OnSaveQueryRequested;
         }
 
         if (item.Content is TableTabView tableTab)

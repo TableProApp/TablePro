@@ -62,6 +62,13 @@ public sealed class SavedQueries : IDisposable
         return CoreCall.RunAsync(() => _store.Rename(id, name));
     }
 
+    // By id, so an edit from a list read before a rename elsewhere still changes the query it showed.
+    public Task SetSqlAsync(long id, string sql)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        return CoreCall.RunAsync(() => _store.SetSql(id, sql));
+    }
+
     // Null or blank clears it.
     public Task SetKeywordAsync(long id, string? keyword) => CoreCall.RunAsync(() => _store.SetKeyword(id, keyword));
 

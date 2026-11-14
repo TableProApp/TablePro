@@ -3606,4 +3606,7 @@ New fingerprint: {2}</value>
   <data name="ImportCsvSampleEmpty" xml:space="preserve">
     <value>(empty)</value>
   </data>
+  <data name="SaveQueryCommand" xml:space="preserve">
+    <value>Save query...</value>
+  </data>
 </root>

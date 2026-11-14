@@ -66,7 +66,7 @@ internal static class SaveQueryDialog
         }
     }
 
-    // Writes only what changed: the name, the text by that name with replace keeping the id, then the folder.
+    // Writes only what changed, each by the query's id: the name, the text, then the folder.
     public static async Task<SavedQueryPlace?> EditAsync(
         FrameworkElement owner,
         SavedQueries store,
@@ -178,7 +178,7 @@ internal static class SaveQueryDialog
 
             if (!string.Equals(draft.Sql, draft.StoredSql, StringComparison.Ordinal))
             {
-                await store.SaveAsync(connectionId, connectionName, draft.Name, draft.Sql, replace: true).ConfigureAwait(true);
+                await store.SetSqlAsync(id, draft.Sql).ConfigureAwait(true);
                 draft.StoredSql = draft.Sql;
             }
         }

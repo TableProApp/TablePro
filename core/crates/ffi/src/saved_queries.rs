@@ -99,6 +99,12 @@ impl SavedQueryStore {
         on_runtime(&self.tasks, async move { Ok(queries.rename(id, &name).await?) }).await
     }
 
+    // By id, so an edit from a list read before a rename elsewhere still changes the query it showed.
+    pub async fn set_sql(&self, id: i64, sql: String) -> Result<(), CoreError> {
+        let queries = self.queries.clone();
+        on_runtime(&self.tasks, async move { Ok(queries.set_query(id, &sql).await?) }).await
+    }
+
     // None or blank clears it. One word of at most 64 characters, unique among the connection's queries in any case.
     pub async fn set_keyword(&self, id: i64, keyword: Option<String>) -> Result<(), CoreError> {
         let queries = self.queries.clone();

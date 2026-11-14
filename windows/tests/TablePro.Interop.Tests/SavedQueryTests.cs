@@ -62,7 +62,11 @@ public sealed class SavedQueryTests : IDisposable
         await queries.SetKeywordAsync(one!.Value, "sel");
         await queries.CreateFolderAsync(Shop, "Reports", null);
 
-        var name = await Assert.ThrowsAsync<TableProException>(() => queries.RenameAsync(two!.Value, "One"));
+        await queries.RenameAsync(one.Value, "First");
+        await queries.SetSqlAsync(one.Value, "SELECT 11");
+        var edited = Assert.Single((await queries.GetAsync(Shop, TestContext.Current.CancellationToken)).Queries, query => query.Id == one.Value);
+        Assert.Equal(("First", "SELECT 11"), (edited.Name, edited.Sql));
+        var name = await Assert.ThrowsAsync<TableProException>(() => queries.RenameAsync(two!.Value, "First"));
         var keyword = await Assert.ThrowsAsync<TableProException>(() => queries.SetKeywordAsync(two!.Value, "SEL"));
         var folder = await Assert.ThrowsAsync<TableProException>(() => queries.CreateFolderAsync(Shop, "reports", null));
         var empty = await Assert.ThrowsAsync<TableProException>(() => queries.SaveAsync(Shop, "shop", " ", "SELECT 3", replace: false));

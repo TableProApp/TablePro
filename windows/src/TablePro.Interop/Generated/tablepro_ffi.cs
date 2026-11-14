@@ -1227,6 +1227,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2700,6 +2702,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_savedquerystore_set_keyword(ulong @ptr,long @id,RustBuffer @keyword
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_set_sql(ulong @ptr,long @id,RustBuffer @sql
     );
 
     #if NET8_0_OR_GREATER
@@ -4987,6 +5000,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_set_sql(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_snapshot(
     );
 
@@ -6168,6 +6192,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_set_keyword();
             if (checksum != 46468) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_set_keyword` checksum `46468`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_set_sql();
+            if (checksum != 60674) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_set_sql` checksum `60674`, library returned `{checksum}`");
             }
         }
         {
@@ -10326,6 +10356,8 @@ internal interface ISavedQueryStore {
     /// <exception cref="CoreException"></exception>
     Task SetKeyword(long @id, string? @keyword);
     /// <exception cref="CoreException"></exception>
+    Task SetSql(long @id, string @sql);
+    /// <exception cref="CoreException"></exception>
     Task<SavedQueriesInfo> Snapshot(string @connectionId);
 }
 internal class SavedQueryStore : ISavedQueryStore, IDisposable {
@@ -10596,6 +10628,24 @@ internal class SavedQueryStore : ISavedQueryStore, IDisposable {
         // Get rust future
         CallWithPointer(thisPtr => {
             return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_set_keyword(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterOptionalString.INSTANCE.Lower(@keyword));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SetSql(long @id, string @sql) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_set_sql(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@sql));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),

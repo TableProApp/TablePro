@@ -71,6 +71,12 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     // The history kept a run of this tab, so a history pane reads it again.
     public event EventHandler? HistoryRecorded;
 
+    // Save query... on the editor's menu; the workspace asks its name and folder.
+    public event EventHandler? SaveQueryRequested;
+
+    // Set by the workspace that holds the tab: only a saved connection keeps queries.
+    public bool CanSaveQuery { get; set; }
+
     public string Title => _model.Title;
 
     public TabKind Kind => _model.Kind;
@@ -265,7 +271,14 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
             IsEnabled = !string.IsNullOrWhiteSpace(QueryToShare),
         };
         share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Query);
+        var save = new MenuFlyoutItem
+        {
+            Text = Strings.Get("SaveQueryCommand"),
+            IsEnabled = CanSaveQuery && !string.IsNullOrWhiteSpace(SqlText.Document.Snapshot()),
+        };
+        save.Click += (_, _) => SaveQueryRequested?.Invoke(this, EventArgs.Empty);
         items.Add(new MenuFlyoutSeparator());
+        items.Add(save);
         items.Add(share);
     }
 

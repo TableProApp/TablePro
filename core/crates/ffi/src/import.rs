@@ -1,7 +1,6 @@
 use std::io::Read;
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -127,8 +126,14 @@ pub struct CsvImport {
     tasks: Tasks,
     table: TableRef,
     columns: Arc<[ImportColumn]>,
-    planned: Mutex<Option<Planned>>,
-    plans: AtomicU64,
+    plans: Mutex<Plans>,
+}
+
+// The last plan begun and the one ready to run, changed together so a slower plan never replaces a later one.
+#[derive(Default)]
+struct Plans {
+    last: u64,
+    ready: Option<Planned>,
 }
 
 struct Planned {
@@ -168,8 +173,7 @@ impl DatabaseSession {
                 tasks,
                 table,
                 columns,
-                planned: Mutex::new(None),
-                plans: AtomicU64::new(0),
+                plans: Mutex::new(Plans::default()),
             }))
         })
         .await
@@ -229,9 +233,12 @@ impl CsvImport {
                 format!("{} fields mapped for {} columns", mapping.len(), self.columns.len()),
             ));
         }
-        // A plan that finishes after a later one began is dropped, whatever order they end in.
-        let id = self.plans.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
-        self.discard();
+        let id = {
+            let mut plans = self.plans();
+            plans.last = plans.last.wrapping_add(1);
+            plans.ready = None;
+            plans.last
+        };
         let dialect = self
             .session
             .current_dialect()
@@ -260,14 +267,15 @@ impl CsvImport {
             Err(fault) => CsvImportCheck::RowRefused { fault: fault.clone() },
         };
         if let Ok(Some(planned)) = planned {
-            let mut held = self.planned.lock().unwrap_or_else(PoisonError::into_inner);
-            if self.plans.load(Ordering::Acquire) != id {
+            // A plan that finishes after a later one began is dropped, whatever order they end in.
+            let mut plans = self.plans();
+            if plans.last != id {
                 return Err(CoreError::failed(
                     "import.plan_replaced",
                     "a later plan replaced this one",
                 ));
             }
-            *held = Some(planned);
+            plans.ready = Some(planned);
         }
         Ok(check)
     }
@@ -282,8 +290,8 @@ impl CsvImport {
     ) -> Result<CsvImportOutcome, CoreError> {
         // Checked before the plan is taken, so a refusal leaves it to run once answered.
         let planned = {
-            let mut held = self.planned.lock().unwrap_or_else(PoisonError::into_inner);
-            let Some(planned) = held.as_ref().filter(|planned| planned.id == plan) else {
+            let mut plans = self.plans();
+            let Some(planned) = plans.ready.as_ref().filter(|planned| planned.id == plan) else {
                 return Err(CoreError::failed("import.not_planned", "no import is planned"));
             };
             if planned.gate == SaveGate::Confirm && !confirmed {
@@ -302,7 +310,7 @@ impl CsvImport {
                 now if now != planned.gate => return Err(safe_mode_changed()),
                 _ => {}
             }
-            held.take()
+            plans.ready.take()
         };
         let Some(planned) = planned else {
             return Err(CoreError::failed("import.not_planned", "no import is planned"));
@@ -343,8 +351,8 @@ impl CsvImport {
 }
 
 impl CsvImport {
-    fn discard(&self) {
-        *self.planned.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    fn plans(&self) -> std::sync::MutexGuard<'_, Plans> {
+        self.plans.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
