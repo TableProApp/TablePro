@@ -34,13 +34,26 @@ nonisolated enum TransactionRollBackClassifier {
         let text = sql as NSString
         var words: [String] = []
         var index = 0
+        // The server runs the body of `/*! ... */`, so its words are read and its closer is a blank.
+        var executableBody: SQLNonCodeSpan.Span?
         while words.count < limit, index < text.length {
+            if let body = executableBody, index >= body.contentEnd {
+                index = body.end
+                executableBody = nil
+                continue
+            }
             let unit = text.character(at: index)
             if UnicodeScalar(unit).map(CharacterSet.whitespacesAndNewlines.contains) == true {
                 index += 1
                 continue
             }
             if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+                if span.kind == .executableComment,
+                   let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: text.length) {
+                    executableBody = span
+                    index += opener
+                    continue
+                }
                 guard span.kind.isComment else {
                     words.append(otherTarget)
                     break
