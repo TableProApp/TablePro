@@ -144,7 +144,6 @@ extension SQLFileParser.ParserContext {
         state = .normal
         lineHasCode = false
         lineHoldsOnlyBlanks = true
-        previousUnit = SQLFileParser.kNewline
         previousUnitInWord = false
         pendingSlashLine = false
         pendingSlashTrailing.removeAll()

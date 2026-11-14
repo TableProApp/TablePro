@@ -164,4 +164,39 @@ struct SQLLexicalFeatureMappingTests {
             #expect(scanned == split, "\(engine.rawValue): \(sql)")
         }
     }
+
+    // Each `;` outside what the app's lexer reads as a span ends a piece; a piece of comments and blanks is none.
+    private static func lexicalPieces(_ sql: String, grammar: SQLLexicalGrammar) -> Int {
+        let text = sql as NSString
+        var pieces = 0
+        var holdsCode = false
+        var index = 0
+        while index < text.length {
+            if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+                holdsCode = holdsCode || !span.kind.isComment
+                index = max(span.end, index + 1)
+                continue
+            }
+            let unit = text.character(at: index)
+            if unit == SqlLexer.semicolon {
+                pieces += holdsCode ? 1 : 0
+                holdsCode = false
+            } else if !SqlLexer.isWhitespace(unit) {
+                holdsCode = true
+            }
+            index += 1
+        }
+        return pieces + (holdsCode ? 1 : 0)
+    }
+
+    @Test("The kit's lexer and the app's lexer end every span of the shared script corpus alike")
+    func kitLexerAgreesOnTheSharedCorpus() throws {
+        for testCase in try SharedSQLScriptCorpus.load() {
+            let type = try #require(testCase.databaseType, "\(testCase.dialect)")
+            let features = type.lexicalGrammar.pluginFeatures
+            let split = SQLStatementSplitting.statements(in: testCase.sql, lexicalFeatures: features).count
+            let lexed = Self.lexicalPieces(testCase.sql, grammar: SQLLexicalGrammar(pluginFeatures: features))
+            #expect(split == lexed, "\(testCase.dialect): \(testCase.name)")
+        }
+    }
 }

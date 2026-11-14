@@ -7,12 +7,13 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro
 
 struct QueryDiagnosticsTests {
-    private let sql = SQLDiagnosticsProducer()
+    private let sql = SQLDiagnosticsProducer(grammar: TestGrammar.standard)
     private let mql = MongoDiagnosticsProducer()
 
     // MARK: - Restraint
@@ -96,6 +97,39 @@ struct QueryDiagnosticsTests {
     @Test("a SQL line comment does not start on a double slash")
     func testSqlDoesNotTreatDoubleSlashAsComment() {
         #expect(sql.diagnostics(for: "SELECT 1 // )").count == 1)
+    }
+
+    @Test("A bracket inside a span the engine's grammar reads is not code", arguments: [
+        (TestGrammar.postgres, "SELECT $$ ) $$"),
+        (TestGrammar.postgres, "SELECT $f$ ) $f$"),
+        (TestGrammar.postgres, "SELECT 'C:\\', ')'"),
+        (TestGrammar.postgres, "SELECT E'\\')'"),
+        (TestGrammar.postgres, "SELECT 1 /* a /* b */ ) */"),
+        (TestGrammar.mysql, "SELECT 1 # )\n"),
+        (TestGrammar.mysql, "SELECT 'it\\'s )'"),
+        (TestGrammar.sqlServer, "SELECT [a)] FROM t"),
+        (TestGrammar.sqlServer, "SELECT [a]])] FROM t"),
+        (TestGrammar.sqlite, "SELECT [a)] FROM t"),
+        (DatabaseType.clickhouse.lexicalGrammar, "SELECT 1 // )\n"),
+    ])
+    func bracketInsideAGrammarSpan(grammar: SQLLexicalGrammar, text: String) {
+        #expect(SQLDiagnosticsProducer(grammar: grammar).diagnostics(for: text).isEmpty, "\(text)")
+    }
+
+    @Test("A closer the engine reads as code is reported", arguments: [
+        (TestGrammar.postgres, "SELECT 'C:\\' )"),
+        (TestGrammar.postgres, "SELECT 1 # )"),
+        (TestGrammar.mysql, "SELECT 1 /*! ) */"),
+        (TestGrammar.sqlite, "SELECT `a` )"),
+    ])
+    func closerReadAsCode(grammar: SQLLexicalGrammar, text: String) {
+        #expect(SQLDiagnosticsProducer(grammar: grammar).diagnostics(for: text).count == 1, "\(text)")
+    }
+
+    @Test("A block comment PostgreSQL still holds open is reported where it starts")
+    func nestedCommentLeftOpen() {
+        let results = SQLDiagnosticsProducer(grammar: TestGrammar.postgres).diagnostics(for: "SELECT 1 /* a /* b */")
+        #expect(results.map(\.range) == [NSRange(location: 9, length: 2)])
     }
 
     @Test("a double slash starts a comment in a MongoDB query")

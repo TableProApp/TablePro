@@ -372,7 +372,9 @@ final class QueryEditorViewModel {
                     }
                     rowsAffectedTotal += buffer.rowsAffected ?? 0
                     if run == runID, script.statements(in: unit).contains(where: {
-                        TransactionRollBackClassifier.rollsBackTransaction($0, statusMessage: buffer.statusMessage)
+                        TransactionRollBackClassifier.rollsBackTransaction(
+                            $0, grammar: script.lexicalGrammar, statusMessage: buffer.statusMessage
+                        )
                     }) {
                         ranTransactionRollBack = true
                     }

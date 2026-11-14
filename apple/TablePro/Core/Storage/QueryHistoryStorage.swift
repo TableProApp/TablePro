@@ -106,6 +106,7 @@ actor QueryHistoryStorage {
         createFingerprintIndex()
         createPlanSnapshotStorage()
         createRewindSnapshotStorage()
+        resetFingerprintsReadWithoutGrammar()
         protectDatabaseFiles(at: dbPath)
     }
 
@@ -222,8 +223,24 @@ actor QueryHistoryStorage {
         else {
             return false
         }
-        setUserVersion(5)
+        if userVersion() < 5 {
+            setUserVersion(5)
+        }
         return true
+    }
+
+    // Before version 6 a fingerprint was read without the engine's grammar. The backfill hashes a zero again, so a
+    // group keeps the runs from before the upgrade.
+    private func resetFingerprintsReadWithoutGrammar() {
+        guard userVersion() < 6, beginTransaction() else { return }
+        guard execute("UPDATE history SET fingerprint_hash = 0;"),
+              execute("UPDATE plan_snapshots SET fingerprint_hash = 0;"),
+              setUserVersion(6)
+        else {
+            rollbackTransaction()
+            return
+        }
+        commitTransaction()
     }
 
     // first_row_time and server_time stay NULL for older rows: COALESCE falls back to execution_time.
@@ -232,21 +249,20 @@ actor QueryHistoryStorage {
         return present || execute("ALTER TABLE history ADD COLUMN \(column) \(definition);")
     }
 
-    /// Filling the column is deliberately not part of `init`.
-    ///
-    /// An actor's initializer runs synchronously on whoever calls it, and the first caller is a
-    /// `Task` inside `applicationWillFinishLaunching`, which inherits main-actor isolation. Doing
-    /// the backfill there tokenizes every stored row on the main thread before any window appears,
-    /// for as long as the user's history is. Running it from an actor method instead puts it on the
-    /// actor's own executor, and the only caller that needs it is the one that reads groups.
-    private func ensureFingerprintsBackfilled() {
+    // Not in `init`, which runs on the main actor at launch: the readers of groups and plans call it on the actor.
+    func ensureFingerprintsBackfilled() {
         guard !didBackfillFingerprints else { return }
         didBackfillFingerprints = true
         backfillFingerprints()
     }
 
     private func backfillFingerprints() {
-        let pending = readRowsMissingFingerprint()
+        backfillFingerprints(table: "history", sqlColumn: "query")
+        backfillFingerprints(table: "plan_snapshots", sqlColumn: "subject_sql")
+    }
+
+    private func backfillFingerprints(table: String, sqlColumn: String) {
+        let pending = readRowsMissingFingerprint(table: table, sqlColumn: sqlColumn)
         guard !pending.isEmpty else { return }
 
         beginTransaction()
@@ -256,7 +272,7 @@ actor QueryHistoryStorage {
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(
             db,
-            "UPDATE history SET fingerprint_hash = ? WHERE id = ?;",
+            "UPDATE \(table) SET fingerprint_hash = ? WHERE id = ?;",
             -1,
             &statement,
             nil
@@ -276,14 +292,14 @@ actor QueryHistoryStorage {
         }
     }
 
-    private func readRowsMissingFingerprint() -> [(id: String, fingerprint: Int64)] {
+    private func readRowsMissingFingerprint(table: String, sqlColumn: String) -> [(id: String, fingerprint: Int64)] {
         var pending: [(id: String, fingerprint: Int64)] = []
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(
             db,
-            "SELECT id, query, database_type FROM history WHERE fingerprint_hash = 0;",
+            "SELECT id, \(sqlColumn), database_type FROM \(table) WHERE fingerprint_hash = 0;",
             -1,
             &statement,
             nil

@@ -5,17 +5,20 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 @testable import TablePro
 import Testing
 
 struct SQLTokenizerTests {
-    let tokenizer = SQLTokenizer()
+    private func tokenize(_ sql: String, _ grammar: SQLLexicalGrammar = .ansi) -> [SQLToken] {
+        SQLTokenizer().tokenize(sql, grammar: grammar)
+    }
 
     // MARK: - Keywords
 
     @Test("Recognizes standard SQL keywords")
     func standardKeywords() {
-        let tokens = tokenizer.tokenize("SELECT FROM WHERE")
+        let tokens = tokenize("SELECT FROM WHERE")
         let nonWS = tokens.filter { $0.type != .whitespace }
         #expect(nonWS.count == 3)
         #expect(nonWS.allSatisfy { $0.type == .keyword })
@@ -23,7 +26,7 @@ struct SQLTokenizerTests {
 
     @Test("Keywords are case-insensitive")
     func keywordCaseInsensitive() {
-        let tokens = tokenizer.tokenize("select FROM Where")
+        let tokens = tokenize("select FROM Where")
         let nonWS = tokens.filter { $0.type != .whitespace }
         #expect(nonWS.allSatisfy { $0.type == .keyword })
     }
@@ -32,7 +35,7 @@ struct SQLTokenizerTests {
 
     @Test("Recognizes identifiers")
     func identifiers() {
-        let tokens = tokenizer.tokenize("users my_table col1")
+        let tokens = tokenize("users my_table col1")
         let nonWS = tokens.filter { $0.type != .whitespace }
         #expect(nonWS.count == 3)
         #expect(nonWS.allSatisfy { $0.type == .identifier })
@@ -40,7 +43,7 @@ struct SQLTokenizerTests {
 
     @Test("Backtick-quoted identifiers")
     func backtickIdentifiers() {
-        let tokens = tokenizer.tokenize("`my table`")
+        let tokens = tokenize("`my table`", TestGrammar.mysql)
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .identifier)
         #expect(tokens[0].value == "`my table`")
@@ -50,7 +53,7 @@ struct SQLTokenizerTests {
 
     @Test("Single-quoted string")
     func singleQuotedString() {
-        let tokens = tokenizer.tokenize("'hello world'")
+        let tokens = tokenize("'hello world'")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
         #expect(tokens[0].value == "'hello world'")
@@ -58,7 +61,7 @@ struct SQLTokenizerTests {
 
     @Test("String with escaped quote")
     func stringWithEscapedQuote() {
-        let tokens = tokenizer.tokenize("'it''s'")
+        let tokens = tokenize("'it''s'")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
         #expect(tokens[0].value == "'it''s'")
@@ -66,7 +69,7 @@ struct SQLTokenizerTests {
 
     @Test("String with backslash escape")
     func stringWithBackslashEscape() {
-        let tokens = tokenizer.tokenize("'it\\'s'")
+        let tokens = tokenize("'it\\'s'", TestGrammar.mysql)
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
     }
@@ -75,7 +78,7 @@ struct SQLTokenizerTests {
 
     @Test("Unterminated string ending in a backslash")
     func unterminatedStringEndingInBackslash() {
-        let tokens = tokenizer.tokenize("'C:\\")
+        let tokens = tokenize("'C:\\")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
         #expect(tokens[0].value == "'C:\\")
@@ -83,7 +86,7 @@ struct SQLTokenizerTests {
 
     @Test("Unterminated double-quoted string ending in a backslash")
     func unterminatedDoubleQuotedStringEndingInBackslash() {
-        let tokens = tokenizer.tokenize("\"C:\\")
+        let tokens = tokenize("\"C:\\")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
         #expect(tokens[0].value == "\"C:\\")
@@ -91,7 +94,7 @@ struct SQLTokenizerTests {
 
     @Test("Unterminated backtick identifier ending in a backslash")
     func unterminatedBacktickEndingInBackslash() {
-        let tokens = tokenizer.tokenize("`C:\\")
+        let tokens = tokenize("`C:\\", TestGrammar.mysql)
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .identifier)
         #expect(tokens[0].value == "`C:\\")
@@ -99,7 +102,7 @@ struct SQLTokenizerTests {
 
     @Test("Unterminated string ending in a backslash inside a statement")
     func unterminatedStringEndingInBackslashInStatement() {
-        let tokens = tokenizer.tokenize("select * from t where c like 'C:\\")
+        let tokens = tokenize("select * from t where c like 'C:\\")
         let nonWS = tokens.filter { $0.type != .whitespace }
         #expect(nonWS.last?.type == .string)
         #expect(nonWS.last?.value == "'C:\\")
@@ -107,7 +110,7 @@ struct SQLTokenizerTests {
 
     @Test("Unterminated string keeps a doubled trailing backslash")
     func unterminatedStringWithDoubledBackslash() {
-        let tokens = tokenizer.tokenize("'C:\\\\")
+        let tokens = tokenize("'C:\\\\")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
         #expect(tokens[0].value == "'C:\\\\")
@@ -115,7 +118,7 @@ struct SQLTokenizerTests {
 
     @Test("Unterminated string without an escape")
     func unterminatedStringWithoutEscape() {
-        let tokens = tokenizer.tokenize("'abc")
+        let tokens = tokenize("'abc")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
         #expect(tokens[0].value == "'abc")
@@ -123,7 +126,7 @@ struct SQLTokenizerTests {
 
     @Test("Lone quote")
     func loneQuote() {
-        let tokens = tokenizer.tokenize("'")
+        let tokens = tokenize("'")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .string)
         #expect(tokens[0].value == "'")
@@ -133,7 +136,7 @@ struct SQLTokenizerTests {
 
     @Test("Unterminated block comment keeps its last character")
     func unterminatedBlockComment() {
-        let tokens = tokenizer.tokenize("/* abc")
+        let tokens = tokenize("/* abc")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .comment)
         #expect(tokens[0].value == "/* abc")
@@ -141,7 +144,7 @@ struct SQLTokenizerTests {
 
     @Test("Block comment opener with nothing after it")
     func emptyUnterminatedBlockComment() {
-        let tokens = tokenizer.tokenize("/*")
+        let tokens = tokenize("/*")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .comment)
         #expect(tokens[0].value == "/*")
@@ -149,7 +152,7 @@ struct SQLTokenizerTests {
 
     @Test("Terminated block comment is unchanged")
     func terminatedBlockComment() {
-        let tokens = tokenizer.tokenize("/* abc */")
+        let tokens = tokenize("/* abc */")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .comment)
         #expect(tokens[0].value == "/* abc */")
@@ -159,7 +162,7 @@ struct SQLTokenizerTests {
 
     @Test("Integer")
     func integer() {
-        let tokens = tokenizer.tokenize("42")
+        let tokens = tokenize("42")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .number)
         #expect(tokens[0].value == "42")
@@ -167,7 +170,7 @@ struct SQLTokenizerTests {
 
     @Test("Decimal number")
     func decimal() {
-        let tokens = tokenizer.tokenize("3.14")
+        let tokens = tokenize("3.14")
         #expect(tokens.count == 1)
         #expect(tokens[0].type == .number)
     }
@@ -176,7 +179,7 @@ struct SQLTokenizerTests {
 
     @Test("Line comment")
     func lineComment() {
-        let tokens = tokenizer.tokenize("-- this is a comment\nSELECT 1")
+        let tokens = tokenize("-- this is a comment\nSELECT 1")
         let comments = tokens.filter { $0.type == .comment }
         #expect(comments.count == 1)
         #expect(comments[0].value == "-- this is a comment")
@@ -184,7 +187,7 @@ struct SQLTokenizerTests {
 
     @Test("Block comment")
     func blockComment() {
-        let tokens = tokenizer.tokenize("/* block */ SELECT 1")
+        let tokens = tokenize("/* block */ SELECT 1")
         let comments = tokens.filter { $0.type == .comment }
         #expect(comments.count == 1)
         #expect(comments[0].value == "/* block */")
@@ -194,7 +197,7 @@ struct SQLTokenizerTests {
 
     @Test("Multi-character operators")
     func multiCharOperators() {
-        let tokens = tokenizer.tokenize(">= <= <> !=")
+        let tokens = tokenize(">= <= <> !=")
         let ops = tokens.filter { $0.type == .operator }
         #expect(ops.count == 4)
         #expect(ops.map(\.value) == [">=", "<=", "<>", "!="])
@@ -204,14 +207,14 @@ struct SQLTokenizerTests {
 
     @Test("Punctuation tokens")
     func punctuation() {
-        let tokens = tokenizer.tokenize("(a, b)")
+        let tokens = tokenize("(a, b)")
         let puncts = tokens.filter { $0.type == .punctuation }
         #expect(puncts.map(\.value) == ["(", ",", ")"])
     }
 
     @Test("Semicolons")
     func semicolons() {
-        let tokens = tokenizer.tokenize("SELECT 1; SELECT 2;")
+        let tokens = tokenize("SELECT 1; SELECT 2;")
         let semis = tokens.filter { $0.type == .punctuation && $0.value == ";" }
         #expect(semis.count == 2)
     }
@@ -220,7 +223,7 @@ struct SQLTokenizerTests {
 
     @Test("Question mark placeholder")
     func questionMarkPlaceholder() {
-        let tokens = tokenizer.tokenize("WHERE id = ?")
+        let tokens = tokenize("WHERE id = ?")
         let placeholders = tokens.filter { $0.type == .placeholder }
         #expect(placeholders.count == 1)
         #expect(placeholders[0].value == "?")
@@ -228,7 +231,7 @@ struct SQLTokenizerTests {
 
     @Test("Named placeholders")
     func namedPlaceholders() {
-        let tokens = tokenizer.tokenize("$1 :name @var")
+        let tokens = tokenize("$1 :name @var")
         let placeholders = tokens.filter { $0.type == .placeholder }
         #expect(placeholders.count == 3)
         #expect(placeholders.map(\.value) == ["$1", ":name", "@var"])
@@ -238,7 +241,7 @@ struct SQLTokenizerTests {
 
     @Test("Full SELECT statement tokens")
     func fullSelectStatement() {
-        let tokens = tokenizer.tokenize("SELECT id, name FROM users WHERE active = true")
+        let tokens = tokenize("SELECT id, name FROM users WHERE active = true")
         let nonWS = tokens.filter { $0.type != .whitespace }
         // SELECT id , name FROM users WHERE active = true
         #expect(nonWS.count == 10)
@@ -256,7 +259,7 @@ struct SQLTokenizerTests {
 
     @Test("Preserves original token values")
     func preservesOriginalValues() {
-        let tokens = tokenizer.tokenize("select 'Hello World' from users")
+        let tokens = tokenize("select 'Hello World' from users")
         let nonWS = tokens.filter { $0.type != .whitespace }
         #expect(nonWS[0].value == "select") // preserves original case
         #expect(nonWS[1].value == "'Hello World'")
@@ -274,9 +277,10 @@ struct SQLTokenizerTests {
         #expect(code("[select]", .mssql) == [SQLToken(type: .identifier, value: "[select]")])
     }
 
-    @Test("Without a grammar a bracket stays apart, as the query fingerprint reads it")
-    func bracketWithoutGrammar() {
-        #expect(tokenizer.tokenize("[users]").map(\.value) == ["[", "users", "]"])
+    @Test("Where brackets quote no name, a bracket stays apart")
+    func bracketWithoutBracketNames() {
+        #expect(tokenize("[users]").map(\.value) == ["[", "users", "]"])
+        #expect(code("tags[i]", .postgresql).map(\.value) == ["tags", "[", "i", "]"])
     }
 
     @Test("A dollar-quoted body is one string")
@@ -345,10 +349,10 @@ struct SQLTokenizerTests {
         #expect(tokens.map(\.type) == [.number, .string, .string, .string, .identifier])
     }
 
-    @Test("Without a grammar a word before a quote stays a word, so the fingerprint keeps the column")
-    func wordBeforeQuoteWithoutGrammar() {
-        for word in ["a", "b", "N"] {
-            let tokens = tokenizer.tokenize("SELECT \(word)'alias' FROM t").filter { $0.type != .whitespace }
+    @Test("A word before a quote stays a word, so the fingerprint keeps the column")
+    func wordBeforeQuote() {
+        for word in ["a", "r", "foo"] {
+            let tokens = tokenize("SELECT \(word)'alias' FROM t").filter { $0.type != .whitespace }
             #expect(tokens.map(\.value) == ["SELECT", word, "'alias'", "FROM", "t"])
             #expect(tokens[1].type == .identifier)
         }
@@ -391,9 +395,10 @@ struct SQLTokenizerTests {
         #expect(code("a += b == c ** d // e ^= f", .sqlite).map(\.value) == ["a", "+=", "b", "==", "c", "**", "d", "//", "e", "^=", "f"])
     }
 
-    @Test("A system variable fingerprints as it did before, apart from a literal")
+    @Test("A system variable keeps its name in the fingerprint, apart from a literal and from another variable")
     func systemVariableFingerprint() {
-        #expect(SQLQueryFingerprint.normalize("SELECT @@version", databaseType: .mysql) == "SELECT @ ?")
+        #expect(SQLQueryFingerprint.normalize("SELECT @@version", databaseType: .mysql) == "SELECT @@version")
+        #expect(SQLQueryFingerprint.hash("SELECT @@version", databaseType: .mysql) != SQLQueryFingerprint.hash("SELECT @@sql_mode", databaseType: .mysql))
         #expect(SQLQueryFingerprint.hash("SELECT @@version", databaseType: .mysql) != SQLQueryFingerprint.hash("SELECT 1", databaseType: .mysql))
     }
 
@@ -466,52 +471,51 @@ struct SQLTokenizerTests {
     }
 }
 
-// What the query fingerprint read on main, before the formatter read grammars: its hashes are stored, so the reading
-// without a grammar must not move. Each expected shape was produced by main's own SQLTokenizer and SQLQueryFingerprint.
+// Stored hashes move only with the history store's version, which hashes every row again, so each shape is pinned.
 struct SQLFingerprintGoldenTests {
     static let corpus: [(DatabaseType, String, String)] = [
         (.postgresql, "SELECT * FROM t WHERE id = 1", "SELECT * FROM t WHERE id = ?"),
         (.postgresql, "select id, name from users where active = true and role = 'admin'", "SELECT id, name FROM users WHERE active = ? AND role = ?"),
-        (.mysql, "SELECT @@version", "SELECT @ ?"),
-        (.mysql, "SELECT @@sql_mode", "SELECT @ ?"),
+        (.mysql, "SELECT @@version", "SELECT @@version"),
+        (.mysql, "SELECT @@sql_mode", "SELECT @@sql_mode"),
         (.mysql, "SELECT 1", "SELECT ?"),
-        (.mssql, "SELECT @@ROWCOUNT, @@ERROR", "SELECT @ ?, @ ?"),
+        (.mssql, "SELECT @@ROWCOUNT, @@ERROR", "SELECT @@ROWCOUNT, @@ERROR"),
         (.sqlite, "SELECT @1, @1ab FROM t WHERE a = @2", "SELECT ?, ? FROM t WHERE a = ?"),
         (.mssql, "SELECT @x, @y FROM t WHERE a = @p", "SELECT ?, ? FROM t WHERE a = ?"),
         (.mysql, "SELECT apply - 1 FROM t", "SELECT apply - ? FROM t"),
         (.mysql, "SELECT apply + 1 FROM t", "SELECT apply + ? FROM t"),
         (.mysql, "SELECT * FROM apply a", "SELECT * FROM apply a"),
-        (.mysql, "SELECT 0bar FROM t", "SELECT ? bar FROM t"),
-        (.mysql, "SELECT 0baz FROM t", "SELECT ? baz FROM t"),
-        (.mysql, "SELECT 0xFF, 0x1A, 0b101 FROM t", "SELECT ? xFF, ? x1A, ? b101 FROM t"),
-        (.mysql, "SELECT 2fa_codes.id FROM 2fa_codes", "SELECT ? fa_codes.id FROM ? fa_codes"),
-        (.mssql, "SELECT N'x', N'longer text' FROM t", "SELECT N ?, N ? FROM t"),
-        (.mysql, "SELECT X'4D', B'101', _utf8mb4'a' FROM t", "SELECT X ?, B ?, _utf8mb4 ? FROM t"),
-        (.mysql, "SELECT a'alias', b'alias' FROM t", "SELECT a ?, b ? FROM t"),
-        (.postgresql, "SELECT U&'d\\0061t', E'it\\'s' FROM t", "SELECT U & ?, E ? FROM t"),
-        (.oracle, "SELECT q'[it's]' FROM dual", "SELECT q ? s] ?"),
-        (.mssql, "SELECT [order id], [group] FROM [my table] WHERE [select] = 1", "SELECT[ORDER id], GROUP FROM[my TABLE] WHERE SELECT = ?"),
+        (.mysql, "SELECT 0bar FROM t", "SELECT 0bar FROM t"),
+        (.mysql, "SELECT 0baz FROM t", "SELECT 0baz FROM t"),
+        (.mysql, "SELECT 0xFF, 0x1A, 0b101 FROM t", "SELECT ?, ?, ? FROM t"),
+        (.mysql, "SELECT 2fa_codes.id FROM 2fa_codes", "SELECT 2fa_codes.id FROM 2fa_codes"),
+        (.mssql, "SELECT N'x', N'longer text' FROM t", "SELECT ?, ? FROM t"),
+        (.mysql, "SELECT X'4D', B'101', _utf8mb4'a' FROM t", "SELECT ?, ?, ? FROM t"),
+        (.mysql, "SELECT a'alias', b'alias' FROM t", "SELECT a ?, ? FROM t"),
+        (.postgresql, "SELECT U&'d\\0061t', E'it\\'s' FROM t", "SELECT ?, ? FROM t"),
+        (.oracle, "SELECT q'[it's]' FROM dual", "SELECT ? FROM dual"),
+        (.mssql, "SELECT [order id], [group] FROM [my table] WHERE [select] = 1", "SELECT order id, group FROM my table WHERE select = ?"),
         (.mssql, "SELECT * FROM [users]", "SELECT * FROM users"),
         (.mssql, "SELECT * FROM users", "SELECT * FROM users"),
-        (.mssql, "SELECT * INTO #tmp FROM t; SELECT * FROM ##global", "SELECT * INTO # tmp FROM t; SELECT * FROM # # global"),
-        (.mssql, "SELECT Part# FROM Parts", "SELECT Part # FROM Parts"),
-        (.mssql, "SET @x += 1", "SET ? + = ?"),
-        (.sqlite, "SELECT * FROM t WHERE a == b", "SELECT * FROM t WHERE a = = b"),
-        (.oracle, "SELECT y ** 2 FROM dual WHERE a ^= b", "SELECT y * * ? FROM dual WHERE a ^ = b"),
-        (.duckdb, "SELECT 7 // 2", "SELECT ? / / ?"),
-        (.mysql, "SELECT a <=> b, @a := 1 FROM t", "SELECT a <= > b, ? : = ? FROM t"),
+        (.mssql, "SELECT * INTO #tmp FROM t; SELECT * FROM ##global", "SELECT * INTO #tmp FROM t; SELECT * FROM ##global"),
+        (.mssql, "SELECT Part# FROM Parts", "SELECT Part# FROM Parts"),
+        (.mssql, "SET @x += 1", "SET ? += ?"),
+        (.sqlite, "SELECT * FROM t WHERE a == b", "SELECT * FROM t WHERE a == b"),
+        (.oracle, "SELECT y ** 2 FROM dual WHERE a ^= b", "SELECT y ** ? FROM dual WHERE a ^= b"),
+        (.duckdb, "SELECT 7 // 2", "SELECT ? // ?"),
+        (.mysql, "SELECT a <=> b, @a := 1 FROM t", "SELECT a <=> b, ? := ? FROM t"),
         (.postgresql, "SELECT $$secret payload$$ FROM t", "SELECT ? FROM t"),
         (.postgresql, "SELECT $tag$body here$tag$ FROM t", "SELECT ? FROM t"),
         (.postgresql, "CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql", "CREATE FUNCTION f() RETURNS INT AS ? LANGUAGE plpgsql"),
         (.postgresql, "SELECT a::int, b::text FROM t", "SELECT a :: INT, b :: TEXT FROM t"),
-        (.postgresql, "SELECT data->>'name', data->'a', data #>> '{a,b}' FROM t", "SELECT data ->> ?, data -> ?, data # > > ? FROM t"),
-        (.postgresql, "SELECT * FROM t WHERE tags @> ARRAY['x'] AND d ?| array['a']", "SELECT * FROM t WHERE tags @ > ARRAY[?] AND d ? | array[?]"),
-        (.postgresql, "SELECT * FROM t WHERE name ~* 'abc' AND name !~ 'x'", "SELECT * FROM t WHERE name ~ * ? AND name ! ~ ?"),
-        (.postgresql, "SELECT embedding <-> '[1,2,3]' FROM items", "SELECT embedding < -> ? FROM items"),
+        (.postgresql, "SELECT data->>'name', data->'a', data #>> '{a,b}' FROM t", "SELECT data ->> ?, data -> ?, data #>> ? FROM t"),
+        (.postgresql, "SELECT * FROM t WHERE tags @> ARRAY['x'] AND d ?| array['a']", "SELECT * FROM t WHERE tags @> ARRAY[?] AND d ?| array[?]"),
+        (.postgresql, "SELECT * FROM t WHERE name ~* 'abc' AND name !~ 'x'", "SELECT * FROM t WHERE name ~* ? AND name !~ ?"),
+        (.postgresql, "SELECT embedding <-> '[1,2,3]' FROM items", "SELECT embedding <-> ? FROM items"),
         (.postgresql, "-- pick\nSELECT * FROM t /* hint */ WHERE id = 1", "SELECT * FROM t WHERE id = ?"),
-        (.mysql, "SELECT 1 # comment\nFROM t", "SELECT ? # comment FROM t"),
-        (.mysql, "SELECT 5--3", "SELECT ?"),
-        (.postgresql, "SELECT 1 /* a /* b */ c */ FROM t", "SELECT ? c * / FROM t"),
+        (.mysql, "SELECT 1 # comment\nFROM t", "SELECT ? FROM t"),
+        (.mysql, "SELECT 5--3", "SELECT ? - ?"),
+        (.postgresql, "SELECT 1 /* a /* b */ c */ FROM t", "SELECT ? FROM t"),
         (.postgresql, "select a, b -- note\nfrom t where x = 1", "SELECT a, b FROM t WHERE x = ?"),
         (.mysql, "SELECT /*!40001 SQL_NO_CACHE */ a FROM t", "SELECT a FROM t"),
         (.postgresql, "SELECT * FROM t WHERE id IN (1, 2, 3)", "SELECT * FROM t WHERE id IN (...)"),
@@ -524,15 +528,15 @@ struct SQLFingerprintGoldenTests {
         (.mysql, "SELECT * FROM t WHERE n = \"bob\"", "SELECT * FROM t WHERE n = ?"),
         (.postgresql, "SELECT \"email\" FROM \"Users\" WHERE id = 1", "SELECT email FROM Users WHERE id = ?"),
         (.mysql, "SELECT * FROM `users`", "SELECT * FROM users"),
-        (.oracle, "SELECT * FROM v$session WHERE sid = 1", "SELECT * FROM v ? WHERE sid = ?"),
-        (.oracle, "BEGIN x := 1; END;", "BEGIN x : = ?; END;"),
-        (.mssql, "SELECT 1\nGO\nSELECT 2", "SELECT ? GO SELECT ?"),
-        (.mysql, "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\nDELIMITER ;", "DELIMITER / / CREATE PROCEDURE p() BEGIN SELECT ?; END / / DELIMITER;"),
-        (.mysql, "DELIMITER $$\nEND$$", "DELIMITER ?"),
+        (.oracle, "SELECT * FROM v$session WHERE sid = 1", "SELECT * FROM v$session WHERE sid = ?"),
+        (.oracle, "BEGIN x := 1; END;", "BEGIN x := ?; END;"),
+        (.mssql, "SELECT 1\nGO\nSELECT 2", "SELECT ? SELECT ?"),
+        (.mysql, "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\nDELIMITER ;", "CREATE PROCEDURE p() BEGIN SELECT ?; END //"),
+        (.mysql, "DELIMITER $$\nEND$$", "END $$"),
         (.clickhouse, "SELECT database, table FROM system.columns WHERE database = 'default'", "SELECT DATABASE, TABLE FROM system.columns WHERE DATABASE = ?"),
         (.postgresql, "SELECT count(*), sum(total) FROM t GROUP BY 1", "SELECT COUNT(*), SUM(total) FROM t GROUP BY ?"),
         (.postgresql, "SELECT * FROM t WHERE created > now() - interval '1 day'", "SELECT * FROM t WHERE created > now() - INTERVAL ?"),
-        (.postgresql, "SELECT 'C:\\', 'hello   world' FROM t", "SELECT ? hello world ?"),
+        (.postgresql, "SELECT 'C:\\', 'hello   world' FROM t", "SELECT ?, ? FROM t"),
         (.mysql, "SELECT 'it\\'s' FROM t", "SELECT ? FROM t"),
         (.postgresql, "SELECT café, naïve FROM t", "SELECT café, naïve FROM t"),
         (.postgresql, "SELECT * FROM t WHERE id = $1 AND name = :name", "SELECT * FROM t WHERE id = ? AND name = ?"),
@@ -546,8 +550,8 @@ struct SQLFingerprintGoldenTests {
         (.postgresql, "SELECT a FROM t WHERE b = 'x''y'", "SELECT a FROM t WHERE b = ?"),
     ]
 
-    @Test("Every query fingerprints exactly as it did before the formatter read grammars")
-    func fingerprintsMatchMain() {
+    @Test("Every query fingerprints as its engine's grammar reads it")
+    func fingerprintsFollowTheGrammar() {
         for (type, sql, shape) in Self.corpus {
             #expect(SQLQueryFingerprint.normalize(sql, databaseType: type) == shape, "\(type.rawValue): \(sql)")
         }
