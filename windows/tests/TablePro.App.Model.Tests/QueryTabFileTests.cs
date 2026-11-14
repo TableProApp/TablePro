@@ -399,6 +399,88 @@ public sealed class QueryTabFileTests : IDisposable
         Assert.Equal("select 2;", File.ReadAllText(Path.Combine(_directory, "edit.sql")));
     }
 
+    [Fact]
+    public async Task ARestoredCleanTabTakesTheFilesTextOnceReadAndAChecksWaitsForIt()
+    {
+        var path = Write("report.sql", Encoding.UTF8.GetBytes("select 'now';"));
+        _view.WholeText = "select 'then';";
+        var tab = Restoring(path);
+
+        await tab.CheckDiskAsync();
+        Assert.Empty(_files.Changes);
+        await tab.LoadRestoredFileAsync(SqlFile.Read(path).Stamp, unsaved: false);
+
+        Assert.Equal("select 'now';", _view.WholeText);
+        Assert.False(tab.IsDirty);
+    }
+
+    [Fact]
+    public async Task ARestoredTabEditedBeforeItsFileIsReadKeepsTheEdit()
+    {
+        var path = Write("report.sql", Encoding.UTF8.GetBytes("select 'now';"));
+        _view.WholeText = "select 'then';";
+        var tab = Restoring(path);
+
+        var loading = tab.LoadRestoredFileAsync(SqlFile.Read(path).Stamp, unsaved: false);
+        _view.WholeText = "select 'typed';";
+        await loading;
+
+        Assert.Equal("select 'typed';", _view.WholeText);
+        Assert.True(tab.IsDirty);
+    }
+
+    [Fact]
+    public async Task ASaveWhileAnotherWritesWaitsAndSavesTheNewerTextAndCountsAsUnsaved()
+    {
+        var path = Path.Combine(_directory, "first.sql");
+        _files.Picked = path;
+        _files.Picking = new Gate();
+        var tab = Tab();
+        _view.WholeText = "select 1;";
+
+        var first = tab.SaveAsync();
+        await _files.Picking.Reached;
+        Assert.True(tab.HasUnsavedChanges, "a scratch tab being saved as a file is not yet saved");
+        _view.WholeText = "select 2;";
+        var second = tab.SaveAsync();
+        _files.Picking.Open();
+
+        Assert.True(await first);
+        Assert.True(await second);
+        Assert.Equal("select 2;", File.ReadAllText(path));
+        Assert.False(tab.HasUnsavedChanges);
+    }
+
+    [Fact]
+    public async Task ClosingWaitsForASaveToEnd()
+    {
+        _files.Picked = Path.Combine(_directory, "late.sql");
+        _files.Picking = new Gate();
+        var tab = Tab();
+        _view.WholeText = "select 1;";
+
+        var saving = tab.SaveAsync();
+        await _files.Picking.Reached;
+        var closing = tab.CloseAsync();
+        Assert.False(closing.IsCompleted);
+        _files.Picking.Open();
+        await closing;
+
+        Assert.True(await saving);
+        Assert.Equal("select 1;", File.ReadAllText(Path.Combine(_directory, "late.sql")));
+    }
+
+    private QueryTab Restoring(string path) => new(
+        "report.sql",
+        _session,
+        _view,
+        _results,
+        DataModel.Relational,
+        () => new AppSettings(),
+        files: _files,
+        filePath: path,
+        restoring: true);
+
     private QueryTab Open(string name, string text) =>
         Open(Write(name, Encoding.UTF8.GetBytes(text)));
 
@@ -448,10 +530,18 @@ public sealed class QueryTabFileTests : IDisposable
 
         public void ReplaceText(string text) => view.WholeText = text;
 
-        public Task<string?> PickSavePathAsync(string suggestedName, string? folder)
+        // Waited at by the picker, as a user choosing where to save is.
+        public Gate? Picking { get; set; }
+
+        public async Task<string?> PickSavePathAsync(string suggestedName, string? folder)
         {
             Picks.Add((suggestedName, folder));
-            return Task.FromResult(Picked);
+            if (Picking is { } picking)
+            {
+                await picking.PassAsync(CancellationToken.None);
+            }
+
+            return Picked;
         }
 
         public List<bool> OfferedSave { get; } = [];

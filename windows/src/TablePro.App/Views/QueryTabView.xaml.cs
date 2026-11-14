@@ -24,8 +24,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     private bool _closed;
     private DiskChange _diskChange;
 
-    // A file opened with no sql is read here and throws when it cannot be; a restored tab is opened as
-    // SqlFileOpening.Restored says, from the stamp and the unsaved mark its session kept.
+    // A file is read by the workspace off the UI thread and handed in as onDisk; a restored file tab shows its session
+    // text and reads its file once it is in the strip (QueryTab.LoadRestoredFileAsync).
     internal QueryTabView(
         Workbench workbench,
         SessionShare<DatabaseSession> share,
@@ -35,26 +35,13 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         string? filePath = null,
         bool rolledBack = false,
         SqlFileStamp? fileStamp = null,
-        bool fileUnsaved = false)
+        bool fileUnsaved = false,
+        SqlFileRead? onDisk = null)
     {
         var engineId = share.Session.EngineId;
-        SqlFileOpening opening;
-        if (filePath is null)
-        {
-            opening = new SqlFileOpening(sql ?? string.Empty, null, false);
-        }
-        else if (sql is null)
-        {
-            var read = SqlFile.Read(filePath);
-            opening = new SqlFileOpening(read.Text, read, false);
-        }
-        else
-        {
-            opening = SqlFileOpening.Restored(sql, fileStamp, fileUnsaved, () => TryRead(filePath));
-        }
-
+        var restoring = filePath is not null && onDisk is null;
         InitializeComponent();
-        SqlText.Text = opening.Text;
+        SqlText.Text = onDisk?.Text ?? sql ?? string.Empty;
         SqlText.Lexer = new CoreSqlLexer(Grammars.For(engineId));
         DisplaySettings.Follow(SqlText);
         _model = new QueryTab(
@@ -68,8 +55,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
             database,
             this,
             filePath,
-            opening.Baseline,
-            opening.BaselineUnknown);
+            onDisk,
+            restoring: restoring);
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
@@ -91,7 +78,15 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
             RolledBackBar.Visibility = Visibility.Visible;
             RolledBackBar.IsOpen = true;
         }
+
+        if (restoring)
+        {
+            LoadRestoredFile(fileStamp, fileUnsaved);
+        }
     }
+
+    private async void LoadRestoredFile(SqlFileStamp? stamp, bool unsaved) =>
+        await _model.LoadRestoredFileAsync(stamp, unsaved).ConfigureAwait(true);
 
     public event EventHandler? StateChanged;
 
@@ -356,19 +351,6 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     Task IQueryFileView.ShowReloadFailedAsync(string path, Exception failure) =>
         ShowFileFailedAsync(Strings.Format("FileReloadFailedTitle", Path.GetFileName(path)), failure.Message);
-
-    // Null when the file is gone or locked, so a restored tab keeps its text and the check says what happened.
-    private static SqlFileRead? TryRead(string path)
-    {
-        try
-        {
-            return SqlFile.Read(path);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
 
     private static string EncodingName(SqlFileEncoding encoding) => Strings.Get(encoding switch
     {

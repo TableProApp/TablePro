@@ -110,6 +110,9 @@ public sealed class QueryTab : IWorkspaceTab
     private SqlFileStamp? _stamp;
     private string? _savedText;
     private Task<bool>? _saving;
+
+    // A restored file tab whose file is still being read, which no check or save compares with yet.
+    private bool _awaitingFile;
     private bool _checking;
     private (DiskChange Change, SqlFileStamp? Stamp)? _shownChange;
     private (DiskChange Change, SqlFileStamp? Stamp)? _dismissedChange;
@@ -127,7 +130,8 @@ public sealed class QueryTab : IWorkspaceTab
         IQueryFileView? files = null,
         string? filePath = null,
         SqlFileRead? onDisk = null,
-        bool baselineUnknown = false)
+        bool baselineUnknown = false,
+        bool restoring = false)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(session);
@@ -155,6 +159,7 @@ public sealed class QueryTab : IWorkspaceTab
             }
 
             IsDirty = TextDiffers();
+            _awaitingFile = restoring && onDisk is null;
         }
     }
 
@@ -189,8 +194,8 @@ public sealed class QueryTab : IWorkspaceTab
     // The text differs from the file as last read or saved; set as the view reports edits.
     public bool IsDirty { get; private set; }
 
-    // Read afresh, since the view reports edits a moment later than they land.
-    public bool HasUnsavedChanges => FilePath is not null && TextDiffers();
+    // Read afresh, since the view reports edits a moment later than they land; a file still being written counts too.
+    public bool HasUnsavedChanges => (FilePath is not null && TextDiffers()) || _saving is { IsCompleted: false };
 
     // The typed SQL whose results the tab shows, which a result share sends; null after Commit or Roll back.
     public string? LastStatement => _statement;
@@ -380,7 +385,7 @@ public sealed class QueryTab : IWorkspaceTab
     // A bar the user closed stays closed until the file changes again.
     public async Task CheckDiskAsync()
     {
-        if (_files is null || FilePath is not { } path || _checking || _work.IsClosed)
+        if (_files is null || FilePath is not { } path || _checking || _awaitingFile || _work.IsClosed)
         {
             return;
         }
@@ -420,6 +425,49 @@ public sealed class QueryTab : IWorkspaceTab
     }
 
     public void DiskChangeDismissed() => _dismissedChange = _shownChange;
+
+    // A restored file tab reads its file once it is in the strip, off the UI thread: a clean one takes the file's text
+    // unless it was edited meanwhile, and the file becomes what a check and a save compare with.
+    public async Task LoadRestoredFileAsync(SqlFileStamp? savedStamp, bool unsaved)
+    {
+        if (_files is null || FilePath is not { } path || !_awaitingFile)
+        {
+            return;
+        }
+
+        var shown = _view.WholeText;
+        SqlFileOpening opening;
+        try
+        {
+            opening = await Task.Run(
+                    () => SqlFileOpening.Restored(shown, savedStamp, unsaved, () => SqlFile.TryRead(path)))
+                .ConfigureAwait(true);
+        }
+        finally
+        {
+            _awaitingFile = false;
+        }
+
+        if (_work.IsClosed || path != FilePath)
+        {
+            return;
+        }
+
+        if (opening.Text != shown && _view.WholeText == shown)
+        {
+            _files.ReplaceText(opening.Text);
+        }
+
+        if (opening.Baseline is { } baseline)
+        {
+            _format = baseline.Format;
+            _stamp = baseline.Stamp;
+            _savedText = opening.BaselineUnknown ? null : baseline.Text;
+        }
+
+        IsDirty = TextDiffers();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     // The tab's text becomes the file's, dropping what was typed since.
     public async Task<bool> ReloadAsync()
@@ -734,14 +782,32 @@ public sealed class QueryTab : IWorkspaceTab
         error.Code == "driver.unsupported" || error.Codes.Contains("driver.unsupported");
 
     // A second save while one asks or writes joins it.
-    private Task<bool> Saving(bool saveAs)
+    // A save already writing ends first, and text typed since is saved after it, so a Save never joins an older one.
+    private async Task<bool> Saving(bool saveAs)
     {
-        if (_saving is { IsCompleted: false } saving)
+        var waited = false;
+        while (_saving is { IsCompleted: false } pending)
         {
-            return saving;
+            waited = true;
+            await pending.ConfigureAwait(true);
         }
 
-        return _saving = SaveOnceAsync(saveAs);
+        if (waited && !saveAs && FilePath is not null && !TextDiffers())
+        {
+            return true;
+        }
+
+        var saving = SaveWithinWorkAsync(saveAs);
+        _saving = saving;
+        return await saving.ConfigureAwait(true);
+    }
+
+    // Inside the tab's work, so a close waits for the file to be written before the tab goes.
+    private async Task<bool> SaveWithinWorkAsync(bool saveAs)
+    {
+        var saved = false;
+        await _work.RunAsync(async _ => saved = await SaveOnceAsync(saveAs).ConfigureAwait(true)).ConfigureAwait(true);
+        return saved;
     }
 
     private async Task<bool> SaveOnceAsync(bool saveAs)

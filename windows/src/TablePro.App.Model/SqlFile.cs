@@ -200,6 +200,19 @@ public static class SqlFile
         return new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None);
     }
 
+    // Null when the file is gone or cannot be read.
+    public static SqlFileRead? TryRead(string path)
+    {
+        try
+        {
+            return Read(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     // Null when the file is gone.
     public static SqlFileStamp? Stamp(string path)
     {

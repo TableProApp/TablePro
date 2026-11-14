@@ -386,7 +386,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         string? database = null,
         string? filePath = null,
         bool rolledBack = false,
-        SessionTab? restored = null)
+        SessionTab? restored = null,
+        SqlFileRead? onDisk = null)
     {
         if (_share is null)
         {
@@ -403,7 +404,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 filePath,
                 rolledBack,
                 restored?.FileStamp,
-                restored?.FileUnsaved ?? false),
+                restored?.FileUnsaved ?? false,
+                onDisk),
             Symbol.Document,
             index);
     }
@@ -427,9 +429,11 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             }
         }
 
+        SqlFileRead read;
         try
         {
-            AddQuery(null, Path.GetFileName(path), null, _defaultDatabase, path);
+            // Off the UI thread, since a large script or a slow share would stall the window.
+            read = await Task.Run(() => SqlFile.Read(path)).ConfigureAwait(true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -445,6 +449,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return true;
         }
 
+        if (_share is null)
+        {
+            return false;
+        }
+
+        AddQuery(read.Text, Path.GetFileName(path), null, _defaultDatabase, path, onDisk: read);
         FileUsed?.Invoke(this, path);
         return true;
     }
