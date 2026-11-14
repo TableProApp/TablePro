@@ -163,7 +163,11 @@ impl Renames {
 /// The rows of `after` that `before` does not account for, compared as
 /// multisets. Rows without a rowid are all alike, so for them it is the
 /// count per child, parent and key that compares.
-pub(crate) fn introduced(before: &Violations, after: &Violations) -> Vec<IntroducedViolations> {
+pub(crate) fn introduced(
+    before: &Violations,
+    after: &Violations,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<IntroducedViolations>, DriverError> {
     let mut ids = KeyIds::default();
     let mut remaining: HashMap<(usize, Option<i64>), usize> = HashMap::new();
     for checked in &before.tables {
@@ -189,12 +193,15 @@ pub(crate) fn introduced(before: &Violations, after: &Violations) -> Vec<Introdu
                 continue;
             }
             if let Some(group) = groups.get_mut(*key) {
-                let group = *group.get_or_insert_with(|| found.group_of(table, checked, *key));
+                let group = match group {
+                    Some(group) => *group,
+                    None => *group.insert(found.group_of(table, checked, *key, budget)?),
+                };
                 found.add(group);
             }
         }
     }
-    found.groups
+    Ok(found.groups)
 }
 
 // The groups by child and parent, in the order their first row came. Each key's group is looked up once, not on
@@ -206,9 +213,16 @@ struct Introduced {
 }
 
 impl Introduced {
-    fn group_of(&mut self, table: usize, checked: &TableViolations, key: usize) -> usize {
+    // Each group holds the child's and the parent's names, which a crafted file makes long and many.
+    fn group_of(
+        &mut self,
+        table: usize,
+        checked: &TableViolations,
+        key: usize,
+        budget: &mut CatalogBudget,
+    ) -> Result<usize, DriverError> {
         let Some(broken) = checked.keys.get(key) else {
-            return usize::MAX;
+            return Ok(usize::MAX);
         };
         let next = self.groups.len();
         let group = *self
@@ -217,12 +231,12 @@ impl Introduced {
             .or_insert(next);
         if group == next {
             self.groups.push(IntroducedViolations {
-                table: checked.table.clone(),
-                parent: broken.parent.clone(),
+                table: budget.keep(checked.table.clone())?,
+                parent: budget.keep(broken.parent.clone())?,
                 count: 0,
             });
         }
-        group
+        Ok(group)
     }
 
     fn add(&mut self, group: usize) {
@@ -268,8 +282,11 @@ impl KeyIds {
 /// The error a batch that introduced violations is rolled back with,
 /// in the form SQLite reports a foreign key failure itself.
 pub(crate) fn violation_error(introduced: &[IntroducedViolations]) -> DriverError {
-    let listed: Vec<String> = introduced
+    // The first few say where to look; a crafted file can make thousands, each with long names.
+    const LISTED: usize = 10;
+    let mut listed: Vec<String> = introduced
         .iter()
+        .take(LISTED)
         .map(|group| {
             format!(
                 "{} rows of {} point at missing rows of {}",
@@ -277,6 +294,9 @@ pub(crate) fn violation_error(introduced: &[IntroducedViolations]) -> DriverErro
             )
         })
         .collect();
+    if introduced.len() > LISTED {
+        listed.push(format!("and {} more", introduced.len() - LISTED));
+    }
     DriverError::reported(ServerDiagnostics::new(
         Some(ServerCode::Sqlite {
             primary: SQLITE_CONSTRAINT,
@@ -367,7 +387,12 @@ mod tests {
             violation("lines", Some(2), "orders"),
         ];
 
-        let introduced = introduced(&renames.apply(found(&before)), &found(&after));
+        let introduced = introduced(
+            &renames.apply(found(&before)),
+            &found(&after),
+            &mut CatalogBudget::default(),
+        )
+        .unwrap();
 
         assert_eq!(
             introduced,
@@ -385,7 +410,7 @@ mod tests {
         let after = vec![keyed("children", Some(1), "parents", &["b"], &["id"])];
 
         assert_eq!(
-            introduced(&found(&before), &found(&after)),
+            introduced(&found(&before), &found(&after), &mut CatalogBudget::default()).unwrap(),
             [IntroducedViolations {
                 table: "children".to_owned(),
                 parent: "parents".to_owned(),
@@ -406,7 +431,15 @@ mod tests {
             keyed("grandchildren", Some(4), "children", &["child"], &["parent_id"]),
         ];
 
-        assert!(introduced(&renames.apply(found(&before)), &found(&after)).is_empty());
+        assert!(
+            introduced(
+                &renames.apply(found(&before)),
+                &found(&after),
+                &mut CatalogBudget::default()
+            )
+            .unwrap()
+            .is_empty()
+        );
     }
 
     #[test]
@@ -419,9 +452,21 @@ mod tests {
             violation("tags", None, "posts"),
         ];
 
-        assert!(introduced(&found(&before), &found(&same)).is_empty());
-        assert_eq!(introduced(&found(&before), &found(&more)).len(), 1);
-        assert_eq!(introduced(&found(&before), &found(&more))[0].count, 1);
+        assert!(
+            introduced(&found(&before), &found(&same), &mut CatalogBudget::default())
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            introduced(&found(&before), &found(&more), &mut CatalogBudget::default())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            introduced(&found(&before), &found(&more), &mut CatalogBudget::default()).unwrap()[0].count,
+            1
+        );
     }
 
     #[test]
@@ -449,7 +494,7 @@ mod tests {
         after.push(checked);
 
         assert_eq!(
-            introduced(&before, &after),
+            introduced(&before, &after, budget).unwrap(),
             [
                 IntroducedViolations {
                     table: "t".to_owned(),

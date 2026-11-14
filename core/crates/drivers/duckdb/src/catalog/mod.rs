@@ -75,9 +75,9 @@ const CONSTRAINT_COUNT: &str = "CAST((strlen(lower(t.sql)) - strlen(replace(lowe
        + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'unique', ''))) / 6 \
        + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'primary', ''))) / 7 + t.column_count + 1 AS DOUBLE)";
 
-// Beside its table's name, a constraint row names a column.
-const ROW_BYTES: &str = "(512 + coalesce((SELECT max(strlen(c.column_name)) FROM duckdb_columns() c \
-       WHERE c.table_oid = t.table_oid), 0))";
+// Beside its table's name, a constraint row's own words. Not `duckdb_columns()`, which repeats each table's name on
+// every column row it builds, for every table, before a filter.
+const ROW_BYTES: &str = "512";
 
 // DuckDB builds every table's constraint rows, 2,048 to a chunk across tables, before a query filters them, and holds
 // the whole result before its first row; it names each constraint after its table. A read runs only once the result,

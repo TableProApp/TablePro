@@ -165,7 +165,13 @@ impl Write<'_> {
                     return Err(self.failure(self.batch.steps.len(), error, fate));
                 }
             };
-            let introduced = introduced(&baseline, &after);
+            let introduced = match introduced(&baseline, &after, &mut budget) {
+                Ok(introduced) => introduced,
+                Err(error) => {
+                    let fate = self.rollback(transaction).await;
+                    return Err(self.failure(self.batch.steps.len(), error, fate));
+                }
+            };
             if !introduced.is_empty() {
                 self.rollback(transaction).await;
                 return Err(DriverError::RolledBack {

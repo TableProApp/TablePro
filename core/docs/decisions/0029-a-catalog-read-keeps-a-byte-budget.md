@@ -28,6 +28,7 @@ A file engine reads its catalog from the file the user opened, and the file choo
 - Large real schemas read as before, and the keys into a table read faster: 5,000 children in 0.2 s, against 1.4 s.
 - One value is read before it is charged, and sqlx queues up to 50 rows ahead of the reader. SQLite bounds a value at `SQLITE_MAX_LENGTH`, and a CREATE TABLE over 64 KiB is read alone.
 - In a DuckDB file with a crafted table, every read that touches constraints fails, the columns of any table among them, since DuckDB builds the crafted table's rows for each. The table list still reads.
-- A save on a table with millions of rows that already break its keys rolls back rather than compare them.
+- DuckDB's own catalog functions, `duckdb_columns()` and `duckdb_constraints()`, build a row for every column and constraint of every table before a filter, each with its table's name, and a column can repeat a constraint. The bound counts table names and the text, not a long column name repeated in its constraints; that work is DuckDB's.
+- A save on a table with millions of rows that already break its keys rolls back rather than compare them. Its error lists the first ten tables and parents.
 - Not budgeted: the schema list, reads of one value, and the SQL dumps, which read each object once.
 - The apps word the code: Linux in `linux/crates/app/src/ui/error_text/driver.rs`, Windows in `Resources.resw`.
