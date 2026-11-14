@@ -486,33 +486,65 @@ async fn small_children_keys(
         .bind(i64::try_from(ByteLimit::CATALOG_DEFAULT.get()).unwrap_or(i64::MAX))
         .fetch(&mut *connection);
     let mut keys = Vec::new();
-    let mut child: Option<(String, Option<String>, usize, Vec<InboundKeyColumn>)> = None;
+    let mut child: Option<ChildRows> = None;
     while let Some(row) = rows.try_next().await.map_err(map_error)? {
         let name: &str = row.try_get("child").map_err(map_error)?;
-        if child.as_ref().is_none_or(|(read, ..)| read != name) {
-            if let Some((read, sql, count, columns)) = child.take() {
-                keys.extend(parent.keys_of(read, columns, sql, count, budget)?);
+        if child.as_ref().is_none_or(|read| read.name != name) {
+            if let Some(done) = child.take() {
+                keys.extend(done.keys(parent, budget)?);
             }
-            child = Some((
-                budget.keep(name.to_owned())?,
-                budget.keep_optional(row.try_get("sql").map_err(map_error)?)?,
-                usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0),
-                Vec::new(),
-            ));
+            child = Some(ChildRows::new(budget.keep(name.to_owned())?));
         }
-        if let Some((_, _, _, columns)) = &mut child {
-            columns.push(InboundKeyColumn {
-                id: row.try_get("id").map_err(map_error)?,
-                seq: row.try_get("seq").map_err(map_error)?,
-                from: budget.keep(text(&row, "from")?)?,
-                to: budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
-            });
+        let Some(read) = &mut child else {
+            continue;
+        };
+        let id: i64 = row.try_get("id").map_err(map_error)?;
+        read.ids.insert(id);
+        if !row.try_get::<bool, _>("points_here").map_err(map_error)? {
+            continue;
         }
+        if read.sql.is_none() {
+            read.sql = budget.keep_optional(row.try_get("sql").map_err(map_error)?)?;
+        }
+        read.columns.push(InboundKeyColumn {
+            id,
+            seq: row.try_get("seq").map_err(map_error)?,
+            from: budget.keep(text(&row, "from")?)?,
+            to: budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
+        });
     }
-    if let Some((read, sql, count, columns)) = child {
-        keys.extend(parent.keys_of(read, columns, sql, count, budget)?);
+    if let Some(done) = child {
+        keys.extend(done.keys(parent, budget)?);
     }
     Ok(keys)
+}
+
+// One child's rows of the small tables' key list, as they pass.
+struct ChildRows {
+    name: String,
+    sql: Option<String>,
+    ids: HashSet<i64>,
+    columns: Vec<InboundKeyColumn>,
+}
+
+impl ChildRows {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            sql: None,
+            ids: HashSet::new(),
+            columns: Vec::new(),
+        }
+    }
+
+    fn keys(self, parent: &Parent<'_>, budget: &mut CatalogBudget) -> Result<Vec<InboundForeignKey>, DriverError> {
+        if self.columns.is_empty() {
+            budget.release_text(&self.name);
+            release(budget, self.sql);
+            return Ok(Vec::new());
+        }
+        parent.keys_of(self.name, self.columns, self.sql, self.ids.len(), budget)
+    }
 }
 
 // Linear time, since the file chooses both texts. SQLite folds ASCII letters alone, and a quoted name doubles its

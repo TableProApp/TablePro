@@ -99,13 +99,16 @@ fn sized_tables(schema_sql: &str) -> String {
     )
 }
 
-// Unsorted, so the rows stream; a child's rows come together.
+// Every key of every small table, unsorted so the rows stream, a child's together: the child's keys are counted as
+// they pass, and only those pointing here carry their names and the child's CREATE TABLE.
 pub(crate) fn small_children_keys_sql(schema_sql: &str) -> String {
     format!(
-        "{} SELECT m.name AS child, m.sql AS sql, f.id AS id, f.seq AS seq, f.\"from\" AS \"from\", \
-           f.\"to\" AS \"to\", (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys \
-         FROM sized m, pragma_foreign_key_list(m.name, ?2) f \
-         WHERE m.small AND f.\"table\" = ?1 COLLATE NOCASE",
+        "{} SELECT m.name AS child, f.id AS id, f.seq AS seq, \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN m.sql END AS sql, \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN f.\"from\" END AS \"from\", \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN f.\"to\" END AS \"to\", \
+           f.\"table\" = ?1 COLLATE NOCASE AS points_here \
+         FROM sized m, pragma_foreign_key_list(m.name, ?2) f WHERE m.small",
         sized_tables(schema_sql)
     )
 }

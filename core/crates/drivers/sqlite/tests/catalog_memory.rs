@@ -41,7 +41,7 @@ fn quoted(name: &str) -> String {
 // - 20,000 rows of a table with a 64 KiB name that break its key, which a check named on every row;
 // - one row of a table with a 64 KiB name that breaks 4,000 keys, which the check named on every key;
 // - 60 children of one parent, each CREATE TABLE 256 KiB long, which SQLite queued 50 at a time;
-// - 3,000 rows that each break 1,000 keys, three million broken keys from 30 KB of text and rows.
+// - 3,000 rows that each break 1,000 keys, three million broken keys from 30 KB of text and rows, which stop a save.
 fn crafted_schema() -> Vec<String> {
     let column = "c".repeat(LONG);
     let child = "n".repeat(LONG);
@@ -243,7 +243,7 @@ async fn a_crafted_catalog_stops_at_the_budget() {
         );
     }
     let (written, heap, native) = measured(connection.write_batch(&checked_save("orphans"), call())).await;
-    assert!(written.is_ok(), "orphans: {written:?}");
+    too_large("checking the orphans", written.map_err(|error| error.cause().clone()));
     assert!(
         heap < BOUND && native < NATIVE_BOUND,
         "checking the orphans: {heap}, {native}"

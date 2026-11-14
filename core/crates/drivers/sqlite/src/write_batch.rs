@@ -358,7 +358,7 @@ async fn violations(
         .fetch_optional(&mut *connection)
         .await
         .map_err(map_error)?;
-    let mut found = TableViolations::new(declared.unwrap_or_else(|| table.name.clone()));
+    let mut found = TableViolations::new(declared.unwrap_or_else(|| table.name.clone()), budget)?;
     let keys = foreign_keys(connection, table, schema).await?;
     let mut positions: HashMap<i64, usize> = HashMap::new();
     let mut rows = sqlx::query(FOREIGN_KEY_CHECK_SQL)
@@ -368,11 +368,16 @@ async fn violations(
     while let Some(row) = rows.try_next().await.map_err(map_error)? {
         let rowid: Option<i64> = row.try_get("rowid").map_err(map_error)?;
         let fkid: i64 = row.try_get("fkid").map_err(map_error)?;
-        let position = *positions.entry(fkid).or_insert_with(|| {
-            let (parent, key) = keys.get(&fkid).cloned().unwrap_or_default();
-            found.add_key(BrokenKey { parent, key })
-        });
-        found.add_row(position, rowid.filter(|_| !rowids_renumbered), budget);
+        let position = match positions.get(&fkid) {
+            Some(position) => *position,
+            None => {
+                let (parent, key) = keys.get(&fkid).cloned().unwrap_or_default();
+                let position = found.add_key(BrokenKey { parent, key }, budget)?;
+                positions.insert(fkid, position);
+                position
+            }
+        };
+        found.add_row(position, rowid.filter(|_| !rowids_renumbered), budget)?;
     }
     let mut violations = Violations::default();
     violations.push(found);

@@ -68,18 +68,31 @@ enum Constraints {
     Referencing,
 }
 
-// Constraints: REFERENCES, CHECK, UNIQUE and PRIMARY in the text and a NOT NULL per column; each names its table
-// `{names}` times and a column, beside at most four copies of the text. DOUBLE, since the file chooses the numbers.
-const CONSTRAINT_BYTES: &str = "CAST((strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'references', ''))) / 10 \
+// A table's constraints: REFERENCES, CHECK, UNIQUE and PRIMARY in its text, and a NOT NULL per column. DOUBLE, since
+// the file chooses the numbers.
+const CONSTRAINT_COUNT: &str = "CAST((strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'references', ''))) / 10 \
        + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'check', ''))) / 5 \
        + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'unique', ''))) / 6 \
-       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'primary', ''))) / 7 + t.column_count + 1 AS DOUBLE) \
-     * ({names} * strlen(t.table_name) + 512 + coalesce((SELECT max(strlen(c.column_name)) FROM duckdb_columns() c \
-         WHERE c.table_oid = t.table_oid), 0)) \
-     + 4 * strlen(t.sql)";
+       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'primary', ''))) / 7 + t.column_count + 1 AS DOUBLE)";
 
-// DuckDB holds a query's whole result before its first row and names each constraint after its table, so the result
-// is bounded before the query runs.
+// Beside its table's name, a constraint row names a column.
+const ROW_BYTES: &str = "(512 + coalesce((SELECT max(strlen(c.column_name)) FROM duckdb_columns() c \
+       WHERE c.table_oid = t.table_oid), 0))";
+
+// DuckDB builds every table's constraint rows, a chunk of 2,048 at a time, before a query filters them, and holds the
+// whole result before its first row; it names each constraint after its table. A read runs only once the result,
+// with its table names `names` times a row and four copies of the text, and the largest chunk fit.
+fn constraint_bounds(names: &str, tables: &str) -> String {
+    format!(
+        "SELECT \
+           (SELECT sum({CONSTRAINT_COUNT} * ({names} * strlen(t.table_name) + {ROW_BYTES}) + 4 * strlen(t.sql)) \
+            FROM duckdb_tables() t WHERE {tables}), \
+           (SELECT max(least({CONSTRAINT_COUNT}, 2048) * (2 * strlen(t.table_name) + {ROW_BYTES})) FROM duckdb_tables() t) \
+           + 3 * coalesce((SELECT sum(b) FROM (SELECT CAST(strlen(sql) AS DOUBLE) AS b FROM duckdb_tables() \
+             ORDER BY b DESC LIMIT 2048)), 0)"
+    )
+}
+
 fn constraints_fit(
     link: &Link,
     catalog: &str,
@@ -97,15 +110,15 @@ fn constraints_fit(
              WHERE p.database_name = ? AND p.schema_name = ? AND p.table_name = ?)",
         ),
     };
-    let bytes_sql = CONSTRAINT_BYTES.replace("{names}", names);
-    let sql = format!("SELECT sum({bytes_sql}) FROM duckdb_tables() t WHERE {tables}");
-    let bytes: Option<f64> = link
+    let (kept, built): (Option<f64>, Option<f64>) = link
         .connection
-        .query_row(&sql, duckdb::params![catalog, schema_of(table), table.name], |row| {
-            row.get(0)
-        })
+        .query_row(
+            &constraint_bounds(names, tables),
+            duckdb::params![catalog, schema_of(table), table.name],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
         .map_err(map_error)?;
-    let bytes = bytes.unwrap_or(0.0);
+    let bytes = kept.unwrap_or(0.0) + built.unwrap_or(0.0);
     budget.fits(match bytes < usize::MAX as f64 {
         true => bytes as usize,
         false => usize::MAX,

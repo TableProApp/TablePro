@@ -7,7 +7,7 @@
 //! and the check after it are compared, and only the difference fails
 //! the batch.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use tablepro_core::ddl::ColumnRename;
 use tablepro_core::{CatalogBudget, DriverError, ServerCode, ServerDiagnostics};
@@ -21,13 +21,12 @@ pub(crate) struct Violations {
 }
 
 // A crafted file can break thousands of keys of a long-named table in millions of rows, so names are held once and
-// rows only up to the budget, past which the table compares by count per key, as renumbered rows do.
+// every row and key is charged to the save's budget: past it the save stops rather than compare less.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TableViolations {
     table: String,
     keys: Vec<BrokenKey>,
-    counts: Vec<usize>,
-    rows: Option<Vec<(usize, Option<i64>)>>,
+    rows: Vec<(usize, Option<i64>)>,
 }
 
 const ROW_BYTES: usize = size_of::<(usize, Option<i64>)>();
@@ -39,41 +38,36 @@ pub(crate) struct BrokenKey {
 }
 
 impl TableViolations {
-    pub(crate) fn new(table: String) -> Self {
-        Self {
-            table,
+    pub(crate) fn new(table: String, budget: &mut CatalogBudget) -> Result<Self, DriverError> {
+        Ok(Self {
+            table: budget.keep(table)?,
             keys: Vec::new(),
-            counts: Vec::new(),
-            rows: Some(Vec::new()),
-        }
+            rows: Vec::new(),
+        })
     }
 
-    pub(crate) fn add_key(&mut self, key: BrokenKey) -> usize {
+    pub(crate) fn add_key(&mut self, key: BrokenKey, budget: &mut CatalogBudget) -> Result<usize, DriverError> {
+        budget.charge_text(&key.parent)?;
+        budget.charge_texts(key.key.columns.iter().chain(&key.key.parent_columns))?;
         self.keys.push(key);
-        self.counts.push(0);
-        self.keys.len() - 1
+        Ok(self.keys.len() - 1)
     }
 
-    pub(crate) fn add_row(&mut self, key: usize, rowid: Option<i64>, budget: &mut CatalogBudget) {
-        if let Some(count) = self.counts.get_mut(key) {
-            *count += 1;
-        }
-        let Some(rows) = &mut self.rows else {
-            return;
-        };
-        match budget.charge(ROW_BYTES) {
-            Ok(()) => rows.push((key, rowid)),
-            Err(_) => {
-                budget.release(ROW_BYTES.saturating_mul(rows.len() + 1));
-                self.rows = None;
-            }
-        }
+    pub(crate) fn add_row(
+        &mut self,
+        key: usize,
+        rowid: Option<i64>,
+        budget: &mut CatalogBudget,
+    ) -> Result<(), DriverError> {
+        budget.charge(ROW_BYTES)?;
+        self.rows.push((key, rowid));
+        Ok(())
     }
 }
 
 impl Violations {
     pub(crate) fn push(&mut self, table: TableViolations) {
-        if table.counts.iter().any(|count| *count > 0) {
+        if !table.rows.is_empty() {
             self.tables.push(table);
         }
     }
@@ -145,7 +139,6 @@ impl Renames {
                         })
                         .collect(),
                     table: self.table_name(checked.table),
-                    counts: checked.counts,
                     rows: checked.rows,
                 })
                 .collect(),
@@ -172,60 +165,29 @@ impl Renames {
 /// count per child, parent and key that compares.
 pub(crate) fn introduced(before: &Violations, after: &Violations) -> Vec<IntroducedViolations> {
     let mut ids = KeyIds::default();
-    let before_ids: Vec<(usize, Vec<usize>)> = before.tables.iter().map(|checked| ids.of(checked)).collect();
-    let after_ids: Vec<(usize, Vec<usize>)> = after.tables.iter().map(|checked| ids.of(checked)).collect();
-    // A table whose rows were let go on either side compares by count.
-    let counted: HashSet<usize> = before
-        .tables
-        .iter()
-        .zip(&before_ids)
-        .chain(after.tables.iter().zip(&after_ids))
-        .filter(|(checked, _)| checked.rows.is_none())
-        .map(|(_, (table, _))| *table)
-        .collect();
     let mut remaining: HashMap<(usize, Option<i64>), usize> = HashMap::new();
-    let mut counts: HashMap<usize, usize> = HashMap::new();
-    for (checked, (table, keys)) in before.tables.iter().zip(&before_ids) {
-        match (counted.contains(table), &checked.rows) {
-            (false, Some(rows)) => {
-                for (key, rowid) in rows {
-                    if let Some(id) = keys.get(*key) {
-                        *remaining.entry((*id, *rowid)).or_default() += 1;
-                    }
-                }
-            }
-            _ => {
-                for (id, count) in keys.iter().zip(&checked.counts) {
-                    *counts.entry(*id).or_default() += count;
-                }
+    for checked in &before.tables {
+        let (_, keys) = ids.of(checked);
+        for (key, rowid) in &checked.rows {
+            if let Some(id) = keys.get(*key) {
+                *remaining.entry((*id, *rowid)).or_default() += 1;
             }
         }
     }
     let mut found = Introduced::default();
-    for (checked, (table, keys)) in after.tables.iter().zip(&after_ids) {
-        match (counted.contains(table), &checked.rows) {
-            (false, Some(rows)) => {
-                for (key, rowid) in rows {
-                    let Some(id) = keys.get(*key) else {
-                        continue;
-                    };
-                    if let Some(left) = remaining.get_mut(&(*id, *rowid))
-                        && *left > 0
-                    {
-                        *left -= 1;
-                        continue;
-                    }
-                    found.add(*table, checked, *key, 1);
-                }
+    for checked in &after.tables {
+        let (table, keys) = ids.of(checked);
+        for (key, rowid) in &checked.rows {
+            let Some(id) = keys.get(*key) else {
+                continue;
+            };
+            if let Some(left) = remaining.get_mut(&(*id, *rowid))
+                && *left > 0
+            {
+                *left -= 1;
+                continue;
             }
-            _ => {
-                for (key, (id, count)) in keys.iter().zip(&checked.counts).enumerate() {
-                    let before = counts.entry(*id).or_default();
-                    let kept = (*before).min(*count);
-                    *before -= kept;
-                    found.add(*table, checked, key, count - kept);
-                }
-            }
+            found.add(table, checked, *key);
         }
     }
     found.groups
@@ -239,19 +201,19 @@ struct Introduced {
 }
 
 impl Introduced {
-    fn add(&mut self, table: usize, checked: &TableViolations, key: usize, count: usize) {
-        let Some(broken) = checked.keys.get(key).filter(|_| count > 0) else {
+    fn add(&mut self, table: usize, checked: &TableViolations, key: usize) {
+        let Some(broken) = checked.keys.get(key) else {
             return;
         };
         let group = (table, broken.parent.to_lowercase());
         match self.positions.get(&group).and_then(|index| self.groups.get_mut(*index)) {
-            Some(found) => found.count += count,
+            Some(found) => found.count += 1,
             None => {
                 self.positions.insert(group, self.groups.len());
                 self.groups.push(IntroducedViolations {
                     table: checked.table.clone(),
                     parent: broken.parent.clone(),
-                    count,
+                    count: 1,
                 });
             }
         }
@@ -340,19 +302,25 @@ mod tests {
             let position = match tables.iter().position(|checked| checked.table == *table) {
                 Some(position) => position,
                 None => {
-                    tables.push(TableViolations::new((*table).to_owned()));
+                    tables.push(TableViolations::new((*table).to_owned(), &mut CatalogBudget::default()).unwrap());
                     tables.len() - 1
                 }
             };
             let checked = &mut tables[position];
-            let key = checked.add_key(BrokenKey {
-                parent: (*parent).to_owned(),
-                key: ViolatedKey {
-                    columns: owned(columns),
-                    parent_columns: owned(parent_columns),
-                },
-            });
-            checked.add_row(key, *rowid, &mut CatalogBudget::default());
+            let budget = &mut CatalogBudget::default();
+            let key = checked
+                .add_key(
+                    BrokenKey {
+                        parent: (*parent).to_owned(),
+                        key: ViolatedKey {
+                            columns: owned(columns),
+                            parent_columns: owned(parent_columns),
+                        },
+                    },
+                    budget,
+                )
+                .unwrap();
+            checked.add_row(key, *rowid, budget).unwrap();
         }
         let mut violations = Violations::default();
         for checked in tables {
@@ -454,17 +422,17 @@ mod tests {
             },
         };
         let budget = &mut CatalogBudget::default();
-        let mut checked = TableViolations::new("t".to_owned());
-        let key = checked.add_key(broken("p"));
+        let mut checked = TableViolations::new("t".to_owned(), budget).unwrap();
+        let key = checked.add_key(broken("p"), budget).unwrap();
         for rowid in 0..1_000 {
-            checked.add_row(key, Some(rowid), budget);
+            checked.add_row(key, Some(rowid), budget).unwrap();
         }
         let mut before = Violations::default();
         before.push(checked.clone());
-        let other = checked.add_key(broken("q"));
-        checked.add_row(other, Some(5), budget);
-        checked.add_row(key, Some(1_000), budget);
-        checked.add_row(other, Some(6), budget);
+        let other = checked.add_key(broken("q"), budget).unwrap();
+        checked.add_row(other, Some(5), budget).unwrap();
+        checked.add_row(key, Some(1_000), budget).unwrap();
+        checked.add_row(other, Some(6), budget).unwrap();
         let mut after = Violations::default();
         after.push(checked);
 
@@ -486,48 +454,22 @@ mod tests {
     }
 
     #[test]
-    fn rows_past_the_budget_compare_by_count_per_key() {
-        let broken = |parent: &str| BrokenKey {
-            parent: parent.to_owned(),
-            key: ViolatedKey {
-                columns: vec!["a".to_owned()],
-                parent_columns: Vec::new(),
-            },
-        };
-        let rows = |count: i64, budget: &mut CatalogBudget| {
-            let mut checked = TableViolations::new("t".to_owned());
-            let (p, q) = (checked.add_key(broken("p")), checked.add_key(broken("q")));
-            for rowid in 0..count {
-                checked.add_row(p, Some(rowid), budget);
-                checked.add_row(q, Some(rowid), budget);
-            }
-            let mut found = Violations::default();
-            found.push(checked);
-            found
-        };
+    fn rows_past_the_budget_stop_the_check() {
         let budget = &mut CatalogBudget::new(tablepro_core::ByteLimit::new(4_096).unwrap());
-
-        let before = rows(1_000, budget);
-        let same = rows(1_000, budget);
-        let more = rows(1_001, budget);
-
-        assert!(before.tables[0].rows.is_none(), "the rows passed the budget");
-        assert!(introduced(&before, &same).is_empty());
-        assert_eq!(
-            introduced(&before, &more),
-            [
-                IntroducedViolations {
-                    table: "t".to_owned(),
+        let mut checked = TableViolations::new("t".to_owned(), budget).unwrap();
+        let key = checked
+            .add_key(
+                BrokenKey {
                     parent: "p".to_owned(),
-                    count: 1
+                    key: ViolatedKey::default(),
                 },
-                IntroducedViolations {
-                    table: "t".to_owned(),
-                    parent: "q".to_owned(),
-                    count: 1
-                },
-            ]
-        );
+                budget,
+            )
+            .unwrap();
+
+        let stopped = (0..1_000).try_for_each(|rowid| checked.add_row(key, Some(rowid), budget));
+
+        assert_eq!(stopped, Err(DriverError::CatalogTooLarge { limit_bytes: 4_096 }));
     }
 
     #[test]
