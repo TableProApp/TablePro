@@ -644,6 +644,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             if (item.Content is TableTabView view && view.Model.ShowsReference(reference))
             {
+                view.ShowData();
                 Tabs.SelectedItem = item;
                 return;
             }
