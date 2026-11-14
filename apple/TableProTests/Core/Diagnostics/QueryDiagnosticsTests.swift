@@ -111,6 +111,8 @@ struct QueryDiagnosticsTests {
         (TestGrammar.sqlServer, "SELECT [a]])] FROM t"),
         (TestGrammar.sqlite, "SELECT [a)] FROM t"),
         (DatabaseType.clickhouse.lexicalGrammar, "SELECT 1 // )\n"),
+        (TestGrammar.mysql, "SELECT /*! 1 */*2"),
+        (TestGrammar.mysql, "SELECT /*! (1) */ + 2"),
     ])
     func bracketInsideAGrammarSpan(grammar: SQLLexicalGrammar, text: String) {
         #expect(SQLDiagnosticsProducer(grammar: grammar).diagnostics(for: text).isEmpty, "\(text)")

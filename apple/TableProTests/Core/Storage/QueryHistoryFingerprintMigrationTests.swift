@@ -163,29 +163,43 @@ struct QueryHistoryFingerprintMigrationTests {
         #expect(snapshot.mostRun.first?.callCount == 2)
     }
 
-    @Test("Opening a v5 database hashes every row again with the engine's grammar")
-    func versionSixRehashesWithTheGrammar() async {
+    @Test("Rows the previous stable wrote get their shape, and this build leaves that release its own fingerprint")
+    func shapeColumnLeavesThePreviousStableItsFingerprint() async {
         let connectionId = UUID()
         let url = makeVersion3Database(
             queries: ["SELECT 'C:\\' AS p, a FROM t", "SELECT 'D:\\' AS p, a FROM t"],
             connectionId: connectionId
         )
-        let migrated = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: false)
-        #expect(await migrated.count(scope: .all) == 2)
+        let storage = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        _ = await storage.record(QueryHistoryEntry(
+            query: "SELECT 'E:\\' AS p, a FROM t",
+            connectionId: connectionId,
+            databaseName: "legacydb",
+            databaseType: .postgresql,
+            source: .editor,
+            executionTime: 0.25,
+            rowCount: 7,
+            wasSuccessful: true
+        ))
 
-        // A v5 store hashed each row without the grammar, and a backslash kept PostgreSQL's literal open.
-        var db: OpaquePointer?
-        if sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK {
-            sqlite3_exec(db, "UPDATE history SET fingerprint_hash = rowid; PRAGMA user_version = 5;", nil, nil, nil)
-        }
-        sqlite3_close_v2(db)
-
-        let reopened = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
-        let snapshot = await reopened.insights(
+        let snapshot = await storage.insights(
             QueryInsightsRequest(scope: .connection(connectionId)),
             slowestRanking: .totalTime
         )
         #expect(snapshot.totals.distinctShapeCount == 1)
+        #expect(snapshot.mostRun.first?.callCount == 3)
         #expect(snapshot.mostRun.first?.normalizedQuery == "SELECT ? AS p, a FROM t")
+
+        // The previous stable fills a zero `fingerprint_hash` with its own reading when it opens the store.
+        var db: OpaquePointer?
+        guard sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK else { return }
+        defer { sqlite3_close_v2(db) }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let sql = "SELECT fingerprint_hash, shape_hash FROM history WHERE query LIKE '%E:%';"
+        #expect(sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK)
+        #expect(sqlite3_step(statement) == SQLITE_ROW)
+        #expect(sqlite3_column_int64(statement, 0) == 0)
+        #expect(sqlite3_column_int64(statement, 1) != 0)
     }
 }

@@ -42,8 +42,15 @@ extension QueryHistoryStorage {
                 byte_count INTEGER NOT NULL,
                 execution_time REAL NOT NULL,
                 captured_at REAL NOT NULL,
-                is_pinned INTEGER NOT NULL DEFAULT 0
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                shape_hash INTEGER NOT NULL DEFAULT 0
             );
+            """)
+        // A plan from the previous stable has no shape yet; the backfill reads it from `subject_sql`.
+        _ = addColumnIfMissing("shape_hash", definition: "INTEGER NOT NULL DEFAULT 0", inTable: "plan_snapshots")
+        execute("""
+            CREATE INDEX IF NOT EXISTS idx_plan_snapshots_shape
+                ON plan_snapshots(shape_hash, connection_id, database_name, variant_key, captured_at DESC);
             """)
         execute("""
             CREATE INDEX IF NOT EXISTS idx_plan_snapshots_identity
@@ -61,12 +68,14 @@ extension QueryHistoryStorage {
     func recordPlanSnapshot(_ capture: QueryPlanCapture) -> Bool {
         guard let db, capture.isWithinPlanSizeLimit else { return false }
 
+        // The previous stable matches plans on `fingerprint_hash`, and its reading agrees with the grammar's for nearly
+        // every statement, so the shape goes in both.
         let sql = """
             INSERT INTO plan_snapshots (
                 id, history_id, fingerprint_hash, subject_sql, connection_id, database_name,
                 database_type, schema_name, variant_key, format, raw_plan, byte_count,
-                execution_time, captured_at, is_pinned
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);
+                execution_time, captured_at, is_pinned, shape_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);
             """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -91,6 +100,7 @@ extension QueryHistoryStorage {
             .int64(Int64(capture.byteCount)),
             .double(capture.executionTime),
             .double(capture.capturedAt.timeIntervalSince1970),
+            .int64(identity.fingerprintHash),
         ]
         bind(bindings, to: statement)
 
@@ -167,7 +177,7 @@ extension QueryHistoryStorage {
         clause.append("""
             SELECT id, subject_sql, execution_time, captured_at, is_pinned, byte_count
               FROM plan_snapshots
-             WHERE fingerprint_hash = ?
+             WHERE shape_hash = ?
                AND connection_id = ?
                AND database_name = ?
                AND database_type = ?

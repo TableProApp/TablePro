@@ -65,9 +65,15 @@ enum QueryBracketScanner {
         var brackets = Brackets()
         var unterminatedComment: NSRange?
         var hasUnterminatedString = false
+        var executableBody: SQLNonCodeSpan.Span?
         var index = 0
 
         while index < text.length {
+            if let body = executableBody, index >= body.contentEnd {
+                index = max(body.end, index)
+                executableBody = nil
+                continue
+            }
             let character = text.character(at: index)
             guard SQLNonCodeSpan.mayStart(character),
                   let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar)
@@ -86,9 +92,10 @@ enum QueryBracketScanner {
             case .quoted:
                 hasUnterminatedString = hasUnterminatedString || !span.isTerminated
             }
-            // The server runs the body of `/*! ... */`, so its brackets are code.
+            // The server runs the body of `/*! ... */`, so its brackets are code, and its closer is not.
             if span.kind == .executableComment,
                let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: text.length) {
+                executableBody = executableBody ?? span
                 index += opener
                 continue
             }

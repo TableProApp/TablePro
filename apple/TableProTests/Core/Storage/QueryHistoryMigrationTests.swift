@@ -289,9 +289,9 @@ struct QueryHistoryMigrationTests {
         #expect(columnNames(in: url, table: "plan_snapshots") == [
             "id", "history_id", "fingerprint_hash", "subject_sql", "connection_id",
             "database_name", "database_type", "schema_name", "variant_key", "format",
-            "raw_plan", "byte_count", "execution_time", "captured_at", "is_pinned"
+            "raw_plan", "byte_count", "execution_time", "captured_at", "is_pinned", "shape_hash"
         ])
-        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 6)
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 5)
 
         let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
         #expect(await second.count(scope: .all) == 1)
@@ -313,7 +313,7 @@ struct QueryHistoryMigrationTests {
         let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
         #expect(await second.count(scope: .all) == 0)
 
-        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 6)
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 5)
         #expect(
             scalarInt(
                 in: url,
