@@ -38,7 +38,7 @@ internal static class CellValueViewer
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(value);
-        var picture = value.IsWholeBinary && value.Bytes is { Length: > 0 } bytes
+        using var picture = value.IsWholeBinary && value.Bytes is { Length: > 0 } bytes
             ? await DecodeAsync(bytes.ToArray()).ConfigureAwait(true)
             : null;
         var json = value.Json();
@@ -84,11 +84,11 @@ internal static class CellValueViewer
         // A picture smaller than the viewer shows at its own size, a larger one fits.
         var image = new Image
         {
-            Source = picture,
+            Source = picture?.Source,
             Stretch = Stretch.Uniform,
             HorizontalAlignment = HorizontalAlignment.Left,
-            MaxWidth = picture?.PixelWidth ?? 0,
-            MaxHeight = Math.Min(ViewerHeight, picture?.PixelHeight ?? 0),
+            MaxWidth = picture?.Width ?? 0,
+            MaxHeight = Math.Min(ViewerHeight, picture?.Height ?? 0),
         };
         AutomationProperties.SetName(image, value.Column);
         AutomationProperties.SetAutomationId(image, "ValueViewerImage");
@@ -167,8 +167,10 @@ internal static class CellValueViewer
         }
     }
 
-    // Null where no codec on the system reads the bytes as an image, or the image is too large to decode here.
-    private static async Task<BitmapImage?> DecodeAsync(byte[] bytes)
+    // Null where no codec on the system reads the bytes as an image, or the image is too large to decode here. Only
+    // the first frame is decoded, through the frame's own size: an animated GIF's canvas can be far larger than its
+    // frames, and BitmapImage would allocate the canvas.
+    private static async Task<Picture?> DecodeAsync(byte[] bytes)
     {
         using var stream = new InMemoryRandomAccessStream();
         using (var writer = new DataWriter(stream))
@@ -188,25 +190,41 @@ internal static class CellValueViewer
                 return null;
             }
 
-            // A picture larger than the viewer decodes at a size it can show, its longer side bounded, not at every
-            // pixel it holds; the other side follows the aspect ratio.
-            var bitmap = new BitmapImage();
-            if (width >= height && width > DecodedSide)
+            // A picture larger than the viewer is decoded at a size it can show, its longer side bounded.
+            var scale = Math.Min(1.0, (double)DecodedSide / Math.Max(width, height));
+            var transform = new BitmapTransform
             {
-                bitmap.DecodePixelWidth = DecodedSide;
+                ScaledWidth = Math.Max(1u, (uint)Math.Round(width * scale)),
+                ScaledHeight = Math.Max(1u, (uint)Math.Round(height * scale)),
+                InterpolationMode = BitmapInterpolationMode.Fant,
+            };
+            using var bitmap = await decoder.GetSoftwareBitmapAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                transform,
+                ExifOrientationMode.RespectExifOrientation,
+                ColorManagementMode.ColorManageToSRgb);
+            var source = new SoftwareBitmapSource();
+            try
+            {
+                await source.SetBitmapAsync(bitmap);
             }
-            else if (height > width && height > DecodedSide)
+            catch
             {
-                bitmap.DecodePixelHeight = DecodedSide;
+                source.Dispose();
+                throw;
             }
 
-            stream.Seek(0);
-            await bitmap.SetSourceAsync(stream);
-            return bitmap;
+            return new Picture(source, bitmap.PixelWidth, bitmap.PixelHeight);
         }
         catch (Exception error) when (error is COMException or ArgumentException or OutOfMemoryException)
         {
             return null;
         }
+    }
+
+    private sealed record Picture(SoftwareBitmapSource Source, int Width, int Height) : IDisposable
+    {
+        public void Dispose() => Source.Dispose();
     }
 }
