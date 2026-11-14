@@ -93,12 +93,18 @@ public sealed class ShellModelTests
     }
 
     [Fact]
-    public void AnEngineThatCannotSeekHasOnlyItsFirstPage()
+    public void AnEngineThatCannotSeekStepsAPageAtATimeUntilTheServerSaysNothingFollows()
     {
-        var page = new TablePage(0, 100, 100, null, CanSeek: false);
+        var page = new TablePage(1000, 100, 100, null, CanSeek: false);
+        var ends = page with { EndsTable = true };
 
-        Assert.False(page.HasNext);
-        Assert.False(page.IsPaged);
+        Assert.True(page.HasPrevious);
+        Assert.True(page.HasNext);
+        Assert.True(page.IsPaged);
+        Assert.False(ends.HasNext);
+        Assert.True(ends.IsPaged);
+        Assert.False(ends.At(page.PreviousOffset).EndsTable);
+        Assert.False((page with { Total = 5000 }).HasLast);
     }
 
     [Fact]

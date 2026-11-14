@@ -116,6 +116,27 @@ public sealed class HistoryTests : IDisposable
         Assert.Empty(afterClear.Entries);
     }
 
+    [Fact]
+    public async Task APruneKeepsTheNewestRunsTheCountAllows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var session = await OpenAsync("app.sqlite", cancellationToken);
+        using var history = await _core.OpenHistoryAsync(cancellationToken);
+        var now = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        await history.RecordAsync(session, Ran("SELECT 'years ago'", now.AddDays(-800)), cancellationToken);
+        await history.RecordAsync(session, Ran("SELECT 'older'", now.AddMinutes(-2)), cancellationToken);
+        var newer = await history.RecordAsync(session, Ran("SELECT 'newer'", now.AddMinutes(-1)), cancellationToken);
+        var newest = await history.RecordAsync(session, Ran("SELECT 'newest'", now), cancellationToken);
+
+        var aged = await history.PruneAsync(365, 0, cancellationToken);
+        var capped = await history.PruneAsync(0, 2, cancellationToken);
+        var kept = await history.SearchAsync(string.Empty, null, null, 50, cancellationToken);
+
+        Assert.Equal(1, aged);
+        Assert.Equal(1, capped);
+        Assert.Equal([newest, newer], kept.Entries.Select(entry => (long?)entry.Id));
+    }
+
     // SQLite withholds a statement that sets an encryption key, and text whose quote never closes.
     [Fact]
     public async Task AStatementTheEngineWithholdsIsNotKept()

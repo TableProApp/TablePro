@@ -1,6 +1,6 @@
 # 0022: A table page is read on the session with its filter bound, and structure, definitions, export and history cross the FFI
 
-- **Status**: Accepted
+- **Status**: Accepted; amended 2026-11-14 (Server paging, databases, keys and history retention)
 - **Date**: 2026-11-12
 
 ## Context
@@ -20,6 +20,13 @@ The FFI exposes what the Linux app calls, and does the work the Linux app does, 
 - `export_rows` writes the rows a finished `ResultSet` holds, its visible columns only; `export_table` streams every row the filter and sort select through `build_export` and `stream_read`, as the Linux app exports a table. Both use the core's encoders (CSV with its default options, JSON, Excel, Markdown, HTML, XML, and SQL INSERT from a table), write beside the target and rename once complete, so a failed or cancelled export leaves no file.
 - `Core::history` opens the query history at `<storage>/state/history.db` once. `record` takes the session, so the engine's `history_recording` withholds a statement that holds a secret, as on Linux; `search` pages by the store's keyset; `delete` and `clear` change it.
 
+### Server paging, databases, keys and history retention (2026-11-14)
+
+- A server-paged engine (Cassandra) is no longer limited to its first page. `TablePageRead::next_page` hands back where the server stopped, as a `PageResume`, once the page's run has finished, and `read_table_page` takes it to read the page after; it resumes only the same table, sort, filter and page size. An offset with no resume is read through the rows before it (`browse::read_page` skips them), so `can_seek` now says whether an offset is cheap, not whether later pages exist. Remembering the resumes for Previous is the host's, as it is the Linux pager's.
+- `open_editor` takes the database the editor runs in: an engine that binds the database at connect (PostgreSQL) opens the editor there through `EditorSessionOptions::database`, another moves it there with `use_database`, and an editor that cannot reach it is closed and the call fails. `QueryEditor::database` says where a typed `USE` left it. `DatabaseSession::databases` lists the server's databases (`Connection::list_databases`), `database_layout` says how they stand to the catalog, and `database` names the one the connection was asked to open. `Core::connect_saved` takes a database in place of the saved one, which is how a host opens another database of a server whose databases hold schemas of their own beside its connection (Linux ADR 0030).
+- `DatabaseSession::open_key` gives a `KeyReader` that reads one key a window at a time (`Connection::read_key`) into one `ResultSet`, so a grid grows with Load More; an entry a hash or set scan returns again is left out, and a key that changed type starts its rows again.
+- `QueryHistoryStore::prune` drops unpinned runs past a host's retention days and entry count (`QueryHistory::prune_keeping`), under the store's own cap.
+
 ## Rationale
 
 - One place builds the WHERE, binds its values and pages the table, for every app.
@@ -30,7 +37,7 @@ The FFI exposes what the Linux app calls, and does the work the Linux app does, 
 
 - A table tab's page is no longer on a connection of its own, so a session setting made in a query tab does not reach it, as on Linux.
 - A page is read whole, under `OperationKind::Page`'s deadline, before its rows reach the app.
-- History is pruned to the store's cap when it opens; a retention setting, as Linux has, is the host's to add.
+- History is pruned to the store's cap when it opens; a host applies its retention setting through `prune`.
 - An array value in `export_rows` is written as its text, since the result store keeps arrays only as text; `export_table` writes it as an array.
 
 ## Alternatives considered

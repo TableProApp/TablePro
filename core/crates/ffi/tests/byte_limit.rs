@@ -79,7 +79,7 @@ async fn a_run_keeps_whole_rows_up_to_its_byte_limit() {
     };
     let core = core();
     let session = core.open_file(request, None).await.unwrap();
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     let settings = RunSettings {
         byte_limit: Some(1 << 20),
         ..RunSettings::default()

@@ -20,19 +20,20 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
         _life = new ConnectionLife<DatabaseSession>(
             origin, this, new CoreConnector(workbench.Core, View.CredentialPrompter));
         _life.Cancelled += (_, _) => Cancelled?.Invoke(this, EventArgs.Empty);
+        var title = TitleOf(origin);
         RailItem = new NavigationViewItem
         {
-            Content = origin.Name,
+            Content = title,
             Tag = this,
             Icon = EngineIcons.Mark(origin.EngineId, null),
         };
-        AutomationProperties.SetName(RailItem, origin.Name);
-        AutomationProperties.SetAutomationId(RailItem, "Rail_" + origin.Name);
+        AutomationProperties.SetName(RailItem, title);
+        AutomationProperties.SetAutomationId(RailItem, "Rail_" + title);
         if (origin.EngineId.Length > 0)
         {
             AutomationProperties.SetHelpText(RailItem, workbench.EngineName(origin.EngineId));
         }
-        ToolTipService.SetToolTip(RailItem, origin.Name);
+        ToolTipService.SetToolTip(RailItem, title);
     }
 
     public event EventHandler? StateChanged;
@@ -43,6 +44,12 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
     public SessionConnection Origin => _life.Origin;
 
     public string Name => Origin.Name;
+
+    // The rail and the title bar name a connection opened in another of its databases with that database.
+    public string Title => TitleOf(Origin);
+
+    // Another of the server's databases this item opened the saved connection in, null for its own.
+    public string? Database => Origin.Database;
 
     public Guid? ConnectionId => Origin.ConnectionId;
 
@@ -56,7 +63,14 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
 
     public bool Matches(Guid? connectionId, string? filePath) => _life.Matches(connectionId, filePath);
 
+    public bool IsSame(SessionConnection origin) => _life.IsSame(origin);
+
     public string? Color { get; private set; }
+
+    // The library's tags on the connection, which the title bar names as its environment.
+    public IReadOnlyList<ConnectionTag> Tags { get; private set; } = [];
+
+    public void SetTags(IReadOnlyList<ConnectionTag> tags) => Tags = tags;
 
     // The engine's artwork in the connection's colour, as the macOS rail marks it.
     public void Mark(string engineId, string? color)
@@ -69,6 +83,7 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
         _life.SetEngine(engineId);
         Color = color;
         RailItem.Icon = EngineIcons.Mark(engineId, color);
+        View.ShowCue(color);
         // The glyph says the engine to the eye; the item says it to a screen reader.
         AutomationProperties.SetHelpText(RailItem, _workbench.EngineName(engineId));
     }
@@ -76,10 +91,10 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
     public void Rename(string name)
     {
         _life.Rename(name);
-        RailItem.Content = name;
-        AutomationProperties.SetName(RailItem, name);
-        ToolTipService.SetToolTip(RailItem, name);
-        View.Rename(name);
+        RailItem.Content = Title;
+        AutomationProperties.SetName(RailItem, Title);
+        ToolTipService.SetToolTip(RailItem, Title);
+        View.Rename(Title);
     }
 
     public Task ConnectAsync() => _life.ConnectAsync();
@@ -98,6 +113,7 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
 
         var adopted = new OpenConnection(_workbench, Origin with { Tabs = [], SelectedTab = 0 });
         adopted.Mark(Origin.EngineId, Color);
+        adopted.SetTags(Tags);
         adopted._life.Adopt(_life);
         return adopted;
     }
@@ -122,7 +138,7 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
             _ => string.Empty,
         };
         AutomationProperties.SetItemStatus(RailItem, status);
-        ToolTipService.SetToolTip(RailItem, status.Length == 0 ? Name : $"{Name} ({status})");
+        ToolTipService.SetToolTip(RailItem, status.Length == 0 ? Title : $"{Title} ({status})");
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -173,6 +189,9 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
         View.Snapshot(origin, withWork);
 
     private static Style Badge(string key) => (Style)Application.Current.Resources[key];
+
+    private static string TitleOf(SessionConnection origin) =>
+        origin.Database is { Length: > 0 } database ? Strings.Format("ConnectionInDatabase", origin.Name, database) : origin.Name;
 
     private static string Details(CoreError error)
     {

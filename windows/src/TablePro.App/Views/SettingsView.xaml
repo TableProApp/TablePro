@@ -73,6 +73,31 @@
                     SpinButtonPlacementMode="Compact"
                     ValueChanged="OnFontSizeChanged" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="FontFamilyCard" x:Name="FontFamilyCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Font" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="FontFamilyBox" x:Uid="FontFamilyBox" AutomationProperties.AutomationId="FontFamilyBox" MinWidth="200" SelectionChanged="OnFontFamilyChanged" />
+            </toolkit:SettingsCard>
+
+            <TextBlock x:Uid="GridHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="GridFontCard" x:Name="GridFontCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Font" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="GridFontBox" x:Uid="GridFontBox" AutomationProperties.AutomationId="GridFontBox" MinWidth="200" SelectionChanged="OnGridFontChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="GridFontSizeCard" x:Name="GridFontSizeCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="FontSize" /></toolkit:SettingsCard.HeaderIcon>
+                <NumberBox
+                    x:Name="GridFontSizeBox"
+                    x:Uid="GridFontSizeBox"
+                    AutomationProperties.AutomationId="GridFontSizeBox"
+                    Maximum="36"
+                    Minimum="8"
+                    SpinButtonPlacementMode="Compact"
+                    ValueChanged="OnGridFontSizeChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="NullDisplayCard" x:Name="NullDisplayCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8C4;" /></toolkit:SettingsCard.HeaderIcon>
+                <TextBox x:Name="NullDisplayBox" x:Uid="NullDisplayBox" AutomationProperties.AutomationId="NullDisplayBox" MinWidth="200" MaxLength="20" TextChanged="OnNullDisplayChanged" />
+            </toolkit:SettingsCard>
 
             <TextBlock x:Uid="QueriesHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsCard x:Uid="RowLimitCard" x:Name="RowLimitCard">
@@ -112,6 +137,20 @@
             <toolkit:SettingsCard x:Uid="CountThresholdCard" x:Name="CountThresholdCard">
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Calculator" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="CountThresholdBox" x:Uid="CountThresholdBox" AutomationProperties.AutomationId="CountThresholdBox" MinWidth="200" SelectionChanged="OnCountThresholdChanged" />
+            </toolkit:SettingsCard>
+
+            <TextBlock x:Uid="HistoryHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="HistoryRetentionCard" x:Name="HistoryRetentionCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Clock" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="HistoryRetentionBox" x:Uid="HistoryRetentionBox" AutomationProperties.AutomationId="HistoryRetentionBox" MinWidth="200" SelectionChanged="OnHistoryRetentionChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="HistoryMaxCard" x:Name="HistoryMaxCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="List" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="HistoryMaxBox" x:Uid="HistoryMaxBox" AutomationProperties.AutomationId="HistoryMaxBox" MinWidth="200" SelectionChanged="OnHistoryMaxChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="ClearHistoryCard" x:Name="ClearHistoryCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Delete" /></toolkit:SettingsCard.HeaderIcon>
+                <Button x:Uid="ClearHistorySettingsButton" x:Name="ClearHistoryButton" AutomationProperties.AutomationId="ClearHistorySettingsButton" Click="OnClearHistory" />
             </toolkit:SettingsCard>
 
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />

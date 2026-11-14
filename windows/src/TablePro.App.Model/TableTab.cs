@@ -148,6 +148,9 @@ public sealed class TableTab : IWorkspaceTab
     private readonly TabWork _work = new();
     private readonly KeptRead<TableStructure> _structure;
     private readonly KeptRead<FilterChoices> _choices;
+
+    // Where each page of a server-paged table resumes, by its offset: a paging state only goes forward.
+    private readonly Dictionary<long, IPageResume> _resumes = [];
     private ITableEditor? _tableEditor;
     private bool _reopenTableEditor;
     private Task? _closing;
@@ -259,8 +262,9 @@ public sealed class TableTab : IWorkspaceTab
 
     public bool IsCounting => _counting is not null;
 
-    // Only an exact total pages to the end; a count the tab runs by itself is on its way, so Count rows waits for it.
-    public bool OffersCount => _page.Total is null && _page.IsPaged && (_counting is null || _countAsked);
+    // Only an exact total pages to the end, and only where the engine seeks; one the tab runs by itself is on its way.
+    public bool OffersCount =>
+        _page.CanSeek && _page.Total is null && _page.IsPaged && (_counting is null || _countAsked);
 
     public bool CanCountRows => OffersCount && !IsCounting && !IsRunning && !IsSaving && !_work.IsClosed;
 
@@ -452,13 +456,13 @@ public sealed class TableTab : IWorkspaceTab
         await LoadAsync(_page.Offset).ConfigureAwait(true);
     }
 
-    public Task FirstPageAsync() => PageToAsync(_ => 0);
+    public Task FirstPageAsync() => PageToAsync(_ => 0, keepsResumes: true);
 
-    public Task PreviousPageAsync() => PageToAsync(page => page.PreviousOffset);
+    public Task PreviousPageAsync() => PageToAsync(page => page.PreviousOffset, keepsResumes: true);
 
-    public Task NextPageAsync() => PageToAsync(page => page.NextOffset);
+    public Task NextPageAsync() => PageToAsync(page => page.NextOffset, keepsResumes: true);
 
-    public Task LastPageAsync() => PageToAsync(page => page.LastOffset);
+    public Task LastPageAsync() => _page.HasLast ? PageToAsync(page => page.LastOffset) : Task.CompletedTask;
 
     public async Task GoToPageAsync(long number)
     {
@@ -697,7 +701,7 @@ public sealed class TableTab : IWorkspaceTab
             ? null
             : new ColumnSort(_shownSort.Column, _shownSort.Direction == SortDirection.Ascending);
         var filter = _shownFilter;
-        var read = await _session.ReadTablePageAsync(Table, sort, filter, maxRows, 0, cancellationToken)
+        var read = await _session.ReadTablePageAsync(Table, sort, filter, maxRows, 0, null, cancellationToken)
             .ConfigureAwait(true);
         try
         {
@@ -745,6 +749,7 @@ public sealed class TableTab : IWorkspaceTab
         await _work.CloseAsync().ConfigureAwait(true);
         _run?.Dispose();
         _run = null;
+        ForgetResumes();
         _results.Clear();
         SetEdits(null, null);
         _tableEditor?.Dispose();
@@ -762,11 +767,11 @@ public sealed class TableTab : IWorkspaceTab
         && !IsSaving
         && !_work.IsClosed;
 
-    private async Task PageToAsync(Func<TablePage, long> offset)
+    private async Task PageToAsync(Func<TablePage, long> offset, bool keepsResumes = false)
     {
         if (await MayReloadNowAsync(ReloadReason.Page).ConfigureAwait(true))
         {
-            await LoadAsync(offset(_page)).ConfigureAwait(true);
+            await LoadAsync(offset(_page), keepsResumes: keepsResumes).ConfigureAwait(true);
         }
     }
 
@@ -792,11 +797,17 @@ public sealed class TableTab : IWorkspaceTab
     }
 
     // Recount after a filter, a refresh or a save, which can change the total; it is counted once the page is read.
-    private async Task LoadAsync(long offset, bool recount = false)
+    private async Task LoadAsync(long offset, bool recount = false, bool keepsResumes = false)
     {
         _shown = true;
         if (!IsRunning)
         {
+            // Any read but a step between pages may change the rows, sort, filter or size a paging state was for.
+            if (!keepsResumes)
+            {
+                ForgetResumes();
+            }
+
             await _work.RunAsync(token => LoadPageAsync(offset, recount, token)).ConfigureAwait(true);
         }
     }
@@ -815,14 +826,18 @@ public sealed class TableTab : IWorkspaceTab
             if (_chosenSize is null && page.Size != PageSize)
             {
                 page = page.Resized(PageSize);
+                // A paging state resumes only a read of the size it was handed back for.
+                ForgetResumes();
             }
 
             var sort = _sort.Direction == SortDirection.None
                 ? null
                 : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
             var filter = Filter;
+            var resume = _resumes.GetValueOrDefault(page.Offset);
             // The core binds the filter's values and stops the read at the page's size.
-            var read = await _session.ReadTablePageAsync(Table, sort, filter, page.Size, page.Offset, cancellationToken)
+            var read = await _session.ReadTablePageAsync(
+                    Table, sort, filter, page.Size, page.Offset, resume, cancellationToken)
                 .ConfigureAwait(true);
             if (_work.IsClosed)
             {
@@ -870,7 +885,9 @@ public sealed class TableTab : IWorkspaceTab
 
             _shownSort = _sort;
             _shownFilter = filter;
-            _page = _page with { Rows = _results.RowCount };
+            var next = read.NextPage?.Invoke();
+            KeepResume(page.NextOffset, next);
+            _page = _page with { Rows = _results.RowCount, EndsTable = !read.CanSeek && next is null };
             // The server's rows are read again, so a save whose outcome was unknown may be judged by them now.
             Unblock();
             BindEdits();
@@ -893,6 +910,30 @@ public sealed class TableTab : IWorkspaceTab
         {
             SetRunning(false);
         }
+    }
+
+    // The page at offset resumes here; once the server says nothing follows, that page is read by offset.
+    private void KeepResume(long offset, IPageResume? resume)
+    {
+        if (_resumes.Remove(offset, out var kept) && !ReferenceEquals(kept, resume))
+        {
+            kept.Dispose();
+        }
+
+        if (resume is not null)
+        {
+            _resumes[offset] = resume;
+        }
+    }
+
+    private void ForgetResumes()
+    {
+        foreach (var resume in _resumes.Values)
+        {
+            resume.Dispose();
+        }
+
+        _resumes.Clear();
     }
 
     // Once per tab, and again on a refresh, since the table's columns can change.

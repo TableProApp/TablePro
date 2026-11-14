@@ -8,7 +8,7 @@ use tablepro_account::{AccountSettings, RefreshTokenVault};
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
-    SafeModeLevel, WorkspaceSettings,
+    SafeModeLevel, UnsupportedFeature, WorkspaceSettings,
 };
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
@@ -177,9 +177,11 @@ impl Core {
     }
 
     // Typed secrets come first, then Credential Manager; `keep` is stored once it logs in; no prompter, no SSH asks.
+    // `database`, in place of the saved one, opens the connection in another of the server's databases.
     pub async fn connect_saved(
         &self,
         id: String,
+        database: Option<String>,
         secrets: ConnectionSecrets,
         keep: ConnectionSecrets,
         prompter: Option<Box<dyn HostPrompter>>,
@@ -215,8 +217,17 @@ impl Core {
                 CredentialDemand::default(),
             )
             .await?;
+            let request = match database.as_deref().filter(|name| !name.is_empty()) {
+                Some(database) => refreshed
+                    .request
+                    .in_database(database)
+                    .ok_or(DriverError::Unsupported {
+                        feature: UnsupportedFeature::NetworkConnection,
+                    })?,
+                None => refreshed.request,
+            };
             let pending = connector
-                .establish(refreshed.request, interaction(prompter.as_ref()), cancel.clone())
+                .establish(request, interaction(prompter.as_ref()), cancel.clone())
                 .await?;
             if cancel.is_cancelled() {
                 let report = pending.discard().await;
@@ -657,7 +668,14 @@ mod tests {
         };
 
         let connect = core
-            .connect_saved(stored.id.to_string(), typed(), ConnectionSecrets::default(), None, None)
+            .connect_saved(
+                stored.id.to_string(),
+                None,
+                typed(),
+                ConnectionSecrets::default(),
+                None,
+                None,
+            )
             .await
             .unwrap_err();
         let test = core

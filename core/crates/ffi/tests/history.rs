@@ -202,6 +202,41 @@ async fn a_deleted_run_is_gone_and_clear_removes_the_rest() {
     assert!(after_clear.entries.is_empty());
 }
 
+#[tokio::test]
+async fn a_prune_drops_runs_past_the_age_kept_then_the_oldest_past_the_count_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(Some(dir.path()));
+    let session = open(&core, &dir.path().join("app.sqlite")).await;
+    let history = core.history().await.unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let now = i64::try_from(now).unwrap();
+    let day = 86_400;
+    let mut ids = Vec::new();
+    for (sql, at) in [
+        ("SELECT 'ancient'", now - 400 * day),
+        ("SELECT 'old'", now - 3 * day),
+        ("SELECT 'recent'", now - day),
+        ("SELECT 'newest'", now),
+    ] {
+        ids.push(history.record(session.clone(), ran(sql, at)).await.unwrap().unwrap());
+    }
+
+    let aged = history.prune(365, 0).await.unwrap();
+    let after_age = history.search(String::new(), None, None, 50).await.unwrap();
+    let capped = history.prune(0, 2).await.unwrap();
+    let after_cap = history.search(String::new(), None, None, 50).await.unwrap();
+
+    assert_eq!(aged, 1);
+    let kept: Vec<i64> = after_age.entries.iter().map(|entry| entry.id).collect();
+    assert_eq!(kept, [ids[3], ids[2], ids[1]]);
+    assert_eq!(capped, 1);
+    let kept: Vec<i64> = after_cap.entries.iter().map(|entry| entry.id).collect();
+    assert_eq!(kept, [ids[3], ids[2]], "the newest two stay");
+}
+
 // SQLite withholds a statement that sets an encryption key, and text whose quote never closes.
 #[tokio::test]
 async fn a_statement_the_engine_withholds_is_not_stored() {

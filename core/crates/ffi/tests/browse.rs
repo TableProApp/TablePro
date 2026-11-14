@@ -92,7 +92,7 @@ async fn fixture(dir: &Path, sql: &str) -> (Arc<Core>, Arc<DatabaseSession>) {
 
 // On an editor of its own, closed before the test reads through the session.
 async fn execute(session: &DatabaseSession, sql: &str) {
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
     let outcome = run.outcome().await.unwrap();
     assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
@@ -140,7 +140,16 @@ async fn read(
     offset: u64,
 ) -> Result<Arc<TablePageRead>, CoreError> {
     session
-        .read_table_page(table("people"), sort, filter, limit, offset, Box::new(Quiet), None)
+        .read_table_page(
+            table("people"),
+            sort,
+            filter,
+            limit,
+            offset,
+            None,
+            Box::new(Quiet),
+            None,
+        )
         .await
 }
 
@@ -175,7 +184,7 @@ async fn a_page_s_view_sql_selects_every_page_with_its_filter_written_in() {
     let page = read(&session, by_name, filter, 1, 1).await.unwrap();
     let names = column(&page, 1).await;
     let sql = page.view_sql().unwrap();
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     let run = editor.run(sql.clone(), RunSettings::default(), Box::new(Quiet));
     let outcome = run.outcome().await.unwrap();
     let set = run.result_set(0).unwrap();
@@ -391,7 +400,7 @@ async fn a_cancel_stops_a_page_read_on_the_engine() {
     let (_core, session) = fixture(dir.path(), &format!("{PEOPLE}; {endless}")).await;
 
     let page = session
-        .read_table_page(table("endless"), None, None, 100, 0, Box::new(Quiet), None)
+        .read_table_page(table("endless"), None, None, 100, 0, None, Box::new(Quiet), None)
         .await
         .unwrap();
     let run = page.run();
@@ -539,7 +548,7 @@ async fn a_trigger_reads_back_and_a_function_is_unsupported_on_sqlite() {
 async fn an_editor_moves_to_a_database_only_where_the_engine_switches_one() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path(), PEOPLE).await;
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
 
     // SQLite binds its database to the file it opened, so a definition from elsewhere cannot run there.
     let refused = editor.use_database("shop".to_owned(), None).await.unwrap_err();

@@ -11,15 +11,27 @@ public interface ITabSession
 
     bool IsReadOnly { get; }
 
-    Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken);
+    // How the server's databases stand to the catalog; OneDatabase where a connection reaches one.
+    DatabaseLayout Layout { get; }
 
-    // Starts the page's read on a pooled connection and returns at once; the token stops the read as well.
+    // The database the connection was asked to open; null for a file or a login that named none.
+    string? Database { get; }
+
+    // Opened in database, or moved there before it returns; one that cannot reach it is closed and the call throws.
+    Task<ITabEditor> OpenEditorAsync(string? database, CancellationToken cancellationToken);
+
+    // The server's databases the login sees, the connection's own marked default and the engine's own system.
+    Task<IReadOnlyList<SchemaEntry>> GetDatabasesAsync(CancellationToken cancellationToken);
+
+    // Starts the page's read on a pooled connection and returns at once; the token stops the read as well. Continuation
+    // is where a server-paged table's next page starts, from the page before; offset is read through otherwise.
     Task<TablePageRead> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
         TableFilter? filter,
         long limit,
         long offset,
+        IPageResume? continuation,
         CancellationToken cancellationToken);
 
     Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken);
@@ -47,7 +59,16 @@ public interface ITabSession
 }
 
 // The run gives the page's rows as an editor run's events do; columns past VisibleColumns are the row's address.
-public sealed record TablePageRead(ITabRun Run, int VisibleColumns, bool CanSeek, string? ViewSql = null);
+// Without CanSeek an offset reads through the rows before it; NextPage, once the run finished, resumes after it.
+public sealed record TablePageRead(
+    ITabRun Run,
+    int VisibleColumns,
+    bool CanSeek,
+    string? ViewSql = null,
+    Func<IPageResume?>? NextPage = null);
+
+// Where a server-paged table's next page starts; only a read of the same table, sort, filter and size takes it.
+public interface IPageResume : IDisposable;
 
 // A table's rows as a save sees them. `rows` is the set a page was read into, null when no set is shown.
 public interface ITableEditor : IDisposable
@@ -91,6 +112,10 @@ public interface ITabEditor : IAsyncDisposable
 
     ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken);
 
+    // Where an unqualified name resolves now, as the server last said, a typed USE included; null where not followed.
+    string? Database { get; }
+
+    // Keeps the transaction; an engine that binds the database at connect refuses with driver.unsupported.
     Task UseDatabaseAsync(string database, CancellationToken cancellationToken);
 }
 
@@ -123,8 +148,15 @@ public sealed class CoreTabSession : ITabSession
 
     public bool IsReadOnly => _share.Session.IsReadOnly;
 
-    public async Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken) =>
-        new CoreTabEditor(await _share.Session.OpenEditorAsync(cancellationToken).ConfigureAwait(true));
+    public DatabaseLayout Layout => _share.Session.Layout;
+
+    public string? Database => _share.Session.Database;
+
+    public async Task<ITabEditor> OpenEditorAsync(string? database, CancellationToken cancellationToken) =>
+        new CoreTabEditor(await _share.Session.OpenEditorAsync(database, cancellationToken).ConfigureAwait(true));
+
+    public Task<IReadOnlyList<SchemaEntry>> GetDatabasesAsync(CancellationToken cancellationToken) =>
+        _share.Session.GetDatabasesAsync(cancellationToken);
 
     public async Task<TablePageRead> ReadTablePageAsync(
         TableName table,
@@ -132,11 +164,18 @@ public sealed class CoreTabSession : ITabSession
         TableFilter? filter,
         long limit,
         long offset,
+        IPageResume? continuation,
         CancellationToken cancellationToken)
     {
-        var page = await _share.Session.ReadTablePageAsync(table, sort, filter, limit, offset, cancellationToken)
+        var page = await _share.Session.ReadTablePageAsync(
+                table, sort, filter, limit, offset, (continuation as CorePageResume)?.Resume, cancellationToken)
             .ConfigureAwait(true);
-        return new TablePageRead(new CoreTabRun(page.Run), page.VisibleColumns, page.CanSeek, page.ViewSql);
+        return new TablePageRead(
+            new CoreTabRun(page.Run, page),
+            page.VisibleColumns,
+            page.CanSeek,
+            page.ViewSql,
+            () => page.NextPage() is { } next ? new CorePageResume(next) : null);
     }
 
     public Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken) =>
@@ -254,9 +293,18 @@ internal sealed class CoreRowSave(RowSave save) : IRowSave
     public void Dispose() => save.Dispose();
 }
 
+internal sealed class CorePageResume(PageResume resume) : IPageResume
+{
+    public PageResume Resume => resume;
+
+    public void Dispose() => resume.Dispose();
+}
+
 internal sealed class CoreTabEditor(QueryEditor editor) : ITabEditor
 {
     public bool IsLost => editor.IsLost;
+
+    public string? Database => editor.Database;
 
     public ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken) =>
         new CoreTabRun(editor.Run(sql, options, cancellationToken));
@@ -267,7 +315,8 @@ internal sealed class CoreTabEditor(QueryEditor editor) : ITabEditor
     public ValueTask DisposeAsync() => editor.DisposeAsync();
 }
 
-internal sealed class CoreTabRun(QueryRun run) : ITabRun
+// A table page's run also holds the page, which says where the next one resumes until the run is let go.
+internal sealed class CoreTabRun(QueryRun run, IDisposable? page = null) : ITabRun
 {
     public IAsyncEnumerable<QueryEvent> ReadEventsAsync(CancellationToken cancellationToken) =>
         run.ReadEventsAsync(cancellationToken);
@@ -278,5 +327,9 @@ internal sealed class CoreTabRun(QueryRun run) : ITabRun
 
     public void Cancel() => run.Cancel();
 
-    public void Dispose() => run.Dispose();
+    public void Dispose()
+    {
+        run.Dispose();
+        page?.Dispose();
+    }
 }

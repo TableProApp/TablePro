@@ -31,6 +31,15 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}" />
             </CommandBar.Content>
+            <!-- Shown where the server has more than one database; its label and its menu are set in code. -->
+            <AppBarButton
+                x:Uid="QueryDatabaseButton"
+                x:Name="DatabaseButton"
+                AutomationProperties.AutomationId="QueryDatabaseButton"
+                Click="OnDatabase"
+                Visibility="Collapsed">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE1D3;" /></AppBarButton.Icon>
+            </AppBarButton>
             <AppBarButton x:Uid="RunButton" x:Name="RunButton" AutomationProperties.AutomationId="RunButton" Icon="Play" Click="OnRun" />
             <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
         </CommandBar>
@@ -38,6 +47,18 @@
         <editor:SqlEditor x:Name="SqlText" Grid.Row="1" AutomationProperties.AutomationId="SqlEditor" />
 
         <StackPanel Grid.Row="2">
+            <InfoBar
+                x:Name="FileBar"
+                Margin="8,8,8,0"
+                AutomationProperties.AutomationId="FileChangedBar"
+                CloseButtonClick="OnFileBarClosed"
+                IsOpen="False"
+                Severity="Warning">
+                <InfoBar.ActionButton>
+                    <Button x:Name="FileBarButton" AutomationProperties.AutomationId="FileBarButton" Click="OnFileBarAction" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
             <!-- The app ended without a close while this tab held a transaction, which the server then rolled back. -->
             <InfoBar
                 x:Name="RolledBackBar"

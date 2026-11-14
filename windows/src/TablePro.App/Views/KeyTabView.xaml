@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="TablePro.App.Views.KeyTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:grid="using:TablePro.DataGrid">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <CommandBar
+            x:Name="Commands"
+            x:Uid="KeyTabCommands"
+            AutomationProperties.AutomationId="KeyTabCommands"
+            DefaultLabelPosition="Right"
+            IsDynamicOverflowEnabled="True"
+            VerticalContentAlignment="Center">
+            <CommandBar.Content>
+                <TextBlock
+                    x:Name="StatusText"
+                    Margin="12,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="KeyStatus"
+                    AutomationProperties.LiveSetting="Polite"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+            </CommandBar.Content>
+            <AppBarButton x:Uid="KeyLoadMoreButton" x:Name="LoadMoreButton" AutomationProperties.AutomationId="KeyLoadMoreButton" IsEnabled="False" Visibility="Collapsed" Click="OnLoadMore">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE74B;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Uid="KeyRefreshButton" x:Name="RefreshButton" AutomationProperties.AutomationId="KeyRefreshButton" Icon="Refresh" Click="OnRefresh" />
+        </CommandBar>
+
+        <StackPanel
+            x:Name="Header"
+            Grid.Row="1"
+            Margin="12,4,12,8"
+            Orientation="Horizontal"
+            Spacing="12"
+            Visibility="Collapsed">
+            <TextBlock
+                x:Name="TypeText"
+                AutomationProperties.AutomationId="KeyTypeText"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                VerticalAlignment="Center" />
+            <TextBlock
+                x:Name="LengthText"
+                AutomationProperties.AutomationId="KeyLengthText"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                VerticalAlignment="Center" />
+            <TextBlock
+                x:Name="TtlText"
+                AutomationProperties.AutomationId="KeyTtlText"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                VerticalAlignment="Center" />
+        </StackPanel>
+
+        <InfoBar
+            x:Name="ErrorBar"
+            x:Uid="KeyErrorBar"
+            Grid.Row="2"
+            Margin="8,0,8,8"
+            AutomationProperties.AutomationId="KeyErrorBar"
+            Closed="OnErrorBarClosed"
+            IsClosable="True"
+            IsOpen="False"
+            Severity="Error"
+            Visibility="Collapsed" />
+
+        <InfoBar
+            x:Name="CutBar"
+            Grid.Row="3"
+            Margin="8,0,8,8"
+            AutomationProperties.AutomationId="KeyCutBar"
+            IsClosable="False"
+            IsOpen="False"
+            Severity="Informational"
+            Visibility="Collapsed" />
+
+        <Grid Grid.Row="4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+            <grid:DataGridView
+                x:Name="KeyGrid"
+                x:Uid="KeyGrid"
+                AutomationProperties.AutomationId="KeyGrid"
+                Visibility="Collapsed" />
+
+            <ProgressRing
+                x:Name="LoadingRing"
+                x:Uid="KeyLoadingRing"
+                Width="32"
+                Height="32"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="KeyLoadingRing"
+                IsActive="False" />
+
+            <StackPanel
+                x:Name="MissingPanel"
+                MaxWidth="560"
+                Margin="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="12"
+                Visibility="Collapsed">
+                <TextBlock
+                    x:Uid="KeyMissingTitle"
+                    AutomationProperties.AutomationId="KeyMissingTitle"
+                    AutomationProperties.HeadingLevel="Level3"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock
+                    x:Uid="KeyMissingText"
+                    HorizontalAlignment="Center"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- A type the reader does not read, as a module's: its name in the header and why nothing is shown. -->
+            <StackPanel
+                x:Name="OtherPanel"
+                MaxWidth="560"
+                Margin="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="12"
+                Visibility="Collapsed">
+                <TextBlock
+                    x:Uid="KeyOtherTitle"
+                    AutomationProperties.HeadingLevel="Level3"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock
+                    x:Name="OtherText"
+                    AutomationProperties.AutomationId="KeyOtherText"
+                    HorizontalAlignment="Center"
+                    IsTextSelectionEnabled="True"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

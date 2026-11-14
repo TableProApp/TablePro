@@ -233,7 +233,14 @@ internal sealed class DefinitionSession : ITabSession
         return ValueTask.CompletedTask;
     }
 
-    public Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken) =>
+    public DatabaseLayout Layout => DatabaseLayout.OneDatabase;
+
+    public string? Database => null;
+
+    public Task<ITabEditor> OpenEditorAsync(string? database, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public Task<IReadOnlyList<SchemaEntry>> GetDatabasesAsync(CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
     public Task<TablePageRead> ReadTablePageAsync(
@@ -242,6 +249,7 @@ internal sealed class DefinitionSession : ITabSession
         TableFilter? filter,
         long limit,
         long offset,
+        IPageResume? continuation,
         CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
